@@ -21,4 +21,4 @@ See `.claude/agents/` for agent definitions and `CLAUDE.md` for full project doc
 4. `npm install && npm run dev`
 
 ## Tech Stack
-React · TypeScript · Vite · Tailwind CSS · Framer Motion · Supabase · GitHub Pages
+React · TypeScript · Vite · Tailwind CSS · Supabase · GitHub Pages
