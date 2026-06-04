@@ -31,7 +31,10 @@
 
 @layer components {
   .card {
-    @apply bg-white border border-ink-200 rounded-xl shadow-card;
+    @apply bg-white border border-ink-200 rounded-xl shadow-card transition-shadow duration-150;
+  }
+  .card-interactive {
+    @apply bg-white border border-ink-200 rounded-xl shadow-card transition-shadow duration-150 hover:shadow-card-hover;
   }
 
   .btn-primary {

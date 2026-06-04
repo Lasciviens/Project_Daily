@@ -55,6 +55,10 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
     (t): t is Task => !t.due_date && t.status !== 'done'
   )
 
+  const totalTasks  = tasks.filter(t => t.status !== 'cancelled').length
+  const doneTasks   = tasks.filter(t => t.status === 'done').length
+  const donePercent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
+
   return (
     <div className="card p-5">
       {/* Header with navigation */}
@@ -70,6 +74,11 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
             >
               Back to now
             </button>
+          )}
+          {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length > 0 && (
+            <span className="text-[10px] bg-accent-50 text-accent-600 font-semibold px-1.5 py-0.5 rounded-full">
+              {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length} open
+            </span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -119,10 +128,23 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
         </div>
       )}
 
-      {/* Date range label */}
-      <p className="text-[10px] text-ink-400 mb-3">
-        {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
-      </p>
+      {/* Date range + completion bar */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] text-ink-400">
+          {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
+        </p>
+        {totalTasks > 0 && (
+          <div className="flex items-center gap-1.5">
+            <div className="h-1 w-16 bg-ink-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-green-400 rounded-full transition-all duration-300"
+                style={{ width: `${donePercent}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-ink-400">{donePercent}%</span>
+          </div>
+        )}
+      </div>
 
       {/* Day grid */}
       <div className="grid grid-cols-7 gap-1">
