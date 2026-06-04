@@ -41,8 +41,11 @@ export async function exchangeCalendarCode(
   const { data, error } = await supabase.functions.invoke('calendar-oauth', {
     body: { code },
   })
-  if (error) throw new Error(error.message)
-  if (data.error) throw new Error(data.error)
+  if (error) {
+    const detail = data?.error ?? error.message
+    throw new Error(detail)
+  }
+  if (data?.error) throw new Error(data.error)
   return data as { access_token: string; expires_in: number }
 }
 
