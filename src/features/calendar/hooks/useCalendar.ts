@@ -1,7 +1,17 @@
+import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useCalendarStore } from '../../../app/store'
-import { fetchEventsForDay, fetchEventsForRange } from '../api/calendarApi'
+import { supabase } from '../../../integrations/supabase/client'
+import {
+  fetchEventsForDay,
+  fetchEventsForRange,
+  refreshCalendarToken,
+} from '../api/calendarApi'
 
+const REFRESH_THRESHOLD_MS = 5 * 60_000  // refresh when ≤5 min remaining
+
+// Returns a valid access token or null.  Does NOT trigger a refresh — that is
+// handled by useAutoRefreshCalendarToken which runs in CalendarConnect.
 function useValidToken(): string | null {
   const { accessToken, expiresAt } = useCalendarStore()
   if (!accessToken) return null
@@ -9,22 +19,90 @@ function useValidToken(): string | null {
   return accessToken
 }
 
+// Silently restore or refresh the calendar access token.
+// • On mount with no token: calls calendar-token edge function to get a fresh
+//   access_token using the stored refresh_token (if the user has ever connected).
+// • Schedules a proactive refresh when the token is within 5 minutes of expiry.
+export function useAutoRefreshCalendarToken() {
+  const { accessToken, expiresAt, setAccessToken } = useCalendarStore()
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  async function doRefresh() {
+    try {
+      const { access_token, expires_in } = await refreshCalendarToken(supabase)
+      setAccessToken(access_token, expires_in)
+    } catch {
+      // 'not_connected' is expected when the user hasn't linked Calendar yet
+    }
+  }
+
+  // Restore token on mount if we have no valid token in the store
+  useEffect(() => {
+    const isValid = accessToken && (!expiresAt || Date.now() < expiresAt - 60_000)
+    if (!isValid) {
+      doRefresh()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Schedule a proactive refresh before the current token expires
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (!accessToken || !expiresAt) return
+
+    const msUntilRefresh = expiresAt - Date.now() - REFRESH_THRESHOLD_MS
+    if (msUntilRefresh <= 0) {
+      doRefresh()
+      return
+    }
+
+    timerRef.current = setTimeout(doRefresh, msUntilRefresh)
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, expiresAt])
+}
+
 export function useCalendarEventsForDay(dateStr: string) {
   const token = useValidToken()
+  const { setAccessToken } = useCalendarStore()
+
   return useQuery({
     queryKey: ['calendar', 'day', dateStr],
-    queryFn:  () => fetchEventsForDay(token!, dateStr),
-    enabled:  !!token,
+    queryFn:  async () => {
+      // Inline refresh if token expired by the time the query fires
+      let activeToken = token
+      if (!activeToken) {
+        const fresh = await refreshCalendarToken(supabase)
+        setAccessToken(fresh.access_token, fresh.expires_in)
+        activeToken = fresh.access_token
+      }
+      return fetchEventsForDay(activeToken, dateStr)
+    },
+    enabled:   !!token,
     staleTime: 5 * 60_000,
+    retry:     false,
   })
 }
 
 export function useCalendarEventsForRange(timeMin: string, timeMax: string) {
   const token = useValidToken()
+  const { setAccessToken } = useCalendarStore()
+
   return useQuery({
     queryKey: ['calendar', 'range', timeMin, timeMax],
-    queryFn:  () => fetchEventsForRange(token!, timeMin, timeMax),
-    enabled:  !!token,
+    queryFn:  async () => {
+      let activeToken = token
+      if (!activeToken) {
+        const fresh = await refreshCalendarToken(supabase)
+        setAccessToken(fresh.access_token, fresh.expires_in)
+        activeToken = fresh.access_token
+      }
+      return fetchEventsForRange(activeToken, timeMin, timeMax)
+    },
+    enabled:   !!token,
     staleTime: 5 * 60_000,
+    retry:     false,
   })
 }
