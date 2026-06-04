@@ -8,7 +8,7 @@ A private, modular personal dashboard hosted on GitHub Pages. Covers daily plann
 | Agent | Invoke for | Definition |
 |---|---|---|
 | **guardian** | Security, RLS, auth, API keys, Edge Functions, migrations | `.claude/agents/guardian.md` |
-| **flex** | Mobile/responsive design, breakpoints, touch, animations | `.claude/agents/flex.md` |
+| **flex** | Mobile/responsive design, breakpoints, touch | `.claude/agents/flex.md` |
 
 **Rule:** Any change touching auth/RLS/API keys → `guardian` must review. Any new UI component → `flex` must review.
 
@@ -20,9 +20,8 @@ A private, modular personal dashboard hosted on GitHub Pages. Covers daily plann
 |---|---|---|
 | Framework | React 18 + TypeScript + Vite | GitHub Pages compatible |
 | Routing | React Router (HashRouter) | `/#/daily` — avoids GitHub Pages 404 on direct URL |
-| Styling | Tailwind CSS | |
+| Styling | Tailwind CSS | Transitions via Tailwind utilities only — no animation library |
 | Components | shadcn/ui + Radix UI | Accessible, Tailwind-based, unstyled base |
-| Animations | Framer Motion | Used selectively — not on every component |
 | Global State | Zustand | UI state, drawer open/close, active tab |
 | Server State | TanStack Query (React Query) | All API/Supabase calls, caching, loading/error |
 | Forms | React Hook Form + Zod | Validation schemas in `shared/schemas/` |
@@ -30,6 +29,14 @@ A private, modular personal dashboard hosted on GitHub Pages. Covers daily plann
 | Testing | Vitest + React Testing Library | Unit + component tests |
 | Linting | ESLint + Prettier | Enforced in CI |
 | Hosting | GitHub Pages | Static only — no server-side rendering |
+
+### No Animation Library
+Framer Motion and all animation libraries are **excluded**. UI transitions are limited to Tailwind's built-in utilities:
+```
+transition-colors duration-150   → hover color change
+transition-shadow duration-150   → hover shadow
+```
+No `motion.div`, no `AnimatePresence`, no CSS keyframe libraries.
 
 ---
 
@@ -148,7 +155,7 @@ src/
 │
 ├── integrations/
 │   ├── supabase/
-│   │   └── client.ts          # Supabase client init (uses security/supabaseClient.ts)
+│   │   └── client.ts
 │   ├── tmdb/
 │   │   └── client.ts
 │   ├── openai/
@@ -226,9 +233,6 @@ activity_log (
   id, user_id, event_type, entity_type, entity_id,
   payload_json, created_at
 )
--- Examples:
--- task_created, task_completed, media_added, media_planned,
--- ai_action_confirmed, ai_action_cancelled
 ```
 
 ---
@@ -324,7 +328,6 @@ Phase 7 — Games
 Phase 8 — Polish
   Command Bar
   Activity Log view
-  Animations + Framer Motion pass
   PWA / mobile install
 ```
 
