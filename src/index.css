@@ -3,6 +3,17 @@
 @tailwind utilities;
 
 @layer base {
+  /* Default accent: Orange/Amber */
+  :root {
+    --accent-50:  255 251 235;
+    --accent-100: 254 243 199;
+    --accent-200: 253 230 138;
+    --accent-400: 251 191 36;
+    --accent-500: 245 158 11;
+    --accent-600: 217 119 6;
+    --accent-700: 180 83 9;
+  }
+
   body {
     @apply bg-cream-100 text-ink-900 m-0;
     -webkit-font-smoothing: antialiased;
@@ -24,7 +35,7 @@
   }
 
   .btn-primary {
-    @apply bg-amber-500 hover:bg-amber-600 text-white font-medium px-4 py-2 rounded-lg
+    @apply bg-accent-500 hover:bg-accent-600 text-white font-medium px-4 py-2 rounded-lg
            transition-colors duration-150 cursor-pointer border-none text-sm;
   }
 
@@ -40,7 +51,7 @@
 
   .input {
     @apply w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900
-           placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-amber-400
-           focus:border-amber-400 transition-colors duration-150;
+           placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
+           focus:border-accent-400 transition-colors duration-150;
   }
 }

@@ -30,7 +30,7 @@ export function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center text-white text-xl font-bold mb-3">
+          <div className="w-12 h-12 bg-accent-500 rounded-xl flex items-center justify-center text-white text-xl font-bold mb-3">
             L
           </div>
           <h1 className="text-xl font-semibold text-ink-900">Lasci's Board</h1>

@@ -1,6 +1,8 @@
 import { Outlet, NavLink } from 'react-router-dom'
+import { format } from 'date-fns'
 import { signOut } from '../security/supabaseClient'
 import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
+import { ThemeSwitcher } from '../shared/components/ThemeSwitcher'
 import { useUIStore } from './store'
 
 export function Layout() {
@@ -21,7 +23,7 @@ function Nav() {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `px-4 py-1.5 text-sm font-medium rounded-lg transition-colors duration-150 ${
       isActive
-        ? 'bg-amber-500 text-white'
+        ? 'bg-accent-500 text-white'
         : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
     }`
 
@@ -30,10 +32,10 @@ function Nav() {
       <div className="max-w-screen-xl mx-auto px-6 h-14 flex items-center justify-between">
         {/* Logo */}
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-amber-500 rounded-lg flex items-center justify-center text-white text-sm font-bold">
+          <div className="w-7 h-7 bg-accent-500 rounded-lg flex items-center justify-center text-white text-sm font-bold">
             L
           </div>
-          <span className="font-semibold text-ink-900 text-sm">Lasci's Board</span>
+          <span className="font-semibold text-ink-900 text-sm hidden sm:block">Lasci's Board</span>
         </div>
 
         {/* Nav links */}
@@ -44,24 +46,34 @@ function Nav() {
         </nav>
 
         {/* Right actions */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          {/* Today's date */}
+          <span className="text-xs text-ink-400 hidden md:block mr-1">
+            {format(new Date(), 'EEE, MMM d')}
+          </span>
+
+          {/* Theme switcher */}
+          <ThemeSwitcher />
+
           <button
             disabled
             title="Coming in Phase 5"
-            className="px-3 py-1.5 text-xs font-medium text-ink-300 rounded-lg cursor-not-allowed"
+            className="px-3 py-1.5 text-xs font-medium text-ink-300 rounded-lg cursor-not-allowed hidden sm:block"
           >
             ✦ Ask AI
           </button>
+
           <button
             onClick={toggleToDo}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 ${
               isToDoOpen
-                ? 'bg-amber-50 text-amber-600'
+                ? 'bg-accent-50 text-accent-600'
                 : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
             }`}
           >
             ☑ To-Do
           </button>
+
           <button
             onClick={() => signOut()}
             className="px-3 py-1.5 text-xs font-medium text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
