@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useUIStore } from '../../../app/store'
-import { useTasksBySection } from '../hooks/useTodos'
+import { useTasksBySection, useSyncFromTodoist } from '../hooks/useTodos'
 import { ToDoSection } from './ToDoSection'
 import type { TaskSection } from '../types'
 
@@ -12,6 +13,20 @@ const SECTIONS: { id: TaskSection; label: string; defaultOpen: boolean }[] = [
 
 export function ToDoDrawer() {
   const { isToDoOpen, closeToDo } = useUIStore()
+  const sync    = useSyncFromTodoist()
+  const [toast, setToast] = useState<string | null>(null)
+
+  async function handleSync() {
+    try {
+      const imported = await sync.mutateAsync()
+      const msg = imported > 0 ? `${imported} task${imported !== 1 ? 's' : ''} imported` : 'Already up to date'
+      setToast(msg)
+      setTimeout(() => setToast(null), 3000)
+    } catch {
+      setToast('Sync failed')
+      setTimeout(() => setToast(null), 3000)
+    }
+  }
 
   return (
     <>
@@ -39,13 +54,28 @@ export function ToDoDrawer() {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-white z-10">
-          <h2 className="text-sm font-semibold text-ink-800">To-Do</h2>
-          <button
-            onClick={closeToDo}
-            className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-ink-800">To-Do</h2>
+            {toast && (
+              <span className="text-[10px] text-accent-600 font-medium">{toast}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleSync}
+              disabled={sync.isPending}
+              className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 px-2 py-1 rounded disabled:opacity-40"
+              title="Sync from Todoist"
+            >
+              {sync.isPending ? '↻' : '⇅'} Sync
+            </button>
+            <button
+              onClick={closeToDo}
+              className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Sections */}

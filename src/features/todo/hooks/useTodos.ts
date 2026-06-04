@@ -12,6 +12,9 @@ import {
   swapTaskOrder,
 } from '../api/tasksApi'
 import {
+  fetchTodoistTasks,
+  todoistPriorityToLocal,
+  getSupabaseIdByTodoistId,
   createTodoistTask,
   closeTodoistTask,
   reopenTodoistTask,
@@ -115,6 +118,33 @@ export function useDeleteTask() {
         removeTodoistMapping(id)
       }
       return deleteTask(id)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+// Pull tasks from Todoist that don't exist locally yet → import to inbox
+export function useSyncFromTodoist() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const remoteTasks = await fetchTodoistTasks()
+      let imported = 0
+      for (const rt of remoteTasks) {
+        const alreadyMapped = getSupabaseIdByTodoistId(rt.id)
+        if (alreadyMapped) continue
+        // New task from Todoist — import to inbox
+        const newTask = await createTask({
+          title:    rt.content,
+          section:  'inbox',
+          priority: todoistPriorityToLocal(rt.priority),
+          domain:   'personal',
+          due_date: rt.due?.date ?? undefined,
+        })
+        saveTodoistMapping(newTask.id, rt.id)
+        imported++
+      }
+      return imported
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })

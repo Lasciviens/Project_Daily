@@ -66,3 +66,29 @@ export function removeTodoistMapping(supabaseId: string) {
   delete map[supabaseId]
   localStorage.setItem(MAPPING_KEY, JSON.stringify(map))
 }
+
+export function getSupabaseIdByTodoistId(todoistId: string): string | undefined {
+  const map = getMapping()
+  return Object.entries(map).find(([, tid]) => tid === todoistId)?.[0]
+}
+
+export interface TodoistRemoteTask {
+  id:           string
+  content:      string
+  priority:     number   // 1=normal 2=medium 3=high 4=urgent
+  due:          { date: string } | null
+  is_completed: boolean
+}
+
+const PRIORITY_FROM_TODOIST: Record<number, Task['priority']> = {
+  1: 'low', 2: 'medium', 3: 'high', 4: 'high',
+}
+
+export async function fetchTodoistTasks(): Promise<TodoistRemoteTask[]> {
+  const result = await todoistProxy('list') as TodoistRemoteTask[]
+  return Array.isArray(result) ? result : []
+}
+
+export function todoistPriorityToLocal(p: number): Task['priority'] {
+  return PRIORITY_FROM_TODOIST[p] ?? 'low'
+}

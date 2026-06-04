@@ -55,7 +55,12 @@ Deno.serve(async (req) => {
 
     let todoistRes: Response
 
-    if (action === 'create') {
+    if (action === 'list') {
+      todoistRes = await fetch(`${BASE}/tasks`, {
+        method:  'GET',
+        headers: { Authorization: `Bearer ${TODOIST_TOKEN}` },
+      })
+    } else if (action === 'create') {
       todoistRes = await fetch(`${BASE}/tasks`, {
         method:  'POST',
         headers: { Authorization: `Bearer ${TODOIST_TOKEN}`, 'Content-Type': 'application/json' },
