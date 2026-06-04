@@ -2,11 +2,16 @@ import { useState } from 'react'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, addDays,
-  addMonths, subMonths, isSameMonth, isToday,
+  addMonths, subMonths, isSameMonth, isToday, isSameDay,
 } from 'date-fns'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 
-export function MonthWidget() {
+interface Props {
+  onDayClick?:    (date: Date) => void
+  highlightDate?: Date
+}
+
+export function MonthWidget({ onDayClick, highlightDate }: Props) {
   const [viewDate, setViewDate] = useState(new Date())
 
   const monthStart = startOfMonth(viewDate)
@@ -46,7 +51,7 @@ export function MonthWidget() {
           </button>
           <button
             onClick={() => setViewDate(new Date())}
-            className="px-1.5 py-0.5 text-[10px] text-amber-600 hover:bg-amber-50 rounded transition-colors duration-150 font-medium"
+            className="px-1.5 py-0.5 text-[10px] text-accent-600 hover:bg-accent-50 rounded transition-colors duration-150 font-medium"
           >
             Today
           </button>
@@ -73,28 +78,36 @@ export function MonthWidget() {
         {days.map(day => {
           const inMonth  = isSameMonth(day, viewDate)
           const current  = isToday(day)
+          const selected = highlightDate ? isSameDay(day, highlightDate) : false
           const hasTasks = hasTasksOnDay(day) && inMonth
+          const clickable = !!onDayClick && inMonth
 
           return (
-            <div
+            <button
               key={day.toISOString()}
-              className={`relative flex flex-col items-center justify-center aspect-square rounded-md text-xs font-medium ${
+              onClick={() => clickable && onDayClick?.(day)}
+              disabled={!clickable}
+              className={`relative flex flex-col items-center justify-center aspect-square rounded-md text-xs font-medium transition-colors duration-150 ${
                 current
-                  ? 'bg-amber-500 text-white'
+                  ? 'bg-accent-500 text-white'
+                  : selected
+                  ? 'bg-accent-100 text-accent-700 ring-2 ring-accent-400'
+                  : inMonth && clickable
+                  ? 'text-ink-700 hover:bg-cream-200 cursor-pointer'
                   : inMonth
-                  ? 'text-ink-700 hover:bg-cream-200 cursor-default'
-                  : 'text-ink-300'
+                  ? 'text-ink-700'
+                  : 'text-ink-300 cursor-default'
               }`}
             >
               {format(day, 'd')}
               {hasTasks && (
                 <span
                   className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${
-                    current ? 'bg-amber-200' : 'bg-amber-400'
+                    current ? 'bg-accent-200' : selected ? 'bg-accent-500' : 'bg-accent-400'
                   }`}
                 />
               )}
-            </div>
+            </button>
           )
         })}
       </div>

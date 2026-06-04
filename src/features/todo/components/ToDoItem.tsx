@@ -5,7 +5,7 @@ import { useToggleTask, useDeleteTask } from '../hooks/useTodos'
 
 const PRIORITY_DOT: Record<Task['priority'], string> = {
   low:    'bg-ink-300',
-  medium: 'bg-amber-400',
+  medium: 'bg-accent-400',
   high:   'bg-red-400',
 }
 
@@ -37,8 +37,8 @@ export function ToDoItem({ task }: Props) {
         disabled={toggle.isPending}
         className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors duration-150 ${
           isDone
-            ? 'bg-amber-500 border-amber-500 text-white'
-            : 'border-ink-300 hover:border-amber-400'
+            ? 'bg-accent-500 border-accent-500 text-white'
+            : 'border-ink-300 hover:border-accent-400'
         }`}
       >
         {isDone && (
