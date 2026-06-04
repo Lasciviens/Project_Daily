@@ -22,8 +22,6 @@ import {
 } from '../api/todoistApi'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
 
-const TODOIST_TOKEN = import.meta.env.VITE_TODOIST_API_KEY as string | undefined
-
 export function useTasksBySection(section: string) {
   return useQuery({
     queryKey: ['tasks', 'section', section],
@@ -58,17 +56,14 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
 }
 
 export function useCreateTask() {
-  const qc    = useQueryClient()
-  const token = TODOIST_TOKEN
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateTaskInput) => {
       const task = await createTask(input)
-      if (token) {
-        try {
-          const todoistId = await createTodoistTask(token, task)
-          saveTodoistMapping(task.id, todoistId)
-        } catch (err) { console.warn('[Todoist] create failed:', err) }
-      }
+      try {
+        const todoistId = await createTodoistTask(task)
+        saveTodoistMapping(task.id, todoistId)
+      } catch (err) { console.warn('[Todoist] create failed:', err) }
       return task
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
@@ -85,19 +80,16 @@ export function useUpdateTask() {
 }
 
 export function useToggleTask() {
-  const qc    = useQueryClient()
-  const token = TODOIST_TOKEN
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
       const task = await toggleTaskDone(id, isDone)
-      if (token) {
-        const todoistId = getTodoistId(id)
-        if (todoistId) {
-          try {
-            if (isDone) await closeTodoistTask(token, todoistId)
-            else        await reopenTodoistTask(token, todoistId)
-          } catch (err) { console.warn('[Todoist] toggle failed:', err) }
-        }
+      const todoistId = getTodoistId(id)
+      if (todoistId) {
+        try {
+          if (isDone) await closeTodoistTask(todoistId)
+          else        await reopenTodoistTask(todoistId)
+        } catch (err) { console.warn('[Todoist] toggle failed:', err) }
       }
       return task
     },
@@ -114,16 +106,13 @@ export function useSwapTaskOrder() {
 }
 
 export function useDeleteTask() {
-  const qc    = useQueryClient()
-  const token = TODOIST_TOKEN
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => {
-      if (token) {
-        const todoistId = getTodoistId(id)
-        if (todoistId) {
-          try { await deleteTodoistTask(token, todoistId) } catch (err) { console.warn('[Todoist] delete failed:', err) }
-          removeTodoistMapping(id)
-        }
+      const todoistId = getTodoistId(id)
+      if (todoistId) {
+        try { await deleteTodoistTask(todoistId) } catch (err) { console.warn('[Todoist] delete failed:', err) }
+        removeTodoistMapping(id)
       }
       return deleteTask(id)
     },

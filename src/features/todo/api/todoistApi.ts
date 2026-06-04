@@ -1,55 +1,46 @@
+import { supabase } from '../../../integrations/supabase/client'
 import type { Task } from '../types'
 
-const BASE = 'https://api.todoist.com/rest/v2'
-
-// priority mapping: our low/medium/high → Todoist 1/2/3
 const PRIORITY: Record<string, number> = { low: 1, medium: 2, high: 3 }
 
-async function todoistFetch<T>(
-  method: string,
-  path: string,
-  token: string,
-  body?: unknown
-): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
+async function todoistProxy(action: string, taskId?: string, task?: Record<string, unknown>): Promise<unknown> {
+  const { data, error } = await supabase.functions.invoke('todoist-proxy', {
+    body: { action, taskId, task },
   })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Todoist ${res.status}: ${err}`)
+  if (error) {
+    let detail = error.message
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = await (error as any).context?.json?.()
+      if (body?.error) detail = body.error
+    } catch { /* ignore */ }
+    throw new Error(detail)
   }
-  if (res.status === 204) return undefined as T
-  return res.json() as Promise<T>
+  if (data?.error) throw new Error(data.error)
+  return data
 }
 
-interface TodoistTask { id: string }
-
-export async function createTodoistTask(token: string, task: Task): Promise<string> {
+export async function createTodoistTask(task: Task): Promise<string> {
   const body: Record<string, unknown> = {
     content:  task.title,
     priority: PRIORITY[task.priority] ?? 1,
   }
   if (task.due_date) body.due_date = task.due_date
 
-  const result = await todoistFetch<TodoistTask>('POST', '/tasks', token, body)
+  const result = await todoistProxy('create', undefined, body) as { id: string }
   return result.id
 }
 
-export async function closeTodoistTask(token: string, todoistId: string): Promise<void> {
-  await todoistFetch<void>('POST', `/tasks/${todoistId}/close`, token)
+export async function closeTodoistTask(todoistId: string): Promise<void> {
+  await todoistProxy('close', todoistId)
 }
 
-export async function reopenTodoistTask(token: string, todoistId: string): Promise<void> {
-  await todoistFetch<void>('POST', `/tasks/${todoistId}/reopen`, token)
+export async function reopenTodoistTask(todoistId: string): Promise<void> {
+  await todoistProxy('reopen', todoistId)
 }
 
-export async function deleteTodoistTask(token: string, todoistId: string): Promise<void> {
-  await todoistFetch<void>('DELETE', `/tasks/${todoistId}`, token)
+export async function deleteTodoistTask(todoistId: string): Promise<void> {
+  await todoistProxy('delete', todoistId)
 }
 
 // localStorage mapping: supabaseId → todoistId
