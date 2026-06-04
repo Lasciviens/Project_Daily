@@ -1,11 +1,11 @@
-import { posterUrl, tmdbMovieUrl } from '../../../integrations/tmdb/client'
+import { posterUrl } from '../../../integrations/tmdb/client'
 import type { UserMovieEntry } from '../types'
-import { PlanThisButton } from './PlanThisButton'
-import { useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
+import { useUpdateMovie } from '../hooks/useMovies'
 
 interface Props {
   entry: UserMovieEntry
   compact?: boolean
+  onOpenDetail?: () => void
 }
 
 const isUpcoming = (releaseDate: string | null): boolean => {
@@ -20,59 +20,32 @@ const STATUS_LABELS: Record<UserMovieEntry['status'], string> = {
   dropped:   'Dropped',
 }
 
-export function MovieCard({ entry, compact }: Props) {
+export function MovieCard({ entry, compact, onOpenDetail }: Props) {
   const { movie } = entry
   const upcoming  = isUpcoming(movie.release_date)
-  const remove    = useDeleteMovie()
   const update    = useUpdateMovie()
 
   return (
-    <div className="group relative flex flex-col">
-      {/* Poster */}
-      <div className={`relative rounded-lg overflow-hidden aspect-[2/3] ${upcoming ? 'grayscale' : ''}`}>
+    <div className="flex flex-col">
+      <div
+        className={`relative rounded-lg overflow-hidden aspect-[2/3] hover:brightness-90 cursor-pointer transition-all duration-150 ${upcoming ? 'grayscale' : ''}`}
+        onClick={onOpenDetail}
+      >
         <img
           src={posterUrl(movie.poster_path)}
           alt={movie.title}
           className="w-full h-full object-cover"
           loading="lazy"
         />
-
         {upcoming && (
-          <div className="absolute inset-0 flex flex-col items-center justify-end p-2 bg-gradient-to-t from-black/70">
-            <span className="text-[9px] font-bold uppercase tracking-wider text-amber-300 bg-black/60 px-1.5 py-0.5 rounded">
+          <div className="absolute bottom-0 inset-x-0 flex justify-center pb-2">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-accent-300 bg-black/60 px-1.5 py-0.5 rounded">
               Upcoming
             </span>
-            {movie.release_date && (
-              <span className="text-[9px] text-white/80 mt-0.5">
-                {new Date(movie.release_date).getFullYear()}
-              </span>
-            )}
           </div>
         )}
-
-        {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex flex-col items-center justify-center gap-2 p-2">
-          <PlanThisButton entryId={entry.id} sourceType="movie" title={movie.title} />
-          <a
-            href={tmdbMovieUrl(movie.tmdb_id)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] text-white/80 hover:text-white transition-colors duration-150"
-            onClick={e => e.stopPropagation()}
-          >
-            TMDB ↗
-          </a>
-          <button
-            onClick={() => remove.mutate(entry.id)}
-            disabled={remove.isPending}
-            className="text-[10px] text-red-400 hover:text-red-300 transition-colors duration-150"
-          >
-            Remove
-          </button>
-        </div>
       </div>
 
-      {/* Title + rating */}
       {!compact && (
         <div className="mt-1.5 px-0.5">
           <p className="text-xs font-medium text-ink-800 leading-snug truncate">{movie.title}</p>

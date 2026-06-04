@@ -3,30 +3,35 @@ import { MediaSearch } from '../components/MediaSearch'
 import { MediaSection } from '../components/MediaSection'
 import { MovieCard } from '../components/MovieCard'
 import { TVCard } from '../components/TVCard'
-import { TMDBCard } from '../components/TMDBCard'
+import { DiscoveryTabs } from '../components/DiscoveryTabs'
+import { MediaDetailModal } from '../components/MediaDetailModal'
 import { useMovies } from '../hooks/useMovies'
 import { useTVSeries } from '../hooks/useTVSeries'
-import {
-  useTrendingMovies, useTrendingTV,
-  usePopularMovies, usePopularTV,
-} from '../hooks/useTMDB'
+import type { UserMovieEntry, UserTVEntry } from '../types'
 
 type Tab = 'movies' | 'tv'
 
-const CARD_GRID = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-6 gap-3'
+interface DetailState { tmdbId: number; type: 'movie' | 'tv' }
+
+const GRID = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-6 gap-3'
 
 export function MediaPage() {
-  const [tab, setTab] = useState<Tab>('movies')
+  const [tab, setTab]         = useState<Tab>('movies')
+  const [detail, setDetail]   = useState<DetailState | null>(null)
 
   const { data: movieEntries = [], isLoading: moviesLoading } = useMovies()
   const { data: tvEntries    = [], isLoading: tvLoading      } = useTVSeries()
 
-  const { data: trendingMoviesDay,  isLoading: tmdLoading  } = useTrendingMovies('day')
-  const { data: trendingMoviesWeek, isLoading: tmwLoading  } = useTrendingMovies('week')
-  const { data: popularMovies,      isLoading: pmLoading   } = usePopularMovies()
-  const { data: trendingTVDay,      isLoading: ttdLoading  } = useTrendingTV('day')
-  const { data: trendingTVWeek,     isLoading: ttwLoading  } = useTrendingTV('week')
-  const { data: popularTV,          isLoading: ptLoading   } = usePopularTV()
+  function openDetail(id: number, type: 'movie' | 'tv') {
+    setDetail({ tmdbId: id, type })
+  }
+
+  // Find if current detail item is already in user's library
+  const userEntry: UserMovieEntry | UserTVEntry | null | undefined = detail
+    ? detail.type === 'movie'
+      ? movieEntries.find(e => e.movie.tmdb_id === detail.tmdbId)
+      : tvEntries.find(e => e.tv_series.tmdb_id === detail.tmdbId)
+    : null
 
   const watchingMovies  = movieEntries.filter(e => e.status === 'watching')
   const wishlistMovies  = movieEntries.filter(e => e.status === 'wishlist')
@@ -38,16 +43,15 @@ export function MediaPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-5">
         <h1 className="text-lg font-semibold text-ink-900">Media</h1>
       </div>
 
-      {/* Search */}
-      <div className="mb-6">
-        <MediaSearch />
+      <div className="mb-5">
+        <MediaSearch onSelectResult={(id, type) => openDetail(id, type)} />
       </div>
 
-      {/* Tab switcher */}
+      {/* Main tab switcher */}
       <div className="flex gap-1 mb-6 bg-cream-100 rounded-lg p-1 w-fit">
         {(['movies', 'tv'] as Tab[]).map(t => (
           <button
@@ -64,118 +68,89 @@ export function MediaPage() {
         ))}
       </div>
 
+      {/* Discovery */}
+      <DiscoveryTabs
+        mediaType={tab === 'movies' ? 'movie' : 'tv'}
+        onOpenDetail={openDetail}
+      />
+
+      {/* User library */}
       {tab === 'movies' ? (
         <>
-          {/* Trending Today */}
-          <MediaSection title="Trending Today" loading={tmdLoading}>
-            <div className={CARD_GRID}>
-              {(trendingMoviesDay ?? []).slice(0, 10).map(m => (
-                <TMDBCard key={m.id} item={m} type="movie" />
-              ))}
-            </div>
-          </MediaSection>
-
-          {/* Trending This Week */}
-          <MediaSection title="Trending This Week" loading={tmwLoading}>
-            <div className={CARD_GRID}>
-              {(trendingMoviesWeek ?? []).slice(0, 10).map(m => (
-                <TMDBCard key={m.id} item={m} type="movie" />
-              ))}
-            </div>
-          </MediaSection>
-
-          {/* Popular */}
-          <MediaSection title="Popular" loading={pmLoading}>
-            <div className={CARD_GRID}>
-              {(popularMovies ?? []).slice(0, 10).map(m => (
-                <TMDBCard key={m.id} item={m} type="movie" />
-              ))}
-            </div>
-          </MediaSection>
-
-          {/* User: Watching */}
-          {(watchingMovies.length > 0 || moviesLoading) && (
-            <MediaSection title="Watching" count={watchingMovies.length} loading={moviesLoading}>
-              <div className={CARD_GRID}>
-                {watchingMovies.map(e => <MovieCard key={e.id} entry={e} />)}
-              </div>
-            </MediaSection>
-          )}
-
-          {/* User: Wishlist */}
           {(wishlistMovies.length > 0 || moviesLoading) && (
             <MediaSection title="Wishlist" count={wishlistMovies.length} loading={moviesLoading}>
-              <div className={CARD_GRID}>
-                {wishlistMovies.map(e => <MovieCard key={e.id} entry={e} />)}
+              <div className={GRID}>
+                {wishlistMovies.map(e => (
+                  <MovieCard key={e.id} entry={e}
+                    onOpenDetail={() => openDetail(e.movie.tmdb_id, 'movie')} />
+                ))}
               </div>
             </MediaSection>
           )}
-
-          {/* User: Completed */}
+          {(watchingMovies.length > 0 || moviesLoading) && (
+            <MediaSection title="Watching" count={watchingMovies.length} loading={moviesLoading}>
+              <div className={GRID}>
+                {watchingMovies.map(e => (
+                  <MovieCard key={e.id} entry={e}
+                    onOpenDetail={() => openDetail(e.movie.tmdb_id, 'movie')} />
+                ))}
+              </div>
+            </MediaSection>
+          )}
           {completedMovies.length > 0 && (
             <MediaSection title="Completed" count={completedMovies.length} defaultOpen={false}>
-              <div className={CARD_GRID}>
-                {completedMovies.map(e => <MovieCard key={e.id} entry={e} />)}
+              <div className={GRID}>
+                {completedMovies.map(e => (
+                  <MovieCard key={e.id} entry={e}
+                    onOpenDetail={() => openDetail(e.movie.tmdb_id, 'movie')} />
+                ))}
               </div>
             </MediaSection>
           )}
         </>
       ) : (
         <>
-          {/* Trending Today */}
-          <MediaSection title="Trending Today" loading={ttdLoading}>
-            <div className={CARD_GRID}>
-              {(trendingTVDay ?? []).slice(0, 10).map(t => (
-                <TMDBCard key={t.id} item={t} type="tv" />
-              ))}
-            </div>
-          </MediaSection>
-
-          {/* Trending This Week */}
-          <MediaSection title="Trending This Week" loading={ttwLoading}>
-            <div className={CARD_GRID}>
-              {(trendingTVWeek ?? []).slice(0, 10).map(t => (
-                <TMDBCard key={t.id} item={t} type="tv" />
-              ))}
-            </div>
-          </MediaSection>
-
-          {/* Popular */}
-          <MediaSection title="Popular" loading={ptLoading}>
-            <div className={CARD_GRID}>
-              {(popularTV ?? []).slice(0, 10).map(t => (
-                <TMDBCard key={t.id} item={t} type="tv" />
-              ))}
-            </div>
-          </MediaSection>
-
-          {/* User: Watching */}
-          {(watchingTV.length > 0 || tvLoading) && (
-            <MediaSection title="Watching / Paused" count={watchingTV.length} loading={tvLoading}>
-              <div className={CARD_GRID}>
-                {watchingTV.map(e => <TVCard key={e.id} entry={e} />)}
-              </div>
-            </MediaSection>
-          )}
-
-          {/* User: Wishlist */}
           {(wishlistTV.length > 0 || tvLoading) && (
             <MediaSection title="Wishlist" count={wishlistTV.length} loading={tvLoading}>
-              <div className={CARD_GRID}>
-                {wishlistTV.map(e => <TVCard key={e.id} entry={e} />)}
+              <div className={GRID}>
+                {wishlistTV.map(e => (
+                  <TVCard key={e.id} entry={e}
+                    onOpenDetail={() => openDetail(e.tv_series.tmdb_id, 'tv')} />
+                ))}
               </div>
             </MediaSection>
           )}
-
-          {/* User: Completed */}
+          {(watchingTV.length > 0 || tvLoading) && (
+            <MediaSection title="Watching / Paused" count={watchingTV.length} loading={tvLoading}>
+              <div className={GRID}>
+                {watchingTV.map(e => (
+                  <TVCard key={e.id} entry={e}
+                    onOpenDetail={() => openDetail(e.tv_series.tmdb_id, 'tv')} />
+                ))}
+              </div>
+            </MediaSection>
+          )}
           {completedTV.length > 0 && (
             <MediaSection title="Completed" count={completedTV.length} defaultOpen={false}>
-              <div className={CARD_GRID}>
-                {completedTV.map(e => <TVCard key={e.id} entry={e} />)}
+              <div className={GRID}>
+                {completedTV.map(e => (
+                  <TVCard key={e.id} entry={e}
+                    onOpenDetail={() => openDetail(e.tv_series.tmdb_id, 'tv')} />
+                ))}
               </div>
             </MediaSection>
           )}
         </>
+      )}
+
+      {detail && (
+        <MediaDetailModal
+          tmdbId={detail.tmdbId}
+          mediaType={detail.type}
+          userEntry={userEntry}
+          onClose={() => setDetail(null)}
+          onAdded={() => setDetail(null)}
+        />
       )}
     </div>
   )
