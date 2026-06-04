@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { posterUrl } from '../../../integrations/tmdb/client'
+import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { PlanThisButton } from './PlanThisButton'
-import { useAddMovie } from '../hooks/useMovies'
-import { useAddTV } from '../hooks/useTVSeries'
+import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
+import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import type {
   TMDBMovieFull, TMDBTVFull,
   TMDBCastMember, TMDBWatchProvider,
@@ -82,11 +82,19 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
 
   const statuses = isMovie ? MOVIE_STATUSES : TV_STATUSES
 
-  const addMovie   = useAddMovie()
-  const addTV      = useAddTV()
-  const isAdding   = addMovie.isPending || addTV.isPending
-  const entryId    = userEntry?.id
-  const isOwned    = !!userEntry
+  const addMovie    = useAddMovie()
+  const addTV       = useAddTV()
+  const removeMovie = useDeleteMovie()
+  const removeTV    = useDeleteTV()
+  const updateMovie = useUpdateMovie()
+  const updateTV    = useUpdateTV()
+
+  const isAdding  = addMovie.isPending || addTV.isPending
+  const entryId   = userEntry?.id
+  const isOwned   = !!userEntry
+
+  const tvEntry    = !isMovie && isOwned ? (userEntry as UserTVEntry) : null
+  const movieEntry = isMovie && isOwned  ? (userEntry as UserMovieEntry) : null
 
   async function handleAdd() {
     if (isMovie) {
@@ -95,6 +103,25 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
       await addTV.mutateAsync({ tmdb: tv! as TMDBTVFull, status: selectedStatus as UserTVEntry['status'] })
     }
     onAdded?.()
+  }
+
+  async function handleRemove() {
+    if (!entryId) return
+    if (isMovie) await removeMovie.mutateAsync(entryId)
+    else         await removeTV.mutateAsync(entryId)
+    onAdded?.()
+  }
+
+  function handleNextEpisode() {
+    if (!tvEntry) return
+    const maxEp = (tv?.number_of_episodes ?? 999)
+    const ep    = tvEntry.current_episode + 1
+    updateTV.mutate({ id: tvEntry.id, patch: { current_episode: ep > maxEp ? 0 : ep } })
+  }
+
+  function handleMarkWatched() {
+    if (!movieEntry) return
+    updateMovie.mutate({ id: movieEntry.id, patch: { status: 'completed', watched_at: new Date().toISOString() } })
   }
 
   return (
@@ -148,20 +175,64 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
           </div>
         )}
 
-        <div className="pt-3 border-t border-ink-100">
+        <div className="pt-3 border-t border-ink-100 space-y-3">
           {isOwned && entryId ? (
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-ink-500">In library · {(userEntry as UserMovieEntry).status}</span>
-              <PlanThisButton
-                entryId={entryId}
-                sourceType={isMovie ? 'movie' : 'tv_series'}
-                title={isMovie ? movie!.title : tv!.name}
-                currentSeason={!isMovie ? (userEntry as UserTVEntry).current_season : undefined}
-                currentEpisode={!isMovie ? (userEntry as UserTVEntry).current_episode : undefined}
-              />
-            </div>
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-accent-600 bg-accent-50 px-2.5 py-1 rounded-full capitalize">
+                  {userEntry!.status}
+                </span>
+                {tvEntry && (
+                  <span className="text-xs text-ink-500">
+                    S{tvEntry.current_season} E{tvEntry.current_episode}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <PlanThisButton
+                  entryId={entryId}
+                  sourceType={isMovie ? 'movie' : 'tv_series'}
+                  title={isMovie ? movie!.title : tv!.name}
+                  currentSeason={tvEntry?.current_season}
+                  currentEpisode={tvEntry?.current_episode}
+                />
+                {tvEntry?.status === 'watching' && (
+                  <button
+                    onClick={handleNextEpisode}
+                    disabled={updateTV.isPending}
+                    className="text-[11px] font-medium px-2.5 py-1 rounded bg-ink-100 text-ink-700 hover:bg-ink-200 transition-colors duration-150"
+                  >
+                    + Next episode
+                  </button>
+                )}
+                {movieEntry?.status === 'watching' && (
+                  <button
+                    onClick={handleMarkWatched}
+                    disabled={updateMovie.isPending}
+                    className="text-[11px] font-medium px-2.5 py-1 rounded bg-ink-100 text-ink-700 hover:bg-ink-200 transition-colors duration-150"
+                  >
+                    Mark watched
+                  </button>
+                )}
+                <a
+                  href={isMovie ? tmdbMovieUrl(movie!.id) : tmdbTVUrl(tv!.id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-medium px-2.5 py-1 rounded bg-ink-100 text-ink-500 hover:bg-ink-200 transition-colors duration-150"
+                >
+                  TMDB ↗
+                </a>
+                <button
+                  onClick={handleRemove}
+                  disabled={removeMovie.isPending || removeTV.isPending}
+                  className="text-[11px] font-medium px-2.5 py-1 rounded text-red-500 hover:bg-red-50 transition-colors duration-150"
+                >
+                  Remove
+                </button>
+              </div>
+            </>
           ) : (
-            <div className="flex flex-col gap-3">
+            <>
               <div className="flex flex-wrap gap-1.5">
                 {statuses.map(s => (
                   <button
@@ -177,14 +248,24 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
                   </button>
                 ))}
               </div>
-              <button
-                onClick={handleAdd}
-                disabled={isAdding}
-                className="btn-primary text-sm py-1.5 w-fit px-6"
-              >
-                {isAdding ? 'Adding…' : 'Add to library'}
-              </button>
-            </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleAdd}
+                  disabled={isAdding}
+                  className="btn-primary text-sm py-1.5 px-6"
+                >
+                  {isAdding ? 'Adding…' : 'Add to library'}
+                </button>
+                <a
+                  href={isMovie ? tmdbMovieUrl(movie!.id) : tmdbTVUrl(tv!.id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-ink-400 hover:text-ink-600 transition-colors duration-150"
+                >
+                  TMDB ↗
+                </a>
+              </div>
+            </>
           )}
         </div>
       </div>

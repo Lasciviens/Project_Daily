@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { signOut } from '../security/supabaseClient'
 import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
 import { ThemeSwitcher } from '../shared/components/ThemeSwitcher'
+import { CalendarConnect } from '../features/calendar/components/CalendarConnect'
 import { useUIStore } from './store'
 
 export function Layout() {
@@ -51,6 +52,9 @@ function Nav() {
           <span className="text-xs text-ink-400 hidden md:block mr-1">
             {format(new Date(), 'EEE, MMM d')}
           </span>
+
+          {/* Calendar connect */}
+          <CalendarConnect />
 
           {/* Theme switcher */}
           <ThemeSwitcher />

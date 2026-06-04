@@ -13,3 +13,13 @@ export const useUIStore = create<UIState>((set) => ({
   openToDo: () => set({ isToDoOpen: true }),
   closeToDo: () => set({ isToDoOpen: false }),
 }))
+
+interface CalendarState {
+  accessToken: string | null
+  setAccessToken: (token: string | null) => void
+}
+
+export const useCalendarStore = create<CalendarState>((set) => ({
+  accessToken: null,
+  setAccessToken: (token) => set({ accessToken: token }),
+}))
