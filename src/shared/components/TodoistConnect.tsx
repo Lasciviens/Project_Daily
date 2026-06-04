@@ -1,10 +1,29 @@
 import { useState } from 'react'
 import { useTodoistStore } from '../../app/store'
+import { validateTodoistToken } from '../../features/todo/api/todoistApi'
 
 export function TodoistConnect() {
   const { apiToken, setApiToken } = useTodoistStore()
   const [editing, setEditing]     = useState(false)
   const [input, setInput]         = useState('')
+  const [validating, setValidating] = useState(false)
+  const [error, setError]           = useState('')
+
+  async function handleConnect(token: string) {
+    setValidating(true)
+    setError('')
+    try {
+      const ok = await validateTodoistToken(token)
+      if (!ok) { setError('Invalid token'); return }
+      setApiToken(token)
+      setEditing(false)
+      setInput('')
+    } catch {
+      setError('Could not reach Todoist')
+    } finally {
+      setValidating(false)
+    }
+  }
 
   if (apiToken && !editing) {
     return (
@@ -22,26 +41,26 @@ export function TodoistConnect() {
   if (editing || !apiToken) {
     return (
       <div className="flex items-center gap-1.5">
-        <input
-          type="password"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Todoist API token…"
-          className="text-xs border border-ink-200 rounded px-2 py-1 w-36 focus:outline-none focus:border-accent-400"
-          onKeyDown={e => {
-            if (e.key === 'Enter' && input.trim()) {
-              setApiToken(input.trim())
-              setEditing(false)
-              setInput('')
-            }
-            if (e.key === 'Escape') {
-              setEditing(false)
-              setInput('')
-            }
-          }}
-          autoFocus
-        />
-        {apiToken && (
+        <div className="flex flex-col gap-0.5">
+          <input
+            type="password"
+            value={input}
+            onChange={e => { setInput(e.target.value); setError('') }}
+            placeholder="Todoist API token…"
+            className={`text-xs border rounded px-2 py-1 w-36 focus:outline-none ${
+              error ? 'border-red-400 focus:border-red-400' : 'border-ink-200 focus:border-accent-400'
+            }`}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && input.trim() && !validating) handleConnect(input.trim())
+              if (e.key === 'Escape') { setEditing(false); setInput(''); setError('') }
+            }}
+            disabled={validating}
+            autoFocus
+          />
+          {error && <p className="text-[10px] text-red-500">{error}</p>}
+        </div>
+        {validating && <span className="text-xs text-ink-400">…</span>}
+        {apiToken && !validating && (
           <button
             onClick={() => { setApiToken(null); setEditing(false) }}
             className="text-xs text-red-400 hover:text-red-600 transition-colors duration-150"

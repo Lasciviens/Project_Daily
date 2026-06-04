@@ -3,7 +3,6 @@ import { format } from 'date-fns'
 import { useDayData } from '../hooks/useDayData'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { AddTaskModal } from '../../../shared/components/AddTaskModal'
-import { CalendarEventList } from '../../calendar/components/CalendarEventList'
 
 interface Props { date: Date }
 
@@ -13,8 +12,6 @@ export function DayView({ date }: Props) {
 
   const openTasks = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
   const doneTasks = tasks.filter(t => t.status === 'done')
-
-  const dateStr = format(date, 'yyyy-MM-dd')
 
   return (
     <>
@@ -57,7 +54,6 @@ export function DayView({ date }: Props) {
               </div>
             )}
 
-            <CalendarEventList dateStr={dateStr} />
           </div>
         )}
       </div>

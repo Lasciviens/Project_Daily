@@ -3,6 +3,8 @@ import { addDays, format, startOfWeek, endOfWeek, isToday, isTomorrow, differenc
 import { DayView } from '../components/DayView'
 import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
+import { UpcomingReleasesBanner } from '../components/UpcomingReleasesBanner'
+import { CalendarEventsCard } from '../../calendar/components/CalendarEventsCard'
 
 type DailyTab = 'today' | 'tomorrow' | 'week' | 'month'
 
@@ -79,6 +81,8 @@ function TodayView({
   onDayClick: (d: Date) => void
   onBackToToday: () => void
 }) {
+  const dateStr = format(date, 'yyyy-MM-dd')
+
   return (
     <div>
       <div className="flex items-start justify-between mb-5">
@@ -102,13 +106,13 @@ function TodayView({
           </button>
         )}
       </div>
+
+      <UpcomingReleasesBanner />
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_340px] gap-5">
         <div className="flex flex-col gap-4">
           <DayView date={date} />
-          <div className="card p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">Calendar</p>
-            <p className="text-sm text-ink-400 italic">Google Calendar integration — Phase 6</p>
-          </div>
+          <CalendarEventsCard dateStr={dateStr} />
         </div>
         <div className="flex flex-col gap-4">
           <WeekWidget onDayClick={onDayClick} highlightDate={date} />
@@ -120,6 +124,7 @@ function TodayView({
 }
 
 function TomorrowView({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
+  const dateStr = format(date, 'yyyy-MM-dd')
   return (
     <div>
       <div className="mb-5">
@@ -127,7 +132,10 @@ function TomorrowView({ date, onDayClick }: { date: Date; onDayClick: (d: Date) 
         <p className="text-sm text-ink-400 mt-0.5">Tomorrow</p>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_340px] gap-5">
-        <DayView date={date} />
+        <div className="flex flex-col gap-4">
+          <DayView date={date} />
+          <CalendarEventsCard dateStr={dateStr} />
+        </div>
         <WeekWidget onDayClick={onDayClick} highlightDate={date} />
       </div>
     </div>

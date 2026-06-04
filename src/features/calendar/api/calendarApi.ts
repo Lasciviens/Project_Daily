@@ -22,8 +22,9 @@ export async function fetchCalendarList(token: string): Promise<CalendarListEntr
 }
 
 export async function fetchEventsForDay(token: string, date: string, calendarId = 'primary'): Promise<CalendarEvent[]> {
-  const timeMin = `${date}T00:00:00Z`
-  const timeMax = `${date}T23:59:59Z`
+  // Use local midnight so events near midnight aren't missed
+  const timeMin = new Date(date + 'T00:00:00').toISOString()
+  const timeMax = new Date(date + 'T23:59:59').toISOString()
   const data = await gcalFetch<{ items: CalendarEvent[] }>(
     `/calendars/${encodeURIComponent(calendarId)}/events`,
     token,
