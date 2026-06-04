@@ -28,6 +28,12 @@ function formatDuration(mins: number): string {
   return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`
 }
 
+function hourToTimeStr(h: number): string {
+  const hh = Math.floor(h)
+  const mm = Math.round((h - hh) * 60)
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}
+
 interface Block {
   id:         string
   title:      string
@@ -120,6 +126,14 @@ export function DayTimeline({ date }: Props) {
   const nowHour = now.getHours() + now.getMinutes() / 60
   const showNow = isToday(date) && nowHour >= HOUR_START && nowHour < HOUR_END
 
+  // Next upcoming block today
+  const nextBlock = isToday(date)
+    ? visibleBlocks
+        .filter(b => b.startHour > nowHour)
+        .sort((a, b) => a.startHour - b.startHour)[0]
+    : undefined
+  const nextBlockMinutes = nextBlock ? Math.round((nextBlock.startHour - nowHour) * 60) : 0
+
   const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
 
   // Scroll to current time (or 7am if not today) on mount
@@ -135,7 +149,17 @@ export function DayTimeline({ date }: Props) {
     <div className="card p-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">Day Schedule</h2>
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">Day Schedule</h2>
+          {nextBlock && nextBlockMinutes <= 120 && (
+            <p className="text-[10px] text-accent-600 mt-0.5">
+              Next: <span className="font-semibold">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
+              {nextBlockMinutes <= 60
+                ? ` (in ${nextBlockMinutes}m)`
+                : ` (in ${Math.floor(nextBlockMinutes / 60)}h ${nextBlockMinutes % 60}m)`}
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="h-1.5 w-20 bg-ink-100 rounded-full overflow-hidden">
@@ -201,7 +225,10 @@ export function DayTimeline({ date }: Props) {
               >
                 <p className="text-[11px] font-semibold leading-tight truncate">{block.title}</p>
                 {heightPx >= 32 && (
-                  <p className="text-[10px] opacity-60">{formatDuration(durationMins)}</p>
+                  <p className="text-[10px] opacity-60">
+                    {hourToTimeStr(block.startHour)} – {hourToTimeStr(block.endHour)}
+                    {' · '}{formatDuration(durationMins)}
+                  </p>
                 )}
                 {block.deletable && (
                   <button

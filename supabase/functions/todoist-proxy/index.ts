@@ -97,13 +97,16 @@ Deno.serve(async (req) => {
 
     if (!todoistRes.ok) {
       const err = await todoistRes.text()
+      console.error('[todoist-proxy] Todoist error', todoistRes.status, err)
       return new Response(JSON.stringify({ error: `Todoist ${todoistRes.status}: ${err}` }), {
         status: 502,
         headers: { ...headers, 'Content-Type': 'application/json' },
       })
     }
 
-    const data = await todoistRes.json()
+    const raw = await todoistRes.json()
+    // Todoist v1 may return { results: [...] } or plain array
+    const data = Array.isArray(raw) ? raw : (raw.results ?? raw.items ?? raw)
     return new Response(JSON.stringify(data), {
       status: 200,
       headers: { ...headers, 'Content-Type': 'application/json' },

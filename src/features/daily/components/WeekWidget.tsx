@@ -71,6 +71,11 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
               Back to now
             </button>
           )}
+          {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length > 0 && (
+            <span className="text-[10px] bg-accent-50 text-accent-600 font-semibold px-1.5 py-0.5 rounded-full">
+              {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length} open
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {calList.length > 1 && (

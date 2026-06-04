@@ -22,9 +22,10 @@ export function ToDoDrawer() {
       const msg = imported > 0 ? `${imported} task${imported !== 1 ? 's' : ''} imported` : 'Already up to date'
       setToast(msg)
       setTimeout(() => setToast(null), 3000)
-    } catch {
-      setToast('Sync failed')
-      setTimeout(() => setToast(null), 3000)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Sync failed'
+      setToast(msg.length > 40 ? 'Sync failed' : msg)
+      setTimeout(() => setToast(null), 4000)
     }
   }
 
