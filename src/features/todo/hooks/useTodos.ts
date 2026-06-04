@@ -65,7 +65,7 @@ export function useCreateTask() {
         try {
           const todoistId = await createTodoistTask(token, task)
           saveTodoistMapping(task.id, todoistId)
-        } catch { /* sync failure is non-fatal */ }
+        } catch (err) { console.warn('[Todoist] create failed:', err) }
       }
       return task
     },
@@ -94,7 +94,7 @@ export function useToggleTask() {
           try {
             if (isDone) await closeTodoistTask(token, todoistId)
             else        await reopenTodoistTask(token, todoistId)
-          } catch { /* sync failure is non-fatal */ }
+          } catch (err) { console.warn('[Todoist] toggle failed:', err) }
         }
       }
       return task
@@ -111,7 +111,7 @@ export function useDeleteTask() {
       if (token) {
         const todoistId = getTodoistId(id)
         if (todoistId) {
-          try { await deleteTodoistTask(token, todoistId) } catch { /* non-fatal */ }
+          try { await deleteTodoistTask(token, todoistId) } catch (err) { console.warn('[Todoist] delete failed:', err) }
           removeTodoistMapping(id)
         }
       }

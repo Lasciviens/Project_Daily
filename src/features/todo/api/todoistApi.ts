@@ -33,12 +33,18 @@ export async function createTodoistTask(token: string, task: Task): Promise<stri
   const body: Record<string, unknown> = {
     content:  task.title,
     priority: PRIORITY[task.priority] ?? 1,
-    labels:   task.domain !== 'personal' ? [task.domain] : [],
   }
   if (task.due_date) body.due_date = task.due_date
 
   const result = await todoistFetch<TodoistTask>('POST', '/tasks', token, body)
   return result.id
+}
+
+export async function validateTodoistToken(token: string): Promise<boolean> {
+  const res = await fetch('https://api.todoist.com/rest/v2/projects', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return res.ok
 }
 
 export async function closeTodoistTask(token: string, todoistId: string): Promise<void> {
