@@ -179,6 +179,11 @@ export function DayTimeline({ date }: Props) {
         </div>
       </div>
 
+      {/* Empty state */}
+      {visibleBlocks.length === 0 && (
+        <p className="text-sm text-ink-300 text-center py-3 mb-2">No scheduled blocks — click + Add to get started</p>
+      )}
+
       {/* Timeline — scrollable, shows ~8h at a time */}
       <div ref={scrollRef} className="overflow-y-auto max-h-[520px]">
         <div className="relative" style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
@@ -224,10 +229,10 @@ export function DayTimeline({ date }: Props) {
                 style={{ top: `${topPx}px`, height: `${heightPx}px` }}
               >
                 <p className="text-[11px] font-semibold leading-tight truncate">{block.title}</p>
-                {heightPx >= 32 && (
+                {heightPx >= 28 && (
                   <p className="text-[10px] opacity-60">
                     {hourToTimeStr(block.startHour)} – {hourToTimeStr(block.endHour)}
-                    {' · '}{formatDuration(durationMins)}
+                    {durationMins >= 30 ? ` · ${formatDuration(durationMins)}` : ''}
                   </p>
                 )}
                 {block.deletable && (

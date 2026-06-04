@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { addDays, format, startOfWeek, endOfWeek, isToday, isTomorrow, differenceInCalendarDays } from 'date-fns'
 import { DayView } from '../components/DayView'
 import { DayTimeline } from '../components/DayTimeline'
@@ -71,6 +71,17 @@ export function DailyPage() {
   )
 }
 
+function useGreeting() {
+  const [now, setNow] = useState(new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+  const h = now.getHours()
+  const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
+  return { greeting, timeStr: format(now, 'HH:mm') }
+}
+
 function TodayView({
   date, isCustom, dayDiff, onDayClick, onBackToToday, onPrevDay, onNextDay,
 }: {
@@ -78,6 +89,8 @@ function TodayView({
   onDayClick: (d: Date) => void; onBackToToday: () => void
   onPrevDay: () => void; onNextDay: () => void
 }) {
+  const { greeting, timeStr } = useGreeting()
+
   return (
     <div>
       <div className="flex items-start justify-between mb-5">
@@ -98,6 +111,11 @@ function TodayView({
             </button>
           </div>
           <div>
+            {isToday(date) && !isCustom && (
+              <p className="text-xs text-accent-600 font-medium mb-0.5">
+                {greeting} · {timeStr}
+              </p>
+            )}
             <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
             <p className="text-sm text-ink-400 mt-0.5">
               {isCustom
