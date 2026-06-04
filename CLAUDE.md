@@ -1,120 +1,341 @@
 # Lasci's Board — Project Guide for Claude Code
 
 ## What This Project Is
-A personal productivity and entertainment dashboard hosted on GitHub Pages. It integrates with Supabase, Google Calendar, TMDB, Claude API, and OpenAI API. The project is desktop-first but responsive.
-
-## Tech Stack
-- **Framework:** React 18 + TypeScript + Vite
-- **Styling:** Tailwind CSS
-- **Animations:** Framer Motion
-- **State:** Zustand (global) + React Query (server state)
-- **Database:** Supabase (Postgres + Auth + Edge Functions)
-- **Hosting:** GitHub Pages
+A private, modular personal dashboard hosted on GitHub Pages. Covers daily planning, task management, media tracking, work task organization, and AI-assisted contextual actions. Backed by Supabase, integrated with TMDB, Google Calendar, Claude API, and OpenAI API.
 
 ## Specialized Agents — Route Tasks Here First
 
-| Agent | Invoke for | File: |
+| Agent | Invoke for | Definition |
 |---|---|---|
-| **guardian** | Security, RLS, auth, API keys, Edge Functions | `.claude/agents/guardian.md` |
-| **flex** | Mobile/responsive design, breakpoints, animations | `.claude/agents/flex.md` |
+| **guardian** | Security, RLS, auth, API keys, Edge Functions, migrations | `.claude/agents/guardian.md` |
+| **flex** | Mobile/responsive design, breakpoints, touch, animations | `.claude/agents/flex.md` |
 
-**Rule:** Any PR or change that touches authentication, Supabase RLS, or external API keys must be reviewed by `guardian` before merge. Any new UI component must be reviewed by `flex` before merge.
+**Rule:** Any change touching auth/RLS/API keys → `guardian` must review. Any new UI component → `flex` must review.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Notes |
+|---|---|---|
+| Framework | React 18 + TypeScript + Vite | GitHub Pages compatible |
+| Routing | React Router (HashRouter) | `/#/daily` — avoids GitHub Pages 404 on direct URL |
+| Styling | Tailwind CSS | |
+| Components | shadcn/ui + Radix UI | Accessible, Tailwind-based, unstyled base |
+| Animations | Framer Motion | Used selectively — not on every component |
+| Global State | Zustand | UI state, drawer open/close, active tab |
+| Server State | TanStack Query (React Query) | All API/Supabase calls, caching, loading/error |
+| Forms | React Hook Form + Zod | Validation schemas in `shared/schemas/` |
+| Database | Supabase (Postgres + Auth + Edge Functions + RLS) | |
+| Testing | Vitest + React Testing Library | Unit + component tests |
+| Linting | ESLint + Prettier | Enforced in CI |
+| Hosting | GitHub Pages | Static only — no server-side rendering |
+
+---
+
+## Routing Strategy
+
+Using **HashRouter** to avoid 404s on GitHub Pages when navigating directly to a route:
+
+```
+/#/daily      → Daily page (Today / Tomorrow / Week / Month tabs)
+/#/media      → Media page (Films, Shows, Games)
+/#/work       → Work page
+/#/settings   → Settings
+/#/login      → Login (public route)
+```
+
+All routes except `/#/login` are protected by `SessionGuard`.
+
+---
 
 ## Project Structure
+
 ```
 src/
-├── pages/
-│   ├── Daily.tsx          # Today / Tomorrow / Week / Month (tabbed)
-│   ├── Media.tsx          # Films, Shows, Games
-│   └── Work.tsx           # Power work tasks
-├── components/
-│   ├── ui/                # Base: Button, Card, Modal, Badge, Sheet
-│   ├── todo/              # ToDoPanel, ToDoItem, ToDoSection
-│   ├── media/             # MediaCard, WatchlistSection, GameCard
-│   ├── widgets/           # WeekWidget, MonthWidget
-│   └── work/              # WorkTaskList, WorkTaskItem
-├── services/
-│   ├── supabase.ts        # Supabase client init
-│   ├── tmdb.ts            # TMDB API (films & shows)
-│   ├── games.ts           # Read from existing Retroid Pocket Supabase DB
-│   ├── calendar.ts        # Google Calendar API
-│   └── ai.ts              # AI proxy calls (routes to Edge Function)
-├── hooks/
-│   ├── useTodos.ts
-│   ├── useMedia.ts
-│   ├── useCalendar.ts
-│   └── useAI.ts
-├── store/
-│   ├── todoStore.ts       # Zustand: global to-do state
-│   └── uiStore.ts         # Zustand: panel open/close, active tab
+├── app/
+│   ├── router.tsx           # HashRouter + route definitions
+│   ├── layout.tsx           # App shell: nav, to-do drawer, AI panel
+│   └── providers.tsx        # QueryClient, Auth, Zustand
+│
+├── features/                # One folder per domain — the main work happens here
+│   ├── daily/
+│   │   ├── pages/
+│   │   │   └── DailyPage.tsx          # Tab controller: Today/Tomorrow/Week/Month
+│   │   ├── components/
+│   │   │   ├── DayView.tsx            # Reusable day view (receives a date prop)
+│   │   │   ├── WeekWidget.tsx
+│   │   │   └── MonthWidget.tsx
+│   │   ├── hooks/
+│   │   │   └── useDayData.ts          # Tasks + calendar events for a given date
+│   │   ├── api/
+│   │   │   └── dailyApi.ts
+│   │   └── types.ts
+│   │
+│   ├── todo/
+│   │   ├── components/
+│   │   │   ├── ToDoDrawer.tsx         # Global right-side drawer (bottom sheet on mobile)
+│   │   │   ├── ToDoSection.tsx        # One collapsible section (Inbox, Today, Work...)
+│   │   │   └── ToDoItem.tsx
+│   │   ├── hooks/
+│   │   │   └── useTodos.ts
+│   │   ├── api/
+│   │   │   └── tasksApi.ts
+│   │   └── types.ts
+│   │
+│   ├── media/
+│   │   ├── pages/
+│   │   │   └── MediaPage.tsx
+│   │   ├── components/
+│   │   │   ├── MediaSection.tsx       # Reusable section (Currently Watching, Wishlist...)
+│   │   │   ├── MediaCard.tsx
+│   │   │   ├── MediaSearch.tsx        # TMDB search
+│   │   │   └── PlanThisButton.tsx     # "Plan This" → pick date → creates task
+│   │   ├── hooks/
+│   │   │   ├── useMedia.ts
+│   │   │   └── useTMDB.ts
+│   │   ├── api/
+│   │   │   ├── mediaApi.ts            # Supabase media reads/writes
+│   │   │   └── tmdbApi.ts             # TMDB search + details
+│   │   └── types.ts
+│   │
+│   ├── work/
+│   │   ├── pages/
+│   │   │   └── WorkPage.tsx
+│   │   ├── components/
+│   │   │   ├── WorkTaskList.tsx
+│   │   │   └── WorkTaskItem.tsx
+│   │   ├── hooks/
+│   │   │   └── useWorkTasks.ts
+│   │   ├── api/
+│   │   │   └── workApi.ts
+│   │   └── types.ts
+│   │
+│   ├── ai/
+│   │   ├── components/
+│   │   │   ├── AIPanel.tsx            # Context-aware AI assistant panel
+│   │   │   └── AIActionConfirm.tsx    # Confirmation dialog for AI-proposed actions
+│   │   ├── hooks/
+│   │   │   └── useAI.ts
+│   │   ├── api/
+│   │   │   └── aiApi.ts               # Calls Edge Function proxy
+│   │   └── types.ts                   # AIAction, AIContext, AIMessage types
+│   │
+│   └── calendar/
+│       ├── hooks/
+│       │   └── useCalendar.ts
+│       ├── api/
+│       │   └── calendarApi.ts
+│       └── types.ts
+│
+├── shared/
+│   ├── ui/                    # Base components built on shadcn/ui
+│   │   ├── Button.tsx
+│   │   ├── Card.tsx
+│   │   ├── Modal.tsx
+│   │   ├── Sheet.tsx          # Drawer/bottom-sheet primitive
+│   │   ├── Badge.tsx
+│   │   └── Skeleton.tsx
+│   ├── components/
+│   │   ├── CommandBar.tsx     # Cmd+K global command palette
+│   │   └── WidgetRegistry.tsx # Widget system — add new widgets here
+│   ├── hooks/
+│   │   ├── useAuth.ts
+│   │   └── useBreakpoint.ts
+│   ├── schemas/               # Zod validation schemas shared across features
+│   └── types/
+│       └── supabase.ts        # Generated Supabase types (from supabase gen types)
+│
+├── integrations/
+│   ├── supabase/
+│   │   └── client.ts          # Supabase client init (uses security/supabaseClient.ts)
+│   ├── tmdb/
+│   │   └── client.ts
+│   ├── openai/
+│   │   └── client.ts          # Client-side stub only — real calls via Edge Function
+│   ├── anthropic/
+│   │   └── client.ts          # Client-side stub only — real calls via Edge Function
+│   └── rp5-library/
+│       └── client.ts          # Proxy to RP5 Supabase DB via Edge Function
+│
 ├── security/
-│   ├── supabaseClient.ts  # Auth-aware Supabase client
-│   ├── sessionGuard.tsx   # Route protection component
-│   └── apiProxy.ts        # Type-safe wrapper for AI Edge Function calls
-└── types/
-    ├── media.ts
-    ├── todo.ts
-    ├── work.ts
-    └── calendar.ts
+│   ├── supabaseClient.ts      # Auth-aware Supabase client (owned by guardian)
+│   ├── sessionGuard.tsx       # Redirects unauthenticated users to login
+│   └── apiProxy.ts            # Type-safe wrapper for AI/calendar Edge Function calls
+│
 supabase/
-├── migrations/            # SQL migrations including RLS policies
+├── migrations/                # SQL migrations — all RLS policies live here
 └── functions/
-    └── ai-proxy/          # Edge Function: proxies Claude + OpenAI calls
+    ├── ai-proxy/              # Proxies Claude + OpenAI — keys in Supabase Vault
+    ├── calendar-proxy/        # Google Calendar OAuth + event reads
+    └── game-library-proxy/    # Reads from RP5 Supabase DB
 ```
 
-## Pages
+---
 
-### `/daily` — Daily Page
-Four views via tab: **Today**, **Tomorrow**, **This Week**, **This Month**. Shows tasks, calendar events, and scheduled media notes. To-Do panel is available globally.
+## Data Model
 
-### `/media` — Media Page
-Sections:
-- Currently Playing (game — from Retroid Pocket Supabase DB)
-- Currently Watching (show)
-- Want to Watch (films)
-- Upcoming Releases (in theaters)
-- Wishlist — Unreleased
-- Wishlist — General
+See `docs/data-model.md` for full schema. Summary:
 
-AI assistant is context-aware: knows the active media item, can search the web, can add/remove items from lists.
+### `tasks`
+Single table for all tasks across domains.
+```sql
+tasks (
+  id, user_id, title, description,
+  domain:   personal | work | media,
+  section:  inbox | today | tomorrow | this_week | backlog,
+  status:   open | in_progress | done | cancelled,
+  priority: low | medium | high,
+  due_date, due_time,
+  source_type: manual | media | calendar | ai,
+  source_id,   -- links to media_items.id if source_type = media
+  created_at, updated_at
+)
+```
+- Work page shows: `domain = 'work'`
+- Media plan shows: `domain = 'media'`
+- Daily view shows: `section = 'today'` (or tomorrow/this_week filtered by due_date)
 
-### `/work` — Work Page
-ClickUp-style task list for Power work. No external integrations. Tasks saved to Supabase.
+### `media_items`
+Canonical media data — what TMDB/RP5 knows about a title.
+```sql
+media_items (
+  id, type: movie | show | game,
+  external_source: tmdb | rp5 | manual,
+  external_id, title, runtime, release_date,
+  poster_url, metadata_json
+)
+```
 
-## Key Conventions
+### `user_media_entries`
+Your personal relationship with a media item.
+```sql
+user_media_entries (
+  id, user_id, media_item_id,
+  status: watching | playing | wishlist | completed | dropped | paused,
+  priority, personal_note, planned_date, rating,
+  current_episode, current_season, repeat_count,
+  started_at, finished_at, updated_at
+)
+```
 
-### File Naming
+### `activity_log`
+Immutable event log — every important action.
+```sql
+activity_log (
+  id, user_id, event_type, entity_type, entity_id,
+  payload_json, created_at
+)
+-- Examples:
+-- task_created, task_completed, media_added, media_planned,
+-- ai_action_confirmed, ai_action_cancelled
+```
+
+---
+
+## Key Patterns
+
+### AI Action Confirmation
+AI never writes to the DB directly. It proposes structured actions; the user confirms.
+```
+User: "Add Dune Part Two to my wishlist"
+  ↓
+AI returns: { action: "add_to_wishlist", media_title: "Dune: Part Two", tmdb_id: 693134 }
+  ↓
+AIActionConfirm dialog: "Add Dune: Part Two to wishlist? [Confirm] [Cancel]"
+  ↓
+On confirm: mediaApi.addToWishlist()
+  ↓
+activity_log entry: media_added
+```
+
+### "Plan This" Button
+Attaches a media item to a day via the task system.
+```
+MediaCard → [Plan This] → date picker (Today / Tomorrow / This Week / Pick date)
+  ↓
+Creates tasks row: { domain: 'media', source_type: 'media', source_id: media_item_id, due_date }
+  ↓
+Appears in DayView for that date
+```
+
+### Command Bar (Cmd+K)
+Global keyboard shortcut. Handled in `shared/components/CommandBar.tsx`.
+Commands: add task, add movie, plan for today, move to tomorrow, search media, ask AI.
+
+### Widget Registry
+`shared/components/WidgetRegistry.tsx` — add new widgets here without touching page files.
+```ts
+export const WIDGETS = [
+  { id: 'today-overview',    component: TodayOverview },
+  { id: 'tomorrow-preview',  component: TomorrowPreview },
+  { id: 'week-overview',     component: WeekWidget },
+  { id: 'month-overview',    component: MonthWidget },
+  { id: 'media-plan',        component: MediaPlanWidget },
+  { id: 'work-queue',        component: WorkQueueWidget },
+];
+```
+
+### API Call Pattern
+- All Supabase calls go through `features/<domain>/api/<domain>Api.ts`
+- All AI calls go through `security/apiProxy.ts` → Edge Function
+- TanStack Query wraps everything — no raw `fetch` in components
+- Zod validates all API responses at the boundary
+
+---
+
+## MVP Build Order
+
+```
+Phase 1 — Foundation
+  Auth (login/logout) + SessionGuard
+  Layout shell (nav, to-do drawer placeholder, route structure)
+  Supabase RLS on all tables
+
+Phase 2 — Daily + To-Do
+  tasks table + CRUD
+  DailyPage with Today/Tomorrow/Week/Month tabs
+  Global ToDoDrawer with sections
+
+Phase 3 — Media
+  media_items + user_media_entries tables
+  TMDB search + add to wishlist
+  Currently Watching / Currently Playing sections
+  Plan This → task creation
+  Media notes on DayView
+
+Phase 4 — Work
+  Work task list (same tasks table, domain='work')
+
+Phase 5 — AI
+  Edge Function proxy (Claude + OpenAI)
+  AI Panel with page context
+  AIActionConfirm pattern
+  Web search via Claude Responses API
+
+Phase 6 — Calendar
+  Google Calendar OAuth (Edge Function)
+  Read-only events on DayView
+
+Phase 7 — Games
+  RP5 DB proxy via Edge Function
+  MediaCard for games
+
+Phase 8 — Polish
+  Command Bar
+  Activity Log view
+  Animations + Framer Motion pass
+  PWA / mobile install
+```
+
+---
+
+## File Naming Conventions
 - Components: `PascalCase.tsx`
-- Hooks: `camelCase.ts` prefixed with `use`
-- Services: `camelCase.ts`
-- Types: `camelCase.ts` (lowercase, descriptive)
-
-### Component Structure
-Each component file follows this order:
-1. Imports
-2. Types/interfaces (local only — shared types go in `types/`)
-3. Component function
-4. Export
-
-### API Calls
-- All external API calls go through `services/` — never inline in components
-- React Query handles caching, loading, and error state
-- AI calls always go through `security/apiProxy.ts` → Edge Function
-
-### Responsive Design
-- Desktop-first UI, mobile must not break
-- All responsive changes reviewed by the `flex` agent
-- Tailwind breakpoints: default=mobile, `lg:`=desktop target
+- Hooks: `useCamelCase.ts`
+- API modules: `camelCaseApi.ts`
+- Types: `types.ts` per feature, shared types in `shared/types/`
+- Zod schemas: `camelCaseSchema.ts` in `shared/schemas/`
 
 ## Environment Variables
-See `.env.example` for the full list. Never commit real values.
-
-## External Integrations
-| Service | Purpose | Auth Method |
-|---|---|---|
-| Supabase | Database + Auth + Edge Functions | anon key (RLS protected) |
-| TMDB | Film/show metadata | API key (client-safe, read-only) |
-| Games DB | Retroid Pocket game data | Supabase service key (Edge Function only) |
-| Google Calendar | Calendar events | OAuth2 (token stored in Supabase) |
-| Claude API | AI assistant | Secret key (Edge Function only) |
-| OpenAI API | AI assistant fallback | Secret key (Edge Function only) |
+See `.env.example`. Never commit real values. AI API keys go in Supabase Vault only.
