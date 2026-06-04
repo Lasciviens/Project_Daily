@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     }
 
     const { action, taskId, task } = await req.json()
-    const BASE = 'https://api.todoist.com/rest/v2'
+    const BASE = 'https://api.todoist.com/api/v1'
 
     let todoistRes: Response
 
