@@ -1,5 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { signOut } from '../security/supabaseClient'
+import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
+import { useUIStore } from './store'
 
 export function Layout() {
   return (
@@ -8,11 +10,14 @@ export function Layout() {
       <main className="flex-1">
         <Outlet />
       </main>
+      <ToDoDrawer />
     </div>
   )
 }
 
 function Nav() {
+  const { isToDoOpen, toggleToDo } = useUIStore()
+
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `px-4 py-1.5 text-sm font-medium rounded-lg transition-colors duration-150 ${
       isActive
@@ -39,13 +44,27 @@ function Nav() {
         </nav>
 
         {/* Right actions */}
-        <div className="flex items-center gap-2">
-          <button className="btn-ghost text-xs" disabled title="Coming in Phase 5">
+        <div className="flex items-center gap-1.5">
+          <button
+            disabled
+            title="Coming in Phase 5"
+            className="px-3 py-1.5 text-xs font-medium text-ink-300 rounded-lg cursor-not-allowed"
+          >
             ✦ Ask AI
           </button>
           <button
+            onClick={toggleToDo}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 ${
+              isToDoOpen
+                ? 'bg-amber-50 text-amber-600'
+                : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
+            }`}
+          >
+            ☑ To-Do
+          </button>
+          <button
             onClick={() => signOut()}
-            className="btn-ghost text-xs text-ink-400"
+            className="px-3 py-1.5 text-xs font-medium text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
           >
             Sign out
           </button>
