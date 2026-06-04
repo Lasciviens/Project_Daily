@@ -3,16 +3,24 @@ import { persist } from 'zustand/middleware'
 
 interface UIState {
   isToDoOpen: boolean
+  isAIOpen:   boolean
   toggleToDo: () => void
-  openToDo: () => void
-  closeToDo: () => void
+  openToDo:   () => void
+  closeToDo:  () => void
+  toggleAI:   () => void
+  openAI:     () => void
+  closeAI:    () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
   isToDoOpen: false,
-  toggleToDo: () => set(s => ({ isToDoOpen: !s.isToDoOpen })),
-  openToDo: () => set({ isToDoOpen: true }),
-  closeToDo: () => set({ isToDoOpen: false }),
+  isAIOpen:   false,
+  toggleToDo: () => set(s => ({ isToDoOpen: !s.isToDoOpen, isAIOpen: false })),
+  openToDo:   () => set({ isToDoOpen: true,  isAIOpen: false }),
+  closeToDo:  () => set({ isToDoOpen: false }),
+  toggleAI:   () => set(s => ({ isAIOpen: !s.isAIOpen, isToDoOpen: false })),
+  openAI:     () => set({ isAIOpen: true,  isToDoOpen: false }),
+  closeAI:    () => set({ isAIOpen: false }),
 }))
 
 interface CalendarState {

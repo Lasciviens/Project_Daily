@@ -2,6 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { format } from 'date-fns'
 import { signOut } from '../security/supabaseClient'
 import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
+import { AIPanel } from '../features/ai/components/AIPanel'
 import { ThemeSwitcher } from '../shared/components/ThemeSwitcher'
 import { CalendarConnect } from '../features/calendar/components/CalendarConnect'
 import { useUIStore } from './store'
@@ -14,12 +15,13 @@ export function Layout() {
         <Outlet />
       </main>
       <ToDoDrawer />
+      <AIPanel />
     </div>
   )
 }
 
 function Nav() {
-  const { isToDoOpen, toggleToDo } = useUIStore()
+  const { isToDoOpen, toggleToDo, isAIOpen, toggleAI } = useUIStore()
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `px-4 py-1.5 text-sm font-medium rounded-lg transition-colors duration-150 ${
@@ -59,9 +61,12 @@ function Nav() {
           <ThemeSwitcher />
 
           <button
-            disabled
-            title="Coming in Phase 5"
-            className="px-3 py-1.5 text-xs font-medium text-ink-300 rounded-lg cursor-not-allowed hidden sm:block"
+            onClick={toggleAI}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 hidden sm:block ${
+              isAIOpen
+                ? 'bg-accent-50 text-accent-600'
+                : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
+            }`}
           >
             ✦ Ask AI
           </button>
