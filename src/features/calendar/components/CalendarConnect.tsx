@@ -1,16 +1,25 @@
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../../app/store'
 
+function useCalendarValid() {
+  const { accessToken, expiresAt } = useCalendarStore()
+  if (!accessToken) return false
+  // 60s buffer — re-auth before token actually expires
+  if (expiresAt && Date.now() > expiresAt - 60_000) return false
+  return true
+}
+
 export function CalendarConnect() {
-  const { accessToken, setAccessToken } = useCalendarStore()
+  const { setAccessToken } = useCalendarStore()
+  const isValid = useCalendarValid()
 
   const login = useGoogleLogin({
-    scope: 'https://www.googleapis.com/auth/calendar.readonly',
-    onSuccess: ({ access_token }) => setAccessToken(access_token),
+    scope:     'https://www.googleapis.com/auth/calendar.readonly',
+    onSuccess: ({ access_token, expires_in }) => setAccessToken(access_token, expires_in),
     onError:   () => console.error('Google login failed'),
   })
 
-  if (accessToken) {
+  if (isValid) {
     return (
       <button
         onClick={() => setAccessToken(null)}

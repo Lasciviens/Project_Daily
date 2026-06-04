@@ -4,7 +4,6 @@ import { signOut } from '../security/supabaseClient'
 import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
 import { ThemeSwitcher } from '../shared/components/ThemeSwitcher'
 import { CalendarConnect } from '../features/calendar/components/CalendarConnect'
-import { TodoistConnect } from '../shared/components/TodoistConnect'
 import { useUIStore } from './store'
 
 export function Layout() {
@@ -54,11 +53,7 @@ function Nav() {
             {format(new Date(), 'EEE, MMM d')}
           </span>
 
-          {/* Calendar connect */}
           <CalendarConnect />
-
-          {/* Todoist connect */}
-          <TodoistConnect />
 
           {/* Theme switcher */}
           <ThemeSwitcher />
