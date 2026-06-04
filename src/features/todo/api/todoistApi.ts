@@ -40,13 +40,6 @@ export async function createTodoistTask(token: string, task: Task): Promise<stri
   return result.id
 }
 
-export async function validateTodoistToken(token: string): Promise<boolean> {
-  const res = await fetch('https://api.todoist.com/rest/v2/projects', {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  return res.ok
-}
-
 export async function closeTodoistTask(token: string, todoistId: string): Promise<void> {
   await todoistFetch<void>('POST', `/tasks/${todoistId}/close`, token)
 }

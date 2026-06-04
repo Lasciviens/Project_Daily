@@ -9,6 +9,7 @@ import {
   updateTask,
   toggleTaskDone,
   deleteTask,
+  swapTaskOrder,
 } from '../api/tasksApi'
 import {
   createTodoistTask,
@@ -19,8 +20,9 @@ import {
   getTodoistId,
   removeTodoistMapping,
 } from '../api/todoistApi'
-import { useTodoistStore } from '../../../app/store'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
+
+const TODOIST_TOKEN = import.meta.env.VITE_TODOIST_API_KEY as string | undefined
 
 export function useTasksBySection(section: string) {
   return useQuery({
@@ -57,7 +59,7 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
 
 export function useCreateTask() {
   const qc    = useQueryClient()
-  const token = useTodoistStore(s => s.apiToken)
+  const token = TODOIST_TOKEN
   return useMutation({
     mutationFn: async (input: CreateTaskInput) => {
       const task = await createTask(input)
@@ -84,7 +86,7 @@ export function useUpdateTask() {
 
 export function useToggleTask() {
   const qc    = useQueryClient()
-  const token = useTodoistStore(s => s.apiToken)
+  const token = TODOIST_TOKEN
   return useMutation({
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
       const task = await toggleTaskDone(id, isDone)
@@ -103,9 +105,17 @@ export function useToggleTask() {
   })
 }
 
+export function useSwapTaskOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id1, id2 }: { id1: string; id2: string }) => swapTaskOrder(id1, id2),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
 export function useDeleteTask() {
   const qc    = useQueryClient()
-  const token = useTodoistStore(s => s.apiToken)
+  const token = TODOIST_TOKEN
   return useMutation({
     mutationFn: async (id: string) => {
       if (token) {

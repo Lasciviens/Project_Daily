@@ -17,10 +17,11 @@ function eventEndTime(event: CalendarEvent): string {
 interface Props { dateStr: string }
 
 export function CalendarEventsCard({ dateStr }: Props) {
-  const token  = useCalendarStore(s => s.accessToken)
+  const { accessToken, expiresAt } = useCalendarStore()
+  const isValid = !!accessToken && (!expiresAt || Date.now() < expiresAt - 60_000)
   const { data: events = [], isLoading } = useCalendarEventsForDay(dateStr)
 
-  if (!token) return null
+  if (!isValid) return null
 
   return (
     <div className="card p-5">

@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CalendarEvent, CalendarListEntry } from '../types'
 
 const BASE = 'https://www.googleapis.com/calendar/v3'
@@ -31,6 +32,37 @@ export async function fetchEventsForDay(token: string, date: string, calendarId 
     { timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime' }
   )
   return data.items ?? []
+}
+
+export async function exchangeCalendarCode(
+  supabase: SupabaseClient,
+  code: string
+): Promise<{ access_token: string; expires_in: number }> {
+  const { data, error } = await supabase.functions.invoke('calendar-oauth', {
+    body: { code },
+  })
+  if (error) throw new Error(error.message)
+  if (data.error) throw new Error(data.error)
+  return data as { access_token: string; expires_in: number }
+}
+
+export async function refreshCalendarToken(
+  supabase: SupabaseClient
+): Promise<{ access_token: string; expires_in: number }> {
+  const { data, error } = await supabase.functions.invoke('calendar-token', {
+    body: {},
+  })
+  if (error) throw new Error(error.message)
+  if (data.error) throw new Error(data.error)
+  return data as { access_token: string; expires_in: number }
+}
+
+export async function disconnectCalendar(supabase: SupabaseClient): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('calendar-disconnect', {
+    body: {},
+  })
+  if (error) throw new Error(error.message)
+  if (data?.error) throw new Error(data.error)
 }
 
 export async function fetchEventsForRange(

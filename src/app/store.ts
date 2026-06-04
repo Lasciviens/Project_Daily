@@ -17,25 +17,20 @@ export const useUIStore = create<UIState>((set) => ({
 
 interface CalendarState {
   accessToken: string | null
-  setAccessToken: (token: string | null) => void
+  expiresAt: number | null  // ms timestamp
+  setAccessToken: (token: string | null, expiresIn?: number) => void
 }
 
-export const useCalendarStore = create<CalendarState>((set) => ({
-  accessToken: null,
-  setAccessToken: (token) => set({ accessToken: token }),
-}))
-
-interface TodoistState {
-  apiToken: string | null
-  setApiToken: (token: string | null) => void
-}
-
-export const useTodoistStore = create<TodoistState>()(
+export const useCalendarStore = create<CalendarState>()(
   persist(
     (set) => ({
-      apiToken: null,
-      setApiToken: (token) => set({ apiToken: token }),
+      accessToken: null,
+      expiresAt:   null,
+      setAccessToken: (token, expiresIn) => set({
+        accessToken: token,
+        expiresAt:   token && expiresIn ? Date.now() + expiresIn * 1000 : null,
+      }),
     }),
-    { name: 'todoist-token' }
+    { name: 'calendar-token' }
   )
 )
