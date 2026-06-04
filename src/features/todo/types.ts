@@ -2,7 +2,7 @@ export type TaskDomain    = 'personal' | 'work' | 'media'
 export type TaskSection   = 'inbox' | 'today' | 'tomorrow' | 'this_week' | 'backlog'
 export type TaskStatus    = 'open' | 'in_progress' | 'done' | 'cancelled'
 export type TaskPriority  = 'low' | 'medium' | 'high'
-export type TaskSourceType = 'manual' | 'media' | 'calendar' | 'ai'
+export type TaskSourceType = 'manual' | 'movie' | 'tv_series' | 'calendar' | 'ai'
 
 export interface Task {
   id:          string
@@ -22,11 +22,13 @@ export interface Task {
 }
 
 export interface CreateTaskInput {
-  title:    string
-  domain?:  TaskDomain
-  section?: TaskSection
-  priority?: TaskPriority
-  due_date?: string | null
+  title:       string
+  domain?:     TaskDomain
+  section?:    TaskSection
+  priority?:   TaskPriority
+  due_date?:   string | null
+  source_type?: TaskSourceType
+  source_id?:   string | null
 }
 
 export interface UpdateTaskInput {

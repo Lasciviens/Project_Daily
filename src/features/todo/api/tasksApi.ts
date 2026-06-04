@@ -79,7 +79,8 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
       priority:    input.priority    ?? 'medium',
       due_date:    input.due_date    ?? null,
       status:      'open',
-      source_type: 'manual',
+      source_type: input.source_type ?? 'manual',
+      source_id:   input.source_id   ?? null,
     })
     .select()
     .single()

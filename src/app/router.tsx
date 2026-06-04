@@ -3,6 +3,7 @@ import { SessionGuard } from '../security/sessionGuard'
 import { Layout } from './layout'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { DailyPage } from '../features/daily/pages/DailyPage'
+import { MediaPage } from '../features/media/pages/MediaPage'
 
 export function Router() {
   return (
@@ -19,8 +20,7 @@ export function Router() {
         >
           <Route index element={<Navigate to="/daily" replace />} />
           <Route path="/daily" element={<DailyPage />} />
-          {/* Phase 3+ */}
-          <Route path="/media"  element={<div className="p-6 text-ink-500">Media — coming in Phase 3</div>} />
+          <Route path="/media"  element={<MediaPage />} />
           <Route path="/work"   element={<div className="p-6 text-ink-500">Work — coming in Phase 4</div>} />
         </Route>
 
