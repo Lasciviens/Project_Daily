@@ -126,3 +126,33 @@ export interface TMDBSearchTV {
 
 export type MediaStatus = 'watching' | 'wishlist' | 'completed' | 'dropped' | 'paused'
 export type MediaType = 'movie' | 'tv'
+
+export interface TMDBCastMember {
+  id: number
+  name: string
+  character: string
+  profile_path: string | null
+  order: number
+}
+
+export interface TMDBWatchProvider {
+  provider_id: number
+  provider_name: string
+  logo_path: string
+}
+
+export interface TMDBWatchProviders {
+  flatrate?: TMDBWatchProvider[]
+  rent?: TMDBWatchProvider[]
+  buy?: TMDBWatchProvider[]
+}
+
+export interface TMDBMovieFull extends TMDBMovie {
+  credits: { cast: TMDBCastMember[] }
+  'watch/providers': { results: Record<string, TMDBWatchProviders> }
+}
+
+export interface TMDBTVFull extends TMDBTVSeries {
+  credits: { cast: TMDBCastMember[] }
+  'watch/providers': { results: Record<string, TMDBWatchProviders> }
+}

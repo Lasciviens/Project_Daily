@@ -2,6 +2,7 @@ import { tmdbFetch } from '../../../integrations/tmdb/client'
 import type {
   TMDBMovie, TMDBTVSeries,
   TMDBSearchMovie, TMDBSearchTV,
+  TMDBMovieFull, TMDBTVFull,
 } from '../types'
 
 interface PagedResponse<T> { results: T[]; total_results: number; total_pages: number }
@@ -29,3 +30,15 @@ export const getMovieDetails = (tmdbId: number) =>
 
 export const getTVDetails = (tmdbId: number) =>
   tmdbFetch<TMDBTVSeries>(`/tv/${tmdbId}`)
+
+export const getMovieFull = (tmdbId: number) =>
+  tmdbFetch<TMDBMovieFull>(`/movie/${tmdbId}`, { append_to_response: 'credits,watch/providers' })
+
+export const getTVFull = (tmdbId: number) =>
+  tmdbFetch<TMDBTVFull>(`/tv/${tmdbId}`, { append_to_response: 'credits,watch/providers' })
+
+export const getUpcomingMovies = () =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/movie/upcoming')
+
+export const getUpcomingTV = () =>
+  tmdbFetch<PagedResponse<TMDBSearchTV>>('/tv/on_the_air')

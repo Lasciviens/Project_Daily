@@ -4,6 +4,8 @@ import {
   getTrendingMovies, getTrendingTV,
   getPopularMovies, getPopularTV,
   getMovieDetails, getTVDetails,
+  getMovieFull, getTVFull,
+  getUpcomingMovies, getUpcomingTV,
 } from '../api/tmdbApi'
 
 export function useSearchMovies(query: string) {
@@ -71,5 +73,39 @@ export function useTVDetails(tmdbId: number | null) {
     queryFn:  () => getTVDetails(tmdbId!),
     enabled:  tmdbId !== null,
     staleTime: 30 * 60_000,
+  })
+}
+
+export function useMovieFull(tmdbId: number | null) {
+  return useQuery({
+    queryKey: ['tmdb', 'full', 'movie', tmdbId],
+    queryFn:  () => getMovieFull(tmdbId!),
+    enabled:  tmdbId !== null,
+    staleTime: 30 * 60_000,
+  })
+}
+
+export function useTVFull(tmdbId: number | null) {
+  return useQuery({
+    queryKey: ['tmdb', 'full', 'tv', tmdbId],
+    queryFn:  () => getTVFull(tmdbId!),
+    enabled:  tmdbId !== null,
+    staleTime: 30 * 60_000,
+  })
+}
+
+export function useUpcomingMovies() {
+  return useQuery({
+    queryKey: ['tmdb', 'upcoming', 'movie'],
+    queryFn:  () => getUpcomingMovies().then(r => r.results),
+    staleTime: 10 * 60_000,
+  })
+}
+
+export function useUpcomingTV() {
+  return useQuery({
+    queryKey: ['tmdb', 'upcoming', 'tv'],
+    queryFn:  () => getUpcomingTV().then(r => r.results),
+    staleTime: 10 * 60_000,
   })
 }
