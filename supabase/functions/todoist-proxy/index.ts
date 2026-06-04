@@ -51,11 +51,16 @@ Deno.serve(async (req) => {
     }
 
     const { action, taskId, task } = await req.json()
-    const BASE = 'https://api.todoist.com/rest/v2'
+    const BASE = 'https://api.todoist.com/api/v1'
 
     let todoistRes: Response
 
-    if (action === 'create') {
+    if (action === 'list') {
+      todoistRes = await fetch(`${BASE}/tasks`, {
+        method:  'GET',
+        headers: { Authorization: `Bearer ${TODOIST_TOKEN}` },
+      })
+    } else if (action === 'create') {
       todoistRes = await fetch(`${BASE}/tasks`, {
         method:  'POST',
         headers: { Authorization: `Bearer ${TODOIST_TOKEN}`, 'Content-Type': 'application/json' },

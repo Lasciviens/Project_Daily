@@ -5,6 +5,7 @@ import {
   addMonths, subMonths, isSameMonth, isToday, isSameDay,
 } from 'date-fns'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
+import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 
 interface Props {
   onDayClick?:    (date: Date) => void
@@ -19,7 +20,8 @@ export function MonthWidget({ onDayClick, highlightDate }: Props) {
   const calStart   = startOfWeek(monthStart, { weekStartsOn: 1 })
   const calEnd     = endOfWeek(monthEnd,     { weekStartsOn: 1 })
 
-  const { data: tasks = [] } = useTasksByMonth(monthStart, monthEnd)
+  const { data: tasks    = [] } = useTasksByMonth(monthStart, monthEnd)
+  const { data: calDates     } = useCalendarEventDatesForRange(monthStart, monthEnd)
 
   const days: Date[] = []
   let d = calStart
@@ -79,7 +81,8 @@ export function MonthWidget({ onDayClick, highlightDate }: Props) {
           const inMonth  = isSameMonth(day, viewDate)
           const current  = isToday(day)
           const selected = highlightDate ? isSameDay(day, highlightDate) : false
-          const hasTasks = hasTasksOnDay(day) && inMonth
+          const hasTasks    = hasTasksOnDay(day) && inMonth
+          const hasCalEvent = inMonth && (calDates?.has(format(day, 'yyyy-MM-dd')) ?? false)
           const clickable = !!onDayClick && inMonth
 
           return (
@@ -100,12 +103,18 @@ export function MonthWidget({ onDayClick, highlightDate }: Props) {
               }`}
             >
               {format(day, 'd')}
-              {hasTasks && (
-                <span
-                  className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${
-                    current ? 'bg-accent-200' : selected ? 'bg-accent-500' : 'bg-accent-400'
-                  }`}
-                />
+              {/* Task dot (accent) and/or calendar dot (green) */}
+              {(hasTasks || hasCalEvent) && (
+                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                  {hasTasks && (
+                    <span className={`w-1 h-1 rounded-full ${
+                      current ? 'bg-accent-200' : selected ? 'bg-accent-500' : 'bg-accent-400'
+                    }`} />
+                  )}
+                  {hasCalEvent && (
+                    <span className={`w-1 h-1 rounded-full ${current ? 'bg-green-200' : 'bg-green-400'}`} />
+                  )}
+                </span>
               )}
             </button>
           )

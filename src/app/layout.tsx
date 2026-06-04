@@ -50,7 +50,7 @@ function Nav() {
         <div className="flex items-center gap-2">
           {/* Today's date */}
           <span className="text-xs text-ink-400 hidden md:block mr-1">
-            {format(new Date(), 'EEE, MMM d')}
+            {format(new Date(), 'EEEE, MMM d')}
           </span>
 
           <CalendarConnect />

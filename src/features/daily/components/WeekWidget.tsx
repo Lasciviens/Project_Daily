@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { addDays, addWeeks, format, startOfWeek, endOfWeek, isToday, isSameDay, getISOWeek } from 'date-fns'
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
+import { useCalendarEventDatesForRange, useCalendarList } from '../../calendar/hooks/useCalendar'
+import { useCalendarStore } from '../../../app/store'
 import type { Task } from '../../todo/types'
 
 interface Props {
@@ -10,6 +12,7 @@ interface Props {
 
 export function WeekWidget({ onDayClick, highlightDate }: Props) {
   const [weekOffset, setWeekOffset] = useState(0)
+  const [showCalFilter, setShowCalFilter] = useState(false)
 
   const baseWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   const weekStart     = weekOffset === 0 ? baseWeekStart : addWeeks(baseWeekStart, weekOffset)
@@ -18,6 +21,10 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
   const isCurrentWeek = weekOffset === 0
 
   const { data: tasks = [] } = useTasksByWeek(weekStart, weekEnd)
+  const { data: calDates }   = useCalendarEventDatesForRange(weekStart, weekEnd)
+  const { data: calList = [] } = useCalendarList()
+  const { selectedCalendarIds, setSelectedCalendarIds } = useCalendarStore()
+
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   function openCountForDay(date: Date): number {
@@ -25,6 +32,23 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
     return tasks.filter(
       t => t.due_date === dateStr && t.status !== 'done' && t.status !== 'cancelled'
     ).length
+  }
+
+  function hasCalEventOnDay(date: Date): boolean {
+    return calDates?.has(format(date, 'yyyy-MM-dd')) ?? false
+  }
+
+  function toggleCalendar(id: string) {
+    const current = selectedCalendarIds ?? calList.map(c => c.id)
+    const next = current.includes(id)
+      ? current.filter(x => x !== id)
+      : [...current, id]
+    setSelectedCalendarIds(next.length === calList.length ? null : next)
+  }
+
+  function isCalSelected(id: string): boolean {
+    if (!selectedCalendarIds) return true
+    return selectedCalendarIds.includes(id)
   }
 
   const floatingTasks = tasks.filter(
@@ -48,7 +72,18 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
             </button>
           )}
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1">
+          {calList.length > 1 && (
+            <button
+              onClick={() => setShowCalFilter(p => !p)}
+              className={`text-[10px] px-1.5 py-0.5 rounded transition-colors duration-150 font-medium ${
+                showCalFilter ? 'bg-accent-100 text-accent-700' : 'text-ink-400 hover:text-ink-600'
+              }`}
+              title="Filter calendars"
+            >
+              ⊞
+            </button>
+          )}
           <button
             onClick={() => setWeekOffset(w => w - 1)}
             className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded transition-colors duration-150 text-sm"
@@ -64,6 +99,26 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
         </div>
       </div>
 
+      {/* Calendar filter checkboxes */}
+      {showCalFilter && calList.length > 1 && (
+        <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-ink-100">
+          {calList.map(cal => (
+            <button
+              key={cal.id}
+              onClick={() => toggleCalendar(cal.id)}
+              className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border transition-colors duration-150 ${
+                isCalSelected(cal.id)
+                  ? 'bg-green-50 border-green-200 text-green-700'
+                  : 'bg-ink-50 border-ink-200 text-ink-400'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isCalSelected(cal.id) ? 'bg-green-400' : 'bg-ink-300'}`} />
+              {cal.summary}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Date range label */}
       <p className="text-[10px] text-ink-400 mb-3">
         {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
@@ -75,6 +130,7 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
           const current    = isToday(day)
           const selected   = highlightDate ? isSameDay(day, highlightDate) : false
           const openCount  = openCountForDay(day)
+          const hasCalEvent = hasCalEventOnDay(day)
           const clickable  = !!onDayClick
 
           return (
@@ -98,12 +154,19 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
               <span className={`text-sm font-bold mt-0.5 ${current ? 'text-white' : 'text-ink-800'}`}>
                 {format(day, 'd')}
               </span>
+              {/* Task count badge */}
               {openCount > 0 && (
-                <span className={`mt-1 text-[10px] font-semibold px-1 rounded-sm ${
+                <span className={`mt-0.5 text-[10px] font-semibold px-1 rounded-sm ${
                   current ? 'bg-accent-600 text-white' : 'bg-accent-100 text-accent-700'
                 }`}>
                   {openCount}
                 </span>
+              )}
+              {/* Calendar event dot */}
+              {hasCalEvent && (
+                <span className={`mt-0.5 w-1 h-1 rounded-full ${
+                  current ? 'bg-green-200' : 'bg-green-400'
+                }`} />
               )}
             </button>
           )
