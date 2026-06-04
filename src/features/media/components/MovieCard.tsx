@@ -20,6 +20,11 @@ const STATUS_LABELS: Record<UserMovieEntry['status'], string> = {
   dropped:   'Dropped',
 }
 
+function formatReleaseDate(date: string | null): string {
+  if (!date) return 'TBA'
+  return new Date(date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+}
+
 export function MovieCard({ entry, compact, onOpenDetail }: Props) {
   const { movie } = entry
   const upcoming  = isUpcoming(movie.release_date)
@@ -38,10 +43,13 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
           loading="lazy"
         />
         {upcoming && (
-          <div className="absolute bottom-0 inset-x-0 flex justify-center pb-2">
-            <span className="text-[9px] font-bold uppercase tracking-wider text-accent-300 bg-black/60 px-1.5 py-0.5 rounded">
-              Upcoming
-            </span>
+          // Diagonal ribbon across top-right corner
+          <div className="absolute top-0 right-0 w-16 h-16 overflow-hidden pointer-events-none">
+            <div className="absolute top-3 right-[-28px] rotate-45 w-24 text-center bg-accent-500 py-0.5">
+              <span className="text-[8px] font-bold uppercase tracking-wider text-white">
+                UPCOMING
+              </span>
+            </div>
           </div>
         )}
       </div>
@@ -49,6 +57,9 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
       {!compact && (
         <div className="mt-1.5 px-0.5">
           <p className="text-xs font-medium text-ink-800 leading-snug truncate">{movie.title}</p>
+          <p className={`text-[10px] mt-0.5 ${upcoming ? 'text-accent-500' : 'text-ink-400'}`}>
+            {formatReleaseDate(movie.release_date)}
+          </p>
           <div className="flex items-center justify-between mt-0.5">
             {movie.tmdb_rating && (
               <span className="text-[10px] text-ink-400">★ {movie.tmdb_rating.toFixed(1)}</span>

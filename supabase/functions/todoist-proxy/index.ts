@@ -44,14 +44,31 @@ Deno.serve(async (req) => {
 
     const TODOIST_TOKEN = Deno.env.get('TODOIST_API_KEY')
     if (!TODOIST_TOKEN) {
-      return new Response(JSON.stringify({ error: 'Todoist not configured' }), {
+      return new Response(JSON.stringify({ error: 'Todoist not configured — add TODOIST_API_KEY to Supabase Vault' }), {
         status: 503,
         headers: { ...headers, 'Content-Type': 'application/json' },
       })
     }
 
-    const { action, taskId, task } = await req.json()
-    const BASE = 'https://api.todoist.com/api/v1'
+    // Parse body — be defensive about content-type
+    let body: Record<string, unknown> = {}
+    try {
+      const text = await req.text()
+      if (text) body = JSON.parse(text)
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const action = body.action as string | undefined
+    const taskId = body.taskId as string | undefined
+    const task   = body.task   as Record<string, unknown> | undefined
+
+    console.log('[todoist-proxy] action:', action)
+
+    const BASE = 'https://api.todoist.com/rest/v2'
 
     let todoistRes: Response
 
@@ -82,7 +99,8 @@ Deno.serve(async (req) => {
         headers: { Authorization: `Bearer ${TODOIST_TOKEN}` },
       })
     } else {
-      return new Response(JSON.stringify({ error: 'Unknown action' }), {
+      console.error('[todoist-proxy] Unknown action received:', action, '| Full body:', JSON.stringify(body))
+      return new Response(JSON.stringify({ error: `Unknown action: ${action ?? '(none)'}` }), {
         status: 400,
         headers: { ...headers, 'Content-Type': 'application/json' },
       })
@@ -105,13 +123,14 @@ Deno.serve(async (req) => {
     }
 
     const raw = await todoistRes.json()
-    // Todoist v1 may return { results: [...] } or plain array
+    // Todoist REST v2 returns plain arrays for list, single object for create
     const data = Array.isArray(raw) ? raw : (raw.results ?? raw.items ?? raw)
     return new Response(JSON.stringify(data), {
       status: 200,
       headers: { ...headers, 'Content-Type': 'application/json' },
     })
-  } catch {
+  } catch (err) {
+    console.error('[todoist-proxy] Unexpected error:', err)
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { ...headers, 'Content-Type': 'application/json' },
