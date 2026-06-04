@@ -195,6 +195,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
                   title={isMovie ? movie!.title : tv!.name}
                   currentSeason={tvEntry?.current_season}
                   currentEpisode={tvEntry?.current_episode}
+                  releaseDate={isMovie ? movie!.release_date : tv!.first_air_date}
                 />
                 {tvEntry?.status === 'watching' && (
                   <button

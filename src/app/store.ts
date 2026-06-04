@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 interface UIState {
   isToDoOpen: boolean
@@ -23,3 +24,18 @@ export const useCalendarStore = create<CalendarState>((set) => ({
   accessToken: null,
   setAccessToken: (token) => set({ accessToken: token }),
 }))
+
+interface TodoistState {
+  apiToken: string | null
+  setApiToken: (token: string | null) => void
+}
+
+export const useTodoistStore = create<TodoistState>()(
+  persist(
+    (set) => ({
+      apiToken: null,
+      setApiToken: (token) => set({ apiToken: token }),
+    }),
+    { name: 'todoist-token' }
+  )
+)

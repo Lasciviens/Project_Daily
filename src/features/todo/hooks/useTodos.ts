@@ -10,6 +10,16 @@ import {
   toggleTaskDone,
   deleteTask,
 } from '../api/tasksApi'
+import {
+  createTodoistTask,
+  closeTodoistTask,
+  reopenTodoistTask,
+  deleteTodoistTask,
+  saveTodoistMapping,
+  getTodoistId,
+  removeTodoistMapping,
+} from '../api/todoistApi'
+import { useTodoistStore } from '../../../app/store'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
 
 export function useTasksBySection(section: string) {
@@ -46,9 +56,19 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
 }
 
 export function useCreateTask() {
-  const qc = useQueryClient()
+  const qc    = useQueryClient()
+  const token = useTodoistStore(s => s.apiToken)
   return useMutation({
-    mutationFn: (input: CreateTaskInput) => createTask(input),
+    mutationFn: async (input: CreateTaskInput) => {
+      const task = await createTask(input)
+      if (token) {
+        try {
+          const todoistId = await createTodoistTask(token, task)
+          saveTodoistMapping(task.id, todoistId)
+        } catch { /* sync failure is non-fatal */ }
+      }
+      return task
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }
@@ -63,18 +83,40 @@ export function useUpdateTask() {
 }
 
 export function useToggleTask() {
-  const qc = useQueryClient()
+  const qc    = useQueryClient()
+  const token = useTodoistStore(s => s.apiToken)
   return useMutation({
-    mutationFn: ({ id, isDone }: { id: string; isDone: boolean }) =>
-      toggleTaskDone(id, isDone),
+    mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
+      const task = await toggleTaskDone(id, isDone)
+      if (token) {
+        const todoistId = getTodoistId(id)
+        if (todoistId) {
+          try {
+            if (isDone) await closeTodoistTask(token, todoistId)
+            else        await reopenTodoistTask(token, todoistId)
+          } catch { /* sync failure is non-fatal */ }
+        }
+      }
+      return task
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }
 
 export function useDeleteTask() {
-  const qc = useQueryClient()
+  const qc    = useQueryClient()
+  const token = useTodoistStore(s => s.apiToken)
   return useMutation({
-    mutationFn: (id: string) => deleteTask(id),
+    mutationFn: async (id: string) => {
+      if (token) {
+        const todoistId = getTodoistId(id)
+        if (todoistId) {
+          try { await deleteTodoistTask(token, todoistId) } catch { /* non-fatal */ }
+          removeTodoistMapping(id)
+        }
+      }
+      return deleteTask(id)
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }
