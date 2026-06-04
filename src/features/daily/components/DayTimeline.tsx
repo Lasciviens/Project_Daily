@@ -80,16 +80,27 @@ export function DayTimeline({ date }: Props) {
 
   // Google Calendar events
   for (const e of calEvents) {
-    if (!e.start.dateTime) continue
-    const s = new Date(e.start.dateTime)
-    const en = new Date(e.end.dateTime ?? e.start.dateTime)
-    blocks.push({
-      id: e.id, title: e.summary, dateStr,
-      startHour:  s.getHours() + s.getMinutes() / 60,
-      endHour:    en.getHours() + en.getMinutes() / 60,
-      colorClass: COLOR.green,
-      deletable:  false,
-    })
+    if (e.start.dateTime) {
+      // Timed event
+      const s  = new Date(e.start.dateTime)
+      const en = new Date(e.end.dateTime ?? e.start.dateTime)
+      blocks.push({
+        id: e.id, title: e.summary ?? '(no title)', dateStr,
+        startHour:  s.getHours() + s.getMinutes() / 60,
+        endHour:    en.getHours() + en.getMinutes() / 60,
+        colorClass: COLOR.green,
+        deletable:  false,
+      })
+    } else if (e.start.date) {
+      // All-day event — show as full bar at top of visible range
+      blocks.push({
+        id: e.id, title: `◈ ${e.summary ?? '(no title)'}`, dateStr,
+        startHour:  HOUR_START,
+        endHour:    HOUR_START + 0.5,
+        colorClass: COLOR.green,
+        deletable:  false,
+      })
+    }
   }
 
   const visibleBlocks = blocks.filter(b => b.startHour < HOUR_END && b.endHour > HOUR_START)
