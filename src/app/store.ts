@@ -16,20 +16,24 @@ export const useUIStore = create<UIState>((set) => ({
 }))
 
 interface CalendarState {
-  accessToken: string | null
-  expiresAt: number | null  // ms timestamp
-  setAccessToken: (token: string | null, expiresIn?: number) => void
+  accessToken:         string | null
+  expiresAt:           number | null   // ms timestamp
+  selectedCalendarIds: string[] | null // null = primary only
+  setAccessToken:          (token: string | null, expiresIn?: number) => void
+  setSelectedCalendarIds:  (ids: string[] | null) => void
 }
 
 export const useCalendarStore = create<CalendarState>()(
   persist(
     (set) => ({
-      accessToken: null,
-      expiresAt:   null,
+      accessToken:         null,
+      expiresAt:           null,
+      selectedCalendarIds: null,
       setAccessToken: (token, expiresIn) => set({
         accessToken: token,
         expiresAt:   token && expiresIn ? Date.now() + expiresIn * 1000 : null,
       }),
+      setSelectedCalendarIds: (ids) => set({ selectedCalendarIds: ids }),
     }),
     { name: 'calendar-token' }
   )

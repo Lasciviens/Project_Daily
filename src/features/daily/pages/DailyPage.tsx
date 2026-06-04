@@ -60,6 +60,8 @@ export function DailyPage() {
           dayDiff={diff}
           onDayClick={handleDayClick}
           onBackToToday={() => { setViewDate(new Date()); setTab('today') }}
+          onPrevDay={() => setViewDate(d => addDays(d, -1))}
+          onNextDay={() => setViewDate(d => addDays(d,  1))}
         />
       )}
       {tab === 'tomorrow' && <TomorrowView date={viewDate} onDayClick={handleDayClick} />}
@@ -70,23 +72,41 @@ export function DailyPage() {
 }
 
 function TodayView({
-  date, isCustom, dayDiff, onDayClick, onBackToToday,
+  date, isCustom, dayDiff, onDayClick, onBackToToday, onPrevDay, onNextDay,
 }: {
   date: Date; isCustom: boolean; dayDiff: number
   onDayClick: (d: Date) => void; onBackToToday: () => void
+  onPrevDay: () => void; onNextDay: () => void
 }) {
   return (
     <div>
       <div className="flex items-start justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
-          <p className="text-sm text-ink-400 mt-0.5">
-            {isCustom
-              ? dayDiff > 0
-                ? `${dayDiff} day${dayDiff !== 1 ? 's' : ''} from today`
-                : `${Math.abs(dayDiff)} day${Math.abs(dayDiff) !== 1 ? 's' : ''} ago`
-              : `${format(date, 'yyyy')} · Week ${format(date, 'w')}`}
-          </p>
+        <div className="flex items-center gap-3">
+          {/* Day navigation */}
+          <div className="flex items-center gap-0.5 mt-1">
+            <button
+              onClick={onPrevDay}
+              className="w-7 h-7 flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
+            >
+              ‹
+            </button>
+            <button
+              onClick={onNextDay}
+              className="w-7 h-7 flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
+            >
+              ›
+            </button>
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
+            <p className="text-sm text-ink-400 mt-0.5">
+              {isCustom
+                ? dayDiff > 0
+                  ? `${dayDiff} day${dayDiff !== 1 ? 's' : ''} from today`
+                  : `${Math.abs(dayDiff)} day${Math.abs(dayDiff) !== 1 ? 's' : ''} ago`
+                : `${format(date, 'yyyy')} · Week ${format(date, 'w')}`}
+            </p>
+          </div>
         </div>
         {isCustom && (
           <button

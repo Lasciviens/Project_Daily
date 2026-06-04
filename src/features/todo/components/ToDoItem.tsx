@@ -6,7 +6,7 @@ import { useToggleTask, useDeleteTask } from '../hooks/useTodos'
 const PRIORITY_DOT: Record<Task['priority'], string> = {
   low:    'bg-ink-300',
   medium: 'bg-accent-400',
-  high:   'bg-red-400',
+  high:   'bg-red-400 ring-1 ring-red-300',
 }
 
 const DOMAIN_TAG: Record<Task['domain'], { label: string; cls: string }> = {
@@ -58,7 +58,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
           <span className={`text-sm leading-snug truncate ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}>
             {task.title}
           </span>

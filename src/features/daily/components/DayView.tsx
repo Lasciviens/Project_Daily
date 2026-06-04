@@ -15,11 +15,16 @@ export function DayView({ date }: Props) {
 
   return (
     <>
-      <div className="card p-5">
+      <div className="card overflow-hidden">
+        {/* Accent bar gives the card a clear visual anchor in the page hierarchy */}
+        <div className="h-0.5 bg-accent-500" />
+        <div className="p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">Tasks</h2>
           {openTasks.length > 0 && (
-            <span className="text-xs text-ink-400">{openTasks.length} open</span>
+            <span className="bg-accent-50 text-accent-600 text-[11px] font-semibold px-2 py-0.5 rounded-full">
+              {openTasks.length} open
+            </span>
           )}
         </div>
 
@@ -56,6 +61,7 @@ export function DayView({ date }: Props) {
 
           </div>
         )}
+        </div>
       </div>
 
       <AddTaskModal

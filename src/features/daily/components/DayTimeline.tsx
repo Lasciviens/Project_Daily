@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { format, getDay, isToday } from 'date-fns'
 import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock } from '../hooks/useSchedule'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { AddTimeBlockModal } from './AddTimeBlockModal'
 
-const HOUR_START = 7
-const HOUR_END   = 23
+const HOUR_START = 0
+const HOUR_END   = 24
 const HOUR_PX    = 52
 
 const COLOR: Record<string, string> = {
@@ -44,6 +44,7 @@ export function DayTimeline({ date }: Props) {
   const dateStr    = format(date, 'yyyy-MM-dd')
   const dayOfWeek  = getDay(date)
   const [modal, setModal] = useState(false)
+  const scrollRef  = useRef<HTMLDivElement>(null)
 
   const { data: schedBlocks = [] }  = useScheduleBlocks()
   const { data: timeBlocks  = [] }  = useTimeBlocks(dateStr)
@@ -121,6 +122,15 @@ export function DayTimeline({ date }: Props) {
 
   const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
 
+  // Scroll to current time (or 7am if not today) on mount
+  useEffect(() => {
+    if (!scrollRef.current) return
+    const targetHour = isToday(date) ? nowHour : 7
+    const targetPx   = (targetHour - HOUR_START) * HOUR_PX
+    scrollRef.current.scrollTop = Math.max(0, targetPx - scrollRef.current.clientHeight * 0.25)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateStr])
+
   return (
     <div className="card p-5">
       {/* Header */}
@@ -138,15 +148,15 @@ export function DayTimeline({ date }: Props) {
           </div>
           <button
             onClick={() => setModal(true)}
-            className="text-xs font-medium text-accent-600 hover:text-accent-700 transition-colors duration-150"
+            className="bg-accent-50 text-accent-600 hover:bg-accent-100 px-2.5 py-1 rounded-full text-xs font-medium transition-colors duration-150"
           >
             + Add
           </button>
         </div>
       </div>
 
-      {/* Timeline */}
-      <div className="overflow-y-auto max-h-[420px]">
+      {/* Timeline — scrollable, shows ~8h at a time */}
+      <div ref={scrollRef} className="overflow-y-auto max-h-[520px]">
         <div className="relative" style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
           {/* Hour grid lines */}
           {hours.map(h => (
