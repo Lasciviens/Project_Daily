@@ -6,13 +6,14 @@ import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
 import { UpcomingReleasesBanner } from '../components/UpcomingReleasesBanner'
 
-type DailyTab = 'today' | 'tomorrow' | 'week' | 'month'
+type DailyTab = 'yesterday' | 'today' | 'tomorrow' | 'week' | 'month'
 
 const TABS: { id: DailyTab; label: string }[] = [
-  { id: 'today',    label: 'Today'      },
-  { id: 'tomorrow', label: 'Tomorrow'   },
-  { id: 'week',     label: 'This Week'  },
-  { id: 'month',    label: 'This Month' },
+  { id: 'yesterday', label: 'Yesterday'  },
+  { id: 'today',     label: 'Today'      },
+  { id: 'tomorrow',  label: 'Tomorrow'   },
+  { id: 'week',      label: 'This Week'  },
+  { id: 'month',     label: 'This Month' },
 ]
 
 export function DailyPage() {
@@ -28,8 +29,9 @@ export function DailyPage() {
 
   function handleTabChange(t: DailyTab) {
     setTab(t)
-    if (t === 'today')    setViewDate(new Date())
-    if (t === 'tomorrow') setViewDate(addDays(new Date(), 1))
+    if (t === 'yesterday') setViewDate(addDays(new Date(), -1))
+    if (t === 'today')     setViewDate(new Date())
+    if (t === 'tomorrow')  setViewDate(addDays(new Date(), 1))
   }
 
   const isCustomDate = !isToday(viewDate) && tab === 'today' && !isTomorrow(viewDate)
@@ -53,6 +55,7 @@ export function DailyPage() {
         ))}
       </div>
 
+      {tab === 'yesterday' && <YesterdayView date={viewDate} onDayClick={handleDayClick} />}
       {tab === 'today' && (
         <TodayView
           date={viewDate}
@@ -80,6 +83,24 @@ function useGreeting() {
   const h = now.getHours()
   const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
   return { greeting, timeStr: format(now, 'HH:mm') }
+}
+
+function YesterdayView({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
+  return (
+    <div>
+      <div className="mb-5">
+        <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
+        <p className="text-sm text-ink-400 mt-0.5">Yesterday</p>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
+        <div className="flex flex-col gap-4">
+          <DayView date={date} />
+          <DayTimeline date={date} />
+        </div>
+        <WeekWidget onDayClick={onDayClick} highlightDate={date} />
+      </div>
+    </div>
+  )
 }
 
 function TodayView({

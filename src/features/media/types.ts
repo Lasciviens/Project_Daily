@@ -135,6 +135,22 @@ export interface TMDBCastMember {
   order: number
 }
 
+export interface TMDBCrewMember {
+  id: number
+  name: string
+  job: string
+  department: string
+  profile_path: string | null
+}
+
+export interface TMDBVideo {
+  id: string
+  key: string
+  name: string
+  site: string
+  type: string
+}
+
 export interface TMDBWatchProvider {
   provider_id: number
   provider_name: string
@@ -148,11 +164,20 @@ export interface TMDBWatchProviders {
 }
 
 export interface TMDBMovieFull extends TMDBMovie {
-  credits: { cast: TMDBCastMember[] }
+  tagline: string | null
+  budget: number | null
+  revenue: number | null
+  credits: { cast: TMDBCastMember[]; crew: TMDBCrewMember[] }
+  videos: { results: TMDBVideo[] }
   'watch/providers': { results: Record<string, TMDBWatchProviders> }
 }
 
 export interface TMDBTVFull extends TMDBTVSeries {
-  credits: { cast: TMDBCastMember[] }
+  tagline: string | null
+  created_by: { id: number; name: string }[]
+  networks: { id: number; name: string; logo_path: string | null }[]
+  next_episode_to_air: { name: string; air_date: string; episode_number: number; season_number: number } | null
+  credits: { cast: TMDBCastMember[]; crew: TMDBCrewMember[] }
+  videos: { results: TMDBVideo[] }
   'watch/providers': { results: Record<string, TMDBWatchProviders> }
 }
