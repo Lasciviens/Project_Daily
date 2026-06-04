@@ -31,7 +31,7 @@ export function SessionGuard({ children }: Props) {
     )
   }
 
-  if (!authenticated) return <Navigate to="/#/login" replace />
+  if (!authenticated) return <Navigate to="/login" replace />
 
   return <>{children}</>
 }
