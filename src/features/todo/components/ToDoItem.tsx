@@ -9,19 +9,26 @@ const PRIORITY_DOT: Record<Task['priority'], string> = {
   high:   'bg-red-400',
 }
 
-const DOMAIN_BADGE: Record<Task['domain'], string> = {
-  personal: '',
-  work:     'Work',
-  media:    'Media',
+const DOMAIN_TAG: Record<Task['domain'], { label: string; cls: string }> = {
+  personal: { label: 'Personal', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+  work:     { label: 'Work',     cls: 'bg-blue-50 text-blue-700 border border-blue-200'         },
+  media:    { label: 'Media',    cls: 'bg-purple-50 text-purple-700 border border-purple-200'   },
 }
 
-interface Props { task: Task }
+interface Props {
+  task:         Task
+  canMoveUp?:   boolean
+  canMoveDown?: boolean
+  onMoveUp?:    () => void
+  onMoveDown?:  () => void
+}
 
-export function ToDoItem({ task }: Props) {
+export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }: Props) {
   const [hovered, setHovered] = useState(false)
   const toggle = useToggleTask()
   const remove = useDeleteTask()
   const isDone = task.status === 'done'
+  const tag    = DOMAIN_TAG[task.domain]
 
   return (
     <div
@@ -43,13 +50,7 @@ export function ToDoItem({ task }: Props) {
       >
         {isDone && (
           <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-            <path
-              d="M1 4L3.5 6.5L9 1"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <path d="M1 4L3.5 6.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
       </button>
@@ -62,31 +63,49 @@ export function ToDoItem({ task }: Props) {
             {task.title}
           </span>
         </div>
-        {(task.due_date || DOMAIN_BADGE[task.domain]) && (
-          <div className="flex items-center gap-2 mt-0.5 ml-3">
-            {task.due_date && (
-              <span className="text-[11px] text-ink-400">
-                {format(new Date(task.due_date + 'T00:00:00'), 'MMM d')}
-              </span>
-            )}
-            {DOMAIN_BADGE[task.domain] && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-ink-100 text-ink-500 font-medium">
-                {DOMAIN_BADGE[task.domain]}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-1.5 mt-0.5 ml-3">
+          {task.due_date && (
+            <span className="text-[11px] text-ink-400">
+              {format(new Date(task.due_date + 'T00:00:00'), 'MMM d')}
+            </span>
+          )}
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${tag.cls}`}>
+            {tag.label}
+          </span>
+        </div>
       </div>
 
-      {/* Delete (hover) */}
+      {/* Hover actions */}
       {hovered && (
-        <button
-          onClick={() => remove.mutate(task.id)}
-          disabled={remove.isPending}
-          className="text-ink-300 hover:text-red-400 transition-colors duration-150 text-sm mt-0.5 flex-shrink-0"
-        >
-          ✕
-        </button>
+        <div className="flex items-center gap-0.5 flex-shrink-0 mt-0.5">
+          {onMoveUp && (
+            <button
+              onClick={onMoveUp}
+              disabled={!canMoveUp}
+              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
+              title="Move up"
+            >
+              ↑
+            </button>
+          )}
+          {onMoveDown && (
+            <button
+              onClick={onMoveDown}
+              disabled={!canMoveDown}
+              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
+              title="Move down"
+            >
+              ↓
+            </button>
+          )}
+          <button
+            onClick={() => remove.mutate(task.id)}
+            disabled={remove.isPending}
+            className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
+          >
+            ✕
+          </button>
+        </div>
       )}
     </div>
   )

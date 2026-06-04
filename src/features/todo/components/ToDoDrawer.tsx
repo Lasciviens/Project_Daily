@@ -30,7 +30,7 @@ export function ToDoDrawer() {
           // Mobile: bottom sheet
           'bottom-0 left-0 right-0 h-[75vh] rounded-t-2xl border-t',
           // Desktop: right side panel (overrides mobile styles)
-          'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-72 lg:rounded-none lg:border-t-0 lg:border-l',
+          'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-96 lg:rounded-none lg:border-t-0 lg:border-l',
           // Open / closed
           isToDoOpen
             ? 'translate-y-0 lg:translate-x-0'

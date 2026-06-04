@@ -17,6 +17,7 @@ export interface Task {
   due_time:    string | null
   source_type: TaskSourceType
   source_id:   string | null
+  sort_order:  number
   created_at:  string
   updated_at:  string
 }

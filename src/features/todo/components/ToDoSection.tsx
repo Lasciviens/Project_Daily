@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Task, TaskSection } from '../types'
 import { ToDoItem } from './ToDoItem'
 import { AddTaskModal } from '../../../shared/components/AddTaskModal'
+import { useSwapTaskOrder } from '../hooks/useTodos'
 
 interface Props {
   title:        string
@@ -11,16 +12,17 @@ interface Props {
 }
 
 export function ToDoSection({ title, section, tasks, defaultOpen = true }: Props) {
-  const [isOpen,     setIsOpen]     = useState(defaultOpen)
-  const [modalOpen,  setModalOpen]  = useState(false)
+  const [isOpen,    setIsOpen]    = useState(defaultOpen)
+  const [modalOpen, setModalOpen] = useState(false)
+  const swap = useSwapTaskOrder()
 
-  const openTasks = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
+  const openTasks = [...tasks.filter(t => t.status === 'open' || t.status === 'in_progress')]
+    .sort((a, b) => a.sort_order - b.sort_order)
   const doneTasks = tasks.filter(t => t.status === 'done')
 
   return (
     <>
       <div>
-        {/* Header */}
         <button
           onClick={() => setIsOpen(p => !p)}
           className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-cream-50 transition-colors duration-150"
@@ -42,7 +44,16 @@ export function ToDoSection({ title, section, tasks, defaultOpen = true }: Props
 
         {isOpen && (
           <div>
-            {openTasks.map(task => <ToDoItem key={task.id} task={task} />)}
+            {openTasks.map((task, idx) => (
+              <ToDoItem
+                key={task.id}
+                task={task}
+                canMoveUp={idx > 0}
+                canMoveDown={idx < openTasks.length - 1}
+                onMoveUp={() => swap.mutate({ id1: task.id, id2: openTasks[idx - 1].id })}
+                onMoveDown={() => swap.mutate({ id1: task.id, id2: openTasks[idx + 1].id })}
+              />
+            ))}
 
             <button
               onClick={() => setModalOpen(true)}

@@ -9,6 +9,7 @@ import {
   updateTask,
   toggleTaskDone,
   deleteTask,
+  swapTaskOrder,
 } from '../api/tasksApi'
 import {
   createTodoistTask,
@@ -101,6 +102,14 @@ export function useToggleTask() {
       return task
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+export function useSwapTaskOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id1, id2 }: { id1: string; id2: string }) => swapTaskOrder(id1, id2),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }
 

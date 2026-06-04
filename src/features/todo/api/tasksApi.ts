@@ -7,6 +7,7 @@ export async function fetchTasksBySection(section: string): Promise<Task[]> {
     .select('*')
     .eq('section', section)
     .neq('status', 'cancelled')
+    .order('sort_order', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
@@ -19,6 +20,7 @@ export async function fetchTasksForDay(dateStr: string, section: string): Promis
       .select('*')
       .eq('section', section)
       .neq('status', 'cancelled')
+      .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false }),
     supabase
       .from('tasks')
@@ -26,6 +28,7 @@ export async function fetchTasksForDay(dateStr: string, section: string): Promis
       .eq('due_date', dateStr)
       .neq('section', section)
       .neq('status', 'cancelled')
+      .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false }),
   ])
   if (sectionRes.error) throw sectionRes.error
@@ -40,6 +43,7 @@ export async function fetchTasksByWeek(weekStart: string, weekEnd: string): Prom
       .select('*')
       .eq('section', 'this_week')
       .neq('status', 'cancelled')
+      .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false }),
     supabase
       .from('tasks')
@@ -79,6 +83,7 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
       priority:    input.priority    ?? 'medium',
       due_date:    input.due_date    ?? null,
       status:      'open',
+      sort_order:  0,
       source_type: input.source_type ?? 'manual',
       source_id:   input.source_id   ?? null,
     })
@@ -97,6 +102,20 @@ export async function updateTask(id: string, patch: UpdateTaskInput): Promise<Ta
     .single()
   if (error) throw error
   return data
+}
+
+export async function swapTaskOrder(id1: string, id2: string): Promise<void> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('id, sort_order')
+    .in('id', [id1, id2])
+  if (error) throw error
+  if (!data || data.length !== 2) return
+  const [a, b] = data
+  await Promise.all([
+    supabase.from('tasks').update({ sort_order: b.sort_order, updated_at: new Date().toISOString() }).eq('id', a.id),
+    supabase.from('tasks').update({ sort_order: a.sort_order, updated_at: new Date().toISOString() }).eq('id', b.id),
+  ])
 }
 
 export async function toggleTaskDone(id: string, isDone: boolean): Promise<Task> {
