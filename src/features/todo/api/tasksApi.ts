@@ -59,6 +59,18 @@ export async function fetchTasksByWeek(weekStart: string, weekEnd: string): Prom
   return [...(sectionRes.data ?? []), ...(dateRes.data ?? [])]
 }
 
+export async function fetchWorkTasks(): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('domain', 'work')
+    .neq('status', 'cancelled')
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
 export async function fetchTasksByMonth(monthStart: string, monthEnd: string): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')

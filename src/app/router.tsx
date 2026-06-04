@@ -4,6 +4,7 @@ import { Layout } from './layout'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { DailyPage } from '../features/daily/pages/DailyPage'
 import { MediaPage } from '../features/media/pages/MediaPage'
+import { WorkPage } from '../features/work/pages/WorkPage'
 
 export function Router() {
   return (
@@ -21,7 +22,7 @@ export function Router() {
           <Route index element={<Navigate to="/daily" replace />} />
           <Route path="/daily" element={<DailyPage />} />
           <Route path="/media"  element={<MediaPage />} />
-          <Route path="/work"   element={<div className="p-6 text-ink-500">Work — coming in Phase 4</div>} />
+          <Route path="/work"   element={<WorkPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -5,6 +5,7 @@ import {
   fetchTasksForDay,
   fetchTasksByWeek,
   fetchTasksByMonth,
+  fetchWorkTasks,
   createTask,
   updateTask,
   toggleTaskDone,
@@ -120,6 +121,13 @@ export function useDeleteTask() {
       return deleteTask(id)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+export function useWorkTasks() {
+  return useQuery({
+    queryKey: ['tasks', 'work'],
+    queryFn: fetchWorkTasks,
   })
 }
 
