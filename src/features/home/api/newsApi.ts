@@ -1,8 +1,7 @@
-// allorigins.win is a free CORS proxy that fetches any URL server-side
-// and returns the body as JSON. No API key, no rate limits documented.
-// Format: GET https://api.allorigins.win/get?url={encodedUrl}
-// Response: { contents: "<rss>...</rss>", status: { http_code: 200 } }
-const PROXY = 'https://api.allorigins.win/get?url='
+// corsproxy.io fetches any URL server-side and returns the raw response body
+// with CORS headers added. Free, no API key, well-maintained.
+// Format: GET https://corsproxy.io/?{encodedUrl}  → raw RSS XML
+const PROXY = 'https://corsproxy.io/?'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,15 +64,12 @@ function parseRSS(xml: string, count: number): NewsItem[] {
 
 export async function fetchNews(feedKey: string, count = 8): Promise<NewsItem[]> {
   const feed = NEWS_FEEDS.find(f => f.key === feedKey) ?? NEWS_FEEDS[0]
+  // corsproxy.io returns the raw RSS XML directly (no JSON wrapper)
   const proxied = `${PROXY}${encodeURIComponent(feed.url)}`
 
   const res = await fetch(proxied)
   if (!res.ok) throw new Error(`News proxy ${res.status}`)
 
-  const json = await res.json()
-  if (json.status?.http_code && json.status.http_code >= 400) {
-    throw new Error(`Feed returned ${json.status.http_code}`)
-  }
-
-  return parseRSS(json.contents as string, count)
+  const xml = await res.text()
+  return parseRSS(xml, count)
 }
