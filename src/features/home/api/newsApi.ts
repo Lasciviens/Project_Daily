@@ -91,6 +91,14 @@ export async function fetchNews(feedKey: string, count = 8): Promise<NewsItem[]>
   })
   if (!res.ok) throw new Error(`News proxy ${res.status}`)
 
-  const xml = await res.text()
-  return parseRSS(xml, count)
+  const xml   = await res.text()
+  const items = parseRSS(xml, count)
+
+  // Rewrite thumbnail URLs through the image proxy — CDNs block direct hotlinks from GitHub Pages
+  return items.map(item => ({
+    ...item,
+    thumbnail: item.thumbnail
+      ? `${PROXY_URL}?url=${encodeURIComponent(item.thumbnail)}`
+      : '',
+  }))
 }
