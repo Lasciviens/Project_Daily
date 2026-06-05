@@ -13,14 +13,15 @@ const DURATIONS = [
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 interface Props {
-  dateStr: string
-  onClose: () => void
+  dateStr:          string
+  onClose:          () => void
+  defaultStartTime?: string
 }
 
-export function AddTimeBlockModal({ dateStr, onClose }: Props) {
+export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime }: Props) {
   const [tab,       setTab]       = useState<'once' | 'recurring'>('once')
   const [title,     setTitle]     = useState('')
-  const [startTime, setStartTime] = useState('09:00')
+  const [startTime, setStartTime] = useState(defaultStartTime ?? '09:00')
   const [duration,  setDuration]  = useState(60)
   const [customMin, setCustomMin] = useState('')
   const [days,      setDays]      = useState<number[]>([1, 2, 3, 4, 5]) // Mon–Fri

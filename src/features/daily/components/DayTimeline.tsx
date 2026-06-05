@@ -52,9 +52,31 @@ interface Props { date: Date }
 export function DayTimeline({ date }: Props) {
   const dateStr    = format(date, 'yyyy-MM-dd')
   const dayOfWeek  = getDay(date)
-  const [modal,     setModal]     = useState(false)
-  const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
-  const scrollRef  = useRef<HTMLDivElement>(null)
+  const [modal,      setModal]      = useState(false)
+  const [clickTime,  setClickTime]  = useState<string | undefined>(undefined)
+  const [hoverY,     setHoverY]     = useState<number | null>(null)
+  const [editEvent,  setEditEvent]  = useState<CalendarEvent | null>(null)
+  const scrollRef    = useRef<HTMLDivElement>(null)
+  const timelineRef  = useRef<HTMLDivElement>(null)
+
+  function openModalAt(y: number) {
+    const rawHour = HOUR_START + y / HOUR_PX
+    const snapped = Math.floor(rawHour * 2) / 2  // snap to 30-min slots
+    const clamped = Math.max(HOUR_START, Math.min(HOUR_END - 0.5, snapped))
+    setClickTime(hourToTimeStr(clamped))
+    setModal(true)
+  }
+
+  function handleTimelineClick(e: React.MouseEvent<HTMLDivElement>) {
+    if ((e.target as HTMLElement).closest('[data-block]')) return
+    const rect = timelineRef.current!.getBoundingClientRect()
+    openModalAt(e.clientY - rect.top)
+  }
+
+  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = timelineRef.current!.getBoundingClientRect()
+    setHoverY(e.clientY - rect.top)
+  }
 
   const { data: schedBlocks = [] }  = useScheduleBlocks()
   const { data: timeBlocks  = [] }  = useTimeBlocks(dateStr)
@@ -177,7 +199,7 @@ export function DayTimeline({ date }: Props) {
             <span className="text-xs text-ink-500">{fullness}% booked</span>
           </div>
           <button
-            onClick={() => setModal(true)}
+            onClick={() => { setClickTime(undefined); setModal(true) }}
             className="bg-accent-50 text-accent-600 hover:bg-accent-100 px-2.5 py-1 rounded-full text-xs font-medium transition-colors duration-150"
           >
             + Add
@@ -192,7 +214,14 @@ export function DayTimeline({ date }: Props) {
 
       {/* Timeline — scrollable, shows ~8h at a time */}
       <div ref={scrollRef} className="overflow-y-auto max-h-[520px]">
-        <div className="relative" style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
+        <div
+          ref={timelineRef}
+          className="relative cursor-crosshair"
+          style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}
+          onClick={handleTimelineClick}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHoverY(null)}
+        >
           {/* Hour grid lines */}
           {hours.map(h => (
             <div
@@ -220,6 +249,19 @@ export function DayTimeline({ date }: Props) {
             </div>
           ))}
 
+          {/* Hover time indicator */}
+          {hoverY !== null && (
+            <div
+              className="absolute flex items-center pointer-events-none z-10"
+              style={{ top: `${hoverY}px`, left: 0, right: 0 }}
+            >
+              <span className="text-[9px] text-accent-500 w-10 text-right pr-1.5 select-none">
+                {hourToTimeStr(Math.max(HOUR_START, Math.min(HOUR_END, HOUR_START + hoverY / HOUR_PX)))}
+              </span>
+              <div className="flex-1 border-t border-dashed border-accent-300 opacity-60" />
+            </div>
+          )}
+
           {/* Blocks */}
           {visibleBlocks.map(block => {
             const clampedStart = Math.max(block.startHour, HOUR_START)
@@ -232,8 +274,9 @@ export function DayTimeline({ date }: Props) {
             return (
               <div
                 key={block.id}
-                onClick={isCalEvent ? () => setEditEvent(block.calendarEvent!) : undefined}
-                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : ''}`}
+                data-block="true"
+                onClick={isCalEvent ? (e) => { e.stopPropagation(); setEditEvent(block.calendarEvent!) } : (e) => e.stopPropagation()}
+                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : 'cursor-default'}`}
                 style={{ top: `${topPx}px`, height: `${heightPx}px` }}
               >
                 <p className="text-[11px] font-semibold leading-tight truncate">{block.title}</p>
@@ -273,7 +316,13 @@ export function DayTimeline({ date }: Props) {
         </div>
       </div>
 
-      {modal && <AddTimeBlockModal dateStr={dateStr} onClose={() => setModal(false)} />}
+      {modal && (
+        <AddTimeBlockModal
+          dateStr={dateStr}
+          defaultStartTime={clickTime}
+          onClose={() => { setModal(false); setClickTime(undefined) }}
+        />
+      )}
       {editEvent && <EditCalendarEventModal event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
   )

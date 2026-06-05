@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { addDays, format, isToday, startOfWeek } from 'date-fns'
 import { useWorkTasks, useToggleTask, useDeleteTask, useSwapTaskOrder } from '../../todo/hooks/useTodos'
 import { AddTaskModal } from '../../../shared/components/AddTaskModal'
+import { DayTimeline } from '../../daily/components/DayTimeline'
 import type { Task, TaskSection } from '../../todo/types'
 
 const SECTIONS: { id: TaskSection; label: string; defaultOpen: boolean }[] = [
@@ -186,6 +187,11 @@ export function WorkPage() {
           })}
         </div>
       )}
+
+      {/* Day schedule for selected date */}
+      <div className="mt-6">
+        <DayTimeline date={selectedDate} />
+      </div>
 
       <AddTaskModal
         isOpen={!!modal}
