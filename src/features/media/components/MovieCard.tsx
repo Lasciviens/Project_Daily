@@ -22,7 +22,8 @@ const STATUS_LABELS: Record<UserMovieEntry['status'], string> = {
 
 function formatReleaseDate(date: string | null): string {
   if (!date) return 'TBA'
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  const d = new Date(date + 'T00:00:00')
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 export function MovieCard({ entry, compact, onOpenDetail }: Props) {

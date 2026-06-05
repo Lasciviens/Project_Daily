@@ -300,63 +300,67 @@ function WorkTaskRow({
   onToggle: () => void
   onDelete: () => void
 }) {
-  const [hovered, setHovered] = useState(false)
+  const [hovered,  setHovered]  = useState(false)
+  const [editing,  setEditing]  = useState(false)
   const isDone = task.status === 'done'
 
   return (
-    <div
-      className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors duration-150 ${hovered ? 'bg-cream-100' : ''}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <button
-        onClick={onToggle}
-        className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors duration-150 ${
-          isDone ? 'bg-accent-500 border-accent-500 text-white' : 'border-ink-300 hover:border-accent-400'
-        }`}
+    <>
+      <div
+        className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors duration-150 ${hovered ? 'bg-cream-100' : ''}`}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
-        {isDone && (
-          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-            <path d="M1 4L3.5 6.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
+        <button
+          onClick={onToggle}
+          className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors duration-150 ${
+            isDone ? 'bg-accent-500 border-accent-500 text-white' : 'border-ink-300 hover:border-accent-400'
+          }`}
+        >
+          {isDone && (
+            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+              <path d="M1 4L3.5 6.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
 
-      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
 
-      <div className="flex-1 min-w-0">
-        <span className={`text-sm leading-snug truncate block ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}>
-          {task.title}
-        </span>
-        {task.due_date && !isDone && (
-          <span className="text-[10px] text-ink-400">
-            {format(new Date(task.due_date + 'T00:00:00'), 'MMM d')}
+        <div className="flex-1 min-w-0">
+          <span className={`text-sm leading-snug truncate block ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}>
+            {task.title}
           </span>
+          {task.due_date && !isDone && (
+            <span className="text-[10px] text-ink-400">
+              {format(new Date(task.due_date + 'T00:00:00'), 'MMM d')}
+            </span>
+          )}
+        </div>
+
+        {hovered && (
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            {onMoveUp && (
+              <button onClick={onMoveUp} disabled={!canMoveUp}
+                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
+              >↑</button>
+            )}
+            {onMoveDown && (
+              <button onClick={onMoveDown} disabled={!canMoveDown}
+                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
+              >↓</button>
+            )}
+            <button onClick={() => setEditing(true)}
+              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
+              title="Edit"
+            >✎</button>
+            <button onClick={onDelete}
+              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
+            >✕</button>
+          </div>
         )}
       </div>
 
-      {hovered && (
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          {onMoveUp && (
-            <button
-              onClick={onMoveUp}
-              disabled={!canMoveUp}
-              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
-            >↑</button>
-          )}
-          {onMoveDown && (
-            <button
-              onClick={onMoveDown}
-              disabled={!canMoveDown}
-              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
-            >↓</button>
-          )}
-          <button
-            onClick={onDelete}
-            className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
-          >✕</button>
-        </div>
-      )}
-    </div>
+      <AddTaskModal isOpen={editing} onClose={() => setEditing(false)} task={task} />
+    </>
   )
 }

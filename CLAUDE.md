@@ -410,6 +410,7 @@ If `current_episode >= episodes_in_season`: auto-advance to next season, reset e
 | 7 — Games | 📋 Pending | RP5 DB proxy, game cards (reuses media patterns) |
 | 8 — Training | 📋 Pending | See notes below — new page after Work |
 | 9 — Polish | 📋 Pending | Command Bar, Activity Log, PWA, stats widget |
+| 10 — Home Page | 📋 Pending | Landing/dashboard page — see notes below |
 
 ---
 
@@ -465,6 +466,23 @@ Oslo public transit real-time data.
 - Can call directly from client.
 
 **Do not build either of these until user explicitly asks to start.**
+
+---
+
+## Phase 10 — Home Page (planned, not started)
+
+A dedicated landing/dashboard page at `/#/` or `/#/home` that gives an at-a-glance overview of everything.
+
+**Potential content:**
+- Today's task count + done/open ratio
+- Next calendar event
+- Current weather (yr.no widget when Phase 9 is done)
+- Next Ruter departure (when Phase 9 is done)
+- Recently added media
+- Quick-add task input
+- Week progress bar
+
+**Do not implement until user explicitly asks to start.**
 
 ---
 
