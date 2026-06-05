@@ -1,10 +1,8 @@
-// Fetches an RSS feed URL server-side and returns raw XML with CORS headers.
-// Required because most RSS feeds don't set Access-Control-Allow-Origin,
-// so direct browser fetches from GitHub Pages are blocked.
+// POST /  → fetch RSS feed by URL, return raw XML
+// GET  /?url=<imgUrl> → proxy an image from a trusted feed CDN
 
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
 
-// Only allow fetching from a known list of RSS feed URLs — prevents open proxy abuse
 const ALLOWED_FEED_DOMAINS = [
   'www.vg.no',
   'www.cnnturk.com',
@@ -16,7 +14,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
   return {
     'Access-Control-Allow-Origin':  allowed,
     'Access-Control-Allow-Headers': 'authorization, content-type, x-client-info, apikey',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   }
 }
 
@@ -27,6 +25,54 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders(origin) })
   }
 
+  // ── GET: image proxy ──────────────────────────────────────────────────────
+  if (req.method === 'GET') {
+    const imageUrl = new URL(req.url).searchParams.get('url')
+    if (!imageUrl) {
+      return new Response(JSON.stringify({ error: 'Missing url' }), {
+        status: 400,
+        headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Only proxy HTTPS image URLs — no allowlist needed since CORS already restricts callers
+    let parsedUrl: URL
+    try { parsedUrl = new URL(imageUrl) } catch {
+      return new Response(JSON.stringify({ error: 'Invalid url' }), {
+        status: 400,
+        headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
+      })
+    }
+    if (parsedUrl.protocol !== 'https:') {
+      return new Response(JSON.stringify({ error: 'HTTPS only' }), {
+        status: 400,
+        headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
+      })
+    }
+
+    const upstream = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'lascis-board/1.0 (furkan.hamdemir@power.no)',
+        // Send no Referer so CDN hotlink checks pass
+      },
+    })
+    if (!upstream.ok) {
+      return new Response(JSON.stringify({ error: `Upstream ${upstream.status}` }), {
+        status: 502,
+        headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
+      })
+    }
+
+    return new Response(upstream.body, {
+      headers: {
+        ...corsHeaders(origin),
+        'Content-Type':  upstream.headers.get('content-type') ?? 'image/jpeg',
+        'Cache-Control': 'public, max-age=86400',
+      },
+    })
+  }
+
+  // ── POST: RSS feed proxy ──────────────────────────────────────────────────
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405, headers: corsHeaders(origin) })
   }
@@ -40,7 +86,6 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    // Validate domain against allowlist — prevents this function from being used as an open proxy
     const feedDomain = new URL(url).hostname
     if (!ALLOWED_FEED_DOMAINS.includes(feedDomain)) {
       return new Response(JSON.stringify({ error: 'Domain not allowed' }), {
@@ -52,7 +97,6 @@ Deno.serve(async (req: Request) => {
     const upstream = await fetch(url, {
       headers: { 'User-Agent': 'lascis-board/1.0 (furkan.hamdemir@power.no)' },
     })
-
     if (!upstream.ok) {
       return new Response(JSON.stringify({ error: `Upstream ${upstream.status}` }), {
         status: 502,
