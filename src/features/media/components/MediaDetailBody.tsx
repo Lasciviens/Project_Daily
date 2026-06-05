@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { PlanThisButton } from './PlanThisButton'
+import { SimilarRow } from './SimilarRow'
 import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
 import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import type {
@@ -15,6 +16,7 @@ interface Props {
   mediaType: 'movie' | 'tv'
   userEntry?: UserMovieEntry | UserTVEntry | null
   onAdded?: () => void
+  onOpenDetail?: (id: number, type: 'movie' | 'tv') => void
 }
 
 const MOVIE_STATUSES: { value: MediaStatus; label: string }[] = [
@@ -81,8 +83,9 @@ function ProviderLogo({ provider }: { provider: TMDBWatchProvider }) {
   )
 }
 
-export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props) {
+export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenDetail }: Props) {
   const [selectedStatus, setSelectedStatus] = useState<MediaStatus>('wishlist')
+  const [showTrailer,    setShowTrailer]    = useState(false)
 
   const isMovie = mediaType === 'movie'
   const movie   = isMovie ? (detail as TMDBMovieFull) : null
@@ -90,8 +93,10 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
 
   const cast          = detail.credits?.cast?.slice(0, 10) ?? []
   const allProviders  = detail['watch/providers']?.results ?? {}
-  const providerData  = allProviders['US'] ?? allProviders[Object.keys(allProviders)[0]]
+  // Prefer NO (Norway) then TR (Turkey) then US then first available
+  const providerData  = allProviders['NO'] ?? allProviders['TR'] ?? allProviders['US'] ?? allProviders[Object.keys(allProviders)[0]]
   const streamProviders = (providerData?.flatrate ?? []).slice(0, 6)
+  const providerCountry = allProviders['NO'] ? 'NO' : allProviders['TR'] ? 'TR' : allProviders['US'] ? 'US' : Object.keys(allProviders)[0]
 
   const director    = movie?.credits?.crew?.find(c => c.job === 'Director')
   const trailer     = findTrailer(detail.videos?.results ?? [])
@@ -198,7 +203,9 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
 
         {streamProviders.length > 0 && (
           <div className="mb-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Streaming</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">
+              Streaming <span className="text-ink-300 normal-case tracking-normal font-normal">({providerCountry})</span>
+            </p>
             <div className="flex gap-2">
               {streamProviders.map(p => <ProviderLogo key={p.provider_id} provider={p} />)}
             </div>
@@ -236,18 +243,46 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
                 Next: S{tv.next_episode_to_air.season_number}E{tv.next_episode_to_air.episode_number} · {formatAirDate(tv.next_episode_to_air.air_date)}
               </p>
             )}
-            {trailer && (
-              <a
-                href={`https://youtube.com/watch?v=${trailer.key}`}
-                target="_blank"
-                rel="noopener noreferrer"
+            {trailer && !showTrailer && (
+              <button
+                onClick={() => setShowTrailer(true)}
                 className="text-xs text-accent-600 hover:text-accent-700 transition-colors duration-150 w-fit"
               >
                 ▶ Watch trailer
-              </a>
+              </button>
             )}
           </div>
         )}
+
+        {/* Inline trailer embed */}
+        {showTrailer && trailer && (
+          <div className="mb-4">
+            <div className="relative aspect-video rounded-lg overflow-hidden bg-black">
+              <iframe
+                src={`https://www.youtube.com/embed/${trailer.key}?autoplay=1`}
+                title="Trailer"
+                allow="autoplay; fullscreen"
+                allowFullScreen
+                className="absolute inset-0 w-full h-full"
+              />
+            </div>
+            <button
+              onClick={() => setShowTrailer(false)}
+              className="text-[10px] text-ink-400 hover:text-ink-600 mt-1"
+            >
+              ✕ Close trailer
+            </button>
+          </div>
+        )}
+
+        {/* Similar titles */}
+        <div className="mb-4">
+          <SimilarRow
+            tmdbId={detail.id}
+            mediaType={mediaType}
+            onOpenDetail={(id, type) => onOpenDetail?.(id, type)}
+          />
+        </div>
 
         <div className="pt-3 border-t border-ink-100 space-y-3">
           {isOwned && entryId ? (

@@ -10,6 +10,7 @@ interface Props {
   userEntry?: UserMovieEntry | UserTVEntry | null
   onClose: () => void
   onAdded?: () => void
+  onOpenDetail?: (id: number, type: 'movie' | 'tv') => void
 }
 
 function Skeleton() {
@@ -26,7 +27,7 @@ function Skeleton() {
   )
 }
 
-export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdded }: Props) {
+export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdded, onOpenDetail }: Props) {
   const { data: movieFull, isLoading: movieLoading } = useMovieFull(mediaType === 'movie' ? tmdbId : null)
   const { data: tvFull,    isLoading: tvLoading    } = useTVFull(mediaType === 'tv' ? tmdbId : null)
 
@@ -112,6 +113,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
               mediaType={mediaType}
               userEntry={userEntry}
               onAdded={onAdded}
+              onOpenDetail={onOpenDetail}
             />
           )}
         </div>

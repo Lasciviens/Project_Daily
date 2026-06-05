@@ -5,6 +5,9 @@ import { MovieCard } from '../components/MovieCard'
 import { TVCard } from '../components/TVCard'
 import { DiscoveryTabs } from '../components/DiscoveryTabs'
 import { MediaDetailModal } from '../components/MediaDetailModal'
+import { TonightPicker } from '../components/TonightPicker'
+import { MediaStats } from '../components/MediaStats'
+import { ReleaseCalendar } from '../components/ReleaseCalendar'
 import { useMovies } from '../hooks/useMovies'
 import { useTVSeries } from '../hooks/useTVSeries'
 import type { UserMovieEntry, UserTVEntry } from '../types'
@@ -26,7 +29,6 @@ export function MediaPage() {
     setDetail({ tmdbId: id, type })
   }
 
-  // Find if current detail item is already in user's library
   const userEntry: UserMovieEntry | UserTVEntry | null | undefined = detail
     ? detail.type === 'movie'
       ? movieEntries.find(e => e.movie.tmdb_id === detail.tmdbId)
@@ -41,6 +43,8 @@ export function MediaPage() {
   const wishlistTV  = tvEntries.filter(e => e.status === 'wishlist')
   const completedTV = tvEntries.filter(e => e.status === 'completed' || e.status === 'dropped')
 
+  const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-5">
@@ -50,6 +54,27 @@ export function MediaPage() {
       <div className="mb-5">
         <MediaSearch onSelectResult={(id, type) => openDetail(id, type)} />
       </div>
+
+      {/* Tonight's pick + release calendar — only when library has content */}
+      {hasLibrary && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <TonightPicker
+            movieEntries={movieEntries}
+            tvEntries={tvEntries}
+            onOpenDetail={openDetail}
+          />
+          <ReleaseCalendar
+            movieEntries={movieEntries}
+            tvEntries={tvEntries}
+            onOpenDetail={openDetail}
+          />
+        </div>
+      )}
+
+      {/* Stats — collapsed by default, only when there's something to show */}
+      {hasLibrary && (
+        <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} />
+      )}
 
       {/* Main tab switcher */}
       <div className="flex gap-1 mb-6 bg-cream-100 rounded-lg p-1 w-fit">
@@ -150,6 +175,7 @@ export function MediaPage() {
           userEntry={userEntry}
           onClose={() => setDetail(null)}
           onAdded={() => setDetail(null)}
+          onOpenDetail={openDetail}
         />
       )}
     </div>
