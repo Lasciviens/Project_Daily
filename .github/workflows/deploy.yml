@@ -25,7 +25,15 @@ jobs:
           version: latest
 
       - name: Deploy Edge Functions
-        run: supabase functions deploy --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        # news-proxy is a public RSS proxy with its own domain allowlist — no JWT needed
+        # All other functions keep default JWT verification
+        run: |
+          supabase functions deploy news-proxy --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
+          supabase functions deploy ai-proxy --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy calendar-oauth --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy calendar-token --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy calendar-disconnect --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy todoist-proxy --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
