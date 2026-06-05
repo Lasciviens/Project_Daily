@@ -1,7 +1,7 @@
-// corsproxy.io fetches any URL server-side and returns the raw response body
-// with CORS headers added. Free, no API key, well-maintained.
-// Format: GET https://corsproxy.io/?{encodedUrl}  → raw RSS XML
-const PROXY = 'https://corsproxy.io/?'
+// RSS feeds are blocked by CORS when fetched directly from GitHub Pages.
+// We proxy through a Supabase Edge Function that fetches server-side and adds CORS headers.
+// The Edge Function validates the target domain against a fixed allowlist — not an open proxy.
+const PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/news-proxy`
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,10 +64,12 @@ function parseRSS(xml: string, count: number): NewsItem[] {
 
 export async function fetchNews(feedKey: string, count = 8): Promise<NewsItem[]> {
   const feed = NEWS_FEEDS.find(f => f.key === feedKey) ?? NEWS_FEEDS[0]
-  // corsproxy.io returns the raw RSS XML directly (no JSON wrapper)
-  const proxied = `${PROXY}${encodeURIComponent(feed.url)}`
 
-  const res = await fetch(proxied)
+  const res = await fetch(PROXY_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ url: feed.url }),
+  })
   if (!res.ok) throw new Error(`News proxy ${res.status}`)
 
   const xml = await res.text()
