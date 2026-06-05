@@ -1,15 +1,16 @@
-// corsproxy.io fetches any URL server-side and returns the raw response body
-// with CORS headers added. Free, no API key, well-maintained.
-// Format: GET https://corsproxy.io/?{encodedUrl}  → raw RSS XML
-const PROXY = 'https://corsproxy.io/?'
+// RSS feeds are blocked by CORS when fetched directly from GitHub Pages.
+// We proxy through a Supabase Edge Function that fetches server-side and adds CORS headers.
+// The Edge Function validates the target domain against a fixed allowlist — not an open proxy.
+const PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/news-proxy`
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface NewsItem {
-  title:   string
-  link:    string
-  pubDate: string
+  title:     string
+  link:      string
+  pubDate:   string
   thumbnail: string
+  excerpt:   string   // plain-text first ~120 chars of <description>
 }
 
 export interface NewsFeed {
@@ -46,16 +47,38 @@ function parseRSS(xml: string, count: number): NewsItem[] {
   return items.map(item => {
     const text = (tag: string) => item.querySelector(tag)?.textContent?.trim() ?? ''
 
-    // Thumbnail: try <media:thumbnail url="...">, then <enclosure url="...">, then og image in description
-    const mediaThumbnail = item.getElementsByTagNameNS('http://search.yahoo.com/mrss/', 'thumbnail')[0]
+    // Thumbnail: try sources in priority order.
+    // <media:thumbnail> — BBC, many feeds
+    // <media:content type="image/..."> — VG and others
+    // <enclosure type="image/..."> — some feeds
+    // <img> inside <description> HTML — CNN Türk fallback
+    const MRSS = 'http://search.yahoo.com/mrss/'
+    const mediaThumbnail = item.getElementsByTagNameNS(MRSS, 'thumbnail')[0]
+    const mediaContent   = Array.from(item.getElementsByTagNameNS(MRSS, 'content'))
+      .find(el => el.getAttribute('type')?.startsWith('image') || el.getAttribute('url'))
     const enclosure      = item.querySelector('enclosure[type^="image"]')
-    const thumbnail      = mediaThumbnail?.getAttribute('url') ?? enclosure?.getAttribute('url') ?? ''
+
+    // Extract first <img src> from raw description HTML as last resort
+    const rawDesc   = item.querySelector('description')?.textContent ?? ''
+    const imgInDesc = rawDesc.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] ?? ''
+
+    const thumbnail = (
+      mediaThumbnail?.getAttribute('url') ??
+      mediaContent?.getAttribute('url')   ??
+      enclosure?.getAttribute('url')      ??
+      imgInDesc
+    )
+
+    // Excerpt: strip HTML tags from <description>, collapse whitespace, cap at 120 chars
+    const descText = rawDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    const excerpt  = descText.length > 120 ? descText.slice(0, 120).trimEnd() + '…' : descText
 
     return {
-      title:     text('title'),
-      link:      (text('link') || item.querySelector('guid')?.textContent?.trim()) ?? '',
-      pubDate:   text('pubDate'),
+      title:   text('title'),
+      link:    (text('link') || item.querySelector('guid')?.textContent?.trim()) ?? '',
+      pubDate: text('pubDate'),
       thumbnail,
+      excerpt,
     }
   })
 }
@@ -64,10 +87,12 @@ function parseRSS(xml: string, count: number): NewsItem[] {
 
 export async function fetchNews(feedKey: string, count = 8): Promise<NewsItem[]> {
   const feed = NEWS_FEEDS.find(f => f.key === feedKey) ?? NEWS_FEEDS[0]
-  // corsproxy.io returns the raw RSS XML directly (no JSON wrapper)
-  const proxied = `${PROXY}${encodeURIComponent(feed.url)}`
 
-  const res = await fetch(proxied)
+  const res = await fetch(PROXY_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ url: feed.url }),
+  })
   if (!res.ok) throw new Error(`News proxy ${res.status}`)
 
   const xml = await res.text()

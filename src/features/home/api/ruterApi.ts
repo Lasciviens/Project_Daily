@@ -44,7 +44,8 @@ export const TRANSPORT_ICON: Record<string, string> = {
 }
 
 // Visperud: confirmed via https://reise.frammr.no/departures/NSR:StopPlace:5492
-// Sinsenkrysset: NSR:StopPlace:6039 — nearest major stop to Sinsenveien 47D (0585 Oslo)
+// Sinsenveien: NSR:StopPlace:58221 — bus stop on lines 23/31, nearest to Sinsenveien 47D (0585 Oslo)
+//   (not to be confused with Sinsenkrysset NSR:StopPlace:6039, which is a different stop)
 // User can override route stops via the Routes tab search
 export const DEFAULT_STOP: StopResult = {
   id:   'NSR:StopPlace:5492',
@@ -54,13 +55,13 @@ export const DEFAULT_STOP: StopResult = {
 export const PRESET_ROUTES: { label: string; from: StopResult; to: StopResult }[] = [
   {
     label: '🏠 Home',
-    from:  { id: 'NSR:StopPlace:6039', name: 'Sinsenkrysset' },
-    to:    { id: 'NSR:StopPlace:5492', name: 'Visperud' },
+    from:  { id: 'NSR:StopPlace:58221', name: 'Sinsenveien' },
+    to:    { id: 'NSR:StopPlace:5492',  name: 'Visperud' },
   },
   {
     label: '💼 Work',
-    from:  { id: 'NSR:StopPlace:5492', name: 'Visperud' },
-    to:    { id: 'NSR:StopPlace:6039', name: 'Sinsenkrysset' },
+    from:  { id: 'NSR:StopPlace:5492',  name: 'Visperud' },
+    to:    { id: 'NSR:StopPlace:58221', name: 'Sinsenveien' },
   },
 ]
 

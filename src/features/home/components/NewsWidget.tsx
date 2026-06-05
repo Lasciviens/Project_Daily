@@ -62,19 +62,26 @@ export function NewsWidget() {
                 rel="noopener noreferrer"
                 className="group flex gap-3"
               >
-                {item.thumbnail && (
+                {item.thumbnail ? (
                   <img
                     src={item.thumbnail}
                     alt=""
-                    className="w-16 h-12 object-cover rounded-md flex-shrink-0 bg-ink-100"
+                    className="w-20 h-16 object-cover rounded-md flex-shrink-0 bg-ink-100"
                     onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
                   />
+                ) : (
+                  <div className="w-20 h-16 rounded-md flex-shrink-0 bg-ink-100" />
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-ink-800 group-hover:text-accent-600 leading-snug line-clamp-2 transition-colors duration-150">
+                  <div className="text-[15px] font-semibold text-ink-900 group-hover:text-accent-600 leading-snug line-clamp-2 transition-colors duration-150">
                     {item.title}
                   </div>
-                  <div className="text-xs text-ink-400 mt-1">
+                  {item.excerpt && (
+                    <div className="text-xs text-ink-500 mt-0.5 line-clamp-2 leading-snug">
+                      {item.excerpt}
+                    </div>
+                  )}
+                  <div className="text-[11px] text-ink-400 mt-1">
                     {new Date(item.pubDate).toLocaleDateString('en-GB', {
                       day: 'numeric', month: 'short',
                       hour: '2-digit', minute: '2-digit',
