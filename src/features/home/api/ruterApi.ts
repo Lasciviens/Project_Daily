@@ -1,15 +1,19 @@
-const JOURNEY = 'https://api.entur.io/journey-planner/v3/graphql'
+const JOURNEY  = 'https://api.entur.io/journey-planner/v3/graphql'
 const GEOCODER = 'https://api.entur.io/geocoder/v1/autocomplete'
 const CLIENT   = 'lascis-board'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Departure {
   line:        string
   transport:   string
   destination: string
-  aimed:       string  // ISO
-  expected:    string  // ISO
+  aimed:       string   // ISO datetime
+  expected:    string   // ISO datetime
   realtime:    boolean
   platform?:   string
+  // quay description from Entur often contains direction, e.g. "Retning sentrum"
+  direction?:  string
 }
 
 export interface StopResult {
@@ -17,9 +21,55 @@ export interface StopResult {
   name: string
 }
 
+export interface TripLeg {
+  mode:       string
+  line:       string
+  departure:  string   // ISO datetime (expected)
+  aimed:      string   // ISO datetime (aimed)
+  from:       string
+  to:         string
+}
+
+export interface TripPattern {
+  duration:  number   // seconds
+  departure: string   // ISO datetime
+  arrival:   string   // ISO datetime
+  legs:      TripLeg[]
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+export const TRANSPORT_ICON: Record<string, string> = {
+  bus: '🚌', tram: '🚊', metro: '🚇', rail: '🚂', ferry: '⛴', water: '⛴', foot: '🚶',
+}
+
+// Visperud confirmed via https://reise.frammr.no/departures/NSR:StopPlace:5492
+// Sinsenveien: NSR:StopPlace:58221 (sourced from busskartet.no; verify in-app)
+export const DEFAULT_STOP: StopResult = {
+  id:   'NSR:StopPlace:5492',
+  name: 'Visperud',
+}
+
+export const PRESET_ROUTES: { label: string; from: StopResult; to: StopResult }[] = [
+  {
+    label: '🏠 Home',
+    from:  { id: 'NSR:StopPlace:5492',  name: 'Visperud' },
+    to:    { id: 'NSR:StopPlace:58221', name: 'Sinsenveien' },
+  },
+  {
+    label: '💼 Work',
+    from:  { id: 'NSR:StopPlace:58221', name: 'Sinsenveien' },
+    to:    { id: 'NSR:StopPlace:5492',  name: 'Visperud' },
+  },
+]
+
+// ─── Departures ───────────────────────────────────────────────────────────────
+
+// quay.description from Entur often holds direction text, e.g. "Mot sentrum"
+// We surface it as a direction label next to the departure line.
 export async function fetchDepartures(
   stopId: string,
-  count = 8
+  count = 10
 ): Promise<{ stopName: string; departures: Departure[] }> {
   const query = `{
     stopPlace(id: "${stopId}") {
@@ -28,7 +78,7 @@ export async function fetchDepartures(
         realtime
         aimedDepartureTime
         expectedDepartureTime
-        quay { publicCode }
+        quay { publicCode description name }
         serviceJourney { line { publicCode transportMode } }
         destinationDisplay { frontText }
       }
@@ -48,7 +98,7 @@ export async function fetchDepartures(
     realtime: boolean
     aimedDepartureTime: string
     expectedDepartureTime: string
-    quay?: { publicCode?: string }
+    quay?: { publicCode?: string; description?: string; name?: string }
     serviceJourney: { line: { publicCode: string; transportMode: string } }
     destinationDisplay: { frontText: string }
   }) => ({
@@ -59,10 +109,14 @@ export async function fetchDepartures(
     expected:    c.expectedDepartureTime,
     realtime:    c.realtime,
     platform:    c.quay?.publicCode,
+    // Prefer quay description (direction) over quay name; both may be undefined
+    direction:   c.quay?.description ?? c.quay?.name,
   }))
 
   return { stopName: stop.name, departures }
 }
+
+// ─── Stop search ─────────────────────────────────────────────────────────────
 
 export async function searchStops(query: string): Promise<StopResult[]> {
   const res = await fetch(
@@ -77,11 +131,69 @@ export async function searchStops(query: string): Promise<StopResult[]> {
   }))
 }
 
-export const TRANSPORT_ICON: Record<string, string> = {
-  bus: '🚌', tram: '🚊', metro: '🚇', rail: '🚂', ferry: '⛴', water: '⛴',
-}
+// ─── Trip planner ─────────────────────────────────────────────────────────────
 
-export const DEFAULT_STOP: StopResult = {
-  id:   'NSR:StopPlace:58366',
-  name: 'Nationaltheatret',
+// Returns next N trip patterns between two stops using Entur journey planner.
+// Each pattern may include multiple legs (transfers).
+export async function fetchTrips(
+  fromId: string,
+  toId:   string,
+  count = 5
+): Promise<TripPattern[]> {
+  const query = `{
+    trip(
+      from: { place: "${fromId}" }
+      to:   { place: "${toId}" }
+      numTripPatterns: ${count}
+    ) {
+      tripPatterns {
+        duration
+        expectedStartTime
+        expectedEndTime
+        legs {
+          mode
+          fromPlace { name }
+          toPlace { name }
+          fromEstimatedCall {
+            aimedDepartureTime
+            expectedDepartureTime
+          }
+          line { publicCode transportMode }
+        }
+      }
+    }
+  }`
+  const res = await fetch(JOURNEY, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': CLIENT },
+    body:    JSON.stringify({ query }),
+  })
+  if (!res.ok) throw new Error(`Entur trip ${res.status}`)
+  const json = await res.json()
+  const patterns = json.data?.trip?.tripPatterns ?? []
+
+  return patterns.map((p: {
+    duration: number
+    expectedStartTime: string
+    expectedEndTime: string
+    legs: {
+      mode: string
+      fromPlace: { name: string }
+      toPlace:   { name: string }
+      fromEstimatedCall?: { aimedDepartureTime: string; expectedDepartureTime: string }
+      line?: { publicCode: string; transportMode: string }
+    }[]
+  }) => ({
+    duration:  p.duration,
+    departure: p.expectedStartTime,
+    arrival:   p.expectedEndTime,
+    legs: p.legs.map(l => ({
+      mode:      l.mode,
+      line:      l.line?.publicCode ?? '',
+      departure: l.fromEstimatedCall?.expectedDepartureTime ?? p.expectedStartTime,
+      aimed:     l.fromEstimatedCall?.aimedDepartureTime    ?? p.expectedStartTime,
+      from:      l.fromPlace.name,
+      to:        l.toPlace.name,
+    })),
+  }))
 }

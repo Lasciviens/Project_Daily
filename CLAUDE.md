@@ -91,6 +91,15 @@ If a component exceeds ~150 lines, split it. One responsibility per file.
 Three similar things is not enough to abstract. Five similar things with identical structure: abstract.
 Don't build for hypothetical future requirements. Build for what's in the current phase.
 
+### Home page widget code standards (IMPORTANT — enforced by user request)
+- Every widget lives in its own file under `src/features/home/components/`
+- Every API module lives in its own file under `src/features/home/api/`
+- Every hook lives in its own file under `src/features/home/hooks/`
+- Use TypeScript interfaces for all data shapes — no inline `any`
+- Comment the WHY when it's non-obvious: API quirks, cross-rate math, Entur quay logic, etc.
+- All widgets share `WidgetShell` + `useWidgetState` for collapse/sync/interval controls
+- When collapsed, the widget's query must be disabled (no API calls)
+
 ### Error handling
 Only at system boundaries (Supabase calls, TMDB calls). Don't wrap internal functions with try/catch.
 TanStack Query handles loading/error states — use `isLoading`, `error` from `useQuery`.
