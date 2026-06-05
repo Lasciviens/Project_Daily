@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { SessionGuard } from '../security/sessionGuard'
 import { Layout } from './layout'
 import { LoginPage } from '../features/auth/pages/LoginPage'
+import { HomePage } from '../features/home/pages/HomePage'
 import { DailyPage } from '../features/daily/pages/DailyPage'
 import { MediaPage } from '../features/media/pages/MediaPage'
 import { WorkPage } from '../features/work/pages/WorkPage'
@@ -19,10 +20,11 @@ export function Router() {
             </SessionGuard>
           }
         >
-          <Route index element={<Navigate to="/daily" replace />} />
+          <Route index element={<Navigate to="/home" replace />} />
+          <Route path="/home"  element={<HomePage />} />
           <Route path="/daily" element={<DailyPage />} />
-          <Route path="/media"  element={<MediaPage />} />
-          <Route path="/work"   element={<WorkPage />} />
+          <Route path="/media" element={<MediaPage />} />
+          <Route path="/work"  element={<WorkPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
