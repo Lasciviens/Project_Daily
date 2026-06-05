@@ -7,6 +7,7 @@ import type {
   TMDBMovieFull, TMDBTVFull,
   TMDBCastMember, TMDBWatchProvider,
   UserMovieEntry, UserTVEntry, MediaStatus,
+  TMDBVideo,
 } from '../types'
 
 interface Props {
@@ -33,6 +34,18 @@ function formatRuntime(mins: number): string {
   const h = Math.floor(mins / 60)
   const m = mins % 60
   return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+function formatMoney(amount: number): string {
+  return `$${(amount / 1_000_000).toFixed(1)}M`
+}
+
+function formatAirDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function findTrailer(videos: TMDBVideo[]): TMDBVideo | undefined {
+  return videos.find(v => v.site === 'YouTube' && v.type === 'Trailer')
 }
 
 function CastMember({ member }: { member: TMDBCastMember }) {
@@ -75,10 +88,14 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
   const movie   = isMovie ? (detail as TMDBMovieFull) : null
   const tv      = !isMovie ? (detail as TMDBTVFull) : null
 
-  const cast        = detail.credits?.cast?.slice(0, 10) ?? []
-  const allProviders = detail['watch/providers']?.results ?? {}
-  const providerData = allProviders['US'] ?? allProviders[Object.keys(allProviders)[0]]
+  const cast          = detail.credits?.cast?.slice(0, 10) ?? []
+  const allProviders  = detail['watch/providers']?.results ?? {}
+  const providerData  = allProviders['US'] ?? allProviders[Object.keys(allProviders)[0]]
   const streamProviders = (providerData?.flatrate ?? []).slice(0, 6)
+
+  const director    = movie?.credits?.crew?.find(c => c.job === 'Director')
+  const trailer     = findTrailer(detail.videos?.results ?? [])
+  const hasBudget   = (movie?.budget ?? 0) > 0
 
   const statuses = isMovie ? MOVIE_STATUSES : TV_STATUSES
 
@@ -136,8 +153,12 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
 
       <div className="flex-1 min-w-0">
         {detail.overview && (
-          <p className="text-sm text-ink-600 leading-relaxed mb-3">{detail.overview}</p>
+          <p className="text-sm text-ink-600 leading-relaxed mb-1">{detail.overview}</p>
         )}
+        {detail.tagline && (
+          <p className="text-xs italic text-ink-400 mb-3">{detail.tagline}</p>
+        )}
+        {!detail.tagline && detail.overview && <div className="mb-3" />}
 
         {detail.genres?.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-3">
@@ -172,6 +193,50 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
             <div className="flex gap-2">
               {streamProviders.map(p => <ProviderLogo key={p.provider_id} provider={p} />)}
             </div>
+          </div>
+        )}
+
+        {/* Compact info row: director, budget/revenue, TV metadata */}
+        {(director || hasBudget || tv?.created_by?.length || tv?.networks?.length || tv?.next_episode_to_air || trailer) && (
+          <div className="mb-4 flex flex-col gap-1">
+            {director && (
+              <p className="text-xs text-ink-500">
+                <span className="text-ink-400">Director </span>{director.name}
+              </p>
+            )}
+            {hasBudget && (
+              <p className="text-xs text-ink-500">
+                <span className="text-ink-400">Budget </span>{formatMoney(movie!.budget!)}
+                {(movie!.revenue ?? 0) > 0 && (
+                  <><span className="text-ink-300"> · </span><span className="text-ink-400">Revenue </span>{formatMoney(movie!.revenue!)}</>
+                )}
+              </p>
+            )}
+            {tv?.created_by?.length ? (
+              <p className="text-xs text-ink-500">
+                <span className="text-ink-400">Created by </span>{tv.created_by.map(c => c.name).join(', ')}
+              </p>
+            ) : null}
+            {tv?.networks?.length ? (
+              <p className="text-xs text-ink-500">
+                <span className="text-ink-400">Network </span>{tv.networks.map(n => n.name).join(', ')}
+              </p>
+            ) : null}
+            {tv?.next_episode_to_air && (
+              <p className="text-xs text-accent-600">
+                Next: S{tv.next_episode_to_air.season_number}E{tv.next_episode_to_air.episode_number} · {formatAirDate(tv.next_episode_to_air.air_date)}
+              </p>
+            )}
+            {trailer && (
+              <a
+                href={`https://youtube.com/watch?v=${trailer.key}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-accent-600 hover:text-accent-700 transition-colors duration-150 w-fit"
+              >
+                ▶ Watch trailer
+              </a>
+            )}
           </div>
         )}
 

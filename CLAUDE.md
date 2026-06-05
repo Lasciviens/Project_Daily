@@ -404,11 +404,85 @@ If `current_episode >= episodes_in_season`: auto-advance to next season, reset e
 | 2 — Daily + To-Do | ✅ Done | Tasks CRUD, DayView, WeekWidget, MonthWidget, ToDoDrawer |
 | 2.5 — UI Polish | ✅ Done | Color themes, week nav, day click, AddTaskModal, date in nav |
 | 3 — Media | 🔄 In Progress | Migration written; components in progress |
-| 4 — Work | 📋 Pending | tasks table domain='work', WorkPage |
-| 5 — AI | 📋 Pending | Edge Function proxy, AIPanel, AIActionConfirm |
-| 6 — Calendar | 📋 Pending | Google Calendar OAuth, read-only events, notify_before_days wiring |
+| 4 — Work | ✅ Done | WorkPage with task board, stats, date nav, week calendar |
+| 5 — AI | ✅ Done | Gemini 2.5 Flash proxy, AIPanel chat, function calling (create_task) |
+| 6 — Calendar | 📋 Pending | Google Calendar OAuth read-only done; **write/edit events = Phase 6.1** |
 | 7 — Games | 📋 Pending | RP5 DB proxy, game cards (reuses media patterns) |
-| 8 — Polish | 📋 Pending | Command Bar, Activity Log, PWA, stats widget |
+| 8 — Training | 📋 Pending | See notes below — new page after Work |
+| 9 — Polish | 📋 Pending | Command Bar, Activity Log, PWA, stats widget |
+| 10 — Home Page | 📋 Pending | Landing/dashboard page — see notes below |
+
+---
+
+## Phase 6.1 — Google Calendar Event Editing (not yet started)
+
+Currently calendar events are **read-only**. Editing requires:
+- Google Calendar API write scope: `https://www.googleapis.com/auth/calendar.events`
+- Re-auth flow (current OAuth only requests read scope)
+- `PATCH /calendar/v3/calendars/{calendarId}/events/{eventId}` for edits
+- `DELETE` for deletions
+- New Supabase Edge Function: `calendar-write`
+- UI: click event in DayTimeline → edit modal (title, time, description)
+
+**Do not implement until user explicitly starts Phase 6.1.**
+
+---
+
+## Phase 8 — Training Page (planned, not started)
+
+New page after Work in the nav: `/#/training`
+
+Goal: Track workouts, runs, gym sessions.
+
+**Potential integrations to research when starting:**
+- **Strava API** — OAuth, free tier; reads activities (runs, rides, swims). Best option.
+- **Garmin Connect API** — Limited, requires partnership. Harder.
+- **Apple Health / Google Fit** — No direct web API; would need a mobile companion.
+- **Manual logging** — Fallback: user manually logs sets/reps/duration into a `training_sessions` table.
+
+**Recommended approach:** Strava OAuth via Edge Function + manual log fallback.
+Migration needed: `training_sessions` table (date, type, duration_minutes, notes, source: 'manual'|'strava').
+
+---
+
+## Future Integrations — Research Notes
+
+### Yr.no Weather (Phase 9+)
+Norwegian weather service with a free, no-auth REST API.
+- API: `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat={lat}&lon={lon}`
+- No API key needed. Requires `User-Agent` header with app name + contact email.
+- Returns hourly forecast for 9 days.
+- Show in Daily header: current temp + icon for today's location.
+- User's location: Oslo area (ask user to confirm coords or use browser geolocation).
+- Can be called directly from client (no proxy needed — public API).
+
+### RUTER Public Transit (Phase 9+)
+Oslo public transit real-time data.
+- API: Entur / Ruter uses **EnTur JourneyPlanner API** (GraphQL): `https://api.entur.io/journey-planner/v3/graphql`
+- No API key needed for basic use. Set `ET-Client-Name` header.
+- User wants: select favorite bus/tram lines, see next departures from preferred stops.
+- UI: small widget on Daily page showing "Next 68 bus: 4 min, 12 min"
+- Need to store: user's preferred stop IDs and line numbers (localStorage or Supabase).
+- Can call directly from client.
+
+**Do not build either of these until user explicitly asks to start.**
+
+---
+
+## Phase 10 — Home Page (planned, not started)
+
+A dedicated landing/dashboard page at `/#/` or `/#/home` that gives an at-a-glance overview of everything.
+
+**Potential content:**
+- Today's task count + done/open ratio
+- Next calendar event
+- Current weather (yr.no widget when Phase 9 is done)
+- Next Ruter departure (when Phase 9 is done)
+- Recently added media
+- Quick-add task input
+- Week progress bar
+
+**Do not implement until user explicitly asks to start.**
 
 ---
 

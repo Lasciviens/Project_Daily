@@ -32,10 +32,10 @@ export const getTVDetails = (tmdbId: number) =>
   tmdbFetch<TMDBTVSeries>(`/tv/${tmdbId}`)
 
 export const getMovieFull = (tmdbId: number) =>
-  tmdbFetch<TMDBMovieFull>(`/movie/${tmdbId}`, { append_to_response: 'credits,watch/providers' })
+  tmdbFetch<TMDBMovieFull>(`/movie/${tmdbId}`, { append_to_response: 'credits,watch/providers,videos' })
 
 export const getTVFull = (tmdbId: number) =>
-  tmdbFetch<TMDBTVFull>(`/tv/${tmdbId}`, { append_to_response: 'credits,watch/providers' })
+  tmdbFetch<TMDBTVFull>(`/tv/${tmdbId}`, { append_to_response: 'credits,watch/providers,videos' })
 
 export const getUpcomingMovies = () =>
   tmdbFetch<PagedResponse<TMDBSearchMovie>>('/movie/upcoming')

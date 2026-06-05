@@ -77,7 +77,7 @@ export function AIPanel() {
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 bg-accent-500 rounded-md flex items-center justify-center text-white text-[10px] font-bold">✦</div>
             <h2 className="text-sm font-semibold text-ink-800">Ask AI</h2>
-            <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded-full font-medium">Gemini 1.5 Flash</span>
+            <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded-full font-medium">Gemini</span>
           </div>
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
