@@ -5,8 +5,8 @@ import { AddTaskModal } from '../../../shared/components/AddTaskModal'
 import type { Task, TaskSection } from '../../todo/types'
 
 const SECTIONS: { id: TaskSection; label: string; defaultOpen: boolean }[] = [
-  { id: 'inbox',     label: 'Inbox',     defaultOpen: true  },
   { id: 'today',     label: 'Today',     defaultOpen: true  },
+  { id: 'inbox',     label: 'Inbox',     defaultOpen: true  },
   { id: 'this_week', label: 'This Week', defaultOpen: true  },
   { id: 'backlog',   label: 'Backlog',   defaultOpen: false },
 ]
@@ -24,13 +24,14 @@ export function WorkPage() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const { data: tasks = [], isLoading } = useWorkTasks()
 
-  const openTasks = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
-  const doneTasks = tasks.filter(t => t.status === 'done')
-  const highPrio  = openTasks.filter(t => t.priority === 'high').length
-  const dueToday  = openTasks.filter(t => t.due_date === format(new Date(), 'yyyy-MM-dd')).length
-
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
   const isSelectedToday = isToday(selectedDate)
+
+  // Stats based on selected date
+  const tasksForDate = tasks.filter(t => t.due_date === selectedDateStr)
+  const openForDate  = tasksForDate.filter(t => t.status === 'open' || t.status === 'in_progress')
+  const doneForDate  = tasksForDate.filter(t => t.status === 'done')
+  const highForDate  = openForDate.filter(t => t.priority === 'high').length
 
   // Work tasks due on the selected date (only shown when not today)
   const tasksForSelectedDate = !isSelectedToday
@@ -138,16 +139,20 @@ export function WorkPage() {
         </div>
       )}
 
-      {/* Stats strip */}
+      {/* Stats strip — filtered by selected date */}
       {!isLoading && (
         <div className="flex items-center gap-4 mb-6 p-4 card">
-          <Stat label="Open" value={openTasks.length} color="text-ink-800" />
+          <Stat label="Open" value={openForDate.length} color="text-ink-800" />
           <div className="w-px h-8 bg-ink-100" />
-          <Stat label="Done" value={doneTasks.length} color="text-green-600" />
+          <Stat label="Done" value={doneForDate.length} color="text-green-600" />
           <div className="w-px h-8 bg-ink-100" />
-          <Stat label="High priority" value={highPrio} color={highPrio > 0 ? 'text-red-500' : 'text-ink-400'} />
+          <Stat label="High priority" value={highForDate} color={highForDate > 0 ? 'text-red-500' : 'text-ink-400'} />
           <div className="w-px h-8 bg-ink-100" />
-          <Stat label="Due today" value={dueToday} color={dueToday > 0 ? 'text-accent-600' : 'text-ink-400'} />
+          <Stat
+            label={isSelectedToday ? 'Due today' : format(selectedDate, 'MMM d')}
+            value={openForDate.length}
+            color={openForDate.length > 0 ? 'text-accent-600' : 'text-ink-400'}
+          />
         </div>
       )}
 
@@ -174,6 +179,7 @@ export function WorkPage() {
                 label={s.label}
                 tasks={sectionTasks}
                 defaultOpen={s.defaultOpen}
+                featured={s.id === 'today'}
                 onAdd={() => setModal(s.id)}
               />
             )
@@ -211,12 +217,13 @@ function DateTaskRow({ task }: { task: Task }) {
 }
 
 function WorkSection({
-  label, tasks, defaultOpen, onAdd,
+  label, tasks, defaultOpen, featured, onAdd,
 }: {
   section: TaskSection
   label: string
   tasks: Task[]
   defaultOpen: boolean
+  featured?: boolean
   onAdd: () => void
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
@@ -229,20 +236,24 @@ function WorkSection({
   const doneTasks = tasks.filter(t => t.status === 'done')
 
   return (
-    <div className="card overflow-hidden">
+    <div className={`card overflow-hidden ${featured ? 'ring-2 ring-accent-400/40 shadow-md' : ''}`}>
       <button
         onClick={() => setIsOpen(p => !p)}
-        className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-cream-50 transition-colors duration-150 border-b border-ink-100"
+        className={`w-full flex items-center justify-between px-5 py-3.5 text-left transition-colors duration-150 border-b border-ink-100 ${
+          featured ? 'bg-accent-50 hover:bg-accent-100/60' : 'hover:bg-cream-50'
+        }`}
       >
         <div className="flex items-center gap-2.5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">{label}</span>
+          <span className={`text-xs font-semibold uppercase tracking-wider ${featured ? 'text-accent-700' : 'text-ink-500'}`}>
+            {label}
+          </span>
           {openTasks.length > 0 && (
-            <span className="text-[10px] bg-accent-50 text-accent-600 font-semibold px-1.5 py-0.5 rounded-full">
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${featured ? 'bg-accent-500 text-white' : 'bg-accent-50 text-accent-600'}`}>
               {openTasks.length}
             </span>
           )}
         </div>
-        <span className={`text-ink-300 text-sm transition-transform duration-150 inline-block ${isOpen ? 'rotate-90' : ''}`}>›</span>
+        <span className={`text-sm transition-transform duration-150 inline-block ${isOpen ? 'rotate-90' : ''} ${featured ? 'text-accent-400' : 'text-ink-300'}`}>›</span>
       </button>
 
       {isOpen && (
