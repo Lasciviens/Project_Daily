@@ -28,8 +28,9 @@ export function PlanThisButton({
 }: Props) {
   const [open, setOpen]         = useState(false)
   const [plannedFor, setPlannedFor] = useState<string | null>(null)
+  const [toast, setToast]       = useState<string | null>(null)
   const [customDate, setCustomDate] = useState('')
-  const [planning, setPlanning] = useState<string | null>(null) // which date is loading
+  const [planning, setPlanning] = useState<string | null>(null)
   const popoverRef              = useRef<HTMLDivElement>(null)
   const createTask              = useCreateTask()
 
@@ -62,11 +63,14 @@ export function PlanThisButton({
         source_type: sourceType,
         source_id:   entryId,
       })
-      setPlannedFor(labelForDate(date))
+      const label = labelForDate(date)
+      setPlannedFor(label)
       setTimeout(() => {
         setOpen(false)
         setPlannedFor(null)
-      }, 1200)
+        setToast(`Planned for ${label}`)
+        setTimeout(() => setToast(null), 3000)
+      }, 800)
     } finally {
       setPlanning(null)
     }
@@ -86,6 +90,11 @@ export function PlanThisButton({
 
   return (
     <div className="relative">
+      {toast && (
+        <div className="absolute bottom-full left-0 mb-2 z-40 bg-green-600 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
+          ✓ {toast}
+        </div>
+      )}
       <button
         onClick={() => setOpen(o => !o)}
         className={`text-[11px] font-medium px-2 py-1 rounded transition-colors duration-150 ${
@@ -149,6 +158,7 @@ export function PlanThisButton({
               <div className="mt-2 pt-2 border-t border-ink-100">
                 <input
                   type="date"
+                  lang="en-GB"
                   value={customDate}
                   onChange={e => setCustomDate(e.target.value)}
                   className="input text-xs py-1 px-2 w-full"

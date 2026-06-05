@@ -191,6 +191,7 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
               </label>
               <input
                 type="date"
+                lang="en-GB"
                 value={dueDate}
                 onChange={e => setDueDate(e.target.value)}
                 className="w-full bg-ink-100 border-none rounded-lg px-3 py-1.5 text-xs text-ink-700

@@ -171,6 +171,15 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded }: Props
         )}
 
         <div className="flex flex-wrap gap-3 text-xs text-ink-500 mb-4">
+          {movie?.release_date && (
+            <span className={new Date(movie.release_date) > new Date() ? 'text-accent-600 font-medium' : ''}>
+              {new Date(movie.release_date) > new Date() ? 'Releases ' : ''}
+              {new Date(movie.release_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+          {tv?.first_air_date && (
+            <span>First aired {new Date(tv.first_air_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+          )}
           {movie?.runtime && <span>{formatRuntime(movie.runtime)}</span>}
           {tv && tv.number_of_seasons && (
             <span>{tv.number_of_seasons} season{tv.number_of_seasons !== 1 ? 's' : ''} · {tv.number_of_episodes} episodes</span>
