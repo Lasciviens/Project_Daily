@@ -42,3 +42,9 @@ export const getUpcomingMovies = () =>
 
 export const getUpcomingTV = () =>
   tmdbFetch<PagedResponse<TMDBSearchTV>>('/tv/on_the_air')
+
+export const getSimilarMovies = (tmdbId: number) =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie>>(`/movie/${tmdbId}/similar`)
+
+export const getSimilarTV = (tmdbId: number) =>
+  tmdbFetch<PagedResponse<TMDBSearchTV>>(`/tv/${tmdbId}/similar`)
