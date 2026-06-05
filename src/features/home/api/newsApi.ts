@@ -47,26 +47,21 @@ function parseRSS(xml: string, count: number): NewsItem[] {
   return items.map(item => {
     const text = (tag: string) => item.querySelector(tag)?.textContent?.trim() ?? ''
 
-    // Thumbnail: try sources in priority order.
+    // Thumbnail: try RSS media tags only — description <img> URLs are hotlink-protected on many sites
     // <media:thumbnail> — BBC, many feeds
     // <media:content type="image/..."> — VG and others
     // <enclosure type="image/..."> — some feeds
-    // <img> inside <description> HTML — CNN Türk fallback
     const MRSS = 'http://search.yahoo.com/mrss/'
     const mediaThumbnail = item.getElementsByTagNameNS(MRSS, 'thumbnail')[0]
     const mediaContent   = Array.from(item.getElementsByTagNameNS(MRSS, 'content'))
       .find(el => el.getAttribute('type')?.startsWith('image') || el.getAttribute('url'))
     const enclosure      = item.querySelector('enclosure[type^="image"]')
 
-    // Extract first <img src> from raw description HTML as last resort
-    const rawDesc   = item.querySelector('description')?.textContent ?? ''
-    const imgInDesc = rawDesc.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] ?? ''
-
     const thumbnail = (
       mediaThumbnail?.getAttribute('url') ??
       mediaContent?.getAttribute('url')   ??
       enclosure?.getAttribute('url')      ??
-      imgInDesc
+      ''
     )
 
     // Excerpt: strip HTML tags from <description>, collapse whitespace, cap at 120 chars
