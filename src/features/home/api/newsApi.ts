@@ -88,15 +88,10 @@ function parseRSS(xml: string, count: number): NewsItem[] {
 export async function fetchNews(feedKey: string, count = 8): Promise<NewsItem[]> {
   const feed = NEWS_FEEDS.find(f => f.key === feedKey) ?? NEWS_FEEDS[0]
 
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
   const res = await fetch(PROXY_URL, {
     method:  'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${anonKey}`,
-      'apikey':        anonKey,
-    },
-    body: JSON.stringify({ url: feed.url }),
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ url: feed.url }),
   })
   if (!res.ok) throw new Error(`News proxy ${res.status}`)
 
