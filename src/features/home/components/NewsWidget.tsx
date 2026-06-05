@@ -68,6 +68,7 @@ export function NewsWidget() {
                     <img
                       src={item.thumbnail}
                       alt=""
+                      referrerPolicy="no-referrer"
                       className="w-full h-full object-cover"
                       onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
                     />
