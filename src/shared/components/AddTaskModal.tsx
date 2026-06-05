@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useCreateTask } from '../../features/todo/hooks/useTodos'
-import type { TaskSection, TaskPriority, TaskDomain } from '../../features/todo/types'
+import { useCreateTask, useUpdateTask } from '../../features/todo/hooks/useTodos'
+import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../features/todo/types'
 
 interface Props {
   isOpen:          boolean
@@ -8,11 +8,13 @@ interface Props {
   defaultSection?: TaskSection
   defaultDate?:    string
   defaultDomain?:  TaskDomain
+  task?:           Task        // when provided → edit mode
 }
 
 const SECTIONS: { id: TaskSection; label: string }[] = [
   { id: 'inbox',     label: 'Inbox'     },
   { id: 'today',     label: 'Today'     },
+  { id: 'tomorrow',  label: 'Tomorrow'  },
   { id: 'this_week', label: 'This Week' },
   { id: 'backlog',   label: 'Backlog'   },
 ]
@@ -23,23 +25,36 @@ const PRIORITIES: { id: TaskPriority; label: string; color: string }[] = [
   { id: 'high',   label: 'High',   color: 'bg-red-400'    },
 ]
 
-export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaultDate, defaultDomain = 'personal' }: Props) {
+export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaultDate, defaultDomain = 'personal', task }: Props) {
+  const editMode = !!task
+
   const [title,    setTitle]    = useState('')
   const [section,  setSection]  = useState<TaskSection>(defaultSection)
   const [priority, setPriority] = useState<TaskPriority>('medium')
   const [domain,   setDomain]   = useState<TaskDomain>(defaultDomain)
   const [dueDate,  setDueDate]  = useState(defaultDate ?? '')
+
   const create = useCreateTask()
+  const update = useUpdateTask()
+  const isPending = create.isPending || update.isPending
 
   useEffect(() => {
     if (isOpen) {
-      setTitle('')
-      setSection(defaultSection)
-      setPriority('medium')
-      setDomain(defaultDomain)
-      setDueDate(defaultDate ?? '')
+      if (editMode && task) {
+        setTitle(task.title)
+        setSection(task.section)
+        setPriority(task.priority)
+        setDomain(task.domain)
+        setDueDate(task.due_date ?? '')
+      } else {
+        setTitle('')
+        setSection(defaultSection)
+        setPriority('medium')
+        setDomain(defaultDomain)
+        setDueDate(defaultDate ?? '')
+      }
     }
-  }, [isOpen, defaultSection, defaultDate, defaultDomain])
+  }, [isOpen, defaultSection, defaultDate, defaultDomain, task, editMode])
 
   useEffect(() => {
     if (!isOpen) return
@@ -56,26 +71,30 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
     e.preventDefault()
     const trimmed = title.trim()
     if (!trimmed) return
-    await create.mutateAsync({
-      title:    trimmed,
-      section,
-      priority,
-      domain,
-      due_date: dueDate || null,
-    })
+    if (editMode && task) {
+      await update.mutateAsync({
+        id: task.id,
+        patch: { title: trimmed, section, priority, domain, due_date: dueDate || null },
+      })
+    } else {
+      await create.mutateAsync({
+        title: trimmed,
+        section,
+        priority,
+        domain,
+        due_date: dueDate || null,
+      })
+    }
     onClose()
   }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-ink-900/30" onClick={onClose} />
 
-      {/* Modal */}
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-card-hover border border-ink-200">
-        {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <h2 className="text-sm font-semibold text-ink-800">New Task</h2>
+          <h2 className="text-sm font-semibold text-ink-800">{editMode ? 'Edit Task' : 'New Task'}</h2>
           <button
             onClick={onClose}
             className="text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none"
@@ -85,7 +104,6 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 pb-5 flex flex-col gap-4">
-          {/* Title */}
           <textarea
             autoFocus
             value={title}
@@ -97,7 +115,6 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
                        focus:border-accent-400 transition-colors duration-150 resize-none"
           />
 
-          {/* Section */}
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
               Section
@@ -120,7 +137,6 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
             </div>
           </div>
 
-          {/* Priority */}
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
               Priority
@@ -144,14 +160,13 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
             </div>
           </div>
 
-          {/* Domain + Due Date row */}
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
                 Domain
               </label>
               <div className="flex gap-1.5">
-                {(['personal', 'work'] as TaskDomain[]).map(d => (
+                {(['personal', 'work', 'media'] as TaskDomain[]).map(d => (
                   <button
                     key={d}
                     type="button"
@@ -181,14 +196,13 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-2 pt-1">
             <button
               type="submit"
-              disabled={create.isPending || !title.trim()}
+              disabled={isPending || !title.trim()}
               className="btn-primary flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {create.isPending ? 'Adding…' : 'Add Task'}
+              {isPending ? (editMode ? 'Saving…' : 'Adding…') : (editMode ? 'Save Changes' : 'Add Task')}
             </button>
             <button type="button" onClick={onClose} className="btn-secondary">
               Cancel
