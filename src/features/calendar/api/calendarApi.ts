@@ -31,7 +31,7 @@ export async function fetchEventsForDay(token: string, date: string, calendarId 
     token,
     { timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime' }
   )
-  return data.items ?? []
+  return (data.items ?? []).map(e => ({ ...e, calendarId }))
 }
 
 export async function exchangeCalendarCode(
@@ -86,5 +86,44 @@ export async function fetchEventsForRange(
     token,
     { timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime' }
   )
-  return data.items ?? []
+  return (data.items ?? []).map(e => ({ ...e, calendarId }))
+}
+
+export async function updateCalendarEvent(
+  token: string,
+  calendarId: string,
+  eventId: string,
+  patch: Record<string, unknown>
+): Promise<CalendarEvent> {
+  const res = await fetch(
+    `${BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method:  'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify(patch),
+    }
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message ?? `Calendar API ${res.status}`)
+  }
+  return res.json() as Promise<CalendarEvent>
+}
+
+export async function deleteCalendarEvent(
+  token: string,
+  calendarId: string,
+  eventId: string,
+): Promise<void> {
+  const res = await fetch(
+    `${BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method:  'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  )
+  if (!res.ok && res.status !== 204) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message ?? `Calendar API ${res.status}`)
+  }
 }

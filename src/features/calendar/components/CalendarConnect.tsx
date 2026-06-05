@@ -20,7 +20,7 @@ export function CalendarConnect() {
 
   const login = useGoogleLogin({
     flow:  'auth-code',
-    scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    scope: 'https://www.googleapis.com/auth/calendar.events',
     // postmessage redirect works for SPAs that can't host a redirect page
     ux_mode: 'popup',
     onSuccess: async ({ code }) => {

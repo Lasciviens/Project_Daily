@@ -3,6 +3,8 @@ import { format, getDay, isToday } from 'date-fns'
 import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock } from '../hooks/useSchedule'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { AddTimeBlockModal } from './AddTimeBlockModal'
+import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
+import type { CalendarEvent } from '../../calendar/types'
 
 const HOUR_START = 0
 const HOUR_END   = 24
@@ -35,13 +37,14 @@ function hourToTimeStr(h: number): string {
 }
 
 interface Block {
-  id:         string
-  title:      string
-  startHour:  number
-  endHour:    number
-  colorClass: string
-  deletable:  boolean
-  dateStr:    string
+  id:              string
+  title:           string
+  startHour:       number
+  endHour:         number
+  colorClass:      string
+  deletable:       boolean
+  dateStr:         string
+  calendarEvent?:  CalendarEvent
 }
 
 interface Props { date: Date }
@@ -49,7 +52,8 @@ interface Props { date: Date }
 export function DayTimeline({ date }: Props) {
   const dateStr    = format(date, 'yyyy-MM-dd')
   const dayOfWeek  = getDay(date)
-  const [modal, setModal] = useState(false)
+  const [modal,     setModal]     = useState(false)
+  const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
   const scrollRef  = useRef<HTMLDivElement>(null)
 
   const { data: schedBlocks = [] }  = useScheduleBlocks()
@@ -88,24 +92,26 @@ export function DayTimeline({ date }: Props) {
   // Google Calendar events
   for (const e of calEvents) {
     if (e.start.dateTime) {
-      // Timed event
+      // Timed event — editable
       const s  = new Date(e.start.dateTime)
       const en = new Date(e.end.dateTime ?? e.start.dateTime)
       blocks.push({
         id: e.id, title: e.summary ?? '(no title)', dateStr,
-        startHour:  s.getHours() + s.getMinutes() / 60,
-        endHour:    en.getHours() + en.getMinutes() / 60,
-        colorClass: COLOR.green,
-        deletable:  false,
+        startHour:    s.getHours() + s.getMinutes() / 60,
+        endHour:      en.getHours() + en.getMinutes() / 60,
+        colorClass:   COLOR.green,
+        deletable:    false,
+        calendarEvent: e,
       })
     } else if (e.start.date) {
       // All-day event — show as full bar at top of visible range
       blocks.push({
         id: e.id, title: `◈ ${e.summary ?? '(no title)'}`, dateStr,
-        startHour:  HOUR_START,
-        endHour:    HOUR_START + 0.5,
-        colorClass: COLOR.green,
-        deletable:  false,
+        startHour:    HOUR_START,
+        endHour:      HOUR_START + 0.5,
+        colorClass:   COLOR.green,
+        deletable:    false,
+        calendarEvent: e,
       })
     }
   }
@@ -221,11 +227,13 @@ export function DayTimeline({ date }: Props) {
             const topPx    = (clampedStart - HOUR_START) * HOUR_PX
             const heightPx = Math.max((clampedEnd - clampedStart) * HOUR_PX, 20)
             const durationMins = Math.round((block.endHour - block.startHour) * 60)
+            const isCalEvent = !!block.calendarEvent
 
             return (
               <div
                 key={block.id}
-                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass}`}
+                onClick={isCalEvent ? () => setEditEvent(block.calendarEvent!) : undefined}
+                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : ''}`}
                 style={{ top: `${topPx}px`, height: `${heightPx}px` }}
               >
                 <p className="text-[11px] font-semibold leading-tight truncate">{block.title}</p>
@@ -235,9 +243,14 @@ export function DayTimeline({ date }: Props) {
                     {durationMins >= 30 ? ` · ${formatDuration(durationMins)}` : ''}
                   </p>
                 )}
+                {isCalEvent && heightPx >= 28 && (
+                  <span className="absolute top-1 right-1.5 text-[10px] opacity-0 group-hover:opacity-50 transition-opacity">
+                    ✎
+                  </span>
+                )}
                 {block.deletable && (
                   <button
-                    onClick={() => deleteBlock.mutate({ id: block.id, dateStr: block.dateStr })}
+                    onClick={e => { e.stopPropagation(); deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }) }}
                     className="absolute top-1 right-1 text-[10px] opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity"
                   >
                     ✕
@@ -261,6 +274,7 @@ export function DayTimeline({ date }: Props) {
       </div>
 
       {modal && <AddTimeBlockModal dateStr={dateStr} onClose={() => setModal(false)} />}
+      {editEvent && <EditCalendarEventModal event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
   )
 }
