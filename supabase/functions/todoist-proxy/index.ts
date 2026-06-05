@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
 
     console.log('[todoist-proxy] action:', action)
 
-    const BASE = 'https://api.todoist.com/rest/v2'
+    const BASE = 'https://api.todoist.com/api/v1'
 
     let todoistRes: Response
 
