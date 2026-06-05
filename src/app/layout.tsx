@@ -1,10 +1,8 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { format } from 'date-fns'
-import { signOut } from '../security/supabaseClient'
 import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
 import { AIPanel } from '../features/ai/components/AIPanel'
-import { ThemeSwitcher } from '../shared/components/ThemeSwitcher'
-import { CalendarConnect } from '../features/calendar/components/CalendarConnect'
+import { SettingsMenu } from '../shared/components/SettingsMenu'
 import { useUIStore } from './store'
 
 export function Layout() {
@@ -49,16 +47,11 @@ function Nav() {
         </nav>
 
         {/* Right actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Today's date */}
-          <span className="text-xs text-ink-400 hidden md:block mr-1">
+          <span className="text-xs text-ink-400 hidden md:block mr-2">
             {format(new Date(), 'EEEE, MMM d')}
           </span>
-
-          <CalendarConnect />
-
-          {/* Theme switcher */}
-          <ThemeSwitcher />
 
           <button
             onClick={toggleAI}
@@ -82,12 +75,7 @@ function Nav() {
             ☑ To-Do
           </button>
 
-          <button
-            onClick={() => signOut()}
-            className="px-3 py-1.5 text-xs font-medium text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
-          >
-            Sign out
-          </button>
+          <SettingsMenu />
         </div>
       </div>
     </header>
