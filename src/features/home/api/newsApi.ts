@@ -65,6 +65,7 @@ function parseRSS(xml: string, count: number): NewsItem[] {
     )
 
     // Excerpt: strip HTML tags from <description>, collapse whitespace, cap at 120 chars
+    const rawDesc  = item.querySelector('description')?.textContent ?? ''
     const descText = rawDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
     const excerpt  = descText.length > 120 ? descText.slice(0, 120).trimEnd() + '…' : descText
 
