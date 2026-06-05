@@ -64,11 +64,15 @@ export function useCreateTask() {
   return useMutation({
     mutationFn: async (input: CreateTaskInput) => {
       const task = await createTask(input)
+      let todoistError: string | null = null
       try {
         const todoistId = await createTodoistTask(task)
         saveTodoistMapping(task.id, todoistId)
-      } catch (err) { console.warn('[Todoist] create failed:', err) }
-      return task
+      } catch (err) {
+        todoistError = err instanceof Error ? err.message : 'Todoist sync failed'
+        console.warn('[Todoist] create failed:', err)
+      }
+      return { task, todoistError }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
@@ -131,7 +135,7 @@ export function useWorkTasks() {
   })
 }
 
-// Pull tasks from Todoist that don't exist locally yet → import to inbox
+// Pull tasks from Todoist → import new ones to inbox
 export function useSyncFromTodoist() {
   const qc = useQueryClient()
   return useMutation({
@@ -141,7 +145,6 @@ export function useSyncFromTodoist() {
       for (const rt of remoteTasks) {
         const alreadyMapped = getSupabaseIdByTodoistId(rt.id)
         if (alreadyMapped) continue
-        // New task from Todoist — import to inbox
         const newTask = await createTask({
           title:    rt.content,
           section:  'inbox',
@@ -155,5 +158,27 @@ export function useSyncFromTodoist() {
       return imported
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+// Push local tasks that aren't in Todoist yet → create them there
+export function usePushToTodoist() {
+  return useMutation({
+    mutationFn: async (tasks: import('../types').Task[]) => {
+      let pushed = 0
+      let failed = 0
+      for (const task of tasks) {
+        if (getTodoistId(task.id)) continue // already synced
+        if (task.status === 'done' || task.status === 'cancelled') continue
+        try {
+          const todoistId = await createTodoistTask(task)
+          saveTodoistMapping(task.id, todoistId)
+          pushed++
+        } catch {
+          failed++
+        }
+      }
+      return { pushed, failed }
+    },
   })
 }

@@ -77,13 +77,16 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
         patch: { title: trimmed, section, priority, domain, due_date: dueDate || null },
       })
     } else {
-      await create.mutateAsync({
+      const result = await create.mutateAsync({
         title: trimmed,
         section,
         priority,
         domain,
         due_date: dueDate || null,
       })
+      if (result.todoistError) {
+        console.warn('[Todoist] create error:', result.todoistError)
+      }
     }
     onClose()
   }
