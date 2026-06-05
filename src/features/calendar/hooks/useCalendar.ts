@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useCalendarStore } from '../../../app/store'
 import { supabase } from '../../../integrations/supabase/client'
@@ -8,6 +8,8 @@ import {
   fetchEventsForRange,
   fetchCalendarList,
   refreshCalendarToken,
+  updateCalendarEvent,
+  deleteCalendarEvent,
 } from '../api/calendarApi'
 
 const REFRESH_THRESHOLD_MS = 5 * 60_000  // refresh when ≤5 min remaining
@@ -117,6 +119,29 @@ export function useCalendarList() {
     enabled:  !!token,
     staleTime: 60 * 60_000,
     retry:     false,
+  })
+}
+
+export function useUpdateCalendarEvent() {
+  const qc = useQueryClient()
+  const { accessToken } = useCalendarStore()
+  return useMutation({
+    mutationFn: ({ calendarId, eventId, patch }: {
+      calendarId: string
+      eventId:    string
+      patch:      Record<string, unknown>
+    }) => updateCalendarEvent(accessToken!, calendarId, eventId, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
+  })
+}
+
+export function useDeleteCalendarEvent() {
+  const qc = useQueryClient()
+  const { accessToken } = useCalendarStore()
+  return useMutation({
+    mutationFn: ({ calendarId, eventId }: { calendarId: string; eventId: string }) =>
+      deleteCalendarEvent(accessToken!, calendarId, eventId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
   })
 }
 
