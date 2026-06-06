@@ -14,12 +14,13 @@ const TYPE_DOT: Record<string, string> = {
 interface Props {
   sessions:        TrainingSession[]
   weekStart:       Date
+  selectedDay?:    string | null
   onDayClick:      (date: string) => void
   onPrevWeek:      () => void
   onNextWeek:      () => void
 }
 
-export function TrainingWeekView({ sessions, weekStart, onDayClick, onPrevWeek, onNextWeek }: Props) {
+export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick, onPrevWeek, onNextWeek }: Props) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   function sessionsForDay(date: Date): TrainingSession[] {
@@ -52,25 +53,32 @@ export function TrainingWeekView({ sessions, weekStart, onDayClick, onPrevWeek, 
 
       <div className="grid grid-cols-7 gap-1.5">
         {days.map(day => {
-          const ds       = format(day, 'yyyy-MM-dd')
-          const daySess  = sessionsForDay(day)
-          const today    = isToday(day)
-          const isPast   = day < new Date() && !today
+          const ds         = format(day, 'yyyy-MM-dd')
+          const daySess    = sessionsForDay(day)
+          const today      = isToday(day)
+          const isSelected = selectedDay === ds
+          const isPast     = day < new Date() && !today
 
           return (
             <button
               key={ds}
               onClick={() => onDayClick(ds)}
               className={`flex flex-col items-center gap-1 py-2 px-1 rounded-xl border transition-all duration-150 ${
-                today
+                isSelected && !today
+                  ? 'bg-accent-100 border-accent-400 ring-2 ring-accent-400/40'
+                  : today
                   ? 'bg-accent-500 border-accent-500 text-white'
                   : 'border-ink-100 hover:border-accent-300 hover:bg-accent-50 bg-white'
               }`}
             >
-              <span className={`text-[9px] font-semibold uppercase tracking-wider ${today ? 'text-white/80' : 'text-ink-400'}`}>
+              <span className={`text-[9px] font-semibold uppercase tracking-wider ${
+                today ? 'text-white/80' : isSelected ? 'text-accent-600' : 'text-ink-400'
+              }`}>
                 {format(day, 'EEE')}
               </span>
-              <span className={`text-sm font-bold leading-none ${today ? 'text-white' : isPast ? 'text-ink-400' : 'text-ink-800'}`}>
+              <span className={`text-sm font-bold leading-none ${
+                today ? 'text-white' : isSelected ? 'text-accent-700' : isPast ? 'text-ink-400' : 'text-ink-800'
+              }`}>
                 {format(day, 'd')}
               </span>
               {/* Activity dots */}
