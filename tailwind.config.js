@@ -36,6 +36,20 @@ export default {
         card:       '0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04)',
         'card-hover': '0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04)',
       },
+      keyframes: {
+        fadeSlideIn: {
+          '0%':   { opacity: '0', transform: 'translateY(8px) scale(0.96)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        wiggle: {
+          '0%,100%': { transform: 'rotate(-3deg)' },
+          '50%':     { transform: 'rotate(3deg)' },
+        },
+      },
+      animation: {
+        fadeSlideIn: 'fadeSlideIn 0.2s ease-out',
+        wiggle:      'wiggle 0.3s ease-in-out',
+      },
     },
   },
   plugins: [],

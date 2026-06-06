@@ -100,6 +100,47 @@ Don't build for hypothetical future requirements. Build for what's in the curren
 - All widgets share `WidgetShell` + `useWidgetState` for collapse/sync/interval controls
 - When collapsed, the widget's query must be disabled (no API calls)
 
+### User feedback — MANDATORY rule
+
+Every async action that the user triggers must give visible feedback. No silent operations.
+
+**Use the global `toast` helper from `src/app/store.ts`:**
+
+```ts
+import { toast } from '../../../app/store'
+
+// Loading → dismiss on done
+const id = toast.loading('Saving…')
+await doSomething()
+toast.dismiss(id)
+toast.success('Saved ✓')
+
+// Quick patterns
+toast.success('Connected ✓')
+toast.error(`Failed: ${err.message}`)
+```
+
+**When to use which feedback:**
+
+| Situation | Feedback type |
+|---|---|
+| Button click triggers async (save, delete, connect) | `toast.loading` → replace with `toast.success` or `toast.error` |
+| Form submit | Inline button spinner + disable, then toast on result |
+| Page/section loading | Skeleton placeholder (already standard) |
+| OAuth / redirect flow | Loading state on widget while code is exchanging |
+| Quick toggle (checkbox, status) | Optimistic UI — no toast unless it fails |
+| Destructive action (delete, disconnect) | Toast confirms ("Deleted" / "Disconnected") |
+
+**Never:**
+- Leave the user guessing whether an action succeeded
+- Show only an error state without a prior loading state for slow operations
+- Re-enable a button mid-flight (keep disabled until done)
+
+**If already connected / already done:**
+- Don't show the "Connect" button if already connected
+- Show the connected state clearly (name, avatar, green/accent dot)
+- Auth flows that complete redirect back must show a loading spinner while processing the OAuth code
+
 ### Error handling
 Only at system boundaries (Supabase calls, TMDB calls). Don't wrap internal functions with try/catch.
 TanStack Query handles loading/error states — use `isLoading`, `error` from `useQuery`.

@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
 import { AIPanel } from '../features/ai/components/AIPanel'
 import { SettingsMenu } from '../shared/components/SettingsMenu'
+import { Toaster } from '../shared/components/Toaster'
 import { useUIStore } from './store'
 
 export function Layout() {
@@ -14,6 +15,7 @@ export function Layout() {
       </main>
       <ToDoDrawer />
       <AIPanel />
+      <Toaster />
     </div>
   )
 }
