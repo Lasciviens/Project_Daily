@@ -53,6 +53,8 @@ jobs:
           supabase functions deploy strava-auth --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
           supabase functions deploy strava-activities --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
           supabase functions deploy strava-disconnect --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          # no-verify-jwt: Shortcut authenticates via HEALTH_INGEST_SECRET header instead
+          supabase functions deploy health-ingest --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
