@@ -22,9 +22,13 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY tasks_owner ON tasks
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'tasks' AND policyname = 'tasks_owner') THEN
+    CREATE POLICY tasks_owner ON tasks
+      USING (auth.uid() = user_id)
+      WITH CHECK (auth.uid() = user_id);
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS tasks_user_section  ON tasks (user_id, section);
 CREATE INDEX IF NOT EXISTS tasks_user_due_date ON tasks (user_id, due_date);
