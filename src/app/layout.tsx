@@ -44,7 +44,8 @@ function Nav() {
           <NavLink to="/home"  className={linkClass}>Home</NavLink>
           <NavLink to="/daily" className={linkClass}>Daily</NavLink>
           <NavLink to="/media" className={linkClass}>Media</NavLink>
-          <NavLink to="/work"  className={linkClass}>Work</NavLink>
+          <NavLink to="/work"     className={linkClass}>Work</NavLink>
+          <NavLink to="/training" className={linkClass}>Training</NavLink>
         </nav>
 
         {/* Right actions */}
