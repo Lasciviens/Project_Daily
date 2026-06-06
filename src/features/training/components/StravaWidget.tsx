@@ -11,16 +11,20 @@ export function StravaWidget() {
   const qc          = useQueryClient()
   const [connecting, setConnecting] = useState(false)
 
-  // Handle OAuth redirect — Strava sends ?code= after the user approves
+  // Handle OAuth redirect — HashRouter puts Strava's ?code= inside the hash:
+  // e.g. /#/training?code=abc&scope=...  → parsed from window.location.hash
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
+    const hashQuery = window.location.hash.includes('?')
+      ? window.location.hash.split('?')[1]
+      : ''
+    const params = new URLSearchParams(hashQuery)
     const code   = params.get('code')
     const scope  = params.get('scope')
     if (!code || !scope) return
 
-    // Clear query params from URL immediately
-    const clean = window.location.pathname + window.location.hash.replace(/\?.*$/, '')
-    window.history.replaceState({}, '', clean)
+    // Strip the query string from the hash without a reload
+    const cleanHash = window.location.hash.split('?')[0]
+    window.history.replaceState({}, '', window.location.pathname + cleanHash)
 
     setConnecting(true)
     const loadingId = toast.loading('Connecting to Strava…')
