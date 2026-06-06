@@ -1,0 +1,298 @@
+import { useState } from 'react'
+import { useCreateSession } from '../hooks/useTrainingSessions'
+import type { WorkoutType, Exercise, ExerciseSet } from '../types'
+
+const WORKOUT_TYPES: { value: WorkoutType; label: string; icon: string }[] = [
+  { value: 'strength', label: 'Strength',  icon: '🏋️' },
+  { value: 'run',      label: 'Run',       icon: '🏃' },
+  { value: 'cycling',  label: 'Cycling',   icon: '🚴' },
+  { value: 'walk',     label: 'Walk',      icon: '🚶' },
+  { value: 'yoga',     label: 'Yoga',      icon: '🧘' },
+  { value: 'swim',     label: 'Swim',      icon: '🏊' },
+  { value: 'other',    label: 'Other',     icon: '💪' },
+]
+
+interface Props {
+  defaultDate?: string
+  onClose:      () => void
+}
+
+function emptySet(): ExerciseSet { return { reps: undefined, weight_kg: undefined } }
+function emptyExercise(): Exercise { return { name: '', sets: [emptySet()] } }
+
+export function LogWorkoutModal({ defaultDate, onClose }: Props) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [type,       setType]       = useState<WorkoutType>('strength')
+  const [title,      setTitle]      = useState('')
+  const [date,       setDate]       = useState(defaultDate ?? today)
+  const [notes,      setNotes]      = useState('')
+  const [markDone,   setMarkDone]   = useState(true)
+  // Cardio fields
+  const [distKm,     setDistKm]     = useState('')
+  const [durMin,     setDurMin]     = useState('')
+  const [heartRate,  setHeartRate]  = useState('')
+  const [elevGain,   setElevGain]   = useState('')
+  // Strength exercises
+  const [exercises,  setExercises]  = useState<Exercise[]>([emptyExercise()])
+
+  const create = useCreateSession()
+  const isCardio    = ['run', 'cycling', 'walk', 'swim'].includes(type)
+  const isStrength  = type === 'strength'
+
+  function addExercise() {
+    setExercises(ex => [...ex, emptyExercise()])
+  }
+
+  function removeExercise(idx: number) {
+    setExercises(ex => ex.filter((_, i) => i !== idx))
+  }
+
+  function updateExerciseName(idx: number, name: string) {
+    setExercises(ex => ex.map((e, i) => i === idx ? { ...e, name } : e))
+  }
+
+  function addSet(exIdx: number) {
+    setExercises(ex => ex.map((e, i) => i === exIdx ? { ...e, sets: [...e.sets, emptySet()] } : e))
+  }
+
+  function removeSet(exIdx: number, setIdx: number) {
+    setExercises(ex => ex.map((e, i) =>
+      i === exIdx ? { ...e, sets: e.sets.filter((_, si) => si !== setIdx) } : e
+    ))
+  }
+
+  function updateSet(exIdx: number, setIdx: number, field: keyof ExerciseSet, val: string) {
+    const n = val === '' ? undefined : Number(val)
+    setExercises(ex => ex.map((e, i) =>
+      i === exIdx
+        ? { ...e, sets: e.sets.map((s, si) => si === setIdx ? { ...s, [field]: n } : s) }
+        : e
+    ))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!title.trim()) return
+
+    const distM    = distKm  ? Math.round(parseFloat(distKm) * 1000) : undefined
+    const durSec   = durMin  ? Math.round(parseFloat(durMin) * 60)   : undefined
+    const paceSecPerKm = distM && durSec ? Math.round(durSec / (distM / 1000)) : undefined
+    const validExercises = exercises.filter(e => e.name.trim())
+
+    await create.mutateAsync({
+      type,
+      title:               title.trim(),
+      planned_date:        date || undefined,
+      completed_at:        markDone ? new Date().toISOString() : undefined,
+      notes:               notes.trim() || undefined,
+      distance_meters:     distM,
+      duration_seconds:    durSec,
+      elevation_gain_m:    elevGain ? parseInt(elevGain) : undefined,
+      avg_heart_rate:      heartRate ? parseInt(heartRate) : undefined,
+      avg_pace_sec_per_km: paceSecPerKm,
+      exercises:           isStrength && validExercises.length ? validExercises : undefined,
+    })
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center px-4 py-6"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl bg-white overflow-hidden max-h-[90vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-3 border-b border-ink-100 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-ink-900">Log workout</h2>
+          <button onClick={onClose} className="text-ink-400 hover:text-ink-600 text-lg">×</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-5 space-y-4">
+          {/* Type selector */}
+          <div className="flex flex-wrap gap-1.5">
+            {WORKOUT_TYPES.map(t => (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setType(t.value)}
+                className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border transition-colors duration-150 ${
+                  type === t.value
+                    ? 'bg-accent-500 border-accent-500 text-white'
+                    : 'border-ink-200 text-ink-600 hover:border-accent-400'
+                }`}
+              >
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Title */}
+          <input
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Workout title (e.g. Morning run, Chest day)"
+            className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+            required
+          />
+
+          {/* Date + done toggle */}
+          <div className="flex gap-3">
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="flex-1 border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+            />
+            <label className="flex items-center gap-2 text-sm text-ink-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={markDone}
+                onChange={e => setMarkDone(e.target.checked)}
+                className="accent-accent-500"
+              />
+              Done
+            </label>
+          </div>
+
+          {/* Cardio metrics */}
+          {isCardio && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-medium uppercase text-ink-400 block mb-1">Distance (km)</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={distKm}
+                  onChange={e => setDistKm(e.target.value)}
+                  placeholder="5.00"
+                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium uppercase text-ink-400 block mb-1">Duration (min)</label>
+                <input
+                  type="number" step="0.5" min="0"
+                  value={durMin}
+                  onChange={e => setDurMin(e.target.value)}
+                  placeholder="30"
+                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium uppercase text-ink-400 block mb-1">Avg HR (bpm)</label>
+                <input
+                  type="number" min="0"
+                  value={heartRate}
+                  onChange={e => setHeartRate(e.target.value)}
+                  placeholder="145"
+                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium uppercase text-ink-400 block mb-1">Elevation (m)</label>
+                <input
+                  type="number" min="0"
+                  value={elevGain}
+                  onChange={e => setElevGain(e.target.value)}
+                  placeholder="120"
+                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Strength exercises */}
+          {isStrength && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-ink-400">Exercises</p>
+                <button
+                  type="button"
+                  onClick={addExercise}
+                  className="text-xs text-accent-600 hover:text-accent-700"
+                >
+                  + Add exercise
+                </button>
+              </div>
+              {exercises.map((ex, exIdx) => (
+                <div key={exIdx} className="border border-ink-100 rounded-xl p-3 space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      value={ex.name}
+                      onChange={e => updateExerciseName(exIdx, e.target.value)}
+                      placeholder="Exercise name (e.g. Bench press)"
+                      className="flex-1 border border-ink-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-accent-400"
+                    />
+                    {exercises.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeExercise(exIdx)}
+                        className="text-ink-300 hover:text-red-400 text-sm"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {ex.sets.map((s, setIdx) => (
+                    <div key={setIdx} className="flex items-center gap-2">
+                      <span className="text-[10px] text-ink-400 w-8">S{setIdx + 1}</span>
+                      <input
+                        type="number" min="0"
+                        value={s.reps ?? ''}
+                        onChange={e => updateSet(exIdx, setIdx, 'reps', e.target.value)}
+                        placeholder="Reps"
+                        className="w-16 border border-ink-200 rounded px-2 py-1 text-xs outline-none focus:border-accent-400"
+                      />
+                      <span className="text-[10px] text-ink-300">×</span>
+                      <input
+                        type="number" min="0" step="0.5"
+                        value={s.weight_kg ?? ''}
+                        onChange={e => updateSet(exIdx, setIdx, 'weight_kg', e.target.value)}
+                        placeholder="kg"
+                        className="w-16 border border-ink-200 rounded px-2 py-1 text-xs outline-none focus:border-accent-400"
+                      />
+                      {ex.sets.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeSet(exIdx, setIdx)}
+                          className="text-ink-300 hover:text-red-400 text-xs ml-auto"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => addSet(exIdx)}
+                    className="text-[10px] text-accent-600 hover:text-accent-700"
+                  >
+                    + Add set
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Notes */}
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Notes (optional)"
+            rows={2}
+            className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400 resize-none"
+          />
+
+          <button
+            type="submit"
+            disabled={create.isPending || !title.trim()}
+            className="w-full btn-primary py-2"
+          >
+            {create.isPending ? 'Saving…' : 'Save workout'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
