@@ -139,12 +139,19 @@ export function LogWorkoutModal({ defaultDate, onClose }: Props) {
 
           {/* Date + done toggle */}
           <div className="flex gap-3">
-            <input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              className="flex-1 border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
-            />
+            <div className="flex-1">
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+              />
+              {date && (
+                <p className="text-[10px] text-ink-400 mt-0.5 pl-1">
+                  {new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </p>
+              )}
+            </div>
             <label className="flex items-center gap-2 text-sm text-ink-600 cursor-pointer">
               <input
                 type="checkbox"

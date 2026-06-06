@@ -87,6 +87,22 @@ If a component exceeds ~150 lines, split it. One responsibility per file.
 - Types file per feature: `types.ts`
 - Zod schemas: `shared/schemas/camelCaseSchema.ts`
 
+### Date formatting — MANDATORY rule
+
+Always display dates in **DD/MM/YYYY** format. Never MM/DD/YYYY.
+
+```ts
+// Correct
+new Date(dateStr).toLocaleDateString('en-GB')              // "06/06/2026"
+new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) // "6 Jun 2026"
+format(date, 'dd/MM/yyyy')   // date-fns
+
+// Wrong — never use these locales for display
+toLocaleDateString('en-US')  // "6/6/2026" — FORBIDDEN
+```
+
+For `<input type="date">` fields (browser controls display format): always show a DD/MM/YYYY formatted label next to or below the native input so the user can read the date correctly regardless of browser locale.
+
 ### No premature abstraction
 Three similar things is not enough to abstract. Five similar things with identical structure: abstract.
 Don't build for hypothetical future requirements. Build for what's in the current phase.
