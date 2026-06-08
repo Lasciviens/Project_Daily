@@ -99,10 +99,17 @@ async function gql(query: string): Promise<unknown> {
 
 // ─── Stop search ──────────────────────────────────────────────────────────────
 
-// sources=nsr restricts results to the National Stop Registry so IDs are
-// always NSR:StopPlace:XXXXX — usable directly in stopPlace(id:...) queries.
+// venue+address layers without sources filter gives broader results.
+// sources=nsr was too strict — partial queries like "sinsen" returned nothing.
 export async function searchStops(query: string): Promise<StopResult[]> {
-  const url = `${GEOCODER}?text=${encodeURIComponent(query)}&lang=no&size=8&layers=venue&sources=nsr`
+  const params = new URLSearchParams({
+    text:             query,
+    lang:             'no',
+    size:             '15',
+    layers:           'venue,address',
+    'boundary.country': 'NOR',
+  })
+  const url = `${GEOCODER}?${params.toString()}`
   const res = await fetch(url, { headers: { 'ET-Client-Name': CLIENT } })
 
   if (res.status === 429) throw new Error('Rate limited — wait a moment and try again')
@@ -110,20 +117,32 @@ export async function searchStops(query: string): Promise<StopResult[]> {
 
   const json = await res.json() as {
     features?: {
-      properties: { id?: string; name?: string; locality?: string; category?: string }
-      geometry:   { coordinates?: [number, number] }
+      properties: {
+        id?:       string
+        name?:     string
+        label?:    string
+        locality?: string
+        county?:   string
+        category?: string
+        layer?:    string
+      }
+      geometry?: { coordinates?: [number, number] }
     }[]
   }
+
+  console.debug('[Entur geocoder]', query, (json.features ?? []).map(f => ({
+    id: f.properties.id, name: f.properties.name, layer: f.properties.layer,
+  })))
 
   return (json.features ?? [])
     .filter(f => f.properties.id?.startsWith('NSR:StopPlace:'))
     .map(f => ({
       id:       f.properties.id!,
-      name:     f.properties.name ?? '',
-      locality: f.properties.locality,
-      category: f.properties.category,
-      lat:      f.geometry.coordinates?.[1],
-      lon:      f.geometry.coordinates?.[0],
+      name:     f.properties.name ?? f.properties.label ?? '',
+      locality: f.properties.locality ?? f.properties.county,
+      category: f.properties.category ?? f.properties.layer,
+      lat:      f.geometry?.coordinates?.[1],
+      lon:      f.geometry?.coordinates?.[0],
     }))
 }
 
