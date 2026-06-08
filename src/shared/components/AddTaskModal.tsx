@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useCreateTask, useUpdateTask } from '../../features/todo/hooks/useTodos'
 import { useCreateTimeBlock } from '../../features/daily/hooks/useSchedule'
+import { toast } from '../../app/store'
 import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../features/todo/types'
 
 interface Props {
@@ -89,16 +90,25 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
       if (result.todoistError) {
         console.warn('[Todoist] create error:', result.todoistError)
       }
-      // Auto-schedule onto the day timeline — use mutation so cache invalidates
+      // Auto-schedule onto the day timeline
       if (domain === 'personal' && dueDate) {
         const dow     = new Date(dueDate + 'T00:00:00').getDay()
         const weekend = dow === 0 || dow === 6
-        createTimeBlock.mutate({
-          date:             dueDate,
-          title:            trimmed,
-          start_time:       weekend ? '12:00:00' : '17:00:00',
-          duration_minutes: 60,
-          color:            'accent',
+        const toastId = toast.loading('Scheduling on timeline…')
+        await new Promise<void>(resolve => {
+          createTimeBlock.mutate(
+            {
+              date:             dueDate,
+              title:            trimmed,
+              start_time:       weekend ? '12:00:00' : '17:00:00',
+              duration_minutes: 60,
+              color:            'accent',
+            },
+            {
+              onSuccess: () => { toast.dismiss(toastId); toast.success('Added to day schedule ✓'); resolve() },
+              onError:   (err) => { toast.dismiss(toastId); toast.error(`Schedule failed: ${(err as Error).message}`); resolve() },
+            }
+          )
         })
       }
     }
