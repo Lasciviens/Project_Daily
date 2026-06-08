@@ -57,6 +57,12 @@ export interface TripPattern {
   legs:         TripLeg[]
 }
 
+// A route endpoint: either a saved stop or the user's live coordinates.
+// Coordinates are never stored — used only as a temporary trip query input.
+export type TransitPlace =
+  | { kind: 'stop';   id: string; name: string }
+  | { kind: 'coords'; lat: number; lon: number; name: string }
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const TRANSPORT_ICON: Record<string, string> = {
@@ -200,16 +206,22 @@ export async function fetchDepartures(
 
 // ─── Trip planner ─────────────────────────────────────────────────────────────
 
+// Builds the GraphQL `from`/`to` input depending on whether it's a stop or coords.
+function gqlPlace(p: TransitPlace): string {
+  if (p.kind === 'stop') return `{ place: "${p.id}" }`
+  return `{ coordinates: { latitude: ${p.lat}, longitude: ${p.lon} } }`
+}
+
 export async function fetchTrips(
-  fromId: string,
-  toId:   string,
+  from:   TransitPlace,
+  to:     TransitPlace,
   count?: number,
 ): Promise<TripPattern[]> {
   const n = count ?? 5
   const data = await gql(`{
     trip(
-      from: { place: "${fromId}" }
-      to:   { place: "${toId}" }
+      from: ${gqlPlace(from)}
+      to:   ${gqlPlace(to)}
       numTripPatterns: ${n}
     ) {
       tripPatterns {
