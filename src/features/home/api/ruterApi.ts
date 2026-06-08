@@ -213,16 +213,18 @@ function gqlPlace(p: TransitPlace): string {
 }
 
 export async function fetchTrips(
-  from:   TransitPlace,
-  to:     TransitPlace,
-  count?: number,
+  from:      TransitPlace,
+  to:        TransitPlace,
+  count?:    number,
+  dateTime?: string,        // ISO 8601 — omit for "depart now"
 ): Promise<TripPattern[]> {
   const n = count ?? 5
+  const dtArg = dateTime ? `\n      dateTime: "${dateTime}"` : ''
   const data = await gql(`{
     trip(
       from: ${gqlPlace(from)}
       to:   ${gqlPlace(to)}
-      numTripPatterns: ${n}
+      numTripPatterns: ${n}${dtArg}
     ) {
       tripPatterns {
         duration

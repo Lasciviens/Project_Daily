@@ -33,6 +33,17 @@ function getCurrentLocation(): Promise<TransitPlace> {
   })
 }
 
+// Returns "YYYY-MM-DDTHH:MM" in local time — value format for <input type="datetime-local">
+function localDateTimeValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+// Converts a datetime-local input value to an ISO 8601 string with local offset
+function toISOWithOffset(localValue: string): string {
+  return new Date(localValue).toISOString()
+}
+
 // ─── LocationButton ───────────────────────────────────────────────────────────
 
 function LocationButton({ onLocate, state }: { onLocate: () => void; state: LocationState }) {
@@ -81,6 +92,9 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const [fromLocState, setFromLocState] = useState<LocationState>('idle')
   const [toLocState,   setToLocState]   = useState<LocationState>('idle')
 
+  // Departure time: null = "now", otherwise a datetime-local input value string
+  const [departAt, setDepartAt] = useState<string | null>(null)
+
   const [saveLabel, setSaveLabel]       = useState('')
   const [showSaveForm, setShowSaveForm] = useState(false)
   const [saving, setSaving]             = useState(false)
@@ -119,11 +133,19 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     r => r.from_stop_id === (from as { id: string }).id && r.to_stop_id === (to as { id: string }).id
   )
 
+  // Convert the local datetime picker value to ISO for the API, or undefined for "now"
+  const dateTimeISO = departAt ? toISOWithOffset(departAt) : undefined
+
   const { data, isLoading, error } = useQuery({
-    queryKey:        ['trip', from?.kind === 'stop' ? from.id : `${from?.lat},${from?.lon}`, to?.kind === 'stop' ? to.id : `${to?.lat},${to?.lon}`],
-    queryFn:         () => fetchTrips(from!, to!),
+    queryKey:        ['trip',
+      from?.kind === 'stop' ? from.id : `${from?.lat},${from?.lon}`,
+      to?.kind === 'stop' ? to.id : `${to?.lat},${to?.lon}`,
+      dateTimeISO ?? 'now',
+    ],
+    queryFn:         () => fetchTrips(from!, to!, undefined, dateTimeISO),
     staleTime:       ws.intervalMs,
-    refetchInterval: !ws.collapsed && ws.syncActive ? ws.intervalMs : false,
+    // Don't auto-refetch when a custom departure time is set — results won't change
+    refetchInterval: !ws.collapsed && ws.syncActive && !departAt ? ws.intervalMs : false,
     enabled:         !ws.collapsed && canFetch,
   })
 
@@ -198,6 +220,35 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             title="Swap"
             className="text-ink-400 hover:text-accent-600 transition-colors duration-150 text-sm flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-30"
           >⇅</button>
+        </div>
+
+        {/* Departure time */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">When</span>
+          <div className="flex-1 flex items-center gap-2">
+            {departAt ? (
+              <>
+                <input
+                  type="datetime-local"
+                  value={departAt}
+                  onChange={e => setDepartAt(e.target.value)}
+                  className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+                />
+                <button
+                  onClick={() => setDepartAt(null)}
+                  className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center min-h-[44px]"
+                  title="Back to now"
+                >✕</button>
+              </>
+            ) : (
+              <button
+                onClick={() => setDepartAt(localDateTimeValue(new Date(now)))}
+                className="text-xs text-ink-500 hover:text-accent-600 px-3 py-1.5 border border-ink-200 rounded-lg min-h-[44px] transition-colors duration-150"
+              >
+                Now · tap to change
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
