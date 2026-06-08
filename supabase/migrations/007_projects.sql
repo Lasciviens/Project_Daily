@@ -85,3 +85,7 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS project_items_phase   ON project_items (phase_id, sort_order);
 CREATE INDEX IF NOT EXISTS project_items_project ON project_items (project_id);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON projects       TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON project_phases TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON project_items  TO authenticated;
