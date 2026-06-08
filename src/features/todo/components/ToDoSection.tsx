@@ -9,9 +9,10 @@ interface Props {
   section:      TaskSection
   tasks:        Task[]
   defaultOpen?: boolean
+  isLoading?:   boolean
 }
 
-export function ToDoSection({ title, section, tasks, defaultOpen = true }: Props) {
+export function ToDoSection({ title, section, tasks, defaultOpen = true, isLoading }: Props) {
   const [isOpen,    setIsOpen]    = useState(defaultOpen)
   const [modalOpen, setModalOpen] = useState(false)
   const swap = useSwapTaskOrder()
@@ -44,7 +45,14 @@ export function ToDoSection({ title, section, tasks, defaultOpen = true }: Props
 
         {isOpen && (
           <div>
-            {openTasks.map((task, idx) => (
+            {isLoading && (
+              <div className="px-3 py-1.5 space-y-2">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-3 bg-cream-200 rounded animate-pulse" style={{ width: `${60 + i * 10}%` }} />
+                ))}
+              </div>
+            )}
+            {!isLoading && openTasks.map((task, idx) => (
               <ToDoItem
                 key={task.id}
                 task={task}
@@ -54,7 +62,7 @@ export function ToDoSection({ title, section, tasks, defaultOpen = true }: Props
                 onMoveDown={() => swap.mutate({ id1: task.id, id2: openTasks[idx + 1].id })}
               />
             ))}
-            {openTasks.length === 0 && doneTasks.length === 0 && (
+            {!isLoading && openTasks.length === 0 && doneTasks.length === 0 && (
               <p className="px-3 py-1.5 text-[11px] text-ink-300 italic">Nothing here yet</p>
             )}
 

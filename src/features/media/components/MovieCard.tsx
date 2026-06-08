@@ -1,6 +1,7 @@
 import { posterUrl } from '../../../integrations/tmdb/client'
 import type { UserMovieEntry } from '../types'
 import { useUpdateMovie } from '../hooks/useMovies'
+import { PlanThisButton } from './PlanThisButton'
 
 interface Props {
   entry: UserMovieEntry
@@ -34,17 +35,16 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
   return (
     <div className="flex flex-col">
       <div
-        className={`relative rounded-lg overflow-hidden aspect-[2/3] hover:brightness-90 cursor-pointer transition-all duration-150 ${upcoming ? 'grayscale' : ''}`}
+        className={`relative rounded-lg overflow-hidden aspect-[2/3] cursor-pointer transition-all duration-150 group ${upcoming ? 'grayscale' : ''}`}
         onClick={onOpenDetail}
       >
         <img
           src={posterUrl(movie.poster_path)}
           alt={movie.title}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover group-hover:brightness-75 transition-all duration-150"
           loading="lazy"
         />
         {upcoming && (
-          // Diagonal ribbon across top-right corner
           <div className="absolute top-0 right-0 w-16 h-16 overflow-hidden pointer-events-none">
             <div className="absolute top-3 right-[-28px] rotate-45 w-24 text-center bg-accent-500 py-0.5">
               <span className="text-[8px] font-bold uppercase tracking-wider text-white">
@@ -53,6 +53,31 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
             </div>
           </div>
         )}
+
+        {/* Hover overlay with quick actions */}
+        <div className="absolute inset-0 flex flex-col items-center justify-end pb-2 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          {!upcoming && entry.status !== 'completed' && (
+            <div onClick={e => e.stopPropagation()} className="w-full px-2">
+              <PlanThisButton
+                entryId={entry.id}
+                sourceType="movie"
+                title={movie.title}
+              />
+            </div>
+          )}
+          {entry.status === 'watching' && (
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                update.mutate({ id: entry.id, patch: { status: 'completed', watched_at: new Date().toISOString() } })
+              }}
+              disabled={update.isPending}
+              className="w-[calc(100%-16px)] text-[10px] py-1 rounded bg-emerald-500 text-white font-medium hover:bg-emerald-600 transition-colors duration-150"
+            >
+              ✓ Mark watched
+            </button>
+          )}
+        </div>
       </div>
 
       {!compact && (
@@ -67,15 +92,6 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
             )}
             <span className="text-[10px] text-ink-400">{STATUS_LABELS[entry.status]}</span>
           </div>
-          {entry.status === 'watching' && (
-            <button
-              onClick={() => update.mutate({ id: entry.id, patch: { status: 'completed', watched_at: new Date().toISOString() } })}
-              disabled={update.isPending}
-              className="mt-1 w-full text-[10px] py-0.5 rounded border border-accent-300 text-accent-600 hover:bg-accent-50 transition-colors duration-150"
-            >
-              Mark watched
-            </button>
-          )}
         </div>
       )}
     </div>
