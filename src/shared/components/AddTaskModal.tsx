@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useCreateTask, useUpdateTask } from '../../features/todo/hooks/useTodos'
-import { createTimeBlock } from '../../features/daily/api/scheduleApi'
+import { useCreateTimeBlock } from '../../features/daily/hooks/useSchedule'
 import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../features/todo/types'
 
 interface Props {
@@ -35,8 +35,9 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
   const [domain,   setDomain]   = useState<TaskDomain>(defaultDomain)
   const [dueDate,  setDueDate]  = useState(defaultDate ?? '')
 
-  const create = useCreateTask()
-  const update = useUpdateTask()
+  const create          = useCreateTask()
+  const update          = useUpdateTask()
+  const createTimeBlock = useCreateTimeBlock()
   const isPending = create.isPending || update.isPending
 
   useEffect(() => {
@@ -88,21 +89,17 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
       if (result.todoistError) {
         console.warn('[Todoist] create error:', result.todoistError)
       }
-      // Auto-schedule personal tasks with a due date onto the day timeline
+      // Auto-schedule onto the day timeline — use mutation so cache invalidates
       if (domain === 'personal' && dueDate) {
         const dow     = new Date(dueDate + 'T00:00:00').getDay()
         const weekend = dow === 0 || dow === 6
-        try {
-          await createTimeBlock({
-            date:             dueDate,
-            title:            trimmed,
-            start_time:       weekend ? '12:00:00' : '17:00:00',
-            duration_minutes: 60,
-            color:            'accent',
-          })
-        } catch (err) {
-          console.warn('[AutoSchedule] Failed to create time block:', err)
-        }
+        createTimeBlock.mutate({
+          date:             dueDate,
+          title:            trimmed,
+          start_time:       weekend ? '12:00:00' : '17:00:00',
+          duration_minutes: 60,
+          color:            'accent',
+        })
       }
     }
     onClose()
