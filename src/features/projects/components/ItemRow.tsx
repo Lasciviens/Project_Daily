@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { isToday, isTomorrow } from 'date-fns'
 import { InlineText } from './InlineText'
 import { InlineTextArea } from './InlineTextArea'
+import { useCreateTask } from '../../todo/hooks/useTodos'
+import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
 import type { ProjectItem, ItemType, ItemPriority, ItemStatus } from '../types'
 
 const TYPE_BADGE: Record<ItemType, string> = {
@@ -37,8 +40,47 @@ interface Props {
 }
 
 export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
-  const [showNotes, setShowNotes] = useState(() => !!item.notes)
-  const [hovered,   setHovered]   = useState(false)
+  const [showNotes,     setShowNotes]     = useState(() => !!item.notes)
+  const [hovered,       setHovered]       = useState(false)
+  const [showPlan,      setShowPlan]      = useState(false)
+  const [planDate,      setPlanDate]      = useState('')
+  const [askSchedule,   setAskSchedule]   = useState(false)
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null)
+  const createTask      = useCreateTask()
+  const createTimeBlock = useCreateTimeBlock()
+
+  async function handlePlan() {
+    if (!planDate) return
+    const { task } = await createTask.mutateAsync({
+      title:    item.title,
+      domain:   'work',
+      section:  isToday(new Date(planDate + 'T00:00:00')) ? 'today'
+              : isTomorrow(new Date(planDate + 'T00:00:00')) ? 'tomorrow'
+              : 'this_week',
+      priority: item.priority,
+      due_date: planDate,
+    })
+    setPendingTaskId(task.id)
+    setShowPlan(false)
+    setAskSchedule(true)
+  }
+
+  function confirmSchedule(yes: boolean) {
+    if (yes && pendingTaskId && planDate) {
+      createTimeBlock.mutate({
+        date:             planDate,
+        title:            item.title,
+        start_time:       '17:00:00',
+        duration_minutes: 60,
+        color:            'blue',
+        source_type:      'task',
+        source_id:        pendingTaskId,
+      })
+    }
+    setAskSchedule(false)
+    setPendingTaskId(null)
+    setPlanDate('')
+  }
 
   const isDone       = item.status === 'done'
   const isInProgress = item.status === 'in_progress'
@@ -107,6 +149,15 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
           />
         </div>
 
+        {/* Plan button — hover only */}
+        {hovered && !isDone && (
+          <button
+            onClick={() => setShowPlan(p => !p)}
+            className="text-[10px] text-ink-400 hover:text-accent-600"
+            title="Schedule this item"
+          >📅</button>
+        )}
+
         {/* Notes indicator — always visible when notes exist */}
         {(hasNotes || hovered) && (
           <button
@@ -144,6 +195,37 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
           />
         </div>
       )}
+
+      {/* Plan date picker */}
+      {showPlan && (
+        <div className="px-11 pb-2 flex items-center gap-2">
+          <input
+            type="date"
+            lang="en-GB"
+            value={planDate}
+            onChange={e => setPlanDate(e.target.value)}
+            className="text-xs border border-ink-200 rounded-lg px-2 py-1 outline-none focus:border-accent-400"
+          />
+          <button
+            onClick={handlePlan}
+            disabled={!planDate || createTask.isPending}
+            className="text-xs px-2 py-1 bg-accent-500 text-white rounded-lg disabled:opacity-40"
+          >
+            {createTask.isPending ? '…' : 'Plan'}
+          </button>
+          <button onClick={() => setShowPlan(false)} className="text-xs text-ink-400">Cancel</button>
+        </div>
+      )}
+
+      {/* Schedule confirmation */}
+      {askSchedule && (
+        <div className="px-11 pb-2 flex items-center gap-2 bg-cream-50 rounded-lg mx-3 mb-1 p-2">
+          <span className="text-xs text-ink-600">Also add to day schedule at 17:00?</span>
+          <button onClick={() => confirmSchedule(true)}  className="text-xs px-2 py-0.5 bg-accent-500 text-white rounded">Yes</button>
+          <button onClick={() => confirmSchedule(false)} className="text-xs px-2 py-0.5 bg-ink-100 text-ink-600 rounded">No</button>
+        </div>
+      )}
     </div>
   )
 }
+

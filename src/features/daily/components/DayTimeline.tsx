@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { format, getDay, isToday } from 'date-fns'
 import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock } from '../hooks/useSchedule'
+import { useUpdateTask } from '../../todo/hooks/useTodos'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { AddTimeBlockModal } from './AddTimeBlockModal'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
@@ -44,6 +45,8 @@ interface Block {
   colorClass:      string
   deletable:       boolean
   dateStr:         string
+  sourceType?:     string | null
+  sourceId?:       string | null
   calendarEvent?:  CalendarEvent
 }
 
@@ -87,6 +90,7 @@ export function DayTimeline({ date }: Props) {
   const { data: calEvents   = [] }  = useCalendarEventsForDay(dateStr)
   const deleteBlock                 = useDeleteTimeBlock()
   const updateBlock                 = useUpdateTimeBlock()
+  const updateTask                  = useUpdateTask()
 
   const handleBlockMouseDown = useCallback((e: React.MouseEvent, blockId: string, topPx: number) => {
     e.stopPropagation()
@@ -145,6 +149,8 @@ export function DayTimeline({ date }: Props) {
       endHour:    start + b.duration_minutes / 60,
       colorClass: COLOR[b.color] ?? COLOR.accent,
       deletable:  true,
+      sourceType: b.source_type,
+      sourceId:   b.source_id,
     })
   }
 
@@ -327,6 +333,14 @@ export function DayTimeline({ date }: Props) {
               d.setDate(d.getDate() + 1)
               const newDate = format(d, 'yyyy-MM-dd')
               updateBlock.mutate({ id: block.id, date: newDate, dateStr: block.dateStr, newDateStr: newDate })
+              // Keep linked task in sync
+              if (block.sourceType === 'task' && block.sourceId) {
+                const dow  = d.getDay()
+                const section = dow === 0 || dow === 6 ? 'this_week'
+                  : newDate === format(new Date(), 'yyyy-MM-dd') ? 'today'
+                  : 'tomorrow'
+                updateTask.mutate({ id: block.sourceId, patch: { due_date: newDate, section } })
+              }
               setSelectedId(null)
             }
 
