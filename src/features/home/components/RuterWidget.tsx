@@ -221,7 +221,11 @@ function DeparturesTab({
       </div>
 
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
-      {error     && <div className="text-ink-400 text-sm">Unavailable</div>}
+      {error     && (
+        <div className="text-ink-400 text-xs">
+          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — try again in a moment' : '⚠ Unavailable'}
+        </div>
+      )}
       {data && (
         <div className="space-y-2.5">
           {data.departures.length === 0 && <div className="text-ink-400 text-sm">No departures</div>}
@@ -383,7 +387,11 @@ function RoutesTab({
       )}
 
       {isLoading && <div className="text-ink-400 text-sm">Loading trips…</div>}
-      {error     && <div className="text-ink-400 text-sm">Unavailable</div>}
+      {error     && (
+        <div className="text-ink-400 text-xs">
+          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — try again in a moment' : '⚠ Unavailable'}
+        </div>
+      )}
       {data && (
         <div className="space-y-3">
           {data.length === 0 && <div className="text-ink-400 text-sm">No trips found</div>}
