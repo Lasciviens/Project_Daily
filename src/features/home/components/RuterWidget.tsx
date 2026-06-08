@@ -15,8 +15,18 @@ type Tab = 'departures' | 'routes'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function minsUntil(iso: string): number {
-  return Math.round((new Date(iso).getTime() - Date.now()) / 60_000)
+function minsUntil(iso: string, now: number): number {
+  return Math.round((new Date(iso).getTime() - now) / 60_000)
+}
+
+// Ticks every 30s so departure countdowns stay accurate without refetching
+function useNow(): number {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+  return now
 }
 
 function fmtDuration(seconds: number): string {
@@ -103,6 +113,7 @@ export function RuterWidget() {
 
   const ws  = useWidgetState('ruter', { collapsed: true, intervalMs: 60_000 })
   const fav = useRuterFavorites(DEFAULT_STOP)
+  const now = useNow()
 
   // Merge preset routes with user-added routes (presets always shown first)
   const allRoutes: FavoriteRoute[] = [
@@ -133,8 +144,8 @@ export function RuterWidget() {
 
   return (
     <WidgetShell title="Departures" ws={ws} headerRight={tabBar}>
-      {tab === 'departures' && <DeparturesTab fav={fav} ws={ws} />}
-      {tab === 'routes'     && <RoutesTab allRoutes={allRoutes} ws={ws} fav={fav} />}
+      {tab === 'departures' && <DeparturesTab fav={fav} ws={ws} now={now} />}
+      {tab === 'routes'     && <RoutesTab allRoutes={allRoutes} ws={ws} fav={fav} now={now} />}
     </WidgetShell>
   )
 }
@@ -144,9 +155,11 @@ export function RuterWidget() {
 function DeparturesTab({
   fav,
   ws,
+  now,
 }: {
   fav: ReturnType<typeof useRuterFavorites>
   ws:  ReturnType<typeof useWidgetState>
+  now: number
 }) {
   const [editMode, setEditMode]     = useState(false)
   const [showSearch, setShowSearch] = useState(false)
@@ -213,7 +226,7 @@ function DeparturesTab({
         <div className="space-y-2.5">
           {data.departures.length === 0 && <div className="text-ink-400 text-sm">No departures</div>}
           {data.departures.map((dep: Departure, i: number) => (
-            <DepartureRow key={i} dep={dep} />
+            <DepartureRow key={i} dep={dep} now={now} />
           ))}
         </div>
       )}
@@ -221,8 +234,8 @@ function DeparturesTab({
   )
 }
 
-function DepartureRow({ dep }: { dep: Departure }) {
-  const mins  = minsUntil(dep.expected)
+function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
+  const mins  = minsUntil(dep.expected, now)
   const isNow = mins <= 0
   return (
     <div className="flex items-start gap-2">
@@ -257,10 +270,12 @@ function RoutesTab({
   allRoutes,
   ws,
   fav,
+  now,
 }: {
   allRoutes: FavoriteRoute[]
   ws:        ReturnType<typeof useWidgetState>
   fav:       ReturnType<typeof useRuterFavorites>
+  now:       number
 }) {
   const [activeRouteId, setActiveRouteId] = useState(allRoutes[0]?.id)
   const [addStep, setAddStep]   = useState<AddStep>(null)
@@ -373,7 +388,7 @@ function RoutesTab({
         <div className="space-y-3">
           {data.length === 0 && <div className="text-ink-400 text-sm">No trips found</div>}
           {(data as TripPattern[]).map((trip, i) => (
-            <TripRow key={i} trip={trip} />
+            <TripRow key={i} trip={trip} now={now} />
           ))}
         </div>
       )}
@@ -381,8 +396,8 @@ function RoutesTab({
   )
 }
 
-function TripRow({ trip }: { trip: TripPattern }) {
-  const mins    = minsUntil(trip.departure)
+function TripRow({ trip, now }: { trip: TripPattern; now: number }) {
+  const mins    = minsUntil(trip.departure, now)
   const isNow   = mins <= 0
   const mainLeg = trip.legs.find(l => l.mode !== 'foot')
   return (

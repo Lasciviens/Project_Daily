@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { format } from 'date-fns'
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isToday, isPast } from 'date-fns'
 import { useTasksBySection } from '../../todo/hooks/useTodos'
+import { useCreateTask } from '../../todo/hooks/useTodos'
 import { useTimeBlocks } from '../../daily/hooks/useSchedule'
 import type { Task } from '../../todo/types'
 import { AddTaskModal } from '../../../shared/components/AddTaskModal'
@@ -11,6 +12,7 @@ import { CurrencyWidget } from '../components/CurrencyWidget'
 import { NewsWidget } from '../components/NewsWidget'
 import { TrainingHomeWidget } from '../components/TrainingHomeWidget'
 import { GamesHomeWidget } from '../components/GamesHomeWidget'
+import { RecentMediaWidget } from '../components/RecentMediaWidget'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,9 +54,9 @@ export function HomePage() {
   return (
     /*
      * Layout: 3-column grid on ≥1280px
-     *   Left  (280px) : Currency
-     *   Center (flex) : Greeting + Nav + Weather + RUTER + Tasks
-     *   Right  (380px): News
+     *   Left  (280px) : Currency + Training + Games
+     *   Center (flex) : Greeting + Week + Nav + Weather + Schedule + Ruter + Tasks
+     *   Right  (380px): News + Recent Media
      * On <1280px: right panel drops below center
      * On <768px : all single column
      */
@@ -69,11 +71,14 @@ export function HomePage() {
 
       {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 space-y-4">
-        {/* Greeting */}
+        {/* Greeting + week strip */}
         <div className="pt-1">
           <h1 className="text-xl font-bold text-ink-900">{greeting()}, Furkan</h1>
           <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), "EEEE, d MMMM yyyy")}</p>
         </div>
+
+        {/* Week progress strip */}
+        <WeekStrip />
 
         {/* Quick nav cards — 2-col on mobile, 3-col on sm+ */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -106,8 +111,9 @@ export function HomePage() {
       </div>
 
       {/* ── RIGHT COLUMN ────────────────────────────────────────────────── */}
-      <div className="w-full xl:w-[380px] xl:flex-shrink-0">
+      <div className="w-full xl:w-[380px] xl:flex-shrink-0 space-y-4">
         <NewsWidget />
+        <RecentMediaWidget />
       </div>
 
       <AddTaskModal
@@ -115,6 +121,44 @@ export function HomePage() {
         onClose={() => setEditingTask(null)}
         task={editingTask ?? undefined}
       />
+    </div>
+  )
+}
+
+// ─── Week strip ───────────────────────────────────────────────────────────────
+
+function WeekStrip() {
+  const now   = new Date()
+  const start = startOfWeek(now, { weekStartsOn: 1 })
+  const end   = endOfWeek(now,   { weekStartsOn: 1 })
+  const days  = eachDayOfInterval({ start, end })
+
+  return (
+    <div className="bg-white rounded-xl border border-ink-200 shadow-sm px-4 py-3">
+      <div className="flex items-center justify-between">
+        {days.map(day => {
+          const isT  = isToday(day)
+          const past = !isT && isPast(day)
+          return (
+            <Link
+              key={day.toISOString()}
+              to={`/daily?date=${format(day, 'yyyy-MM-dd')}`}
+              className="flex flex-col items-center gap-1 group"
+            >
+              <span className="text-[9px] font-medium uppercase text-ink-400">
+                {format(day, 'EEE')}
+              </span>
+              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors duration-150 ${
+                isT  ? 'bg-accent-500 text-white' :
+                past ? 'bg-ink-100 text-ink-400'  :
+                       'text-ink-700 group-hover:bg-ink-100'
+              }`}>
+                {format(day, 'd')}
+              </span>
+            </Link>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -170,6 +214,22 @@ interface TodayTasksProps {
 }
 
 function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: TodayTasksProps) {
+  const [quickTitle, setQuickTitle] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  const create = useCreateTask()
+
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter' || !quickTitle.trim()) return
+    const title = quickTitle.trim()
+    setQuickTitle('')
+    create.mutate({
+      title,
+      section:  'today',
+      domain:   'personal',
+      priority: 'medium',
+    })
+  }
+
   return (
     <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
@@ -180,7 +240,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
 
       {!isLoading && tasks.length === 0 && (
-        <div className="text-ink-400 text-sm">No tasks today — enjoy the day!</div>
+        <div className="text-ink-400 text-sm mb-3">No tasks today — enjoy the day!</div>
       )}
 
       {!isLoading && tasks.length > 0 && (
@@ -195,7 +255,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
             <span className="text-xs text-ink-500 flex-shrink-0">{done}/{tasks.length}</span>
           </div>
 
-          <ul className="space-y-2">
+          <ul className="space-y-2 mb-3">
             {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').slice(0, 6).map(t => (
               <li
                 key={t.id}
@@ -219,11 +279,24 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
             ))}
           </ul>
 
-          {open > 0 && (
-            <div className="mt-2 text-xs text-ink-400">{open} task{open !== 1 ? 's' : ''} remaining</div>
+          {open > 6 && (
+            <div className="mb-3 text-xs text-ink-400">{open} tasks remaining</div>
           )}
         </>
       )}
+
+      {/* Quick-add inline input */}
+      <div className="flex items-center gap-2 border-t border-ink-100 pt-3 mt-1">
+        <input
+          ref={inputRef}
+          value={quickTitle}
+          onChange={e => setQuickTitle(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Quick add task… (Enter to save)"
+          disabled={create.isPending}
+          className="flex-1 text-sm px-2.5 py-1.5 rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white placeholder:text-ink-300 disabled:opacity-50"
+        />
+      </div>
     </div>
   )
 }
