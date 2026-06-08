@@ -1,0 +1,327 @@
+{
+  "info": {
+    "name": "EnTur API — Ruter Debug",
+    "description": "Tests for EnTur JourneyPlanner v3 GraphQL + Pelias geocoder.\nImport this into Postman to verify departures, trip planner, and stop search.\n\nBase URL: https://api.entur.io\nNo API key needed — just set ET-Client-Name header.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "JOURNEY_URL",
+      "value": "https://api.entur.io/journey-planner/v3/graphql",
+      "type": "string"
+    },
+    {
+      "key": "GEOCODER_URL",
+      "value": "https://api.entur.io/geocoder/v1/autocomplete",
+      "type": "string"
+    },
+    {
+      "key": "CLIENT_NAME",
+      "value": "personal-lascisboard",
+      "type": "string"
+    },
+    {
+      "key": "STOP_VISPERUD",
+      "value": "NSR:StopPlace:5492",
+      "type": "string"
+    },
+    {
+      "key": "STOP_SINSENVEIEN",
+      "value": "NSR:StopPlace:58221",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1 — Stop Search (Geocoder)",
+      "item": [
+        {
+          "name": "Search: Visperud",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "url": {
+              "raw": "{{GEOCODER_URL}}?text=Visperud&lang=no&size=8&layers=venue&sources=nsr",
+              "host": ["{{GEOCODER_URL}}"],
+              "query": [
+                { "key": "text",    "value": "Visperud" },
+                { "key": "lang",    "value": "no" },
+                { "key": "size",    "value": "8" },
+                { "key": "layers",  "value": "venue" },
+                { "key": "sources", "value": "nsr" }
+              ]
+            },
+            "description": "Search for Visperud stop.\nExpect: features[].properties.id starting with NSR:StopPlace:\nIf sources=nsr is removed, you'll get addresses and POIs with non-NSR IDs."
+          }
+        },
+        {
+          "name": "Search: Sinsenveien",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "url": {
+              "raw": "{{GEOCODER_URL}}?text=Sinsenveien&lang=no&size=8&layers=venue&sources=nsr",
+              "host": ["{{GEOCODER_URL}}"],
+              "query": [
+                { "key": "text",    "value": "Sinsenveien" },
+                { "key": "lang",    "value": "no" },
+                { "key": "size",    "value": "8" },
+                { "key": "layers",  "value": "venue" },
+                { "key": "sources", "value": "nsr" }
+              ]
+            },
+            "description": "Search for Sinsenveien.\nLook at features[].properties.id — note ALL returned IDs.\nThere may be multiple stops (one per direction/quay group).\nThis helps identify which NSR:StopPlace ID is the correct one for your commute."
+          }
+        },
+        {
+          "name": "Search: WITHOUT sources=nsr (shows bug)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "url": {
+              "raw": "{{GEOCODER_URL}}?text=Sinsenveien&lang=no&size=8&layers=venue",
+              "host": ["{{GEOCODER_URL}}"],
+              "query": [
+                { "key": "text",   "value": "Sinsenveien" },
+                { "key": "lang",   "value": "no" },
+                { "key": "size",   "value": "8" },
+                { "key": "layers", "value": "venue" }
+              ]
+            },
+            "description": "Without sources=nsr you get addresses, street segments, and POIs.\nThese IDs cannot be used in stopPlace() queries — they fail silently."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 — Departures",
+      "item": [
+        {
+          "name": "Departures: Visperud (journeyPattern path — new)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_VISPERUD}}\\\") {\\n      name\\n      estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {\\n        realtime\\n        aimedDepartureTime\\n        expectedDepartureTime\\n        quay { publicCode description name }\\n        serviceJourney { journeyPattern { line { publicCode transportMode } } }\\n        destinationDisplay { frontText }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Uses serviceJourney → journeyPattern → line (the correct OTP2 path).\n\nCheck:\n- Does it return HTTP 200?\n- Is json.errors empty?\n- Is stopPlace.estimatedCalls an array with data?\n- Does each call have serviceJourney.journeyPattern.line.publicCode populated?\n\nIf journeyPattern is null on all calls → the schema path is wrong on this server."
+          }
+        },
+        {
+          "name": "Departures: Visperud (direct line path — old, may fail)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_VISPERUD}}\\\") {\\n      name\\n      estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {\\n        realtime\\n        aimedDepartureTime\\n        expectedDepartureTime\\n        quay { publicCode description name }\\n        serviceJourney { line { publicCode transportMode } }\\n        destinationDisplay { frontText }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Uses serviceJourney → line directly (the OLD path that may not exist in OTP2).\n\nIf this returns json.errors → the field doesn't exist and we need journeyPattern.\nIf BOTH work → either path is fine and the bug is elsewhere."
+          }
+        },
+        {
+          "name": "Departures: Sinsenveien",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_SINSENVEIEN}}\\\") {\\n      name\\n      estimatedCalls(timeRange: 72100, numberOfDepartures: 10) {\\n        realtime\\n        aimedDepartureTime\\n        expectedDepartureTime\\n        quay { publicCode description name }\\n        serviceJourney { journeyPattern { line { publicCode transportMode } } }\\n        destinationDisplay { frontText }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Departures from Sinsenveien (NSR:StopPlace:58221).\n\nCheck quay.name and quay.description — this tells you which direction each departure is going.\nIf you see departures going BOTH directions from the same stop, then the stop ID covers both quays."
+          }
+        },
+        {
+          "name": "Departures: Introspect quays at a stop",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    stopPlace(id: \\\"{{STOP_VISPERUD}}\\\") {\\n      name\\n      quays {\\n        id\\n        publicCode\\n        name\\n        description\\n        compassBearing\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Lists all quays (platforms) at the stop with their IDs, names, and compass bearing.\ncompassBearing tells you the physical direction buses travel from that quay.\nThis helps understand if the stop covers both directions or just one."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 — Trip Planner",
+      "item": [
+        {
+          "name": "Trip: Sinsenveien → Visperud (Home preset)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    trip(\\n      from: { place: \\\"{{STOP_SINSENVEIEN}}\\\" }\\n      to:   { place: \\\"{{STOP_VISPERUD}}\\\" }\\n      numTripPatterns: 5\\n    ) {\\n      tripPatterns {\\n        duration\\n        expectedStartTime\\n        expectedEndTime\\n        legs {\\n          mode\\n          fromPlace { name }\\n          toPlace   { name }\\n          fromEstimatedCall {\\n            aimedDepartureTime\\n            expectedDepartureTime\\n          }\\n          line { publicCode }\\n        }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Trip from Sinsenveien to Visperud (the Home preset).\n\nCheck:\n- How many tripPatterns are returned?\n- Do ALL legs use bus 100? If yes, that IS the only transit link.\n- What are the leg modes? (foot, bus, metro, etc.)\n- Does expectedStartTime differ across patterns?\n\nIf you only see bus 100: the stop IDs might be correct but your commute goes through bus 100.\nIf you see errors in json.errors: the query schema is wrong."
+          }
+        },
+        {
+          "name": "Trip: Visperud → Sinsenveien (Work preset)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    trip(\\n      from: { place: \\\"{{STOP_VISPERUD}}\\\" }\\n      to:   { place: \\\"{{STOP_SINSENVEIEN}}\\\" }\\n      numTripPatterns: 5\\n    ) {\\n      tripPatterns {\\n        duration\\n        expectedStartTime\\n        expectedEndTime\\n        legs {\\n          mode\\n          fromPlace { name }\\n          toPlace   { name }\\n          fromEstimatedCall {\\n            aimedDepartureTime\\n            expectedDepartureTime\\n          }\\n          line { publicCode }\\n        }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Trip from Visperud to Sinsenveien (the Work preset)."
+          }
+        },
+        {
+          "name": "Trip: Visperud → Oslo S (broad city center test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    trip(\\n      from: { place: \\\"NSR:StopPlace:5492\\\" }\\n      to:   { place: \\\"NSR:StopPlace:59872\\\" }\\n      numTripPatterns: 5\\n    ) {\\n      tripPatterns {\\n        duration\\n        expectedStartTime\\n        expectedEndTime\\n        legs {\\n          mode\\n          fromPlace { name }\\n          toPlace   { name }\\n          fromEstimatedCall {\\n            aimedDepartureTime\\n            expectedDepartureTime\\n          }\\n          line { publicCode }\\n        }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Trip from Visperud to Oslo S (NSR:StopPlace:59872 = Oslo Sentralstasjon).\nUseful to see if different lines appear when the destination is a known major hub.\nIf this shows multiple different lines → the preset stop IDs might be too close together."
+          }
+        },
+        {
+          "name": "Trip: Schema introspect — check field names",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    __type(name: \\\"TripPattern\\\") {\\n      name\\n      fields {\\n        name\\n        type { name kind }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Introspects the TripPattern type to list all available fields.\nVerify: are expectedStartTime / expectedEndTime the real field names?\nOTP2 sometimes uses aimedStartTime instead."
+          }
+        },
+        {
+          "name": "Trip: Schema introspect — Leg fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    __type(name: \\\"Leg\\\") {\\n      name\\n      fields {\\n        name\\n        type { name kind ofType { name kind } }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Introspects the Leg type.\nVerify: is 'line' a direct field on Leg, or only via serviceJourney?\nThis is the key question for whether serviceJourney.journeyPattern.line or leg.line is correct."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 — Schema Introspection",
+      "item": [
+        {
+          "name": "Introspect: ServiceJourney fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    __type(name: \\\"ServiceJourney\\\") {\\n      name\\n      fields {\\n        name\\n        type { name kind ofType { name kind } }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Lists all fields on ServiceJourney.\nKey check: does ServiceJourney have a 'line' field directly?\nOr is it only accessible via journeyPattern?\nThis directly answers the departure query schema question."
+          }
+        },
+        {
+          "name": "Introspect: EstimatedCall fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "ET-Client-Name", "value": "{{CLIENT_NAME}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{\\n    __type(name: \\\"EstimatedCall\\\") {\\n      name\\n      fields {\\n        name\\n        type { name kind ofType { name kind } }\\n      }\\n    }\\n  }\"\n}"
+            },
+            "url": {
+              "raw": "{{JOURNEY_URL}}",
+              "host": ["{{JOURNEY_URL}}"]
+            },
+            "description": "Lists all fields on EstimatedCall (the object inside estimatedCalls[]).\nUseful to find if there are better fields for line/direction info."
+          }
+        }
+      ]
+    }
+  ]
+}
