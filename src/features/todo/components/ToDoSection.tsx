@@ -54,6 +54,9 @@ export function ToDoSection({ title, section, tasks, defaultOpen = true }: Props
                 onMoveDown={() => swap.mutate({ id1: task.id, id2: openTasks[idx + 1].id })}
               />
             ))}
+            {openTasks.length === 0 && doneTasks.length === 0 && (
+              <p className="px-3 py-1.5 text-[11px] text-ink-300 italic">Nothing here yet</p>
+            )}
 
             <button
               onClick={() => setModalOpen(true)}

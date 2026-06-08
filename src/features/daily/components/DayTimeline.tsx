@@ -63,6 +63,8 @@ export function DayTimeline({ date }: Props) {
   const [dragging,   setDragging]   = useState<DragState | null>(null)
   const [dragY,      setDragY]      = useState<number | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editingId,  setEditingId]  = useState<string | null>(null)
+  const [editTitle,  setEditTitle]  = useState('')
   const scrollRef    = useRef<HTMLDivElement>(null)
   const timelineRef  = useRef<HTMLDivElement>(null)
 
@@ -182,6 +184,18 @@ export function DayTimeline({ date }: Props) {
   }
 
   const visibleBlocks = blocks.filter(b => b.startHour < HOUR_END && b.endHour > HOUR_START)
+
+  // Overlap detection: mark blocks that conflict with another
+  const overlappingIds = new Set<string>()
+  for (let i = 0; i < visibleBlocks.length; i++) {
+    for (let j = i + 1; j < visibleBlocks.length; j++) {
+      const a = visibleBlocks[i], b = visibleBlocks[j]
+      if (a.startHour < b.endHour && a.endHour > b.startHour) {
+        overlappingIds.add(a.id)
+        overlappingIds.add(b.id)
+      }
+    }
+  }
 
   // Fullness: total booked hours / available hours
   const totalAvail  = HOUR_END - HOUR_START
@@ -344,25 +358,62 @@ export function DayTimeline({ date }: Props) {
               setSelectedId(null)
             }
 
+            const isEditing   = editingId === block.id
+            const isOverlap   = overlappingIds.has(block.id)
+
+            function startEdit(e: React.MouseEvent) {
+              e.stopPropagation()
+              setEditingId(block.id)
+              setEditTitle(block.title)
+              setSelectedId(null)
+            }
+
+            function saveEdit() {
+              const trimmed = editTitle.trim()
+              if (trimmed && trimmed !== block.title) {
+                updateBlock.mutate({ id: block.id, title: trimmed, dateStr: block.dateStr })
+              }
+              setEditingId(null)
+            }
+
             return (
               <div
                 key={block.id}
                 data-block="true"
                 onClick={isCalEvent
                   ? (e) => { e.stopPropagation(); setEditEvent(block.calendarEvent!) }
-                  : (e) => { e.stopPropagation(); setSelectedId(isSelected ? null : block.id) }}
-                onMouseDown={block.deletable && !isSelected ? (e) => handleBlockMouseDown(e, block.id, baseTopPx) : undefined}
-                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : block.deletable ? 'cursor-pointer' : 'cursor-default'} ${isDraggingThis ? 'opacity-80 shadow-lg z-20' : ''} ${isSelected ? 'ring-2 ring-accent-400 z-10' : ''}`}
+                  : isEditing
+                    ? (e) => e.stopPropagation()
+                    : (e) => { e.stopPropagation(); setSelectedId(isSelected ? null : block.id) }}
+                onMouseDown={block.deletable && !isSelected && !isEditing ? (e) => handleBlockMouseDown(e, block.id, baseTopPx) : undefined}
+                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : block.deletable ? 'cursor-pointer' : 'cursor-default'} ${isDraggingThis ? 'opacity-80 shadow-lg z-20' : ''} ${isSelected ? 'ring-2 ring-accent-400 z-10' : ''} ${isOverlap && !isSelected ? 'ring-1 ring-red-400' : ''}`}
                 style={{ top: `${topPx}px`, height: `${heightPx}px` }}
               >
-                {block.deletable && !isSelected && (
+                {block.deletable && !isSelected && !isEditing && (
                   <span className="absolute top-1 left-1 text-[10px] opacity-0 group-hover:opacity-40 transition-opacity select-none">⠿</span>
                 )}
-                <p className="text-[11px] font-semibold leading-tight truncate pl-3">{block.title}</p>
-                {heightPx >= 28 && (
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    onBlur={saveEdit}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveEdit()
+                      if (e.key === 'Escape') setEditingId(null)
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    onMouseDown={e => e.stopPropagation()}
+                    className="w-full bg-white/80 text-[11px] font-semibold rounded px-1 py-0.5 outline-none text-inherit"
+                  />
+                ) : (
+                  <p className="text-[11px] font-semibold leading-tight truncate pl-3">{block.title}</p>
+                )}
+                {heightPx >= 28 && !isEditing && (
                   <p className="text-[10px] opacity-60 pl-3">
                     {isDraggingThis && dragHour !== null ? hourToTimeStr(dragHour) : hourToTimeStr(block.startHour)} – {hourToTimeStr(block.endHour)}
                     {durationMins >= 30 ? ` · ${formatDuration(durationMins)}` : ''}
+                    {isOverlap && <span className="ml-1 text-red-500">⚠</span>}
                   </p>
                 )}
                 {isSelected && block.deletable && (
@@ -379,6 +430,12 @@ export function DayTimeline({ date }: Props) {
                     >+1d</button>
                     <button
                       onMouseDown={e => e.stopPropagation()}
+                      onClick={startEdit}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/70 hover:bg-white border border-current opacity-70 hover:opacity-100"
+                      title="Edit title"
+                    >✎</button>
+                    <button
+                      onMouseDown={e => e.stopPropagation()}
                       onClick={() => { deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }}
                       className="text-[10px] px-1.5 py-0.5 rounded bg-white/70 hover:bg-white border border-current opacity-70 hover:opacity-100 ml-auto mr-1"
                     >✕</button>
@@ -389,7 +446,7 @@ export function DayTimeline({ date }: Props) {
                     ✎
                   </span>
                 )}
-                {block.deletable && !isSelected && (
+                {block.deletable && !isSelected && !isEditing && (
                   <button
                     onMouseDown={e => e.stopPropagation()}
                     onClick={e => { e.stopPropagation(); deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }}

@@ -12,15 +12,33 @@ import { useMovies } from '../hooks/useMovies'
 import { useTVSeries } from '../hooks/useTVSeries'
 import type { UserMovieEntry, UserTVEntry } from '../types'
 
-type Tab = 'movies' | 'tv'
+type Tab    = 'movies' | 'tv'
+type SortBy = 'added' | 'rating' | 'alpha'
 
 interface DetailState { tmdbId: number; type: 'movie' | 'tv' }
 
 const GRID = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-6 gap-3'
 
+function sortMovies(entries: UserMovieEntry[], by: SortBy): UserMovieEntry[] {
+  return [...entries].sort((a, b) => {
+    if (by === 'rating')  return (b.movie.tmdb_rating ?? 0) - (a.movie.tmdb_rating ?? 0)
+    if (by === 'alpha')   return a.movie.title.localeCompare(b.movie.title)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+}
+
+function sortTV(entries: UserTVEntry[], by: SortBy): UserTVEntry[] {
+  return [...entries].sort((a, b) => {
+    if (by === 'rating')  return (b.tv_series.tmdb_rating ?? 0) - (a.tv_series.tmdb_rating ?? 0)
+    if (by === 'alpha')   return a.tv_series.title.localeCompare(b.tv_series.title)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+}
+
 export function MediaPage() {
-  const [tab, setTab]         = useState<Tab>('movies')
-  const [detail, setDetail]   = useState<DetailState | null>(null)
+  const [tab,    setTab]    = useState<Tab>('movies')
+  const [sortBy, setSortBy] = useState<SortBy>('added')
+  const [detail, setDetail] = useState<DetailState | null>(null)
 
   const { data: movieEntries = [], isLoading: moviesLoading } = useMovies()
   const { data: tvEntries    = [], isLoading: tvLoading      } = useTVSeries()
@@ -35,13 +53,13 @@ export function MediaPage() {
       : tvEntries.find(e => e.tv_series.tmdb_id === detail.tmdbId)
     : null
 
-  const watchingMovies  = movieEntries.filter(e => e.status === 'watching')
-  const wishlistMovies  = movieEntries.filter(e => e.status === 'wishlist')
-  const completedMovies = movieEntries.filter(e => e.status === 'completed' || e.status === 'dropped')
+  const watchingMovies  = sortMovies(movieEntries.filter(e => e.status === 'watching'), sortBy)
+  const wishlistMovies  = sortMovies(movieEntries.filter(e => e.status === 'wishlist'), sortBy)
+  const completedMovies = sortMovies(movieEntries.filter(e => e.status === 'completed' || e.status === 'dropped'), sortBy)
 
-  const watchingTV  = tvEntries.filter(e => e.status === 'watching' || e.status === 'paused')
-  const wishlistTV  = tvEntries.filter(e => e.status === 'wishlist')
-  const completedTV = tvEntries.filter(e => e.status === 'completed' || e.status === 'dropped')
+  const watchingTV  = sortTV(tvEntries.filter(e => e.status === 'watching' || e.status === 'paused'), sortBy)
+  const wishlistTV  = sortTV(tvEntries.filter(e => e.status === 'wishlist'), sortBy)
+  const completedTV = sortTV(tvEntries.filter(e => e.status === 'completed' || e.status === 'dropped'), sortBy)
 
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
 
@@ -76,21 +94,39 @@ export function MediaPage() {
         <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} />
       )}
 
-      {/* Main tab switcher */}
-      <div className="flex gap-1 mb-6 bg-cream-100 rounded-lg p-1 w-fit">
-        {(['movies', 'tv'] as Tab[]).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors duration-150 ${
-              tab === t
-                ? 'bg-white text-ink-900 shadow-sm'
-                : 'text-ink-500 hover:text-ink-700'
-            }`}
-          >
-            {t === 'movies' ? 'Movies' : 'TV Series'}
-          </button>
-        ))}
+      {/* Main tab switcher + sort */}
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-fit">
+          {(['movies', 'tv'] as Tab[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors duration-150 ${
+                tab === t
+                  ? 'bg-white text-ink-900 shadow-sm'
+                  : 'text-ink-500 hover:text-ink-700'
+              }`}
+            >
+              {t === 'movies' ? 'Movies' : 'TV Series'}
+            </button>
+          ))}
+        </div>
+        {hasLibrary && (
+          <div className="flex items-center gap-1 ml-auto">
+            <span className="text-[11px] text-ink-400 mr-1">Sort:</span>
+            {(['added', 'rating', 'alpha'] as SortBy[]).map(s => (
+              <button
+                key={s}
+                onClick={() => setSortBy(s)}
+                className={`text-[11px] px-2 py-1 rounded-lg transition-colors duration-150 ${
+                  sortBy === s ? 'bg-accent-100 text-accent-700 font-medium' : 'text-ink-500 hover:bg-ink-100'
+                }`}
+              >
+                {s === 'added' ? 'Latest' : s === 'rating' ? '★ Rating' : 'A–Z'}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Discovery */}
@@ -98,6 +134,14 @@ export function MediaPage() {
         mediaType={tab === 'movies' ? 'movie' : 'tv'}
         onOpenDetail={openDetail}
       />
+
+      {/* Empty library state */}
+      {!hasLibrary && !moviesLoading && !tvLoading && (
+        <div className="text-center py-8 text-sm text-ink-400">
+          <p className="text-2xl mb-2">🎬</p>
+          <p>Your library is empty — search above to add a movie or TV series</p>
+        </div>
+      )}
 
       {/* User library */}
       {tab === 'movies' ? (
