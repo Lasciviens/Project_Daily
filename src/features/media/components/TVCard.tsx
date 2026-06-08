@@ -1,6 +1,7 @@
 import { posterUrl } from '../../../integrations/tmdb/client'
 import type { UserTVEntry } from '../types'
 import { useUpdateTV } from '../hooks/useTVSeries'
+import { PlanThisButton } from './PlanThisButton'
 
 interface Props {
   entry: UserTVEntry
@@ -63,13 +64,13 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
   return (
     <div className="flex flex-col">
       <div
-        className={`relative rounded-lg overflow-hidden aspect-[2/3] hover:brightness-90 cursor-pointer transition-all duration-150 ${upcoming ? 'grayscale' : ''}`}
+        className={`relative rounded-lg overflow-hidden aspect-[2/3] cursor-pointer transition-all duration-150 group ${upcoming ? 'grayscale' : ''}`}
         onClick={onOpenDetail}
       >
         <img
           src={posterUrl(series.poster_path)}
           alt={series.title}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover group-hover:brightness-75 transition-all duration-150"
           loading="lazy"
         />
         {upcoming && (
@@ -80,8 +81,42 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
           </div>
         )}
         {entry.status === 'watching' && !upcoming && (
-          <div className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+          <div className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded z-10">
             S{entry.current_season} E{entry.current_episode}
+          </div>
+        )}
+
+        {/* Hover overlay with quick actions */}
+        {!upcoming && entry.status !== 'completed' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-end pb-2 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <div onClick={e => e.stopPropagation()} className="w-full px-2">
+              <PlanThisButton
+                entryId={entry.id}
+                sourceType="tv_series"
+                title={series.title}
+                currentSeason={entry.current_season}
+                currentEpisode={entry.current_episode}
+              />
+            </div>
+            {entry.status === 'watching' && (
+              <div className="flex gap-1 w-[calc(100%-16px)]">
+                <button
+                  onClick={advanceEpisode}
+                  disabled={update.isPending}
+                  className="flex-1 text-[10px] py-1 rounded bg-accent-500 text-white font-medium hover:bg-accent-600 transition-colors duration-150"
+                >
+                  + Next ep
+                </button>
+                <button
+                  onClick={markSeriesDone}
+                  disabled={update.isPending}
+                  className="text-[10px] px-2 py-1 rounded bg-emerald-500 text-white hover:bg-emerald-600 transition-colors duration-150"
+                  title="Mark series as completed"
+                >
+                  ✓
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -95,28 +130,8 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
             )}
             <span className="text-[10px] text-ink-400">{STATUS_LABELS[entry.status]}</span>
           </div>
-          {/* Binge calculator: show remaining episodes + estimated hours */}
           {(entry.status === 'watching' || entry.status === 'paused') && series.number_of_episodes && (
             <BingeProgress entry={entry} />
-          )}
-          {entry.status === 'watching' && (
-            <div className="flex gap-1 mt-1">
-              <button
-                onClick={advanceEpisode}
-                disabled={update.isPending}
-                className="flex-1 text-[10px] py-0.5 rounded border border-accent-300 text-accent-600 hover:bg-accent-50 transition-colors duration-150"
-              >
-                + Next ep
-              </button>
-              <button
-                onClick={markSeriesDone}
-                disabled={update.isPending}
-                className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-600 hover:bg-emerald-50 transition-colors duration-150"
-                title="Mark series as completed"
-              >
-                ✓ Done
-              </button>
-            </div>
           )}
         </div>
       )}
