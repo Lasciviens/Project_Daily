@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useCreateSession, useUpdateSession, useSessionExercises, useSaveSessionExercises } from '../hooks/useTrainingSessions'
+import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
 import { fetchLastStrengthExercises, searchExerciseNames } from '../api/trainingApi'
 import type { WorkoutType, Exercise, ExerciseSet, TrainingSession } from '../types'
 
@@ -68,9 +69,10 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
     setExReady(true)
   }, [savedExercises, exReady])
 
-  const create = useCreateSession()
-  const update = useUpdateSession()
-  const isPending  = create.isPending || update.isPending
+  const create          = useCreateSession()
+  const update          = useUpdateSession()
+  const createTimeBlock = useCreateTimeBlock()
+  const isPending       = create.isPending || update.isPending
   const isCardio   = ['run', 'cycling', 'walk', 'swim'].includes(type)
   const isStrength = type === 'strength'
 
@@ -150,6 +152,16 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
     } else {
       const newSession = await create.mutateAsync(payload)
       if (isStrength && newSession?.id) await saveExercises.mutateAsync({ sessionId: newSession.id, exercises: validExercises })
+      // Auto-schedule new workouts on the day timeline at 17:00, 45 min
+      if (date) {
+        createTimeBlock.mutate({
+          date,
+          title:            title.trim(),
+          start_time:       '17:00:00',
+          duration_minutes: 45,
+          color:            'purple',
+        })
+      }
     }
     onClose()
   }

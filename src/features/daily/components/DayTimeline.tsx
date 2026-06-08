@@ -59,6 +59,7 @@ export function DayTimeline({ date }: Props) {
   const [editEvent,  setEditEvent]  = useState<CalendarEvent | null>(null)
   const [dragging,   setDragging]   = useState<DragState | null>(null)
   const [dragY,      setDragY]      = useState<number | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const scrollRef    = useRef<HTMLDivElement>(null)
   const timelineRef  = useRef<HTMLDivElement>(null)
 
@@ -304,26 +305,43 @@ export function DayTimeline({ date }: Props) {
             const clampedEnd   = Math.min(block.endHour, HOUR_END)
             const baseTopPx = (clampedStart - HOUR_START) * HOUR_PX
             const isDraggingThis = dragging?.id === block.id
+            const isSelected = selectedId === block.id
             const topPx = isDraggingThis && dragY !== null
               ? Math.max(0, dragY - dragging!.offsetY)
               : baseTopPx
-            const heightPx = Math.max((clampedEnd - clampedStart) * HOUR_PX, 20)
+            const heightPx = Math.max((clampedEnd - clampedStart) * HOUR_PX, isSelected ? 56 : 20)
             const durationMins = Math.round((block.endHour - block.startHour) * 60)
             const isCalEvent = !!block.calendarEvent
             const dragHour = isDraggingThis && dragY !== null
               ? Math.max(HOUR_START, Math.min(HOUR_END - 0.5, Math.floor((HOUR_START + (dragY - dragging!.offsetY) / HOUR_PX) * 2) / 2))
               : null
 
+            function postpone30m() {
+              const newHour = Math.min(HOUR_END - 0.5, block.startHour + 0.5)
+              const newTime = `${hourToTimeStr(newHour)}:00`
+              updateBlock.mutate({ id: block.id, start_time: newTime, dateStr: block.dateStr })
+            }
+
+            function postpone1d() {
+              const d = new Date(block.dateStr + 'T00:00:00')
+              d.setDate(d.getDate() + 1)
+              const newDate = format(d, 'yyyy-MM-dd')
+              updateBlock.mutate({ id: block.id, date: newDate, dateStr: block.dateStr, newDateStr: newDate })
+              setSelectedId(null)
+            }
+
             return (
               <div
                 key={block.id}
                 data-block="true"
-                onClick={isCalEvent ? (e) => { e.stopPropagation(); setEditEvent(block.calendarEvent!) } : (e) => e.stopPropagation()}
-                onMouseDown={block.deletable ? (e) => handleBlockMouseDown(e, block.id, baseTopPx) : undefined}
-                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : block.deletable ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} ${isDraggingThis ? 'opacity-80 shadow-lg z-20' : ''}`}
+                onClick={isCalEvent
+                  ? (e) => { e.stopPropagation(); setEditEvent(block.calendarEvent!) }
+                  : (e) => { e.stopPropagation(); setSelectedId(isSelected ? null : block.id) }}
+                onMouseDown={block.deletable && !isSelected ? (e) => handleBlockMouseDown(e, block.id, baseTopPx) : undefined}
+                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : block.deletable ? 'cursor-pointer' : 'cursor-default'} ${isDraggingThis ? 'opacity-80 shadow-lg z-20' : ''} ${isSelected ? 'ring-2 ring-accent-400 z-10' : ''}`}
                 style={{ top: `${topPx}px`, height: `${heightPx}px` }}
               >
-                {block.deletable && (
+                {block.deletable && !isSelected && (
                   <span className="absolute top-1 left-1 text-[10px] opacity-0 group-hover:opacity-40 transition-opacity select-none">⠿</span>
                 )}
                 <p className="text-[11px] font-semibold leading-tight truncate pl-3">{block.title}</p>
@@ -333,15 +351,34 @@ export function DayTimeline({ date }: Props) {
                     {durationMins >= 30 ? ` · ${formatDuration(durationMins)}` : ''}
                   </p>
                 )}
-                {isCalEvent && heightPx >= 28 && (
+                {isSelected && block.deletable && (
+                  <div className="flex items-center gap-1 mt-1 pl-3" onClick={e => e.stopPropagation()}>
+                    <button
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={() => postpone30m()}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/70 hover:bg-white border border-current opacity-70 hover:opacity-100"
+                    >+30m</button>
+                    <button
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={() => postpone1d()}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/70 hover:bg-white border border-current opacity-70 hover:opacity-100"
+                    >+1d</button>
+                    <button
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={() => { deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/70 hover:bg-white border border-current opacity-70 hover:opacity-100 ml-auto mr-1"
+                    >✕</button>
+                  </div>
+                )}
+                {isCalEvent && !isSelected && (
                   <span className="absolute top-1 right-1.5 text-[10px] opacity-0 group-hover:opacity-50 transition-opacity">
                     ✎
                   </span>
                 )}
-                {block.deletable && (
+                {block.deletable && !isSelected && (
                   <button
                     onMouseDown={e => e.stopPropagation()}
-                    onClick={e => { e.stopPropagation(); deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }) }}
+                    onClick={e => { e.stopPropagation(); deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }}
                     className="absolute top-1 right-1 text-[10px] opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity"
                   >
                     ✕

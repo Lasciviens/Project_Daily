@@ -52,9 +52,12 @@ export function useCreateTimeBlock() {
 export function useUpdateTimeBlock() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, start_time, dateStr: _dateStr }: { id: string; start_time: string; dateStr: string }) =>
-      updateTimeBlock(id, { start_time }),
-    onSuccess:  (_, vars) => qc.invalidateQueries({ queryKey: ['schedule', 'day', vars.dateStr] }),
+    mutationFn: ({ id, start_time, date }: { id: string; start_time?: string; date?: string; dateStr: string; newDateStr?: string }) =>
+      updateTimeBlock(id, { start_time, date }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['schedule', 'day', vars.dateStr] })
+      if (vars.newDateStr) qc.invalidateQueries({ queryKey: ['schedule', 'day', vars.newDateStr] })
+    },
   })
 }
 
