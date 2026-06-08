@@ -111,8 +111,14 @@ export async function fetchDepartures(
     expected:    c.expectedDepartureTime,
     realtime:    c.realtime,
     platform:    c.quay?.publicCode,
-    // Prefer quay description (direction) over quay name; both may be undefined
-    direction:   c.quay?.description ?? c.quay?.name,
+    // Only use quay description as direction if it contains useful direction text
+    // (e.g. "Mot sentrum", "Retning Lysaker") — not just the stop's own name
+    direction:   (() => {
+      const raw = c.quay?.description ?? c.quay?.name ?? ''
+      const lower = raw.toLowerCase()
+      if (lower.includes('mot ') || lower.includes('retning') || lower.includes('sentrum')) return raw
+      return undefined
+    })(),
   }))
 
   return { stopName: stop.name, departures }

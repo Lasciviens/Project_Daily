@@ -201,8 +201,11 @@ function DeparturesTab({
         </div>
       )}
 
-      <button onClick={() => { refetch(); ws.markSynced() }}
-        className="text-[10px] text-ink-400 hover:text-accent-600 mb-2 block">↻ Refresh</button>
+      <div className="flex items-center justify-between mb-2">
+        {data && <span className="text-[11px] text-ink-500 font-medium">📍 {data.stopName}</span>}
+        <button onClick={() => { refetch(); ws.markSynced() }}
+          className="text-[10px] text-ink-400 hover:text-accent-600">↻ Refresh</button>
+      </div>
 
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
       {error     && <div className="text-ink-400 text-sm">Unavailable</div>}
