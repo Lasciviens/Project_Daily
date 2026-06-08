@@ -6,7 +6,7 @@ import {
   type StopResult, type Departure, type TripPattern,
 } from '../api/ruterApi'
 import { useWidgetState } from '../hooks/useWidgetState'
-import { useRuterFavorites, type FavoriteRoute } from '../hooks/useRuterFavorites'
+import { useRuterFavorites } from '../hooks/useRuterFavorites'
 import { WidgetShell } from './WidgetShell'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -52,9 +52,76 @@ function getBrowserLocation(): Promise<{ lat: number; lon: number }> {
   })
 }
 
-// ─── Shared stop search box ───────────────────────────────────────────────────
+// ─── Stop search input ────────────────────────────────────────────────────────
 
-// Self-contained search box with its own query — each tab instance is independent
+// Shows a text input + dropdown. When a stop is selected, calls onSelect and
+// displays the stop name in the input (replacing the search text).
+function StopInput({
+  label,
+  value,
+  onSelect,
+  placeholder,
+}: {
+  label:       string
+  value:       StopResult | null
+  onSelect:    (s: StopResult) => void
+  placeholder: string
+}) {
+  const [q, setQ]         = useState('')
+  const [open, setOpen]   = useState(false)
+  const ref               = useRef<HTMLInputElement>(null)
+
+  // When value changes externally (e.g. preset button), clear the search text
+  useEffect(() => { if (value) setQ('') }, [value])
+
+  const { data: results } = useQuery({
+    queryKey:  ['stopSearch', q],
+    queryFn:   () => searchStops(q),
+    enabled:   q.length >= 2,
+    staleTime: 5 * 60_000,
+  })
+
+  return (
+    <div className="relative flex items-center gap-2">
+      <span className="text-[10px] font-semibold text-ink-400 w-7 flex-shrink-0 uppercase">{label}</span>
+      <div className="relative flex-1">
+        <input
+          ref={ref}
+          value={value && !q ? value.name : q}
+          onChange={e => { setQ(e.target.value); setOpen(true) }}
+          onFocus={() => { if (value) setQ(''); setOpen(true) }}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder={placeholder}
+          className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white"
+        />
+        {open && results && results.length > 0 && (
+          <ul className="absolute z-20 mt-1 w-full bg-white border border-ink-200 rounded-lg shadow-lg overflow-hidden text-sm">
+            {results.slice(0, 6).map((r: StopResult) => (
+              <li key={r.id}>
+                <button
+                  onMouseDown={() => { onSelect(r); setQ(''); setOpen(false) }}
+                  className="w-full text-left px-3 py-2 hover:bg-cream-50 text-ink-800"
+                >
+                  {r.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {value && (
+        <button
+          onClick={() => { onSelect({ id: '', name: '' }); setQ('') }}
+          className="text-ink-300 hover:text-ink-600 text-xs flex-shrink-0"
+          title="Clear"
+        >✕</button>
+      )}
+    </div>
+  )
+}
+
+// ─── Shared stop search box (used in departures tab) ─────────────────────────
+
 function StopSearchInline({
   placeholder = 'Search stop…',
   onSelect,
@@ -67,9 +134,9 @@ function StopSearchInline({
   autoFocus?:   boolean
 }) {
   const [q, setQ] = useState('')
-  const ref = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { if (autoFocus) ref.current?.focus() }, [autoFocus])
+  useEffect(() => { if (autoFocus) inputRef.current?.focus() }, [autoFocus])
 
   const { data: results } = useQuery({
     queryKey: ['stopSearch', q],
@@ -81,7 +148,7 @@ function StopSearchInline({
   return (
     <div className="relative">
       <input
-        ref={ref}
+        ref={inputRef}
         value={q}
         onChange={e => setQ(e.target.value)}
         placeholder={placeholder}
@@ -95,7 +162,7 @@ function StopSearchInline({
                 {r.name}
               </button>
               {onAddFav && (
-                <button onClick={() => onAddFav(r)} className="text-xs text-accent-500 hover:text-accent-700 ml-2" title="Pin to favorites">★</button>
+                <button onClick={() => onAddFav(r)} className="text-xs text-accent-500 hover:text-accent-700 ml-2" title="Pin">★</button>
               )}
             </li>
           ))}
@@ -115,18 +182,11 @@ export function RuterWidget() {
   const fav = useRuterFavorites(DEFAULT_STOP)
   const now = useNow()
 
-  // Merge preset routes with user-added routes (presets always shown first)
-  const allRoutes: FavoriteRoute[] = [
-    ...PRESET_ROUTES.map(r => ({ id: `${r.from.id}|${r.to.id}`, ...r })),
-    ...fav.favRoutes.filter(r => !PRESET_ROUTES.some(p => `${p.from.id}|${p.to.id}` === r.id)),
-  ]
-
-  // Request geolocation permission once on first expand — stored but not yet acted on
   useEffect(() => {
     if (!ws.collapsed && !geoAsked) {
       setGeoAsked(true)
       localStorage.setItem('ruter_geo_asked', '1')
-      getBrowserLocation().catch(() => { /* user denied — Visperud stays as default */ })
+      getBrowserLocation().catch(() => {})
     }
   }, [ws.collapsed, geoAsked])
 
@@ -145,7 +205,7 @@ export function RuterWidget() {
   return (
     <WidgetShell title="Departures" ws={ws} headerRight={tabBar}>
       {tab === 'departures' && <DeparturesTab fav={fav} ws={ws} now={now} />}
-      {tab === 'routes'     && <RoutesTab allRoutes={allRoutes} ws={ws} fav={fav} now={now} />}
+      {tab === 'routes'     && <RoutesTab ws={ws} now={now} />}
     </WidgetShell>
   )
 }
@@ -189,7 +249,6 @@ function DeparturesTab({
         <button onClick={() => setShowSearch(v => !v)} className="text-xs text-ink-400 hover:text-accent-600">+ Stop</button>
       </div>
 
-      {/* Edit mode */}
       {editMode && (
         <div className="mb-3 p-2 bg-cream-50 rounded-lg border border-ink-200 space-y-1 text-xs">
           {fav.favStops.map(s => (
@@ -202,7 +261,6 @@ function DeparturesTab({
         </div>
       )}
 
-      {/* Stop search — independent instance */}
       {showSearch && (
         <div className="mb-3">
           <StopSearchInline
@@ -221,9 +279,9 @@ function DeparturesTab({
       </div>
 
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
-      {error     && (
+      {error && (
         <div className="text-ink-400 text-xs">
-          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — try again in a moment' : '⚠ Unavailable'}
+          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : '⚠ Unavailable'}
         </div>
       )}
       {data && (
@@ -259,7 +317,7 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
         <span className={`text-sm font-medium ${isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : 'text-ink-700'}`}>
           {isNow ? 'Now' : `${mins} min`}
         </span>
-        {!dep.realtime && <span className="text-[10px] text-ink-300 ml-0.5" title="Scheduled (not real-time)">~</span>}
+        {!dep.realtime && <span className="text-[10px] text-ink-300 ml-0.5" title="Scheduled">~</span>}
       </div>
     </div>
   )
@@ -267,129 +325,90 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
 
 // ─── Routes tab ───────────────────────────────────────────────────────────────
 
-// Step-based add-route flow: pick From → pick To → save
-type AddStep = 'from' | 'to' | null
-
+// Simple From / To pickers with preset quick-buttons.
+// No saved-route management — presets cover the main use case.
 function RoutesTab({
-  allRoutes,
   ws,
-  fav,
   now,
 }: {
-  allRoutes: FavoriteRoute[]
-  ws:        ReturnType<typeof useWidgetState>
-  fav:       ReturnType<typeof useRuterFavorites>
-  now:       number
+  ws:  ReturnType<typeof useWidgetState>
+  now: number
 }) {
-  const [activeRouteId, setActiveRouteId] = useState(allRoutes[0]?.id)
-  const [addStep, setAddStep]   = useState<AddStep>(null)
-  const [addFrom, setAddFrom]   = useState<StopResult | null>(null)
-  const [addTo,   setAddTo]     = useState<StopResult | null>(null)
+  const [from, setFrom] = useState<StopResult | null>(null)
+  const [to,   setTo]   = useState<StopResult | null>(null)
 
-  const route = allRoutes.find(r => r.id === activeRouteId) ?? allRoutes[0]
+  function applyPreset(preset: typeof PRESET_ROUTES[number]) {
+    setFrom(preset.from)
+    setTo(preset.to)
+  }
+
+  function swapStops() {
+    setFrom(to)
+    setTo(from)
+  }
+
+  const canFetch = !!(from?.id && to?.id)
 
   const { data, isLoading, error } = useQuery({
-    queryKey:        ['trip', route?.from.id, route?.to.id],
-    queryFn:         () => fetchTrips(route.from.id, route.to.id),
+    queryKey:        ['trip', from?.id, to?.id],
+    queryFn:         () => fetchTrips(from!.id, to!.id),
     staleTime:       ws.intervalMs,
     refetchInterval: !ws.collapsed && ws.syncActive ? ws.intervalMs : false,
-    enabled:         !ws.collapsed && !!route,
+    enabled:         !ws.collapsed && canFetch,
   })
-
-  function startAddRoute() { setAddStep('from'); setAddFrom(null); setAddTo(null) }
-  function cancelAddRoute() { setAddStep(null);  setAddFrom(null); setAddTo(null) }
-
-  function handleFromPicked(s: StopResult) {
-    setAddFrom(s)
-    setAddStep('to')  // immediately advance to picking "to"
-  }
-
-  function handleToPicked(s: StopResult) {
-    if (!addFrom) return
-    setAddTo(s)
-    fav.addRoute(addFrom, s, `${addFrom.name} → ${s.name}`)
-    setActiveRouteId(`${addFrom.id}|${s.id}`)
-    setAddStep(null)
-    setAddFrom(null)
-    setAddTo(null)
-  }
 
   return (
     <div>
-      {/* Route selector tabs */}
+      {/* Preset quick-pick buttons */}
       <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-        {allRoutes.map(r => (
-          <button key={r.id} onClick={() => setActiveRouteId(r.id)}
+        {PRESET_ROUTES.map(r => (
+          <button
+            key={`${r.from.id}|${r.to.id}`}
+            onClick={() => applyPreset(r)}
             className={`text-xs px-2.5 py-1 rounded-lg border transition-colors duration-150 ${
-              route?.id === r.id
+              from?.id === r.from.id && to?.id === r.to.id
                 ? 'bg-accent-500 text-white border-accent-500'
                 : 'text-ink-600 border-ink-200 hover:border-accent-300'
             }`}
-          >{r.label}</button>
+          >
+            {r.label}
+          </button>
         ))}
-        <button onClick={startAddRoute} className="text-xs text-ink-400 hover:text-accent-600">+ Route</button>
       </div>
 
-      {/* Remove user-added routes */}
-      {fav.favRoutes.length > 0 && (
-        <div className="mb-2 space-y-1 text-xs text-ink-400">
-          {fav.favRoutes.map(r => (
-            <div key={r.id} className="flex justify-between items-center">
-              <span>{r.label}</span>
-              <button onClick={() => fav.removeRoute(r.id)} className="text-red-400 hover:text-red-600">✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Add route — step by step: pick From, then To */}
-      {addStep !== null && (
-        <div className="mb-3 p-3 bg-cream-50 rounded-lg border border-ink-200 space-y-2 text-xs">
-          {/* From row */}
-          <div className="flex items-center gap-2">
-            <span className="text-ink-500 w-8 flex-shrink-0">From:</span>
-            <span className={`flex-1 font-medium ${addFrom ? 'text-green-700' : 'text-ink-400'}`}>
-              {addFrom?.name ?? '–'}
-            </span>
-            {addFrom && <span className="text-green-500">✓</span>}
-          </div>
-
-          {/* To row */}
-          <div className="flex items-center gap-2">
-            <span className="text-ink-500 w-8 flex-shrink-0">To:</span>
-            <span className={`flex-1 font-medium ${addTo ? 'text-green-700' : 'text-ink-400'}`}>
-              {addTo?.name ?? '–'}
-            </span>
-            {addTo && <span className="text-green-500">✓</span>}
-          </div>
-
-          {/* Search box — shows "from" prompt first, then "to" prompt */}
-          <div className="pt-1">
-            <p className="text-[10px] text-ink-500 mb-1">
-              {addStep === 'from' ? '① Search for departure stop:' : '② Search for destination stop:'}
-            </p>
-            <StopSearchInline
-              autoFocus
-              placeholder={addStep === 'from' ? 'From stop…' : 'To stop…'}
-              onSelect={addStep === 'from' ? handleFromPicked : handleToPicked}
+      {/* From / To inputs */}
+      <div className="space-y-2 mb-3">
+        <StopInput
+          label="From"
+          value={from}
+          onSelect={s => setFrom(s.id ? s : null)}
+          placeholder="Search departure stop…"
+        />
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <StopInput
+              label="To"
+              value={to}
+              onSelect={s => setTo(s.id ? s : null)}
+              placeholder="Search destination stop…"
             />
           </div>
-
-          <button onClick={cancelAddRoute} className="text-ink-400 hover:text-ink-700 text-[10px]">Cancel</button>
+          <button
+            onClick={swapStops}
+            title="Swap"
+            className="text-ink-400 hover:text-accent-600 text-sm px-1 flex-shrink-0"
+          >⇅</button>
         </div>
-      )}
+      </div>
 
-      {/* Active route header */}
-      {route && (
-        <div className="text-xs text-ink-500 mb-2">
-          {route.from.name} → {route.to.name}
-        </div>
+      {!canFetch && (
+        <p className="text-xs text-ink-300">Pick departure and destination stops above</p>
       )}
 
       {isLoading && <div className="text-ink-400 text-sm">Loading trips…</div>}
-      {error     && (
+      {error && (
         <div className="text-ink-400 text-xs">
-          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — try again in a moment' : '⚠ Unavailable'}
+          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : '⚠ Unavailable'}
         </div>
       )}
       {data && (
