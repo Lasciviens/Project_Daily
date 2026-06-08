@@ -4,23 +4,13 @@ import { fetchDepartures, TRANSPORT_ICON, TRANSPORT_COLOR, type Departure, type 
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
+import { minsUntil, fmtTime, fmtLastUpdated } from './transitUtils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DeparturesTabProps {
   ws:  WidgetStateResult
   now: number
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function minsUntil(iso: string, now: number): number {
-  return Math.round((new Date(iso).getTime() - now) / 60_000)
-}
-
-function fmtTime(iso: string): string {
-  const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 // ─── DepartureRow ─────────────────────────────────────────────────────────────
@@ -53,7 +43,9 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
         {delayed && (
           <span className="text-[10px] text-ink-300 line-through">{fmtTime(dep.aimed)}</span>
         )}
-        <span className={`text-sm font-medium ${isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : delayed ? 'text-orange-500' : 'text-ink-700'}`}>
+        <span className={`text-sm font-medium ${
+          isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : delayed ? 'text-orange-500' : 'text-ink-700'
+        }`}>
           {isNow ? 'Now' : `${mins} min`}
         </span>
         {dep.realtime
@@ -70,20 +62,23 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
 export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   const { stops, addStop } = useTransitStops()
 
-  // Active stop: a saved stop OR an ad-hoc searched stop
-  const defaultStop  = stops.find(s => s.is_default) ?? stops[0] ?? null
-  const [activeId, setActiveId]     = useState<string | null>(null)
-  const [adHocStop, setAdHocStop]   = useState<StopResult | null>(null)
-  const [showSearch, setShowSearch] = useState(false)
-  const [saveMsg, setSaveMsg]       = useState<string | null>(null)
+  const defaultStop = stops.find(s => s.is_default) ?? stops[0] ?? null
+  const [activeId, setActiveId]         = useState<string | null>(null)
+  const [adHocStop, setAdHocStop]       = useState<StopResult | null>(null)
+  const [showSearch, setShowSearch]     = useState(false)
+  const [saveMsg, setSaveMsg]           = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated]   = useState<number | null>(null)
 
   const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
-  // Ad-hoc stop overrides saved selection if user just searched
-  const queryStop = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
+  const queryStop   = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey:        ['departures', queryStop?.id ?? ''],
-    queryFn:         () => fetchDepartures(queryStop!.id),
+    queryKey: ['departures', queryStop?.id ?? ''],
+    queryFn: async () => {
+      const result = await fetchDepartures(queryStop!.id)
+      setLastUpdated(Date.now())
+      return result
+    },
     staleTime:       ws.intervalMs,
     refetchInterval: !ws.collapsed && ws.syncActive ? ws.intervalMs : false,
     enabled:         !ws.collapsed && !!queryStop?.id,
@@ -117,46 +112,60 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
 
   return (
     <div>
-      {/* Stop chips + search toggle */}
-      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-        {stops.map(s => (
+      {/* ── Saved stops ── */}
+      {stops.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
+            Saved stops
+          </p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {stops.map(s => (
+              <button
+                key={s.id}
+                onClick={() => handleSavedStopClick(s.id)}
+                className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+                  !adHocStop && activeSaved?.id === s.id
+                    ? 'bg-accent-500 text-white border-accent-500'
+                    : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                }`}
+              >
+                {s.label ?? s.stop_name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Search stop ── */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">
+            Search stop
+          </p>
           <button
-            key={s.id}
-            onClick={() => handleSavedStopClick(s.id)}
-            className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-              !adHocStop && activeSaved?.id === s.id
+            onClick={() => setShowSearch(v => !v)}
+            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+              showSearch
                 ? 'bg-accent-500 text-white border-accent-500'
                 : 'text-ink-600 border-ink-200 hover:border-accent-300'
             }`}
           >
-            {s.label ?? s.stop_name}
+            🔍 Search
           </button>
-        ))}
-        <button
-          onClick={() => setShowSearch(v => !v)}
-          className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-            showSearch ? 'bg-accent-500 text-white border-accent-500' : 'text-ink-600 border-ink-200 hover:border-accent-300'
-          }`}
-        >
-          🔍 Search
-        </button>
-      </div>
-
-      {/* Inline stop search */}
-      {showSearch && (
-        <div className="mb-3">
+        </div>
+        {showSearch && (
           <StopSearchInput
             placeholder="Search any stop…"
             onSelect={handleSearchSelect}
             autoFocus
           />
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Header: current stop name + save + refresh */}
+      {/* ── Active stop header + refresh ── */}
       {queryStop && (
         <div className="flex items-center justify-between mb-2 gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <span className="text-[11px] text-ink-500 font-medium truncate">
               📍 {data?.stopName ?? queryStop.name}
             </span>
@@ -174,28 +183,38 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
               </span>
             )}
           </div>
-          <button
-            onClick={() => { refetch(); ws.markSynced() }}
-            className="text-[10px] text-ink-400 hover:text-accent-600 transition-colors duration-150 flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-end"
-          >
-            ↻
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {lastUpdated && (
+              <span className="text-[10px] text-ink-400">{fmtLastUpdated(lastUpdated)}</span>
+            )}
+            <button
+              onClick={() => { refetch(); ws.markSynced() }}
+              className="text-[10px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-end"
+            >
+              ↻
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Empty: no stop selected and no saved stops */}
+      {/* ── Empty state ── */}
       {!queryStop && (
         <div className="text-sm text-ink-400 py-2">
-          Search for a stop above to see departures.
+          Search a stop or choose a saved stop.
         </div>
       )}
 
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
+
       {error && (
         <div className="text-red-500 text-xs py-1">
-          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `⚠ ${(error as Error).message}`}
+          {(error as Error).message?.includes('Rate')
+            ? '⏳ Rate limited — wait a moment'
+            : `⚠ ${(error as Error).message}`
+          }
         </div>
       )}
+
       {data && (
         <div className="divide-y divide-ink-50">
           {data.departures.length === 0 && (

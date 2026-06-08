@@ -5,6 +5,7 @@ import { useTransitRoutes } from '../../hooks/useTransitRoutes'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
+import { fmtLastUpdated } from './transitUtils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,29 +34,28 @@ function getCurrentLocation(): Promise<TransitPlace> {
   })
 }
 
-// Returns "YYYY-MM-DDTHH:MM" in local time — value format for <input type="datetime-local">
 function localDateTimeValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-// Converts a datetime-local input value to an ISO 8601 string with local offset
 function toISOWithOffset(localValue: string): string {
   return new Date(localValue).toISOString()
+}
+
+// Suggest a save label from stop names e.g. "Sinsen → Lysaker"
+function suggestLabel(from: TransitPlace, to: TransitPlace): string {
+  const fromName = from.name.split(',')[0].trim()
+  const toName   = to.name.split(',')[0].trim()
+  return `${fromName} → ${toName}`
 }
 
 // ─── LocationButton ───────────────────────────────────────────────────────────
 
 function LocationButton({ onLocate, state }: { onLocate: () => void; state: LocationState }) {
-  if (state === 'loading') {
-    return <span className="text-xs text-ink-400 py-2 block">Locating…</span>
-  }
-  if (state === 'denied') {
-    return <span className="text-xs text-red-500 py-1 block">Location permission denied</span>
-  }
-  if (state === 'error') {
-    return <span className="text-xs text-red-500 py-1 block">Could not get location</span>
-  }
+  if (state === 'loading') return <span className="text-xs text-ink-400 py-1 block">Locating…</span>
+  if (state === 'denied')  return <span className="text-xs text-red-500 py-1 block">Location permission denied</span>
+  if (state === 'error')   return <span className="text-xs text-red-500 py-1 block">Could not get location</span>
   return (
     <button
       onClick={onLocate}
@@ -92,13 +92,13 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const [fromLocState, setFromLocState] = useState<LocationState>('idle')
   const [toLocState,   setToLocState]   = useState<LocationState>('idle')
 
-  // Departure time: null = "now", otherwise a datetime-local input value string
   const [departAt, setDepartAt] = useState<string | null>(null)
 
   const [saveLabel, setSaveLabel]       = useState('')
   const [showSaveForm, setShowSaveForm] = useState(false)
   const [saving, setSaving]             = useState(false)
   const [saveMsg, setSaveMsg]           = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated]   = useState<number | null>(null)
 
   function applyPreset(r: { from_stop_id: string; from_stop_name: string; to_stop_id: string; to_stop_name: string }) {
     setFrom({ kind: 'stop', id: r.from_stop_id, name: r.from_stop_name })
@@ -127,24 +127,26 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   }
 
   const canFetch = !!(from && to)
-  // Save only when both ends are named stops (not coords)
   const canSave  = canFetch && from.kind === 'stop' && to.kind === 'stop'
   const alreadySaved = canSave && routes.some(
     r => r.from_stop_id === (from as { id: string }).id && r.to_stop_id === (to as { id: string }).id
   )
 
-  // Convert the local datetime picker value to ISO for the API, or undefined for "now"
   const dateTimeISO = departAt ? toISOWithOffset(departAt) : undefined
 
-  const { data, isLoading, error } = useQuery({
-    queryKey:        ['trip',
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: [
+      'trip',
       from?.kind === 'stop' ? from.id : `${from?.lat},${from?.lon}`,
-      to?.kind === 'stop' ? to.id : `${to?.lat},${to?.lon}`,
+      to?.kind === 'stop'   ? to.id   : `${to?.lat},${to?.lon}`,
       dateTimeISO ?? 'now',
     ],
-    queryFn:         () => fetchTrips(from!, to!, undefined, dateTimeISO),
+    queryFn: async () => {
+      const result = await fetchTrips(from!, to!, undefined, dateTimeISO)
+      setLastUpdated(Date.now())
+      return result
+    },
     staleTime:       ws.intervalMs,
-    // Don't auto-refetch when a custom departure time is set — results won't change
     refetchInterval: !ws.collapsed && ws.syncActive && !departAt ? ws.intervalMs : false,
     enabled:         !ws.collapsed && canFetch,
   })
@@ -165,101 +167,118 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     }
   }
 
+  function openSaveForm() {
+    setSaveLabel(suggestLabel(from!, to!))
+    setShowSaveForm(true)
+  }
+
   return (
     <div>
-      {/* Saved route quick-picks */}
+      {/* ── Saved routes ── */}
       {routes.length > 0 && (
-        <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-          {routes.map(r => (
-            <button
-              key={r.id}
-              onClick={() => applyPreset(r)}
-              className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-                from?.kind === 'stop' && from.id === r.from_stop_id && to?.kind === 'stop' && to.id === r.to_stop_id
-                  ? 'bg-accent-500 text-white border-accent-500'
-                  : 'text-ink-600 border-ink-200 hover:border-accent-300'
-              }`}
-            >
-              {r.label}
-            </button>
-          ))}
+        <div className="mb-3">
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
+            Saved routes
+          </p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {routes.map(r => (
+              <button
+                key={r.id}
+                onClick={() => applyPreset(r)}
+                className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+                  from?.kind === 'stop' && from.id === r.from_stop_id &&
+                  to?.kind   === 'stop' && to.id   === r.to_stop_id
+                    ? 'bg-accent-500 text-white border-accent-500'
+                    : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* From / To inputs */}
-      <div className="space-y-2 mb-3">
-        {/* FROM */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">From</span>
-          <div className="flex-1 space-y-1">
-            {from
-              ? <PlaceDisplay place={from} onClear={() => { setFrom(null); setFromLocState('idle') }} />
-              : <>
-                  <StopSearchInput placeholder="Departure stop…" onSelect={s => setFrom({ kind: 'stop', ...s })} />
-                  <LocationButton state={fromLocState} onLocate={() => locateFor('from')} />
-                </>
-            }
-          </div>
-        </div>
+      {/* ── Plan route ── */}
+      <div className="mb-3">
+        <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
+          Plan route
+        </p>
 
-        {/* TO */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">To</span>
-          <div className="flex-1 space-y-1">
-            {to
-              ? <PlaceDisplay place={to} onClear={() => { setTo(null); setToLocState('idle') }} />
-              : <>
-                  <StopSearchInput placeholder="Destination stop…" onSelect={s => setTo({ kind: 'stop', ...s })} />
-                  <LocationButton state={toLocState} onLocate={() => locateFor('to')} />
-                </>
-            }
+        <div className="space-y-2">
+          {/* FROM */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">From</span>
+            <div className="flex-1 space-y-1">
+              {from
+                ? <PlaceDisplay place={from} onClear={() => { setFrom(null); setFromLocState('idle') }} />
+                : <>
+                    <StopSearchInput placeholder="Departure stop…" onSelect={s => setFrom({ kind: 'stop', ...s })} />
+                    <LocationButton state={fromLocState} onLocate={() => locateFor('from')} />
+                  </>
+              }
+            </div>
           </div>
-          <button
-            onClick={swapStops}
-            disabled={!from && !to}
-            title="Swap"
-            className="text-ink-400 hover:text-accent-600 transition-colors duration-150 text-sm flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-30"
-          >⇅</button>
-        </div>
 
-        {/* Departure time */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">When</span>
-          <div className="flex-1 flex items-center gap-2">
-            {departAt ? (
-              <>
-                <input
-                  type="datetime-local"
-                  value={departAt}
-                  onChange={e => setDepartAt(e.target.value)}
-                  className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
-                />
+          {/* TO */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">To</span>
+            <div className="flex-1 space-y-1">
+              {to
+                ? <PlaceDisplay place={to} onClear={() => { setTo(null); setToLocState('idle') }} />
+                : <>
+                    <StopSearchInput placeholder="Destination stop…" onSelect={s => setTo({ kind: 'stop', ...s })} />
+                    <LocationButton state={toLocState} onLocate={() => locateFor('to')} />
+                  </>
+              }
+            </div>
+            <button
+              onClick={swapStops}
+              disabled={!from && !to}
+              title="Swap"
+              className="text-ink-400 hover:text-accent-600 transition-colors duration-150 text-sm flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-30"
+            >⇅</button>
+          </div>
+
+          {/* WHEN */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">When</span>
+            <div className="flex-1 flex items-center gap-2">
+              {departAt ? (
+                <>
+                  <input
+                    type="datetime-local"
+                    value={departAt}
+                    onChange={e => setDepartAt(e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+                  />
+                  <button
+                    onClick={() => setDepartAt(null)}
+                    title="Back to now"
+                    className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center min-h-[44px]"
+                  >✕</button>
+                </>
+              ) : (
                 <button
-                  onClick={() => setDepartAt(null)}
-                  className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center min-h-[44px]"
-                  title="Back to now"
-                >✕</button>
-              </>
-            ) : (
-              <button
-                onClick={() => setDepartAt(localDateTimeValue(new Date(now)))}
-                className="text-xs text-ink-500 hover:text-accent-600 px-3 py-1.5 border border-ink-200 rounded-lg min-h-[44px] transition-colors duration-150"
-              >
-                Now · tap to change
-              </button>
-            )}
+                  onClick={() => setDepartAt(localDateTimeValue(new Date(now)))}
+                  className="text-xs text-ink-500 hover:text-accent-600 px-3 py-1.5 border border-ink-200 rounded-lg min-h-[44px] transition-colors duration-150"
+                >
+                  Now · tap to change
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Save route */}
+      {/* ── Save route ── */}
       {canFetch && data && (
         <div className="mb-3">
           {!canSave ? (
             <p className="text-[10px] text-ink-400">Routes with current location cannot be saved.</p>
           ) : alreadySaved ? null : !showSaveForm ? (
             <button
-              onClick={() => setShowSaveForm(true)}
+              onClick={openSaveForm}
               className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150"
             >
               + Save this route
@@ -269,9 +288,10 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
               <input
                 value={saveLabel}
                 onChange={e => setSaveLabel(e.target.value)}
-                placeholder='Label e.g. "Home" or "Work"'
+                placeholder="Route label…"
                 className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
                 onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
+                autoFocus
               />
               <button
                 onClick={handleSaveRoute}
@@ -295,22 +315,40 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
       )}
 
       {!canFetch && (
-        <p className="text-xs text-ink-400">Select or locate departure and destination above.</p>
+        <p className="text-xs text-ink-400">Choose From and To to see route options.</p>
       )}
 
       {isLoading && <div className="text-ink-400 text-sm">Loading trips…</div>}
+
       {error && (
         <div className="text-red-500 text-xs py-1">
-          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `⚠ ${(error as Error).message}`}
+          {(error as Error).message?.includes('Rate')
+            ? '⏳ Rate limited — wait a moment'
+            : `⚠ ${(error as Error).message}`
+          }
         </div>
       )}
+
       {data && (
-        <div className="space-y-3">
-          {data.length === 0 && <div className="text-ink-400 text-sm">No trips found</div>}
-          {data.map((trip, i) => (
-            <TripCard key={i} trip={trip} now={now} />
-          ))}
-        </div>
+        <>
+          {/* Last updated + manual refresh */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-ink-400">
+              {lastUpdated ? `Updated ${fmtLastUpdated(lastUpdated)}` : ''}
+            </span>
+            <button
+              onClick={() => { refetch(); ws.markSynced() }}
+              className="text-[10px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-end"
+            >↻</button>
+          </div>
+
+          <div className="space-y-3">
+            {data.length === 0 && <div className="text-ink-400 text-sm">No trips found</div>}
+            {data.map((trip, i) => (
+              <TripCard key={i} trip={trip} now={now} isBest={i === 0} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
