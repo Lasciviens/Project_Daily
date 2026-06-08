@@ -72,13 +72,14 @@ function Nav() {
 
           <button
             onClick={toggleToDo}
-            className={`min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 flex items-center ${
+            className={`min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 flex items-center flex-shrink-0 ${
               isToDoOpen
                 ? 'bg-accent-50 text-accent-600'
                 : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
             }`}
           >
-            ☑ To-Do
+            <span className="sm:hidden">☑</span>
+            <span className="hidden sm:inline">☑ To-Do</span>
           </button>
 
           <SettingsMenu />

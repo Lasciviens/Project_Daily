@@ -55,7 +55,7 @@ export function WorkPage() {
         </div>
         <button
           onClick={() => setModal('inbox')}
-          className="btn-primary flex items-center gap-1.5"
+          className="btn-primary min-h-[44px] flex items-center gap-1.5"
         >
           <span className="text-base leading-none">+</span> Add task
         </button>
