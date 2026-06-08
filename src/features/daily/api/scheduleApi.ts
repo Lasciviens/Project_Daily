@@ -49,7 +49,7 @@ export async function createTimeBlock(input: CreateTimeBlockInput): Promise<Time
   return data
 }
 
-export async function updateTimeBlock(id: string, patch: { start_time?: string; date?: string }): Promise<void> {
+export async function updateTimeBlock(id: string, patch: { start_time?: string; date?: string; title?: string }): Promise<void> {
   const { error } = await supabase
     .from('time_blocks')
     .update({ ...patch, updated_at: new Date().toISOString() })

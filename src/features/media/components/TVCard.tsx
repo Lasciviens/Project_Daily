@@ -55,6 +55,11 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
     update.mutate({ id: entry.id, patch: { current_episode: ep > maxEp ? 0 : ep } })
   }
 
+  function markSeriesDone(e: React.MouseEvent) {
+    e.stopPropagation()
+    update.mutate({ id: entry.id, patch: { status: 'completed', finished_at: new Date().toISOString() } })
+  }
+
   return (
     <div className="flex flex-col">
       <div
@@ -95,13 +100,23 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
             <BingeProgress entry={entry} />
           )}
           {entry.status === 'watching' && (
-            <button
-              onClick={advanceEpisode}
-              disabled={update.isPending}
-              className="mt-1 w-full text-[10px] py-0.5 rounded border border-accent-300 text-accent-600 hover:bg-accent-50 transition-colors duration-150"
-            >
-              + Next episode
-            </button>
+            <div className="flex gap-1 mt-1">
+              <button
+                onClick={advanceEpisode}
+                disabled={update.isPending}
+                className="flex-1 text-[10px] py-0.5 rounded border border-accent-300 text-accent-600 hover:bg-accent-50 transition-colors duration-150"
+              >
+                + Next ep
+              </button>
+              <button
+                onClick={markSeriesDone}
+                disabled={update.isPending}
+                className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-600 hover:bg-emerald-50 transition-colors duration-150"
+                title="Mark series as completed"
+              >
+                ✓ Done
+              </button>
+            </div>
           )}
         </div>
       )}
