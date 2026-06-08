@@ -1,7 +1,7 @@
 -- ─── projects ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS projects (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
   name        text NOT NULL,
   description text,
   status      text NOT NULL DEFAULT 'active'
@@ -30,7 +30,7 @@ CREATE INDEX IF NOT EXISTS projects_user_sort ON projects (user_id, sort_order);
 CREATE TABLE IF NOT EXISTS project_phases (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
   name        text NOT NULL,
   description text,
   status      text NOT NULL DEFAULT 'pending'
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS project_items (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   phase_id    uuid NOT NULL REFERENCES project_phases(id) ON DELETE CASCADE,
   project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
   title       text NOT NULL,
   notes       text,
   type        text NOT NULL DEFAULT 'improvement'
