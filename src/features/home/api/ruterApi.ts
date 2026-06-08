@@ -136,9 +136,11 @@ export async function searchStops(query: string): Promise<StopResult[]> {
     }[]
   }
 
-  console.debug('[Entur geocoder]', query, (json.features ?? []).map(f => ({
-    id: f.properties.id, name: f.properties.name, layer: f.properties.layer,
-  })))
+  if (import.meta.env.DEV) {
+    console.debug('[Entur geocoder]', query, (json.features ?? []).map(f => ({
+      id: f.properties.id, name: f.properties.name, layer: f.properties.layer,
+    })))
+  }
 
   return (json.features ?? [])
     .filter(f => f.properties.id?.startsWith('NSR:StopPlace:'))
@@ -189,17 +191,20 @@ export async function fetchDepartures(
 
   if (!data.stopPlace) throw new Error(`Stop not found: ${stopId}`)
 
-  const departures: Departure[] = (data.stopPlace.estimatedCalls ?? []).map(c => ({
-    line:             c.serviceJourney.line.publicCode,
-    transport:        c.serviceJourney.line.transportMode,
-    destination:      c.destinationDisplay.frontText,
-    aimed:            c.aimedDepartureTime,
-    expected:         c.expectedDepartureTime,
-    realtime:         c.realtime,
-    quayCode:         c.quay?.publicCode,
-    quayName:         c.quay?.name,
-    quayDescription:  c.quay?.description,
-  }))
+  // Filter out any malformed calls so one bad item doesn't crash the whole widget
+  const departures: Departure[] = (data.stopPlace.estimatedCalls ?? [])
+    .filter(c => c.serviceJourney?.line?.publicCode && c.expectedDepartureTime)
+    .map(c => ({
+      line:             c.serviceJourney.line.publicCode,
+      transport:        c.serviceJourney.line.transportMode,
+      destination:      c.destinationDisplay.frontText,
+      aimed:            c.aimedDepartureTime,
+      expected:         c.expectedDepartureTime,
+      realtime:         c.realtime,
+      quayCode:         c.quay?.publicCode,
+      quayName:         c.quay?.name,
+      quayDescription:  c.quay?.description,
+    }))
 
   return { stopName: data.stopPlace.name, departures }
 }
@@ -286,12 +291,15 @@ export async function fetchTrips(
     }
   }
 
-  return (data.trip?.tripPatterns ?? []).map(p => ({
+  return (data.trip?.tripPatterns ?? [])
+    .filter(p => p.expectedStartTime && p.legs?.length)
+    .map(p => ({
     duration:     p.duration     ?? 0,
     walkDistance: p.walkDistance ?? 0,
     departure:    p.expectedStartTime,
     arrival:      p.expectedEndTime,
-    legs: p.legs.map(l => {
+    // Skip any leg missing required fields so one bad leg doesn't crash the card
+    legs: p.legs.filter(l => l.mode && l.fromPlace && l.toPlace).map(l => {
       const leg: TripLeg = {
         mode:     l.mode,
         duration: l.duration ?? 0,
@@ -319,3 +327,4 @@ export async function fetchTrips(
     }),
   }))
 }
+
