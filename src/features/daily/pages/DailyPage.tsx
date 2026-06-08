@@ -39,12 +39,13 @@ export function DailyPage() {
 
   return (
     <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
-      <div className="flex gap-1 mb-6 bg-white border border-ink-200 p-1 rounded-xl w-fit">
+      {/* Tab bar: scrollable on mobile so 5 tabs never overflow the viewport */}
+      <div className="flex gap-1 mb-6 bg-white border border-ink-200 p-1 rounded-xl overflow-x-auto scrollbar-none w-full sm:w-fit">
         {TABS.map(t => (
           <button
             key={t.id}
             onClick={() => handleTabChange(t.id)}
-            className={`px-3 sm:px-4 py-1.5 text-sm font-medium rounded-lg transition-colors duration-150 ${
+            className={`px-3 sm:px-4 min-h-[44px] flex-shrink-0 text-sm font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
               tab === t.id
                 ? 'bg-accent-500 text-white'
                 : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
@@ -115,30 +116,30 @@ function TodayView({
 
   return (
     <div>
-      <div className="flex items-start justify-between mb-5">
-        <div className="flex items-center gap-3">
+      <div className="flex items-start justify-between gap-2 mb-5">
+        <div className="flex items-center gap-2 min-w-0">
           {/* Day navigation */}
-          <div className="flex items-center gap-0.5 mt-1">
+          <div className="flex items-center gap-0.5 flex-shrink-0 mt-1">
             <button
               onClick={onPrevDay}
-              className="w-7 h-7 flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
             >
               ‹
             </button>
             <button
               onClick={onNextDay}
-              className="w-7 h-7 flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
             >
               ›
             </button>
           </div>
-          <div>
+          <div className="min-w-0">
             {isToday(date) && !isCustom && (
               <p className="text-xs text-accent-600 font-medium mb-0.5">
                 {greeting} · {timeStr}
               </p>
             )}
-            <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink-900 leading-tight">{format(date, 'EEEE, MMMM d')}</h1>
             <p className="text-sm text-ink-400 mt-0.5">
               {isCustom
                 ? dayDiff > 0
@@ -151,9 +152,9 @@ function TodayView({
         {isCustom && (
           <button
             onClick={onBackToToday}
-            className="text-xs text-accent-600 hover:text-accent-700 font-medium transition-colors duration-150 mt-1"
+            className="min-h-[44px] px-2 flex items-center text-xs text-accent-600 hover:text-accent-700 font-medium transition-colors duration-150 flex-shrink-0"
           >
-            ← Back to today
+            ← Today
           </button>
         )}
       </div>

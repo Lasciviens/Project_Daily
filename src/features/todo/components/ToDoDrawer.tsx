@@ -83,7 +83,7 @@ export function ToDoDrawer() {
             <button
               onClick={handlePull}
               disabled={isBusy}
-              className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 px-2 py-1 rounded disabled:opacity-40"
+              className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] px-2 rounded disabled:opacity-40"
               title="Todoist'ten içe aktar"
             >
               {pull.isPending ? '↻' : '↓'} Todoist
@@ -92,14 +92,14 @@ export function ToDoDrawer() {
             <button
               onClick={handlePush}
               disabled={isBusy}
-              className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 px-2 py-1 rounded disabled:opacity-40"
+              className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] px-2 rounded disabled:opacity-40"
               title="Todoist'e gönder"
             >
               {push.isPending ? '↻' : '↑'} Todoist
             </button>
             <button
               onClick={closeToDo}
-              className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
             >
               ×
             </button>

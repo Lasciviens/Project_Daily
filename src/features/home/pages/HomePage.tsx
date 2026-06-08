@@ -75,13 +75,13 @@ export function HomePage() {
           <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), "EEEE, d MMMM yyyy")}</p>
         </div>
 
-        {/* Quick nav cards — 2 rows of 3 */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Quick nav cards — 2-col on mobile, 3-col on sm+ */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {NAV_CARDS.map(card => (
             <Link
               key={card.to}
               to={card.to}
-              className="group bg-white rounded-xl border border-ink-200 p-3 shadow-sm hover:shadow-md hover:border-accent-300 transition-all duration-150"
+              className="group bg-white rounded-xl border border-ink-200 p-3 shadow-sm hover:shadow-md hover:border-accent-300 transition-shadow duration-150 min-h-[44px]"
             >
               <div className="text-xl mb-1.5">{card.icon}</div>
               <div className="text-sm font-semibold text-ink-900 group-hover:text-accent-600 transition-colors duration-150">
