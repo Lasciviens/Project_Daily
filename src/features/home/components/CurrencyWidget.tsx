@@ -18,8 +18,7 @@ const FLAG: Record<string, string> = {
 
 export function CurrencyWidget() {
   const [mode, setMode] = useState<Mode>('rates')
-  // Currency data updates every 24h — 30m refresh is plenty
-  const ws = useWidgetState('currency', { collapsed: false, intervalMs: 30 * 60_000 })
+  const ws = useWidgetState('currency', { collapsed: false, intervalMs: 60 * 60_000 })
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey:        ['currency', 'v2'],
