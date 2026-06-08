@@ -13,10 +13,10 @@ interface StopSearchInputProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function StopSearchInput({ placeholder = 'Search stop…', onSelect, autoFocus }: StopSearchInputProps) {
-  const [q, setQ]         = useState('')
-  const [open, setOpen]   = useState(false)
+  const [q, setQ]               = useState('')
+  const [open, setOpen]         = useState(false)
   const [debounced, setDebounced] = useState('')
-  const inputRef          = useRef<HTMLInputElement>(null)
+  const inputRef                = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus()
@@ -28,11 +28,12 @@ export function StopSearchInput({ placeholder = 'Search stop…', onSelect, auto
     return () => clearTimeout(id)
   }, [q])
 
-  const { data: results } = useQuery({
+  const { data: results, isLoading, error } = useQuery({
     queryKey:  ['stopSearch', debounced],
     queryFn:   () => searchStops(debounced),
     enabled:   debounced.length >= 2,
     staleTime: 5 * 60_000,
+    retry:     false,
   })
 
   function handleSelect(stop: StopResult) {
@@ -40,6 +41,8 @@ export function StopSearchInput({ placeholder = 'Search stop…', onSelect, auto
     setQ('')
     setOpen(false)
   }
+
+  const showDropdown = open && debounced.length >= 2
 
   return (
     <div className="relative">
@@ -62,24 +65,39 @@ export function StopSearchInput({ placeholder = 'Search stop…', onSelect, auto
         )}
       </div>
 
-      {open && results && results.length > 0 && (
-        <ul className="absolute z-20 mt-1 w-full bg-white border border-ink-200 rounded-lg shadow-lg overflow-hidden text-sm">
-          {results.slice(0, 6).map(r => (
-            <li key={r.id}>
-              <button
-                onMouseDown={() => handleSelect(r)}
-                className="w-full text-left px-3 py-2.5 hover:bg-cream-50 transition-colors duration-150 min-h-[44px]"
-              >
-                <span className="font-medium text-ink-800">{r.name}</span>
-                {(r.locality || r.category) && (
-                  <span className="text-ink-400 text-xs ml-2">
-                    {[r.locality, r.category].filter(Boolean).join(' · ')}
-                  </span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
+      {showDropdown && (
+        <div className="absolute z-20 mt-1 w-full bg-white border border-ink-200 rounded-lg shadow-lg overflow-hidden text-sm">
+          {isLoading && (
+            <div className="px-3 py-2.5 text-ink-400 text-xs">Searching…</div>
+          )}
+          {error && (
+            <div className="px-3 py-2.5 text-red-500 text-xs">
+              {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `Error: ${(error as Error).message}`}
+            </div>
+          )}
+          {!isLoading && !error && results && results.length === 0 && (
+            <div className="px-3 py-2.5 text-ink-400 text-xs">No stops found for "{debounced}"</div>
+          )}
+          {!isLoading && results && results.length > 0 && (
+            <ul>
+              {results.slice(0, 6).map(r => (
+                <li key={r.id}>
+                  <button
+                    onMouseDown={() => handleSelect(r)}
+                    className="w-full text-left px-3 py-2.5 hover:bg-cream-50 transition-colors duration-150 min-h-[44px]"
+                  >
+                    <span className="font-medium text-ink-800">{r.name}</span>
+                    {(r.locality || r.category) && (
+                      <span className="text-ink-400 text-xs ml-2">
+                        {[r.locality, r.category].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   )

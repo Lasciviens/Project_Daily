@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchDepartures, TRANSPORT_ICON, TRANSPORT_COLOR, type Departure } from '../../api/ruterApi'
+import { fetchDepartures, TRANSPORT_ICON, TRANSPORT_COLOR, type Departure, type StopResult } from '../../api/ruterApi'
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
+import { StopSearchInput } from './StopSearchInput'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,12 +23,12 @@ function fmtTime(iso: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// ─── Sub-component ────────────────────────────────────────────────────────────
+// ─── DepartureRow ─────────────────────────────────────────────────────────────
 
 function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
-  const mins    = minsUntil(dep.expected, now)
-  const isNow   = mins <= 0
-  const delayed = Math.abs(new Date(dep.expected).getTime() - new Date(dep.aimed).getTime()) > 60_000
+  const mins       = minsUntil(dep.expected, now)
+  const isNow      = mins <= 0
+  const delayed    = Math.abs(new Date(dep.expected).getTime() - new Date(dep.aimed).getTime()) > 60_000
   const colorClass = TRANSPORT_COLOR[dep.transport] ?? 'bg-ink-100 text-ink-700'
 
   return (
@@ -67,43 +68,63 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function DeparturesTab({ ws, now }: DeparturesTabProps) {
-  const { stops, isLoading: stopsLoading } = useTransitStops()
-  const defaultStop = stops.find(s => s.is_default) ?? stops[0]
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const { stops, addStop } = useTransitStops()
 
-  const activeStopRow = activeId ? stops.find(s => s.id === activeId) : defaultStop
-  const queryStopId   = activeStopRow?.stop_id ?? ''
+  // Active stop: a saved stop OR an ad-hoc searched stop
+  const defaultStop  = stops.find(s => s.is_default) ?? stops[0] ?? null
+  const [activeId, setActiveId]     = useState<string | null>(null)
+  const [adHocStop, setAdHocStop]   = useState<StopResult | null>(null)
+  const [showSearch, setShowSearch] = useState(false)
+  const [saveMsg, setSaveMsg]       = useState<string | null>(null)
+
+  const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
+  // Ad-hoc stop overrides saved selection if user just searched
+  const queryStop = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey:        ['departures', queryStopId],
-    queryFn:         () => fetchDepartures(queryStopId),
+    queryKey:        ['departures', queryStop?.id ?? ''],
+    queryFn:         () => fetchDepartures(queryStop!.id),
     staleTime:       ws.intervalMs,
     refetchInterval: !ws.collapsed && ws.syncActive ? ws.intervalMs : false,
-    enabled:         !ws.collapsed && queryStopId.length > 0,
+    enabled:         !ws.collapsed && !!queryStop?.id,
   })
 
-  if (stopsLoading) {
-    return <div className="text-ink-400 text-sm">Loading stops…</div>
+  function handleSearchSelect(stop: StopResult) {
+    setAdHocStop(stop)
+    setActiveId(null)
+    setShowSearch(false)
+    setSaveMsg(null)
   }
 
-  if (stops.length === 0) {
-    return (
-      <div className="text-ink-400 text-sm py-2 text-center">
-        Add a stop in <span className="font-medium text-ink-600">⚙ Settings</span> to see departures
-      </div>
-    )
+  function handleSavedStopClick(id: string) {
+    setActiveId(id)
+    setAdHocStop(null)
+    setSaveMsg(null)
   }
+
+  async function handleSaveFavorite() {
+    if (!adHocStop) return
+    try {
+      await addStop(adHocStop)
+      setSaveMsg('Saved ✓')
+      setTimeout(() => setSaveMsg(null), 2500)
+    } catch (e) {
+      setSaveMsg(`Failed: ${(e as Error).message}`)
+    }
+  }
+
+  const alreadySaved = adHocStop ? stops.some(s => s.stop_id === adHocStop.id) : false
 
   return (
     <div>
-      {/* Stop selector */}
+      {/* Stop chips + search toggle */}
       <div className="flex items-center gap-1.5 mb-3 flex-wrap">
         {stops.map(s => (
           <button
             key={s.id}
-            onClick={() => setActiveId(s.id)}
+            onClick={() => handleSavedStopClick(s.id)}
             className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-              activeStopRow?.id === s.id
+              !adHocStop && activeSaved?.id === s.id
                 ? 'bg-accent-500 text-white border-accent-500'
                 : 'text-ink-600 border-ink-200 hover:border-accent-300'
             }`}
@@ -111,25 +132,68 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
             {s.label ?? s.stop_name}
           </button>
         ))}
-      </div>
-
-      {/* Stop name + refresh */}
-      <div className="flex items-center justify-between mb-2">
-        {data && (
-          <span className="text-[11px] text-ink-500 font-medium">📍 {data.stopName}</span>
-        )}
         <button
-          onClick={() => { refetch(); ws.markSynced() }}
-          className="text-[10px] text-ink-400 hover:text-accent-600 transition-colors duration-150 ml-auto min-h-[44px] min-w-[44px] flex items-center justify-end"
+          onClick={() => setShowSearch(v => !v)}
+          className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+            showSearch ? 'bg-accent-500 text-white border-accent-500' : 'text-ink-600 border-ink-200 hover:border-accent-300'
+          }`}
         >
-          ↻ Refresh
+          🔍 Search
         </button>
       </div>
 
+      {/* Inline stop search */}
+      {showSearch && (
+        <div className="mb-3">
+          <StopSearchInput
+            placeholder="Search any stop…"
+            onSelect={handleSearchSelect}
+            autoFocus
+          />
+        </div>
+      )}
+
+      {/* Header: current stop name + save + refresh */}
+      {queryStop && (
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[11px] text-ink-500 font-medium truncate">
+              📍 {data?.stopName ?? queryStop.name}
+            </span>
+            {adHocStop && !alreadySaved && (
+              <button
+                onClick={handleSaveFavorite}
+                className="text-[10px] text-accent-500 hover:text-accent-700 transition-colors duration-150 flex-shrink-0"
+              >
+                + Save
+              </button>
+            )}
+            {saveMsg && (
+              <span className={`text-[10px] flex-shrink-0 ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>
+                {saveMsg}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => { refetch(); ws.markSynced() }}
+            className="text-[10px] text-ink-400 hover:text-accent-600 transition-colors duration-150 flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-end"
+          >
+            ↻
+          </button>
+        </div>
+      )}
+
+      {/* Empty: no stop selected and no saved stops */}
+      {!queryStop && (
+        <div className="text-sm text-ink-400 py-2">
+          Search for a stop above to see departures.
+        </div>
+      )}
+
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
       {error && (
-        <div className="text-ink-400 text-xs">
-          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : '⚠ Unavailable'}
+        <div className="text-red-500 text-xs py-1">
+          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `⚠ ${(error as Error).message}`}
         </div>
       )}
       {data && (
