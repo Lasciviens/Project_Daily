@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { format, isToday, isTomorrow } from 'date-fns'
+import { isToday, isTomorrow } from 'date-fns'
 import { InlineText } from './InlineText'
 import { InlineTextArea } from './InlineTextArea'
 import { useCreateTask } from '../../todo/hooks/useTodos'
