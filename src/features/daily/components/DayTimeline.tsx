@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { format, getDay, isToday } from 'date-fns'
+import { useQuery } from '@tanstack/react-query'
 import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock } from '../hooks/useSchedule'
 import { useUpdateTask } from '../../todo/hooks/useTodos'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { AddTimeBlockModal } from './AddTimeBlockModal'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
+import { supabase } from '../../../integrations/supabase/client'
 import type { CalendarEvent } from '../../calendar/types'
 
 const HOUR_START = 0
@@ -93,6 +95,21 @@ export function DayTimeline({ date }: Props) {
   const deleteBlock                 = useDeleteTimeBlock()
   const updateBlock                 = useUpdateTimeBlock()
   const updateTask                  = useUpdateTask()
+
+  // One batch query to get notes for all task-linked blocks
+  const taskSourceIds = timeBlocks
+    .filter(b => b.source_type === 'task' && b.source_id)
+    .map(b => b.source_id!)
+  const { data: linkedTaskNotes = [] } = useQuery({
+    queryKey: ['tasks', 'notes', dateStr, taskSourceIds.join(',')],
+    queryFn:  async () => {
+      const { data } = await supabase.from('tasks').select('id, notes').in('id', taskSourceIds)
+      return data ?? []
+    },
+    enabled:   taskSourceIds.length > 0,
+    staleTime: 5 * 60_000,
+  })
+  const taskNotesMap = new Map(linkedTaskNotes.map(t => [t.id, t.notes as string | null]))
 
   const handleBlockMouseDown = useCallback((e: React.MouseEvent, blockId: string, topPx: number) => {
     e.stopPropagation()
@@ -360,6 +377,9 @@ export function DayTimeline({ date }: Props) {
 
             const isEditing   = editingId === block.id
             const isOverlap   = overlappingIds.has(block.id)
+            const taskNotes   = block.sourceType === 'task' && block.sourceId
+              ? taskNotesMap.get(block.sourceId) ?? null
+              : null
 
             function startEdit(e: React.MouseEvent) {
               e.stopPropagation()
@@ -407,7 +427,10 @@ export function DayTimeline({ date }: Props) {
                     className="w-full bg-white/80 text-[11px] font-semibold rounded px-1 py-0.5 outline-none text-inherit"
                   />
                 ) : (
-                  <p className="text-[11px] font-semibold leading-tight truncate pl-3">{block.title}</p>
+                  <p className="text-[11px] font-semibold leading-tight truncate pl-3">
+                    {block.title}
+                    {taskNotes && !isSelected && <span className="opacity-40 ml-1 text-[9px]">📝</span>}
+                  </p>
                 )}
                 {heightPx >= 28 && !isEditing && (
                   <p className="text-[10px] opacity-60 pl-3">
@@ -415,6 +438,9 @@ export function DayTimeline({ date }: Props) {
                     {durationMins >= 30 ? ` · ${formatDuration(durationMins)}` : ''}
                     {isOverlap && <span className="ml-1 text-red-500">⚠</span>}
                   </p>
+                )}
+                {isSelected && taskNotes && (
+                  <p className="text-[10px] opacity-60 pl-3 mt-0.5 pr-2 line-clamp-2">{taskNotes}</p>
                 )}
                 {isSelected && block.deletable && (
                   <div className="flex items-center gap-1 mt-1 pl-3" onClick={e => e.stopPropagation()}>
