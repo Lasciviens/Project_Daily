@@ -218,18 +218,20 @@ function gqlPlace(p: TransitPlace): string {
 }
 
 export async function fetchTrips(
-  from:      TransitPlace,
-  to:        TransitPlace,
-  count?:    number,
-  dateTime?: string,        // ISO 8601 — omit for "depart now"
+  from:       TransitPlace,
+  to:         TransitPlace,
+  count?:     number,
+  dateTime?:  string,   // ISO 8601 — omit for "depart now"
+  arriveBy?:  boolean,  // EnTur v3: arriveBy — treat dateTime as arrival target
 ): Promise<TripPattern[]> {
-  const n = count ?? 5
+  const n    = count ?? 5
   const dtArg = dateTime ? `\n      dateTime: "${dateTime}"` : ''
+  const abArg = arriveBy  ? `\n      arriveBy: true`         : ''
   const data = await gql(`{
     trip(
       from: ${gqlPlace(from)}
       to:   ${gqlPlace(to)}
-      numTripPatterns: ${n}${dtArg}
+      numTripPatterns: ${n}${dtArg}${abArg}
     ) {
       tripPatterns {
         duration
