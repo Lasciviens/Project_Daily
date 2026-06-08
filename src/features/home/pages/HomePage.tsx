@@ -8,6 +8,8 @@ import { WeatherWidget } from '../components/WeatherWidget'
 import { RuterWidget } from '../components/RuterWidget'
 import { CurrencyWidget } from '../components/CurrencyWidget'
 import { NewsWidget } from '../components/NewsWidget'
+import { TrainingHomeWidget } from '../components/TrainingHomeWidget'
+import { GamesHomeWidget } from '../components/GamesHomeWidget'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,9 +23,12 @@ interface NavCard {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const NAV_CARDS: NavCard[] = [
-  { to: '/daily', label: 'Daily',  icon: '📅', desc: 'Tasks, schedule & calendar' },
-  { to: '/media', label: 'Media',  icon: '🎬', desc: 'Movies & TV series' },
-  { to: '/work',  label: 'Work',   icon: '💼', desc: 'Work tasks & timeline' },
+  { to: '/daily',    label: 'Daily',    icon: '📅', desc: 'Tasks, schedule & calendar' },
+  { to: '/media',    label: 'Media',    icon: '🎬', desc: 'Movies & TV series' },
+  { to: '/work',     label: 'Work',     icon: '💼', desc: 'Work tasks & timeline' },
+  { to: '/training', label: 'Training', icon: '🏋️', desc: 'Workouts & health' },
+  { to: '/projects', label: 'Projects', icon: '📋', desc: 'Track project progress' },
+  { to: '/games',    label: 'Games',    icon: '🎮', desc: 'RP5 library — coming soon' },
 ]
 
 function greeting(): string {
@@ -57,6 +62,8 @@ export function HomePage() {
       {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
       <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-4">
         <CurrencyWidget />
+        <TrainingHomeWidget />
+        <GamesHomeWidget />
       </div>
 
       {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
@@ -67,7 +74,7 @@ export function HomePage() {
           <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), "EEEE, d MMMM yyyy")}</p>
         </div>
 
-        {/* Quick nav cards */}
+        {/* Quick nav cards — 2 rows of 3 */}
         <div className="grid grid-cols-3 gap-3">
           {NAV_CARDS.map(card => (
             <Link
