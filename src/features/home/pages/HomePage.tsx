@@ -5,6 +5,7 @@ import { WeatherWidget } from '../components/WeatherWidget'
 import { RuterWidget } from '../components/RuterWidget'
 import { CurrencyWidget } from '../components/CurrencyWidget'
 import { NewsWidget } from '../components/NewsWidget'
+import { TrainingHomeWidget } from '../components/TrainingHomeWidget'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,9 +19,11 @@ interface NavCard {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const NAV_CARDS: NavCard[] = [
-  { to: '/daily', label: 'Daily',  icon: '📅', desc: 'Tasks, schedule & calendar' },
-  { to: '/media', label: 'Media',  icon: '🎬', desc: 'Movies & TV series' },
-  { to: '/work',  label: 'Work',   icon: '💼', desc: 'Work tasks & timeline' },
+  { to: '/daily',    label: 'Daily',    icon: '📅', desc: 'Tasks & schedule' },
+  { to: '/media',    label: 'Media',    icon: '🎬', desc: 'Movies & TV' },
+  { to: '/work',     label: 'Work',     icon: '💼', desc: 'Work tasks' },
+  { to: '/training', label: 'Training', icon: '🏋️', desc: 'Workouts & health' },
+  { to: '/projects', label: 'Projects', icon: '🗂️', desc: 'Projects & phases' },
 ]
 
 function greeting(): string {
@@ -53,6 +56,7 @@ export function HomePage() {
       {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
       <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-4">
         <CurrencyWidget />
+        <TrainingHomeWidget />
       </div>
 
       {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
@@ -64,7 +68,7 @@ export function HomePage() {
         </div>
 
         {/* Quick nav cards */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
           {NAV_CARDS.map(card => (
             <Link
               key={card.to}
