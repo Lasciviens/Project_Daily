@@ -104,7 +104,7 @@ export async function fetchDepartures(
         aimedDepartureTime
         expectedDepartureTime
         quay { publicCode description name }
-        serviceJourney { line { publicCode transportMode } }
+        serviceJourney { journeyPattern { line { publicCode transportMode } } }
         destinationDisplay { frontText }
       }
     }
@@ -115,7 +115,7 @@ export async function fetchDepartures(
       aimedDepartureTime: string
       expectedDepartureTime: string
       quay?: { publicCode?: string; description?: string; name?: string }
-      serviceJourney: { line: { publicCode: string; transportMode: string } }
+      serviceJourney: { journeyPattern?: { line: { publicCode: string; transportMode: string } } }
       destinationDisplay: { frontText: string }
     }[]
   } | null }
@@ -123,8 +123,8 @@ export async function fetchDepartures(
   if (!data.stopPlace) throw new Error(`Stop not found: ${stopId}`)
 
   const departures: Departure[] = (data.stopPlace.estimatedCalls ?? []).map(c => ({
-    line:        c.serviceJourney.line.publicCode,
-    transport:   c.serviceJourney.line.transportMode,
+    line:        c.serviceJourney.journeyPattern?.line.publicCode ?? '',
+    transport:   c.serviceJourney.journeyPattern?.line.transportMode ?? 'bus',
     destination: c.destinationDisplay.frontText,
     aimed:       c.aimedDepartureTime,
     expected:    c.expectedDepartureTime,
