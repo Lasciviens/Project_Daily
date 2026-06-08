@@ -129,6 +129,25 @@ export async function saveSessionExercises(sessionId: string, exercises: Exercis
   }
 }
 
+export async function searchExerciseNames(query: string): Promise<string[]> {
+  if (!query.trim()) {
+    const { data } = await supabase
+      .from('exercises')
+      .select('name')
+      .order('name')
+      .limit(20)
+    return (data ?? []).map(r => r.name)
+  }
+  const { data } = await supabase
+    .from('exercises')
+    .select('name')
+    .ilike('name', `%${query.trim()}%`)
+    .order('name')
+    .limit(10)
+  return (data ?? []).map(r => r.name)
+}
+
+
 export async function fetchStravaStatus(): Promise<StravaStatus> {
   const { data, error } = await supabase
     .from('strava_tokens')
