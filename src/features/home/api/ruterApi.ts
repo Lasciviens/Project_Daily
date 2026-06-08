@@ -1,6 +1,10 @@
+// EnTur JourneyPlanner v3 GraphQL + Pelias geocoder
+// Docs: https://developer.entur.org/pages-journeyplanner-journeyplanner/
+// Rate-limit policy: https://developer.entur.org/pages-customers-docs-ratelimiting/
+// ET-Client-Name must be "company-application" — anonymous clients are rate-limited aggressively.
 const JOURNEY  = 'https://api.entur.io/journey-planner/v3/graphql'
 const GEOCODER = 'https://api.entur.io/geocoder/v1/autocomplete'
-const CLIENT   = 'lascis-board'
+const CLIENT   = 'personal-lascisboard'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -12,7 +16,6 @@ export interface Departure {
   expected:    string   // ISO datetime
   realtime:    boolean
   platform?:   string
-  // quay description from Entur often contains direction, e.g. "Retning sentrum"
   direction?:  string
 }
 
@@ -22,12 +25,12 @@ export interface StopResult {
 }
 
 export interface TripLeg {
-  mode:       string
-  line:       string
-  departure:  string   // ISO datetime (expected)
-  aimed:      string   // ISO datetime (aimed)
-  from:       string
-  to:         string
+  mode:      string
+  line:      string
+  departure: string   // ISO datetime (expected)
+  aimed:     string   // ISO datetime (aimed)
+  from:      string
+  to:        string
 }
 
 export interface TripPattern {
@@ -43,10 +46,8 @@ export const TRANSPORT_ICON: Record<string, string> = {
   bus: '🚌', tram: '🚊', metro: '🚇', rail: '🚂', ferry: '⛴', water: '⛴', foot: '🚶',
 }
 
-// Visperud: confirmed via https://reise.frammr.no/departures/NSR:StopPlace:5492
-// Sinsenveien: NSR:StopPlace:58221 — bus stop on lines 23/31, nearest to Sinsenveien 47D (0585 Oslo)
-//   (not to be confused with Sinsenkrysset NSR:StopPlace:6039, which is a different stop)
-// User can override route stops via the Routes tab search
+// Visperud: NSR:StopPlace:5492 (confirmed via reise.frammr.no)
+// Sinsenveien 47D area: NSR:StopPlace:58221 (lines 23/31 — east side of Sinsenveien)
 export const DEFAULT_STOP: StopResult = {
   id:   'NSR:StopPlace:5492',
   name: 'Visperud',
@@ -65,15 +66,37 @@ export const PRESET_ROUTES: { label: string; from: StopResult; to: StopResult }[
   },
 ]
 
+// ─── GraphQL helpers ──────────────────────────────────────────────────────────
+
+async function gql(query: string): Promise<unknown> {
+  const res = await fetch(JOURNEY, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': CLIENT },
+    body:    JSON.stringify({ query }),
+  })
+
+  if (res.status === 429) throw new Error('Rate limited — wait a moment and try again')
+  if (!res.ok) throw new Error(`EnTur ${res.status}`)
+
+  const json = await res.json()
+
+  // GraphQL always returns 200; errors are in json.errors even when data is partially present
+  if (json.errors?.length) {
+    const msg = json.errors.map((e: { message: string }) => e.message).join(' | ')
+    console.error('[EnTur GraphQL]', msg)
+    throw new Error(msg)
+  }
+
+  return json.data
+}
+
 // ─── Departures ───────────────────────────────────────────────────────────────
 
-// quay.description from Entur often holds direction text, e.g. "Mot sentrum"
-// We surface it as a direction label next to the departure line.
 export async function fetchDepartures(
   stopId: string,
-  count = 10
+  count = 12
 ): Promise<{ stopName: string; departures: Departure[] }> {
-  const query = `{
+  const data = await gql(`{
     stopPlace(id: "${stopId}") {
       name
       estimatedCalls(timeRange: 72100, numberOfDepartures: ${count}) {
@@ -85,25 +108,21 @@ export async function fetchDepartures(
         destinationDisplay { frontText }
       }
     }
-  }`
-  const res = await fetch(JOURNEY, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': CLIENT },
-    body:    JSON.stringify({ query }),
-  })
-  if (!res.ok) throw new Error(`Entur ${res.status}`)
-  const json = await res.json()
-  const stop = json.data?.stopPlace
-  if (!stop) throw new Error('Stop not found')
+  }`) as { stopPlace: {
+    name: string
+    estimatedCalls: {
+      realtime: boolean
+      aimedDepartureTime: string
+      expectedDepartureTime: string
+      quay?: { publicCode?: string; description?: string; name?: string }
+      serviceJourney: { line: { publicCode: string; transportMode: string } }
+      destinationDisplay: { frontText: string }
+    }[]
+  } | null }
 
-  const departures: Departure[] = (stop.estimatedCalls ?? []).map((c: {
-    realtime: boolean
-    aimedDepartureTime: string
-    expectedDepartureTime: string
-    quay?: { publicCode?: string; description?: string; name?: string }
-    serviceJourney: { line: { publicCode: string; transportMode: string } }
-    destinationDisplay: { frontText: string }
-  }) => ({
+  if (!data.stopPlace) throw new Error(`Stop not found: ${stopId}`)
+
+  const departures: Departure[] = (data.stopPlace.estimatedCalls ?? []).map(c => ({
     line:        c.serviceJourney.line.publicCode,
     transport:   c.serviceJourney.line.transportMode,
     destination: c.destinationDisplay.frontText,
@@ -111,8 +130,7 @@ export async function fetchDepartures(
     expected:    c.expectedDepartureTime,
     realtime:    c.realtime,
     platform:    c.quay?.publicCode,
-    // Only use quay description as direction if it contains useful direction text
-    // (e.g. "Mot sentrum", "Retning Lysaker") — not just the stop's own name
+    // Show quay description as direction only when it contains direction text
     direction:   (() => {
       const raw = c.quay?.description ?? c.quay?.name ?? ''
       const lower = raw.toLowerCase()
@@ -121,34 +139,39 @@ export async function fetchDepartures(
     })(),
   }))
 
-  return { stopName: stop.name, departures }
+  return { stopName: data.stopPlace.name, departures }
 }
 
 // ─── Stop search ─────────────────────────────────────────────────────────────
 
+// sources=nsr restricts results to the National Stop Registry so IDs are
+// always in NSR:StopPlace:XXXXX format — usable directly in stopPlace(id:...) queries.
 export async function searchStops(query: string): Promise<StopResult[]> {
-  const res = await fetch(
-    `${GEOCODER}?text=${encodeURIComponent(query)}&lang=no&size=6&layers=venue`,
-    { headers: { 'ET-Client-Name': CLIENT } }
-  )
+  const url = `${GEOCODER}?text=${encodeURIComponent(query)}&lang=no&size=8&layers=venue&sources=nsr`
+  const res = await fetch(url, { headers: { 'ET-Client-Name': CLIENT } })
+
+  if (res.status === 429) throw new Error('Rate limited')
   if (!res.ok) throw new Error(`Geocoder ${res.status}`)
+
   const json = await res.json()
-  return (json.features ?? []).map((f: { properties: { id: string; name: string } }) => ({
-    id:   f.properties.id,
-    name: f.properties.name,
-  }))
+  return (json.features ?? [])
+    .filter((f: { properties: { id?: string } }) => f.properties.id?.startsWith('NSR:StopPlace:'))
+    .map((f: { properties: { id: string; name: string } }) => ({
+      id:   f.properties.id,
+      name: f.properties.name,
+    }))
 }
 
 // ─── Trip planner ─────────────────────────────────────────────────────────────
 
-// Returns next N trip patterns between two stops using Entur journey planner.
-// Each pattern may include multiple legs (transfers).
+// mode is already on Leg; transportMode is not queried from line to avoid
+// schema version differences between OTP2 builds.
 export async function fetchTrips(
   fromId: string,
   toId:   string,
   count = 5
 ): Promise<TripPattern[]> {
-  const query = `{
+  const data = await gql(`{
     trip(
       from: { place: "${fromId}" }
       to:   { place: "${toId}" }
@@ -161,26 +184,16 @@ export async function fetchTrips(
         legs {
           mode
           fromPlace { name }
-          toPlace { name }
+          toPlace   { name }
           fromEstimatedCall {
             aimedDepartureTime
             expectedDepartureTime
           }
-          line { publicCode transportMode }
+          line { publicCode }
         }
       }
     }
-  }`
-  const res = await fetch(JOURNEY, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': CLIENT },
-    body:    JSON.stringify({ query }),
-  })
-  if (!res.ok) throw new Error(`Entur trip ${res.status}`)
-  const json = await res.json()
-  const patterns = json.data?.trip?.tripPatterns ?? []
-
-  return patterns.map((p: {
+  }`) as { trip: { tripPatterns: {
     duration: number
     expectedStartTime: string
     expectedEndTime: string
@@ -189,9 +202,11 @@ export async function fetchTrips(
       fromPlace: { name: string }
       toPlace:   { name: string }
       fromEstimatedCall?: { aimedDepartureTime: string; expectedDepartureTime: string }
-      line?: { publicCode: string; transportMode: string }
+      line?: { publicCode: string }
     }[]
-  }) => ({
+  }[] } }
+
+  return (data.trip?.tripPatterns ?? []).map(p => ({
     duration:  p.duration,
     departure: p.expectedStartTime,
     arrival:   p.expectedEndTime,
