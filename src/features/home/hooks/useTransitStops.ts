@@ -38,9 +38,12 @@ export function useTransitStops(): {
   })
 
   async function addStop(stop: StopResult, label?: string): Promise<void> {
-    // First stop is default automatically
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
     const isFirst = stops.length === 0
     const { error } = await supabase.from('user_transit_stops').insert({
+      user_id:       user.id,
       stop_id:       stop.id,
       stop_name:     stop.name,
       stop_locality: stop.locality ?? null,
@@ -49,7 +52,7 @@ export function useTransitStops(): {
       sort_order:    stops.length,
     })
     if (error) {
-      console.error('[useTransitStops] addStop failed:', error)
+      console.error('[useTransitStops] addStop failed:', error.message)
       throw error
     }
     await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })

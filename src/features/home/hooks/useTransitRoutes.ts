@@ -38,7 +38,11 @@ export function useTransitRoutes(): {
   })
 
   async function addRoute(label: string, from: StopResult, to: StopResult): Promise<void> {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
     const { error } = await supabase.from('user_transit_routes').insert({
+      user_id:        user.id,
       label,
       from_stop_id:   from.id,
       from_stop_name: from.name,
@@ -47,7 +51,7 @@ export function useTransitRoutes(): {
       sort_order:     routes.length,
     })
     if (error) {
-      console.error('[useTransitRoutes] addRoute failed:', error)
+      console.error('[useTransitRoutes] addRoute failed:', error.message)
       throw error
     }
     await qc.invalidateQueries({ queryKey: ['transit', 'routes'] })
