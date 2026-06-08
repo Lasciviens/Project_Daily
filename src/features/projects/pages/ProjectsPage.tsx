@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useProjects } from '../hooks/useProjects'
 import { ProjectList } from '../components/ProjectList'
 import { ProjectDetail } from '../components/ProjectDetail'
@@ -7,7 +7,11 @@ export function ProjectsPage() {
   const { data: projects = [], isLoading } = useProjects()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const selected = projects.find(p => p.id === selectedId) ?? projects[0] ?? null
+  useEffect(() => {
+    if (!selectedId && projects.length > 0) setSelectedId(projects[0].id)
+  }, [projects, selectedId])
+
+  const selected = projects.find(p => p.id === selectedId) ?? null
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">

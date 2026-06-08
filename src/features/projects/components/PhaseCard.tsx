@@ -2,31 +2,46 @@ import { useState } from 'react'
 import { StatusCycleChip, PHASE_STATUS_COLORS } from './StatusCycleChip'
 import { InlineText } from './InlineText'
 import { ItemRow } from './ItemRow'
-import type { ProjectPhase, ProjectItem, PhaseStatus } from '../types'
+import type { ProjectPhase, ProjectItem, PhaseStatus, ItemType } from '../types'
 
 const PHASE_STATUSES: PhaseStatus[] = ['pending', 'in_progress', 'done']
 
 interface Props {
-  phase:      ProjectPhase
-  items:      ProjectItem[]
+  phase:          ProjectPhase
+  items:          ProjectItem[]
+  typeFilter?:    ItemType | null
   onUpdatePhase:  (patch: Partial<Pick<ProjectPhase, 'name' | 'status'>>) => void
   onDeletePhase:  () => void
   onAddItem:      () => void
-  onUpdateItem:   (itemId: string, patch: Parameters<typeof ItemRow>[0]['onUpdate'] extends (p: infer P) => void ? P : never) => void
+  onUpdateItem:   (itemId: string, patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority'>>) => void
   onDeleteItem:   (itemId: string) => void
   pendingItemId?: string
 }
 
 export function PhaseCard({
-  phase, items,
+  phase, items, typeFilter,
   onUpdatePhase, onDeletePhase, onAddItem,
   onUpdateItem, onDeleteItem, pendingItemId,
 }: Props) {
   const [open,    setOpen]    = useState(true)
   const [hovered, setHovered] = useState(false)
 
-  const doneItems  = items.filter(i => i.status === 'done')
-  const openItems  = items.filter(i => i.status !== 'done' && i.status !== 'cancelled')
+  const totalCount = items.length
+  const doneCount  = items.filter(i => i.status === 'done').length
+  const pct        = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0
+
+  const visible   = typeFilter ? items.filter(i => i.type === typeFilter) : items
+  const openItems = visible.filter(i => i.status !== 'done')
+  const doneItems = visible.filter(i => i.status === 'done')
+
+  function handleDeletePhase(e: React.MouseEvent) {
+    e.stopPropagation()
+    const msg = totalCount > 0
+      ? `Delete "${phase.name}"? This will remove all ${totalCount} item${totalCount !== 1 ? 's' : ''}.`
+      : `Delete phase "${phase.name}"?`
+    if (!confirm(msg)) return
+    onDeletePhase()
+  }
 
   return (
     <div className="border border-ink-200 rounded-xl overflow-hidden bg-white">
@@ -53,7 +68,9 @@ export function PhaseCard({
           onCycle={status => onUpdatePhase({ status })}
         />
 
-        <span className="text-[10px] text-ink-400">{items.length}</span>
+        {totalCount > 0 && (
+          <span className="text-[10px] text-ink-400">{doneCount}/{totalCount}</span>
+        )}
 
         {open && (
           <button
@@ -66,7 +83,7 @@ export function PhaseCard({
 
         {hovered && (
           <button
-            onClick={e => { e.stopPropagation(); onDeletePhase() }}
+            onClick={handleDeletePhase}
             className="text-[10px] text-ink-300 hover:text-red-400 ml-1"
             title="Delete phase"
           >
@@ -75,11 +92,23 @@ export function PhaseCard({
         )}
       </div>
 
+      {/* Progress bar */}
+      {totalCount > 0 && pct > 0 && (
+        <div className="h-0.5 bg-ink-100">
+          <div
+            className="h-full bg-emerald-400 transition-all duration-300"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+
       {/* Items */}
       {open && (
         <div className="border-t border-ink-100 divide-y divide-ink-50">
-          {openItems.length === 0 && doneItems.length === 0 && (
-            <p className="text-xs text-ink-300 px-3 py-2">Nothing here yet</p>
+          {visible.length === 0 && (
+            <p className="text-xs text-ink-300 px-3 py-2">
+              {typeFilter ? 'No items match the current filter' : 'Nothing here yet'}
+            </p>
           )}
           {openItems.map(item => (
             <ItemRow

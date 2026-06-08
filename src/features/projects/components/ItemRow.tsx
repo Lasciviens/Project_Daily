@@ -19,8 +19,9 @@ const TYPE_LABEL: Record<ItemType, string> = {
   wishlist:    'wish',
 }
 
-const TYPE_ORDER: ItemType[] = ['update', 'improvement', 'ui_request', 'bug', 'wishlist']
+const TYPE_ORDER: ItemType[]    = ['update', 'improvement', 'ui_request', 'bug', 'wishlist']
 const PRI_ORDER: ItemPriority[] = ['low', 'medium', 'high']
+const STATUS_ORDER: ItemStatus[] = ['open', 'in_progress', 'done']
 
 const PRIORITY_DOT: Record<ItemPriority, string> = {
   low:    'bg-ink-300',
@@ -29,19 +30,28 @@ const PRIORITY_DOT: Record<ItemPriority, string> = {
 }
 
 interface Props {
-  item:         ProjectItem
-  onUpdate:     (patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority'>>) => void
-  onDelete:     () => void
-  isPending?:   boolean
+  item:       ProjectItem
+  onUpdate:   (patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority'>>) => void
+  onDelete:   () => void
+  isPending?: boolean
 }
 
 export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
-  const [showNotes, setShowNotes] = useState(false)
+  const [showNotes, setShowNotes] = useState(() => !!item.notes)
   const [hovered,   setHovered]   = useState(false)
-  const isDone = item.status === 'done'
+
+  const isDone       = item.status === 'done'
+  const isInProgress = item.status === 'in_progress'
+  const hasNotes     = !!item.notes
+
+  function cycleStatus() {
+    const idx  = STATUS_ORDER.indexOf(item.status)
+    const next = idx === -1 ? 'open' : STATUS_ORDER[(idx + 1) % STATUS_ORDER.length]
+    onUpdate({ status: next as ItemStatus })
+  }
 
   function cycleType() {
-    const idx  = TYPE_ORDER.indexOf(item.type)
+    const idx = TYPE_ORDER.indexOf(item.type)
     onUpdate({ type: TYPE_ORDER[(idx + 1) % TYPE_ORDER.length] })
   }
 
@@ -50,26 +60,25 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
     onUpdate({ priority: PRI_ORDER[(idx + 1) % PRI_ORDER.length] })
   }
 
-  function toggleDone() {
-    const next: ItemStatus = isDone ? 'open' : 'done'
-    onUpdate({ status: next })
-  }
-
   return (
     <div
       className={`transition-opacity ${isPending ? 'opacity-50 pointer-events-none' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="flex items-center gap-2 px-3 py-1.5 group">
-        {/* Done checkbox */}
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        {/* 3-state status button */}
         <button
-          onClick={toggleDone}
+          onClick={cycleStatus}
+          title={`Status: ${item.status} — click to advance`}
           className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
-            isDone ? 'bg-emerald-400 border-emerald-400 text-white' : 'border-ink-300 hover:border-accent-400'
+            isDone       ? 'bg-emerald-400 border-emerald-400 text-white' :
+            isInProgress ? 'border-accent-400 bg-accent-50 text-accent-600' :
+                           'border-ink-300 hover:border-accent-400'
           }`}
         >
-          {isDone && <span className="text-[9px] leading-none">✓</span>}
+          {isDone       && <span className="text-[9px] leading-none">✓</span>}
+          {isInProgress && <span className="text-[9px] leading-none">–</span>}
         </button>
 
         {/* Type badge */}
@@ -85,7 +94,7 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
         <button
           onClick={cyclePriority}
           className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[item.priority]}`}
-          title={`Priority: ${item.priority} (click to change)`}
+          title={`Priority: ${item.priority} — click to change`}
         />
 
         {/* Title */}
@@ -98,28 +107,34 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
           />
         </div>
 
-        {/* Hover actions */}
+        {/* Notes indicator — always visible when notes exist */}
+        {(hasNotes || hovered) && (
+          <button
+            onClick={() => setShowNotes(n => !n)}
+            className={`text-[10px] px-1 transition-colors ${
+              hasNotes
+                ? 'text-amber-500 hover:text-amber-700'
+                : 'text-ink-400 hover:text-ink-700'
+            }`}
+            title={showNotes ? 'Hide notes' : 'Show notes'}
+          >
+            ≡
+          </button>
+        )}
+
+        {/* Delete — hover only */}
         {hovered && (
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={() => setShowNotes(n => !n)}
-              className="text-[10px] text-ink-400 hover:text-ink-700 px-1"
-              title="Notes"
-            >
-              ≡
-            </button>
-            <button
-              onClick={onDelete}
-              className="text-[10px] text-ink-300 hover:text-red-400"
-              title="Delete"
-            >
-              ✕
-            </button>
-          </div>
+          <button
+            onClick={onDelete}
+            className="text-[10px] text-ink-300 hover:text-red-400"
+            title="Delete"
+          >
+            ✕
+          </button>
         )}
       </div>
 
-      {/* Notes row */}
+      {/* Notes */}
       {showNotes && (
         <div className="px-11 pb-1.5">
           <InlineTextArea

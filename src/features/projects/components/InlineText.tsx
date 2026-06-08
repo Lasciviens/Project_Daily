@@ -27,7 +27,8 @@ export function InlineText({ value, onSave, placeholder, className = '', inputCl
   if (!editing) {
     return (
       <span
-        onClick={() => !disabled && setEditing(true)}
+        onClick={e => { e.stopPropagation(); if (!disabled) setEditing(true) }}
+        title="Click to edit"
         className={`cursor-text rounded px-0.5 hover:bg-ink-100 transition-colors duration-100 ${className}`}
       >
         {value || <span className="text-ink-300">{placeholder}</span>}

@@ -84,7 +84,10 @@ export function useDeletePhase(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deletePhase(id),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: QK.phases(projectId) }),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: QK.phases(projectId) })
+      qc.invalidateQueries({ queryKey: QK.items(projectId) })
+    },
   })
 }
 
