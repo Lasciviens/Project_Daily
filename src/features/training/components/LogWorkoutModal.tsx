@@ -201,6 +201,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
             <div className="flex-1">
               <input
                 type="date"
+                lang="en-GB"
                 value={date}
                 onChange={e => setDate(e.target.value)}
                 className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
