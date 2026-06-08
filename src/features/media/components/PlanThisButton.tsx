@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { format, addDays, isToday, isTomorrow } from 'date-fns'
 import { useCreateTask } from '../../todo/hooks/useTodos'
+import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
 import { toast as globalToast } from '../../../app/store'
 
 interface Props {
@@ -36,6 +37,7 @@ export function PlanThisButton({
   const [planEpisode, setPlanEpisode] = useState((currentEpisode ?? 0) + 1)
   const popoverRef              = useRef<HTMLDivElement>(null)
   const createTask              = useCreateTask()
+  const createTimeBlock         = useCreateTimeBlock()
 
   // Sync episode picker when props change (entry updates)
   useEffect(() => {
@@ -63,7 +65,7 @@ export function PlanThisButton({
     const key = format(date, 'yyyy-MM-dd')
     setPlanning(key)
     try {
-      await createTask.mutateAsync({
+      const { task } = await createTask.mutateAsync({
         title:       buildTitle(),
         domain:      'media',
         section:     dateToSection(date),
@@ -71,6 +73,16 @@ export function PlanThisButton({
         due_date:    key,
         source_type: sourceType,
         source_id:   entryId,
+      })
+      // Auto-schedule on the day timeline (movie=2h, TV=45min at 20:00)
+      createTimeBlock.mutate({
+        date:             key,
+        title:            buildTitle(),
+        start_time:       '20:00:00',
+        duration_minutes: sourceType === 'movie' ? 120 : 45,
+        color:            sourceType === 'movie' ? 'purple' : 'blue',
+        source_type:      'task',
+        source_id:        task.id,
       })
       const label = labelForDate(date)
       setPlannedFor(label)

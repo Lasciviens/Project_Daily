@@ -17,6 +17,8 @@ export interface TimeBlock {
   start_time:       string | null
   duration_minutes: number
   color:            string
+  source_type?:     string | null
+  source_id?:       string | null
   created_at:       string
   updated_at:       string
 }
@@ -27,6 +29,8 @@ export interface CreateTimeBlockInput {
   start_time?:      string | null
   duration_minutes: number
   color?:           string
+  source_type?:     string
+  source_id?:       string
 }
 
 export interface CreateScheduleBlockInput {

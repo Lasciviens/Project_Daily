@@ -80,15 +80,15 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
         patch: { title: trimmed, section, priority, domain, due_date: dueDate || null },
       })
     } else {
-      const result = await create.mutateAsync({
+      const { task: result, todoistError } = await create.mutateAsync({
         title: trimmed,
         section,
         priority,
         domain,
         due_date: dueDate || null,
       })
-      if (result.todoistError) {
-        console.warn('[Todoist] create error:', result.todoistError)
+      if (todoistError) {
+        console.warn('[Todoist] create error:', todoistError)
       }
       // Auto-schedule onto the day timeline
       if (domain === 'personal' && dueDate) {
@@ -103,6 +103,8 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
               start_time:       weekend ? '12:00:00' : '17:00:00',
               duration_minutes: 60,
               color:            'accent',
+              source_type:      'task',
+              source_id:        result.id,
             },
             {
               onSuccess: () => { toast.dismiss(toastId); toast.success('Added to day schedule ✓'); resolve() },
