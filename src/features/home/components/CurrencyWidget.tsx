@@ -24,7 +24,7 @@ export function CurrencyWidget() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey:        ['currency', 'v2'],
     queryFn:         fetchCurrencyData,
-    staleTime:       ws.intervalMs,
+    staleTime:       0,
     refetchInterval: !ws.collapsed && ws.syncActive ? ws.intervalMs : false,
     enabled:         !ws.collapsed,
   })
@@ -59,6 +59,10 @@ export function CurrencyWidget() {
     >
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
       {error     && <div className="text-ink-400 text-sm">Unavailable</div>}
+
+      {data && (
+        <p className="text-[10px] text-ink-300 mb-2">Rates for {data.date}</p>
+      )}
 
       {data && mode === 'rates' && (
         <div className="space-y-2.5">

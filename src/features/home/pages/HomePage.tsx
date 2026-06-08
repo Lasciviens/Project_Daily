@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { useTasksBySection } from '../../todo/hooks/useTodos'
+import { useTimeBlocks } from '../../daily/hooks/useSchedule'
 import type { Task } from '../../todo/types'
 import { AddTaskModal } from '../../../shared/components/AddTaskModal'
 import { WeatherWidget } from '../components/WeatherWidget'
@@ -27,8 +28,8 @@ const NAV_CARDS: NavCard[] = [
   { to: '/media',    label: 'Media',    icon: '🎬', desc: 'Movies & TV series' },
   { to: '/work',     label: 'Work',     icon: '💼', desc: 'Work tasks & timeline' },
   { to: '/training', label: 'Training', icon: '🏋️', desc: 'Workouts & health' },
-  { to: '/projects', label: 'Projects', icon: '📋', desc: 'Track project progress' },
   { to: '/games',    label: 'Games',    icon: '🎮', desc: 'RP5 library — coming soon' },
+  { to: '/projects', label: 'Projects', icon: '📋', desc: 'Track project progress' },
 ]
 
 function greeting(): string {
@@ -94,6 +95,9 @@ export function HomePage() {
         {/* Weather */}
         <WeatherWidget />
 
+        {/* Today's schedule */}
+        <TodayScheduleWidget />
+
         {/* RUTER */}
         <RuterWidget />
 
@@ -111,6 +115,45 @@ export function HomePage() {
         onClose={() => setEditingTask(null)}
         task={editingTask ?? undefined}
       />
+    </div>
+  )
+}
+
+// ─── Today's Schedule sub-widget ─────────────────────────────────────────────
+
+function TodayScheduleWidget() {
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const { data: blocks = [], isLoading } = useTimeBlocks(todayStr)
+  const visible = blocks.filter(b => b.start_time)
+
+  if (isLoading || visible.length === 0) return null
+
+  function fmtTime(t: string) {
+    const [h, m] = t.split(':')
+    return `${h}:${m}`
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Day Schedule</h3>
+        <Link to="/daily" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
+      </div>
+      <div className="space-y-1.5">
+        {visible.map(b => (
+          <div key={b.id} className="flex items-center gap-2.5">
+            <span className="text-[11px] text-ink-400 w-10 flex-shrink-0 font-mono">{fmtTime(b.start_time!)}</span>
+            <span className="flex-1 text-sm text-ink-700 truncate">{b.title}</span>
+            {b.duration_minutes >= 30 && (
+              <span className="text-[10px] text-ink-300 flex-shrink-0">
+                {b.duration_minutes >= 60
+                  ? `${Math.floor(b.duration_minutes / 60)}h${b.duration_minutes % 60 ? `${b.duration_minutes % 60}m` : ''}`
+                  : `${b.duration_minutes}m`}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -153,7 +196,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
           </div>
 
           <ul className="space-y-2">
-            {tasks.slice(0, 6).map(t => (
+            {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').slice(0, 6).map(t => (
               <li
                 key={t.id}
                 onClick={() => onEdit(t)}
