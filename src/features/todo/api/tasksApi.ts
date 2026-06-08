@@ -19,6 +19,8 @@ export async function fetchTasksForDay(dateStr: string, section: string): Promis
       .from('tasks')
       .select('*')
       .eq('section', section)
+      // tasks with a past due_date should not bleed into other day views
+      .or(`due_date.is.null,due_date.eq.${dateStr}`)
       .neq('status', 'cancelled')
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false }),

@@ -43,7 +43,7 @@ function formatMoney(amount: number): string {
 }
 
 function formatAirDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return new Date(dateStr).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })
 }
 
 function findTrailer(videos: TMDBVideo[]): TMDBVideo | undefined {

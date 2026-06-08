@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useDeleteSession } from '../hooks/useTrainingSessions'
+import { LogWorkoutModal } from './LogWorkoutModal'
 import type { TrainingSession, WorkoutType } from '../types'
 
 const TYPE_ICON: Record<WorkoutType, string> = {
@@ -47,6 +49,7 @@ interface Props {
 
 export function SessionCard({ session, compact }: Props) {
   const del = useDeleteSession()
+  const [showEdit, setShowEdit] = useState(false)
   const icon  = TYPE_ICON[session.type]
   const color = TYPE_COLOR[session.type]
 
@@ -63,13 +66,22 @@ export function SessionCard({ session, compact }: Props) {
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm font-medium text-ink-800 leading-snug">{session.title}</p>
-          <button
-            onClick={() => del.mutate(session.id)}
-            disabled={del.isPending}
-            className="text-ink-300 hover:text-red-400 transition-colors duration-150 flex-shrink-0 text-xs"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => setShowEdit(true)}
+              className="text-ink-300 hover:text-accent-500 transition-colors duration-150 text-xs"
+              title="Edit workout"
+            >
+              ✎
+            </button>
+            <button
+              onClick={() => del.mutate(session.id)}
+              disabled={del.isPending}
+              className="text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2 mt-1">
@@ -127,6 +139,10 @@ export function SessionCard({ session, compact }: Props) {
           <p className="mt-1.5 text-xs text-ink-400 italic">{session.notes}</p>
         )}
       </div>
+
+      {showEdit && (
+        <LogWorkoutModal session={session} onClose={() => setShowEdit(false)} />
+      )}
     </div>
   )
 }

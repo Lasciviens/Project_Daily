@@ -1,11 +1,13 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { useTasksBySection } from '../../todo/hooks/useTodos'
+import type { Task } from '../../todo/types'
+import { AddTaskModal } from '../../../shared/components/AddTaskModal'
 import { WeatherWidget } from '../components/WeatherWidget'
 import { RuterWidget } from '../components/RuterWidget'
 import { CurrencyWidget } from '../components/CurrencyWidget'
 import { NewsWidget } from '../components/NewsWidget'
-import { TrainingHomeWidget } from '../components/TrainingHomeWidget'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,11 +21,9 @@ interface NavCard {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const NAV_CARDS: NavCard[] = [
-  { to: '/daily',    label: 'Daily',    icon: '📅', desc: 'Tasks & schedule' },
-  { to: '/media',    label: 'Media',    icon: '🎬', desc: 'Movies & TV' },
-  { to: '/work',     label: 'Work',     icon: '💼', desc: 'Work tasks' },
-  { to: '/training', label: 'Training', icon: '🏋️', desc: 'Workouts & health' },
-  { to: '/projects', label: 'Projects', icon: '🗂️', desc: 'Projects & phases' },
+  { to: '/daily', label: 'Daily',  icon: '📅', desc: 'Tasks, schedule & calendar' },
+  { to: '/media', label: 'Media',  icon: '🎬', desc: 'Movies & TV series' },
+  { to: '/work',  label: 'Work',   icon: '💼', desc: 'Work tasks & timeline' },
 ]
 
 function greeting(): string {
@@ -36,11 +36,12 @@ function greeting(): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function HomePage() {
-  const today     = useTasksBySection('today')
-  const tasks     = today.data ?? []
-  const done      = tasks.filter(t => t.status === 'done').length
-  const open      = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
-  const progress  = tasks.length > 0 ? (done / tasks.length) * 100 : 0
+  const today        = useTasksBySection('today')
+  const tasks        = today.data ?? []
+  const done         = tasks.filter(t => t.status === 'done').length
+  const open         = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
+  const progress     = tasks.length > 0 ? (done / tasks.length) * 100 : 0
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
 
   return (
     /*
@@ -56,7 +57,6 @@ export function HomePage() {
       {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
       <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-4">
         <CurrencyWidget />
-        <TrainingHomeWidget />
       </div>
 
       {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
@@ -68,7 +68,7 @@ export function HomePage() {
         </div>
 
         {/* Quick nav cards */}
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+        <div className="grid grid-cols-3 gap-3">
           {NAV_CARDS.map(card => (
             <Link
               key={card.to}
@@ -91,13 +91,19 @@ export function HomePage() {
         <RuterWidget />
 
         {/* Today's tasks */}
-        <TodayTasksWidget tasks={tasks} done={done} open={open} progress={progress} isLoading={today.isLoading} />
+        <TodayTasksWidget tasks={tasks} done={done} open={open} progress={progress} isLoading={today.isLoading} onEdit={setEditingTask} />
       </div>
 
       {/* ── RIGHT COLUMN ────────────────────────────────────────────────── */}
       <div className="w-full xl:w-[380px] xl:flex-shrink-0">
         <NewsWidget />
       </div>
+
+      <AddTaskModal
+        isOpen={!!editingTask}
+        onClose={() => setEditingTask(null)}
+        task={editingTask ?? undefined}
+      />
     </div>
   )
 }
@@ -110,9 +116,10 @@ interface TodayTasksProps {
   open:      number
   progress:  number
   isLoading: boolean
+  onEdit:    (task: Task) => void
 }
 
-function TodayTasksWidget({ tasks, done, open, progress, isLoading }: TodayTasksProps) {
+function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: TodayTasksProps) {
   return (
     <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
@@ -140,7 +147,11 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading }: TodayTasks
 
           <ul className="space-y-2">
             {tasks.slice(0, 6).map(t => (
-              <li key={t.id} className="flex items-center gap-2.5">
+              <li
+                key={t.id}
+                onClick={() => onEdit(t)}
+                className="flex items-center gap-2.5 cursor-pointer rounded-lg px-1 -mx-1 py-0.5 hover:bg-ink-50 transition-colors duration-150"
+              >
                 <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                   t.status === 'done'     ? 'bg-green-400' :
                   t.priority === 'high'   ? 'bg-red-400'   :

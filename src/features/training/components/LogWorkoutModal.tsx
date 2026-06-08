@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useCreateSession } from '../hooks/useTrainingSessions'
-import type { WorkoutType, Exercise, ExerciseSet } from '../types'
+import { useCreateSession, useUpdateSession } from '../hooks/useTrainingSessions'
+import type { WorkoutType, Exercise, ExerciseSet, TrainingSession } from '../types'
 
 const WORKOUT_TYPES: { value: WorkoutType; label: string; icon: string }[] = [
   { value: 'strength', label: 'Strength',  icon: '🏋️' },
@@ -14,30 +14,52 @@ const WORKOUT_TYPES: { value: WorkoutType; label: string; icon: string }[] = [
 
 interface Props {
   defaultDate?: string
+  session?:     TrainingSession   // when provided → edit mode
   onClose:      () => void
 }
 
 function emptySet(): ExerciseSet { return { reps: undefined, weight_kg: undefined } }
 function emptyExercise(): Exercise { return { name: '', sets: [emptySet()] } }
 
-export function LogWorkoutModal({ defaultDate, onClose }: Props) {
-  const today = new Date().toISOString().slice(0, 10)
-  const [type,       setType]       = useState<WorkoutType>('strength')
-  const [title,      setTitle]      = useState('')
-  const [date,       setDate]       = useState(defaultDate ?? today)
-  const [notes,      setNotes]      = useState('')
-  const [markDone,   setMarkDone]   = useState(true)
-  // Cardio fields
-  const [distKm,     setDistKm]     = useState('')
-  const [durMin,     setDurMin]     = useState('')
-  const [heartRate,  setHeartRate]  = useState('')
-  const [elevGain,   setElevGain]   = useState('')
+// Converts stored seconds → display minutes string (rounded to 1 decimal)
+function secsToMinStr(secs: number | null): string {
+  if (secs == null) return ''
+  const m = secs / 60
+  return Number.isInteger(m) ? String(m) : m.toFixed(1)
+}
+
+// Converts stored meters → display km string
+function metersToKmStr(m: number | null): string {
+  if (m == null) return ''
+  const km = m / 1000
+  return Number.isInteger(km) ? String(km) : km.toFixed(2)
+}
+
+export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
+  const editMode = !!session
+  const today    = new Date().toISOString().slice(0, 10)
+
+  // Pre-fill from session when editing, otherwise use defaults
+  const [type,      setType]      = useState<WorkoutType>(session?.type ?? 'strength')
+  const [title,     setTitle]     = useState(session?.title ?? '')
+  const [date,      setDate]      = useState(session?.planned_date ?? defaultDate ?? today)
+  const [notes,     setNotes]     = useState(session?.notes ?? '')
+  const [markDone,  setMarkDone]  = useState(session ? !!session.completed_at : true)
+  // Cardio fields — convert stored units back to display units
+  const [distKm,    setDistKm]    = useState(metersToKmStr(session?.distance_meters ?? null))
+  const [durMin,    setDurMin]    = useState(secsToMinStr(session?.duration_seconds ?? null))
+  const [heartRate, setHeartRate] = useState(session?.avg_heart_rate != null ? String(session.avg_heart_rate) : '')
+  const [elevGain,  setElevGain]  = useState(session?.elevation_gain_m != null ? String(session.elevation_gain_m) : '')
   // Strength exercises
-  const [exercises,  setExercises]  = useState<Exercise[]>([emptyExercise()])
+  const [exercises, setExercises] = useState<Exercise[]>(
+    session?.exercises?.length ? session.exercises : [emptyExercise()]
+  )
 
   const create = useCreateSession()
-  const isCardio    = ['run', 'cycling', 'walk', 'swim'].includes(type)
-  const isStrength  = type === 'strength'
+  const update = useUpdateSession()
+  const isPending  = create.isPending || update.isPending
+  const isCardio   = ['run', 'cycling', 'walk', 'swim'].includes(type)
+  const isStrength = type === 'strength'
 
   function addExercise() {
     setExercises(ex => [...ex, emptyExercise()])
@@ -74,16 +96,17 @@ export function LogWorkoutModal({ defaultDate, onClose }: Props) {
     e.preventDefault()
     if (!title.trim()) return
 
-    const distM    = distKm  ? Math.round(parseFloat(distKm) * 1000) : undefined
-    const durSec   = durMin  ? Math.round(parseFloat(durMin) * 60)   : undefined
-    const paceSecPerKm = distM && durSec ? Math.round(durSec / (distM / 1000)) : undefined
-    const validExercises = exercises.filter(e => e.name.trim())
+    const distM           = distKm   ? Math.round(parseFloat(distKm) * 1000) : undefined
+    const durSec          = durMin   ? Math.round(parseFloat(durMin) * 60)   : undefined
+    const paceSecPerKm    = distM && durSec ? Math.round(durSec / (distM / 1000)) : undefined
+    const validExercises  = exercises.filter(e => e.name.trim())
 
-    await create.mutateAsync({
+    const payload = {
       type,
       title:               title.trim(),
       planned_date:        date || undefined,
-      completed_at:        markDone ? new Date().toISOString() : undefined,
+      // Preserve original completed_at timestamp in edit mode when already done
+      completed_at:        markDone ? (session?.completed_at ?? new Date().toISOString()) : undefined,
       notes:               notes.trim() || undefined,
       distance_meters:     distM,
       duration_seconds:    durSec,
@@ -91,7 +114,13 @@ export function LogWorkoutModal({ defaultDate, onClose }: Props) {
       avg_heart_rate:      heartRate ? parseInt(heartRate) : undefined,
       avg_pace_sec_per_km: paceSecPerKm,
       exercises:           isStrength && validExercises.length ? validExercises : undefined,
-    })
+    }
+
+    if (editMode && session) {
+      await update.mutateAsync({ id: session.id, patch: payload })
+    } else {
+      await create.mutateAsync(payload)
+    }
     onClose()
   }
 
@@ -105,7 +134,7 @@ export function LogWorkoutModal({ defaultDate, onClose }: Props) {
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 pt-5 pb-3 border-b border-ink-100 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-ink-900">Log workout</h2>
+          <h2 className="text-base font-semibold text-ink-900">{editMode ? 'Edit workout' : 'Log workout'}</h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-600 text-lg">×</button>
         </div>
 
@@ -293,10 +322,10 @@ export function LogWorkoutModal({ defaultDate, onClose }: Props) {
 
           <button
             type="submit"
-            disabled={create.isPending || !title.trim()}
+            disabled={isPending || !title.trim()}
             className="w-full btn-primary py-2"
           >
-            {create.isPending ? 'Saving…' : 'Save workout'}
+            {isPending ? 'Saving…' : (editMode ? 'Save changes' : 'Save workout')}
           </button>
         </form>
       </div>
