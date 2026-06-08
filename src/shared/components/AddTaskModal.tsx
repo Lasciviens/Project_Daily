@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useCreateTask, useUpdateTask } from '../../features/todo/hooks/useTodos'
+import { createTimeBlock } from '../../features/daily/api/scheduleApi'
 import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../features/todo/types'
 
 interface Props {
@@ -86,6 +87,18 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
       })
       if (result.todoistError) {
         console.warn('[Todoist] create error:', result.todoistError)
+      }
+      // Auto-schedule personal tasks onto the day timeline
+      if (domain === 'personal' && dueDate) {
+        const dow     = new Date(dueDate + 'T00:00:00').getDay()
+        const weekend = dow === 0 || dow === 6
+        createTimeBlock({
+          date:             dueDate,
+          title:            trimmed,
+          start_time:       weekend ? '12:00:00' : '17:00:00',
+          duration_minutes: 60,
+          color:            'accent',
+        }).catch(() => {/* non-critical */})
       }
     }
     onClose()

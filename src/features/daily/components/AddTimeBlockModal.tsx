@@ -13,14 +13,16 @@ const DURATIONS = [
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 interface Props {
-  dateStr:          string
-  onClose:          () => void
+  dateStr:           string
+  onClose:           () => void
   defaultStartTime?: string
+  defaultTitle?:     string
+  defaultColor?:     string
 }
 
-export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime }: Props) {
+export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultTitle = '', defaultColor }: Props) {
   const [tab,       setTab]       = useState<'once' | 'recurring'>('once')
-  const [title,     setTitle]     = useState('')
+  const [title,     setTitle]     = useState(defaultTitle)
   const [startTime, setStartTime] = useState(defaultStartTime ?? '09:00')
   const [duration,  setDuration]  = useState(60)
   const [customMin, setCustomMin] = useState('')
@@ -40,6 +42,7 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime }: Props)
         title:            title.trim(),
         start_time:       startTime ? `${startTime}:00` : null,
         duration_minutes: actualDuration,
+        color:            defaultColor,
       })
     } else {
       await createRecurring.mutateAsync({

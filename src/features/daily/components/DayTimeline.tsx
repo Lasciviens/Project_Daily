@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { format, getDay, isToday } from 'date-fns'
-import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock } from '../hooks/useSchedule'
+import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock } from '../hooks/useSchedule'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { AddTimeBlockModal } from './AddTimeBlockModal'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
@@ -47,6 +47,7 @@ interface Block {
   calendarEvent?:  CalendarEvent
 }
 
+interface DragState { id: string; offsetY: number; dateStr: string }
 interface Props { date: Date }
 
 export function DayTimeline({ date }: Props) {
@@ -56,6 +57,8 @@ export function DayTimeline({ date }: Props) {
   const [clickTime,  setClickTime]  = useState<string | undefined>(undefined)
   const [hoverY,     setHoverY]     = useState<number | null>(null)
   const [editEvent,  setEditEvent]  = useState<CalendarEvent | null>(null)
+  const [dragging,   setDragging]   = useState<DragState | null>(null)
+  const [dragY,      setDragY]      = useState<number | null>(null)
   const scrollRef    = useRef<HTMLDivElement>(null)
   const timelineRef  = useRef<HTMLDivElement>(null)
 
@@ -82,6 +85,39 @@ export function DayTimeline({ date }: Props) {
   const { data: timeBlocks  = [] }  = useTimeBlocks(dateStr)
   const { data: calEvents   = [] }  = useCalendarEventsForDay(dateStr)
   const deleteBlock                 = useDeleteTimeBlock()
+  const updateBlock                 = useUpdateTimeBlock()
+
+  const handleBlockMouseDown = useCallback((e: React.MouseEvent, blockId: string, topPx: number) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const rect = timelineRef.current!.getBoundingClientRect()
+    const offsetY = (e.clientY - rect.top) - topPx
+    setDragging({ id: blockId, offsetY, dateStr })
+    setDragY(e.clientY - rect.top)
+  }, [dateStr])
+
+  useEffect(() => {
+    if (!dragging) return
+    function onMove(e: MouseEvent) {
+      const rect = timelineRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setDragY(e.clientY - rect.top)
+    }
+    function onUp(e: MouseEvent) {
+      const rect = timelineRef.current?.getBoundingClientRect()
+      if (rect && dragging) {
+        const rawHour = HOUR_START + (e.clientY - rect.top - dragging.offsetY) / HOUR_PX
+        const snapped = Math.floor(rawHour * 2) / 2
+        const clamped = Math.max(HOUR_START, Math.min(HOUR_END - 0.5, snapped))
+        updateBlock.mutate({ id: dragging.id, start_time: `${hourToTimeStr(clamped)}:00`, dateStr: dragging.dateStr })
+      }
+      setDragging(null)
+      setDragY(null)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [dragging, updateBlock])
 
   // Build unified block list
   const blocks: Block[] = []
@@ -266,23 +302,34 @@ export function DayTimeline({ date }: Props) {
           {visibleBlocks.map(block => {
             const clampedStart = Math.max(block.startHour, HOUR_START)
             const clampedEnd   = Math.min(block.endHour, HOUR_END)
-            const topPx    = (clampedStart - HOUR_START) * HOUR_PX
+            const baseTopPx = (clampedStart - HOUR_START) * HOUR_PX
+            const isDraggingThis = dragging?.id === block.id
+            const topPx = isDraggingThis && dragY !== null
+              ? Math.max(0, dragY - dragging!.offsetY)
+              : baseTopPx
             const heightPx = Math.max((clampedEnd - clampedStart) * HOUR_PX, 20)
             const durationMins = Math.round((block.endHour - block.startHour) * 60)
             const isCalEvent = !!block.calendarEvent
+            const dragHour = isDraggingThis && dragY !== null
+              ? Math.max(HOUR_START, Math.min(HOUR_END - 0.5, Math.floor((HOUR_START + (dragY - dragging!.offsetY) / HOUR_PX) * 2) / 2))
+              : null
 
             return (
               <div
                 key={block.id}
                 data-block="true"
                 onClick={isCalEvent ? (e) => { e.stopPropagation(); setEditEvent(block.calendarEvent!) } : (e) => e.stopPropagation()}
-                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : 'cursor-default'}`}
+                onMouseDown={block.deletable ? (e) => handleBlockMouseDown(e, block.id, baseTopPx) : undefined}
+                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : block.deletable ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} ${isDraggingThis ? 'opacity-80 shadow-lg z-20' : ''}`}
                 style={{ top: `${topPx}px`, height: `${heightPx}px` }}
               >
-                <p className="text-[11px] font-semibold leading-tight truncate">{block.title}</p>
+                {block.deletable && (
+                  <span className="absolute top-1 left-1 text-[10px] opacity-0 group-hover:opacity-40 transition-opacity select-none">⠿</span>
+                )}
+                <p className="text-[11px] font-semibold leading-tight truncate pl-3">{block.title}</p>
                 {heightPx >= 28 && (
-                  <p className="text-[10px] opacity-60">
-                    {hourToTimeStr(block.startHour)} – {hourToTimeStr(block.endHour)}
+                  <p className="text-[10px] opacity-60 pl-3">
+                    {isDraggingThis && dragHour !== null ? hourToTimeStr(dragHour) : hourToTimeStr(block.startHour)} – {hourToTimeStr(block.endHour)}
                     {durationMins >= 30 ? ` · ${formatDuration(durationMins)}` : ''}
                   </p>
                 )}
@@ -293,6 +340,7 @@ export function DayTimeline({ date }: Props) {
                 )}
                 {block.deletable && (
                   <button
+                    onMouseDown={e => e.stopPropagation()}
                     onClick={e => { e.stopPropagation(); deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }) }}
                     className="absolute top-1 right-1 text-[10px] opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity"
                   >

@@ -3,6 +3,7 @@ import { addDays, format, isToday, startOfWeek } from 'date-fns'
 import { useWorkTasks, useToggleTask, useDeleteTask, useSwapTaskOrder } from '../../todo/hooks/useTodos'
 import { AddTaskModal } from '../../../shared/components/AddTaskModal'
 import { DayTimeline } from '../../daily/components/DayTimeline'
+import { AddTimeBlockModal } from '../../daily/components/AddTimeBlockModal'
 import type { Task, TaskSection } from '../../todo/types'
 
 const SECTIONS: { id: TaskSection; label: string; defaultOpen: boolean }[] = [
@@ -21,8 +22,9 @@ const PRIORITY_DOT: Record<Task['priority'], string> = {
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export function WorkPage() {
-  const [modal,        setModal]        = useState<TaskSection | null>(null)
-  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [modal,         setModal]         = useState<TaskSection | null>(null)
+  const [selectedDate,  setSelectedDate]  = useState(new Date())
+  const [scheduleTask,  setScheduleTask]  = useState<Task | null>(null)
   const { data: tasks = [], isLoading } = useWorkTasks()
 
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
@@ -182,6 +184,7 @@ export function WorkPage() {
                 defaultOpen={s.defaultOpen}
                 featured={s.id === 'today'}
                 onAdd={() => setModal(s.id)}
+                onSchedule={setScheduleTask}
               />
             )
           })}
@@ -199,6 +202,15 @@ export function WorkPage() {
         defaultSection={modal ?? 'inbox'}
         defaultDomain="work"
       />
+      {scheduleTask && (
+        <AddTimeBlockModal
+          dateStr={scheduleTask.due_date ?? selectedDateStr}
+          defaultTitle={scheduleTask.title}
+          defaultStartTime="09:00"
+          defaultColor="blue"
+          onClose={() => setScheduleTask(null)}
+        />
+      )}
     </div>
   )
 }
@@ -223,14 +235,15 @@ function DateTaskRow({ task }: { task: Task }) {
 }
 
 function WorkSection({
-  label, tasks, defaultOpen, featured, onAdd,
+  label, tasks, defaultOpen, featured, onAdd, onSchedule,
 }: {
-  section: TaskSection
-  label: string
-  tasks: Task[]
+  section:    TaskSection
+  label:      string
+  tasks:      Task[]
   defaultOpen: boolean
-  featured?: boolean
-  onAdd: () => void
+  featured?:  boolean
+  onAdd:      () => void
+  onSchedule: (task: Task) => void
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const toggle = useToggleTask()
@@ -278,6 +291,7 @@ function WorkSection({
               onMoveDown={() => swap.mutate({ id1: task.id, id2: openTasks[idx + 1].id })}
               onToggle={() => toggle.mutate({ id: task.id, isDone: true })}
               onDelete={() => remove.mutate(task.id)}
+              onSchedule={() => onSchedule(task)}
             />
           ))}
 
@@ -307,7 +321,7 @@ function WorkSection({
 }
 
 function WorkTaskRow({
-  task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, onToggle, onDelete,
+  task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, onToggle, onDelete, onSchedule,
 }: {
   task: Task
   canMoveUp?: boolean
@@ -316,6 +330,7 @@ function WorkTaskRow({
   onMoveDown?: () => void
   onToggle: () => void
   onDelete: () => void
+  onSchedule?: () => void
 }) {
   const [hovered,  setHovered]  = useState(false)
   const [editing,  setEditing]  = useState(false)
@@ -365,6 +380,12 @@ function WorkTaskRow({
               <button onClick={onMoveDown} disabled={!canMoveDown}
                 className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
               >↓</button>
+            )}
+            {onSchedule && (
+              <button onClick={onSchedule}
+                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
+                title="Add to day schedule"
+              >📅</button>
             )}
             <button onClick={() => setEditing(true)}
               className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
