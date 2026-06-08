@@ -32,8 +32,16 @@ export function PlanThisButton({
   const [toast, setToast]       = useState<string | null>(null)
   const [customDate, setCustomDate] = useState('')
   const [planning, setPlanning] = useState<string | null>(null)
+  const [planSeason,  setPlanSeason]  = useState(currentSeason  ?? 1)
+  const [planEpisode, setPlanEpisode] = useState((currentEpisode ?? 0) + 1)
   const popoverRef              = useRef<HTMLDivElement>(null)
   const createTask              = useCreateTask()
+
+  // Sync episode picker when props change (entry updates)
+  useEffect(() => {
+    setPlanSeason(currentSeason ?? 1)
+    setPlanEpisode((currentEpisode ?? 0) + 1)
+  }, [currentSeason, currentEpisode])
 
   useEffect(() => {
     if (!open) return
@@ -45,8 +53,8 @@ export function PlanThisButton({
   }, [open])
 
   function buildTitle() {
-    if (sourceType === 'tv_series' && currentSeason !== undefined && currentEpisode !== undefined) {
-      return `Watch: ${title} S${currentSeason}E${currentEpisode + 1}`
+    if (sourceType === 'tv_series') {
+      return `Watch: ${title} S${planSeason}E${planEpisode}`
     }
     return `Watch: ${title}`
   }
@@ -124,6 +132,26 @@ export function PlanThisButton({
               <p className="text-[10px] text-ink-400 uppercase font-semibold tracking-wider mb-2">
                 Plan for…
               </p>
+
+              {/* Episode picker for TV series */}
+              {sourceType === 'tv_series' && (
+                <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-ink-100">
+                  <span className="text-[10px] text-ink-400 w-8">S</span>
+                  <input
+                    type="number" min={1}
+                    value={planSeason}
+                    onChange={e => setPlanSeason(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-12 text-xs border border-ink-200 rounded px-1.5 py-0.5 outline-none focus:border-accent-400 text-center"
+                  />
+                  <span className="text-[10px] text-ink-400 w-8">Ep</span>
+                  <input
+                    type="number" min={1}
+                    value={planEpisode}
+                    onChange={e => setPlanEpisode(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-12 text-xs border border-ink-200 rounded px-1.5 py-0.5 outline-none focus:border-accent-400 text-center"
+                  />
+                </div>
+              )}
               <div className="flex flex-col gap-0.5">
                 {quickDates.map(d => {
                   const key     = format(d, 'yyyy-MM-dd')
