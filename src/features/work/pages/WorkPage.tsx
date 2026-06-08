@@ -62,26 +62,26 @@ export function WorkPage() {
       </div>
 
       {/* Date navigation */}
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-2 mb-4">
         <button
           onClick={() => setSelectedDate(d => addDays(d, -1))}
-          className="w-7 h-7 flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
         >
           ‹
         </button>
-        <span className="text-sm font-medium text-ink-800 min-w-[140px] text-center">
+        <span className="text-sm font-medium text-ink-800 min-w-[120px] text-center">
           {isSelectedToday ? 'Today' : format(selectedDate, 'EEEE, MMM d')}
         </span>
         <button
           onClick={() => setSelectedDate(d => addDays(d, 1))}
-          className="w-7 h-7 flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
         >
           ›
         </button>
         {!isSelectedToday && (
           <button
             onClick={() => setSelectedDate(new Date())}
-            className="text-xs text-accent-600 hover:text-accent-700 font-medium transition-colors duration-150 ml-1"
+            className="min-h-[44px] px-3 text-xs text-accent-600 hover:text-accent-700 font-medium transition-colors duration-150 flex items-center"
           >
             Today
           </button>
@@ -99,7 +99,7 @@ export function WorkPage() {
             <button
               key={dayStr}
               onClick={() => setSelectedDate(day)}
-              className={`flex-1 flex flex-col items-center py-1.5 rounded-lg transition-colors duration-150 ${
+              className={`flex-1 flex flex-col items-center py-2 min-h-[44px] rounded-lg transition-colors duration-150 ${
                 isSelected
                   ? 'bg-accent-500 text-white'
                   : isTodayDay
@@ -142,15 +142,12 @@ export function WorkPage() {
         </div>
       )}
 
-      {/* Stats strip — filtered by selected date */}
+      {/* Stats strip — filtered by selected date; wraps to 2×2 on mobile */}
       {!isLoading && (
-        <div className="flex items-center gap-4 mb-6 p-4 card">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 p-4 card">
           <Stat label="Open" value={openForDate.length} color="text-ink-800" />
-          <div className="w-px h-8 bg-ink-100" />
           <Stat label="Done" value={doneForDate.length} color="text-green-600" />
-          <div className="w-px h-8 bg-ink-100" />
           <Stat label="High priority" value={highForDate} color={highForDate > 0 ? 'text-red-500' : 'text-ink-400'} />
-          <div className="w-px h-8 bg-ink-100" />
           <Stat
             label={isSelectedToday ? 'Due today' : format(selectedDate, 'MMM d')}
             value={openForDate.length}
@@ -297,7 +294,7 @@ function WorkSection({
 
           <button
             onClick={onAdd}
-            className="w-full text-left px-3 py-2 text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 flex items-center gap-1"
+            className="w-full text-left px-3 min-h-[44px] text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 flex items-center gap-1"
           >
             <span className="text-base leading-none">+</span> Add task
           </button>
@@ -369,8 +366,19 @@ function WorkTaskRow({
           )}
         </div>
 
+        {/* Actions: always visible on mobile (no hover), hover-revealed on desktop */}
+        <div className={`flex items-center gap-0.5 flex-shrink-0 lg:hidden`}>
+          <button onClick={() => setEditing(true)}
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 active:text-accent-500 transition-colors duration-150 text-sm"
+            title="Edit"
+          >✎</button>
+          <button onClick={onDelete}
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 active:text-red-400 transition-colors duration-150 text-sm"
+          >✕</button>
+        </div>
+
         {hovered && (
-          <div className="flex items-center gap-0.5 flex-shrink-0">
+          <div className="hidden lg:flex items-center gap-0.5 flex-shrink-0">
             {onMoveUp && (
               <button onClick={onMoveUp} disabled={!canMoveUp}
                 className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"

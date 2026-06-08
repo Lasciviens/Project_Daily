@@ -17,7 +17,7 @@ type SortBy = 'added' | 'rating' | 'alpha'
 
 interface DetailState { tmdbId: number; type: 'movie' | 'tv' }
 
-const GRID = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-6 gap-3'
+const GRID = 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-6 gap-3'
 
 function sortMovies(entries: UserMovieEntry[], by: SortBy): UserMovieEntry[] {
   return [...entries].sort((a, b) => {
@@ -64,7 +64,7 @@ export function MediaPage() {
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-lg font-semibold text-ink-900">Media</h1>
       </div>
@@ -94,14 +94,14 @@ export function MediaPage() {
         <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} />
       )}
 
-      {/* Main tab switcher + sort */}
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-fit">
+      {/* Main tab switcher + sort — stack vertically on small screens */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-6">
+        <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-full sm:w-fit">
           {(['movies', 'tv'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors duration-150 ${
+              className={`flex-1 sm:flex-none px-4 min-h-[44px] rounded-md text-sm font-medium transition-colors duration-150 ${
                 tab === t
                   ? 'bg-white text-ink-900 shadow-sm'
                   : 'text-ink-500 hover:text-ink-700'
@@ -112,13 +112,13 @@ export function MediaPage() {
           ))}
         </div>
         {hasLibrary && (
-          <div className="flex items-center gap-1 ml-auto">
+          <div className="flex items-center gap-1 sm:ml-auto flex-wrap">
             <span className="text-[11px] text-ink-400 mr-1">Sort:</span>
             {(['added', 'rating', 'alpha'] as SortBy[]).map(s => (
               <button
                 key={s}
                 onClick={() => setSortBy(s)}
-                className={`text-[11px] px-2 py-1 rounded-lg transition-colors duration-150 ${
+                className={`text-[11px] min-h-[44px] px-3 rounded-lg transition-colors duration-150 ${
                   sortBy === s ? 'bg-accent-100 text-accent-700 font-medium' : 'text-ink-500 hover:bg-ink-100'
                 }`}
               >
