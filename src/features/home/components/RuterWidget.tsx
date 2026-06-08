@@ -2,16 +2,66 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   fetchDepartures, fetchTrips, searchStops,
-  TRANSPORT_ICON, DEFAULT_STOP, PRESET_ROUTES,
+  TRANSPORT_ICON,
   type StopResult, type Departure, type TripPattern,
 } from '../api/ruterApi'
 import { useWidgetState } from '../hooks/useWidgetState'
-import { useRuterFavorites } from '../hooks/useRuterFavorites'
 import { WidgetShell } from './WidgetShell'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Tab = 'departures' | 'routes'
+
+// Temporary compat shim — will be removed when this widget is fully rewritten.
+// The new useTransitStops hook persists to Supabase; this keeps local state only.
+function useRuterFavorites(defaultStop: StopResult) {
+  const [activeStop, setActiveStopState] = useState<StopResult>(() => {
+    try {
+      const raw = localStorage.getItem('ruter_active_stop')
+      return raw ? (JSON.parse(raw) as StopResult) : defaultStop
+    } catch { return defaultStop }
+  })
+  const [favStops, setFavStopsState] = useState<StopResult[]>(() => {
+    try {
+      const raw = localStorage.getItem('ruter_fav_stops')
+      return raw ? (JSON.parse(raw) as StopResult[]) : [defaultStop]
+    } catch { return [defaultStop] }
+  })
+
+  function setActiveStop(stop: StopResult) {
+    setActiveStopState(stop)
+    try { localStorage.setItem('ruter_active_stop', JSON.stringify(stop)) } catch { /* quota */ }
+  }
+  function addStop(stop: StopResult) {
+    if (favStops.some(s => s.id === stop.id)) return
+    const next = [...favStops, stop]
+    setFavStopsState(next)
+    try { localStorage.setItem('ruter_fav_stops', JSON.stringify(next)) } catch { /* quota */ }
+  }
+  function removeStop(id: string) {
+    const next = favStops.filter(s => s.id !== id)
+    setFavStopsState(next)
+    try { localStorage.setItem('ruter_fav_stops', JSON.stringify(next)) } catch { /* quota */ }
+    if (activeStop.id === id && next.length > 0) setActiveStop(next[0])
+  }
+
+  return { activeStop, setActiveStop, favStops, addStop, removeStop }
+}
+
+const DEFAULT_STOP: StopResult = { id: 'NSR:StopPlace:5492', name: 'Visperud' }
+
+const PRESET_ROUTES: { label: string; from: StopResult; to: StopResult }[] = [
+  {
+    label: '🏠 Home',
+    from:  { id: 'NSR:StopPlace:58221', name: 'Sinsenveien' },
+    to:    { id: 'NSR:StopPlace:5492',  name: 'Visperud' },
+  },
+  {
+    label: '💼 Work',
+    from:  { id: 'NSR:StopPlace:5492',  name: 'Visperud' },
+    to:    { id: 'NSR:StopPlace:58221', name: 'Sinsenveien' },
+  },
+]
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -305,11 +355,11 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
       <span className="text-sm font-bold text-ink-900 w-8 flex-shrink-0">{dep.line}</span>
       <div className="flex-1 min-w-0">
         <div className="text-sm text-ink-700 truncate">{dep.destination}</div>
-        {(dep.platform || dep.direction) && (
+        {(dep.quayCode || dep.quayDescription) && (
           <div className="text-[10px] text-ink-400">
-            {dep.platform && `Platform ${dep.platform}`}
-            {dep.platform && dep.direction && ' · '}
-            {dep.direction}
+            {dep.quayCode && `Platform ${dep.quayCode}`}
+            {dep.quayCode && dep.quayDescription && ' · '}
+            {dep.quayDescription}
           </div>
         )}
       </div>
