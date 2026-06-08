@@ -17,6 +17,11 @@ concurrency:
 jobs:
   db-migrations:
     runs-on: ubuntu-latest
+    # Only runs when a migration file actually changes
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(toJson(github.event.commits.*.modified), 'supabase/migrations/') ||
+      contains(toJson(github.event.commits.*.added), 'supabase/migrations/')
     steps:
       - uses: actions/checkout@v4
 
@@ -28,33 +33,6 @@ jobs:
         run: |
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --password ${{ secrets.SUPABASE_DB_PASSWORD }}
           supabase db push --linked --yes
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-  deploy-edge-functions:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Deploy Edge Functions
-        # news-proxy is a public RSS proxy with its own domain allowlist — no JWT needed
-        # All other functions keep default JWT verification
-        run: |
-          supabase functions deploy news-proxy --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
-          supabase functions deploy ai-proxy --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          supabase functions deploy calendar-oauth --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          supabase functions deploy calendar-token --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          supabase functions deploy calendar-disconnect --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          supabase functions deploy todoist-proxy --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          supabase functions deploy strava-auth --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          supabase functions deploy strava-activities --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          supabase functions deploy strava-disconnect --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          # no-verify-jwt: Shortcut authenticates via HEALTH_INGEST_SECRET header instead
-          supabase functions deploy health-ingest --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
