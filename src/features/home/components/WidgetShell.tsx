@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { SYNC_INTERVALS, type WidgetStateResult } from '../hooks/useWidgetState'
+import type { WidgetStateResult } from '../hooks/useWidgetState'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,17 +75,6 @@ export function WidgetShell({ title, ws, onManualSync, headerRight, children }: 
             >
               {ws.syncActive ? '⏸' : '▶'}
             </button>
-
-            {/* Interval selector */}
-            <select
-              value={ws.intervalMs}
-              onChange={e => ws.setInterval(Number(e.target.value))}
-              className="text-[10px] text-ink-400 bg-transparent border border-ink-200 rounded px-1 py-0.5 cursor-pointer focus:outline-none hover:border-ink-300"
-            >
-              {SYNC_INTERVALS.map(i => (
-                <option key={i.ms} value={i.ms}>{i.label}</option>
-              ))}
-            </select>
 
             {/* Manual sync */}
             {onManualSync && (
