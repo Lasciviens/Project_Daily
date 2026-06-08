@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { format, addDays, isToday, isTomorrow } from 'date-fns'
 import { useCreateTask } from '../../todo/hooks/useTodos'
+import { toast as globalToast } from '../../../app/store'
 
 interface Props {
   entryId: string
@@ -71,6 +72,8 @@ export function PlanThisButton({
         setToast(`Planned for ${label}`)
         setTimeout(() => setToast(null), 3000)
       }, 800)
+    } catch (err) {
+      globalToast.error(`Failed to plan: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setPlanning(null)
     }
