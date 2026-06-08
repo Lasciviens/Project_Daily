@@ -18,7 +18,7 @@ const FLAG: Record<string, string> = {
 
 export function CurrencyWidget() {
   const [mode, setMode] = useState<Mode>('rates')
-  const ws = useWidgetState('currency', { collapsed: false, intervalMs: 60 * 60_000 })
+  const ws = useWidgetState('currency', { collapsed: false, intervalMs: 30 * 60_000 })
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey:        ['currency', 'v2'],
@@ -60,7 +60,7 @@ export function CurrencyWidget() {
       {error     && <div className="text-ink-400 text-sm">Unavailable</div>}
 
       {data && (
-        <p className="text-[10px] text-ink-300 mb-2">Rates for {data.date}</p>
+        <p className="text-[10px] text-ink-300 mb-2">Updated {data.date}</p>
       )}
 
       {data && mode === 'rates' && (
