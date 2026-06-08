@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useCreateSession, useUpdateSession, useSessionExercises, useSaveSessionExercises } from '../hooks/useTrainingSessions'
-import { fetchLastStrengthExercises } from '../api/trainingApi'
+import { fetchLastStrengthExercises, searchExerciseNames } from '../api/trainingApi'
 import type { WorkoutType, Exercise, ExerciseSet, TrainingSession } from '../types'
 
 const WORKOUT_TYPES: { value: WorkoutType; label: string; icon: string }[] = [
@@ -57,6 +57,10 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
 
   const { data: savedExercises } = useSessionExercises(editMode && type === 'strength' ? session?.id : undefined)
   const saveExercises = useSaveSessionExercises()
+  // autocomplete state: which exercise input is focused + search results
+  const [acIdx,     setAcIdx]     = useState<number | null>(null)
+  const [acResults, setAcResults] = useState<string[]>([])
+  const acTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (exReady || savedExercises === undefined) return
@@ -80,10 +84,26 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
 
   function updateExerciseName(idx: number, name: string) {
     setExercises(ex => ex.map((e, i) => i === idx ? { ...e, name } : e))
+    setAcIdx(idx)
+    if (acTimer.current) clearTimeout(acTimer.current)
+    acTimer.current = setTimeout(async () => {
+      const results = await searchExerciseNames(name)
+      setAcResults(results)
+    }, 200)
+  }
+
+  function pickSuggestion(exIdx: number, name: string) {
+    setExercises(ex => ex.map((e, i) => i === exIdx ? { ...e, name } : e))
+    setAcIdx(null)
+    setAcResults([])
   }
 
   function addSet(exIdx: number) {
-    setExercises(ex => ex.map((e, i) => i === exIdx ? { ...e, sets: [...e.sets, emptySet()] } : e))
+    setExercises(ex => ex.map((e, i) => {
+      if (i !== exIdx) return e
+      const last = e.sets[e.sets.length - 1]
+      return { ...e, sets: [...e.sets, { reps: last?.reps, weight_kg: last?.weight_kg }] }
+    }))
   }
 
   function removeSet(exIdx: number, setIdx: number) {
@@ -277,13 +297,34 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
               </div>
               {exercises.map((ex, exIdx) => (
                 <div key={exIdx} className="border border-ink-100 rounded-xl p-3 space-y-2">
-                  <div className="flex gap-2">
-                    <input
-                      value={ex.name}
-                      onChange={e => updateExerciseName(exIdx, e.target.value)}
-                      placeholder="Exercise name (e.g. Bench press)"
-                      className="flex-1 border border-ink-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-accent-400"
-                    />
+                  <div className="flex gap-2 relative">
+                    <div className="flex-1 relative">
+                      <input
+                        value={ex.name}
+                        onChange={e => updateExerciseName(exIdx, e.target.value)}
+                        onFocus={async () => {
+                          setAcIdx(exIdx)
+                          const results = await searchExerciseNames(ex.name)
+                          setAcResults(results)
+                        }}
+                        onBlur={() => setTimeout(() => setAcIdx(null), 150)}
+                        placeholder="Exercise name…"
+                        className="w-full border border-ink-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-accent-400"
+                      />
+                      {acIdx === exIdx && acResults.length > 0 && (
+                        <ul className="absolute z-30 left-0 right-0 top-full mt-0.5 bg-white border border-ink-200 rounded-lg shadow-md max-h-40 overflow-y-auto">
+                          {acResults.map(name => (
+                            <li
+                              key={name}
+                              onMouseDown={() => pickSuggestion(exIdx, name)}
+                              className="px-3 py-1.5 text-sm text-ink-700 hover:bg-cream-50 cursor-pointer"
+                            >
+                              {name}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                     {exercises.length > 1 && (
                       <button
                         type="button"

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useDeleteSession } from '../hooks/useTrainingSessions'
+import { useDeleteSession, useSessionExercises } from '../hooks/useTrainingSessions'
 import { LogWorkoutModal } from './LogWorkoutModal'
 import type { TrainingSession, WorkoutType } from '../types'
 
@@ -50,6 +50,9 @@ interface Props {
 export function SessionCard({ session, compact }: Props) {
   const del = useDeleteSession()
   const [showEdit, setShowEdit] = useState(false)
+  const { data: exercises } = useSessionExercises(
+    !compact && session.type === 'strength' ? session.id : undefined
+  )
   const icon  = TYPE_ICON[session.type]
   const color = TYPE_COLOR[session.type]
 
@@ -116,7 +119,22 @@ export function SessionCard({ session, compact }: Props) {
           </div>
         )}
 
-        {/* Exercises are stored in session_exercises table — visible in detail/edit view */}
+        {!compact && exercises && exercises.length > 0 && (
+          <div className="mt-2 space-y-0.5">
+            {exercises.map((ex, i) => (
+              <p key={i} className="text-[11px] text-ink-500">
+                <span className="font-medium text-ink-700">{ex.name}</span>
+                {' — '}
+                {ex.sets.map((s, si) => (
+                  <span key={si} className="mr-1.5">
+                    {s.reps != null ? `${s.reps}` : '?'}
+                    {s.weight_kg != null ? `×${s.weight_kg}kg` : ''}
+                  </span>
+                ))}
+              </p>
+            ))}
+          </div>
+        )}
 
         {!compact && session.notes && (
           <p className="mt-1.5 text-xs text-ink-400 italic">{session.notes}</p>
