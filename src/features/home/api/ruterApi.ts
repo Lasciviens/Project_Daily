@@ -1,72 +1,79 @@
 // EnTur JourneyPlanner v3 GraphQL + Pelias geocoder
 // Docs: https://developer.entur.org/pages-journeyplanner-journeyplanner/
-// Rate-limit policy: https://developer.entur.org/pages-customers-docs-ratelimiting/
-// ET-Client-Name must be "company-application" — anonymous clients are rate-limited aggressively.
+// ET-Client-Name is required — anonymous clients get aggressive rate limits.
 const JOURNEY  = 'https://api.entur.io/journey-planner/v3/graphql'
 const GEOCODER = 'https://api.entur.io/geocoder/v1/autocomplete'
-const CLIENT   = 'personal-lascisboard'
+const CLIENT   = 'lasciviens-project-daily'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface Departure {
-  line:        string
-  transport:   string
-  destination: string
-  aimed:       string   // ISO datetime
-  expected:    string   // ISO datetime
-  realtime:    boolean
-  platform?:   string
-  direction?:  string
-}
+export type TransportMode = 'bus' | 'tram' | 'metro' | 'rail' | 'ferry' | 'foot' | 'water' | string
 
 export interface StopResult {
-  id:   string
-  name: string
+  id:        string   // NSR:StopPlace:...
+  name:      string
+  locality?: string   // city/municipality e.g. "Oslo"
+  category?: string   // onstreetBus, metroStation, railStation, etc.
+  lat?:      number
+  lon?:      number
+}
+
+export interface Departure {
+  line:             string
+  transport:        string
+  destination:      string          // destinationDisplay.frontText — primary direction indicator
+  aimed:            string          // ISO datetime
+  expected:         string          // ISO datetime
+  realtime:         boolean
+  quayCode?:        string
+  quayName?:        string
+  quayDescription?: string          // e.g. "mot Oslo"
 }
 
 export interface TripLeg {
-  mode:      string
-  line:      string
-  departure: string   // ISO datetime (expected)
-  aimed:     string   // ISO datetime (aimed)
-  from:      string
-  to:        string
+  mode:             string          // TransportMode
+  duration:         number          // seconds
+  distance:         number          // meters
+  from:             string          // fromPlace.name
+  to:               string          // toPlace.name
+  // present only on transit legs (not foot):
+  line?:            string          // publicCode
+  lineName?:        string          // line.name
+  destination?:     string          // destinationDisplay.frontText
+  departure?:       string          // expected departure ISO
+  aimed?:           string          // aimed departure ISO
+  realtime?:        boolean
+  quayCode?:        string
+  quayName?:        string
+  quayDescription?: string
+  arrivalTime?:     string          // expected arrival at toPlace ISO
 }
 
 export interface TripPattern {
-  duration:  number   // seconds
-  departure: string   // ISO datetime
-  arrival:   string   // ISO datetime
-  legs:      TripLeg[]
+  duration:     number              // seconds, total journey
+  walkDistance: number              // meters, total walking
+  departure:    string              // ISO, expected start
+  arrival:      string              // ISO, expected end
+  legs:         TripLeg[]
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const TRANSPORT_ICON: Record<string, string> = {
-  bus: '🚌', tram: '🚊', metro: '🚇', rail: '🚂', ferry: '⛴', water: '⛴', foot: '🚶',
+  bus: '🚌', tram: '🚊', metro: '🚇', rail: '🚂',
+  ferry: '⛴', water: '⛴', foot: '🚶',
 }
 
-// Visperud: NSR:StopPlace:5492 (confirmed via reise.frammr.no)
-// Sinsenveien 47D area: NSR:StopPlace:58221 (lines 23/31 — east side of Sinsenveien)
-export const DEFAULT_STOP: StopResult = {
-  id:   'NSR:StopPlace:5492',
-  name: 'Visperud',
+export const TRANSPORT_COLOR: Record<string, string> = {
+  bus:   'bg-blue-100 text-blue-800',
+  tram:  'bg-green-100 text-green-800',
+  metro: 'bg-purple-100 text-purple-800',
+  rail:  'bg-gray-100 text-gray-800',
+  ferry: 'bg-cyan-100 text-cyan-800',
+  foot:  'bg-ink-100 text-ink-600',
 }
 
-export const PRESET_ROUTES: { label: string; from: StopResult; to: StopResult }[] = [
-  {
-    label: '🏠 Home',
-    from:  { id: 'NSR:StopPlace:58221', name: 'Sinsenveien' },
-    to:    { id: 'NSR:StopPlace:5492',  name: 'Visperud' },
-  },
-  {
-    label: '💼 Work',
-    from:  { id: 'NSR:StopPlace:5492',  name: 'Visperud' },
-    to:    { id: 'NSR:StopPlace:58221', name: 'Sinsenveien' },
-  },
-]
-
-// ─── GraphQL helpers ──────────────────────────────────────────────────────────
+// ─── GraphQL helper ───────────────────────────────────────────────────────────
 
 async function gql(query: string): Promise<unknown> {
   const res = await fetch(JOURNEY, {
@@ -78,11 +85,11 @@ async function gql(query: string): Promise<unknown> {
   if (res.status === 429) throw new Error('Rate limited — wait a moment and try again')
   if (!res.ok) throw new Error(`EnTur ${res.status}`)
 
-  const json = await res.json()
+  const json = await res.json() as { data?: unknown; errors?: { message: string }[] }
 
-  // GraphQL always returns 200; errors are in json.errors even when data is partially present
+  // GraphQL returns HTTP 200 even for schema errors; errors coexist with partial data
   if (json.errors?.length) {
-    const msg = json.errors.map((e: { message: string }) => e.message).join(' | ')
+    const msg = json.errors.map(e => e.message).join(' | ')
     console.error('[EnTur GraphQL]', msg)
     throw new Error(msg)
   }
@@ -90,133 +97,192 @@ async function gql(query: string): Promise<unknown> {
   return json.data
 }
 
+// ─── Stop search ──────────────────────────────────────────────────────────────
+
+// sources=nsr restricts results to the National Stop Registry so IDs are
+// always NSR:StopPlace:XXXXX — usable directly in stopPlace(id:...) queries.
+export async function searchStops(query: string): Promise<StopResult[]> {
+  const url = `${GEOCODER}?text=${encodeURIComponent(query)}&lang=no&size=8&layers=venue&sources=nsr`
+  const res = await fetch(url, { headers: { 'ET-Client-Name': CLIENT } })
+
+  if (res.status === 429) throw new Error('Rate limited — wait a moment and try again')
+  if (!res.ok) throw new Error(`Geocoder ${res.status}`)
+
+  const json = await res.json() as {
+    features?: {
+      properties: { id?: string; name?: string; locality?: string; category?: string }
+      geometry:   { coordinates?: [number, number] }
+    }[]
+  }
+
+  return (json.features ?? [])
+    .filter(f => f.properties.id?.startsWith('NSR:StopPlace:'))
+    .map(f => ({
+      id:       f.properties.id!,
+      name:     f.properties.name ?? '',
+      locality: f.properties.locality,
+      category: f.properties.category,
+      lat:      f.geometry.coordinates?.[1],
+      lon:      f.geometry.coordinates?.[0],
+    }))
+}
+
 // ─── Departures ───────────────────────────────────────────────────────────────
 
 export async function fetchDepartures(
   stopId: string,
-  count = 12
+  count?: number,
 ): Promise<{ stopName: string; departures: Departure[] }> {
+  const n = count ?? 12
   const data = await gql(`{
     stopPlace(id: "${stopId}") {
       name
-      estimatedCalls(timeRange: 72100, numberOfDepartures: ${count}) {
+      estimatedCalls(timeRange: 72100, numberOfDepartures: ${n}) {
         realtime
         aimedDepartureTime
         expectedDepartureTime
-        quay { publicCode description name }
-        serviceJourney { journeyPattern { line { publicCode transportMode } } }
         destinationDisplay { frontText }
+        quay { publicCode name description }
+        serviceJourney {
+          line { publicCode transportMode }
+        }
       }
     }
-  }`) as { stopPlace: {
-    name: string
-    estimatedCalls: {
-      realtime: boolean
-      aimedDepartureTime: string
-      expectedDepartureTime: string
-      quay?: { publicCode?: string; description?: string; name?: string }
-      serviceJourney: { journeyPattern?: { line: { publicCode: string; transportMode: string } } }
-      destinationDisplay: { frontText: string }
-    }[]
-  } | null }
+  }`) as {
+    stopPlace: {
+      name: string
+      estimatedCalls: {
+        realtime:              boolean
+        aimedDepartureTime:    string
+        expectedDepartureTime: string
+        destinationDisplay:    { frontText: string }
+        quay?: { publicCode?: string; name?: string; description?: string }
+        serviceJourney:        { line: { publicCode: string; transportMode: string } }
+      }[]
+    } | null
+  }
 
   if (!data.stopPlace) throw new Error(`Stop not found: ${stopId}`)
 
   const departures: Departure[] = (data.stopPlace.estimatedCalls ?? []).map(c => ({
-    line:        c.serviceJourney.journeyPattern?.line.publicCode ?? '',
-    transport:   c.serviceJourney.journeyPattern?.line.transportMode ?? 'bus',
-    destination: c.destinationDisplay.frontText,
-    aimed:       c.aimedDepartureTime,
-    expected:    c.expectedDepartureTime,
-    realtime:    c.realtime,
-    platform:    c.quay?.publicCode,
-    // Show quay description as direction only when it contains direction text
-    direction:   (() => {
-      const raw = c.quay?.description ?? c.quay?.name ?? ''
-      const lower = raw.toLowerCase()
-      if (lower.includes('mot ') || lower.includes('retning') || lower.includes('sentrum')) return raw
-      return undefined
-    })(),
+    line:             c.serviceJourney.line.publicCode,
+    transport:        c.serviceJourney.line.transportMode,
+    destination:      c.destinationDisplay.frontText,
+    aimed:            c.aimedDepartureTime,
+    expected:         c.expectedDepartureTime,
+    realtime:         c.realtime,
+    quayCode:         c.quay?.publicCode,
+    quayName:         c.quay?.name,
+    quayDescription:  c.quay?.description,
   }))
 
   return { stopName: data.stopPlace.name, departures }
 }
 
-// ─── Stop search ─────────────────────────────────────────────────────────────
-
-// sources=nsr restricts results to the National Stop Registry so IDs are
-// always in NSR:StopPlace:XXXXX format — usable directly in stopPlace(id:...) queries.
-export async function searchStops(query: string): Promise<StopResult[]> {
-  const url = `${GEOCODER}?text=${encodeURIComponent(query)}&lang=no&size=8&layers=venue&sources=nsr`
-  const res = await fetch(url, { headers: { 'ET-Client-Name': CLIENT } })
-
-  if (res.status === 429) throw new Error('Rate limited')
-  if (!res.ok) throw new Error(`Geocoder ${res.status}`)
-
-  const json = await res.json()
-  return (json.features ?? [])
-    .filter((f: { properties: { id?: string } }) => f.properties.id?.startsWith('NSR:StopPlace:'))
-    .map((f: { properties: { id: string; name: string } }) => ({
-      id:   f.properties.id,
-      name: f.properties.name,
-    }))
-}
-
 // ─── Trip planner ─────────────────────────────────────────────────────────────
 
-// mode is already on Leg; transportMode is not queried from line to avoid
-// schema version differences between OTP2 builds.
 export async function fetchTrips(
   fromId: string,
   toId:   string,
-  count = 5
+  count?: number,
 ): Promise<TripPattern[]> {
+  const n = count ?? 5
   const data = await gql(`{
     trip(
       from: { place: "${fromId}" }
       to:   { place: "${toId}" }
-      numTripPatterns: ${count}
+      numTripPatterns: ${n}
     ) {
       tripPatterns {
         duration
+        walkDistance
         expectedStartTime
         expectedEndTime
         legs {
           mode
+          duration
+          distance
           fromPlace { name }
           toPlace   { name }
+          line {
+            publicCode
+            name
+            transportMode
+          }
           fromEstimatedCall {
+            quay { publicCode name description }
             aimedDepartureTime
             expectedDepartureTime
+            realtime
+            destinationDisplay { frontText }
           }
-          line { publicCode }
+          toEstimatedCall {
+            quay { publicCode name }
+            expectedArrivalTime
+          }
         }
       }
     }
-  }`) as { trip: { tripPatterns: {
-    duration: number
-    expectedStartTime: string
-    expectedEndTime: string
-    legs: {
-      mode: string
-      fromPlace: { name: string }
-      toPlace:   { name: string }
-      fromEstimatedCall?: { aimedDepartureTime: string; expectedDepartureTime: string }
-      line?: { publicCode: string }
-    }[]
-  }[] } }
+  }`) as {
+    trip: {
+      tripPatterns: {
+        duration:          number | null
+        walkDistance:      number | null
+        expectedStartTime: string
+        expectedEndTime:   string
+        legs: {
+          mode:     string
+          duration: number | null
+          distance: number | null
+          fromPlace: { name: string }
+          toPlace:   { name: string }
+          line?: { publicCode: string; name: string; transportMode: string } | null
+          fromEstimatedCall?: {
+            quay?: { publicCode?: string; name?: string; description?: string } | null
+            aimedDepartureTime:    string
+            expectedDepartureTime: string
+            realtime:              boolean
+            destinationDisplay:    { frontText: string }
+          } | null
+          toEstimatedCall?: {
+            quay?: { publicCode?: string; name?: string } | null
+            expectedArrivalTime: string
+          } | null
+        }[]
+      }[]
+    }
+  }
 
   return (data.trip?.tripPatterns ?? []).map(p => ({
-    duration:  p.duration,
-    departure: p.expectedStartTime,
-    arrival:   p.expectedEndTime,
-    legs: p.legs.map(l => ({
-      mode:      l.mode,
-      line:      l.line?.publicCode ?? '',
-      departure: l.fromEstimatedCall?.expectedDepartureTime ?? p.expectedStartTime,
-      aimed:     l.fromEstimatedCall?.aimedDepartureTime    ?? p.expectedStartTime,
-      from:      l.fromPlace.name,
-      to:        l.toPlace.name,
-    })),
+    duration:     p.duration     ?? 0,
+    walkDistance: p.walkDistance ?? 0,
+    departure:    p.expectedStartTime,
+    arrival:      p.expectedEndTime,
+    legs: p.legs.map(l => {
+      const leg: TripLeg = {
+        mode:     l.mode,
+        duration: l.duration ?? 0,
+        distance: l.distance ?? 0,
+        from:     l.fromPlace.name,
+        to:       l.toPlace.name,
+      }
+      if (l.line) {
+        leg.line        = l.line.publicCode
+        leg.lineName    = l.line.name
+      }
+      if (l.fromEstimatedCall) {
+        leg.destination      = l.fromEstimatedCall.destinationDisplay.frontText
+        leg.departure        = l.fromEstimatedCall.expectedDepartureTime
+        leg.aimed            = l.fromEstimatedCall.aimedDepartureTime
+        leg.realtime         = l.fromEstimatedCall.realtime
+        leg.quayCode         = l.fromEstimatedCall.quay?.publicCode
+        leg.quayName         = l.fromEstimatedCall.quay?.name
+        leg.quayDescription  = l.fromEstimatedCall.quay?.description
+      }
+      if (l.toEstimatedCall) {
+        leg.arrivalTime = l.toEstimatedCall.expectedArrivalTime
+      }
+      return leg
+    }),
   }))
 }
