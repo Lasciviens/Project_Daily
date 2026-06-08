@@ -26,9 +26,20 @@ export interface TrainingSession {
   elevation_gain_m:    number | null
   avg_heart_rate:      number | null
   avg_pace_sec_per_km: number | null
-  exercises:           Exercise[] | null
   created_at:          string
   updated_at:          string
+}
+
+// Row from session_exercises joined with exercises.name
+export interface SessionExerciseRow {
+  id:          string
+  session_id:  string
+  exercise_id: string
+  sort_order:  number
+  set_number:  number
+  reps:        number | null
+  weight_kg:   number | null
+  exercises:   { name: string }
 }
 
 export interface TrainingProgram {
@@ -49,15 +60,14 @@ export interface StravaStatus {
 }
 
 export interface CreateSessionInput {
-  planned_date?:       string
-  completed_at?:       string
-  type:                WorkoutType
-  title:               string
-  notes?:              string
-  distance_meters?:    number
-  duration_seconds?:   number
-  elevation_gain_m?:   number
-  avg_heart_rate?:     number
+  planned_date?:        string
+  completed_at?:        string
+  type:                 WorkoutType
+  title:                string
+  notes?:               string
+  distance_meters?:     number
+  duration_seconds?:    number
+  elevation_gain_m?:    number
+  avg_heart_rate?:      number
   avg_pace_sec_per_km?: number
-  exercises?:          Exercise[]
 }

@@ -116,24 +116,7 @@ export function SessionCard({ session, compact }: Props) {
           </div>
         )}
 
-        {!compact && session.exercises?.length ? (
-          <div className="mt-2 space-y-1">
-            {session.exercises.map((ex, i) => (
-              <div key={i} className="text-xs text-ink-600">
-                <span className="font-medium">{ex.name}</span>
-                <span className="text-ink-400 ml-1">
-                  {ex.sets.map((s, si) => {
-                    const parts = []
-                    if (s.reps)        parts.push(`${s.reps}×`)
-                    if (s.weight_kg)   parts.push(`${s.weight_kg}kg`)
-                    if (s.duration_sec) parts.push(`${s.duration_sec}s`)
-                    return parts.join(' ') || `set ${si + 1}`
-                  }).join(' · ')}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : null}
+        {/* Exercises are stored in session_exercises table — visible in detail/edit view */}
 
         {!compact && session.notes && (
           <p className="mt-1.5 text-xs text-ink-400 italic">{session.notes}</p>

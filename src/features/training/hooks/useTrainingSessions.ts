@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchSessions, createSession, updateSession, deleteSession, fetchStravaStatus,
+  fetchSessionExercises, saveSessionExercises,
 } from '../api/trainingApi'
 import { syncStravaActivities, disconnectStrava } from '../api/stravaApi'
-import type { CreateSessionInput } from '../types'
+import type { CreateSessionInput, Exercise } from '../types'
 
 export function useTrainingSessions() {
   return useQuery({
@@ -43,6 +44,25 @@ export function useDeleteSession() {
   return useMutation({
     mutationFn: (id: string) => deleteSession(id),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['training'] }),
+  })
+}
+
+export function useSessionExercises(sessionId: string | undefined) {
+  return useQuery({
+    queryKey: ['training', 'exercises', sessionId],
+    queryFn:  () => fetchSessionExercises(sessionId!),
+    enabled:  !!sessionId,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useSaveSessionExercises() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, exercises }: { sessionId: string; exercises: Exercise[] }) =>
+      saveSessionExercises(sessionId, exercises),
+    onSuccess: (_, { sessionId }) =>
+      qc.invalidateQueries({ queryKey: ['training', 'exercises', sessionId] }),
   })
 }
 

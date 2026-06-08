@@ -8,6 +8,7 @@ import { MediaPage } from '../features/media/pages/MediaPage'
 import { WorkPage } from '../features/work/pages/WorkPage'
 import { TrainingPage } from '../features/training/pages/TrainingPage'
 import { GamesPage } from '../features/games/pages/GamesPage'
+import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
 
 export function Router() {
   return (
@@ -27,8 +28,9 @@ export function Router() {
           <Route path="/daily" element={<DailyPage />} />
           <Route path="/media" element={<MediaPage />} />
           <Route path="/work"     element={<WorkPage />} />
-          <Route path="/training" element={<TrainingPage />} />
-          <Route path="/games"    element={<GamesPage />} />
+          <Route path="/training"  element={<TrainingPage />} />
+          <Route path="/games"     element={<GamesPage />} />
+          <Route path="/projects"  element={<ProjectsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

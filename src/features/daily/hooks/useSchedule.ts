@@ -5,6 +5,7 @@ import {
   deleteScheduleBlock,
   fetchTimeBlocks,
   createTimeBlock,
+  updateTimeBlock,
   deleteTimeBlock,
 } from '../api/scheduleApi'
 import type { CreateTimeBlockInput, CreateScheduleBlockInput } from '../types'
@@ -45,6 +46,15 @@ export function useCreateTimeBlock() {
   return useMutation({
     mutationFn: (input: CreateTimeBlockInput) => createTimeBlock(input),
     onSuccess:  (_, vars) => qc.invalidateQueries({ queryKey: ['schedule', 'day', vars.date] }),
+  })
+}
+
+export function useUpdateTimeBlock() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, start_time, dateStr: _dateStr }: { id: string; start_time: string; dateStr: string }) =>
+      updateTimeBlock(id, { start_time }),
+    onSuccess:  (_, vars) => qc.invalidateQueries({ queryKey: ['schedule', 'day', vars.dateStr] }),
   })
 }
 

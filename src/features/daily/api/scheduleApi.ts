@@ -49,6 +49,14 @@ export async function createTimeBlock(input: CreateTimeBlockInput): Promise<Time
   return data
 }
 
+export async function updateTimeBlock(id: string, patch: { start_time: string }): Promise<void> {
+  const { error } = await supabase
+    .from('time_blocks')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteTimeBlock(id: string): Promise<void> {
   const { error } = await supabase.from('time_blocks').delete().eq('id', id)
   if (error) throw error

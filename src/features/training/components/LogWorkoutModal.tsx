@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { useCreateSession, useUpdateSession } from '../hooks/useTrainingSessions'
+import { useState, useEffect } from 'react'
+import { useCreateSession, useUpdateSession, useSessionExercises, useSaveSessionExercises } from '../hooks/useTrainingSessions'
+import { fetchLastStrengthExercises } from '../api/trainingApi'
 import type { WorkoutType, Exercise, ExerciseSet, TrainingSession } from '../types'
 
 const WORKOUT_TYPES: { value: WorkoutType; label: string; icon: string }[] = [
@@ -50,10 +51,18 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
   const [durMin,    setDurMin]    = useState(secsToMinStr(session?.duration_seconds ?? null))
   const [heartRate, setHeartRate] = useState(session?.avg_heart_rate != null ? String(session.avg_heart_rate) : '')
   const [elevGain,  setElevGain]  = useState(session?.elevation_gain_m != null ? String(session.elevation_gain_m) : '')
-  // Strength exercises
-  const [exercises, setExercises] = useState<Exercise[]>(
-    session?.exercises?.length ? session.exercises : [emptyExercise()]
-  )
+  // Strength exercises — loaded from session_exercises table in edit mode
+  const [exercises, setExercises] = useState<Exercise[]>([emptyExercise()])
+  const [exReady,   setExReady]   = useState(!editMode)
+
+  const { data: savedExercises } = useSessionExercises(editMode && type === 'strength' ? session?.id : undefined)
+  const saveExercises = useSaveSessionExercises()
+
+  useEffect(() => {
+    if (exReady || savedExercises === undefined) return
+    setExercises(savedExercises.length > 0 ? savedExercises : [emptyExercise()])
+    setExReady(true)
+  }, [savedExercises, exReady])
 
   const create = useCreateSession()
   const update = useUpdateSession()
@@ -113,13 +122,14 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
       elevation_gain_m:    elevGain ? parseInt(elevGain) : undefined,
       avg_heart_rate:      heartRate ? parseInt(heartRate) : undefined,
       avg_pace_sec_per_km: paceSecPerKm,
-      exercises:           isStrength && validExercises.length ? validExercises : undefined,
     }
 
     if (editMode && session) {
       await update.mutateAsync({ id: session.id, patch: payload })
+      if (isStrength) await saveExercises.mutateAsync({ sessionId: session.id, exercises: validExercises })
     } else {
-      await create.mutateAsync(payload)
+      const newSession = await create.mutateAsync(payload)
+      if (isStrength && newSession?.id) await saveExercises.mutateAsync({ sessionId: newSession.id, exercises: validExercises })
     }
     onClose()
   }
@@ -243,13 +253,27 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-wider text-ink-400">Exercises</p>
-                <button
-                  type="button"
-                  onClick={addExercise}
-                  className="text-xs text-accent-600 hover:text-accent-700"
-                >
-                  + Add exercise
-                </button>
+                <div className="flex gap-2">
+                  {!editMode && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const last = await fetchLastStrengthExercises(undefined)
+                        if (last.length) setExercises(last)
+                      }}
+                      className="text-xs text-ink-400 hover:text-ink-600"
+                    >
+                      ↺ Copy last
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={addExercise}
+                    className="text-xs text-accent-600 hover:text-accent-700"
+                  >
+                    + Add exercise
+                  </button>
+                </div>
               </div>
               {exercises.map((ex, exIdx) => (
                 <div key={exIdx} className="border border-ink-100 rounded-xl p-3 space-y-2">
