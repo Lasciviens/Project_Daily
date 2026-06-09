@@ -16,6 +16,16 @@ interface Message { role: 'user' | 'assistant'; content: string }
 // deno-lint-ignore no-explicit-any
 type AnyRecord = Record<string, any>
 
+class RateLimitError extends Error {
+  constructor(
+    public readonly dailyLimit: number,
+    public readonly retryAfterSec: number,
+  ) {
+    super('rate_limit')
+    this.name = 'RateLimitError'
+  }
+}
+
 const TOOLS = [
   {
     functionDeclarations: [
@@ -320,6 +330,13 @@ Deno.serve(async (req) => {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
   } catch (err) {
+    if (err instanceof RateLimitError) {
+      return new Response(JSON.stringify({
+        error:        'rate_limit',
+        daily_limit:  err.dailyLimit,
+        retry_after:  err.retryAfterSec,
+      }), { status: 429, headers: { ...headers, 'Content-Type': 'application/json' } })
+    }
     console.error('[ai-proxy]', err)
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }), {
       status: 500, headers: { ...headers, 'Content-Type': 'application/json' },
@@ -361,6 +378,18 @@ async function callGemini(
 
     if (!res.ok) {
       const errText = await res.text()
+      if (res.status === 429) {
+        let dailyLimit = 20
+        let retryAfterSec = 60
+        try {
+          const errJson = JSON.parse(errText)
+          const violations = errJson.error?.details?.find((d: AnyRecord) => d.violations)?.violations ?? []
+          if (violations[0]?.quotaValue) dailyLimit = parseInt(violations[0].quotaValue) || 20
+          const retryStr = errJson.error?.details?.find((d: AnyRecord) => d.retryDelay)?.retryDelay ?? ''
+          if (retryStr) retryAfterSec = parseInt(retryStr) || 60
+        } catch { /* ignore */ }
+        throw new RateLimitError(dailyLimit, retryAfterSec)
+      }
       throw new Error(`Gemini ${res.status}: ${errText}`)
     }
 
