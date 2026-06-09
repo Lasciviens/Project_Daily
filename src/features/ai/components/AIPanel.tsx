@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useUIStore } from '../../../app/store'
-import { sendMessage } from '../api/aiApi'
-import type { Message } from '../api/aiApi'
+import { sendMessage, getDailyUsage, RateLimitError, AINotConfiguredError, AIAuthError } from '../api/aiApi'
+import type { Message, DailyUsage } from '../api/aiApi'
 
 const SUGGESTIONS = [
   'What should I focus on today?',
@@ -10,24 +10,113 @@ const SUGGESTIONS = [
   'What movies should I watch next?',
 ]
 
+// ─── Usage bar ────────────────────────────────────────────────────────────────
+
+function UsageBar({ usage }: { usage: DailyUsage }) {
+  const pct  = Math.min(usage.count / usage.limit, 1)
+  const left = Math.max(usage.limit - usage.count, 0)
+  const color = pct >= 1 ? 'bg-red-400' : pct >= 0.75 ? 'bg-orange-400' : 'bg-green-400'
+
+  return (
+    <div className="flex items-center gap-1.5" title={`${usage.count}/${usage.limit} requests today`}>
+      <div className="w-16 h-1.5 bg-ink-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-300 ${color}`} style={{ width: `${pct * 100}%` }} />
+      </div>
+      <span className="text-[9px] text-ink-400 tabular-nums">{left} left</span>
+    </div>
+  )
+}
+
+// ─── Error banners ────────────────────────────────────────────────────────────
+
+function RateLimitBanner({ err }: { err: RateLimitError }) {
+  const [countdown, setCountdown] = useState(err.retryAfterSec)
+
+  useEffect(() => {
+    if (countdown <= 0) return
+    const id = setInterval(() => setCountdown(s => Math.max(s - 1, 0)), 1000)
+    return () => clearInterval(id)
+  }, [countdown])
+
+  return (
+    <div className="text-xs bg-orange-50 border border-orange-200 rounded-lg px-3 py-2.5 space-y-1.5">
+      <p className="font-semibold text-orange-700">Günlük limit doldu ({err.dailyLimit}/{err.dailyLimit})</p>
+      <p className="text-orange-600">
+        {countdown > 0
+          ? `${countdown}s sonra tekrar dene — veya yarın sıfırlanır.`
+          : 'Tekrar deneyebilirsin.'}
+      </p>
+      <p className="text-orange-500">
+        Limiti kaldırmak için{' '}
+        <a
+          href="https://aistudio.google.com"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          Google AI Studio
+        </a>
+        {' '}→ Billing'e kart ekle (~$0.10–$1/ay).
+      </p>
+    </div>
+  )
+}
+
+function ConfigErrorBanner() {
+  return (
+    <div className="text-xs bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2.5 space-y-1">
+      <p className="font-semibold text-yellow-700">AI yapılandırılmamış</p>
+      <p className="text-yellow-600">
+        Supabase Dashboard → Edge Functions → Secrets içine{' '}
+        <code className="bg-yellow-100 px-1 rounded">GEMINI_API_KEY</code> ekle.
+      </p>
+    </div>
+  )
+}
+
+function AuthErrorBanner() {
+  return (
+    <div className="text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+      <p className="font-semibold text-red-700">Oturum hatası</p>
+      <p className="text-red-600">Sayfayı yenile ve tekrar giriş yap.</p>
+    </div>
+  )
+}
+
+function GenericErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+      {message}
+    </div>
+  )
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+type AppError = RateLimitError | AINotConfiguredError | AIAuthError | Error | null
+
 export function AIPanel() {
   const { isAIOpen, closeAI } = useUIStore()
   const [messages, setMessages] = useState<Message[]>([])
   const [input,    setInput]    = useState('')
   const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
+  const [appError, setAppError] = useState<AppError>(null)
+  const [usage,    setUsage]    = useState<DailyUsage>(() => getDailyUsage())
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (isAIOpen) inputRef.current?.focus()
+    if (isAIOpen) {
+      inputRef.current?.focus()
+      setUsage(getDailyUsage())
+    }
   }, [isAIOpen])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  async function handleSend(text: string) {
+  const handleSend = useCallback(async (text: string) => {
     const trimmed = text.trim()
     if (!trimmed || loading) return
 
@@ -36,17 +125,18 @@ export function AIPanel() {
     setMessages(next)
     setInput('')
     setLoading(true)
-    setError(null)
+    setAppError(null)
 
     try {
       const reply = await sendMessage(next)
       setMessages(m => [...m, { role: 'assistant', content: reply }])
+      setUsage(getDailyUsage())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+      setAppError(err instanceof Error ? err : new Error('Something went wrong'))
     } finally {
       setLoading(false)
     }
-  }
+  }, [messages, loading])
 
   function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -54,6 +144,8 @@ export function AIPanel() {
       handleSend(input)
     }
   }
+
+  const isRateLimited = appError instanceof RateLimitError
 
   return (
     <>
@@ -74,15 +166,16 @@ export function AIPanel() {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-accent-500 rounded-md flex items-center justify-center text-white text-[10px] font-bold">✦</div>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-5 h-5 bg-accent-500 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">✦</div>
             <h2 className="text-sm font-semibold text-ink-800">Ask AI</h2>
-            <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded-full font-medium">Gemini</span>
+            <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">Gemini</span>
+            <UsageBar usage={usage} />
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-shrink-0">
             {messages.length > 0 && (
               <button
-                onClick={() => { setMessages([]); setError(null) }}
+                onClick={() => { setMessages([]); setAppError(null) }}
                 className="text-[11px] text-ink-400 hover:text-ink-600 px-2 py-1 rounded transition-colors duration-150"
               >
                 Clear
@@ -142,10 +235,11 @@ export function AIPanel() {
             </div>
           )}
 
-          {error && (
-            <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
-            </div>
+          {appError instanceof RateLimitError      && <RateLimitBanner err={appError} />}
+          {appError instanceof AINotConfiguredError && <ConfigErrorBanner />}
+          {appError instanceof AIAuthError          && <AuthErrorBanner />}
+          {appError && !(appError instanceof RateLimitError) && !(appError instanceof AINotConfiguredError) && !(appError instanceof AIAuthError) && (
+            <GenericErrorBanner message={appError.message} />
           )}
 
           <div ref={bottomRef} />
@@ -159,9 +253,10 @@ export function AIPanel() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
-              placeholder="Ask anything... (Enter to send)"
+              placeholder={isRateLimited ? 'Günlük limit doldu…' : 'Ask anything… (Enter to send)'}
               rows={1}
-              className="flex-1 resize-none input text-sm py-2 max-h-32"
+              disabled={isRateLimited}
+              className="flex-1 resize-none input text-sm py-2 max-h-32 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ height: 'auto' }}
               onInput={e => {
                 const t = e.currentTarget
@@ -171,7 +266,7 @@ export function AIPanel() {
             />
             <button
               onClick={() => handleSend(input)}
-              disabled={!input.trim() || loading}
+              disabled={!input.trim() || loading || isRateLimited}
               className="flex-shrink-0 w-9 h-9 bg-accent-500 hover:bg-accent-600 disabled:opacity-40 text-white rounded-lg flex items-center justify-center transition-colors duration-150"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
