@@ -5,7 +5,7 @@ import { useTransitRoutes } from '../../hooks/useTransitRoutes'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
-import { fmtLastUpdated } from './transitUtils'
+import { fmtLastUpdated, fmtTime } from './transitUtils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,7 +14,18 @@ interface RoutesTabProps {
   now: number
 }
 
-type LocationState = 'idle' | 'loading' | 'granted' | 'denied' | 'error'
+type LocationState  = 'idle' | 'loading' | 'granted' | 'denied' | 'error'
+type WhenPreset     = 'now' | '+15' | '+30' | '+1h' | 'custom'
+type TripMode       = 'departAt' | 'arriveBy'
+
+interface SearchParams {
+  from:      TransitPlace
+  to:        TransitPlace
+  dateTime?: string    // ISO — undefined = "now"
+  arriveBy:  boolean
+  label:     string    // e.g. "Leave now", "Leave at Tue 19:42"
+  version:   number    // incremented each Plan click to force refetch
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,20 +45,49 @@ function getCurrentLocation(): Promise<TransitPlace> {
   })
 }
 
-function localDateTimeValue(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+function todayString(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function toISOWithOffset(localValue: string): string {
-  return new Date(localValue).toISOString()
+function nowTimeString(): string {
+  const d = new Date()
+  const mins = Math.ceil(d.getMinutes() / 15) * 15
+  const rounded = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), mins)
+  return `${String(rounded.getHours()).padStart(2, '0')}:${String(rounded.getMinutes()).padStart(2, '0')}`
 }
 
-// Suggest a save label from stop names e.g. "Sinsen → Lysaker"
+// All 15-minute time slots for the time selector
+function timeSlots(): string[] {
+  const slots: string[] = []
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+    }
+  }
+  return slots
+}
+const TIME_SLOTS = timeSlots()
+
+// Offset now by minutes and return ISO string
+function offsetISO(now: number, offsetMins: number): string {
+  return new Date(now + offsetMins * 60_000).toISOString()
+}
+
+// Build the planning label shown under results
+function planningLabel(preset: WhenPreset, mode: TripMode, dateTime: string | undefined): string {
+  const modeLabel = mode === 'arriveBy' ? 'Arrive by' : 'Leave'
+  if (preset === 'now') return 'Leave now'
+  if (dateTime) {
+    const d    = new Date(dateTime)
+    const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    return `${modeLabel} ${DAYS[d.getDay()]} ${fmtTime(dateTime)}`
+  }
+  return `${modeLabel} now`
+}
+
 function suggestLabel(from: TransitPlace, to: TransitPlace): string {
-  const fromName = from.name.split(',')[0].trim()
-  const toName   = to.name.split(',')[0].trim()
-  return `${fromName} → ${toName}`
+  return `${from.name.split(',')[0].trim()} → ${to.name.split(',')[0].trim()}`
 }
 
 // ─── LocationButton ───────────────────────────────────────────────────────────
@@ -87,34 +127,43 @@ function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => 
 export function RoutesTab({ ws, now }: RoutesTabProps) {
   const { routes, addRoute } = useTransitRoutes()
 
-  const [from, setFrom] = useState<TransitPlace | null>(null)
-  const [to,   setTo]   = useState<TransitPlace | null>(null)
-  const [fromLocState, setFromLocState] = useState<LocationState>('idle')
-  const [toLocState,   setToLocState]   = useState<LocationState>('idle')
+  // ── Draft state (what the user is editing) ──
+  const [draftFrom, setDraftFrom]               = useState<TransitPlace | null>(null)
+  const [draftTo,   setDraftTo]                 = useState<TransitPlace | null>(null)
+  const [fromLocState, setFromLocState]         = useState<LocationState>('idle')
+  const [toLocState,   setToLocState]           = useState<LocationState>('idle')
+  const [draftWhen, setDraftWhen]               = useState<WhenPreset>('now')
+  const [draftDate, setDraftDate]               = useState(todayString)
+  const [draftTime, setDraftTime]               = useState(nowTimeString)
+  const [draftMode, setDraftMode]               = useState<TripMode>('departAt')
 
-  const [departAt, setDepartAt] = useState<string | null>(null)
+  // ── Submitted state (what the query actually uses) ──
+  const [search, setSearch] = useState<SearchParams | null>(null)
 
+  // ── Save form state ──
   const [saveLabel, setSaveLabel]       = useState('')
   const [showSaveForm, setShowSaveForm] = useState(false)
   const [saving, setSaving]             = useState(false)
   const [saveMsg, setSaveMsg]           = useState<string | null>(null)
   const [lastUpdated, setLastUpdated]   = useState<number | null>(null)
 
+  // ─── Saved route presets ───────────────────────────────────────────────────
+
   function applyPreset(r: { from_stop_id: string; from_stop_name: string; to_stop_id: string; to_stop_name: string }) {
-    setFrom({ kind: 'stop', id: r.from_stop_id, name: r.from_stop_name })
-    setTo(  { kind: 'stop', id: r.to_stop_id,   name: r.to_stop_name   })
+    setDraftFrom({ kind: 'stop', id: r.from_stop_id, name: r.from_stop_name })
+    setDraftTo(  { kind: 'stop', id: r.to_stop_id,   name: r.to_stop_name   })
     setSaveMsg(null)
     setShowSaveForm(false)
   }
 
   function swapStops() {
-    setFrom(to)
-    setTo(from)
+    setDraftFrom(draftTo)
+    setDraftTo(draftFrom)
   }
 
   async function locateFor(side: 'from' | 'to') {
     const setState = side === 'from' ? setFromLocState : setToLocState
-    const setPlace = side === 'from' ? setFrom : setTo
+    const setPlace = side === 'from' ? setDraftFrom    : setDraftTo
     setState('loading')
     try {
       const place = await getCurrentLocation()
@@ -126,36 +175,70 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     }
   }
 
-  const canFetch = !!(from && to)
-  const canSave  = canFetch && from.kind === 'stop' && to.kind === 'stop'
-  const alreadySaved = canSave && routes.some(
-    r => r.from_stop_id === (from as { id: string }).id && r.to_stop_id === (to as { id: string }).id
-  )
+  // ─── Plan route ───────────────────────────────────────────────────────────
 
-  const dateTimeISO = departAt ? toISOWithOffset(departAt) : undefined
+  function handlePlan() {
+    if (!draftFrom || !draftTo) return
 
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: [
-      'trip',
-      from?.kind === 'stop' ? from.id : `${from?.lat},${from?.lon}`,
-      to?.kind === 'stop'   ? to.id   : `${to?.lat},${to?.lon}`,
-      dateTimeISO ?? 'now',
-    ],
+    let dateTime: string | undefined
+    if (draftWhen === '+15')   dateTime = offsetISO(now, 15)
+    else if (draftWhen === '+30') dateTime = offsetISO(now, 30)
+    else if (draftWhen === '+1h') dateTime = offsetISO(now, 60)
+    else if (draftWhen === 'custom') {
+      dateTime = new Date(`${draftDate}T${draftTime}`).toISOString()
+    }
+    // 'now' → undefined
+
+    setSearch({
+      from:     draftFrom,
+      to:       draftTo,
+      dateTime,
+      arriveBy: draftMode === 'arriveBy',
+      label:    planningLabel(draftWhen, draftMode, dateTime),
+      version:  (search?.version ?? 0) + 1,
+    })
+    setShowSaveForm(false)
+    setSaveMsg(null)
+  }
+
+  // ─── TanStack Query ───────────────────────────────────────────────────────
+
+  const fromKey = search?.from.kind === 'stop'
+    ? search.from.id
+    : search ? `${(search.from as { lat: number }).lat},${(search.from as { lon: number }).lon}` : ''
+  const toKey = search?.to.kind === 'stop'
+    ? search.to.id
+    : search ? `${(search.to as { lat: number }).lat},${(search.to as { lon: number }).lon}` : ''
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['trip', fromKey, toKey, search?.arriveBy, search?.dateTime ?? 'now', search?.version],
     queryFn: async () => {
-      const result = await fetchTrips(from!, to!, undefined, dateTimeISO)
+      const result = await fetchTrips(search!.from, search!.to, undefined, search!.dateTime, search!.arriveBy)
       setLastUpdated(Date.now())
       return result
     },
-    staleTime:       ws.intervalMs,
-    refetchInterval: !ws.collapsed && ws.syncActive && !departAt ? ws.intervalMs : false,
-    enabled:         !ws.collapsed && canFetch,
+    staleTime:       Infinity,  // never auto-stale — user controls re-fetch via Plan button
+    refetchInterval: false,
+    enabled:         !ws.collapsed && !!search,
   })
+
+  // ─── Save route ───────────────────────────────────────────────────────────
+
+  const canSave = !!(
+    search &&
+    search.from.kind === 'stop' &&
+    search.to.kind   === 'stop'
+  )
+  const alreadySaved = canSave && routes.some(
+    r => r.from_stop_id === (search!.from as { id: string }).id &&
+         r.to_stop_id   === (search!.to   as { id: string }).id
+  )
 
   async function handleSaveRoute() {
     if (!saveLabel.trim() || !canSave) return
     setSaving(true)
     try {
-      await addRoute(saveLabel.trim(), from as StopResult, to as StopResult)
+      await addRoute(saveLabel.trim(), search!.from as StopResult, search!.to as StopResult)
       setSaveMsg('Saved ✓')
       setSaveLabel('')
       setShowSaveForm(false)
@@ -168,156 +251,156 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   }
 
   function openSaveForm() {
-    setSaveLabel(suggestLabel(from!, to!))
+    setSaveLabel(suggestLabel(search!.from, search!.to))
     setShowSaveForm(true)
   }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  const canPlan  = !!(draftFrom && draftTo)
 
   return (
     <div>
       {/* ── Saved routes ── */}
       {routes.length > 0 && (
         <div className="mb-3">
-          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
-            Saved routes
-          </p>
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Saved routes</p>
           <div className="flex items-center gap-1.5 flex-wrap">
-            {routes.map(r => (
+            {routes.map(r => {
+              const active =
+                draftFrom?.kind === 'stop' && draftFrom.id === r.from_stop_id &&
+                draftTo?.kind   === 'stop' && draftTo.id   === r.to_stop_id
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => applyPreset(r)}
+                  className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+                    active
+                      ? 'bg-accent-500 text-white border-accent-500'
+                      : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                  }`}
+                >
+                  {r.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Plan route form ── */}
+      <div className="mb-3">
+        <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-2">Plan route</p>
+
+        {/* FROM */}
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">From</span>
+          <div className="flex-1 space-y-1">
+            {draftFrom
+              ? <PlaceDisplay place={draftFrom} onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
+              : <>
+                  <StopSearchInput placeholder="Departure stop…" onSelect={s => setDraftFrom({ kind: 'stop', ...s })} />
+                  <LocationButton state={fromLocState} onLocate={() => locateFor('from')} />
+                </>
+            }
+          </div>
+        </div>
+
+        {/* TO + swap */}
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">To</span>
+          <div className="flex-1 space-y-1">
+            {draftTo
+              ? <PlaceDisplay place={draftTo} onClear={() => { setDraftTo(null); setToLocState('idle') }} />
+              : <>
+                  <StopSearchInput placeholder="Destination stop…" onSelect={s => setDraftTo({ kind: 'stop', ...s })} />
+                  <LocationButton state={toLocState} onLocate={() => locateFor('to')} />
+                </>
+            }
+          </div>
+          <button
+            onClick={swapStops}
+            disabled={!draftFrom && !draftTo}
+            title="Swap"
+            className="text-ink-400 hover:text-accent-600 transition-colors duration-150 text-sm flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-30"
+          >⇅</button>
+        </div>
+
+        {/* WHEN */}
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+            {(['now', '+15', '+30', '+1h', 'custom'] as WhenPreset[]).map(p => (
               <button
-                key={r.id}
-                onClick={() => applyPreset(r)}
-                className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-                  from?.kind === 'stop' && from.id === r.from_stop_id &&
-                  to?.kind   === 'stop' && to.id   === r.to_stop_id
+                key={p}
+                onClick={() => setDraftWhen(p)}
+                className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+                  draftWhen === p
                     ? 'bg-accent-500 text-white border-accent-500'
                     : 'text-ink-600 border-ink-200 hover:border-accent-300'
                 }`}
               >
-                {r.label}
+                {p === 'now' ? 'Now' : p === 'custom' ? 'Custom…' : p}
               </button>
             ))}
           </div>
-        </div>
-      )}
 
-      {/* ── Plan route ── */}
-      <div className="mb-3">
-        <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
-          Plan route
-        </p>
-
-        <div className="space-y-2">
-          {/* FROM */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">From</span>
-            <div className="flex-1 space-y-1">
-              {from
-                ? <PlaceDisplay place={from} onClear={() => { setFrom(null); setFromLocState('idle') }} />
-                : <>
-                    <StopSearchInput placeholder="Departure stop…" onSelect={s => setFrom({ kind: 'stop', ...s })} />
-                    <LocationButton state={fromLocState} onLocate={() => locateFor('from')} />
-                  </>
-              }
-            </div>
-          </div>
-
-          {/* TO */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">To</span>
-            <div className="flex-1 space-y-1">
-              {to
-                ? <PlaceDisplay place={to} onClear={() => { setTo(null); setToLocState('idle') }} />
-                : <>
-                    <StopSearchInput placeholder="Destination stop…" onSelect={s => setTo({ kind: 'stop', ...s })} />
-                    <LocationButton state={toLocState} onLocate={() => locateFor('to')} />
-                  </>
-              }
-            </div>
-            <button
-              onClick={swapStops}
-              disabled={!from && !to}
-              title="Swap"
-              className="text-ink-400 hover:text-accent-600 transition-colors duration-150 text-sm flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-30"
-            >⇅</button>
-          </div>
-
-          {/* WHEN */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">When</span>
-            <div className="flex-1 flex items-center gap-2">
-              {departAt ? (
-                <>
-                  <input
-                    type="datetime-local"
-                    value={departAt}
-                    onChange={e => setDepartAt(e.target.value)}
-                    className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
-                  />
+          {draftWhen === 'custom' && (
+            <div className="space-y-2">
+              {/* Leave at / Arrive by toggle */}
+              <div className="flex gap-1.5">
+                {(['departAt', 'arriveBy'] as TripMode[]).map(m => (
                   <button
-                    onClick={() => setDepartAt(null)}
-                    title="Back to now"
-                    className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center min-h-[44px]"
-                  >✕</button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setDepartAt(localDateTimeValue(new Date(now)))}
-                  className="text-xs text-ink-500 hover:text-accent-600 px-3 py-1.5 border border-ink-200 rounded-lg min-h-[44px] transition-colors duration-150"
+                    key={m}
+                    onClick={() => setDraftMode(m)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+                      draftMode === m
+                        ? 'bg-ink-700 text-white border-ink-700'
+                        : 'text-ink-500 border-ink-200 hover:border-ink-400'
+                    }`}
+                  >
+                    {m === 'departAt' ? 'Leave at' : 'Arrive by'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Date + Time */}
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={draftDate}
+                  min={todayString()}
+                  onChange={e => setDraftDate(e.target.value)}
+                  className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+                />
+                <select
+                  value={draftTime}
+                  onChange={e => setDraftTime(e.target.value)}
+                  className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
                 >
-                  Now · tap to change
-                </button>
-              )}
+                  {TIME_SLOTS.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
+          )}
         </div>
+
+        {/* Plan route button */}
+        <button
+          onClick={handlePlan}
+          disabled={!canPlan}
+          className="w-full py-2.5 rounded-xl bg-accent-500 text-white text-sm font-semibold hover:bg-accent-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
+        >
+          Plan route
+        </button>
+
+        {!canPlan && (
+          <p className="text-xs text-ink-400 mt-2">Choose From and To to see route options.</p>
+        )}
       </div>
 
-      {/* ── Save route ── */}
-      {canFetch && data && (
-        <div className="mb-3">
-          {!canSave ? (
-            <p className="text-[10px] text-ink-400">Routes with current location cannot be saved.</p>
-          ) : alreadySaved ? null : !showSaveForm ? (
-            <button
-              onClick={openSaveForm}
-              className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150"
-            >
-              + Save this route
-            </button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input
-                value={saveLabel}
-                onChange={e => setSaveLabel(e.target.value)}
-                placeholder="Route label…"
-                className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
-                onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
-                autoFocus
-              />
-              <button
-                onClick={handleSaveRoute}
-                disabled={!saveLabel.trim() || saving}
-                className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
-              >
-                {saving ? '…' : 'Save'}
-              </button>
-              <button
-                onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
-                className="text-ink-400 hover:text-ink-600 text-xs min-h-[44px] min-w-[44px] flex items-center justify-center"
-              >✕</button>
-            </div>
-          )}
-          {saveMsg && (
-            <p className={`text-xs mt-1 ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>
-              {saveMsg}
-            </p>
-          )}
-        </div>
-      )}
-
-      {!canFetch && (
-        <p className="text-xs text-ink-400">Choose From and To to see route options.</p>
-      )}
-
+      {/* ── Results ── */}
       {isLoading && <div className="text-ink-400 text-sm">Loading trips…</div>}
 
       {error && (
@@ -329,19 +412,61 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
         </div>
       )}
 
-      {data && (
+      {data && search && (
         <>
-          {/* Last updated + manual refresh */}
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] text-ink-400">
+          {/* Result meta */}
+          <div className="flex items-center justify-between mb-2 gap-2">
+            <span className="text-[10px] text-ink-500">
+              Planning: <span className="font-medium">{search.label}</span>
+              {!canSave && ' · GPS routes cannot be saved'}
+            </span>
+            <span className="text-[10px] text-ink-400 flex-shrink-0">
               {lastUpdated ? `Updated ${fmtLastUpdated(lastUpdated)}` : ''}
             </span>
-            <button
-              onClick={() => { refetch(); ws.markSynced() }}
-              className="text-[10px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-end"
-            >↻</button>
           </div>
 
+          {/* Save route */}
+          {canSave && !alreadySaved && (
+            <div className="mb-3">
+              {!showSaveForm ? (
+                <button
+                  onClick={openSaveForm}
+                  className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150"
+                >
+                  + Save this route
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    value={saveLabel}
+                    onChange={e => setSaveLabel(e.target.value)}
+                    placeholder="Route label…"
+                    className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+                    onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSaveRoute}
+                    disabled={!saveLabel.trim() || saving}
+                    className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
+                  >
+                    {saving ? '…' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
+                    className="text-ink-400 hover:text-ink-600 text-xs min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  >✕</button>
+                </div>
+              )}
+              {saveMsg && (
+                <p className={`text-xs mt-1 ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>
+                  {saveMsg}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Trip cards */}
           <div className="space-y-3">
             {data.length === 0 && <div className="text-ink-400 text-sm">No trips found</div>}
             {data.map((trip, i) => (

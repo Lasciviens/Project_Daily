@@ -1,5 +1,5 @@
 import { TRANSPORT_ICON, TRANSPORT_COLOR, type TripPattern, type TripLeg } from '../../api/ruterApi'
-import { minsUntil, fmtTime, fmtDuration, fmtDistance } from './transitUtils'
+import { fmtTripDeparture, fmtTime, fmtDuration, fmtDistance } from './transitUtils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -112,9 +112,10 @@ function TransferBadge({ waitMins }: { waitMins: number | null }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function TripCard({ trip, now, isBest = false }: TripCardProps) {
-  const mins   = minsUntil(trip.departure, now)
-  const isPast = mins < -2
-  const isNow  = mins <= 0 && !isPast
+  const depMs  = new Date(trip.departure).getTime()
+  const isPast = depMs < now - 2 * 60_000
+  const isNow  = depMs <= now && !isPast
+  const label  = isPast ? 'Departed' : fmtTripDeparture(trip.departure, now)
 
   return (
     <div className={`border rounded-xl shadow-sm overflow-hidden transition-shadow duration-150 hover:shadow-md ${
@@ -130,9 +131,9 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
               </span>
             )}
             <span className={`text-sm font-semibold ${
-              isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : 'text-ink-800'
+              isNow ? 'text-red-500' : 'text-ink-800'
             }`}>
-              {isPast ? 'Departed' : isNow ? 'Departing now' : `Leave in ${mins} min`}
+              {label}
             </span>
             <span className="text-xs text-ink-400">{fmtDuration(trip.duration)}</span>
             {trip.walkDistance > 100 && (
