@@ -118,28 +118,36 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   return (
     <div>
       {/* Stop chips + search toggle */}
-      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-        {stops.map(s => (
+      <div className="mb-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Search stop</span>
           <button
-            key={s.id}
-            onClick={() => handleSavedStopClick(s.id)}
-            className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-              !adHocStop && activeSaved?.id === s.id
-                ? 'bg-accent-500 text-white border-accent-500'
-                : 'text-ink-600 border-ink-200 hover:border-accent-300'
+            onClick={() => setShowSearch(v => !v)}
+            className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+              showSearch ? 'bg-accent-500 text-white border-accent-500' : 'text-ink-600 border-ink-200 hover:border-accent-300'
             }`}
           >
-            {s.label ?? s.stop_name}
+            🔍 Search
           </button>
-        ))}
-        <button
-          onClick={() => setShowSearch(v => !v)}
-          className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-            showSearch ? 'bg-accent-500 text-white border-accent-500' : 'text-ink-600 border-ink-200 hover:border-accent-300'
-          }`}
-        >
-          🔍 Search
-        </button>
+        </div>
+
+        {stops.length > 0 && (
+          <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1">
+            {stops.map(s => (
+              <button
+                key={s.id}
+                onClick={() => handleSavedStopClick(s.id)}
+                className={`whitespace-nowrap text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+                  !adHocStop && activeSaved?.id === s.id
+                    ? 'bg-accent-500 text-white border-accent-500'
+                    : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                }`}
+              >
+                {s.label ?? s.stop_name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Inline stop search */}
@@ -176,7 +184,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
           </div>
           <button
             onClick={() => { refetch(); ws.markSynced() }}
-            className="text-[10px] text-ink-400 hover:text-accent-600 transition-colors duration-150 flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-end"
+            className="text-[10px] text-ink-400 hover:text-accent-600 transition-colors duration-150 flex-shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-end"
           >
             ↻
           </button>
@@ -185,8 +193,8 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
 
       {/* Empty: no stop selected and no saved stops */}
       {!queryStop && (
-        <div className="text-sm text-ink-400 py-2">
-          Search for a stop above to see departures.
+        <div className="rounded-lg border border-dashed border-ink-100 px-3 py-2 text-sm text-ink-400">
+          Search a stop or choose a saved stop.
         </div>
       )}
 
