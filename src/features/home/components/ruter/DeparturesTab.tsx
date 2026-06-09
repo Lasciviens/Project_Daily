@@ -118,12 +118,12 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
           <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
             Saved stops
           </p>
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
             {stops.map(s => (
               <button
                 key={s.id}
                 onClick={() => handleSavedStopClick(s.id)}
-                className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+                className={`whitespace-nowrap text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[36px] ${
                   !adHocStop && activeSaved?.id === s.id
                     ? 'bg-accent-500 text-white border-accent-500'
                     : 'text-ink-600 border-ink-200 hover:border-accent-300'
