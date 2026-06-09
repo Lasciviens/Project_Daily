@@ -217,7 +217,11 @@ async function callGemini(
     parts: [{ text: m.content }],
   }))
 
-  const baseBody: AnyRecord = { tools: TOOLS }
+  // thinking_level MINIMAL keeps latency low while satisfying the thought_signature requirement
+  const baseBody: AnyRecord = {
+    tools: TOOLS,
+    generationConfig: { thinking_config: { thinking_level: 'MINIMAL' } },
+  }
   if (systemPrompt) {
     baseBody.systemInstruction = { parts: [{ text: systemPrompt }] }
   }
@@ -240,22 +244,26 @@ async function callGemini(
     if (!candidate) return ''
 
     const parts: AnyRecord[] = candidate.content?.parts ?? []
-    const fnCall = parts.find((p: AnyRecord) => p.functionCall)
+    const fnCallParts = parts.filter((p: AnyRecord) => p.functionCall)
 
-    if (!fnCall?.functionCall) {
+    if (fnCallParts.length === 0) {
       // No more function calls — return the text response
       return parts.find((p: AnyRecord) => p.text)?.text ?? ''
     }
 
-    const { name, args } = fnCall.functionCall
-    const result = await dispatch(name, args, supabase, userId)
+    // Preserve candidate.content verbatim — dropping it loses the encrypted thoughtSignature
+    // and Gemini 3.x will reject the next turn with a 400.
+    contents = [...contents, candidate.content]
 
-    // Append this turn's exchange to the conversation
-    contents = [
-      ...contents,
-      { role: 'model', parts: [{ functionCall: fnCall.functionCall }] },
-      { role: 'user',  parts: [{ functionResponse: { name, response: result } }] },
-    ]
+    // Dispatch all function calls in this turn (may be parallel), role must be 'tool'
+    const toolResponseParts = await Promise.all(
+      fnCallParts.map(async (part: AnyRecord) => {
+        const { name, args } = part.functionCall
+        const result = await dispatch(name, args, supabase, userId)
+        return { functionResponse: { name, response: result } }
+      })
+    )
+    contents = [...contents, { role: 'tool', parts: toolResponseParts }]
   }
 
   return 'Done — all requested actions completed.'
