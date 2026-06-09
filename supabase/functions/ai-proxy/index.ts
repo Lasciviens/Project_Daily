@@ -144,6 +144,51 @@ const TOOLS = [
           required: ['title', 'media_type', 'date'],
         },
       },
+      {
+        name: 'get_time_blocks',
+        description: 'Read the day schedule/timeline for a given date. Use this to answer "what do I have today/tomorrow?"',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            date: { type: 'STRING', description: 'YYYY-MM-DD (defaults to today)' },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'delete_time_block',
+        description: 'Delete a time block from the day schedule by its ID. Use get_time_blocks first to find the ID.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            block_id: { type: 'STRING' },
+          },
+          required: ['block_id'],
+        },
+      },
+      {
+        name: 'get_workouts',
+        description: 'Read past workout/training sessions. Use to answer questions about training history.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            limit: { type: 'NUMBER', description: 'Max number of sessions to return (default 10)' },
+            type:  { type: 'STRING', enum: ['strength', 'run', 'cycling', 'walk', 'yoga', 'swim', 'other'], description: 'Filter by workout type (optional)' },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'get_calendar_events',
+        description: 'Read upcoming Google Calendar events. Use to answer "what meetings do I have?" or schedule around events.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            days_ahead: { type: 'NUMBER', description: 'How many days ahead to look (default 7, max 30)' },
+          },
+          required: [],
+        },
+      },
     ],
   },
 ]
@@ -284,9 +329,13 @@ async function dispatch(
     case 'delete_task':     return deleteTaskFn(supabase, userId, args)
     case 'create_time_block': return createTimeBlock(supabase, userId, args)
     case 'log_workout':     return logWorkout(supabase, userId, args)
-    case 'get_media':       return getMedia(supabase, userId, args)
-    case 'plan_media':      return planMedia(supabase, userId, args)
-    default:                return { success: false, error: `Unknown function: ${name}` }
+    case 'get_media':           return getMedia(supabase, userId, args)
+    case 'plan_media':          return planMedia(supabase, userId, args)
+    case 'get_time_blocks':     return getTimeBlocks(supabase, userId, args)
+    case 'delete_time_block':   return deleteTimeBlock(supabase, userId, args)
+    case 'get_workouts':        return getWorkouts(supabase, userId, args)
+    case 'get_calendar_events': return getCalendarEvents(supabase, userId, args)
+    default:                    return { success: false, error: `Unknown function: ${name}` }
   }
 }
 
@@ -523,4 +572,109 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
 
   if (blockErr) return { success: true, task_id: task.id, warning: 'Task created but schedule block failed' }
   return { success: true, task_id: task.id, title: taskTitle, date, section }
+}
+
+async function getTimeBlocks(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const date = args.date ?? new Date().toISOString().slice(0, 10)
+
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('id, title, start_time, duration_minutes, color, source_type')
+    .eq('user_id', userId)
+    .eq('date', date)
+    .order('start_time', { ascending: true })
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, date, blocks: data ?? [] }
+}
+
+async function deleteTimeBlock(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const { error } = await supabase
+    .from('time_blocks')
+    .delete()
+    .eq('id', args.block_id)
+    .eq('user_id', userId)
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, block_id: args.block_id, deleted: true }
+}
+
+async function getWorkouts(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const limit = Math.min(args.limit ?? 10, 30)
+
+  let query = supabase
+    .from('training_sessions')
+    .select('id, title, type, planned_date, completed_at, duration_seconds, distance_meters, notes')
+    .eq('user_id', userId)
+    .order('completed_at', { ascending: false })
+    .limit(limit)
+
+  if (args.type) query = query.eq('type', args.type)
+
+  const { data, error } = await query
+  if (error) return { success: false, error: error.message }
+
+  const sessions = (data ?? []).map((s: AnyRecord) => ({
+    id:           s.id,
+    title:        s.title,
+    type:         s.type,
+    date:         s.planned_date,
+    duration_min: s.duration_seconds ? Math.round(s.duration_seconds / 60) : null,
+    distance_km:  s.distance_meters  ? (s.distance_meters / 1000).toFixed(2) : null,
+    notes:        s.notes,
+  }))
+
+  return { success: true, sessions }
+}
+
+async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const daysAhead = Math.min(args.days_ahead ?? 7, 30)
+
+  // Get the refresh token stored from the Google OAuth flow
+  const { data: tokenRow, error: tokenErr } = await supabase
+    .from('user_calendar_tokens')
+    .select('refresh_token')
+    .eq('user_id', userId)
+    .single()
+
+  if (tokenErr || !tokenRow) {
+    return { success: false, error: 'Google Calendar not connected. Connect it in the Calendar section first.' }
+  }
+
+  // Exchange refresh token for a short-lived access token
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: tokenRow.refresh_token,
+      client_id:     Deno.env.get('GOOGLE_CLIENT_ID')!,
+      client_secret: Deno.env.get('GOOGLE_CLIENT_SECRET')!,
+      grant_type:    'refresh_token',
+    }),
+  })
+
+  if (!tokenRes.ok) return { success: false, error: 'Failed to refresh Google Calendar token' }
+  const { access_token } = await tokenRes.json()
+
+  const timeMin = new Date().toISOString()
+  const timeMax = new Date(Date.now() + daysAhead * 86400_000).toISOString()
+
+  const eventsRes = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=20`,
+    { headers: { Authorization: `Bearer ${access_token}` } }
+  )
+
+  if (!eventsRes.ok) return { success: false, error: 'Failed to fetch calendar events' }
+  const eventsData = await eventsRes.json()
+
+  const events = (eventsData.items ?? []).map((e: AnyRecord) => ({
+    id:       e.id,
+    title:    e.summary,
+    start:    e.start?.dateTime ?? e.start?.date,
+    end:      e.end?.dateTime   ?? e.end?.date,
+    location: e.location ?? null,
+    all_day:  !e.start?.dateTime,
+  }))
+
+  return { success: true, events }
 }
