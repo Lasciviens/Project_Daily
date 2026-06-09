@@ -6,74 +6,6 @@ export interface Message {
   content: string
 }
 
-// ─── Error types ──────────────────────────────────────────────────────────────
-
-export class RateLimitError extends Error {
-  dailyLimit:   number
-  retryAfterSec: number
-  constructor(dailyLimit: number, retryAfterSec: number) {
-    super('rate_limit')
-    this.name = 'RateLimitError'
-    this.dailyLimit    = dailyLimit
-    this.retryAfterSec = retryAfterSec
-  }
-}
-
-export class AINotConfiguredError extends Error {
-  constructor() {
-    super('not_configured')
-    this.name = 'AINotConfiguredError'
-  }
-}
-
-export class AIAuthError extends Error {
-  constructor() {
-    super('auth_error')
-    this.name = 'AIAuthError'
-  }
-}
-
-// ─── Daily usage tracking (localStorage) ─────────────────────────────────────
-
-const USAGE_KEY = 'ai_daily_usage'
-
-export interface DailyUsage {
-  date:  string
-  count: number
-  limit: number
-}
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
-export function getDailyUsage(): DailyUsage {
-  try {
-    const raw = localStorage.getItem(USAGE_KEY)
-    if (raw) {
-      const parsed: DailyUsage = JSON.parse(raw)
-      if (parsed.date === todayStr()) return parsed
-    }
-  } catch { /* ignore */ }
-  return { date: todayStr(), count: 0, limit: 20 }
-}
-
-function saveUsage(usage: DailyUsage): void {
-  try { localStorage.setItem(USAGE_KEY, JSON.stringify(usage)) } catch { /* ignore */ }
-}
-
-function incrementUsage(): void {
-  const usage = getDailyUsage()
-  usage.count += 1
-  saveUsage(usage)
-}
-
-function updateLimit(limit: number): void {
-  const usage = getDailyUsage()
-  usage.limit = limit
-  saveUsage(usage)
-}
-
 // ─── System prompt ────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a personal productivity assistant for Lasci's Board — a private dashboard for daily planning, tasks, media tracking, training, and work management.
@@ -210,6 +142,22 @@ async function buildContext(): Promise<string> {
   return lines.join('\n')
 }
 
+// ─── Friendly error messages ──────────────────────────────────────────────────
+
+function friendlyError(body: { error?: string; daily_limit?: number; retry_after?: number } | null, fallback: string): string {
+  if (!body?.error) return fallback
+  if (body.error === 'rate_limit') {
+    return `Günlük AI limit doldu (${body.daily_limit ?? 20} istek/gün). Yarın sıfırlanır. Limiti kaldırmak için Google AI Studio → Billing'e kart ekle.`
+  }
+  if (body.error.includes('GEMINI_API_KEY')) {
+    return 'AI yapılandırılmamış. Supabase Dashboard → Edge Functions → Secrets içine GEMINI_API_KEY ekle.'
+  }
+  if (body.error === 'Unauthorized') {
+    return 'Oturum hatası — sayfayı yenile ve tekrar giriş yap.'
+  }
+  return body.error
+}
+
 // ─── Main send function ───────────────────────────────────────────────────────
 
 export async function sendMessage(messages: Message[]): Promise<string> {
@@ -221,39 +169,16 @@ export async function sendMessage(messages: Message[]): Promise<string> {
   })
 
   if (error) {
-    // Try to parse the structured error body from the Edge Function
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body = await (error as any).context?.json?.()
-      if (body?.error === 'rate_limit') {
-        updateLimit(body.daily_limit ?? 20)
-        throw new RateLimitError(body.daily_limit ?? 20, body.retry_after ?? 60)
-      }
-      if (body?.error === 'AI not configured — add GEMINI_API_KEY to Supabase Vault') {
-        throw new AINotConfiguredError()
-      }
-      if (body?.error === 'Unauthorized') {
-        throw new AIAuthError()
-      }
-      if (body?.error) throw new Error(body.error)
-    } catch (parsed) {
-      if (
-        parsed instanceof RateLimitError ||
-        parsed instanceof AINotConfiguredError ||
-        parsed instanceof AIAuthError
-      ) throw parsed
+      throw new Error(friendlyError(body, error.message))
+    } catch (inner) {
+      if (inner instanceof Error && inner !== error) throw inner
     }
     throw new Error(error.message)
   }
 
-  if (data?.error) {
-    if (data.error === 'rate_limit') {
-      updateLimit(data.daily_limit ?? 20)
-      throw new RateLimitError(data.daily_limit ?? 20, data.retry_after ?? 60)
-    }
-    throw new Error(data.error)
-  }
-
-  incrementUsage()
+  if (data?.error) throw new Error(friendlyError(data, data.error))
   return data.text as string
 }
