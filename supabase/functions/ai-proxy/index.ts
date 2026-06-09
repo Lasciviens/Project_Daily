@@ -210,7 +210,7 @@ async function callGemini(
   supabase: any,
   userId: string,
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`
 
   let contents: AnyRecord[] = messages.map(m => ({
     role:  m.role === 'assistant' ? 'model' : 'user',
