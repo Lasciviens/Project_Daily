@@ -15,7 +15,7 @@ interface RoutesTabProps {
 }
 
 type LocationState = 'idle' | 'loading' | 'granted' | 'denied' | 'error'
-type WhenPreset    = 'now' | '+15' | '+30' | '+1h' | 'custom'
+type WhenPreset    = 'now' | '+15' | '+30' | '+1h' | 'arriveBy' | 'custom'
 type TripMode      = 'departAt' | 'arriveBy'
 
 interface SearchParams {
@@ -69,7 +69,7 @@ function offsetISO(now: number, offsetMins: number): string {
 }
 
 function planningLabel(preset: WhenPreset, mode: TripMode, dateTime: string | undefined): string {
-  const modeLabel = mode === 'arriveBy' ? 'Arrive by' : 'Leave'
+  const modeLabel = (preset === 'arriveBy' || mode === 'arriveBy') ? 'Arrive by' : 'Leave'
   if (preset === 'now') return 'Leave now'
   if (dateTime) {
     const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -218,13 +218,14 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     if      (draftWhen === '+15')    dateTime = offsetISO(now, 15)
     else if (draftWhen === '+30')    dateTime = offsetISO(now, 30)
     else if (draftWhen === '+1h')    dateTime = offsetISO(now, 60)
-    else if (draftWhen === 'custom') dateTime = new Date(`${draftDate}T${draftTime}`).toISOString()
+    else if (draftWhen === 'arriveBy') dateTime = new Date(`${todayString()}T${draftTime}`).toISOString()
+    else if (draftWhen === 'custom')   dateTime = new Date(`${draftDate}T${draftTime}`).toISOString()
 
     setSearch({
       from:          draftFrom,
       to:            draftTo,
       dateTime,
-      arriveBy:      draftMode === 'arriveBy',
+      arriveBy:      draftWhen === 'arriveBy' || draftMode === 'arriveBy',
       label:         planningLabel(draftWhen, draftMode, dateTime),
       preferredLine: draftLine.trim() || undefined,
       version:       (search?.version ?? 0) + 1,
@@ -369,7 +370,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
         {/* WHEN */}
         <div className="mb-2">
           <div className="flex items-center gap-1.5 flex-wrap mb-2">
-            {(['now', '+15', '+30', '+1h', 'custom'] as WhenPreset[]).map(p => (
+            {(['now', '+15', '+30', '+1h', 'arriveBy', 'custom'] as WhenPreset[]).map(p => (
               <button
                 key={p}
                 onClick={() => setDraftWhen(p)}
@@ -379,10 +380,24 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                     : 'text-ink-600 border-ink-200 hover:border-accent-300'
                 }`}
               >
-                {p === 'now' ? 'Now' : p === 'custom' ? 'Custom…' : p}
+                {p === 'now' ? 'Now' : p === 'arriveBy' ? 'Arrive by…' : p === 'custom' ? 'Custom…' : p}
               </button>
             ))}
           </div>
+
+          {/* Arrive by: today only, just pick a time */}
+          {draftWhen === 'arriveBy' && (
+            <div className="mb-2">
+              <select
+                value={draftTime}
+                onChange={e => setDraftTime(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-accent-300 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-accent-50 min-h-[44px]"
+              >
+                {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <p className="text-[10px] text-ink-400 mt-1">I want to be there by this time today</p>
+            </div>
+          )}
 
           {draftWhen === 'custom' && (
             <div className="space-y-2 mb-2">
