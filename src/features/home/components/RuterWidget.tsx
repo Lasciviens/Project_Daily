@@ -9,11 +9,7 @@ import { useWidgetState } from '../hooks/useWidgetState'
 import { useRuterFavorites, type FavoriteRoute } from '../hooks/useRuterFavorites'
 import { WidgetShell } from './WidgetShell'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type Tab = 'departures' | 'routes'
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function minsUntil(iso: string): number {
   return Math.round((new Date(iso).getTime() - Date.now()) / 60_000)
@@ -29,8 +25,6 @@ function fmtTime(iso: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// ─── Geolocation helper ───────────────────────────────────────────────────────
-
 function getBrowserLocation(): Promise<{ lat: number; lon: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(new Error('No geolocation')); return }
@@ -42,9 +36,6 @@ function getBrowserLocation(): Promise<{ lat: number; lon: number }> {
   })
 }
 
-// ─── Shared stop search box ───────────────────────────────────────────────────
-
-// Self-contained search box with its own query — each tab instance is independent
 function StopSearchInline({
   placeholder = 'Search stop…',
   onSelect,
@@ -75,17 +66,17 @@ function StopSearchInline({
         value={q}
         onChange={e => setQ(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-3 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white"
+        className="w-full min-h-[44px] px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white"
       />
       {results && results.length > 0 && (
-        <ul className="absolute z-20 mt-1 w-full bg-white border border-ink-200 rounded-lg shadow-lg overflow-hidden text-sm">
+        <ul className="absolute z-20 mt-1 w-full bg-white border border-ink-200 rounded-lg shadow-lg overflow-y-auto max-h-[60vh] text-sm">
           {results.slice(0, 6).map((r: StopResult) => (
-            <li key={r.id} className="flex items-center px-3 py-2 hover:bg-cream-50">
-              <button onClick={() => { onSelect(r); setQ('') }} className="flex-1 text-left text-ink-800">
+            <li key={r.id} className="flex items-center px-3 py-1 hover:bg-cream-50 min-h-[44px]">
+              <button onClick={() => { onSelect(r); setQ('') }} className="flex-1 min-h-[44px] text-left text-ink-800">
                 {r.name}
               </button>
               {onAddFav && (
-                <button onClick={() => onAddFav(r)} className="text-xs text-accent-500 hover:text-accent-700 ml-2" title="Pin to favorites">★</button>
+                <button onClick={() => onAddFav(r)} className="min-w-[44px] min-h-[44px] text-xs text-accent-500 hover:text-accent-700 ml-2" title="Pin to favorites">★</button>
               )}
             </li>
           ))}
@@ -95,8 +86,6 @@ function StopSearchInline({
   )
 }
 
-// ─── Main widget ──────────────────────────────────────────────────────────────
-
 export function RuterWidget() {
   const [tab, setTab] = useState<Tab>('departures')
   const [geoAsked, setGeoAsked] = useState(() => !!localStorage.getItem('ruter_geo_asked'))
@@ -104,18 +93,16 @@ export function RuterWidget() {
   const ws  = useWidgetState('ruter', { collapsed: true, intervalMs: 60_000 })
   const fav = useRuterFavorites(DEFAULT_STOP)
 
-  // Merge preset routes with user-added routes (presets always shown first)
   const allRoutes: FavoriteRoute[] = [
     ...PRESET_ROUTES.map(r => ({ id: `${r.from.id}|${r.to.id}`, ...r })),
     ...fav.favRoutes.filter(r => !PRESET_ROUTES.some(p => `${p.from.id}|${p.to.id}` === r.id)),
   ]
 
-  // Request geolocation permission once on first expand — stored but not yet acted on
   useEffect(() => {
     if (!ws.collapsed && !geoAsked) {
       setGeoAsked(true)
       localStorage.setItem('ruter_geo_asked', '1')
-      getBrowserLocation().catch(() => { /* user denied — Visperud stays as default */ })
+      getBrowserLocation().catch(() => { })
     }
   }, [ws.collapsed, geoAsked])
 
@@ -123,7 +110,7 @@ export function RuterWidget() {
     <div className="flex gap-1">
       {(['departures', 'routes'] as Tab[]).map(t => (
         <button key={t} onClick={() => setTab(t)}
-          className={`text-[10px] px-2 py-0.5 rounded font-medium capitalize transition-colors duration-150 ${
+          className={`min-h-[44px] px-2 text-[10px] rounded font-medium capitalize transition-colors duration-150 ${
             tab === t ? 'bg-accent-500 text-white' : 'text-ink-400 hover:bg-ink-100'
           }`}
         >{t}</button>
@@ -138,8 +125,6 @@ export function RuterWidget() {
     </WidgetShell>
   )
 }
-
-// ─── Departures tab ───────────────────────────────────────────────────────────
 
 function DeparturesTab({
   fav,
@@ -161,35 +146,32 @@ function DeparturesTab({
 
   return (
     <div>
-      {/* Favorite stop tabs */}
       <div className="flex items-center gap-1.5 mb-3 flex-wrap">
         {fav.favStops.map(s => (
           <button key={s.id} onClick={() => fav.setActiveStop(s)}
-            className={`text-xs px-2.5 py-1 rounded-lg border transition-colors duration-150 ${
+            className={`min-h-[44px] text-xs px-2.5 py-1 rounded-lg border transition-colors duration-150 ${
               fav.activeStop.id === s.id
                 ? 'bg-accent-500 text-white border-accent-500'
                 : 'text-ink-600 border-ink-200 hover:border-accent-300'
             }`}
           >{s.name}</button>
         ))}
-        <button onClick={() => setEditMode(v => !v)} className="text-xs text-ink-400 hover:text-ink-700" title="Edit stops">✎</button>
-        <button onClick={() => setShowSearch(v => !v)} className="text-xs text-ink-400 hover:text-accent-600">+ Stop</button>
+        <button onClick={() => setEditMode(v => !v)} className="min-h-[44px] px-2 text-xs text-ink-400 hover:text-ink-700" title="Edit stops">✎</button>
+        <button onClick={() => setShowSearch(v => !v)} className="min-h-[44px] px-2 text-xs text-ink-400 hover:text-accent-600">+ Stop</button>
       </div>
 
-      {/* Edit mode */}
       {editMode && (
         <div className="mb-3 p-2 bg-cream-50 rounded-lg border border-ink-200 space-y-1 text-xs">
           {fav.favStops.map(s => (
-            <div key={s.id} className="flex justify-between items-center">
-              <span className="text-ink-700">{s.name}</span>
-              <button onClick={() => fav.removeStop(s.id)} className="text-red-400 hover:text-red-600">✕</button>
+            <div key={s.id} className="flex justify-between items-center gap-2 min-h-[44px]">
+              <span className="text-ink-700 truncate">{s.name}</span>
+              <button onClick={() => fav.removeStop(s.id)} className="min-w-[44px] min-h-[44px] text-red-400 hover:text-red-600">✕</button>
             </div>
           ))}
-          <button onClick={() => setEditMode(false)} className="text-ink-400 hover:text-ink-700 mt-1">Done</button>
+          <button onClick={() => setEditMode(false)} className="min-h-[44px] px-2 text-ink-400 hover:text-ink-700 mt-1">Done</button>
         </div>
       )}
 
-      {/* Stop search — independent instance */}
       {showSearch && (
         <div className="mb-3">
           <StopSearchInline
@@ -202,7 +184,7 @@ function DeparturesTab({
       )}
 
       <button onClick={() => { refetch(); ws.markSynced() }}
-        className="text-[10px] text-ink-400 hover:text-accent-600 mb-2 block">↻ Refresh</button>
+        className="min-h-[44px] text-[10px] text-ink-400 hover:text-accent-600 mb-2 block">↻ Refresh</button>
 
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
       {error     && <div className="text-ink-400 text-sm">Unavailable</div>}
@@ -222,7 +204,7 @@ function DepartureRow({ dep }: { dep: Departure }) {
   const mins  = minsUntil(dep.expected)
   const isNow = mins <= 0
   return (
-    <div className="flex items-start gap-2">
+    <div className="flex items-start gap-2 min-h-[44px] py-1">
       <span className="text-base w-5 text-center flex-shrink-0">{TRANSPORT_ICON[dep.transport] ?? '🚐'}</span>
       <span className="text-sm font-bold text-ink-900 w-8 flex-shrink-0">{dep.line}</span>
       <div className="flex-1 min-w-0">
@@ -245,9 +227,6 @@ function DepartureRow({ dep }: { dep: Departure }) {
   )
 }
 
-// ─── Routes tab ───────────────────────────────────────────────────────────────
-
-// Step-based add-route flow: pick From → pick To → save
 type AddStep = 'from' | 'to' | null
 
 function RoutesTab({
@@ -279,7 +258,7 @@ function RoutesTab({
 
   function handleFromPicked(s: StopResult) {
     setAddFrom(s)
-    setAddStep('to')  // immediately advance to picking "to"
+    setAddStep('to')
   }
 
   function handleToPicked(s: StopResult) {
@@ -294,57 +273,51 @@ function RoutesTab({
 
   return (
     <div>
-      {/* Route selector tabs */}
       <div className="flex items-center gap-1.5 mb-3 flex-wrap">
         {allRoutes.map(r => (
           <button key={r.id} onClick={() => setActiveRouteId(r.id)}
-            className={`text-xs px-2.5 py-1 rounded-lg border transition-colors duration-150 ${
+            className={`min-h-[44px] text-xs px-2.5 py-1 rounded-lg border transition-colors duration-150 ${
               route?.id === r.id
                 ? 'bg-accent-500 text-white border-accent-500'
                 : 'text-ink-600 border-ink-200 hover:border-accent-300'
             }`}
           >{r.label}</button>
         ))}
-        <button onClick={startAddRoute} className="text-xs text-ink-400 hover:text-accent-600">+ Route</button>
+        <button onClick={startAddRoute} className="min-h-[44px] px-2 text-xs text-ink-400 hover:text-accent-600">+ Route</button>
       </div>
 
-      {/* Remove user-added routes */}
       {fav.favRoutes.length > 0 && (
         <div className="mb-2 space-y-1 text-xs text-ink-400">
           {fav.favRoutes.map(r => (
-            <div key={r.id} className="flex justify-between items-center">
-              <span>{r.label}</span>
-              <button onClick={() => fav.removeRoute(r.id)} className="text-red-400 hover:text-red-600">✕</button>
+            <div key={r.id} className="flex justify-between items-center gap-2 min-h-[44px]">
+              <span className="truncate">{r.label}</span>
+              <button onClick={() => fav.removeRoute(r.id)} className="min-w-[44px] min-h-[44px] text-red-400 hover:text-red-600">✕</button>
             </div>
           ))}
         </div>
       )}
 
-      {/* Add route — step by step: pick From, then To */}
       {addStep !== null && (
         <div className="mb-3 p-3 bg-cream-50 rounded-lg border border-ink-200 space-y-2 text-xs">
-          {/* From row */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-h-[32px]">
             <span className="text-ink-500 w-8 flex-shrink-0">From:</span>
-            <span className={`flex-1 font-medium ${addFrom ? 'text-green-700' : 'text-ink-400'}`}>
+            <span className={`flex-1 min-w-0 truncate font-medium ${addFrom ? 'text-green-700' : 'text-ink-400'}`}>
               {addFrom?.name ?? '–'}
             </span>
             {addFrom && <span className="text-green-500">✓</span>}
           </div>
 
-          {/* To row */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-h-[32px]">
             <span className="text-ink-500 w-8 flex-shrink-0">To:</span>
-            <span className={`flex-1 font-medium ${addTo ? 'text-green-700' : 'text-ink-400'}`}>
+            <span className={`flex-1 min-w-0 truncate font-medium ${addTo ? 'text-green-700' : 'text-ink-400'}`}>
               {addTo?.name ?? '–'}
             </span>
             {addTo && <span className="text-green-500">✓</span>}
           </div>
 
-          {/* Search box — shows "from" prompt first, then "to" prompt */}
           <div className="pt-1">
             <p className="text-[10px] text-ink-500 mb-1">
-              {addStep === 'from' ? '① Search for departure stop:' : '② Search for destination stop:'}
+              {addStep === 'from' ? 'Search for departure stop:' : 'Search for destination stop:'}
             </p>
             <StopSearchInline
               autoFocus
@@ -353,13 +326,12 @@ function RoutesTab({
             />
           </div>
 
-          <button onClick={cancelAddRoute} className="text-ink-400 hover:text-ink-700 text-[10px]">Cancel</button>
+          <button onClick={cancelAddRoute} className="min-h-[44px] px-2 text-ink-400 hover:text-ink-700 text-[10px]">Cancel</button>
         </div>
       )}
 
-      {/* Active route header */}
       {route && (
-        <div className="text-xs text-ink-500 mb-2">
+        <div className="text-xs text-ink-500 mb-2 break-words">
           {route.from.name} → {route.to.name}
         </div>
       )}
@@ -383,8 +355,8 @@ function TripRow({ trip }: { trip: TripPattern }) {
   const isNow   = mins <= 0
   const mainLeg = trip.legs.find(l => l.mode !== 'foot')
   return (
-    <div className="flex items-start gap-3 py-1.5 border-b border-ink-100 last:border-0">
-      <div className="flex-shrink-0 text-right min-w-[48px]">
+    <div className="flex items-start gap-2 sm:gap-3 py-2 border-b border-ink-100 last:border-0 min-h-[44px]">
+      <div className="flex-shrink-0 text-right min-w-[42px] sm:min-w-[48px]">
         <div className={`text-sm font-bold ${isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : 'text-ink-900'}`}>
           {isNow ? 'Now' : `${mins} min`}
         </div>
@@ -393,12 +365,12 @@ function TripRow({ trip }: { trip: TripPattern }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           {trip.legs.filter(l => l.mode !== 'foot').map((leg, i) => (
-            <span key={i} className="flex items-center gap-1 text-xs bg-ink-100 text-ink-700 rounded px-1.5 py-0.5">
+            <span key={i} className="flex items-center gap-1 text-xs bg-ink-100 text-ink-700 rounded px-1.5 py-0.5 max-w-full truncate">
               {TRANSPORT_ICON[leg.mode] ?? '🚐'} {leg.line}
             </span>
           ))}
         </div>
-        <div className="text-[10px] text-ink-400 mt-0.5">
+        <div className="text-[10px] text-ink-400 mt-0.5 break-words">
           {fmtDuration(trip.duration)}
           {mainLeg && ` · from ${mainLeg.from}`}
         </div>
