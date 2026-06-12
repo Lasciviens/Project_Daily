@@ -62,14 +62,17 @@ export function NewsWidget() {
                 rel="noopener noreferrer"
                 className="group flex gap-3"
               >
-                {/* Outer div always reserves space; img layers on top — if img fails, gray shows */}
-                <div className="w-20 h-16 rounded-md flex-shrink-0 bg-ink-100 overflow-hidden">
+                {/* Source initials sit behind the image; shown when image is absent or fails */}
+                <div className="w-20 h-16 rounded-md flex-shrink-0 bg-ink-100 overflow-hidden relative">
+                  <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-ink-400 select-none">
+                    {activeFeed.label.slice(0, 3).toUpperCase()}
+                  </span>
                   {item.thumbnail && (
                     <img
                       src={item.thumbnail}
                       alt=""
                       referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
+                      className="absolute inset-0 w-full h-full object-cover"
                       onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
                     />
                   )}
