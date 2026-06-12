@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchTrips, type StopResult, type TransitPlace } from '../../api/ruterApi'
-import { useTransitRoutes } from '../../hooks/useTransitRoutes'
+import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
@@ -14,17 +14,18 @@ interface RoutesTabProps {
   now: number
 }
 
-type LocationState  = 'idle' | 'loading' | 'granted' | 'denied' | 'error'
-type WhenPreset     = 'now' | '+15' | '+30' | '+1h' | 'custom'
-type TripMode       = 'departAt' | 'arriveBy'
+type LocationState = 'idle' | 'loading' | 'granted' | 'denied' | 'error'
+type WhenPreset    = 'now' | '+15' | '+30' | '+1h' | 'custom'
+type TripMode      = 'departAt' | 'arriveBy'
 
 interface SearchParams {
-  from:      TransitPlace
-  to:        TransitPlace
-  dateTime?: string    // ISO — undefined = "now"
-  arriveBy:  boolean
-  label:     string    // e.g. "Leave now", "Leave at Tue 19:42"
-  version:   number    // incremented each Plan click to force refetch
+  from:          TransitPlace
+  to:            TransitPlace
+  dateTime?:     string
+  arriveBy:      boolean
+  label:         string
+  preferredLine?: string  // filter results to trips using this line
+  version:       number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -33,12 +34,7 @@ function getCurrentLocation(): Promise<TransitPlace> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(new Error('Geolocation not supported')); return }
     navigator.geolocation.getCurrentPosition(
-      pos => resolve({
-        kind: 'coords',
-        lat:  pos.coords.latitude,
-        lon:  pos.coords.longitude,
-        name: 'Current location',
-      }),
+      pos => resolve({ kind: 'coords', lat: pos.coords.latitude, lon: pos.coords.longitude, name: 'Current location' }),
       err => reject(err),
       { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
     )
@@ -57,7 +53,6 @@ function nowTimeString(): string {
   return `${String(rounded.getHours()).padStart(2, '0')}:${String(rounded.getMinutes()).padStart(2, '0')}`
 }
 
-// All 15-minute time slots for the time selector
 function timeSlots(): string[] {
   const slots: string[] = []
   for (let h = 0; h < 24; h++) {
@@ -69,19 +64,16 @@ function timeSlots(): string[] {
 }
 const TIME_SLOTS = timeSlots()
 
-// Offset now by minutes and return ISO string
 function offsetISO(now: number, offsetMins: number): string {
   return new Date(now + offsetMins * 60_000).toISOString()
 }
 
-// Build the planning label shown under results
 function planningLabel(preset: WhenPreset, mode: TripMode, dateTime: string | undefined): string {
   const modeLabel = mode === 'arriveBy' ? 'Arrive by' : 'Leave'
   if (preset === 'now') return 'Leave now'
   if (dateTime) {
-    const d    = new Date(dateTime)
     const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    return `${modeLabel} ${DAYS[d.getDay()]} ${fmtTime(dateTime)}`
+    return `${modeLabel} ${DAYS[new Date(dateTime).getDay()]} ${fmtTime(dateTime)}`
   }
   return `${modeLabel} now`
 }
@@ -90,23 +82,18 @@ function suggestLabel(from: TransitPlace, to: TransitPlace): string {
   return `${from.name.split(',')[0].trim()} → ${to.name.split(',')[0].trim()}`
 }
 
-// ─── LocationButton ───────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function LocationButton({ onLocate, state }: { onLocate: () => void; state: LocationState }) {
   if (state === 'loading') return <span className="text-xs text-ink-400 py-1 block">Locating…</span>
   if (state === 'denied')  return <span className="text-xs text-red-500 py-1 block">Location permission denied</span>
   if (state === 'error')   return <span className="text-xs text-red-500 py-1 block">Could not get location</span>
   return (
-    <button
-      onClick={onLocate}
-      className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1"
-    >
+    <button onClick={onLocate} className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1">
       📍 Use current location
     </button>
   )
 }
-
-// ─── PlaceDisplay ─────────────────────────────────────────────────────────────
 
 function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => void }) {
   return (
@@ -114,10 +101,43 @@ function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => 
       <span className="flex-1 text-sm text-ink-700 truncate">
         {place.kind === 'coords' ? '📍 ' : ''}{place.name}
       </span>
+      <button onClick={onClear} className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center">✕</button>
+    </div>
+  )
+}
+
+function SavedRouteChip({
+  route,
+  active,
+  onSelect,
+  onDelete,
+}: {
+  route:    UserTransitRoute
+  active:   boolean
+  onSelect: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="relative group inline-flex">
       <button
-        onClick={onClear}
-        className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center"
-      >✕</button>
+        onClick={onSelect}
+        className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] pr-6 ${
+          active
+            ? 'bg-accent-500 text-white border-accent-500'
+            : 'text-ink-600 border-ink-200 hover:border-accent-300'
+        }`}
+      >
+        {route.label}
+      </button>
+      <button
+        onClick={e => { e.stopPropagation(); onDelete() }}
+        title="Remove"
+        className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full text-[8px] font-bold flex items-center justify-center transition-opacity duration-150 opacity-0 group-hover:opacity-100 ${
+          active ? 'bg-white/30 text-white' : 'bg-ink-200 text-ink-500 hover:bg-red-100 hover:text-red-600'
+        }`}
+      >
+        ✕
+      </button>
     </div>
   )
 }
@@ -125,35 +145,49 @@ function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function RoutesTab({ ws, now }: RoutesTabProps) {
-  const { routes, addRoute } = useTransitRoutes()
+  const { routes, addRoute, removeRoute } = useTransitRoutes()
 
-  // ── Draft state (what the user is editing) ──
-  const [draftFrom, setDraftFrom]               = useState<TransitPlace | null>(null)
-  const [draftTo,   setDraftTo]                 = useState<TransitPlace | null>(null)
-  const [fromLocState, setFromLocState]         = useState<LocationState>('idle')
-  const [toLocState,   setToLocState]           = useState<LocationState>('idle')
-  const [draftWhen, setDraftWhen]               = useState<WhenPreset>('now')
-  const [draftDate, setDraftDate]               = useState(todayString)
-  const [draftTime, setDraftTime]               = useState(nowTimeString)
-  const [draftMode, setDraftMode]               = useState<TripMode>('departAt')
+  // ── Draft state ──
+  const [draftFrom,     setDraftFrom]     = useState<TransitPlace | null>(null)
+  const [draftTo,       setDraftTo]       = useState<TransitPlace | null>(null)
+  const [fromLocState,  setFromLocState]  = useState<LocationState>('idle')
+  const [toLocState,    setToLocState]    = useState<LocationState>('idle')
+  const [draftWhen,     setDraftWhen]     = useState<WhenPreset>('now')
+  const [draftDate,     setDraftDate]     = useState(todayString)
+  const [draftTime,     setDraftTime]     = useState(nowTimeString)
+  const [draftMode,     setDraftMode]     = useState<TripMode>('departAt')
+  const [draftLine,     setDraftLine]     = useState('')
 
-  // ── Submitted state (what the query actually uses) ──
-  const [search, setSearch] = useState<SearchParams | null>(null)
+  // ── Submitted / results state ──
+  const [search,      setSearch]      = useState<SearchParams | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
 
   // ── Save form state ──
-  const [saveLabel, setSaveLabel]       = useState('')
-  const [showSaveForm, setShowSaveForm] = useState(false)
-  const [saving, setSaving]             = useState(false)
-  const [saveMsg, setSaveMsg]           = useState<string | null>(null)
-  const [lastUpdated, setLastUpdated]   = useState<number | null>(null)
+  const [saveLabel,     setSaveLabel]     = useState('')
+  const [showSaveForm,  setShowSaveForm]  = useState(false)
+  const [saving,        setSaving]        = useState(false)
+  const [saveMsg,       setSaveMsg]       = useState<string | null>(null)
 
-  // ─── Saved route presets ───────────────────────────────────────────────────
+  // ─── Saved route presets ──────────────────────────────────────────────────
 
-  function applyPreset(r: { from_stop_id: string; from_stop_name: string; to_stop_id: string; to_stop_name: string }) {
-    setDraftFrom({ kind: 'stop', id: r.from_stop_id, name: r.from_stop_name })
-    setDraftTo(  { kind: 'stop', id: r.to_stop_id,   name: r.to_stop_name   })
+  // Clicking a saved route fills the form AND immediately triggers the search
+  function applyPreset(r: UserTransitRoute) {
+    const from: TransitPlace = { kind: 'stop', id: r.from_stop_id, name: r.from_stop_name }
+    const to:   TransitPlace = { kind: 'stop', id: r.to_stop_id,   name: r.to_stop_name   }
+    setDraftFrom(from)
+    setDraftTo(to)
+    setDraftWhen('now')
     setSaveMsg(null)
     setShowSaveForm(false)
+    setSearch({
+      from,
+      to,
+      dateTime:      undefined,
+      arriveBy:      false,
+      label:         'Leave now',
+      preferredLine: draftLine.trim() || undefined,
+      version:       (search?.version ?? 0) + 1,
+    })
   }
 
   function swapStops() {
@@ -181,21 +215,19 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     if (!draftFrom || !draftTo) return
 
     let dateTime: string | undefined
-    if (draftWhen === '+15')   dateTime = offsetISO(now, 15)
-    else if (draftWhen === '+30') dateTime = offsetISO(now, 30)
-    else if (draftWhen === '+1h') dateTime = offsetISO(now, 60)
-    else if (draftWhen === 'custom') {
-      dateTime = new Date(`${draftDate}T${draftTime}`).toISOString()
-    }
-    // 'now' → undefined
+    if      (draftWhen === '+15')    dateTime = offsetISO(now, 15)
+    else if (draftWhen === '+30')    dateTime = offsetISO(now, 30)
+    else if (draftWhen === '+1h')    dateTime = offsetISO(now, 60)
+    else if (draftWhen === 'custom') dateTime = new Date(`${draftDate}T${draftTime}`).toISOString()
 
     setSearch({
-      from:     draftFrom,
-      to:       draftTo,
+      from:          draftFrom,
+      to:            draftTo,
       dateTime,
-      arriveBy: draftMode === 'arriveBy',
-      label:    planningLabel(draftWhen, draftMode, dateTime),
-      version:  (search?.version ?? 0) + 1,
+      arriveBy:      draftMode === 'arriveBy',
+      label:         planningLabel(draftWhen, draftMode, dateTime),
+      preferredLine: draftLine.trim() || undefined,
+      version:       (search?.version ?? 0) + 1,
     })
     setShowSaveForm(false)
     setSaveMsg(null)
@@ -212,23 +244,35 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['trip', fromKey, toKey, search?.arriveBy, search?.dateTime ?? 'now', search?.version],
-    queryFn: async () => {
+    queryFn:  async () => {
       const result = await fetchTrips(search!.from, search!.to, undefined, search!.dateTime, search!.arriveBy)
       setLastUpdated(Date.now())
       return result
     },
-    staleTime:       Infinity,  // never auto-stale — user controls re-fetch via Plan button
+    staleTime:       Infinity,
     refetchInterval: false,
     enabled:         !ws.collapsed && !!search,
   })
 
+  // Client-side line filter — keeps all trips if preferred line matches none
+  const { filteredData, lineFilterActive, lineMatchCount } = useMemo(() => {
+    if (!data) return { filteredData: undefined, lineFilterActive: false, lineMatchCount: 0 }
+    const pref = search?.preferredLine?.trim().toLowerCase()
+    if (!pref) return { filteredData: data, lineFilterActive: false, lineMatchCount: 0 }
+
+    const matched = data.filter(trip =>
+      trip.legs.some(leg => leg.line?.toLowerCase() === pref || leg.line?.toLowerCase().includes(pref))
+    )
+    return {
+      filteredData:    matched.length > 0 ? matched : data,
+      lineFilterActive: true,
+      lineMatchCount:   matched.length,
+    }
+  }, [data, search?.preferredLine])
+
   // ─── Save route ───────────────────────────────────────────────────────────
 
-  const canSave = !!(
-    search &&
-    search.from.kind === 'stop' &&
-    search.to.kind   === 'stop'
-  )
+  const canSave = !!(search?.from.kind === 'stop' && search.to.kind === 'stop')
   const alreadySaved = canSave && routes.some(
     r => r.from_stop_id === (search!.from as { id: string }).id &&
          r.to_stop_id   === (search!.to   as { id: string }).id
@@ -257,7 +301,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
-  const canPlan  = !!(draftFrom && draftTo)
+  const canPlan = !!(draftFrom && draftTo)
 
   return (
     <div>
@@ -271,17 +315,13 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                 draftFrom?.kind === 'stop' && draftFrom.id === r.from_stop_id &&
                 draftTo?.kind   === 'stop' && draftTo.id   === r.to_stop_id
               return (
-                <button
+                <SavedRouteChip
                   key={r.id}
-                  onClick={() => applyPreset(r)}
-                  className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-                    active
-                      ? 'bg-accent-500 text-white border-accent-500'
-                      : 'text-ink-600 border-ink-200 hover:border-accent-300'
-                  }`}
-                >
-                  {r.label}
-                </button>
+                  route={r}
+                  active={active}
+                  onSelect={() => applyPreset(r)}
+                  onDelete={() => removeRoute(r.id)}
+                />
               )
             })}
           </div>
@@ -327,7 +367,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
         </div>
 
         {/* WHEN */}
-        <div className="mb-3">
+        <div className="mb-2">
           <div className="flex items-center gap-1.5 flex-wrap mb-2">
             {(['now', '+15', '+30', '+1h', 'custom'] as WhenPreset[]).map(p => (
               <button
@@ -345,8 +385,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
           </div>
 
           {draftWhen === 'custom' && (
-            <div className="space-y-2">
-              {/* Leave at / Arrive by toggle */}
+            <div className="space-y-2 mb-2">
               <div className="flex gap-1.5">
                 {(['departAt', 'arriveBy'] as TripMode[]).map(m => (
                   <button
@@ -362,8 +401,6 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                   </button>
                 ))}
               </div>
-
-              {/* Date + Time */}
               <div className="flex gap-2">
                 <input
                   type="date"
@@ -377,12 +414,31 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                   onChange={e => setDraftTime(e.target.value)}
                   className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
                 >
-                  {TIME_SLOTS.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
+                  {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Preferred line filter */}
+        <div className="mb-3">
+          <div className="flex items-center gap-2">
+            <input
+              value={draftLine}
+              onChange={e => setDraftLine(e.target.value)}
+              placeholder="Prefer a line? e.g. 68, 31E (optional)"
+              className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[36px] placeholder:text-ink-300"
+            />
+            {draftLine && (
+              <button
+                onClick={() => setDraftLine('')}
+                className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center"
+              >✕</button>
+            )}
+          </div>
+          {draftLine && (
+            <p className="text-[10px] text-ink-400 mt-1">Results will be filtered to trips using line {draftLine.trim()}</p>
           )}
         </div>
 
@@ -412,10 +468,10 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
         </div>
       )}
 
-      {data && search && (
+      {filteredData && search && (
         <>
           {/* Result meta */}
-          <div className="flex items-center justify-between mb-2 gap-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <span className="text-[10px] text-ink-500">
               Planning: <span className="font-medium">{search.label}</span>
               {!canSave && ' · GPS routes cannot be saved'}
@@ -425,14 +481,21 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             </span>
           </div>
 
+          {/* Line filter note */}
+          {lineFilterActive && (
+            <div className="mb-2 text-[10px] px-2.5 py-1.5 rounded-lg bg-accent-50 border border-accent-100 text-accent-700">
+              {lineMatchCount > 0
+                ? `Showing ${lineMatchCount} trip${lineMatchCount !== 1 ? 's' : ''} using line ${search.preferredLine}`
+                : `No trips found with line ${search.preferredLine} — showing all options`
+              }
+            </div>
+          )}
+
           {/* Save route */}
           {canSave && !alreadySaved && (
             <div className="mb-3">
               {!showSaveForm ? (
-                <button
-                  onClick={openSaveForm}
-                  className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150"
-                >
+                <button onClick={openSaveForm} className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150">
                   + Save this route
                 </button>
               ) : (
@@ -468,10 +531,12 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
 
           {/* Trip cards */}
           <div className="space-y-3">
-            {data.length === 0 && <div className="text-ink-400 text-sm">No trips found</div>}
-            {data.map((trip, i) => (
-              <TripCard key={i} trip={trip} now={now} isBest={i === 0} />
-            ))}
+            {filteredData.length === 0
+              ? <div className="text-ink-400 text-sm">No trips found</div>
+              : filteredData.map((trip, i) => (
+                  <TripCard key={i} trip={trip} now={now} isBest={i === 0} />
+                ))
+            }
           </div>
         </>
       )}
