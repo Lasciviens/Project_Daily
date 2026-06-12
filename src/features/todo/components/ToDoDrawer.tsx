@@ -34,7 +34,6 @@ export function ToDoDrawer() {
 
   async function handlePush() {
     try {
-      // Collect all tasks from all sections
       const allTasks = (await Promise.all(
         SECTIONS.map(s => fetchTasksBySection(s.id))
       )).flat()
@@ -62,44 +61,43 @@ export function ToDoDrawer() {
       <div
         className={[
           'fixed z-50 bg-white overflow-y-auto transition-transform duration-200 border-ink-200',
-          'bottom-0 left-0 right-0 h-[75vh] rounded-t-2xl border-t',
-          'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-96 lg:rounded-none lg:border-t-0 lg:border-l',
+          'bottom-0 left-0 right-0 h-[85vh] max-h-[85dvh] rounded-t-2xl border-t pb-[env(safe-area-inset-bottom)]',
+          'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:max-h-none lg:bottom-0 lg:w-96 lg:rounded-none lg:border-t-0 lg:border-l lg:pb-0',
           isToDoOpen
             ? 'translate-y-0 lg:translate-x-0'
             : 'translate-y-full lg:translate-y-0 lg:translate-x-full',
         ].join(' ')}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-white z-10">
-          <div className="flex items-center gap-2">
+        <div className="flex items-start sm:items-center justify-between gap-2 px-4 py-3 border-b border-ink-100 sticky top-0 bg-white z-10">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
             <h2 className="text-sm font-semibold text-ink-800">To-Do</h2>
             {toast && (
-              <span className={`text-[10px] font-medium ${toast.error ? 'text-red-500' : 'text-accent-600'}`}>
+              <span className={`text-[10px] font-medium leading-tight ${toast.error ? 'text-red-500' : 'text-accent-600'}`}>
                 {toast.msg}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1">
-            {/* Pull: Todoist → Board */}
+          <div className="flex items-center gap-1 flex-shrink-0">
             <button
               onClick={handlePull}
               disabled={isBusy}
-              className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 px-2 py-1 rounded disabled:opacity-40"
+              className="min-h-[44px] px-2 text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 rounded disabled:opacity-40"
               title="Todoist'ten içe aktar"
             >
               {pull.isPending ? '↻' : '↓'} Todoist
             </button>
-            {/* Push: Board → Todoist */}
             <button
               onClick={handlePush}
               disabled={isBusy}
-              className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 px-2 py-1 rounded disabled:opacity-40"
+              className="min-h-[44px] px-2 text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 rounded disabled:opacity-40"
               title="Todoist'e gönder"
             >
               {push.isPending ? '↻' : '↑'} Todoist
             </button>
             <button
               onClick={closeToDo}
-              className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
+              className="w-11 h-11 flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
+              aria-label="Close To-Do drawer"
             >
               ×
             </button>
