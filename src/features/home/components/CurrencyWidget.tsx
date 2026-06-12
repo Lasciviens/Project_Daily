@@ -18,7 +18,8 @@ const FLAG: Record<string, string> = {
 
 export function CurrencyWidget() {
   const [mode, setMode] = useState<Mode>('rates')
-  const ws = useWidgetState('currency', { collapsed: false, intervalMs: 30 * 60_000 })
+  // 60 min interval keeps monthly requests under OXR free tier limit (1000/mo)
+  const ws = useWidgetState('currency', { collapsed: false, intervalMs: 60 * 60_000 })
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey:        ['currency', 'v2'],

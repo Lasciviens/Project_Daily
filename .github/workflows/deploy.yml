@@ -60,6 +60,7 @@ jobs:
           VITE_TMDB_API_KEY:        ${{ secrets.VITE_TMDB_API_KEY }}
           VITE_GOOGLE_CLIENT_ID:    ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_STRAVA_CLIENT_ID:    ${{ secrets.VITE_STRAVA_CLIENT_ID }}
+          VITE_OXR_APP_ID:          ${{ secrets.VITE_OXR_APP_ID }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
