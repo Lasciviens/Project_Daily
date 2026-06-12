@@ -7,16 +7,12 @@ import { CurrencyWidget } from '../components/CurrencyWidget'
 import { NewsWidget } from '../components/NewsWidget'
 import { TrainingHomeWidget } from '../components/TrainingHomeWidget'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 interface NavCard {
   to:    string
   label: string
   icon:  string
   desc:  string
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const NAV_CARDS: NavCard[] = [
   { to: '/daily',    label: 'Daily',    icon: '📅', desc: 'Tasks & schedule' },
@@ -33,8 +29,6 @@ function greeting(): string {
   return 'Good evening'
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export function HomePage() {
   const today     = useTasksBySection('today')
   const tasks     = today.data ?? []
@@ -43,40 +37,27 @@ export function HomePage() {
   const progress  = tasks.length > 0 ? (done / tasks.length) * 100 : 0
 
   return (
-    /*
-     * Layout: 3-column grid on ≥1280px
-     *   Left  (280px) : Currency
-     *   Center (flex) : Greeting + Nav + Weather + RUTER + Tasks
-     *   Right  (380px): News
-     * On <1280px: right panel drops below center
-     * On <768px : all single column
-     */
-    <div className="min-h-[calc(100vh-56px)] flex flex-col xl:flex-row xl:items-start gap-4 p-4 xl:p-5">
-
-      {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
-      <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-4">
+    <div className="min-h-[calc(100vh-56px)] flex flex-col xl:flex-row xl:items-start gap-3 sm:gap-4 p-3 sm:p-4 xl:p-5 overflow-x-hidden">
+      <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-3 sm:space-y-4">
         <CurrencyWidget />
         <TrainingHomeWidget />
       </div>
 
-      {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
-      <div className="flex-1 min-w-0 space-y-4">
-        {/* Greeting */}
+      <div className="flex-1 min-w-0 space-y-3 sm:space-y-4">
         <div className="pt-1">
-          <h1 className="text-xl font-bold text-ink-900">{greeting()}, Furkan</h1>
-          <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), "EEEE, d MMMM yyyy")}</p>
+          <h1 className="text-lg sm:text-xl font-bold text-ink-900">{greeting()}, Furkan</h1>
+          <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), 'EEEE, d MMMM yyyy')}</p>
         </div>
 
-        {/* Quick nav cards */}
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
           {NAV_CARDS.map(card => (
             <Link
               key={card.to}
               to={card.to}
-              className="group bg-white rounded-xl border border-ink-200 p-3 shadow-sm hover:shadow-md hover:border-accent-300 transition-all duration-150"
+              className="group bg-white rounded-xl border border-ink-200 p-3 shadow-sm hover:shadow-md hover:border-accent-300 transition-all duration-150 min-h-[88px] flex flex-col justify-center"
             >
               <div className="text-xl mb-1.5">{card.icon}</div>
-              <div className="text-sm font-semibold text-ink-900 group-hover:text-accent-600 transition-colors duration-150">
+              <div className="text-sm font-semibold text-ink-900 group-hover:text-accent-600 transition-colors duration-150 truncate">
                 {card.label}
               </div>
               <div className="text-xs text-ink-400 mt-0.5 hidden sm:block leading-tight">{card.desc}</div>
@@ -84,25 +65,17 @@ export function HomePage() {
           ))}
         </div>
 
-        {/* Weather */}
         <WeatherWidget />
-
-        {/* RUTER */}
         <RuterWidget />
-
-        {/* Today's tasks */}
         <TodayTasksWidget tasks={tasks} done={done} open={open} progress={progress} isLoading={today.isLoading} />
       </div>
 
-      {/* ── RIGHT COLUMN ────────────────────────────────────────────────── */}
       <div className="w-full xl:w-[380px] xl:flex-shrink-0">
         <NewsWidget />
       </div>
     </div>
   )
 }
-
-// ─── Today's Tasks sub-widget ─────────────────────────────────────────────────
 
 interface TodayTasksProps {
   tasks:     ReturnType<typeof useTasksBySection>['data'] extends undefined ? never : NonNullable<ReturnType<typeof useTasksBySection>['data']>
@@ -114,10 +87,10 @@ interface TodayTasksProps {
 
 function TodayTasksWidget({ tasks, done, open, progress, isLoading }: TodayTasksProps) {
   return (
-    <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
-      <div className="flex items-center justify-between mb-3">
+    <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-3 sm:p-4">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Today's Tasks</h3>
-        <Link to="/daily" className="text-xs text-accent-600 hover:text-accent-700">Open Daily →</Link>
+        <Link to="/daily" className="min-h-[44px] flex items-center text-xs text-accent-600 hover:text-accent-700">Open Daily →</Link>
       </div>
 
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
@@ -140,13 +113,13 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading }: TodayTasks
 
           <ul className="space-y-2">
             {tasks.slice(0, 6).map(t => (
-              <li key={t.id} className="flex items-center gap-2.5">
+              <li key={t.id} className="flex items-center gap-2.5 min-h-[32px]">
                 <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                   t.status === 'done'     ? 'bg-green-400' :
                   t.priority === 'high'   ? 'bg-red-400'   :
                   t.priority === 'medium' ? 'bg-amber-400'  : 'bg-ink-300'
                 }`} />
-                <span className={`text-sm flex-1 truncate ${
+                <span className={`text-sm flex-1 min-w-0 truncate ${
                   t.status === 'done' ? 'line-through text-ink-400' : 'text-ink-700'
                 }`}>
                   {t.title}
