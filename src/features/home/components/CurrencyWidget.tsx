@@ -98,7 +98,7 @@ function CurrencyConverter({ rawRates }: { rawRates: Record<string, number> }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CurrencyWidget() {
-  // Mobile audit: 2026-06-15 — tab touch targets min-h-[32px] min-w-[44px] verified OK; converter swap button corrected to w-11 h-11 (44px) from w-8 h-8 (32px sub-minimum); text-2xl inputs use min-w-0 so no overflow at 280px or full-width mobile
+  // Mobile audit: 2026-06-15 — mode tabs corrected to min-h-[44px] (was 32px); swap button corrected to w-11 h-11 (44px) from w-8 h-8 (32px); text-2xl inputs use min-w-0 so no overflow at 280px or full-width mobile
   const [mode, setMode] = useState<Mode>('rates')
   // 60 min interval keeps monthly requests under OXR free tier limit (1000/mo)
   const ws = useWidgetState('currency', { collapsed: false, intervalMs: 60 * 60_000 })
