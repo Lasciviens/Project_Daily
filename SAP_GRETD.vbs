@@ -1,6 +1,6 @@
 ' ============================================================
 ' SAP_GRETD_to_ETDAT.vbs
-' Kullanim: Cift tikla, Excel yolunu gir, calisir
+' Kullanim: SAP_GRETD_CALISTIR.bat ile ac (komut satirinda gorursun)
 ' Gereksinim: SAP acik + Scripting aktif + Excel KAPALI olmali
 ' ============================================================
 Option Explicit
@@ -12,16 +12,19 @@ EXCEL_PATH = InputBox("Excel dosyasinin tam yolunu girin:" & vbCrLf & vbCrLf & _
              "C:\Users\" & CreateObject("WScript.Shell").ExpandEnvironmentStrings("%USERNAME%") & "\Desktop\siparisler.xlsx")
 If Trim(EXCEL_PATH) = "" Then WScript.Quit
 
+Log "Basliyor..."
+
 ' ---- SAP baglantisi ----
 Dim oSap, oSession
 On Error Resume Next
 Set oSap = GetObject("SAPGUI")
 If Err.Number <> 0 Then
-    WScript.Echo "HATA: SAP GUI bulunamadi. SAP acik ve Scripting aktif mi?"
+    Log "HATA: SAP GUI bulunamadi. SAP acik ve Scripting aktif mi?"
     WScript.Quit
 End If
 On Error GoTo 0
 Set oSession = oSap.GetScriptingEngine.Children(0).Children(0)
+Log "SAP baglantisi OK"
 
 ' ---- Excel ac ----
 Dim oExcel, oWb, oWs, lastRow
@@ -30,18 +33,26 @@ oExcel.Visible = False
 Set oWb   = oExcel.Workbooks.Open(EXCEL_PATH)
 Set oWs   = oWb.Sheets(1)
 lastRow   = oWs.Cells(oWs.Rows.Count, 1).End(-4162).Row
-
-WScript.Echo lastRow - 1 & " satir bulundu. Islem basliyor..."
+Log "Excel acildi: " & lastRow - 1 & " satir bulundu"
 
 ' ---- Ana dongu ----
-Dim i, vbeln, sonuc
+Dim i, vbeln, sonuc, islemSayisi, atlanSayisi
+islemSayisi = 0
+atlanSayisi = 0
+
 For i = 2 To lastRow
     vbeln = Trim(CStr(oWs.Cells(i, 1).Value))
     If vbeln <> "" And vbeln <> "0" Then
-        If LCase(Trim(CStr(oWs.Cells(i, 2).Value))) <> "ok" Then
+        If LCase(Trim(CStr(oWs.Cells(i, 2).Value))) = "ok" Then
+            Log "[" & i-1 & "/" & lastRow-1 & "] ATLANDI (zaten ok): " & vbeln
+            atlanSayisi = atlanSayisi + 1
+        Else
+            Log "[" & i-1 & "/" & lastRow-1 & "] Isleniyor: " & vbeln & " ..."
             sonuc = IslemYap(oSession, vbeln)
             oWs.Cells(i, 2).Value = sonuc
             oWb.Save
+            Log "    --> " & sonuc
+            islemSayisi = islemSayisi + 1
         End If
     End If
 Next
@@ -51,11 +62,12 @@ oWb.Close False
 oExcel.Quit
 Set oExcel = Nothing
 
-WScript.Echo "Tum siparisler islendi!"
+Log ""
+Log "========================================="
+Log "BITTI! Islenen: " & islemSayisi & "  Atlanan: " & atlanSayisi
+Log "========================================="
+WScript.Echo "Bitti! Islenen: " & islemSayisi & "  Atlanan: " & atlanSayisi
 
-' ============================================================
-' Her VBELN icin islem yapan fonksiyon
-' Basarida "ok (N kalem)", hatada "HATA: ..." dondurur
 ' ============================================================
 Function IslemYap(oSes, sVbeln)
 
@@ -134,6 +146,12 @@ Function IslemYap(oSes, sVbeln)
     oSes.FindById("wnd[0]").SendVKey 0
     oSes.FindById("wnd[0]").SendVKey 11
 
-    IslemYap = "ok (" & r & " kalem)"
+    IslemYap = "ok (" & r & " kalem, GRETD=" & gretd & ")"
 
 End Function
+
+' ---- Anlık log (cscript ile konsolda, wscript ile yoksayilir) ----
+Sub Log(mesaj)
+    On Error Resume Next
+    WScript.StdOut.WriteLine Now() & "  " & mesaj
+End Sub
