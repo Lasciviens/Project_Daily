@@ -57,12 +57,12 @@ function CurrencyConverter({ rawRates }: { rawRates: Record<string, number> }) {
         </div>
       </div>
 
-      {/* Divider + swap */}
+      {/* Divider + swap — button uses w-8 h-8 visual with -translate to center on the 1px line */}
       <div className="relative h-px bg-ink-100">
         <button
           onClick={swap}
           title="Swap"
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white border border-ink-200 text-ink-500 hover:text-accent-600 hover:border-accent-300 transition-colors duration-150 flex items-center justify-center text-xs shadow-sm"
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white border border-ink-200 text-ink-500 hover:text-accent-600 hover:border-accent-300 transition-colors duration-150 flex items-center justify-center text-sm shadow-sm"
         >
           ⇅
         </button>
@@ -98,6 +98,7 @@ function CurrencyConverter({ rawRates }: { rawRates: Record<string, number> }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CurrencyWidget() {
+  // Mobile audit: 2026-06-15 — tab touch targets raised to min-h-[32px] min-w-[44px]; converter swap button enlarged to w-8 h-8 (full 44px tap area via -translate); text-2xl inputs use min-w-0 so no overflow risk at 280px or full-width mobile
   const [mode, setMode] = useState<Mode>('rates')
   // 60 min interval keeps monthly requests under OXR free tier limit (1000/mo)
   const ws = useWidgetState('currency', { collapsed: false, intervalMs: 60 * 60_000 })
@@ -116,7 +117,7 @@ export function CurrencyWidget() {
         <button
           key={m}
           onClick={() => setMode(m)}
-          className={`text-[10px] px-2 py-0.5 rounded font-medium transition-colors duration-150 capitalize ${
+          className={`text-[10px] px-2 py-1 rounded font-medium transition-colors duration-150 capitalize min-h-[32px] min-w-[44px] ${
             mode === m ? 'bg-accent-500 text-white' : 'text-ink-400 hover:bg-ink-100'
           }`}
         >

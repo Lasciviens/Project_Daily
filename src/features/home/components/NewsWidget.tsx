@@ -7,6 +7,7 @@ import { WidgetShell } from './WidgetShell'
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function NewsWidget() {
+  // Mobile audit: 2026-06-15 — thumbnail absolute positioning verified OK; category tab touch targets raised to min-h-[32px] min-w-[40px] within 40px header constraint
   const [category, setCategory] = useState<FeedCategory>('no')
   // News updates infrequently — 15m is the right default
   const ws = useWidgetState('news', { collapsed: false, intervalMs: 15 * 60_000 })
@@ -27,7 +28,7 @@ export function NewsWidget() {
         <button
           key={c.key}
           onClick={() => setCategory(c.key)}
-          className={`text-[10px] px-2 py-0.5 rounded font-medium transition-colors duration-150 ${
+          className={`text-[10px] px-2 py-1 rounded font-medium transition-colors duration-150 min-h-[32px] min-w-[40px] ${
             category === c.key
               ? 'bg-accent-500 text-white'
               : 'text-ink-400 hover:bg-ink-100'

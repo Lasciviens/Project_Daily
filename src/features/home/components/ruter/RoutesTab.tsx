@@ -145,6 +145,7 @@ function SavedRouteChip({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function RoutesTab({ ws, now }: RoutesTabProps) {
+  // Mobile audit: 2026-06-15 — WhenPreset buttons raised from min-h-[36px]/py-1.5 to min-h-[44px]/py-2.5; flex-wrap verified OK for 6 buttons at 375px; "Arrive by…" wraps cleanly as full-width row if needed
   const { routes, addRoute, removeRoute } = useTransitRoutes()
 
   // ── Draft state ──
@@ -374,7 +375,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
               <button
                 key={p}
                 onClick={() => setDraftWhen(p)}
-                className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+                className={`text-xs px-2.5 py-2.5 rounded-lg border transition-colors duration-150 min-h-[44px] ${
                   draftWhen === p
                     ? 'bg-accent-500 text-white border-accent-500'
                     : 'text-ink-600 border-ink-200 hover:border-accent-300'
@@ -406,7 +407,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                   <button
                     key={m}
                     onClick={() => setDraftMode(m)}
-                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+                    className={`text-xs px-2.5 py-2.5 rounded-lg border transition-colors duration-150 min-h-[44px] ${
                       draftMode === m
                         ? 'bg-ink-700 text-white border-ink-700'
                         : 'text-ink-500 border-ink-200 hover:border-ink-400'
@@ -443,7 +444,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
               value={draftLine}
               onChange={e => setDraftLine(e.target.value)}
               placeholder="Prefer a line? e.g. 68, 31E (optional)"
-              className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[36px] placeholder:text-ink-300"
+              className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px] placeholder:text-ink-300"
             />
             {draftLine && (
               <button
