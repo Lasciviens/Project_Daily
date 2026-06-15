@@ -126,9 +126,26 @@ Function IslemYap(oSes, sVbeln)
         Exit Function
     End If
 
-    ' Tum satirlara ETDAT yaz
+    ' Dolu satirlara ETDAT yaz (bos satiri atla)
+    ' Her satir icin once item numarasini oku — bossa satir bos demek
+    Dim sPosnr, sEtdat
     r = 0
     Do While r < 99
+        Err.Clear
+
+        ' Item numarasi (kolon 0) bossa bu satir bos — dur
+        sPosnr = oSes.FindById( _
+            "wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\02" & _
+            "/ssubSUBSCREEN_BODY:SAPMV45A:4401" & _
+            "/subSUBSCREEN_TC:SAPMV45A:4900" & _
+            "/tblSAPMV45ATCTRL_U_ERF_AUFTRAG" & _
+            "/txtRV45A-POSNR[0," & r & "]").Text
+        If Err.Number <> 0 Or Trim(sPosnr) = "" Then
+            Err.Clear
+            Exit Do
+        End If
+
+        ' Bu satir doluysa ETDAT'a yaz
         Err.Clear
         oSes.FindById( _
             "wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\02" & _
@@ -138,8 +155,8 @@ Function IslemYap(oSes, sVbeln)
             "/ctxtRV45A-ETDAT[11," & r & "]").Text = gretd
         If Err.Number <> 0 Then
             Err.Clear
-            Exit Do
         End If
+
         r = r + 1
     Loop
 
@@ -148,31 +165,8 @@ Function IslemYap(oSes, sVbeln)
         Exit Function
     End If
 
-    ' Onay iste — kullanici EVET derse kaydet, HAYIR derse geri al
-    Dim cevap
-    cevap = MsgBox( _
-        "VBELN : " & sVbeln & vbCrLf & _
-        "GRETD : " & gretd & vbCrLf & _
-        "Kalem : " & r & " satira yazildi" & vbCrLf & vbCrLf & _
-        "SAP'de KAYDET?", _
-        vbYesNo + vbQuestion, "Onay — " & sVbeln)
-
-    If cevap = vbYes Then
-        Err.Clear
-        oSes.FindById("wnd[0]").SendVKey 0
-        oSes.FindById("wnd[0]").SendVKey 11
-        IslemYap = "ok (" & r & " kalem, GRETD=" & gretd & ")"
-    Else
-        ' Geri al — siparisten cik, kaydetme
-        oSes.FindById("wnd[0]").SendVKey 12   ' F12 = Geri
-        On Error Resume Next
-        ' "Kaydetmeden cik?" popup gelirse EVET de
-        If oSes.Children.Count > 1 Then
-            oSes.FindById("wnd[1]/usr/btnSPOP-OPTION1").Press
-        End If
-        On Error GoTo 0
-        IslemYap = "ATLANDI (kullanici iptal)"
-    End If
+    ' *** KAYDETME YOK — kullanici SAP'de kendisi kaydedecek ***
+    IslemYap = "YAZILDI (" & r & " kalem, GRETD=" & gretd & ") — sen kaydet"
 
 End Function
 
