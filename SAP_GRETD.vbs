@@ -80,18 +80,26 @@ Function IslemYap(oSes, sVbeln)
 
     Dim gretd, r
 
+    Dim oShell
+    Set oShell = CreateObject("WScript.Shell")
+
     On Error Resume Next
 
-    ' VA02 ac
+    ' VA02 ac — SAP penceresi one gelsin
     oSes.StartTransaction "VA02"
+    WScript.Sleep 600
+    oShell.AppActivate "SAP"
+    WScript.Sleep 400
     Do While oSes.Children.Count > 1
         oSes.FindById("wnd[1]").SendVKey 0
         Err.Clear
     Loop
 
-    ' VBELN gir
+    ' VBELN gir — kullanici gorsubn
     oSes.FindById("wnd[0]/usr/ctxtVBAK-VBELN").Text = sVbeln
+    WScript.Sleep 500
     oSes.FindById("wnd[0]").SendVKey 0
+    WScript.Sleep 800
     Do While oSes.Children.Count > 1
         oSes.FindById("wnd[1]").SendVKey 0
         Err.Clear
@@ -105,6 +113,7 @@ Function IslemYap(oSes, sVbeln)
     ' Shipping tab - GRETD oku
     Err.Clear
     oSes.FindById("wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\06").Select
+    WScript.Sleep 700
     gretd = oSes.FindById( _
         "wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\06" & _
         "/ssubSUBSCREEN_BODY:SAPMV45A:4403" & _
@@ -120,6 +129,7 @@ Function IslemYap(oSes, sVbeln)
     ' Item Overview tab
     Err.Clear
     oSes.FindById("wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\02").Select
+    WScript.Sleep 700
 
     If Err.Number <> 0 Then
         IslemYap = "HATA (tab02): " & Err.Description
