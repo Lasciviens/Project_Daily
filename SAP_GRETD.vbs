@@ -1,6 +1,6 @@
 ' ============================================================
 ' SAP_GRETD_to_ETDAT.vbs
-' Kullanim: Cift tikla → Excel yolunu gir → calisir
+' Kullanim: Cift tikla, Excel yolunu gir, calisir
 ' Gereksinim: SAP acik + Scripting aktif + Excel KAPALI olmali
 ' ============================================================
 Option Explicit
@@ -34,39 +34,59 @@ lastRow   = oWs.Cells(oWs.Rows.Count, 1).End(-4162).Row
 WScript.Echo lastRow - 1 & " satir bulundu. Islem basliyor..."
 
 ' ---- Ana dongu ----
-Dim i, r, vbeln, gretd
+Dim i, vbeln, sonuc
 For i = 2 To lastRow
-
     vbeln = Trim(CStr(oWs.Cells(i, 1).Value))
-    If vbeln = "" Or vbeln = "0" Then GoTo NextRow
-    If LCase(Trim(CStr(oWs.Cells(i, 2).Value))) = "ok" Then GoTo NextRow
+    If vbeln <> "" And vbeln <> "0" Then
+        If LCase(Trim(CStr(oWs.Cells(i, 2).Value))) <> "ok" Then
+            sonuc = IslemYap(oSession, vbeln)
+            oWs.Cells(i, 2).Value = sonuc
+            oWb.Save
+        End If
+    End If
+Next
+
+oWb.Save
+oWb.Close False
+oExcel.Quit
+Set oExcel = Nothing
+
+WScript.Echo "Tum siparisler islendi!"
+
+' ============================================================
+' Her VBELN icin islem yapan fonksiyon
+' Basarida "ok (N kalem)", hatada "HATA: ..." dondurur
+' ============================================================
+Function IslemYap(oSes, sVbeln)
+
+    Dim gretd, r
+
+    On Error Resume Next
 
     ' VA02 ac
-    On Error Resume Next
-    oSession.StartTransaction "VA02"
-    Do While oSession.Children.Count > 1
-        oSession.FindById("wnd[1]").SendVKey 0
+    oSes.StartTransaction "VA02"
+    Do While oSes.Children.Count > 1
+        oSes.FindById("wnd[1]").SendVKey 0
         Err.Clear
     Loop
 
     ' VBELN gir
-    oSession.FindById("wnd[0]/usr/ctxtVBAK-VBELN").Text = vbeln
-    oSession.FindById("wnd[0]").SendVKey 0
-    Do While oSession.Children.Count > 1
-        oSession.FindById("wnd[1]").SendVKey 0
+    oSes.FindById("wnd[0]/usr/ctxtVBAK-VBELN").Text = sVbeln
+    oSes.FindById("wnd[0]").SendVKey 0
+    Do While oSes.Children.Count > 1
+        oSes.FindById("wnd[1]").SendVKey 0
         Err.Clear
     Loop
 
     If Err.Number <> 0 Then
-        oWs.Cells(i, 2).Value = "HATA (giris): " & Err.Description
-        Err.Clear
-        GoTo NextRow
+        IslemYap = "HATA (giris): " & Err.Description
+        Exit Function
     End If
 
     ' Shipping tab - GRETD oku
     Err.Clear
-    oSession.FindById("wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\06").Select
-    gretd = oSession.FindById( _
+    oSes.FindById("wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\06").Select
+    gretd = oSes.FindById( _
         "wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\06" & _
         "/ssubSUBSCREEN_BODY:SAPMV45A:4403" & _
         "/subSUBSCREEN_TC:SAPMV45A:4921" & _
@@ -74,25 +94,24 @@ For i = 2 To lastRow
         "/ctxtRV45A-GRETD[3,0]").Text
 
     If Err.Number <> 0 Or Trim(gretd) = "" Then
-        oWs.Cells(i, 2).Value = "GRETD BOS"
-        Err.Clear
-        GoTo NextRow
+        IslemYap = "GRETD BOS"
+        Exit Function
     End If
 
     ' Item Overview tab
     Err.Clear
-    oSession.FindById("wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\02").Select
+    oSes.FindById("wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\02").Select
+
     If Err.Number <> 0 Then
-        oWs.Cells(i, 2).Value = "HATA (tab): " & Err.Description
-        Err.Clear
-        GoTo NextRow
+        IslemYap = "HATA (tab02): " & Err.Description
+        Exit Function
     End If
 
-    ' Tum satirlara ETDAT yaz - hata gelince dur (o satir yok demek)
+    ' Tum satirlara ETDAT yaz
     r = 0
     Do While r < 99
         Err.Clear
-        oSession.FindById( _
+        oSes.FindById( _
             "wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW/tabpT\02" & _
             "/ssubSUBSCREEN_BODY:SAPMV45A:4401" & _
             "/subSUBSCREEN_TC:SAPMV45A:4900" & _
@@ -106,25 +125,15 @@ For i = 2 To lastRow
     Loop
 
     If r = 0 Then
-        oWs.Cells(i, 2).Value = "ETDAT YAZILMADI"
-        GoTo NextRow
+        IslemYap = "ETDAT YAZILMADI"
+        Exit Function
     End If
 
     ' Enter - Kaydet
     Err.Clear
-    oSession.FindById("wnd[0]").SendVKey 0
-    oSession.FindById("wnd[0]").SendVKey 11
+    oSes.FindById("wnd[0]").SendVKey 0
+    oSes.FindById("wnd[0]").SendVKey 11
 
-    oWs.Cells(i, 2).Value = "ok (" & r & " kalem)"
-    oWb.Save
+    IslemYap = "ok (" & r & " kalem)"
 
-NextRow:
-    On Error GoTo 0
-Next
-
-oWb.Save
-oWb.Close False
-oExcel.Quit
-Set oExcel = Nothing
-
-WScript.Echo "Tum siparisler islendi!"
+End Function
