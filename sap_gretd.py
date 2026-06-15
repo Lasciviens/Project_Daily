@@ -173,14 +173,7 @@ def main():
             atlanan += 1
             continue
 
-        print(f"[{idx}/{toplam}] Siradaki: {vbeln}")
-        print("    ENTER = isle  |  CTRL+C = tamamen dur")
-        try:
-            input("    > ")
-        except KeyboardInterrupt:
-            print("\n[DURDURULDU]")
-            break
-
+        print(f"[{idx}/{toplam}] Isleniyor: {vbeln} ...")
         basarili, mesaj = islemi_yap(session, vbeln)
         row[1].value = mesaj
         wb.save(excel_yolu)
@@ -188,7 +181,13 @@ def main():
 
         if basarili:
             print(f"    [✓] {mesaj}")
-            print("    SAP'de kontrol et ve Ctrl+S ile kaydet.")
+            print("    SAP'de Ctrl+S ile kaydet.")
+            print("    Kaydettikten sonra ENTER'a bas (CTRL+C = tamamen dur)")
+            try:
+                input("    > ")
+            except KeyboardInterrupt:
+                print("\n[DURDURULDU]")
+                break
         else:
             print(f"    [✗] {mesaj}")
         print()
