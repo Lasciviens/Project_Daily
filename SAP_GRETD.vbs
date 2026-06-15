@@ -47,7 +47,14 @@ For i = 2 To lastRow
             Log "[" & i-1 & "/" & lastRow-1 & "] ATLANDI (zaten ok): " & vbeln
             atlanSayisi = atlanSayisi + 1
         Else
-            Log "[" & i-1 & "/" & lastRow-1 & "] Isleniyor: " & vbeln & " ..."
+            Log ""
+            Log "---------------------------------------"
+            Log "[" & i-1 & "/" & lastRow-1 & "] Siradaki: " & vbeln
+            Log "Devam etmek icin ENTER'a basin..."
+            Log "Durdurmak icin CTRL+C'ye basin."
+            Log "---------------------------------------"
+            WScript.StdIn.ReadLine   ' ENTER bekle
+            Log "Isleniyor: " & vbeln & " ..."
             sonuc = IslemYap(oSession, vbeln)
             oWs.Cells(i, 2).Value = sonuc
             oWb.Save
