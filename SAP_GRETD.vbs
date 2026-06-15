@@ -141,12 +141,31 @@ Function IslemYap(oSes, sVbeln)
         Exit Function
     End If
 
-    ' Enter - Kaydet
-    Err.Clear
-    oSes.FindById("wnd[0]").SendVKey 0
-    oSes.FindById("wnd[0]").SendVKey 11
+    ' Onay iste — kullanici EVET derse kaydet, HAYIR derse geri al
+    Dim cevap
+    cevap = MsgBox( _
+        "VBELN : " & sVbeln & vbCrLf & _
+        "GRETD : " & gretd & vbCrLf & _
+        "Kalem : " & r & " satira yazildi" & vbCrLf & vbCrLf & _
+        "SAP'de KAYDET?", _
+        vbYesNo + vbQuestion, "Onay — " & sVbeln)
 
-    IslemYap = "ok (" & r & " kalem, GRETD=" & gretd & ")"
+    If cevap = vbYes Then
+        Err.Clear
+        oSes.FindById("wnd[0]").SendVKey 0
+        oSes.FindById("wnd[0]").SendVKey 11
+        IslemYap = "ok (" & r & " kalem, GRETD=" & gretd & ")"
+    Else
+        ' Geri al — siparisten cik, kaydetme
+        oSes.FindById("wnd[0]").SendVKey 12   ' F12 = Geri
+        On Error Resume Next
+        ' "Kaydetmeden cik?" popup gelirse EVET de
+        If oSes.Children.Count > 1 Then
+            oSes.FindById("wnd[1]/usr/btnSPOP-OPTION1").Press
+        End If
+        On Error GoTo 0
+        IslemYap = "ATLANDI (kullanici iptal)"
+    End If
 
 End Function
 
