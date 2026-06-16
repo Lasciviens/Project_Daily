@@ -1,0 +1,105 @@
+{
+  "info": {
+    "name": "Project Daily — News Proxy",
+    "_postman_id": "lasci-news-proxy-test",
+    "description": "Test the news-proxy Edge Function. Fill in SUPABASE_URL and SUPABASE_ANON_KEY in the collection variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "SUPABASE_URL",
+      "value": "https://YOUR_PROJECT_REF.supabase.co",
+      "description": "Supabase Dashboard → Project Settings → API → Project URL"
+    },
+    {
+      "key": "SUPABASE_ANON_KEY",
+      "value": "YOUR_ANON_KEY_HERE",
+      "description": "Supabase Dashboard → Project Settings → API → anon public"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Fetch VG RSS Feed",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type",  "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{SUPABASE_ANON_KEY}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"https://www.vg.no/rss/feed/?categories=1\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{SUPABASE_URL}}/functions/v1/news-proxy",
+          "host": ["{{SUPABASE_URL}}"],
+          "path": ["functions", "v1", "news-proxy"]
+        },
+        "description": "Returns raw VG RSS XML. Look for the item with <link>https://www.vg.no/i/wrKogA/...</link> and check what image tags it has."
+      }
+    },
+    {
+      "name": "2. Proxy a VG Image (GET)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{SUPABASE_ANON_KEY}}" }
+        ],
+        "url": {
+          "raw": "{{SUPABASE_URL}}/functions/v1/news-proxy?url=PASTE_IMAGE_URL_HERE",
+          "host": ["{{SUPABASE_URL}}"],
+          "path": ["functions", "v1", "news-proxy"],
+          "query": [
+            {
+              "key": "url",
+              "value": "PASTE_IMAGE_URL_HERE",
+              "description": "Paste the raw image URL extracted from the RSS item (media:thumbnail, enclosure, or <img src> from description)"
+            }
+          ]
+        },
+        "description": "Tests if the image proxy can fetch and return the image. Replace PASTE_IMAGE_URL_HERE with the actual image URL found in step 1."
+      }
+    },
+    {
+      "name": "3. Fetch CNN Türk RSS Feed",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type",  "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{SUPABASE_ANON_KEY}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"https://www.cnnturk.com/feed/rss/all/news\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{SUPABASE_URL}}/functions/v1/news-proxy",
+          "host": ["{{SUPABASE_URL}}"],
+          "path": ["functions", "v1", "news-proxy"]
+        }
+      }
+    },
+    {
+      "name": "4. Fetch BBC RSS Feed",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type",  "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{SUPABASE_ANON_KEY}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"https://feeds.bbci.co.uk/news/world/rss.xml\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{SUPABASE_URL}}/functions/v1/news-proxy",
+          "host": ["{{SUPABASE_URL}}"],
+          "path": ["functions", "v1", "news-proxy"]
+        }
+      }
+    }
+  ]
+}
