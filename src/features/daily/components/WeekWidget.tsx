@@ -95,13 +95,13 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
           )}
           <button
             onClick={() => setWeekOffset(w => w - 1)}
-            className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded transition-colors duration-150 text-sm"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded transition-colors duration-150 text-sm"
           >
             ‹
           </button>
           <button
             onClick={() => setWeekOffset(w => w + 1)}
-            className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded transition-colors duration-150 text-sm"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded transition-colors duration-150 text-sm"
           >
             ›
           </button>

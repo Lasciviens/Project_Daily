@@ -62,7 +62,7 @@ export function DayView({ date }: Props) {
 
             <button
               onClick={() => setModalOpen(true)}
-              className="mt-1 w-full text-left text-sm text-ink-400 hover:text-accent-600 transition-colors duration-150 py-1.5 flex items-center gap-1.5"
+              className="mt-1 w-full text-left text-sm text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] flex items-center gap-1.5 px-0"
             >
               <span className="text-base leading-none font-light">+</span>
               Add task

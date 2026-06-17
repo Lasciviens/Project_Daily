@@ -250,11 +250,11 @@ export function DayTimeline({ date }: Props) {
   return (
     <div className="card p-5">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
+      <div className="flex items-start justify-between gap-2 mb-4">
+        <div className="min-w-0">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">Day Schedule</h2>
           {nextBlock && nextBlockMinutes <= 120 && (
-            <p className="text-[10px] text-accent-600 mt-0.5">
+            <p className="text-[10px] text-accent-600 mt-0.5 truncate">
               Next: <span className="font-semibold">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
               {nextBlockMinutes <= 60
                 ? ` (in ${nextBlockMinutes}m)`
@@ -262,19 +262,19 @@ export function DayTimeline({ date }: Props) {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 w-20 bg-ink-100 rounded-full overflow-hidden">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="hidden sm:flex items-center gap-2">
+            <div className="h-1.5 w-16 bg-ink-100 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${fullness > 80 ? 'bg-red-400' : 'bg-accent-400'}`}
                 style={{ width: `${fullness}%` }}
               />
             </div>
-            <span className="text-xs text-ink-500">{fullness}% booked</span>
+            <span className="text-xs text-ink-500">{fullness}%</span>
           </div>
           <button
             onClick={() => { setClickTime(undefined); setModal(true) }}
-            className="bg-accent-50 text-accent-600 hover:bg-accent-100 px-2.5 py-1 rounded-full text-xs font-medium transition-colors duration-150"
+            className="bg-accent-50 text-accent-600 hover:bg-accent-100 min-h-[44px] px-3 rounded-full text-xs font-medium transition-colors duration-150"
           >
             + Add
           </button>

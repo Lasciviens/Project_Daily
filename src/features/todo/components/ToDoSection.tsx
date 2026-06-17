@@ -26,7 +26,7 @@ export function ToDoSection({ title, section, tasks, defaultOpen = true, isLoadi
       <div>
         <button
           onClick={() => setIsOpen(p => !p)}
-          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-cream-50 transition-colors duration-150"
+          className="w-full flex items-center justify-between px-3 py-2 min-h-[44px] text-left hover:bg-cream-50 transition-colors duration-150"
         >
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
@@ -68,7 +68,7 @@ export function ToDoSection({ title, section, tasks, defaultOpen = true, isLoadi
 
             <button
               onClick={() => setModalOpen(true)}
-              className="w-full text-left px-3 py-1.5 text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 flex items-center gap-1"
+              className="w-full text-left px-3 min-h-[44px] text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 flex items-center gap-1"
             >
               <span className="text-base leading-none">+</span> Add task
             </button>
