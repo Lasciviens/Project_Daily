@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchTrips, fetchStopQuays, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
+import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
@@ -147,6 +148,7 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
 
 export function RoutesTab({ ws, now }: RoutesTabProps) {
   const { routes, addRoute, removeRoute } = useTransitRoutes()
+  const { stops: savedStops } = useTransitStops()
 
   const [draftFrom,      setDraftFrom]      = useState<TransitPlace | null>(null)
   const [draftTo,        setDraftTo]        = useState<TransitPlace | null>(null)
@@ -186,6 +188,24 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   }
 
   function swapStops() { setDraftFrom(draftTo); setDraftTo(draftFrom) }
+
+  async function planGpsToStop(stopId: string, stopName: string) {
+    setFromLocState('loading')
+    try {
+      const gpsPlace = await getCurrentLocation()
+      const toPlace: TransitPlace = { kind: 'stop', id: stopId, name: stopName }
+      setDraftFrom(gpsPlace); setDraftTo(toPlace); setFromLocState('granted')
+      setSearch({
+        from: gpsPlace, to: toPlace, dateTime: undefined, arriveBy: false,
+        label: 'Leave now', preferredLine: undefined,
+        version: (search?.version ?? 0) + 1,
+      })
+      setShowSaveForm(false); setSaveMsg(null); setFormCollapsed(true)
+    } catch (e) {
+      const err = e as GeolocationPositionError
+      setFromLocState(err.code === 1 ? 'denied' : 'error')
+    }
+  }
 
   async function locateFor(side: 'from' | 'to') {
     const setState = side === 'from' ? setFromLocState : setToLocState
@@ -247,12 +267,21 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const alreadySaved = canSave && routes.some(
     r => r.from_stop_id === (search!.from as { id: string }).id && r.to_stop_id === (search!.to as { id: string }).id
   )
+  // Can save directly from draft (before planning) when both stops are NSR stops
+  const draftCanSave = !formCollapsed && !!(draftFrom?.kind === 'stop' && draftTo?.kind === 'stop')
+  const draftAlreadySaved = draftCanSave && routes.some(
+    r => r.from_stop_id === (draftFrom as { id: string }).id && r.to_stop_id === (draftTo as { id: string }).id
+  )
 
   async function handleSaveRoute() {
-    if (!saveLabel.trim() || !canSave) return
+    if (!saveLabel.trim()) return
+    // Use search state if available, fall back to draft state (before planning)
+    const from = search?.from.kind === 'stop' ? search.from : draftFrom
+    const to   = search?.to.kind   === 'stop' ? search.to   : draftTo
+    if (!from || !to || from.kind !== 'stop' || to.kind !== 'stop') return
     setSaving(true)
     try {
-      await addRoute(saveLabel.trim(), search!.from as StopResult, search!.to as StopResult)
+      await addRoute(saveLabel.trim(), from as StopResult, to as StopResult)
       setSaveMsg('Saved ✓'); setSaveLabel(''); setShowSaveForm(false)
       setTimeout(() => setSaveMsg(null), 2500)
     } catch (e) {
@@ -279,6 +308,32 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* GPS → saved stop quick chips */}
+      {savedStops.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-2">Quick route from here</p>
+          <div className="flex flex-wrap gap-2">
+            {savedStops.map(s => (
+              <button
+                key={s.id}
+                onClick={() => planGpsToStop(s.stop_id, s.label ?? s.stop_name)}
+                className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-ink-200 text-ink-700 hover:border-accent-300 transition-colors duration-150 min-h-[44px]"
+              >
+                <span>📍</span>
+                <span>→</span>
+                <span>{s.label ?? s.stop_name.split(',')[0]}</span>
+              </button>
+            ))}
+          </div>
+          {fromLocState === 'denied' && (
+            <p className="text-[11px] text-red-500 mt-1">Location permission denied</p>
+          )}
+          {fromLocState === 'loading' && (
+            <p className="text-[11px] text-ink-400 mt-1">Getting location…</p>
+          )}
         </div>
       )}
 
@@ -413,6 +468,41 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             }`}>
             {canPlan ? 'Plan route' : 'Select From and To first'}
           </button>
+
+          {/* Save as favorite — available as soon as both stops are NSR stops */}
+          {draftCanSave && !draftAlreadySaved && !showSaveForm && (
+            <button
+              onClick={() => {
+                setSaveLabel(suggestLabel(draftFrom!, draftTo!))
+                setShowSaveForm(true)
+              }}
+              className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150"
+            >
+              💾 Save as favorite route
+            </button>
+          )}
+          {draftCanSave && !draftAlreadySaved && showSaveForm && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Name this route</p>
+              <div className="flex items-center gap-2">
+                <input
+                  value={saveLabel} onChange={e => setSaveLabel(e.target.value)}
+                  placeholder="e.g. İşten eve" autoFocus
+                  onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+                />
+                <button onClick={handleSaveRoute} disabled={!saveLabel.trim() || saving}
+                  className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]">
+                  {saving ? '…' : 'Save'}
+                </button>
+                <button onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
+                  className="text-ink-400 hover:text-ink-600 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
+              </div>
+            </div>
+          )}
+          {saveMsg && !showSaveForm && (
+            <p className={`text-xs ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>{saveMsg}</p>
+          )}
 
           {/* Line filter — hidden by default */}
           <div>
