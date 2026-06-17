@@ -46,6 +46,7 @@ export interface GameDetail extends Game {
   ss_screenshot_url?: string | null
   ss_fanart_url?:    string | null
   multiplayer_info?: unknown[] | null
+  play_order?:       number | null
   // platforms in detail view are richer objects
   platforms_detail?: PlatformDetail[] | null
 }
@@ -61,6 +62,8 @@ export interface PlatformDetail {
   version_title?: string
   performance_notes?: string
 }
+
+export type QueueGame = Game & { play_order: number }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -121,7 +124,7 @@ export async function updateGame(id: string, patch: GamePatch): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-// Batch-update play_order for multiple games (queue reorder)
+// Batch-update play_order for multiple games after reorder
 export async function reorderQueue(updates: { id: string; play_order: number }[]): Promise<void> {
   if (!rp5) throw new Error('RP5 client not configured')
   await Promise.all(updates.map(({ id, play_order }) =>
@@ -129,21 +132,43 @@ export async function reorderQueue(updates: { id: string; play_order: number }[]
   ))
 }
 
-// Query games table directly for play queue (needs play_order column)
-export async function fetchPlayQueue(): Promise<(Game & { play_order: number | null })[]> {
+// Add game to end of queue (assigns next sequential play_order)
+export async function addToQueue(id: string): Promise<void> {
   if (!rp5) throw new Error('RP5 client not configured')
-  // Query games table directly — series_name is computed in the view, not in the raw table
-  const { data, error } = await rp5
+  // Get the current max play_order
+  const { data } = await rp5
     .from('games')
-    .select('id,title,cover_url,play_status,tier,rating,igdb_rating,is_iconic,is_coop,release_year,play_order')
-    .in('play_status', ['playing', 'backlog', 'wishlist'])
-    .order('play_order', { ascending: true, nullsFirst: false })
-    .order('title',      { ascending: true })
+    .select('play_order')
+    .not('play_order', 'is', null)
+    .order('play_order', { ascending: false })
+    .limit(1)
+  const maxOrder = (data?.[0]?.play_order as number | undefined) ?? 0
+  const { error } = await rp5.from('games').update({ play_order: maxOrder + 1 }).eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+// Remove game from queue (sets play_order to null, re-indexes remaining)
+export async function removeFromQueue(id: string): Promise<void> {
+  if (!rp5) throw new Error('RP5 client not configured')
+  const { error } = await rp5.from('games').update({ play_order: null }).eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+// ─── Queue read — uses v_games_full (same as original website) ───────────────
+
+export async function fetchPlayQueue(): Promise<QueueGame[]> {
+  if (!rp5) throw new Error('RP5 client not configured')
+  // Mirror original Retroid_Queue.html: query v_games_full where play_order IS NOT NULL
+  const { data, error } = await rp5
+    .from('v_games_full')
+    .select('id,title,primary_cover_url,play_status,tier,platforms,play_order,is_iconic,is_coop,rating,igdb_rating_canonical,release_year,series_name')
+    .not('play_order', 'is', null)
+    .order('play_order', { ascending: true })
   if (error) throw new Error(error.message)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((r: any) => ({
     ...mapGame(r),
-    play_order: r.play_order ?? null,
+    play_order: r.play_order as number,
   }))
 }
 
@@ -204,7 +229,7 @@ export async function fetchGameDetail(id: string): Promise<GameDetail> {
   const [summaryRes, fullRes] = await Promise.all([
     rp5.from('v_games_summary').select(SUMMARY_FIELDS).eq('id', id).single(),
     rp5.from('v_games_full')
-      .select('id,description,storyline,publisher,play_notes,game_log,tier,multiplayer_info,themes,age_rating,rating_count,keywords,screenshots,coop_notes,igdb_url_canonical,platforms')
+      .select('id,description,storyline,publisher,play_notes,game_log,tier,multiplayer_info,themes,age_rating,rating_count,keywords,screenshots,coop_notes,igdb_url_canonical,platforms,play_order')
       .eq('id', id).single(),
   ])
 
@@ -244,6 +269,7 @@ export async function fetchGameDetail(id: string): Promise<GameDetail> {
     themes:            extractStrings(f.themes),
     screenshots:       extractStrings(f.screenshots),
     multiplayer_info:  f.multiplayer_info  ?? null,
+    play_order:        f.play_order        ?? null,
     platforms_detail:  platformsDetail.length > 0 ? platformsDetail : null,
   }
 }

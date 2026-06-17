@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchGameStats, fetchRecentGames, fetchAllGames, fetchGameDetail,
-  fetchPlayQueue, updateGame, reorderQueue,
+  fetchPlayQueue, updateGame, reorderQueue, addToQueue, removeFromQueue,
 } from '../api/gamesApi'
 import type { Game, GamePatch } from '../api/gamesApi'
 import { rp5 } from '../../../integrations/rp5-library/client'
@@ -76,6 +76,22 @@ export function useReorderQueue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: reorderQueue,
+    onSettled:  () => qc.invalidateQueries({ queryKey: ['rp5', 'play-queue'] }),
+  })
+}
+
+export function useAddToQueue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: addToQueue,
+    onSettled:  () => qc.invalidateQueries({ queryKey: ['rp5', 'play-queue'] }),
+  })
+}
+
+export function useRemoveFromQueue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: removeFromQueue,
     onSettled:  () => qc.invalidateQueries({ queryKey: ['rp5', 'play-queue'] }),
   })
 }
