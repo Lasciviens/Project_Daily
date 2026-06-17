@@ -80,7 +80,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors duration-150 ${
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 min-h-[44px] ${
                 tab === t.key
                   ? 'bg-white text-ink-900 shadow-sm'
                   : 'text-ink-500 hover:text-ink-700'

@@ -1,4 +1,4 @@
-import { posterUrl } from '../../../integrations/tmdb/client'
+import { posterUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import type { UserTVEntry } from '../types'
 import { useUpdateTV } from '../hooks/useTVSeries'
 import { PlanThisButton } from './PlanThisButton'
@@ -51,9 +51,19 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
 
   function advanceEpisode(e: React.MouseEvent) {
     e.stopPropagation()
-    const maxEp = series.number_of_episodes ?? 999
-    const ep    = entry.current_episode + 1
-    update.mutate({ id: entry.id, patch: { current_episode: ep > maxEp ? 0 : ep } })
+    const seasons      = series.number_of_seasons  ?? 1
+    const totalEps     = series.number_of_episodes ?? 999
+    // Approximate episodes per season — TMDB doesn't give per-season counts in list views
+    const epsPerSeason = Math.ceil(totalEps / seasons)
+    const nextEp       = entry.current_episode + 1
+
+    if (nextEp > epsPerSeason && entry.current_season < seasons) {
+      update.mutate({ id: entry.id, patch: { current_season: entry.current_season + 1, current_episode: 1 } })
+    } else if (nextEp > epsPerSeason && entry.current_season >= seasons) {
+      update.mutate({ id: entry.id, patch: { status: 'completed', finished_at: new Date().toISOString() } })
+    } else {
+      update.mutate({ id: entry.id, patch: { current_episode: nextEp } })
+    }
   }
 
   function markSeriesDone(e: React.MouseEvent) {
@@ -117,6 +127,15 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
                 </button>
               </div>
             )}
+            <a
+              href={tmdbTVUrl(series.tmdb_id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="text-[10px] text-white/60 hover:text-white transition-colors duration-150"
+            >
+              TMDB ↗
+            </a>
           </div>
         )}
       </div>
@@ -125,9 +144,11 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
         <div className="mt-1.5 px-0.5">
           <p className="text-xs font-medium text-ink-800 leading-snug truncate">{series.title}</p>
           <div className="flex items-center justify-between mt-0.5">
-            {series.tmdb_rating && (
+            {entry.rating ? (
+              <span className="text-[10px] text-accent-500 font-medium">★ {entry.rating}/10</span>
+            ) : series.tmdb_rating ? (
               <span className="text-[10px] text-ink-400">★ {series.tmdb_rating.toFixed(1)}</span>
-            )}
+            ) : null}
             <span className="text-[10px] text-ink-400">{STATUS_LABELS[entry.status]}</span>
           </div>
           {(entry.status === 'watching' || entry.status === 'paused') && series.number_of_episodes && (
