@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { rp5 } from '../../../integrations/rp5-library/client'
 import { useGameStats, useAllGames } from '../../home/hooks/useGames'
 import { GameDetailModal } from '../components/GameDetailModal'
@@ -148,29 +148,46 @@ function GameTableRow({ game, onClick }: { game: Game; onClick: () => void }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function GamesPage() {
-  const [search,       setSearch]       = useState('')
-  const [statusFilter, setStatusFilter] = useState<string | null>(null)
-  const [tierFilter,   setTierFilter]   = useState<string | null>(null)
-  const [coopOnly,     setCoopOnly]     = useState(false)
-  const [iconicOnly,   setIconicOnly]   = useState(false)
-  const [sort,         setSort]         = useState<SortKey>('az')
-  const [view,         setView]         = useState<ViewMode>('grid')
-  const [selectedId,   setSelectedId]   = useState<string | null>(null)
+  const [search,          setSearch]          = useState('')
+  const [statusFilter,    setStatusFilter]    = useState<string | null>(null)
+  const [tierFilter,      setTierFilter]      = useState<string | null>(null)
+  const [genreFilter,     setGenreFilter]     = useState<string | null>(null)
+  const [platformFilter,  setPlatformFilter]  = useState<string | null>(null)
+  const [coopOnly,        setCoopOnly]        = useState(false)
+  const [iconicOnly,      setIconicOnly]      = useState(false)
+  const [sort,            setSort]            = useState<SortKey>('az')
+  const [view,            setView]            = useState<ViewMode>('grid')
+  const [selectedId,      setSelectedId]      = useState<string | null>(null)
 
   const { data: stats }            = useGameStats()
   const { data: allGames = [], isLoading } = useAllGames()
+
+  // Build filter options from loaded games
+  const genreOptions = useMemo(() =>
+    [...new Set(allGames.flatMap(g => g.genres ?? []))].sort(),
+    [allGames]
+  )
+  const platformOptions = useMemo(() =>
+    [...new Set(allGames.flatMap(g => g.platforms ?? []))].sort(),
+    [allGames]
+  )
 
   const filtered = useMemo(() => {
     let gs = allGames
 
     if (search.trim()) {
       const q = search.trim().toLowerCase()
-      gs = gs.filter(g => g.title.toLowerCase().includes(q))
+      gs = gs.filter(g =>
+        g.title.toLowerCase().includes(q) ||
+        (g.series_name?.toLowerCase().includes(q) ?? false)
+      )
     }
-    if (statusFilter) gs = gs.filter(g => g.play_status === statusFilter)
-    if (tierFilter)   gs = gs.filter(g => g.tier === tierFilter)
-    if (coopOnly)     gs = gs.filter(g => g.is_coop)
-    if (iconicOnly)   gs = gs.filter(g => g.is_iconic)
+    if (statusFilter)   gs = gs.filter(g => g.play_status === statusFilter)
+    if (tierFilter)     gs = gs.filter(g => g.tier === tierFilter)
+    if (genreFilter)    gs = gs.filter(g => g.genres?.includes(genreFilter) ?? false)
+    if (platformFilter) gs = gs.filter(g => g.platforms?.includes(platformFilter) ?? false)
+    if (coopOnly)       gs = gs.filter(g => g.is_coop)
+    if (iconicOnly)     gs = gs.filter(g => g.is_iconic)
 
     switch (sort) {
       case 'za':        return [...gs].sort((a, b) => b.title.localeCompare(a.title))
@@ -180,7 +197,13 @@ export function GamesPage() {
       case 'igdb':      return [...gs].sort((a, b) => Number(b.igdb_rating ?? 0) - Number(a.igdb_rating ?? 0))
       default:          return [...gs].sort((a, b) => a.title.localeCompare(b.title))
     }
-  }, [allGames, search, statusFilter, tierFilter, coopOnly, iconicOnly, sort])
+  }, [allGames, search, statusFilter, tierFilter, genreFilter, platformFilter, coopOnly, iconicOnly, sort])
+
+  const clearFilters = useCallback(() => {
+    setSearch(''); setStatusFilter(null); setTierFilter(null)
+    setGenreFilter(null); setPlatformFilter(null)
+    setCoopOnly(false); setIconicOnly(false)
+  }, [])
 
   function pickRandom() {
     if (!filtered.length) return
@@ -249,7 +272,7 @@ export function GamesPage() {
           )}
         </div>
 
-        {/* Filters row 1: Status */}
+        {/* Filters row 1: Status chips */}
         <div className="flex gap-1.5 flex-wrap mb-2">
           <button
             onClick={() => setStatusFilter(null)}
@@ -266,22 +289,37 @@ export function GamesPage() {
           ))}
         </div>
 
-        {/* Filters row 2: Tier + toggles + sort + view */}
-        <div className="flex items-center gap-2 flex-wrap mb-4">
-          {/* Tier chips */}
-          <div className="flex gap-1">
-            {TIERS.map(t => (
-              <button
-                key={t}
-                onClick={() => setTierFilter(tierFilter === t ? null : t)}
-                className={`text-xs font-bold w-8 h-8 rounded-lg border transition-colors ${
-                  tierFilter === t
-                    ? (TIER_COLOR[t] ?? 'bg-ink-500 text-white') + ' border-transparent'
-                    : 'bg-white text-ink-500 border-ink-200 hover:border-ink-400'
-                }`}
-              >{t}</button>
-            ))}
-          </div>
+        {/* Filters row 2: Dropdowns + toggles */}
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          {/* Tier dropdown */}
+          <select
+            value={tierFilter ?? ''}
+            onChange={e => setTierFilter(e.target.value || null)}
+            className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${tierFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}
+          >
+            <option value="">Tier: All</option>
+            {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
+          </select>
+
+          {/* Genre dropdown */}
+          <select
+            value={genreFilter ?? ''}
+            onChange={e => setGenreFilter(e.target.value || null)}
+            className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${genreFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}
+          >
+            <option value="">Genre: All</option>
+            {genreOptions.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+
+          {/* Platform dropdown */}
+          <select
+            value={platformFilter ?? ''}
+            onChange={e => setPlatformFilter(e.target.value || null)}
+            className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${platformFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}
+          >
+            <option value="">Platform: All</option>
+            {platformOptions.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
 
           {/* Toggle filters */}
           <button
@@ -325,11 +363,18 @@ export function GamesPage() {
           </div>
         </div>
 
-        {/* Result count */}
-        <p className="text-xs text-ink-400 mb-3">
-          {filtered.length} game{filtered.length !== 1 ? 's' : ''}
-          {(search || statusFilter || tierFilter || coopOnly || iconicOnly) && ' (filtered)'}
-        </p>
+        {/* Result count + clear filters */}
+        <div className="flex items-center gap-3 mb-3">
+          <p className="text-xs text-ink-400">
+            {filtered.length} game{filtered.length !== 1 ? 's' : ''}
+            {(search || statusFilter || tierFilter || genreFilter || platformFilter || coopOnly || iconicOnly) && ' (filtered)'}
+          </p>
+          {(search || statusFilter || tierFilter || genreFilter || platformFilter || coopOnly || iconicOnly) && (
+            <button onClick={clearFilters} className="text-xs text-accent-600 hover:text-accent-800 transition-colors">
+              Clear filters
+            </button>
+          )}
+        </div>
 
         {isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading games…</div>}
 

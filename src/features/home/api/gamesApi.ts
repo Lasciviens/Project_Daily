@@ -19,11 +19,15 @@ export interface Game {
   cover_url?:    string | null
   play_status:   string
   rating?:       number | null
-  igdb_rating?:  number | null
+  igdb_rating?:  number | null   // igdb_rating_canonical in view
   tier?:         string | null
   is_iconic:     boolean
   is_coop:       boolean
   release_year?: number | null
+  series_name?:  string | null
+  genres?:       string[] | null
+  platforms?:    string[] | null
+  external_id?:  string | null
 }
 
 export interface GameDetail extends Game {
@@ -35,20 +39,39 @@ export interface GameDetail extends Game {
   igdb_url?:         string | null
   age_rating?:       string | null
   rating_count?:     number | null
+  coop_notes?:       string | null
   keywords?:         string[] | null
   themes?:           string[] | null
-  screenshots?:      string[] | null   // IGDB screenshot IDs
-  ss_screenshot_url?: string | null    // ScreenScraper single screenshot
+  screenshots?:      string[] | null
+  ss_screenshot_url?: string | null
   ss_fanart_url?:    string | null
   multiplayer_info?: unknown[] | null
-  series_id?:        number | null
+  // platforms in detail view are richer objects
+  platforms_detail?: PlatformDetail[] | null
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const LIST_FIELDS = 'id, title, primary_cover_url, cover_url, play_status, rating, igdb_rating, tier, is_iconic, is_coop, release_year, updated_at'
+export interface PlatformDetail {
+  system?:       string
+  emulator?:     string
+  performance?:  string
+  rom_status?:   string
+  region?:       string
+  is_preferred?: boolean
+  igdb_url?:     string
+  version_title?: string
+  performance_notes?: string
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function extractStrings(val: unknown): string[] | null {
+  if (!val) return null
+  if (Array.isArray(val)) {
+    // Could be array of strings or array of objects with .system or .name
+    return val.map(v => (typeof v === 'string' ? v : (v as Record<string, string>)?.system ?? (v as Record<string, string>)?.name ?? String(v))).filter(Boolean)
+  }
+  return null
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapGame(r: any): Game {
@@ -57,21 +80,35 @@ function mapGame(r: any): Game {
     title:        r.title,
     cover_url:    r.primary_cover_url ?? r.cover_url ?? null,
     play_status:  r.play_status,
-    rating:       r.rating    ?? null,
-    igdb_rating:  r.igdb_rating ?? null,
-    tier:         r.tier      ?? null,
+    rating:       r.rating              ?? null,
+    igdb_rating:  r.igdb_rating_canonical ?? r.igdb_rating ?? null,
+    tier:         r.tier                ?? null,
     is_iconic:    Boolean(r.is_iconic),
     is_coop:      Boolean(r.is_coop),
-    release_year: r.release_year ?? null,
+    release_year: r.release_year        ?? null,
+    series_name:  r.series_name         ?? null,
+    genres:       extractStrings(r.genres),
+    platforms:    extractStrings(r.platforms),
+    external_id:  r.external_id         ?? null,
   }
 }
+
+// ─── Summary view fields ──────────────────────────────────────────────────────
+
+const SUMMARY_FIELDS = [
+  'id', 'title', 'release_year', 'publisher', 'play_status', 'tier', 'rating',
+  'igdb_rating_canonical', 'is_coop', 'is_iconic', 'primary_cover_url',
+  'series_id', 'series_name', 'external_id', 'genres', 'platforms',
+].join(',')
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 
 export async function fetchGameStats(): Promise<GameStats> {
   if (!rp5) throw new Error('RP5 client not configured')
 
-  const { data, error } = await rp5.from('games').select('play_status, is_iconic, is_coop')
+  const { data, error } = await rp5
+    .from('v_games_summary')
+    .select('play_status, is_iconic, is_coop')
   if (error) throw new Error(error.message)
 
   const rows = data ?? []
@@ -91,8 +128,8 @@ export async function fetchAllGames(): Promise<Game[]> {
   if (!rp5) throw new Error('RP5 client not configured')
 
   const { data, error } = await rp5
-    .from('games')
-    .select(LIST_FIELDS)
+    .from('v_games_summary')
+    .select(SUMMARY_FIELDS)
     .order('title', { ascending: true })
     .limit(500)
 
@@ -104,10 +141,10 @@ export async function fetchRecentGames(limit = 6): Promise<Game[]> {
   if (!rp5) throw new Error('RP5 client not configured')
 
   const { data, error } = await rp5
-    .from('games')
-    .select(LIST_FIELDS)
+    .from('v_games_summary')
+    .select(SUMMARY_FIELDS)
     .in('play_status', ['playing', 'wishlist', 'backlog'])
-    .order('updated_at', { ascending: false })
+    .order('title', { ascending: true })
     .limit(limit)
 
   if (error) throw new Error(error.message)
@@ -117,45 +154,50 @@ export async function fetchRecentGames(limit = 6): Promise<Game[]> {
 export async function fetchGameDetail(id: string): Promise<GameDetail> {
   if (!rp5) throw new Error('RP5 client not configured')
 
-  const { data, error } = await rp5
-    .from('games')
-    .select('*')
-    .eq('id', id)
-    .single()
+  // Fetch both views in parallel: summary for cover/status, full for text fields
+  const [summaryRes, fullRes] = await Promise.all([
+    rp5.from('v_games_summary').select(SUMMARY_FIELDS).eq('id', id).single(),
+    rp5.from('v_games_full')
+      .select('id,description,storyline,publisher,play_notes,game_log,tier,multiplayer_info,themes,age_rating,rating_count,keywords,screenshots,coop_notes,igdb_url_canonical,platforms')
+      .eq('id', id).single(),
+  ])
 
-  if (error) throw new Error(error.message)
+  if (summaryRes.error) throw new Error(summaryRes.error.message)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const r = data as any
+  const s = summaryRes.data as any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const f = (fullRes.data ?? {}) as any
+
+  // Platforms in v_games_full are richer objects
+  const platformsDetail: PlatformDetail[] = Array.isArray(f.platforms)
+    ? f.platforms.map((p: Record<string, unknown>) => ({
+        system:            p.system            ?? undefined,
+        emulator:          p.emulator          ?? undefined,
+        performance:       p.performance       ?? undefined,
+        rom_status:        p.rom_status        ?? undefined,
+        region:            p.region            ?? undefined,
+        is_preferred:      Boolean(p.is_preferred),
+        igdb_url:          p.igdb_url          ?? undefined,
+        version_title:     p.version_title     ?? undefined,
+        performance_notes: p.performance_notes ?? undefined,
+      }))
+    : []
+
   return {
-    ...mapGame(r),
-    description:       r.description       ?? null,
-    storyline:         r.storyline         ?? null,
-    play_notes:        r.play_notes        ?? null,
-    game_log:          r.game_log          ?? null,
-    publisher:         r.publisher         ?? null,
-    igdb_url:          r.igdb_url          ?? null,
-    age_rating:        r.age_rating        ?? null,
-    rating_count:      r.rating_count      ?? null,
-    keywords:          r.keywords          ?? null,
-    themes:            r.themes            ?? null,
-    screenshots:       r.screenshots       ?? null,
-    ss_screenshot_url: r.ss_screenshot_url ?? null,
-    ss_fanart_url:     r.ss_fanart_url     ?? null,
-    multiplayer_info:  r.multiplayer_info  ?? null,
-    series_id:         r.series_id         ?? null,
+    ...mapGame(s),
+    description:       f.description       ?? null,
+    storyline:         f.storyline         ?? null,
+    play_notes:        f.play_notes        ?? null,
+    game_log:          f.game_log          ?? null,
+    publisher:         f.publisher ?? s.publisher ?? null,
+    igdb_url:          f.igdb_url_canonical ?? null,
+    age_rating:        f.age_rating        ?? null,
+    rating_count:      f.rating_count      ?? null,
+    coop_notes:        f.coop_notes        ?? null,
+    keywords:          extractStrings(f.keywords),
+    themes:            extractStrings(f.themes),
+    screenshots:       extractStrings(f.screenshots),
+    multiplayer_info:  f.multiplayer_info  ?? null,
+    platforms_detail:  platformsDetail.length > 0 ? platformsDetail : null,
   }
-}
-
-// Legacy — kept for home widget
-export async function fetchGames(status?: string, limit = 50): Promise<Game[]> {
-  if (!rp5) throw new Error('RP5 client not configured')
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let q: any = rp5.from('games').select(LIST_FIELDS)
-  if (status) q = q.eq('play_status', status)
-  q = q.order('updated_at', { ascending: false }).limit(limit)
-
-  const { data, error } = await q
-  if (error) throw new Error(error.message)
-  return (data ?? []).map(mapGame)
 }
