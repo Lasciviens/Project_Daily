@@ -65,7 +65,6 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   const defaultStop = stops.find(s => s.is_default) ?? stops[0] ?? null
   const [activeId, setActiveId]         = useState<string | null>(null)
   const [adHocStop, setAdHocStop]       = useState<StopResult | null>(null)
-  const [showSearch, setShowSearch]     = useState(false)
   const [saveMsg, setSaveMsg]           = useState<string | null>(null)
   const [lastUpdated, setLastUpdated]   = useState<number | null>(null)
   const [activeQuay, setActiveQuay]     = useState<string | null>(null)  // null = all directions
@@ -114,7 +113,6 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   function handleSearchSelect(stop: StopResult) {
     setAdHocStop(stop)
     setActiveId(null)
-    setShowSearch(false)
     setSaveMsg(null)
     setActiveQuay(null)
   }
@@ -167,27 +165,21 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
 
       {/* ── Search stop ── */}
       <div className="mb-3">
-        <div className="flex items-center justify-between mb-1.5">
-          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">
-            Search stop
-          </p>
-          <button
-            onClick={() => setShowSearch(v => !v)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-              showSearch
-                ? 'bg-accent-500 text-white border-accent-500'
-                : 'text-ink-600 border-ink-200 hover:border-accent-300'
-            }`}
-          >
-            🔍 Search
-          </button>
-        </div>
-        {showSearch && (
-          <StopSearchInput
-            placeholder="Search any stop…"
-            onSelect={handleSearchSelect}
-            autoFocus
-          />
+        {adHocStop ? (
+          <div className="flex items-center justify-between min-h-[44px]">
+            <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Search stop</p>
+            <button
+              onClick={() => { setAdHocStop(null); setActiveQuay(null) }}
+              className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150 px-1"
+            >
+              Change stop
+            </button>
+          </div>
+        ) : (
+          <>
+            <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Search stop</p>
+            <StopSearchInput placeholder="Search any stop…" onSelect={handleSearchSelect} />
+          </>
         )}
       </div>
 
