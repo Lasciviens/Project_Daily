@@ -17,36 +17,68 @@ const STATUS_COLOR: Record<string, string> = {
   backlog:   'bg-ink-100 text-ink-500',
   dropped:   'bg-red-100 text-red-600',
 }
+const STATUS_BORDER: Record<string, string> = {
+  playing:   'border-l-orange-400',
+  completed: 'border-l-green-500',
+  wishlist:  'border-l-purple-500',
+  backlog:   'border-l-ink-300',
+  dropped:   'border-l-red-400',
+}
 const TIER_COLOR: Record<string, string> = {
   S: 'bg-yellow-400 text-yellow-900', A: 'bg-orange-400 text-white',
   B: 'bg-green-500 text-white',       C: 'bg-blue-400 text-white',
   D: 'bg-ink-400 text-white',         F: 'bg-red-500 text-white',
 }
-const TIERS   = ['S', 'A', 'B', 'C', 'D', 'F']
+const TIERS    = ['S', 'A', 'B', 'C', 'D', 'F']
 const STATUSES = ['playing', 'wishlist', 'backlog', 'completed', 'dropped']
 
 type SortKey  = 'az' | 'za' | 'year-asc' | 'year-desc' | 'rating' | 'igdb' | 'series'
-type ViewMode = 'grid' | 'list' | 'table' | 'series'
+type ViewMode = 'grid' | 'compact' | 'poster' | 'list' | 'table' | 'series'
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+const VIEW_BUTTONS: { v: ViewMode; icon: string; label: string }[] = [
+  { v: 'grid',    icon: '⊞', label: 'Grid'    },
+  { v: 'compact', icon: '▦', label: 'Compact' },
+  { v: 'poster',  icon: '▬', label: 'Poster'  },
+  { v: 'list',    icon: '☰', label: 'List'    },
+  { v: 'table',   icon: '⊟', label: 'Table'   },
+  { v: 'series',  icon: '⛓', label: 'Series'  },
+]
 
-function CoverImg({ url, title }: { url?: string | null; title: string }) {
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function CoverImg({ url, title, className = '' }: { url?: string | null; title: string; className?: string }) {
   const [err, setErr] = useState(false)
   if (url && !err) {
-    return <img src={url} alt={title} onError={() => setErr(true)} className="w-full h-full object-cover" />
+    return <img src={url} alt={title} onError={() => setErr(true)} className={`w-full h-full object-cover ${className}`} />
   }
-  return <div className="w-full h-full flex items-center justify-center text-2xl bg-ink-100">🎮</div>
+  return <div className={`w-full h-full flex items-center justify-center bg-ink-100 text-2xl ${className}`}>🎮</div>
 }
+
+function sortGames(gs: Game[], sort: SortKey): Game[] {
+  switch (sort) {
+    case 'za':        return [...gs].sort((a, b) => b.title.localeCompare(a.title))
+    case 'year-asc':  return [...gs].sort((a, b) => (a.release_year ?? 9999) - (b.release_year ?? 9999))
+    case 'year-desc': return [...gs].sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0))
+    case 'rating':    return [...gs].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    case 'igdb':      return [...gs].sort((a, b) => Number(b.igdb_rating ?? 0) - Number(a.igdb_rating ?? 0))
+    case 'series':    return [...gs].sort((a, b) => (a.series_name ?? 'zzz').localeCompare(b.series_name ?? 'zzz') || a.title.localeCompare(b.title))
+    default:          return [...gs].sort((a, b) => a.title.localeCompare(b.title))
+  }
+}
+
+// ─── Grid Card (standard) ────────────────────────────────────────────────────
 
 function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
   const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
   return (
     <button
       onClick={onClick}
-      className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-md transition-all duration-150 group"
+      className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-md hover:scale-[1.02] transition-all duration-150 group"
     >
       <div className="relative bg-ink-100 flex-shrink-0" style={{ aspectRatio: '3/4' }}>
         <CoverImg url={game.cover_url} title={game.title} />
+        {/* Gradient for overlay legibility */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
         {tierClass && (
           <span className={`absolute top-1.5 left-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${tierClass}`}>{game.tier}</span>
         )}
@@ -81,11 +113,89 @@ function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
   )
 }
 
+// ─── Compact Card (shelf) ─────────────────────────────────────────────────────
+// Tiny covers only — just tier badge + status dot. Perfect for a dense shelf view.
+
+function CompactCard({ game, onClick }: { game: Game; onClick: () => void }) {
+  const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
+  const dotColor  = { playing: 'bg-orange-400', completed: 'bg-green-500', wishlist: 'bg-purple-500', backlog: 'bg-ink-300', dropped: 'bg-red-400' }[game.play_status] ?? 'bg-ink-300'
+  return (
+    <button
+      onClick={onClick}
+      title={game.title}
+      className="relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-all duration-150 bg-ink-100 shadow-sm"
+      style={{ aspectRatio: '3/4' }}
+    >
+      <CoverImg url={game.cover_url} title={game.title} />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+      {tierClass && (
+        <span className={`absolute top-1 left-1 text-[9px] font-bold px-1 py-0.5 rounded leading-none ${tierClass}`}>{game.tier}</span>
+      )}
+      <span className={`absolute bottom-1 right-1 w-2 h-2 rounded-full border border-white/60 ${dotColor}`} />
+      {game.is_iconic && <span className="absolute top-1 right-1 text-[10px] leading-none drop-shadow">⭐</span>}
+    </button>
+  )
+}
+
+// ─── Poster Card (cinematic) ──────────────────────────────────────────────────
+// Tall full-bleed cards. On hover, reveal all metadata via gradient overlay.
+
+function PosterCard({ game, onClick }: { game: Game; onClick: () => void }) {
+  const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
+  return (
+    <button
+      onClick={onClick}
+      className="relative rounded-2xl overflow-hidden shadow-md border border-ink-200 hover:shadow-xl hover:border-accent-400 hover:scale-[1.03] transition-all duration-200 bg-ink-900 group"
+      style={{ aspectRatio: '2/3' }}
+    >
+      <CoverImg url={game.cover_url} title={game.title} className="absolute inset-0" />
+
+      {/* Always-visible badges */}
+      {tierClass && (
+        <span className={`absolute top-2 left-2 z-10 text-[10px] font-bold px-1.5 py-0.5 rounded ${tierClass}`}>{game.tier}</span>
+      )}
+      <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 items-end">
+        {game.is_iconic && <span className="text-xs drop-shadow">⭐</span>}
+        {game.is_coop   && <span className="text-[9px] font-bold bg-cyan-500 text-white px-1 rounded">2P</span>}
+      </div>
+
+      {/* Hover overlay — slides up */}
+      <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-3 pt-10 pb-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200">
+        <p className="text-white text-xs font-bold leading-snug line-clamp-2 mb-1">{game.title}</p>
+        {game.series_name && (
+          <p className="text-white/60 text-[10px] mb-1.5 truncate">{game.series_name}</p>
+        )}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>
+            {STATUS_LABEL[game.play_status] ?? game.play_status}
+          </span>
+          {game.igdb_rating != null && (
+            <span className="text-[10px] text-purple-300 font-bold">{Math.round(Number(game.igdb_rating))}</span>
+          )}
+          {game.rating != null && (
+            <span className="text-[10px] text-accent-300 font-bold">★{game.rating}</span>
+          )}
+          {game.release_year && (
+            <span className="text-[10px] text-white/50">{game.release_year}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Always-visible subtle title at bottom (hidden on hover) */}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-2 pt-6 group-hover:opacity-0 transition-opacity duration-150">
+        <p className="text-white text-[10px] font-semibold leading-snug line-clamp-1">{game.title}</p>
+      </div>
+    </button>
+  )
+}
+
+// ─── List Item ────────────────────────────────────────────────────────────────
+
 function GameListItem({ game, onClick }: { game: Game; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-ink-200 hover:border-accent-300 transition-colors text-left"
+      className={`w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-ink-200 border-l-4 ${STATUS_BORDER[game.play_status] ?? 'border-l-ink-200'} hover:border-r-accent-300 hover:shadow-sm transition-all text-left`}
     >
       <div className="flex-shrink-0 w-10 bg-ink-100 rounded-lg overflow-hidden border border-ink-100" style={{ aspectRatio: '3/4' }}>
         <CoverImg url={game.cover_url} title={game.title} />
@@ -128,6 +238,8 @@ function GameListItem({ game, onClick }: { game: Game; onClick: () => void }) {
     </button>
   )
 }
+
+// ─── Table Row ────────────────────────────────────────────────────────────────
 
 function GameTableRow({ game, onClick }: { game: Game; onClick: () => void }) {
   return (
@@ -172,7 +284,9 @@ function GameTableRow({ game, onClick }: { game: Game; onClick: () => void }) {
   )
 }
 
-// Series view: games grouped by series_name, standalone last
+// ─── Series View ──────────────────────────────────────────────────────────────
+// Groups games by series. Shows progress bar and completion ratio per series.
+
 function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string) => void }) {
   const groups = useMemo(() => {
     const map = new Map<string, Game[]>()
@@ -186,7 +300,6 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
         standalone.push(g)
       }
     }
-    // Sort each series by year then title
     const sorted = [...map.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([name, gs]) => ({
@@ -200,18 +313,79 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
   }, [games])
 
   return (
-    <div className="space-y-6">
-      {groups.map(({ name, games: gs }) => (
-        <div key={name}>
-          <div className="flex items-center gap-2 mb-2">
-            <h2 className="text-sm font-bold text-ink-700">{name === 'Standalone' ? '— Standalone —' : name}</h2>
-            <span className="text-[10px] text-ink-400 bg-ink-100 px-2 py-0.5 rounded-full">{gs.length}</span>
+    <div className="space-y-8">
+      {groups.map(({ name, games: gs }) => {
+        const done    = gs.filter(g => g.play_status === 'completed').length
+        const playing = gs.filter(g => g.play_status === 'playing').length
+        const pct     = gs.length ? Math.round((done / gs.length) * 100) : 0
+        const isStandalone = name === 'Standalone'
+
+        return (
+          <div key={name}>
+            {/* Series header */}
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className={`text-sm font-bold ${isStandalone ? 'text-ink-400 italic' : 'text-ink-800'}`}>
+                    {isStandalone ? '— Standalone games —' : name}
+                  </h2>
+                  <span className="text-[10px] text-ink-400 bg-ink-100 px-2 py-0.5 rounded-full flex-shrink-0">{gs.length}</span>
+                  {playing > 0 && (
+                    <span className="text-[10px] font-medium bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full flex-shrink-0">▶ Playing</span>
+                  )}
+                </div>
+                {/* Progress bar */}
+                {!isStandalone && gs.length > 1 && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 h-1.5 bg-ink-100 rounded-full overflow-hidden max-w-[200px]">
+                      <div
+                        className="h-full bg-green-500 rounded-full transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-ink-400">{done}/{gs.length} done</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Games row — horizontal scroll on mobile, wrap on desktop */}
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2">
+              {gs.map((g, idx) => {
+                const tierClass = g.tier ? (TIER_COLOR[g.tier] ?? 'bg-ink-200 text-ink-700') : null
+                const dotColor  = { playing: 'bg-orange-400', completed: 'bg-green-500', wishlist: 'bg-purple-500', backlog: 'bg-ink-300', dropped: 'bg-red-400' }[g.play_status] ?? 'bg-ink-300'
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => onSelect(g.id)}
+                    title={g.title}
+                    className="relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-all duration-150 bg-ink-100 shadow-sm group"
+                    style={{ aspectRatio: '3/4' }}
+                  >
+                    <CoverImg url={g.cover_url} title={g.title} />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+                    {/* Entry number */}
+                    {!isStandalone && (
+                      <span className="absolute top-1 left-1 text-[9px] font-bold bg-black/60 text-white px-1 py-0.5 rounded leading-none">
+                        #{idx + 1}
+                      </span>
+                    )}
+                    {tierClass && (
+                      <span className={`absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded leading-none ${tierClass}`}>{g.tier}</span>
+                    )}
+                    <span className={`absolute bottom-1 right-1 w-2 h-2 rounded-full border border-white/60 ${dotColor}`} />
+                    {g.is_iconic && <span className="absolute bottom-1 left-1 text-[10px] leading-none">⭐</span>}
+                    {/* Hover title */}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-1.5 pt-4 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                      <p className="text-white text-[9px] font-semibold leading-tight line-clamp-2">{g.title}</p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2">
-            {gs.map(g => <GameCard key={g.id} game={g} onClick={() => onSelect(g.id)} />)}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -231,16 +405,12 @@ export function GamesPage() {
   const [view,            setView]            = useState<ViewMode>('grid')
   const [selectedId,      setSelectedId]      = useState<string | null>(null)
 
-  const { data: stats }                      = useGameStats()
-  const { data: allGames = [], isLoading }   = useAllGames()
+  const { data: stats }                    = useGameStats()
+  const { data: allGames = [], isLoading } = useAllGames()
 
-  // Derive filter options from loaded data
-  const genreOptions = useMemo(() =>
-    [...new Set(allGames.flatMap(g => g.genres ?? []))].sort(), [allGames])
-  const platformOptions = useMemo(() =>
-    [...new Set(allGames.flatMap(g => g.platforms ?? []))].sort(), [allGames])
-  const seriesOptions = useMemo(() =>
-    [...new Set(allGames.map(g => g.series_name).filter(Boolean) as string[])].sort(), [allGames])
+  const genreOptions   = useMemo(() => [...new Set(allGames.flatMap(g => g.genres ?? []))].sort(),   [allGames])
+  const platformOptions = useMemo(() => [...new Set(allGames.flatMap(g => g.platforms ?? []))].sort(), [allGames])
+  const seriesOptions  = useMemo(() => [...new Set(allGames.map(g => g.series_name).filter(Boolean) as string[])].sort(), [allGames])
 
   const filtered = useMemo(() => {
     let gs = allGames
@@ -260,18 +430,8 @@ export function GamesPage() {
     if (coopOnly)       gs = gs.filter(g => g.is_coop)
     if (iconicOnly)     gs = gs.filter(g => g.is_iconic)
 
-    // Series view always sorts by year within groups — skip top-level sort
     if (view === 'series') return gs
-
-    switch (sort) {
-      case 'za':        return [...gs].sort((a, b) => b.title.localeCompare(a.title))
-      case 'year-asc':  return [...gs].sort((a, b) => (a.release_year ?? 9999) - (b.release_year ?? 9999))
-      case 'year-desc': return [...gs].sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0))
-      case 'rating':    return [...gs].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
-      case 'igdb':      return [...gs].sort((a, b) => Number(b.igdb_rating ?? 0) - Number(a.igdb_rating ?? 0))
-      case 'series':    return [...gs].sort((a, b) => (a.series_name ?? 'zzz').localeCompare(b.series_name ?? 'zzz') || a.title.localeCompare(b.title))
-      default:          return [...gs].sort((a, b) => a.title.localeCompare(b.title))
-    }
+    return sortGames(gs, sort)
   }, [allGames, search, statusFilter, tierFilter, genreFilter, platformFilter, seriesFilter, coopOnly, iconicOnly, sort, view])
 
   const hasFilters = !!(search || statusFilter || tierFilter || genreFilter || platformFilter || seriesFilter || coopOnly || iconicOnly)
@@ -318,14 +478,14 @@ export function GamesPage() {
         {stats && (
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 mb-5">
             {[
-              { label: 'Total',    value: stats.total,                    color: 'text-ink-900'    },
-              { label: 'Playing',  value: stats.playing,                  color: 'text-orange-600' },
-              { label: 'Done',     value: stats.completed,                color: 'text-green-600'  },
-              { label: 'Wishlist', value: stats.wishlist,                 color: 'text-purple-600' },
-              { label: 'Backlog',  value: stats.backlog,                  color: 'text-ink-500'    },
-              { label: 'Dropped',  value: stats.dropped,                  color: 'text-red-500'    },
-              { label: 'Iconic',   value: stats.iconic,                   color: 'text-yellow-600' },
-              { label: 'Series',   value: seriesOptions.length,           color: 'text-cyan-600'   },
+              { label: 'Total',    value: stats.total,          color: 'text-ink-900'    },
+              { label: 'Playing',  value: stats.playing,        color: 'text-orange-600' },
+              { label: 'Done',     value: stats.completed,      color: 'text-green-600'  },
+              { label: 'Wishlist', value: stats.wishlist,       color: 'text-purple-600' },
+              { label: 'Backlog',  value: stats.backlog,        color: 'text-ink-500'    },
+              { label: 'Dropped',  value: stats.dropped,        color: 'text-red-500'    },
+              { label: 'Iconic',   value: stats.iconic,         color: 'text-yellow-600' },
+              { label: 'Series',   value: seriesOptions.length, color: 'text-cyan-600'   },
             ].map(s => (
               <div key={s.label} className="bg-white rounded-xl border border-ink-200 p-2.5 text-center">
                 <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
@@ -349,7 +509,7 @@ export function GamesPage() {
           )}
         </div>
 
-        {/* Filters row 1: Status chips */}
+        {/* Status chips */}
         <div className="flex gap-1.5 flex-wrap mb-2">
           <button
             onClick={() => setStatusFilter(null)}
@@ -366,30 +526,26 @@ export function GamesPage() {
           ))}
         </div>
 
-        {/* Filters row 2: Dropdowns + toggles + sort + view */}
+        {/* Dropdowns + toggles + sort + view */}
         <div className="flex items-center gap-2 flex-wrap mb-2">
-          {/* Tier */}
           <select value={tierFilter ?? ''} onChange={e => setTierFilter(e.target.value || null)}
             className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${tierFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
             <option value="">Tier: All</option>
             {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
           </select>
 
-          {/* Genre */}
           <select value={genreFilter ?? ''} onChange={e => setGenreFilter(e.target.value || null)}
             className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${genreFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
             <option value="">Genre: All</option>
             {genreOptions.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
 
-          {/* Platform */}
           <select value={platformFilter ?? ''} onChange={e => setPlatformFilter(e.target.value || null)}
             className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${platformFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
             <option value="">Platform: All</option>
             {platformOptions.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
 
-          {/* Series */}
           {seriesOptions.length > 0 && (
             <select value={seriesFilter ?? ''} onChange={e => setSeriesFilter(e.target.value || null)}
               className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${seriesFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
@@ -398,7 +554,6 @@ export function GamesPage() {
             </select>
           )}
 
-          {/* Toggles */}
           <button
             onClick={() => setCoopOnly(v => !v)}
             className={`text-xs px-3 py-1.5 rounded-lg border transition-colors min-h-[36px] ${coopOnly ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'}`}
@@ -410,7 +565,6 @@ export function GamesPage() {
 
           <div className="flex-1" />
 
-          {/* Sort — hidden in series view (series view has its own grouping) */}
           {view !== 'series' && (
             <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
               className="text-xs px-2 py-1.5 rounded-lg border border-ink-200 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px]">
@@ -424,14 +578,9 @@ export function GamesPage() {
             </select>
           )}
 
-          {/* View mode: grid / list / table / series */}
+          {/* View mode buttons */}
           <div className="flex border border-ink-200 rounded-lg overflow-hidden bg-white">
-            {([
-              { v: 'grid',   icon: '⊞', label: 'Grid' },
-              { v: 'list',   icon: '☰', label: 'List' },
-              { v: 'table',  icon: '⊟', label: 'Table' },
-              { v: 'series', icon: '⛓', label: 'Series' },
-            ] as { v: ViewMode; icon: string; label: string }[]).map(({ v, icon, label }, i) => (
+            {VIEW_BUTTONS.map(({ v, icon, label }, i) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -457,21 +606,35 @@ export function GamesPage() {
 
         {isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading games…</div>}
 
-        {/* Grid */}
+        {/* ── Grid ── */}
         {!isLoading && view === 'grid' && (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
             {filtered.map(g => <GameCard key={g.id} game={g} onClick={() => setSelectedId(g.id)} />)}
           </div>
         )}
 
-        {/* List */}
+        {/* ── Compact shelf ── */}
+        {!isLoading && view === 'compact' && (
+          <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 xl:grid-cols-14 gap-1.5">
+            {filtered.map(g => <CompactCard key={g.id} game={g} onClick={() => setSelectedId(g.id)} />)}
+          </div>
+        )}
+
+        {/* ── Poster / cinematic ── */}
+        {!isLoading && view === 'poster' && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {filtered.map(g => <PosterCard key={g.id} game={g} onClick={() => setSelectedId(g.id)} />)}
+          </div>
+        )}
+
+        {/* ── List ── */}
         {!isLoading && view === 'list' && (
           <div className="space-y-2">
             {filtered.map(g => <GameListItem key={g.id} game={g} onClick={() => setSelectedId(g.id)} />)}
           </div>
         )}
 
-        {/* Table */}
+        {/* ── Table ── */}
         {!isLoading && view === 'table' && (
           <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-x-auto">
             <table className="w-full text-sm min-w-[700px]">
@@ -495,7 +658,7 @@ export function GamesPage() {
           </div>
         )}
 
-        {/* Series grouped view */}
+        {/* ── Series grouped ── */}
         {!isLoading && view === 'series' && (
           <SeriesView games={filtered} onSelect={setSelectedId} />
         )}
@@ -505,7 +668,6 @@ export function GamesPage() {
         )}
       </div>
 
-      {/* Detail modal */}
       {selectedId && (
         <GameDetailModal gameId={selectedId} onClose={() => setSelectedId(null)} />
       )}
