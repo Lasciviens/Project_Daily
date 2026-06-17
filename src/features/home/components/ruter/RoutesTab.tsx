@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchTrips, type StopResult, type TransitPlace } from '../../api/ruterApi'
+import { fetchTrips, fetchStopQuays, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
@@ -103,12 +103,34 @@ function LocationButton({ onLocate, state }: { onLocate: () => void; state: Loca
 }
 
 function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => void }) {
+  // Fetch quay directions for transit stops so user knows which platforms this stop serves
+  const { data: quays } = useQuery({
+    queryKey:  ['stopQuays', place.kind === 'stop' ? place.id : null],
+    queryFn:   () => fetchStopQuays((place as { id: string }).id),
+    enabled:   place.kind === 'stop',
+    staleTime: 10 * 60_000,
+    retry:     false,
+  })
+
+  const directions = quays
+    ?.map(q => q.description)
+    .filter((d): d is string => Boolean(d))
+    .filter((d, i, arr) => arr.indexOf(d) === i)  // unique
+    ?? []
+
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-white border border-ink-200 rounded-lg min-h-[44px]">
-      <span className="flex-1 text-sm text-ink-700 truncate">
-        {place.kind === 'coords' ? '📍 ' : ''}{place.name}
-      </span>
-      <button onClick={onClear} className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center">✕</button>
+    <div className="px-3 py-2 bg-white border border-ink-200 rounded-lg">
+      <div className="flex items-center gap-2 min-h-[36px]">
+        <span className="flex-1 text-sm text-ink-700 truncate">
+          {place.kind === 'coords' ? '📍 ' : '🚏 '}{place.name}
+        </span>
+        <button onClick={onClear} className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center flex-shrink-0">✕</button>
+      </div>
+      {directions.length > 0 && (
+        <p className="text-[10px] text-ink-400 mt-0.5 truncate">
+          {directions.join(' · ')}
+        </p>
+      )}
     </div>
   )
 }

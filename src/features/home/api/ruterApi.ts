@@ -162,6 +162,29 @@ export async function searchStops(query: string): Promise<StopResult[]> {
     }))
 }
 
+// ─── Stop quays ───────────────────────────────────────────────────────────────
+
+export interface StopQuay {
+  publicCode?: string
+  name?:       string
+  description?: string  // e.g. "mot Oslo", "mot Stovner"
+}
+
+// Lightweight query to get platforms/directions for a stop — used for direction hints
+export async function fetchStopQuays(stopId: string): Promise<StopQuay[]> {
+  const data = await gql(`{
+    stopPlace(id: "${stopId}") {
+      quays {
+        publicCode
+        name
+        description
+      }
+    }
+  }`) as { stopPlace: { quays: StopQuay[] } | null }
+
+  return data.stopPlace?.quays ?? []
+}
+
 // ─── Departures ───────────────────────────────────────────────────────────────
 
 export async function fetchDepartures(
