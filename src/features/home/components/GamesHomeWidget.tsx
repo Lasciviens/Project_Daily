@@ -1,27 +1,38 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { rp5 } from '../../../integrations/rp5-library/client'
 import { useGameStats, useRecentGames } from '../hooks/useGames'
+import type { Game } from '../api/gamesApi'
 
-const STATUS_ICON: Record<string, string> = {
-  playing:   '🎮',
-  wishlist:  '📋',
-  completed: '✅',
-  dropped:   '🗑',
-  on_hold:   '⏸',
+const STATUS_COLOR: Record<string, string> = {
+  playing:   'bg-orange-400',
+  completed: 'bg-green-500',
+  wishlist:  'bg-purple-500',
+  backlog:   'bg-ink-300',
+  dropped:   'bg-red-400',
 }
 
-function StatPill({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+function CoverThumb({ game }: { game: Game }) {
+  const [err, setErr] = useState(false)
   return (
-    <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
-      <div className={`text-lg font-bold ${accent ? 'text-accent-600' : 'text-ink-900'}`}>{value}</div>
-      <div className="text-[10px] text-ink-400 mt-0.5">{label}</div>
+    <div className="relative flex-shrink-0 w-14 rounded-lg overflow-hidden border border-ink-200 bg-ink-100" style={{ aspectRatio: '3/4' }}>
+      {game.cover_url && !err ? (
+        <img src={game.cover_url} alt={game.title} onError={() => setErr(true)} className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-base">🎮</div>
+      )}
+      {/* Status dot */}
+      <span className={`absolute bottom-1 right-1 w-2 h-2 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-300'}`} />
+      {game.tier && (
+        <span className="absolute top-1 left-1 text-[8px] font-bold bg-black/60 text-white px-1 rounded leading-tight">{game.tier}</span>
+      )}
     </div>
   )
 }
 
 export function GamesHomeWidget() {
   const { data: stats, isLoading: statsLoading, error: statsError } = useGameStats()
-  const { data: recent = [] }                                        = useRecentGames(3)
+  const { data: recent = [] } = useRecentGames(6)
 
   if (!rp5) {
     return (
@@ -59,25 +70,29 @@ export function GamesHomeWidget() {
 
       {!statsLoading && !statsError && stats && (
         <div className="space-y-3">
-          <div className="flex gap-2">
-            <StatPill label="playing"   value={stats.playing}   accent />
-            <StatPill label="wishlist"  value={stats.wishlist}  />
-            <StatPill label="done"      value={stats.completed} />
+          {/* Stats pills */}
+          <div className="flex gap-1.5">
+            <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
+              <div className="text-lg font-bold text-orange-600">{stats.playing}</div>
+              <div className="text-[10px] text-ink-400 mt-0.5">playing</div>
+            </div>
+            <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
+              <div className="text-lg font-bold text-ink-900">{stats.backlog + stats.wishlist}</div>
+              <div className="text-[10px] text-ink-400 mt-0.5">queued</div>
+            </div>
+            <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
+              <div className="text-lg font-bold text-green-600">{stats.completed}</div>
+              <div className="text-[10px] text-ink-400 mt-0.5">done</div>
+            </div>
           </div>
 
+          {/* Cover thumbnails */}
           {recent.length > 0 && (
-            <div className="space-y-1.5 border-t border-ink-100 pt-2">
-              {recent.map(g => (
-                <div key={g.id} className="flex items-center gap-2">
-                  <span className="text-sm flex-shrink-0">{STATUS_ICON[g.play_status] ?? '🎮'}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-ink-800 truncate">{g.title}</p>
-                    {g.tier && (
-                      <p className="text-[10px] text-ink-400">{g.tier}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div className="border-t border-ink-100 pt-2">
+              <p className="text-[10px] text-ink-400 mb-2">Recent</p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {recent.map(g => <CoverThumb key={g.id} game={g} />)}
+              </div>
             </div>
           )}
         </div>
