@@ -69,11 +69,11 @@ export function GamesHomeWidget() {
             <div className="space-y-1.5 border-t border-ink-100 pt-2">
               {recent.map(g => (
                 <div key={g.id} className="flex items-center gap-2">
-                  <span className="text-sm flex-shrink-0">{STATUS_ICON[g.status] ?? '🎮'}</span>
+                  <span className="text-sm flex-shrink-0">{STATUS_ICON[g.play_status] ?? '🎮'}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-ink-800 truncate">{g.title}</p>
-                    {g.platform && (
-                      <p className="text-[10px] text-ink-400">{g.platform}</p>
+                    {g.tier && (
+                      <p className="text-[10px] text-ink-400">{g.tier}</p>
                     )}
                   </div>
                 </div>
