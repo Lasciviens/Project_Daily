@@ -68,6 +68,13 @@ function offsetISO(now: number, offsetMins: number): string {
   return new Date(now + offsetMins * 60_000).toISOString()
 }
 
+// Converts a geocoder result to a TransitPlace; returns null if coords are missing for address results
+function toTransitPlace(s: StopResult): TransitPlace | null {
+  if (s.id.startsWith('NSR:')) return { kind: 'stop', id: s.id, name: s.name }
+  if (s.lat !== undefined && s.lon !== undefined) return { kind: 'coords', lat: s.lat, lon: s.lon, name: s.name }
+  return null
+}
+
 function planningLabel(preset: WhenPreset, mode: TripMode, dateTime: string | undefined): string {
   const modeLabel = (preset === 'arriveBy' || mode === 'arriveBy') ? 'Arrive by' : 'Leave'
   if (preset === 'now') return 'Leave now'
@@ -168,6 +175,23 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const [showSaveForm,  setShowSaveForm]  = useState(false)
   const [saving,        setSaving]        = useState(false)
   const [saveMsg,       setSaveMsg]       = useState<string | null>(null)
+
+  // Unique stops extracted from saved routes — shown in search dropdown as quick picks
+  const favoriteStops = useMemo(() => {
+    const seen = new Set<string>()
+    const stops: { id: string; name: string }[] = []
+    for (const r of routes) {
+      if (!seen.has(r.from_stop_id)) {
+        seen.add(r.from_stop_id)
+        stops.push({ id: r.from_stop_id, name: r.from_stop_name })
+      }
+      if (!seen.has(r.to_stop_id)) {
+        seen.add(r.to_stop_id)
+        stops.push({ id: r.to_stop_id, name: r.to_stop_name })
+      }
+    }
+    return stops
+  }, [routes])
 
   // ─── Saved route presets ──────────────────────────────────────────────────
 
@@ -341,7 +365,11 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             {draftFrom
               ? <PlaceDisplay place={draftFrom} onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
               : <>
-                  <StopSearchInput placeholder="Departure stop…" onSelect={s => setDraftFrom({ kind: 'stop', ...s })} />
+                  <StopSearchInput
+                    placeholder="Stop or address…"
+                    favorites={favoriteStops}
+                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }}
+                  />
                   <LocationButton state={fromLocState} onLocate={() => locateFor('from')} />
                 </>
             }
@@ -355,7 +383,11 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             {draftTo
               ? <PlaceDisplay place={draftTo} onClear={() => { setDraftTo(null); setToLocState('idle') }} />
               : <>
-                  <StopSearchInput placeholder="Destination stop…" onSelect={s => setDraftTo({ kind: 'stop', ...s })} />
+                  <StopSearchInput
+                    placeholder="Stop or address…"
+                    favorites={favoriteStops}
+                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }}
+                  />
                   <LocationButton state={toLocState} onLocate={() => locateFor('to')} />
                 </>
             }
