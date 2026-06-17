@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchTrips, fetchStopQuays, type StopResult, type TransitPlace } from '../../api/ruterApi'
+import { fetchTrips, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
@@ -91,45 +91,67 @@ function suggestLabel(from: TransitPlace, to: TransitPlace): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function LocationButton({ onLocate, state }: { onLocate: () => void; state: LocationState }) {
-  if (state === 'loading') return <span className="text-xs text-ink-400 py-1 block">Locating…</span>
-  if (state === 'denied')  return <span className="text-xs text-red-500 py-1 block">Location permission denied</span>
-  if (state === 'error')   return <span className="text-xs text-red-500 py-1 block">Could not get location</span>
-  return (
-    <button onClick={onLocate} className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1">
-      📍 Use current location
-    </button>
-  )
-}
-
-function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => void }) {
-  // Fetch quay directions for transit stops so user knows which platforms this stop serves
-  const { data: quays } = useQuery({
-    queryKey:  ['stopQuays', place.kind === 'stop' ? place.id : null],
-    queryFn:   () => fetchStopQuays((place as { id: string }).id),
-    enabled:   place.kind === 'stop',
-    staleTime: 10 * 60_000,
-    retry:     false,
-  })
-
-  const directions = quays
-    ?.map(q => q.description)
-    .filter((d): d is string => Boolean(d))
-    .filter((d, i, arr) => arr.indexOf(d) === i)  // unique
-    ?? []
+// Inline row inside the from/to planner card — shows place name + clear button when selected,
+// or a search input + GPS button when empty
+function PlaceRow({
+  dot,
+  place,
+  locState,
+  placeholder,
+  favorites,
+  onSelect,
+  onClear,
+  onLocate,
+}: {
+  dot:         'from' | 'to'
+  place:       TransitPlace | null
+  locState:    LocationState
+  placeholder: string
+  favorites:   { id: string; name: string }[]
+  onSelect:    (s: import('../../api/ruterApi').StopResult) => void
+  onClear:     () => void
+  onLocate:    () => void
+}) {
+  const dotColor = dot === 'from' ? 'bg-blue-500' : 'bg-red-400'
 
   return (
-    <div className="px-3 py-2 bg-white border border-ink-200 rounded-lg">
-      <div className="flex items-center gap-2 min-h-[36px]">
-        <span className="flex-1 text-sm text-ink-700 truncate">
-          {place.kind === 'coords' ? '📍 ' : '🚏 '}{place.name}
-        </span>
-        <button onClick={onClear} className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center flex-shrink-0">✕</button>
-      </div>
-      {directions.length > 0 && (
-        <p className="text-[10px] text-ink-400 mt-0.5 truncate">
-          {directions.join(' · ')}
-        </p>
+    <div className="flex items-center gap-2.5 px-3 min-h-[44px]">
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+      {place ? (
+        <>
+          <span className="flex-1 text-sm text-ink-700 truncate">
+            {place.name}
+          </span>
+          <button
+            onClick={onClear}
+            className="text-ink-300 hover:text-ink-600 transition-colors duration-150 text-xs min-w-[32px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+          >
+            ✕
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="flex-1 min-w-0">
+            <StopSearchInput
+              placeholder={placeholder}
+              favorites={favorites}
+              onSelect={onSelect}
+            />
+          </div>
+          {locState === 'loading' ? (
+            <span className="text-[10px] text-ink-400 flex-shrink-0">…</span>
+          ) : locState === 'denied' ? (
+            <span className="text-[10px] text-red-400 flex-shrink-0">denied</span>
+          ) : (
+            <button
+              onClick={onLocate}
+              title="Use current location"
+              className="text-ink-400 hover:text-accent-600 transition-colors duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 text-base"
+            >
+              📍
+            </button>
+          )}
+        </>
       )}
     </div>
   )
@@ -150,19 +172,22 @@ function SavedRouteChip({
     <div className="relative group inline-flex">
       <button
         onClick={onSelect}
-        className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] pr-6 ${
+        className={`flex flex-col text-left px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] pr-7 ${
           active
             ? 'bg-accent-500 text-white border-accent-500'
-            : 'text-ink-600 border-ink-200 hover:border-accent-300'
+            : 'bg-white text-ink-700 border-ink-200 hover:border-accent-300'
         }`}
       >
-        {route.label}
+        <span className="text-xs font-medium leading-tight">{route.label}</span>
+        <span className={`text-[10px] leading-tight mt-0.5 truncate max-w-[120px] ${active ? 'text-white/70' : 'text-ink-400'}`}>
+          {route.from_stop_name.split(',')[0]} → {route.to_stop_name.split(',')[0]}
+        </span>
       </button>
       <button
         onClick={e => { e.stopPropagation(); onDelete() }}
         title="Remove"
-        className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full text-[8px] font-bold flex items-center justify-center transition-opacity duration-150 opacity-0 group-hover:opacity-100 ${
-          active ? 'bg-white/30 text-white' : 'bg-ink-200 text-ink-500 hover:bg-red-100 hover:text-red-600'
+        className={`absolute top-0.5 right-0.5 w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center transition-opacity duration-150 opacity-0 group-hover:opacity-100 ${
+          active ? 'bg-white/30 text-white' : 'bg-ink-100 text-ink-500 hover:bg-red-100 hover:text-red-600'
         }`}
       >
         ✕
@@ -380,46 +405,37 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
       <div className="mb-3">
         <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-2">Plan route</p>
 
-        {/* FROM */}
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">From</span>
-          <div className="flex-1 space-y-1">
-            {draftFrom
-              ? <PlaceDisplay place={draftFrom} onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
-              : <>
-                  <StopSearchInput
-                    placeholder="Stop or address…"
-                    favorites={favoriteStops}
-                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }}
-                  />
-                  <LocationButton state={fromLocState} onLocate={() => locateFor('from')} />
-                </>
-            }
+        {/* FROM / TO compact card */}
+        <div className="border border-ink-200 rounded-xl overflow-hidden mb-2 bg-white">
+          <PlaceRow
+            dot="from"
+            place={draftFrom}
+            locState={fromLocState}
+            placeholder="From: stop or address…"
+            favorites={favoriteStops}
+            onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }}
+            onClear={() => { setDraftFrom(null); setFromLocState('idle') }}
+            onLocate={() => locateFor('from')}
+          />
+          <div className="flex items-center border-t border-ink-100">
+            <div className="flex-1 h-px" />
+            <button
+              onClick={swapStops}
+              disabled={!draftFrom && !draftTo}
+              title="Swap"
+              className="text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-30 text-base"
+            >⇅</button>
           </div>
-        </div>
-
-        {/* TO + swap */}
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-[10px] font-semibold text-ink-400 uppercase w-8 flex-shrink-0">To</span>
-          <div className="flex-1 space-y-1">
-            {draftTo
-              ? <PlaceDisplay place={draftTo} onClear={() => { setDraftTo(null); setToLocState('idle') }} />
-              : <>
-                  <StopSearchInput
-                    placeholder="Stop or address…"
-                    favorites={favoriteStops}
-                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }}
-                  />
-                  <LocationButton state={toLocState} onLocate={() => locateFor('to')} />
-                </>
-            }
-          </div>
-          <button
-            onClick={swapStops}
-            disabled={!draftFrom && !draftTo}
-            title="Swap"
-            className="text-ink-400 hover:text-accent-600 transition-colors duration-150 text-sm flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-30"
-          >⇅</button>
+          <PlaceRow
+            dot="to"
+            place={draftTo}
+            locState={toLocState}
+            placeholder="To: stop or address…"
+            favorites={favoriteStops}
+            onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }}
+            onClear={() => { setDraftTo(null); setToLocState('idle') }}
+            onLocate={() => locateFor('to')}
+          />
         </div>
 
         {/* WHEN */}
