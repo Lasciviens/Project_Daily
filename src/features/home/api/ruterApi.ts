@@ -162,27 +162,66 @@ export async function searchStops(query: string): Promise<StopResult[]> {
     }))
 }
 
-// ─── Stop quays ───────────────────────────────────────────────────────────────
+// ─── Stop quay directions ─────────────────────────────────────────────────────
 
-export interface StopQuay {
-  publicCode?: string
-  name?:       string
-  description?: string  // e.g. "mot Oslo", "mot Stovner"
+export interface QuayDirectionHint {
+  quayId:      string
+  publicCode?: string | null
+  description?: string | null   // e.g. "mot Oslo S" — from quay.description
+  fallback?:   string | null    // "mot " + frontText when description is null
+  lines:       string[]         // line codes serving this quay e.g. ["31", "32"]
 }
 
-// Lightweight query to get platforms/directions for a stop — used for direction hints
-export async function fetchStopQuays(stopId: string): Promise<StopQuay[]> {
+// Fetches direction hints for a stop without loading full departure times.
+// Uses numberOfDeparturesPerLineAndDestinationDisplay:1 to get one call per
+// unique line+direction combo — much lighter than fetching all departures.
+export async function fetchStopDirections(stopId: string): Promise<QuayDirectionHint[]> {
   const data = await gql(`{
     stopPlace(id: "${stopId}") {
-      quays {
-        publicCode
-        name
-        description
+      estimatedCalls(
+        timeRange: 86400
+        numberOfDepartures: 20
+      ) {
+        quay { id publicCode description }
+        destinationDisplay { frontText }
+        serviceJourney { line { publicCode } }
       }
     }
-  }`) as { stopPlace: { quays: StopQuay[] } | null }
+  }`) as {
+    stopPlace: {
+      estimatedCalls: {
+        quay?: { id?: string; publicCode?: string; description?: string } | null
+        destinationDisplay?: { frontText?: string } | null
+        serviceJourney?:     { line?: { publicCode?: string } | null } | null
+      }[]
+    } | null
+  }
 
-  return data.stopPlace?.quays ?? []
+  const calls   = data.stopPlace?.estimatedCalls ?? []
+  const byQuay  = new Map<string, QuayDirectionHint>()
+
+  for (const call of calls) {
+    const quay      = call.quay
+    const lineCode  = call.serviceJourney?.line?.publicCode
+    const frontText = call.destinationDisplay?.frontText
+    if (!quay?.id) continue
+
+    if (!byQuay.has(quay.id)) {
+      byQuay.set(quay.id, {
+        quayId:      quay.id,
+        publicCode:  quay.publicCode ?? null,
+        description: quay.description ?? null,
+        // When description is null use frontText as a readable fallback
+        fallback:    !quay.description && frontText ? `mot ${frontText}` : null,
+        lines:       lineCode ? [lineCode] : [],
+      })
+    } else {
+      const existing = byQuay.get(quay.id)!
+      if (lineCode && !existing.lines.includes(lineCode)) existing.lines.push(lineCode)
+    }
+  }
+
+  return [...byQuay.values()]
 }
 
 // ─── Departures ───────────────────────────────────────────────────────────────

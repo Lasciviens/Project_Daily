@@ -84,19 +84,17 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
     enabled:         !ws.collapsed && !!queryStop?.id,
   })
 
-  // Extract unique quay directions from departures for filter chips
+  // Extract unique quay directions: prefer quayDescription, fall back to "mot <destination>"
   const quayDirections = useMemo(() => {
     if (!data?.departures) return []
     const seen = new Set<string>()
     const dirs: { key: string; label: string }[] = []
     for (const dep of data.departures) {
-      const key = dep.quayDescription ?? dep.quayCode ?? ''
-      if (key && !seen.has(key)) {
+      const label = dep.quayDescription ?? (dep.destination ? `mot ${dep.destination}` : dep.quayCode ? `Plattform ${dep.quayCode}` : null)
+      const key   = dep.quayDescription ?? dep.quayCode ?? ''
+      if (label && key && !seen.has(key)) {
         seen.add(key)
-        dirs.push({
-          key,
-          label: dep.quayDescription ?? `Platform ${dep.quayCode}`,
-        })
+        dirs.push({ key, label })
       }
     }
     return dirs

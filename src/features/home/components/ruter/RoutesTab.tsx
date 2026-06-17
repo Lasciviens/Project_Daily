@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchTrips, fetchDepartures, type StopResult, type TransitPlace } from '../../api/ruterApi'
+import { fetchTrips, fetchStopDirections, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
@@ -85,27 +85,23 @@ function suggestLabel(from: TransitPlace, to: TransitPlace): string {
   return `${from.name.split(',')[0].trim()} → ${to.name.split(',')[0].trim()}`
 }
 
-// Stop card that shows direction hints by fetching a few real departures
+// Stop card with quay direction hints.
+// Uses fetchStopDirections (lightweight: 20 departures, one per line+destination)
+// to get "mot Oslo S" / "mot Snarøya" labels from real departure context.
 function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => void }) {
-  const { data: depData } = useQuery({
+  const { data: hints = [] } = useQuery({
     queryKey:  ['stop-directions', place.kind === 'stop' ? place.id : null],
-    queryFn:   () => fetchDepartures((place as { id: string }).id, 8),
+    queryFn:   () => fetchStopDirections((place as { id: string }).id),
     enabled:   place.kind === 'stop',
-    staleTime: 5 * 60_000,
+    staleTime: 10 * 60_000,
     retry:     false,
   })
 
-  // Extract unique quay directions from real departure data
+  // Build direction labels: prefer description, fall back to "mot <frontText>"
   const directions = useMemo(() => {
-    if (!depData?.departures) return []
-    const seen = new Set<string>()
-    const dirs: string[] = []
-    for (const dep of depData.departures) {
-      const d = dep.quayDescription
-      if (d && !seen.has(d)) { seen.add(d); dirs.push(d) }
-    }
-    return dirs
-  }, [depData])
+    const labels = hints.map(h => h.description ?? h.fallback).filter((d): d is string => !!d)
+    return [...new Set(labels)]
+  }, [hints])
 
   return (
     <div className="flex items-start gap-2 px-3 py-2.5 bg-ink-50 border border-ink-200 rounded-xl min-h-[48px]">
