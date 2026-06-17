@@ -219,6 +219,11 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       )}
 
       {/* ── Direction filter chips ── */}
+      {quayDirections.length === 1 && (
+        <p className="text-[11px] text-ink-500 mb-3">
+          Retning: <span className="font-medium">{quayDirections[0].label}</span>
+        </p>
+      )}
       {quayDirections.length > 1 && (
         <div className="flex items-center gap-1.5 flex-wrap mb-3">
           <button
@@ -229,7 +234,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
                 : 'text-ink-600 border-ink-200 hover:border-accent-300'
             }`}
           >
-            All directions
+            Alle retninger
           </button>
           {quayDirections.map(d => (
             <button

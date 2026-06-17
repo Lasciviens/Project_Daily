@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchTrips, fetchStopQuays, type StopResult, type TransitPlace } from '../../api/ruterApi'
+import { fetchTrips, fetchDepartures, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
@@ -85,20 +85,27 @@ function suggestLabel(from: TransitPlace, to: TransitPlace): string {
   return `${from.name.split(',')[0].trim()} → ${to.name.split(',')[0].trim()}`
 }
 
-// Selected stop card with quay direction hints
+// Stop card that shows direction hints by fetching a few real departures
 function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => void }) {
-  const { data: quays } = useQuery({
-    queryKey:  ['stopQuays', place.kind === 'stop' ? place.id : null],
-    queryFn:   () => fetchStopQuays((place as { id: string }).id),
+  const { data: depData } = useQuery({
+    queryKey:  ['stop-directions', place.kind === 'stop' ? place.id : null],
+    queryFn:   () => fetchDepartures((place as { id: string }).id, 8),
     enabled:   place.kind === 'stop',
-    staleTime: 10 * 60_000,
+    staleTime: 5 * 60_000,
     retry:     false,
   })
-  const directions = quays
-    ?.map(q => q.description)
-    .filter((d): d is string => Boolean(d))
-    .filter((d, i, arr) => arr.indexOf(d) === i)
-    ?? []
+
+  // Extract unique quay directions from real departure data
+  const directions = useMemo(() => {
+    if (!depData?.departures) return []
+    const seen = new Set<string>()
+    const dirs: string[] = []
+    for (const dep of depData.departures) {
+      const d = dep.quayDescription
+      if (d && !seen.has(d)) { seen.add(d); dirs.push(d) }
+    }
+    return dirs
+  }, [depData])
 
   return (
     <div className="flex items-start gap-2 px-3 py-2.5 bg-ink-50 border border-ink-200 rounded-xl min-h-[48px]">
@@ -106,7 +113,7 @@ function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-ink-800 leading-snug">{place.name}</p>
         {directions.length > 0 && (
-          <p className="text-[10px] text-ink-400 mt-0.5 truncate">{directions.join(' · ')}</p>
+          <p className="text-[10px] text-ink-400 mt-0.5">{directions.join(' · ')}</p>
         )}
       </div>
       <button
