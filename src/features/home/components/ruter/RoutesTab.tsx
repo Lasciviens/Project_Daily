@@ -108,7 +108,7 @@ function PlaceRow({
   locState:    LocationState
   placeholder: string
   favorites:   { id: string; name: string }[]
-  onSelect:    (s: import('../../api/ruterApi').StopResult) => void
+  onSelect:    (s: StopResult) => void
   onClear:     () => void
   onLocate:    () => void
 }) {
@@ -374,15 +374,19 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
-  const canPlan = !!(draftFrom && draftTo)
+  const canPlan    = !!(draftFrom && draftTo)
+  const hasResults = !!(filteredData && search)
+  const [formExpanded, setFormExpanded] = useState(true)
+  // Show the full form when: no results yet, OR user clicked Edit
+  const showForm = !hasResults || formExpanded
 
   return (
     <div>
       {/* ── Saved routes ── */}
       {routes.length > 0 && (
         <div className="mb-3">
-          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Saved routes</p>
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-2">Saved routes</p>
+          <div className="flex items-start gap-1.5 flex-wrap">
             {routes.map(r => {
               const active =
                 draftFrom?.kind === 'stop' && draftFrom.id === r.from_stop_id &&
@@ -392,7 +396,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                   key={r.id}
                   route={r}
                   active={active}
-                  onSelect={() => applyPreset(r)}
+                  onSelect={() => { applyPreset(r); setFormExpanded(false) }}
                   onDelete={() => removeRoute(r.id)}
                 />
               )
@@ -401,149 +405,155 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
         </div>
       )}
 
-      {/* ── Plan route form ── */}
-      <div className="mb-3">
-        <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-2">Plan route</p>
-
-        {/* FROM / TO compact card */}
-        <div className="border border-ink-200 rounded-xl overflow-hidden mb-2 bg-white">
-          <PlaceRow
-            dot="from"
-            place={draftFrom}
-            locState={fromLocState}
-            placeholder="From: stop or address…"
-            favorites={favoriteStops}
-            onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }}
-            onClear={() => { setDraftFrom(null); setFromLocState('idle') }}
-            onLocate={() => locateFor('from')}
-          />
-          <div className="flex items-center border-t border-ink-100">
-            <div className="flex-1 h-px" />
-            <button
-              onClick={swapStops}
-              disabled={!draftFrom && !draftTo}
-              title="Swap"
-              className="text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-30 text-base"
-            >⇅</button>
-          </div>
-          <PlaceRow
-            dot="to"
-            place={draftTo}
-            locState={toLocState}
-            placeholder="To: stop or address…"
-            favorites={favoriteStops}
-            onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }}
-            onClear={() => { setDraftTo(null); setToLocState('idle') }}
-            onLocate={() => locateFor('to')}
-          />
+      {/* ── Collapsed summary bar — shown when results exist and form is hidden ── */}
+      {hasResults && !formExpanded && search && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-ink-50 rounded-xl border border-ink-100">
+          <span className="flex-1 text-xs text-ink-700 truncate">
+            <span className="font-medium">{search.from.name.split(',')[0]}</span>
+            <span className="text-ink-400"> → </span>
+            <span className="font-medium">{search.to.name.split(',')[0]}</span>
+            <span className="text-ink-400"> · {search.label}</span>
+          </span>
+          <button
+            onClick={() => setFormExpanded(true)}
+            className="text-xs text-accent-600 hover:text-accent-800 transition-colors duration-150 font-medium flex-shrink-0 min-h-[44px] px-1 flex items-center"
+          >
+            ✏ Edit
+          </button>
         </div>
+      )}
 
-        {/* WHEN */}
-        <div className="mb-2">
-          <div className="flex items-center gap-1.5 flex-wrap mb-2">
-            {(['now', '+15', '+30', '+1h', 'arriveBy', 'custom'] as WhenPreset[]).map(p => (
+      {/* ── Plan route form ── */}
+      {showForm && (
+        <div className="mb-3">
+
+          {/* From/To compact card */}
+          <div className="border border-ink-200 rounded-xl overflow-hidden mb-2 bg-white">
+            <PlaceRow
+              dot="from"
+              place={draftFrom}
+              locState={fromLocState}
+              placeholder="From — stop or address…"
+              favorites={favoriteStops}
+              onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }}
+              onClear={() => { setDraftFrom(null); setFromLocState('idle') }}
+              onLocate={() => locateFor('from')}
+            />
+            {/* Divider with swap */}
+            <div className="flex items-center border-t border-dashed border-ink-100">
+              <div className="flex-1 h-px" />
               <button
-                key={p}
-                onClick={() => setDraftWhen(p)}
-                className={`text-xs px-2.5 py-2.5 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-                  draftWhen === p
-                    ? 'bg-accent-500 text-white border-accent-500'
-                    : 'text-ink-600 border-ink-200 hover:border-accent-300'
-                }`}
+                onClick={swapStops}
+                disabled={!draftFrom && !draftTo}
+                title="Swap from / to"
+                className="text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-30 text-base"
               >
-                {p === 'now' ? 'Now' : p === 'arriveBy' ? 'Arrive by…' : p === 'custom' ? 'Custom…' : p}
+                ⇅
               </button>
-            ))}
+            </div>
+            <PlaceRow
+              dot="to"
+              place={draftTo}
+              locState={toLocState}
+              placeholder="To — stop or address…"
+              favorites={favoriteStops}
+              onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }}
+              onClear={() => { setDraftTo(null); setToLocState('idle') }}
+              onLocate={() => locateFor('to')}
+            />
           </div>
 
-          {/* Arrive by: today only, just pick a time */}
-          {draftWhen === 'arriveBy' && (
-            <div className="mb-2">
-              <select
-                value={draftTime}
-                onChange={e => setDraftTime(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-accent-300 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-accent-50 min-h-[44px]"
-              >
-                {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <p className="text-[10px] text-ink-400 mt-1">I want to be there by this time today</p>
+          {/* WHEN chips */}
+          <div className="mb-2">
+            <div className="flex items-center gap-1 flex-wrap mb-1.5">
+              {(['now', '+15', '+30', '+1h', 'arriveBy', 'custom'] as WhenPreset[]).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setDraftWhen(p)}
+                  className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+                    draftWhen === p
+                      ? 'bg-accent-500 text-white border-accent-500'
+                      : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                  }`}
+                >
+                  {p === 'now' ? 'Now' : p === 'arriveBy' ? 'Arrive by' : p === 'custom' ? 'Custom' : p}
+                </button>
+              ))}
             </div>
-          )}
 
-          {draftWhen === 'custom' && (
-            <div className="space-y-2 mb-2">
-              <div className="flex gap-1.5">
-                {(['departAt', 'arriveBy'] as TripMode[]).map(m => (
-                  <button
-                    key={m}
-                    onClick={() => setDraftMode(m)}
-                    className={`text-xs px-2.5 py-2.5 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-                      draftMode === m
-                        ? 'bg-ink-700 text-white border-ink-700'
-                        : 'text-ink-500 border-ink-200 hover:border-ink-400'
-                    }`}
-                  >
-                    {m === 'departAt' ? 'Leave at' : 'Arrive by'}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={draftDate}
-                  min={todayString()}
-                  onChange={e => setDraftDate(e.target.value)}
-                  className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
-                />
+            {/* Arrive by: today only, pick a time */}
+            {draftWhen === 'arriveBy' && (
+              <div className="mb-1.5">
                 <select
                   value={draftTime}
                   onChange={e => setDraftTime(e.target.value)}
-                  className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+                  className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-accent-300 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-accent-50 min-h-[44px]"
                 >
                   {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+                <p className="text-[10px] text-ink-400 mt-1">Arrive by this time today</p>
               </div>
-            </div>
-          )}
-        </div>
+            )}
 
-        {/* Preferred line filter */}
-        <div className="mb-3">
-          <div className="flex items-center gap-2">
-            <input
-              value={draftLine}
-              onChange={e => setDraftLine(e.target.value)}
-              placeholder="Prefer a line? e.g. 68, 31E (optional)"
-              className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px] placeholder:text-ink-300"
-            />
-            {draftLine && (
-              <button
-                onClick={() => setDraftLine('')}
-                className="text-ink-300 hover:text-ink-600 text-xs min-w-[32px] flex items-center justify-center"
-              >✕</button>
+            {draftWhen === 'custom' && (
+              <div className="space-y-1.5 mb-1.5">
+                <div className="flex gap-1.5">
+                  {(['departAt', 'arriveBy'] as TripMode[]).map(m => (
+                    <button
+                      key={m}
+                      onClick={() => setDraftMode(m)}
+                      className={`text-xs px-2.5 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+                        draftMode === m
+                          ? 'bg-ink-700 text-white border-ink-700'
+                          : 'text-ink-500 border-ink-200 hover:border-ink-400'
+                      }`}
+                    >
+                      {m === 'departAt' ? 'Leave at' : 'Arrive by'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={draftDate}
+                    min={todayString()}
+                    onChange={e => setDraftDate(e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+                  />
+                  <select
+                    value={draftTime}
+                    onChange={e => setDraftTime(e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+                  >
+                    {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
             )}
           </div>
-          {draftLine && (
-            <p className="text-[10px] text-ink-400 mt-1">Results will be filtered to trips using line {draftLine.trim()}</p>
-          )}
+
+          {/* Plan route button */}
+          <button
+            onClick={() => { handlePlan(); setFormExpanded(false) }}
+            disabled={!canPlan}
+            className="w-full py-2.5 rounded-xl bg-accent-500 text-white text-sm font-semibold hover:bg-accent-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
+          >
+            Plan route
+          </button>
+
+          {/* Line filter — collapsible, hidden by default */}
+          <LineFilterSection
+            draftLine={draftLine}
+            setDraftLine={setDraftLine}
+            search={search}
+            lineFilterActive={lineFilterActive}
+            lineMatchCount={lineMatchCount}
+          />
         </div>
-
-        {/* Plan route button */}
-        <button
-          onClick={handlePlan}
-          disabled={!canPlan}
-          className="w-full py-2.5 rounded-xl bg-accent-500 text-white text-sm font-semibold hover:bg-accent-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
-        >
-          Plan route
-        </button>
-
-        {!canPlan && (
-          <p className="text-xs text-ink-400 mt-2">Choose From and To to see route options.</p>
-        )}
-      </div>
+      )}
 
       {/* ── Results ── */}
-      {isLoading && <div className="text-ink-400 text-sm">Loading trips…</div>}
+      {isLoading && <div className="text-ink-400 text-sm py-1">Loading trips…</div>}
 
       {error && (
         <div className="text-red-500 text-xs py-1">
@@ -554,77 +564,129 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
         </div>
       )}
 
-      {filteredData && search && (
+      {hasResults && search && (
         <>
-          {/* Result meta */}
-          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-            <span className="text-[10px] text-ink-500">
-              Planning: <span className="font-medium">{search.label}</span>
+          {/* Timestamp + save action */}
+          <div className="flex items-center justify-between mb-2 gap-2">
+            <span className="text-[10px] text-ink-400">
+              {lastUpdated ? `Updated ${fmtLastUpdated(lastUpdated)}` : ''}
               {!canSave && ' · GPS routes cannot be saved'}
             </span>
-            <span className="text-[10px] text-ink-400 flex-shrink-0">
-              {lastUpdated ? `Updated ${fmtLastUpdated(lastUpdated)}` : ''}
-            </span>
+            {canSave && !alreadySaved && !showSaveForm && (
+              <button onClick={openSaveForm} className="text-[10px] text-accent-500 hover:text-accent-700 transition-colors duration-150 flex-shrink-0">
+                + Save route
+              </button>
+            )}
           </div>
 
-          {/* Line filter note */}
-          {lineFilterActive && (
+          {/* Line filter active notice */}
+          {lineFilterActive && search.preferredLine && (
             <div className="mb-2 text-[10px] px-2.5 py-1.5 rounded-lg bg-accent-50 border border-accent-100 text-accent-700">
               {lineMatchCount > 0
                 ? `Showing ${lineMatchCount} trip${lineMatchCount !== 1 ? 's' : ''} using line ${search.preferredLine}`
-                : `No trips found with line ${search.preferredLine} — showing all options`
+                : `No trips found with line ${search.preferredLine} — showing all`
               }
             </div>
           )}
 
-          {/* Save route */}
-          {canSave && !alreadySaved && (
-            <div className="mb-3">
-              {!showSaveForm ? (
-                <button onClick={openSaveForm} className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150">
-                  + Save this route
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    value={saveLabel}
-                    onChange={e => setSaveLabel(e.target.value)}
-                    placeholder="Route label…"
-                    className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
-                    onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
-                    autoFocus
-                  />
-                  <button
-                    onClick={handleSaveRoute}
-                    disabled={!saveLabel.trim() || saving}
-                    className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
-                  >
-                    {saving ? '…' : 'Save'}
-                  </button>
-                  <button
-                    onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
-                    className="text-ink-400 hover:text-ink-600 text-xs min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  >✕</button>
-                </div>
-              )}
-              {saveMsg && (
-                <p className={`text-xs mt-1 ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>
-                  {saveMsg}
-                </p>
-              )}
+          {/* Save form */}
+          {canSave && !alreadySaved && showSaveForm && (
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                value={saveLabel}
+                onChange={e => setSaveLabel(e.target.value)}
+                placeholder="Route label…"
+                className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+                onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
+                autoFocus
+              />
+              <button
+                onClick={handleSaveRoute}
+                disabled={!saveLabel.trim() || saving}
+                className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
+              >
+                {saving ? '…' : 'Save'}
+              </button>
+              <button
+                onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
+                className="text-ink-400 hover:text-ink-600 text-xs min-h-[44px] min-w-[44px] flex items-center justify-center"
+              >✕</button>
             </div>
+          )}
+          {saveMsg && (
+            <p className={`text-xs mb-2 ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>
+              {saveMsg}
+            </p>
           )}
 
           {/* Trip cards */}
-          <div className="space-y-3">
-            {filteredData.length === 0
+          <div className="space-y-2">
+            {filteredData!.length === 0
               ? <div className="text-ink-400 text-sm">No trips found</div>
-              : filteredData.map((trip, i) => (
+              : filteredData!.map((trip, i) => (
                   <TripCard key={i} trip={trip} now={now} isBest={i === 0} />
                 ))
             }
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+// ─── Line filter collapsible ──────────────────────────────────────────────────
+
+// Separate component so the main render block stays readable
+function LineFilterSection({
+  draftLine,
+  setDraftLine,
+  search,
+  lineFilterActive,
+  lineMatchCount,
+}: {
+  draftLine:        string
+  setDraftLine:     (v: string) => void
+  search:           SearchParams | null
+  lineFilterActive: boolean
+  lineMatchCount:   number
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="text-[10px] text-ink-400 hover:text-ink-600 transition-colors duration-150 flex items-center gap-1 min-h-[32px]"
+      >
+        <span>{open ? '▲' : '+'}</span>
+        <span>Filter by line</span>
+        {draftLine && <span className="text-accent-500 font-medium">{draftLine}</span>}
+      </button>
+      {open && (
+        <div className="mt-1.5">
+          <div className="flex items-center gap-2">
+            <input
+              value={draftLine}
+              onChange={e => setDraftLine(e.target.value)}
+              placeholder="e.g. 68, 31E"
+              className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px] placeholder:text-ink-300"
+            />
+            {draftLine && (
+              <button
+                onClick={() => setDraftLine('')}
+                className="text-ink-300 hover:text-ink-600 text-xs min-w-[44px] min-h-[44px] flex items-center justify-center"
+              >✕</button>
+            )}
+          </div>
+          {lineFilterActive && search?.preferredLine && (
+            <p className="text-[10px] text-ink-400 mt-1">
+              {lineMatchCount > 0
+                ? `${lineMatchCount} trip${lineMatchCount !== 1 ? 's' : ''} using line ${search.preferredLine}`
+                : `No trips with line ${search.preferredLine} — showing all`
+              }
+            </p>
+          )}
+        </div>
       )}
     </div>
   )
