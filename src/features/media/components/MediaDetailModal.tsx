@@ -78,7 +78,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors duration-150 text-sm"
+            className="absolute top-3 right-3 w-11 h-11 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors duration-150 text-sm"
             aria-label="Close"
           >
             ×

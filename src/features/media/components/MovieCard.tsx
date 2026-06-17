@@ -1,4 +1,4 @@
-import { posterUrl } from '../../../integrations/tmdb/client'
+import { posterUrl, tmdbMovieUrl } from '../../../integrations/tmdb/client'
 import type { UserMovieEntry } from '../types'
 import { useUpdateMovie } from '../hooks/useMovies'
 import { PlanThisButton } from './PlanThisButton'
@@ -77,6 +77,15 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
               ✓ Mark watched
             </button>
           )}
+          <a
+            href={tmdbMovieUrl(movie.tmdb_id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="text-[10px] text-white/60 hover:text-white transition-colors duration-150"
+          >
+            TMDB ↗
+          </a>
         </div>
       </div>
 
@@ -87,9 +96,11 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
             {formatReleaseDate(movie.release_date)}
           </p>
           <div className="flex items-center justify-between mt-0.5">
-            {movie.tmdb_rating && (
+            {entry.rating ? (
+              <span className="text-[10px] text-accent-500 font-medium">★ {entry.rating}/10</span>
+            ) : movie.tmdb_rating ? (
               <span className="text-[10px] text-ink-400">★ {movie.tmdb_rating.toFixed(1)}</span>
-            )}
+            ) : null}
             <span className="text-[10px] text-ink-400">{STATUS_LABELS[entry.status]}</span>
           </div>
         </div>
