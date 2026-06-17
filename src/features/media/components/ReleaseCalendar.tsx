@@ -72,7 +72,7 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props
     <div className="mb-6">
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 mb-3 w-full text-left group"
+        className="flex items-center gap-2 mb-3 w-full text-left group min-h-[44px]"
       >
         <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">
           📅 Coming Soon
@@ -98,7 +98,7 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props
               <div
                 key={item.id}
                 onClick={() => onOpenDetail(item.tmdbId, item.type)}
-                className="flex items-center gap-3 p-2.5 rounded-lg border border-ink-100 hover:border-accent-200 hover:bg-accent-50/30 cursor-pointer transition-colors duration-150"
+                className="flex items-center gap-3 p-2.5 min-h-[60px] rounded-lg border border-ink-100 hover:border-accent-200 hover:bg-accent-50/30 cursor-pointer transition-colors duration-150"
               >
                 <img
                   src={posterUrl(item.poster, 'w92')}

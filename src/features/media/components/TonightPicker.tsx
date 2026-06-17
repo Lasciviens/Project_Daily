@@ -70,7 +70,7 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
             <button
               key={f}
               onClick={() => { setFilter(f); setPicked(null) }}
-              className={`text-[10px] px-2 py-0.5 rounded font-medium transition-colors duration-150 ${
+              className={`text-[10px] px-2.5 min-h-[44px] rounded font-medium transition-colors duration-150 ${
                 filter === f ? 'bg-accent-500 text-white' : 'text-ink-400 hover:bg-ink-100'
               }`}
             >
@@ -104,13 +104,13 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
               <div className="flex gap-2">
                 <button
                   onClick={() => tmdbId && onOpenDetail(tmdbId, picked.kind === 'movie' ? 'movie' : 'tv')}
-                  className="text-xs px-3 py-1 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150"
+                  className="text-xs px-3 min-h-[44px] rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150"
                 >
                   Details
                 </button>
                 <button
                   onClick={roll}
-                  className="text-xs px-3 py-1 rounded-lg border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors duration-150"
+                  className="text-xs px-3 min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors duration-150"
                 >
                   Reroll
                 </button>
@@ -124,7 +124,7 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
               <button
                 onClick={roll}
                 disabled={total === 0}
-                className="text-sm px-4 py-1.5 rounded-lg bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
+                className="text-sm px-4 min-h-[44px] rounded-lg bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
               >
                 Pick for me 🎲
               </button>
