@@ -61,6 +61,8 @@ jobs:
           VITE_GOOGLE_CLIENT_ID:    ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_STRAVA_CLIENT_ID:    ${{ secrets.VITE_STRAVA_CLIENT_ID }}
           VITE_OXR_APP_ID:          ${{ secrets.VITE_OXR_APP_ID }}
+          VITE_RP5_SUPABASE_URL:    ${{ secrets.VITE_RP5_SUPABASE_URL }}
+          VITE_RP5_SUPABASE_ANON_KEY: ${{ secrets.VITE_RP5_SUPABASE_ANON_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
