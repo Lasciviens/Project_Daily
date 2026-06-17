@@ -51,8 +51,9 @@ export function GamesHomeWidget() {
       {statsLoading && <div className="text-ink-400 text-sm">Loading…</div>}
 
       {statsError && (
-        <div className="text-xs text-red-500">
-          Could not load games — check RP5 connection
+        <div className="text-xs text-red-500 space-y-0.5">
+          <div>Could not load games</div>
+          <div className="text-[10px] text-red-400 break-all">{(statsError as Error).message}</div>
         </div>
       )}
 
