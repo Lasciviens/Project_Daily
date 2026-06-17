@@ -340,52 +340,55 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
         {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-300 hover:text-ink-600">✕</button>}
       </div>
 
-      {/* Status chips */}
-      <div className="flex gap-1.5 flex-wrap mb-2">
+      {/* Status chips — horizontally scrollable on mobile */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2 scrollbar-none">
         <button onClick={() => setStatusFilter(null)}
-          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors min-h-[36px] ${!statusFilter ? 'bg-accent-500 text-white border-accent-500' : 'bg-white text-ink-600 border-ink-200 hover:border-accent-300'}`}
+          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] flex-shrink-0 ${!statusFilter ? 'bg-accent-500 text-white border-accent-500' : 'bg-white text-ink-600 border-ink-200 hover:border-accent-300'}`}
         >All</button>
         {STATUSES.map(s => (
           <button key={s} onClick={() => setStatusFilter(statusFilter === s ? null : s)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors min-h-[36px] ${statusFilter === s ? 'bg-accent-500 text-white border-accent-500' : 'bg-white text-ink-600 border-ink-200 hover:border-accent-300'}`}
+            className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] flex-shrink-0 ${statusFilter === s ? 'bg-accent-500 text-white border-accent-500' : 'bg-white text-ink-600 border-ink-200 hover:border-accent-300'}`}
           >{STATUS_LABEL[s]}</button>
         ))}
       </div>
 
-      {/* Dropdowns + toggles + sort + view */}
+      {/* Dropdowns + toggles — wrap on mobile */}
       <div className="flex items-center gap-2 flex-wrap mb-2">
         <select value={tierFilter ?? ''} onChange={e => setTierFilter(e.target.value || null)}
-          className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${tierFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+          className={`text-xs px-2 py-2 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${tierFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
           <option value="">Tier: All</option>
           {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
         </select>
         <select value={genreFilter ?? ''} onChange={e => setGenreFilter(e.target.value || null)}
-          className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${genreFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+          className={`text-xs px-2 py-2 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${genreFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
           <option value="">Genre: All</option>
           {genreOptions.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
         <select value={platformFilter ?? ''} onChange={e => setPlatformFilter(e.target.value || null)}
-          className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${platformFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+          className={`text-xs px-2 py-2 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${platformFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
           <option value="">Platform: All</option>
           {platformOptions.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         {seriesOptions.length > 0 && (
           <select value={seriesFilter ?? ''} onChange={e => setSeriesFilter(e.target.value || null)}
-            className={`text-xs px-2 py-1.5 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px] ${seriesFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+            className={`text-xs px-2 py-2 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${seriesFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
             <option value="">Series: All</option>
             {seriesOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         )}
         <button onClick={() => setCoopOnly(v => !v)}
-          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors min-h-[36px] ${coopOnly ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'}`}
+          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${coopOnly ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'}`}
         >2P Co-op</button>
         <button onClick={() => setIconicOnly(v => !v)}
-          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors min-h-[36px] ${iconicOnly ? 'bg-yellow-400 text-yellow-900 border-yellow-400' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'}`}
+          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${iconicOnly ? 'bg-yellow-400 text-yellow-900 border-yellow-400' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'}`}
         >⭐ Iconic</button>
-        <div className="flex-1" />
+      </div>
+
+      {/* Sort + view mode — separate row, scrollable on mobile */}
+      <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 scrollbar-none">
         {view !== 'series' && (
           <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
-            className="text-xs px-2 py-1.5 rounded-lg border border-ink-200 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[36px]">
+            className="text-xs px-2 py-2 rounded-lg border border-ink-200 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] flex-shrink-0">
             <option value="az">A → Z</option>
             <option value="za">Z → A</option>
             <option value="year-asc">Year ↑</option>
@@ -395,10 +398,10 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
             <option value="series">By Series</option>
           </select>
         )}
-        <div className="flex border border-ink-200 rounded-lg overflow-hidden bg-white">
+        <div className="flex border border-ink-200 rounded-lg overflow-hidden bg-white flex-shrink-0">
           {LIB_VIEWS.map(({ v, icon, label }, i) => (
             <button key={v} onClick={() => setView(v)} title={label}
-              className={`px-2.5 py-1.5 text-sm transition-colors ${view === v ? 'bg-accent-500 text-white' : 'text-ink-500 hover:bg-ink-50'} ${i > 0 ? 'border-l border-ink-200' : ''}`}
+              className={`min-w-[44px] min-h-[44px] px-2.5 py-2 text-sm transition-colors ${view === v ? 'bg-accent-500 text-white' : 'text-ink-500 hover:bg-ink-50'} ${i > 0 ? 'border-l border-ink-200' : ''}`}
             >{icon}</button>
           ))}
         </div>
@@ -418,7 +421,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
         </div>
       )}
       {!isLoading && view === 'compact' && (
-        <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-1.5">
+        <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-10 lg:grid-cols-12 gap-1.5">
           {filtered.map(g => <CompactCard key={g.id} game={g} onClick={() => onOpenDetail(g.id)} />)}
         </div>
       )}
@@ -510,11 +513,11 @@ function RetroidSection() {
           { t: 'queue'   as RetroidTab, label: '▶ Play Queue' },
         ]).map(({ t, label }) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors ${tab === t ? 'bg-accent-500 text-white shadow-sm' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
+            className={`flex-1 min-h-[44px] py-2.5 text-xs font-semibold rounded-lg transition-colors ${tab === t ? 'bg-accent-500 text-white shadow-sm' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
           >{label}</button>
         ))}
         <button onClick={pickRandom}
-          className="ml-2 text-xs px-3 py-2 rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors min-h-[36px] flex-shrink-0"
+          className="ml-2 text-xs px-3 py-2.5 rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors min-h-[44px] flex-shrink-0"
         >🎲</button>
       </div>
 
@@ -566,13 +569,13 @@ export function GamesPage() {
         {/* Top-level platform tabs */}
         <div className="flex items-center gap-3 mb-6">
           <h1 className="text-xl font-bold text-ink-900 mr-2">🎮 Games</h1>
-          <div className="flex gap-1 bg-white rounded-xl border border-ink-200 p-1 shadow-sm">
+          <div className="flex flex-1 gap-1 bg-white rounded-xl border border-ink-200 p-1 shadow-sm">
             {([
               { t: 'retroid'     as PlatformTab, label: '📱 Retroid',      color: platform === 'retroid'     ? 'bg-accent-500 text-white' : '' },
               { t: 'playstation' as PlatformTab, label: '🎮 PlayStation',  color: platform === 'playstation' ? 'bg-accent-500 text-white' : '' },
             ]).map(({ t, label, color }) => (
               <button key={t} onClick={() => setPlatform(t)}
-                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${color || 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
+                className={`flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${color || 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
               >{label}</button>
             ))}
           </div>

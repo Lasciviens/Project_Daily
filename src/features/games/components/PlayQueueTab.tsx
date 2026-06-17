@@ -153,17 +153,17 @@ export function PlayQueueTab() {
         </div>
 
         {/* Info */}
-        <div className="flex-1 min-w-0 py-2">
+        <div className="flex-1 min-w-0 py-2 overflow-hidden">
           <p className="text-sm font-semibold text-ink-800 truncate leading-snug">{game.title}</p>
-          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>
+          <div className="flex items-center gap-1 mt-1 flex-nowrap overflow-hidden">
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border flex-shrink-0 ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>
               {STATUS_LABEL[game.play_status] ?? game.play_status}
             </span>
             {game.tier && (
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${TIER_BADGE[game.tier] ?? 'bg-ink-200'}`}>{game.tier}</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${TIER_BADGE[game.tier] ?? 'bg-ink-200'}`}>{game.tier}</span>
             )}
-            {game.platforms?.slice(0, 2).map((p, i) => (
-              <span key={i} className="text-[10px] bg-ink-50 text-ink-500 border border-ink-200 px-1.5 py-0.5 rounded">{p}</span>
+            {game.platforms?.slice(0, 1).map((p, i) => (
+              <span key={i} className="text-[10px] bg-ink-50 text-ink-500 border border-ink-200 px-1.5 py-0.5 rounded truncate min-w-0">{p}</span>
             ))}
           </div>
         </div>
@@ -173,13 +173,13 @@ export function PlayQueueTab() {
           {!isPlaying && (
             <button
               onClick={() => handleMarkPlaying(game)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-600 transition-colors text-sm"
+              className="w-11 h-11 flex items-center justify-center rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-600 transition-colors text-sm"
               title="Mark as playing"
             >▶</button>
           )}
           <button
             onClick={() => handleRemove(game)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-ink-100 hover:bg-red-100 text-ink-400 hover:text-red-500 transition-colors text-sm"
+            className="w-11 h-11 flex items-center justify-center rounded-lg bg-ink-100 hover:bg-red-100 text-ink-400 hover:text-red-500 transition-colors text-sm"
             title="Remove from queue"
           >✕</button>
         </div>
