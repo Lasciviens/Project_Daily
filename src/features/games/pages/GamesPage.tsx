@@ -69,15 +69,15 @@ export function GamesPage() {
               <div className="space-y-2">
                 {recent.map(g => (
                   <div key={g.id} className="flex items-center gap-3 py-1.5 border-b border-ink-50 last:border-0">
-                    <span className="text-xl flex-shrink-0">{STATUS_ICON[g.status] ?? '🎮'}</span>
+                    <span className="text-xl flex-shrink-0">{STATUS_ICON[g.play_status] ?? '🎮'}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-ink-800 truncate">{g.title}</p>
-                      {g.platform && (
-                        <p className="text-[10px] text-ink-400">{g.platform}</p>
+                      {g.tier && (
+                        <p className="text-[10px] text-ink-400">{g.tier}</p>
                       )}
                     </div>
                     <span className="text-[10px] text-ink-400 flex-shrink-0">
-                      {STATUS_LABEL[g.status] ?? g.status}
+                      {STATUS_LABEL[g.play_status] ?? g.play_status}
                     </span>
                   </div>
                 ))}
