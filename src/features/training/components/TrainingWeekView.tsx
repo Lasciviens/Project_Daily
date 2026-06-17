@@ -36,7 +36,7 @@ export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick,
       <div className="flex items-center justify-between mb-3">
         <button
           onClick={onPrevWeek}
-          className="text-ink-400 hover:text-ink-700 text-sm px-2 py-1 rounded hover:bg-ink-100 transition-colors duration-150"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-sm rounded hover:bg-ink-100 transition-colors duration-150"
         >
           ‹
         </button>
@@ -45,7 +45,7 @@ export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick,
         </span>
         <button
           onClick={onNextWeek}
-          className="text-ink-400 hover:text-ink-700 text-sm px-2 py-1 rounded hover:bg-ink-100 transition-colors duration-150"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-sm rounded hover:bg-ink-100 transition-colors duration-150"
         >
           ›
         </button>

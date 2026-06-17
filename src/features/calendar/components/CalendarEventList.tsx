@@ -45,7 +45,7 @@ export function CalendarEventList({ dateStr }: Props) {
           href={event.htmlLink}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-cream-100 transition-colors duration-150 group"
+          className="flex items-start gap-2.5 px-3 py-2 min-h-[44px] rounded-lg hover:bg-cream-100 transition-colors duration-150 group"
         >
           <div className="w-1 h-full min-h-[1.5rem] rounded-full bg-accent-400 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">

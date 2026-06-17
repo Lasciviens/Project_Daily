@@ -44,7 +44,7 @@ export function ProjectList({ projects, selectedId, onSelect }: Props) {
           <div
             key={p.id}
             onClick={() => onSelect(p.id)}
-            className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-lg mx-1 transition-colors ${
+            className={`flex items-center gap-2 px-3 py-1.5 min-h-[44px] cursor-pointer rounded-lg mx-1 transition-colors ${
               selectedId === p.id
                 ? 'bg-accent-50 border-l-2 border-accent-500'
                 : 'hover:bg-ink-100 border-l-2 border-transparent'
@@ -71,7 +71,7 @@ export function ProjectList({ projects, selectedId, onSelect }: Props) {
         <button
           onClick={handleNew}
           disabled={createProject.isPending}
-          className="w-full text-xs text-accent-600 hover:text-accent-700 py-1.5 rounded hover:bg-accent-50 transition-colors text-left px-2"
+          className="w-full text-xs text-accent-600 hover:text-accent-700 py-1.5 rounded hover:bg-accent-50 transition-colors text-left px-2 min-h-[44px]"
         >
           + New project
         </button>

@@ -90,7 +90,7 @@ export function AIPanel() {
             )}
             <button
               onClick={closeAI}
-              className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
+              className="w-11 h-11 flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
             >
               ×
             </button>
@@ -172,7 +172,7 @@ export function AIPanel() {
             <button
               onClick={() => handleSend(input)}
               disabled={!input.trim() || loading}
-              className="flex-shrink-0 w-9 h-9 bg-accent-500 hover:bg-accent-600 disabled:opacity-40 text-white rounded-lg flex items-center justify-center transition-colors duration-150"
+              className="flex-shrink-0 w-11 h-11 bg-accent-500 hover:bg-accent-600 disabled:opacity-40 text-white rounded-lg flex items-center justify-center transition-colors duration-150"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M14 8L2 2l2 6-2 6 12-6z" fill="currentColor" />

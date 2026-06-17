@@ -69,10 +69,10 @@ export function SessionCard({ session, compact }: Props) {
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm font-medium text-ink-800 leading-snug">{session.title}</p>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             <button
               onClick={() => setShowEdit(true)}
-              className="text-ink-300 hover:text-accent-500 transition-colors duration-150 text-xs"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-xs"
               title="Edit workout"
             >
               ✎
@@ -80,7 +80,7 @@ export function SessionCard({ session, compact }: Props) {
             <button
               onClick={() => del.mutate(session.id)}
               disabled={del.isPending}
-              className="text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
             >
               ✕
             </button>

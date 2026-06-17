@@ -168,7 +168,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
             <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Search stop</p>
             <button
               onClick={() => { setAdHocStop(null); setActiveQuay(null) }}
-              className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150 px-1"
+              className="text-xs text-accent-500 hover:text-accent-700 transition-colors duration-150 px-1 min-h-[44px] flex items-center"
             >
               Change stop
             </button>
@@ -191,7 +191,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
             {adHocStop && !alreadySaved && (
               <button
                 onClick={handleSaveFavorite}
-                className="text-[10px] text-accent-500 hover:text-accent-700 transition-colors duration-150 flex-shrink-0"
+                className="text-[10px] text-accent-500 hover:text-accent-700 transition-colors duration-150 flex-shrink-0 min-h-[44px] flex items-center px-1"
               >
                 + Save
               </button>

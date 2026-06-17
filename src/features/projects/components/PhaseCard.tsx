@@ -75,16 +75,24 @@ export function PhaseCard({
         {open && (
           <button
             onClick={e => { e.stopPropagation(); onAddItem() }}
-            className="text-[10px] text-accent-600 hover:text-accent-700 px-2 py-0.5 rounded hover:bg-accent-50"
+            className="text-[10px] text-accent-600 hover:text-accent-700 px-2 py-0.5 rounded hover:bg-accent-50 min-h-[44px] min-w-[44px] flex items-center justify-center lg:min-h-0 lg:min-w-0"
           >
             + item
           </button>
         )}
 
+        {/* Always visible on mobile; hover-only on desktop */}
+        <button
+          onClick={handleDeletePhase}
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center text-[10px] text-ink-300 hover:text-red-400 ml-1 lg:hidden"
+          title="Delete phase"
+        >
+          ✕
+        </button>
         {hovered && (
           <button
             onClick={handleDeletePhase}
-            className="text-[10px] text-ink-300 hover:text-red-400 ml-1"
+            className="hidden lg:flex items-center justify-center text-[10px] text-ink-300 hover:text-red-400 ml-1"
             title="Delete phase"
           >
             ✕

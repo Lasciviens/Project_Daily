@@ -342,15 +342,17 @@ function WorkTaskRow({
       >
         <button
           onClick={onToggle}
-          className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors duration-150 ${
-            isDone ? 'bg-accent-500 border-accent-500 text-white' : 'border-ink-300 hover:border-accent-400'
-          }`}
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 -ml-2 lg:min-w-0 lg:min-h-0 lg:ml-0 lg:w-4 lg:h-4"
         >
-          {isDone && (
-            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-              <path d="M1 4L3.5 6.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
+          <span className={`w-4 h-4 rounded border flex items-center justify-center transition-colors duration-150 ${
+            isDone ? 'bg-accent-500 border-accent-500 text-white' : 'border-ink-300 hover:border-accent-400'
+          }`}>
+            {isDone && (
+              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                <path d="M1 4L3.5 6.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </span>
         </button>
 
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />

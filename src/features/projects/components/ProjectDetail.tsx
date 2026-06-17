@@ -103,7 +103,7 @@ export function ProjectDetail({ project, onDelete }: Props) {
           <button
             onClick={handleDeleteProject}
             disabled={deleteProject.isPending}
-            className={`text-[10px] ml-auto transition-colors ${
+            className={`min-w-[44px] min-h-[44px] ml-auto flex items-center justify-center transition-colors ${
               deleteProject.isPending ? 'text-ink-200 cursor-not-allowed' : 'text-ink-300 hover:text-red-400'
             }`}
             title="Delete project"
@@ -118,17 +118,19 @@ export function ProjectDetail({ project, onDelete }: Props) {
           placeholder="Add a description…"
         />
 
-        {/* Color picker */}
-        <div className="flex gap-1.5 mt-1">
+        {/* Color picker — enlarged tap targets on mobile */}
+        <div className="flex gap-1 mt-1">
           {COLORS.map(c => (
             <button
               key={c}
               onClick={() => updateProject.mutate({ id: project.id, patch: { color: c } })}
-              className={`w-4 h-4 rounded-full ${COLOR_DOT[c]} transition-transform hover:scale-110 ${
-                project.color === c ? 'ring-2 ring-offset-1 ring-ink-400' : ''
-              }`}
+              className={`min-w-[44px] min-h-[44px] flex items-center justify-center lg:min-w-0 lg:min-h-0 lg:w-5 lg:h-5`}
               title={c}
-            />
+            >
+              <span className={`w-4 h-4 rounded-full ${COLOR_DOT[c]} transition-transform hover:scale-110 ${
+                project.color === c ? 'ring-2 ring-offset-1 ring-ink-400' : ''
+              }`} />
+            </button>
           ))}
         </div>
 

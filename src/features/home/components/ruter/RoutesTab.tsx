@@ -372,7 +372,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                   <span className="text-[11px] text-red-500 py-1 block">Location permission denied</span>
                 ) : (
                   <button onClick={() => locateFor('from')}
-                    className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1">
+                    className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1 min-h-[44px] flex items-center">
                     📍 Use current location
                   </button>
                 )}
@@ -384,7 +384,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
           {draftFrom && draftTo && (
             <div className="flex justify-end -mt-1">
               <button onClick={swapStops}
-                className="text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150 flex items-center gap-1 min-h-[36px] px-2">
+                className="text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150 flex items-center gap-1 min-h-[44px] px-2">
                 ⇅ Swap
               </button>
             </div>
@@ -405,7 +405,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                   <span className="text-[11px] text-red-500 py-1 block">Location permission denied</span>
                 ) : (
                   <button onClick={() => locateFor('to')}
-                    className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1">
+                    className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1 min-h-[44px] flex items-center">
                     📍 Use current location
                   </button>
                 )}
@@ -479,7 +479,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                 setSaveLabel(suggestLabel(draftFrom!, draftTo!))
                 setShowSaveForm(true)
               }}
-              className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150"
+              className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center"
             >
               💾 Save as favorite route
             </button>
@@ -511,7 +511,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
           <div>
             {!showLineFilter ? (
               <button onClick={() => setShowLineFilter(true)}
-                className="text-[11px] text-ink-400 hover:text-ink-600 transition-colors duration-150">
+                className="text-[11px] text-ink-400 hover:text-ink-600 transition-colors duration-150 min-h-[44px] flex items-center">
                 + Filter by line number
               </button>
             ) : (
@@ -542,7 +542,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             <span className="text-[10px] text-ink-400">{lastUpdated ? fmtLastUpdated(lastUpdated) : ''}</span>
             {canSave && !alreadySaved && !showSaveForm && (
               <button onClick={() => { setSaveLabel(suggestLabel(search.from, search.to)); setShowSaveForm(true) }}
-                className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150">
+                className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center">
                 + Save this route
               </button>
             )}

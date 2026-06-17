@@ -58,7 +58,7 @@ export function CalendarConnect() {
       <button
         onClick={handleDisconnect}
         disabled={loading}
-        className="flex items-center gap-1.5 text-xs text-ink-500 hover:text-ink-700 transition-colors duration-150 disabled:opacity-50"
+        className="flex items-center gap-1.5 text-xs text-ink-500 hover:text-ink-700 transition-colors duration-150 disabled:opacity-50 min-h-[44px]"
         title="Disconnect Google Calendar"
       >
         <span className="w-2 h-2 rounded-full bg-green-400" />
@@ -72,7 +72,7 @@ export function CalendarConnect() {
       <button
         onClick={() => { setError(null); login() }}
         disabled={loading}
-        className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150 disabled:opacity-50"
+        className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]"
         title="Connect Google Calendar"
       >
         <span className="w-2 h-2 rounded-full bg-ink-200" />

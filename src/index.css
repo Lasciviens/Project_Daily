@@ -39,22 +39,22 @@
 
   .btn-primary {
     @apply bg-accent-500 hover:bg-accent-600 text-white font-medium px-4 py-2 rounded-lg
-           transition-colors duration-150 cursor-pointer border-none text-sm;
+           transition-colors duration-150 cursor-pointer border-none text-sm min-h-[44px];
   }
 
   .btn-secondary {
     @apply bg-white hover:bg-ink-100 text-ink-700 font-medium px-4 py-2 rounded-lg
-           transition-colors duration-150 cursor-pointer border border-ink-200 text-sm;
+           transition-colors duration-150 cursor-pointer border border-ink-200 text-sm min-h-[44px];
   }
 
   .btn-ghost {
     @apply hover:bg-ink-100 text-ink-500 hover:text-ink-700 px-3 py-1.5 rounded-lg
-           transition-colors duration-150 cursor-pointer border-none bg-transparent text-sm;
+           transition-colors duration-150 cursor-pointer border-none bg-transparent text-sm min-h-[44px];
   }
 
   .input {
     @apply w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900
            placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
-           focus:border-accent-400 transition-colors duration-150;
+           focus:border-accent-400 transition-colors duration-150 min-h-[44px];
   }
 }

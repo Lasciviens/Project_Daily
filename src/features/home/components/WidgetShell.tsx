@@ -35,11 +35,12 @@ export function WidgetShell({ title, ws, onManualSync, headerRight, children }: 
   return (
     <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden">
       {/* ── Header ── */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-ink-100 min-h-[40px]">
-        {/* Collapse toggle */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-ink-100 min-h-[44px]">
+        {/* Collapse toggle — oversized tap target on mobile, compact on desktop */}
+        {/* 44px tap target on mobile, compact 16px on desktop */}
         <button
           onClick={ws.toggle}
-          className="text-ink-400 hover:text-ink-700 transition-colors duration-150 w-4 text-center flex-shrink-0"
+          className="text-ink-400 hover:text-ink-700 transition-colors duration-150 flex-shrink-0 min-w-[44px] min-h-[44px] -ml-3 flex items-center justify-center lg:min-w-0 lg:min-h-0 lg:ml-0 lg:w-4 lg:flex-none"
           title={ws.collapsed ? 'Expand' : 'Collapse'}
         >
           {ws.collapsed ? '▶' : '▼'}
@@ -63,11 +64,11 @@ export function WidgetShell({ title, ws, onManualSync, headerRight, children }: 
               {ws.lastSyncLabel}
             </span>
 
-            {/* Pause / Resume auto-sync */}
+            {/* Pause / Resume auto-sync — min 44px tap target on mobile */}
             <button
               onClick={ws.toggleSync}
               title={ws.syncActive ? 'Pause auto-sync' : 'Resume auto-sync'}
-              className={`text-xs px-1 rounded transition-colors duration-150 ${
+              className={`text-xs rounded transition-colors duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center lg:min-w-0 lg:min-h-0 lg:px-1 ${
                 ws.syncActive
                   ? 'text-ink-400 hover:text-ink-700'
                   : 'text-amber-500 hover:text-amber-700'
@@ -76,12 +77,12 @@ export function WidgetShell({ title, ws, onManualSync, headerRight, children }: 
               {ws.syncActive ? '⏸' : '▶'}
             </button>
 
-            {/* Manual sync */}
+            {/* Manual sync — min 44px tap target on mobile */}
             {onManualSync && (
               <button
                 onClick={handleManualSync}
                 title="Sync now"
-                className="text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150"
+                className="text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center lg:min-w-0 lg:min-h-0"
               >
                 ↻
               </button>
