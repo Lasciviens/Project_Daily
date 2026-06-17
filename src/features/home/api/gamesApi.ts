@@ -132,9 +132,10 @@ export async function reorderQueue(updates: { id: string; play_order: number }[]
 // Query games table directly for play queue (needs play_order column)
 export async function fetchPlayQueue(): Promise<(Game & { play_order: number | null })[]> {
   if (!rp5) throw new Error('RP5 client not configured')
+  // Query games table directly — series_name is computed in the view, not in the raw table
   const { data, error } = await rp5
     .from('games')
-    .select('id,title,cover_url,play_status,tier,rating,igdb_rating,is_iconic,is_coop,release_year,series_name,play_order')
+    .select('id,title,cover_url,play_status,tier,rating,igdb_rating,is_iconic,is_coop,release_year,play_order')
     .in('play_status', ['playing', 'backlog', 'wishlist'])
     .order('play_order', { ascending: true, nullsFirst: false })
     .order('title',      { ascending: true })
