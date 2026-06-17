@@ -101,6 +101,51 @@ const SUMMARY_FIELDS = [
   'series_id', 'series_name', 'external_id', 'genres', 'platforms',
 ].join(',')
 
+// ─── Write types ─────────────────────────────────────────────────────────────
+
+export interface GamePatch {
+  play_status?: string
+  tier?:        string | null
+  rating?:      number | null
+  is_iconic?:   boolean
+  is_coop?:     boolean
+  play_notes?:  string | null
+  play_order?:  number | null
+}
+
+// ─── Write API ───────────────────────────────────────────────────────────────
+
+export async function updateGame(id: string, patch: GamePatch): Promise<void> {
+  if (!rp5) throw new Error('RP5 client not configured')
+  const { error } = await rp5.from('games').update(patch).eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+// Batch-update play_order for multiple games (queue reorder)
+export async function reorderQueue(updates: { id: string; play_order: number }[]): Promise<void> {
+  if (!rp5) throw new Error('RP5 client not configured')
+  await Promise.all(updates.map(({ id, play_order }) =>
+    rp5!.from('games').update({ play_order }).eq('id', id)
+  ))
+}
+
+// Query games table directly for play queue (needs play_order column)
+export async function fetchPlayQueue(): Promise<(Game & { play_order: number | null })[]> {
+  if (!rp5) throw new Error('RP5 client not configured')
+  const { data, error } = await rp5
+    .from('games')
+    .select('id,title,cover_url,play_status,tier,rating,igdb_rating,is_iconic,is_coop,release_year,series_name,play_order')
+    .in('play_status', ['playing', 'backlog', 'wishlist'])
+    .order('play_order', { ascending: true, nullsFirst: false })
+    .order('title',      { ascending: true })
+  if (error) throw new Error(error.message)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((r: any) => ({
+    ...mapGame(r),
+    play_order: r.play_order ?? null,
+  }))
+}
+
 // ─── API ─────────────────────────────────────────────────────────────────────
 
 export async function fetchGameStats(): Promise<GameStats> {
