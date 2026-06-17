@@ -10,10 +10,11 @@ const CLIENT   = 'lasciviens-project-daily'
 export type TransportMode = 'bus' | 'tram' | 'metro' | 'rail' | 'ferry' | 'foot' | 'water' | string
 
 export interface StopResult {
-  id:        string   // NSR:StopPlace:...
+  id:        string   // NSR:StopPlace:... for transit stops, or address provider id
   name:      string
   locality?: string   // city/municipality e.g. "Oslo"
   category?: string   // onstreetBus, metroStation, railStation, etc.
+  layer?:    string   // 'venue' = transit stop, 'address' / 'street' = address
   lat?:      number
   lon?:      number
 }
@@ -143,12 +144,19 @@ export async function searchStops(query: string): Promise<StopResult[]> {
   }
 
   return (json.features ?? [])
-    .filter(f => f.properties.id?.startsWith('NSR:StopPlace:'))
+    .filter(f => {
+      // Keep transit stops (NSR:StopPlace) and address/street results that have coordinates
+      const isStop    = f.properties.id?.startsWith('NSR:StopPlace:')
+      const isAddress = f.properties.layer === 'address' || f.properties.layer === 'street'
+      const hasCoords = f.geometry?.coordinates?.length === 2
+      return isStop || (isAddress && hasCoords)
+    })
     .map(f => ({
-      id:       f.properties.id!,
+      id:       f.properties.id ?? '',
       name:     f.properties.name ?? f.properties.label ?? '',
       locality: f.properties.locality ?? f.properties.county,
-      category: f.properties.category ?? f.properties.layer,
+      category: f.properties.category,
+      layer:    f.properties.layer,
       lat:      f.geometry?.coordinates?.[1],
       lon:      f.geometry?.coordinates?.[0],
     }))

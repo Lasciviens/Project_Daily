@@ -4,19 +4,26 @@ import { searchStops, type StopResult } from '../../api/ruterApi'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface FavoriteStop {
+  id:        string
+  name:      string
+  locality?: string
+}
+
 interface StopSearchInputProps {
   placeholder?: string
   onSelect:     (stop: StopResult) => void
   autoFocus?:   boolean
+  favorites?:   FavoriteStop[]
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function StopSearchInput({ placeholder = 'Search stop…', onSelect, autoFocus }: StopSearchInputProps) {
-  const [q, setQ]               = useState('')
-  const [open, setOpen]         = useState(false)
+export function StopSearchInput({ placeholder = 'Search stop or address…', onSelect, autoFocus, favorites }: StopSearchInputProps) {
+  const [q, setQ]                 = useState('')
+  const [open, setOpen]           = useState(false)
   const [debounced, setDebounced] = useState('')
-  const inputRef                = useRef<HTMLInputElement>(null)
+  const inputRef                  = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus()
@@ -42,7 +49,17 @@ export function StopSearchInput({ placeholder = 'Search stop…', onSelect, auto
     setOpen(false)
   }
 
-  const showDropdown = open && debounced.length >= 2
+  function handleFavoriteSelect(fav: FavoriteStop) {
+    // Favorites are always transit stops (NSR:StopPlace)
+    onSelect({ id: fav.id, name: fav.name, locality: fav.locality, layer: 'venue' })
+    setQ('')
+    setOpen(false)
+  }
+
+  const hasFavorites   = (favorites?.length ?? 0) > 0
+  const showFavorites  = open && debounced.length < 2 && hasFavorites
+  const showSearch     = open && debounced.length >= 2
+  const dropdownOpen   = showFavorites || showSearch
 
   return (
     <div className="relative">
@@ -65,37 +82,79 @@ export function StopSearchInput({ placeholder = 'Search stop…', onSelect, auto
         )}
       </div>
 
-      {showDropdown && (
+      {dropdownOpen && (
         <div className="absolute z-20 mt-1 w-full bg-white border border-ink-200 rounded-lg shadow-lg overflow-hidden text-sm">
-          {isLoading && (
-            <div className="px-3 py-2.5 text-ink-400 text-xs">Searching…</div>
-          )}
-          {error && (
-            <div className="px-3 py-2.5 text-red-500 text-xs">
-              {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `Error: ${(error as Error).message}`}
-            </div>
-          )}
-          {!isLoading && !error && results && results.length === 0 && (
-            <div className="px-3 py-2.5 text-ink-400 text-xs">No stops found for "{debounced}"</div>
-          )}
-          {!isLoading && results && results.length > 0 && (
-            <ul>
-              {results.slice(0, 6).map(r => (
-                <li key={r.id}>
-                  <button
-                    onMouseDown={() => handleSelect(r)}
-                    className="w-full text-left px-3 py-2.5 hover:bg-cream-50 transition-colors duration-150 min-h-[44px]"
-                  >
-                    <span className="font-medium text-ink-800">{r.name}</span>
-                    {(r.locality || r.category) && (
-                      <span className="text-ink-400 text-xs ml-2">
-                        {[r.locality, r.category].filter(Boolean).join(' · ')}
+
+          {/* ── Favorites (shown when input is focused, before typing) ── */}
+          {showFavorites && (
+            <>
+              <div className="px-3 pt-2 pb-1">
+                <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Saved stops</span>
+              </div>
+              <ul>
+                {favorites!.map(fav => (
+                  <li key={fav.id}>
+                    <button
+                      onMouseDown={() => handleFavoriteSelect(fav)}
+                      className="w-full text-left px-3 py-2.5 hover:bg-cream-50 transition-colors duration-150 min-h-[44px] flex items-center gap-2"
+                    >
+                      <span className="text-ink-400 text-xs flex-shrink-0">🚏</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="font-medium text-ink-800">{fav.name}</span>
+                        {fav.locality && (
+                          <span className="text-ink-400 text-xs ml-2">{fav.locality}</span>
+                        )}
                       </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="px-3 py-2 border-t border-ink-100 text-[10px] text-ink-400">
+                Type to search stops or addresses…
+              </div>
+            </>
+          )}
+
+          {/* ── Search results ── */}
+          {showSearch && (
+            <>
+              {isLoading && (
+                <div className="px-3 py-2.5 text-ink-400 text-xs">Searching…</div>
+              )}
+              {error && (
+                <div className="px-3 py-2.5 text-red-500 text-xs">
+                  {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `Error: ${(error as Error).message}`}
+                </div>
+              )}
+              {!isLoading && !error && results && results.length === 0 && (
+                <div className="px-3 py-2.5 text-ink-400 text-xs">No results for "{debounced}"</div>
+              )}
+              {!isLoading && results && results.length > 0 && (
+                <ul>
+                  {results.slice(0, 7).map((r, i) => {
+                    const isAddress = r.layer === 'address' || r.layer === 'street'
+                    return (
+                      <li key={r.id || i}>
+                        <button
+                          onMouseDown={() => handleSelect(r)}
+                          className="w-full text-left px-3 py-2.5 hover:bg-cream-50 transition-colors duration-150 min-h-[44px] flex items-center gap-2"
+                        >
+                          <span className="text-ink-400 text-xs flex-shrink-0">{isAddress ? '📍' : '🚏'}</span>
+                          <span className="flex-1 min-w-0">
+                            <span className="font-medium text-ink-800">{r.name}</span>
+                            {(r.locality || r.category) && (
+                              <span className="text-ink-400 text-xs ml-2">
+                                {[r.locality, !isAddress ? r.category : undefined].filter(Boolean).join(' · ')}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </>
           )}
         </div>
       )}
