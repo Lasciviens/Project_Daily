@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useGameDetail } from '../../home/hooks/useGames'
+import { useGameDetail, useAddToQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast }         from '../../../app/store'
 import type { PlatformDetail, GamePatch } from '../../home/api/gamesApi'
 
@@ -211,8 +211,27 @@ interface Props {
 
 export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
   const { data: game, isLoading } = useGameDetail(gameId)
+  const { mutate: addToQueue }    = useAddToQueue()
+  const { mutate: removeFromQueue } = useRemoveFromQueue()
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
   const [editing,     setEditing]     = useState(false)
+
+  function handleQueueToggle() {
+    if (!game) return
+    if (game.play_order == null) {
+      const id = toast.loading('Sıraya ekleniyor…')
+      addToQueue(game.id, {
+        onSuccess: () => { toast.dismiss(id); toast.success('🎮 Sıraya Eklendi ✓') },
+        onError:   (e) => { toast.dismiss(id); toast.error((e as Error).message) },
+      })
+    } else {
+      const id = toast.loading('Sıradan çıkarılıyor…')
+      removeFromQueue(game.id, {
+        onSuccess: () => { toast.dismiss(id); toast.success('Sıradan Çıkarıldı') },
+        onError:   (e) => { toast.dismiss(id); toast.error((e as Error).message) },
+      })
+    }
+  }
 
   const screenshots: string[] = []
   if (game?.screenshots?.length) screenshots.push(...game.screenshots.map(s => igdbScreenshot(s)))
@@ -303,6 +322,18 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
                     ))}
                   </div>
                 )}
+                <div className="mt-3">
+                  <button
+                    onClick={handleQueueToggle}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                      game.play_order != null
+                        ? 'bg-red-100 hover:bg-red-200 text-red-600'
+                        : 'bg-orange-100 hover:bg-orange-200 text-orange-700'
+                    }`}
+                  >
+                    {game.play_order != null ? `✕ Sıradan Çıkar (#${game.play_order})` : '🎮 Sıraya Ekle'}
+                  </button>
+                </div>
               </div>
             </div>
 

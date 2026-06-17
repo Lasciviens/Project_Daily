@@ -1,14 +1,14 @@
-import { useState } from 'react'
-import { usePlayQueue, useUpdateGame, useReorderQueue } from '../../home/hooks/useGames'
+import { useState, useRef } from 'react'
+import { usePlayQueue, useUpdateGame, useReorderQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast } from '../../../app/store'
-import type { Game } from '../../home/api/gamesApi'
+import type { QueueGame } from '../../home/api/gamesApi'
 
 const STATUS_COLOR: Record<string, string> = {
-  playing:   'bg-orange-100 text-orange-700',
-  completed: 'bg-green-100 text-green-700',
-  wishlist:  'bg-purple-100 text-purple-700',
-  backlog:   'bg-ink-100 text-ink-500',
-  dropped:   'bg-red-100 text-red-600',
+  playing:   'bg-orange-100 text-orange-700 border-orange-200',
+  completed: 'bg-green-100 text-green-700 border-green-200',
+  wishlist:  'bg-purple-100 text-purple-700 border-purple-200',
+  backlog:   'bg-ink-100 text-ink-500 border-ink-200',
+  dropped:   'bg-red-100 text-red-600 border-red-200',
 }
 const STATUS_LABEL: Record<string, string> = {
   playing: 'Playing', completed: 'Completed', wishlist: 'Wishlist',
@@ -20,190 +20,196 @@ const TIER_BADGE: Record<string, string> = {
   D: 'bg-ink-400 text-white',         F: 'bg-red-500 text-white',
 }
 
-type QueueGame = Game & { play_order: number | null }
-
 function CoverImg({ url, title }: { url?: string | null; title: string }) {
   const [err, setErr] = useState(false)
-  if (url && !err) return <img src={url} alt={title} onError={() => setErr(true)} className="w-full h-full object-cover" />
-  return <div className="w-full h-full flex items-center justify-center bg-ink-100 text-base">🎮</div>
-}
-
-function QueueItem({
-  game, index, total,
-  onMoveUp, onMoveDown,
-  onStatusChange,
-}: {
-  game: QueueGame
-  index: number
-  total: number
-  onMoveUp: () => void
-  onMoveDown: () => void
-  onStatusChange: (status: string) => void
-}) {
-  return (
-    <div className={`flex items-center gap-3 bg-white rounded-xl border border-ink-200 p-3 ${game.play_status === 'playing' ? 'ring-2 ring-orange-300' : ''}`}>
-      {/* Position number */}
-      <span className="text-xs font-bold text-ink-300 w-6 text-center flex-shrink-0">
-        {game.play_status === 'playing' ? '▶' : index + 1}
-      </span>
-
-      {/* Cover */}
-      <div className="flex-shrink-0 w-10 rounded-lg overflow-hidden border border-ink-100" style={{ aspectRatio: '3/4' }}>
-        <CoverImg url={game.cover_url} title={game.title} />
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-ink-800 truncate">{game.title}</p>
-        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100'}`}>
-            {STATUS_LABEL[game.play_status] ?? game.play_status}
-          </span>
-          {game.tier && (
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${TIER_BADGE[game.tier] ?? 'bg-ink-200'}`}>{game.tier}</span>
-          )}
-          {game.release_year && <span className="text-[10px] text-ink-400">{game.release_year}</span>}
-          {game.is_iconic && <span className="text-xs">⭐</span>}
-        </div>
-      </div>
-
-      {/* Quick actions */}
-      <div className="flex items-center gap-1.5 flex-shrink-0">
-        {game.play_status !== 'playing' && (
-          <button
-            onClick={() => onStatusChange('playing')}
-            className="text-[10px] font-semibold bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded-lg transition-colors min-h-[28px]"
-          >▶ Play</button>
-        )}
-        {game.play_status === 'playing' && (
-          <button
-            onClick={() => onStatusChange('completed')}
-            className="text-[10px] font-semibold bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded-lg transition-colors min-h-[28px]"
-          >✓ Done</button>
-        )}
-        {game.play_status === 'playing' && (
-          <button
-            onClick={() => onStatusChange('backlog')}
-            className="text-[10px] font-semibold bg-ink-100 hover:bg-ink-200 text-ink-600 px-2 py-1 rounded-lg transition-colors min-h-[28px]"
-          >⏸</button>
-        )}
-        <button
-          onClick={() => onStatusChange('dropped')}
-          className="text-[10px] text-red-400 hover:text-red-600 px-1.5 py-1 transition-colors min-h-[28px]"
-        >✕</button>
-      </div>
-
-      {/* Reorder */}
-      <div className="flex flex-col gap-0.5 flex-shrink-0">
-        <button
-          onClick={onMoveUp}
-          disabled={index === 0}
-          className="text-ink-300 hover:text-ink-600 disabled:opacity-20 text-xs leading-none p-0.5 transition-colors"
-        >▲</button>
-        <button
-          onClick={onMoveDown}
-          disabled={index === total - 1}
-          className="text-ink-300 hover:text-ink-600 disabled:opacity-20 text-xs leading-none p-0.5 transition-colors"
-        >▼</button>
-      </div>
-    </div>
+  if (url && !err) return (
+    <img src={url} alt={title} onError={() => setErr(true)} className="w-full h-full object-cover" />
   )
+  return <div className="w-full h-full flex items-center justify-center bg-ink-100 text-lg">🎮</div>
 }
 
 export function PlayQueueTab() {
   const { data: queue = [], isLoading, error } = usePlayQueue()
   const { mutate: updateGame }                 = useUpdateGame()
   const { mutate: reorder }                    = useReorderQueue()
-  const [localOrder, setLocalOrder]            = useState<QueueGame[] | null>(null)
+  const { mutate: removeFromQueue }            = useRemoveFromQueue()
 
-  // Use local order if user has reordered this session, otherwise use DB order
-  const displayQueue: QueueGame[] = localOrder ?? (queue as QueueGame[])
+  // Local copy for instant drag-and-drop feedback
+  const [items, setItems]       = useState<QueueGame[] | null>(null)
+  const dragIdx                 = useRef<number | null>(null)
+  const [dragOver, setDragOver] = useState<number | null>(null)
 
-  // Playing games always float to top visually
-  const sorted = [
-    ...displayQueue.filter(g => g.play_status === 'playing'),
-    ...displayQueue.filter(g => g.play_status !== 'playing'),
-  ]
+  const displayItems: QueueGame[] = items ?? (queue as QueueGame[])
+  const playing  = displayItems.filter(g => g.play_status === 'playing')
+  const upcoming = displayItems.filter(g => g.play_status !== 'playing')
 
-  function move(index: number, direction: -1 | 1) {
-    const arr   = [...sorted]
-    const newIdx = index + direction
-    if (newIdx < 0 || newIdx >= arr.length) return
-    ;[arr[index], arr[newIdx]] = [arr[newIdx], arr[index]]
-    setLocalOrder(arr)
-    // Persist to DB
-    const updates = arr.map((g, i) => ({ id: g.id, play_order: i + 1 }))
-    reorder(updates)
+  // ── Drag & drop ──────────────────────────────────────────────────────────
+
+  function onDragStart(idx: number) {
+    dragIdx.current = idx
   }
 
-  function handleStatusChange(game: QueueGame, status: string) {
-    const id = toast.loading('Updating…')
+  function onDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault()
+    setDragOver(idx)
+  }
+
+  function onDrop(targetIdx: number) {
+    const src = dragIdx.current
+    if (src === null || src === targetIdx) { setDragOver(null); return }
+    const arr = [...displayItems]
+    const [item] = arr.splice(src, 1)
+    arr.splice(targetIdx, 0, item)
+    setItems(arr)
+    setDragOver(null)
+    dragIdx.current = null
+    reorder(arr.map((g, i) => ({ id: g.id, play_order: i + 1 })))
+  }
+
+  function onDragEnd() {
+    setDragOver(null)
+    dragIdx.current = null
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  function handleMarkPlaying(game: QueueGame) {
+    const id = toast.loading('Marking as playing…')
     updateGame(
-      { id: game.id, patch: { play_status: status } },
+      { id: game.id, patch: { play_status: 'playing' } },
       {
-        onSuccess: () => { toast.dismiss(id); toast.success(`${STATUS_LABEL[status]} ✓`) },
-        onError:   (e) => { toast.dismiss(id); toast.error((e as Error).message) },
+        onSuccess: () => {
+          toast.dismiss(id); toast.success('▶ Playing ✓')
+          setItems(prev => (prev ?? displayItems).map(g => g.id === game.id ? { ...g, play_status: 'playing' } : g))
+        },
+        onError: (e) => { toast.dismiss(id); toast.error((e as Error).message) },
       }
     )
-    // Remove from local queue if completing or dropping
-    if (status === 'completed' || status === 'dropped') {
-      setLocalOrder(prev => (prev ?? sorted).filter(g => g.id !== game.id))
-    } else {
-      setLocalOrder(prev => (prev ?? sorted).map(g => g.id === game.id ? { ...g, play_status: status } : g))
-    }
   }
+
+  function handleRemove(game: QueueGame) {
+    const id = toast.loading('Removing from queue…')
+    removeFromQueue(game.id, {
+      onSuccess: () => {
+        toast.dismiss(id); toast.success('Removed from queue')
+        setItems(prev => (prev ?? displayItems).filter(g => g.id !== game.id))
+      },
+      onError: (e) => { toast.dismiss(id); toast.error((e as Error).message) },
+    })
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   if (isLoading) return <div className="text-sm text-ink-400 py-12 text-center">Loading queue…</div>
 
   if (error) return (
-    <div className="text-sm text-red-500 py-8 text-center">
-      <p>Could not load queue.</p>
-      <p className="text-xs text-red-400 mt-1">{(error as Error).message}</p>
+    <div className="text-center py-10 space-y-2">
+      <p className="text-sm text-red-500">Could not load queue.</p>
+      <p className="text-xs text-red-400">{(error as Error).message}</p>
       <p className="text-xs text-ink-400 mt-2">
-        Make sure you've run the RP5 migration to add the <code>play_order</code> column.
+        Make sure you've run <code className="bg-ink-100 px-1 rounded">supabase/rp5-migrations/001_play_order.sql</code> in the RP5 Supabase SQL Editor.
       </p>
     </div>
   )
 
-  if (sorted.length === 0) return (
+  if (displayItems.length === 0) return (
     <div className="text-center py-16 text-ink-400">
-      <p className="text-2xl mb-2">🎮</p>
-      <p className="text-sm font-medium">Queue is empty</p>
-      <p className="text-xs mt-1">Add games to your Playing, Backlog or Wishlist in the Library tab.</p>
+      <p className="text-3xl mb-3">🎮</p>
+      <p className="text-sm font-medium text-ink-700">Queue is empty</p>
+      <p className="text-xs mt-1">Open a game's detail modal and click <strong>🎮 Sıraya Ekle</strong> to add it.</p>
     </div>
   )
 
-  const playing  = sorted.filter(g => g.play_status === 'playing')
-  const upcoming = sorted.filter(g => g.play_status !== 'playing')
+  function QueueItem({ game, globalIdx }: { game: QueueGame; globalIdx: number }) {
+    const isPlaying   = game.play_status === 'playing'
+    const isDragOver  = dragOver === globalIdx
+    return (
+      <div
+        draggable
+        onDragStart={() => onDragStart(globalIdx)}
+        onDragOver={e  => onDragOver(e, globalIdx)}
+        onDrop={()     => onDrop(globalIdx)}
+        onDragEnd={onDragEnd}
+        className={`flex items-center gap-3 bg-white rounded-xl border transition-all cursor-grab active:cursor-grabbing select-none
+          ${isPlaying    ? 'border-orange-300 ring-1 ring-orange-200' : 'border-ink-200'}
+          ${isDragOver   ? 'border-accent-400 bg-accent-50 scale-[1.01]' : ''}
+        `}
+      >
+        {/* Drag handle + position */}
+        <div className="flex-shrink-0 w-10 flex flex-col items-center justify-center py-3 gap-1 text-ink-300">
+          <span className="text-base leading-none select-none">⠿</span>
+          <span className={`text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center
+            ${isPlaying
+              ? 'bg-orange-500 text-white'
+              : 'bg-gradient-to-br from-accent-400 to-accent-600 text-white'
+            }`}>
+            {isPlaying ? '▶' : globalIdx + 1}
+          </span>
+        </div>
+
+        {/* Cover */}
+        <div className="flex-shrink-0 rounded-lg overflow-hidden border border-ink-100 bg-ink-100" style={{ width: 40, height: 55 }}>
+          <CoverImg url={game.cover_url} title={game.title} />
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0 py-2">
+          <p className="text-sm font-semibold text-ink-800 truncate leading-snug">{game.title}</p>
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>
+              {STATUS_LABEL[game.play_status] ?? game.play_status}
+            </span>
+            {game.tier && (
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${TIER_BADGE[game.tier] ?? 'bg-ink-200'}`}>{game.tier}</span>
+            )}
+            {game.platforms?.slice(0, 2).map((p, i) => (
+              <span key={i} className="text-[10px] bg-ink-50 text-ink-500 border border-ink-200 px-1.5 py-0.5 rounded">{p}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex-shrink-0 flex items-center gap-1 pr-3">
+          {!isPlaying && (
+            <button
+              onClick={() => handleMarkPlaying(game)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-600 transition-colors text-sm"
+              title="Mark as playing"
+            >▶</button>
+          )}
+          <button
+            onClick={() => handleRemove(game)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-ink-100 hover:bg-red-100 text-ink-400 hover:text-red-500 transition-colors text-sm"
+            title="Remove from queue"
+          >✕</button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
-      <div className="flex gap-3">
-        <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 text-center">
-          <p className="text-lg font-bold text-orange-600">{playing.length}</p>
-          <p className="text-[10px] text-orange-500">Playing now</p>
-        </div>
-        <div className="bg-ink-50 border border-ink-200 rounded-xl px-4 py-2.5 text-center">
-          <p className="text-lg font-bold text-ink-700">{upcoming.length}</p>
-          <p className="text-[10px] text-ink-400">In queue</p>
-        </div>
-        <p className="text-xs text-ink-400 self-center ml-auto">Use ▲▼ to reorder. Changes save instantly.</p>
+      {/* Stats */}
+      <div className="flex gap-2 flex-wrap">
+        {[
+          { label: 'In Queue', value: displayItems.length,                 color: 'text-ink-800'    },
+          { label: 'Playing',  value: playing.length,                      color: 'text-orange-600' },
+          { label: 'Upcoming', value: upcoming.length,                     color: 'text-accent-600' },
+        ].map(s => (
+          <div key={s.label} className="bg-white border border-ink-200 rounded-xl px-4 py-2.5 text-center">
+            <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-[10px] text-ink-400">{s.label}</p>
+          </div>
+        ))}
+        <p className="text-xs text-ink-400 self-center ml-auto">Drag ⠿ to reorder</p>
       </div>
 
       {/* Playing now */}
       {playing.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">▶ Playing Now</p>
+          <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">▶ Now Playing</p>
           <div className="space-y-2">
-            {playing.map((g, i) => (
-              <QueueItem
-                key={g.id} game={g} index={i} total={sorted.length}
-                onMoveUp={()   => move(i, -1)}
-                onMoveDown={()  => move(i,  1)}
-                onStatusChange={s => handleStatusChange(g, s)}
-              />
-            ))}
+            {playing.map((g, i) => <QueueItem key={g.id} game={g} globalIdx={i} />)}
           </div>
         </div>
       )}
@@ -213,16 +219,7 @@ export function PlayQueueTab() {
         <div>
           <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-2">Up Next</p>
           <div className="space-y-2">
-            {upcoming.map((g, i) => (
-              <QueueItem
-                key={g.id} game={g}
-                index={playing.length + i}
-                total={sorted.length}
-                onMoveUp={()  => move(playing.length + i, -1)}
-                onMoveDown={() => move(playing.length + i,  1)}
-                onStatusChange={s => handleStatusChange(g, s)}
-              />
-            ))}
+            {upcoming.map((g, i) => <QueueItem key={g.id} game={g} globalIdx={playing.length + i} />)}
           </div>
         </div>
       )}
