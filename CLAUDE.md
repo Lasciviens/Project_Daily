@@ -77,6 +77,8 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 - Football data source (Calendar integration planned)
 - Command Bar (Cmd+K)
 - Activity Log / stats widget
+- Routes widget (Home): visual improvement pass
+- Routes widget (Home): refresh button — re-fetch only the currently cached from/to values instantly
 
 ---
 
