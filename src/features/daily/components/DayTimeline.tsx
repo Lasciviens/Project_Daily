@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { format, getDay, isToday } from 'date-fns'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock } from '../hooks/useSchedule'
 import { useUpdateTask } from '../../todo/hooks/useTodos'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { AddTimeBlockModal } from './AddTimeBlockModal'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
 import { supabase } from '../../../integrations/supabase/client'
+import { useCalendarStore, toast } from '../../../app/store'
 import type { CalendarEvent } from '../../calendar/types'
 
 const HOUR_START = 0
@@ -91,10 +92,23 @@ export function DayTimeline({ date }: Props) {
 
   const { data: schedBlocks = [] }  = useScheduleBlocks()
   const { data: timeBlocks  = [] }  = useTimeBlocks(dateStr)
-  const { data: calEvents   = [] }  = useCalendarEventsForDay(dateStr)
+  const { data: calEvents, isFetching: calFetching } = useCalendarEventsForDay(dateStr)
+  const calEventList                = calEvents ?? []
   const deleteBlock                 = useDeleteTimeBlock()
   const updateBlock                 = useUpdateTimeBlock()
   const updateTask                  = useUpdateTask()
+  const qc                          = useQueryClient()
+  const calToken                    = useCalendarStore(s => s.accessToken)
+
+  async function handleCalRefresh() {
+    const tid = toast.loading('Syncing calendar…')
+    try {
+      await qc.refetchQueries({ queryKey: ['calendar', 'day', dateStr] })
+      toast.dismiss(tid); toast.success('Calendar synced ✓')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Sync failed')
+    }
+  }
 
   // One batch query to get notes for all task-linked blocks
   const taskSourceIds = timeBlocks
@@ -174,7 +188,7 @@ export function DayTimeline({ date }: Props) {
   }
 
   // Google Calendar events
-  for (const e of calEvents) {
+  for (const e of calEventList) {
     if (e.start.dateTime) {
       // Timed event — editable
       const s  = new Date(e.start.dateTime)
@@ -272,9 +286,19 @@ export function DayTimeline({ date }: Props) {
             </div>
             <span className="text-xs text-ink-500">{fullness}%</span>
           </div>
+          {calToken && (
+            <button
+              onClick={handleCalRefresh}
+              disabled={calFetching}
+              title="Sync Google Calendar"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors duration-150 disabled:opacity-50 text-base font-medium"
+            >
+              <span className={calFetching ? 'animate-spin inline-block' : ''}>↻</span>
+            </button>
+          )}
           <button
             onClick={() => { setClickTime(undefined); setModal(true) }}
-            className="bg-accent-50 text-accent-600 hover:bg-accent-100 min-h-[44px] px-3 rounded-full text-xs font-medium transition-colors duration-150"
+            className="bg-accent-500 text-white hover:bg-accent-600 min-h-[44px] px-3 rounded-full text-xs font-semibold transition-colors duration-150"
           >
             + Add
           </button>
@@ -447,17 +471,17 @@ export function DayTimeline({ date }: Props) {
                     <button
                       onMouseDown={e => e.stopPropagation()}
                       onClick={() => postpone30m()}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/70 hover:bg-white border border-current opacity-70 hover:opacity-100"
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/90 hover:bg-white border border-current"
                     >+30m</button>
                     <button
                       onMouseDown={e => e.stopPropagation()}
                       onClick={() => postpone1d()}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/70 hover:bg-white border border-current opacity-70 hover:opacity-100"
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/90 hover:bg-white border border-current"
                     >+1d</button>
                     <button
                       onMouseDown={e => e.stopPropagation()}
                       onClick={startEdit}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/70 hover:bg-white border border-current opacity-70 hover:opacity-100"
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-white/90 hover:bg-white border border-current"
                       title="Edit title"
                     >✎</button>
                     <button
@@ -476,7 +500,7 @@ export function DayTimeline({ date }: Props) {
                   <button
                     onMouseDown={e => e.stopPropagation()}
                     onClick={e => { e.stopPropagation(); deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }}
-                    className="absolute top-1 right-1 text-[10px] opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity"
+                    className="absolute top-1 right-1 text-[10px] opacity-60 hover:opacity-100 transition-opacity"
                   >
                     ✕
                   </button>
