@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useCreateTimeBlock, useCreateScheduleBlock } from '../hooks/useSchedule'
-import { toast } from '../../../app/store'
+import { toast, useCalendarStore } from '../../../app/store'
+import { createCalendarEvent } from '../../calendar/api/calendarApi'
 
 const DURATIONS = [
   { label: '30 min',  value: 30  },
@@ -12,6 +13,7 @@ const DURATIONS = [
 ]
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const LOCAL_TZ   = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 interface Props {
   dateStr:           string
@@ -22,13 +24,16 @@ interface Props {
 }
 
 export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultTitle = '', defaultColor }: Props) {
-  const [tab,       setTab]       = useState<'once' | 'recurring'>('once')
-  const [title,     setTitle]     = useState(defaultTitle)
-  const [startTime, setStartTime] = useState(defaultStartTime ?? '09:00')
-  const [duration,  setDuration]  = useState(60)
-  const [customMin, setCustomMin] = useState('')
-  const [days,      setDays]      = useState<number[]>([1, 2, 3, 4, 5]) // Mon–Fri
-  const [endTime,   setEndTime]   = useState('17:00')
+  const [tab,          setTab]          = useState<'once' | 'recurring'>('once')
+  const [title,        setTitle]        = useState(defaultTitle)
+  const [startTime,    setStartTime]    = useState(defaultStartTime ?? '09:00')
+  const [duration,     setDuration]     = useState(60)
+  const [customMin,    setCustomMin]    = useState('')
+  const [days,         setDays]         = useState<number[]>([1, 2, 3, 4, 5])
+  const [endTime,      setEndTime]      = useState('17:00')
+  const [addToGcal,    setAddToGcal]    = useState(false)
+
+  const calToken = useCalendarStore(s => s.accessToken)
 
   const createBlock     = useCreateTimeBlock()
   const createRecurring = useCreateScheduleBlock()
@@ -47,6 +52,16 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
           duration_minutes: actualDuration,
           color:            defaultColor,
         })
+
+        if (addToGcal && calToken && startTime) {
+          const startISO = new Date(`${dateStr}T${startTime}:00`).toISOString()
+          const endISO   = new Date(new Date(`${dateStr}T${startTime}:00`).getTime() + actualDuration * 60_000).toISOString()
+          await createCalendarEvent(calToken, 'primary', {
+            summary: title.trim(),
+            start:   { dateTime: startISO, timeZone: LOCAL_TZ },
+            end:     { dateTime: endISO,   timeZone: LOCAL_TZ },
+          })
+        }
       } else {
         await createRecurring.mutateAsync({
           title:        title.trim(),
@@ -140,6 +155,18 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
                   min={5}
                 />
               </div>
+
+              {calToken && (
+                <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={addToGcal}
+                    onChange={e => setAddToGcal(e.target.checked)}
+                    className="w-4 h-4 accent-accent-500 cursor-pointer"
+                  />
+                  <span className="text-sm text-ink-700">Add to Google Calendar</span>
+                </label>
+              )}
             </>
           ) : (
             <>
