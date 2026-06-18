@@ -59,11 +59,14 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
   const isPending = createBlock.isPending || createRecurring.isPending
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/30">
-      <div className="card w-full max-w-sm p-5 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-ink-900/30">
+      <div className="card w-full sm:max-w-sm p-5 shadow-xl sm:rounded-2xl rounded-t-2xl rounded-b-none overflow-y-auto max-h-[90vh]">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-ink-900">Add time block</h3>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-700 text-xl leading-none">×</button>
+          <button
+            onClick={onClose}
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none"
+          >×</button>
         </div>
 
         {/* Tabs */}
@@ -72,7 +75,7 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`flex-1 text-xs py-1 rounded-md font-medium transition-colors duration-150 ${
+              className={`flex-1 text-xs min-h-[44px] rounded-md font-medium transition-colors duration-150 ${
                 tab === t ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'
               }`}
             >
@@ -142,7 +145,7 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
                       onClick={() => setDays(prev =>
                         prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]
                       )}
-                      className={`w-8 h-8 rounded-full text-[11px] font-medium transition-colors duration-150 ${
+                      className={`min-w-[44px] min-h-[44px] rounded-full text-[11px] font-medium transition-colors duration-150 ${
                         days.includes(i)
                           ? 'bg-accent-500 text-white'
                           : 'bg-ink-100 text-ink-500'
@@ -168,11 +171,11 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
         </div>
 
         <div className="flex gap-2 mt-4">
-          <button onClick={onClose} className="flex-1 btn-secondary text-sm py-1.5">Cancel</button>
+          <button onClick={onClose} className="flex-1 btn-secondary text-sm min-h-[44px]">Cancel</button>
           <button
             onClick={handleSubmit}
             disabled={!title.trim() || isPending}
-            className="flex-1 btn-primary text-sm py-1.5 disabled:opacity-50"
+            className="flex-1 btn-primary text-sm min-h-[44px] disabled:opacity-50"
           >
             {isPending ? 'Adding…' : 'Add block'}
           </button>
