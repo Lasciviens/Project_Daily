@@ -108,19 +108,25 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="flex items-center gap-2 px-3 py-1.5">
-        {/* 3-state status button */}
+      <div className="flex items-center gap-2 px-3 py-1.5 min-h-[44px]">
+        {/* 3-state status button — enlarged tap target on mobile */}
         <button
           onClick={cycleStatus}
           title={`Status: ${item.status} — click to advance`}
-          className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+          className={`min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 transition-colors lg:min-w-0 lg:min-h-0 lg:w-4 lg:h-4 lg:rounded lg:border ${
+            isDone       ? 'text-emerald-500 lg:bg-emerald-400 lg:border-emerald-400 lg:text-white' :
+            isInProgress ? 'text-accent-600 lg:border-accent-400 lg:bg-accent-50' :
+                           'text-ink-300 lg:border-ink-300 hover:text-accent-400'
+          }`}
+        >
+          <span className={`w-4 h-4 rounded border flex items-center justify-center ${
             isDone       ? 'bg-emerald-400 border-emerald-400 text-white' :
             isInProgress ? 'border-accent-400 bg-accent-50 text-accent-600' :
                            'border-ink-300 hover:border-accent-400'
-          }`}
-        >
-          {isDone       && <span className="text-[9px] leading-none">✓</span>}
-          {isInProgress && <span className="text-[9px] leading-none">–</span>}
+          }`}>
+            {isDone       && <span className="text-[9px] leading-none">✓</span>}
+            {isInProgress && <span className="text-[9px] leading-none">–</span>}
+          </span>
         </button>
 
         {/* Type badge */}
@@ -149,39 +155,56 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
           />
         </div>
 
-        {/* Plan button — hover only */}
-        {hovered && !isDone && (
-          <button
-            onClick={() => setShowPlan(p => !p)}
-            className="text-[10px] text-ink-400 hover:text-accent-600"
-            title="Schedule this item"
-          >📅</button>
-        )}
-
-        {/* Notes indicator — always visible when notes exist */}
-        {(hasNotes || hovered) && (
-          <button
-            onClick={() => setShowNotes(n => !n)}
-            className={`text-[10px] px-1 transition-colors ${
-              hasNotes
-                ? 'text-amber-500 hover:text-amber-700'
-                : 'text-ink-400 hover:text-ink-700'
-            }`}
-            title={showNotes ? 'Hide notes' : 'Show notes'}
-          >
-            ≡
-          </button>
-        )}
-
-        {/* Delete — hover only */}
-        {hovered && (
+        {/* Plan, notes, delete — always visible on mobile; hover-only on desktop */}
+        <div className="flex items-center gap-0.5 flex-shrink-0 lg:hidden">
+          {!isDone && (
+            <button
+              onClick={() => setShowPlan(p => !p)}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 active:text-accent-600 text-sm"
+              title="Schedule this item"
+            >📅</button>
+          )}
+          {(hasNotes || true) && (
+            <button
+              onClick={() => setShowNotes(n => !n)}
+              className={`min-w-[44px] min-h-[44px] flex items-center justify-center text-sm transition-colors ${
+                hasNotes ? 'text-amber-500' : 'text-ink-300'
+              }`}
+              title={showNotes ? 'Hide notes' : 'Show notes'}
+            >≡</button>
+          )}
           <button
             onClick={onDelete}
-            className="text-[10px] text-ink-300 hover:text-red-400"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 active:text-red-400 text-sm"
             title="Delete"
-          >
-            ✕
-          </button>
+          >✕</button>
+        </div>
+
+        {/* Desktop hover-only actions */}
+        {hovered && (
+          <div className="hidden lg:flex items-center gap-0.5 flex-shrink-0">
+            {!isDone && (
+              <button
+                onClick={() => setShowPlan(p => !p)}
+                className="text-[10px] text-ink-400 hover:text-accent-600"
+                title="Schedule this item"
+              >📅</button>
+            )}
+            {(hasNotes || hovered) && (
+              <button
+                onClick={() => setShowNotes(n => !n)}
+                className={`text-[10px] px-1 transition-colors ${
+                  hasNotes ? 'text-amber-500 hover:text-amber-700' : 'text-ink-400 hover:text-ink-700'
+                }`}
+                title={showNotes ? 'Hide notes' : 'Show notes'}
+              >≡</button>
+            )}
+            <button
+              onClick={onDelete}
+              className="text-[10px] text-ink-300 hover:text-red-400"
+              title="Delete"
+            >✕</button>
+          </div>
         )}
       </div>
 
@@ -198,31 +221,31 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
 
       {/* Plan date picker */}
       {showPlan && (
-        <div className="px-11 pb-2 flex items-center gap-2">
+        <div className="px-3 pb-2 flex items-center gap-2 flex-wrap">
           <input
             type="date"
             lang="en-GB"
             value={planDate}
             onChange={e => setPlanDate(e.target.value)}
-            className="text-xs border border-ink-200 rounded-lg px-2 py-1 outline-none focus:border-accent-400"
+            className="text-sm border border-ink-200 rounded-lg px-2 py-2 outline-none focus:border-accent-400 min-h-[44px]"
           />
           <button
             onClick={handlePlan}
             disabled={!planDate || createTask.isPending}
-            className="text-xs px-2 py-1 bg-accent-500 text-white rounded-lg disabled:opacity-40"
+            className="text-xs px-3 py-2 bg-accent-500 text-white rounded-lg disabled:opacity-40 min-h-[44px]"
           >
             {createTask.isPending ? '…' : 'Plan'}
           </button>
-          <button onClick={() => setShowPlan(false)} className="text-xs text-ink-400">Cancel</button>
+          <button onClick={() => setShowPlan(false)} className="text-xs text-ink-400 min-h-[44px] px-2 flex items-center">Cancel</button>
         </div>
       )}
 
       {/* Schedule confirmation */}
       {askSchedule && (
-        <div className="px-11 pb-2 flex items-center gap-2 bg-cream-50 rounded-lg mx-3 mb-1 p-2">
+        <div className="px-3 pb-2 flex items-center gap-2 flex-wrap bg-cream-50 rounded-lg mx-3 mb-1 p-2">
           <span className="text-xs text-ink-600">Also add to day schedule at 17:00?</span>
-          <button onClick={() => confirmSchedule(true)}  className="text-xs px-2 py-0.5 bg-accent-500 text-white rounded">Yes</button>
-          <button onClick={() => confirmSchedule(false)} className="text-xs px-2 py-0.5 bg-ink-100 text-ink-600 rounded">No</button>
+          <button onClick={() => confirmSchedule(true)}  className="text-xs px-3 py-2 bg-accent-500 text-white rounded min-h-[44px]">Yes</button>
+          <button onClick={() => confirmSchedule(false)} className="text-xs px-3 py-2 bg-ink-100 text-ink-600 rounded min-h-[44px]">No</button>
         </div>
       )}
     </div>

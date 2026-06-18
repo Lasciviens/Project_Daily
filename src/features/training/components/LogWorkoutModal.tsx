@@ -177,7 +177,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
       >
         <div className="px-5 pt-5 pb-3 border-b border-ink-100 flex items-center justify-between">
           <h2 className="text-base font-semibold text-ink-900">{editMode ? 'Edit workout' : 'Log workout'}</h2>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-600 text-lg">×</button>
+          <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-600 text-lg">×</button>
         </div>
 
         <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-5 space-y-4">
@@ -188,7 +188,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                 key={t.value}
                 type="button"
                 onClick={() => setType(t.value)}
-                className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border transition-colors duration-150 ${
+                className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border transition-colors duration-150 min-h-[44px] ${
                   type === t.value
                     ? 'bg-accent-500 border-accent-500 text-white'
                     : 'border-ink-200 text-ink-600 hover:border-accent-400'
@@ -204,7 +204,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
             value={title}
             onChange={e => setTitle(e.target.value)}
             placeholder="Workout title (e.g. Morning run, Chest day)"
-            className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+            className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400 min-h-[44px]"
             required
           />
 
@@ -216,7 +216,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                 lang="en-GB"
                 value={date}
                 onChange={e => setDate(e.target.value)}
-                className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+                className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400 min-h-[44px]"
               />
               {date && (
                 <p className="text-[10px] text-ink-400 mt-0.5 pl-1">
@@ -245,7 +245,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                   value={distKm}
                   onChange={e => setDistKm(e.target.value)}
                   placeholder="5.00"
-                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400 min-h-[44px]"
                 />
               </div>
               <div>
@@ -255,7 +255,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                   value={durMin}
                   onChange={e => setDurMin(e.target.value)}
                   placeholder="30"
-                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400 min-h-[44px]"
                 />
               </div>
               <div>
@@ -265,7 +265,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                   value={heartRate}
                   onChange={e => setHeartRate(e.target.value)}
                   placeholder="145"
-                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400 min-h-[44px]"
                 />
               </div>
               <div>
@@ -275,7 +275,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                   value={elevGain}
                   onChange={e => setElevGain(e.target.value)}
                   placeholder="120"
-                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400"
+                  className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400 min-h-[44px]"
                 />
               </div>
             </div>
@@ -322,7 +322,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                         }}
                         onBlur={() => setTimeout(() => setAcIdx(null), 150)}
                         placeholder="Exercise name…"
-                        className="w-full border border-ink-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-accent-400"
+                        className="w-full border border-ink-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-accent-400 min-h-[44px]"
                       />
                       {acIdx === exIdx && acResults.length > 0 && (
                         <ul className="absolute z-30 left-0 right-0 top-full mt-0.5 bg-white border border-ink-200 rounded-lg shadow-md max-h-40 overflow-y-auto">
@@ -330,7 +330,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                             <li
                               key={name}
                               onMouseDown={() => pickSuggestion(exIdx, name)}
-                              className="px-3 py-1.5 text-sm text-ink-700 hover:bg-cream-50 cursor-pointer"
+                              className="px-3 py-2 text-sm text-ink-700 hover:bg-cream-50 cursor-pointer min-h-[44px] flex items-center"
                             >
                               {name}
                             </li>
@@ -342,35 +342,35 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                       <button
                         type="button"
                         onClick={() => removeExercise(exIdx)}
-                        className="text-ink-300 hover:text-red-400 text-sm"
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 text-sm flex-shrink-0"
                       >
                         ✕
                       </button>
                     )}
                   </div>
                   {ex.sets.map((s, setIdx) => (
-                    <div key={setIdx} className="flex items-center gap-2">
-                      <span className="text-[10px] text-ink-400 w-8">S{setIdx + 1}</span>
+                    <div key={setIdx} className="flex items-center gap-2 min-h-[44px]">
+                      <span className="text-[10px] text-ink-400 w-8 flex-shrink-0">S{setIdx + 1}</span>
                       <input
                         type="number" min="0"
                         value={s.reps ?? ''}
                         onChange={e => updateSet(exIdx, setIdx, 'reps', e.target.value)}
                         placeholder="Reps"
-                        className="w-16 border border-ink-200 rounded px-2 py-1 text-xs outline-none focus:border-accent-400"
+                        className="flex-1 min-w-0 border border-ink-200 rounded-lg px-2 py-2 text-sm outline-none focus:border-accent-400 min-h-[44px]"
                       />
-                      <span className="text-[10px] text-ink-300">×</span>
+                      <span className="text-[10px] text-ink-300 flex-shrink-0">×</span>
                       <input
                         type="number" min="0" step="0.5"
                         value={s.weight_kg ?? ''}
                         onChange={e => updateSet(exIdx, setIdx, 'weight_kg', e.target.value)}
                         placeholder="kg"
-                        className="w-16 border border-ink-200 rounded px-2 py-1 text-xs outline-none focus:border-accent-400"
+                        className="flex-1 min-w-0 border border-ink-200 rounded-lg px-2 py-2 text-sm outline-none focus:border-accent-400 min-h-[44px]"
                       />
                       {ex.sets.length > 1 && (
                         <button
                           type="button"
                           onClick={() => removeSet(exIdx, setIdx)}
-                          className="text-ink-300 hover:text-red-400 text-xs ml-auto"
+                          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 text-sm flex-shrink-0"
                         >
                           ✕
                         </button>

@@ -41,7 +41,7 @@ export function StatusCycleChip<T extends string>({ value, options, labels, colo
     <button
       onClick={handleClick}
       title={nextLabel ? `Next: ${nextLabel}` : undefined}
-      className={`text-[10px] px-2 py-0.5 rounded-full font-medium capitalize cursor-pointer hover:opacity-80 transition-opacity ${colorCls}`}
+      className={`text-[10px] px-2 py-0.5 rounded-full font-medium capitalize cursor-pointer hover:opacity-80 transition-opacity min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 ${colorCls}`}
     >
       {label}
     </button>

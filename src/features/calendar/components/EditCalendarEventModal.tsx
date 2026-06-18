@@ -62,7 +62,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
           <h2 className="text-sm font-semibold text-ink-800">Edit Calendar Event</h2>
           <button
             onClick={onClose}
-            className="text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none"
           >
             ×
           </button>
@@ -81,7 +81,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
           />
 
           {event.start.dateTime && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
                   Start
@@ -90,7 +90,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
                   type="datetime-local"
                   value={startDT}
                   onChange={e => setStartDT(e.target.value)}
-                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-1.5 text-xs text-ink-700
+                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
                              focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
                 />
               </div>
@@ -102,7 +102,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
                   type="datetime-local"
                   value={endDT}
                   onChange={e => setEndDT(e.target.value)}
-                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-1.5 text-xs text-ink-700
+                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
                              focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
                 />
               </div>
@@ -136,7 +136,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
             <button
               type="submit"
               disabled={isPending || !title.trim()}
-              className="btn-primary flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-primary flex-1 min-h-[44px] disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {update.isPending ? 'Saving…' : 'Save changes'}
             </button>
@@ -146,7 +146,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
                 type="button"
                 onClick={() => setConfirmDelete(true)}
                 disabled={isPending}
-                className="px-3 py-1.5 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors duration-150 disabled:opacity-40"
+                className="px-3 py-1.5 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
               >
                 Delete
               </button>
@@ -155,7 +155,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
                 type="button"
                 onClick={handleDelete}
                 disabled={isPending}
-                className="px-3 py-1.5 rounded-lg text-sm bg-red-500 text-white hover:bg-red-600 transition-colors duration-150 disabled:opacity-40"
+                className="px-3 py-1.5 rounded-lg text-sm bg-red-500 text-white hover:bg-red-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
               >
                 {remove.isPending ? 'Deleting…' : 'Confirm delete'}
               </button>

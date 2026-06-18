@@ -260,7 +260,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
               <li
                 key={t.id}
                 onClick={() => onEdit(t)}
-                className="flex items-center gap-2.5 cursor-pointer rounded-lg px-1 -mx-1 py-0.5 hover:bg-ink-50 transition-colors duration-150"
+                className="flex items-center gap-2.5 cursor-pointer rounded-lg px-1 -mx-1 py-2 min-h-[44px] hover:bg-ink-50 transition-colors duration-150"
               >
                 <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                   t.status === 'done'     ? 'bg-green-400' :
@@ -294,7 +294,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
           onKeyDown={handleKeyDown}
           placeholder="Quick add task… (Enter to save)"
           disabled={create.isPending}
-          className="flex-1 text-sm px-2.5 py-1.5 rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white placeholder:text-ink-300 disabled:opacity-50"
+          className="flex-1 text-sm px-2.5 py-1.5 rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white placeholder:text-ink-300 disabled:opacity-50 min-h-[44px]"
         />
       </div>
     </div>
