@@ -25,7 +25,7 @@ export const useUIStore = create<UIState>((set) => ({
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
-export type ToastType = 'success' | 'error' | 'loading' | 'info'
+export type ToastType = 'success' | 'error' | 'loading' | 'info' | 'warning'
 
 export interface Toast {
   id:      string
@@ -58,6 +58,7 @@ export const toast = {
   error:   (msg: string) => useToastStore.getState().show(msg, 'error'),
   loading: (msg: string) => useToastStore.getState().show(msg, 'loading'),
   info:    (msg: string) => useToastStore.getState().show(msg, 'info'),
+  warning: (msg: string) => useToastStore.getState().show(msg, 'warning'),
   dismiss: (id: string)  => useToastStore.getState().dismiss(id),
 }
 

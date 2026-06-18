@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useUpdateCalendarEvent, useDeleteCalendarEvent, useCreateCalendarEvent } from '../hooks/useCalendar'
+import { toast } from '../../../app/store'
 import type { CalendarEvent } from '../types'
 
 // User's local IANA timezone — used for all new/edited events
@@ -13,9 +14,10 @@ function toLocalDatetimeInput(iso: string): string {
 
 // Default start/end for a new event: next whole hour + 1h duration
 function defaultTimes(date: string): { start: string; end: string } {
-  const now   = new Date()
-  const base  = new Date(`${date}T${String(now.getHours() + 1).padStart(2, '0')}:00`)
-  const end   = new Date(base.getTime() + 60 * 60_000)
+  const now      = new Date()
+  const nextHour = Math.min(now.getHours() + 1, 23)  // clamp: hour 24 is invalid
+  const base     = new Date(`${date}T${String(nextHour).padStart(2, '0')}:00`)
+  const end      = new Date(base.getTime() + 60 * 60_000)
   return { start: toLocalDatetimeInput(base.toISOString()), end: toLocalDatetimeInput(end.toISOString()) }
 }
 
@@ -72,30 +74,44 @@ export function EditCalendarEventModal(props: Props) {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
-
-    if (isCreate) {
-      await create.mutateAsync({
-        calendarId,
-        event: {
-          summary:     title.trim(),
-          description: desc || undefined,
-          start:       { dateTime: new Date(startDT).toISOString(), timeZone: LOCAL_TZ },
-          end:         { dateTime: new Date(endDT).toISOString(),   timeZone: LOCAL_TZ },
-        },
-      })
-    } else {
-      const patch: Record<string, unknown> = { summary: title.trim() }
-      if (desc !== (event!.description ?? '')) patch.description = desc
-      if (startDT) patch.start = { dateTime: new Date(startDT).toISOString(), timeZone: event!.start.timeZone ?? LOCAL_TZ }
-      if (endDT)   patch.end   = { dateTime: new Date(endDT).toISOString(),   timeZone: event!.end.timeZone   ?? LOCAL_TZ }
-      await update.mutateAsync({ calendarId, eventId: event!.id, patch })
+    const tid = toast.loading(isCreate ? 'Creating event…' : 'Saving changes…')
+    try {
+      if (isCreate) {
+        await create.mutateAsync({
+          calendarId,
+          event: {
+            summary:     title.trim(),
+            description: desc || undefined,
+            start:       { dateTime: new Date(startDT).toISOString(), timeZone: LOCAL_TZ },
+            end:         { dateTime: new Date(endDT).toISOString(),   timeZone: LOCAL_TZ },
+          },
+        })
+        toast.dismiss(tid); toast.success('Event created ✓')
+      } else {
+        const patch: Record<string, unknown> = { summary: title.trim() }
+        if (desc !== (event!.description ?? '')) patch.description = desc
+        if (startDT) patch.start = { dateTime: new Date(startDT).toISOString(), timeZone: event!.start.timeZone ?? LOCAL_TZ }
+        if (endDT)   patch.end   = { dateTime: new Date(endDT).toISOString(),   timeZone: event!.end.timeZone   ?? LOCAL_TZ }
+        await update.mutateAsync({ calendarId, eventId: event!.id, patch })
+        toast.dismiss(tid); toast.success('Event updated ✓')
+      }
+      props.onClose()
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error((err as Error).message ?? 'Failed to save event')
     }
-    props.onClose()
   }
 
   async function handleDelete() {
-    await remove.mutateAsync({ calendarId, eventId: event!.id })
-    props.onClose()
+    const tid = toast.loading('Deleting event…')
+    try {
+      await remove.mutateAsync({ calendarId, eventId: event!.id })
+      toast.dismiss(tid); toast.success('Event deleted')
+      props.onClose()
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error((err as Error).message ?? 'Failed to delete event')
+    }
   }
 
   return (
