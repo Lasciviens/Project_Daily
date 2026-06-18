@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { useDayData } from '../hooks/useDayData'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { AddTaskModal } from '../../../shared/components/AddTaskModal'
+import { DayCalendarSection } from './DayCalendarSection'
 
 interface Props { date: Date }
 
@@ -81,6 +82,8 @@ export function DayView({ date }: Props) {
         )}
         </div>
       </div>
+
+      <DayCalendarSection dateStr={format(date, 'yyyy-MM-dd')} />
 
       <AddTaskModal
         isOpen={modalOpen}
