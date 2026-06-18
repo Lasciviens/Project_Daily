@@ -134,7 +134,7 @@ function EditPanel({
     <div className="p-5 border-t border-ink-100 space-y-4 bg-cream-50">
       <p className="text-xs font-semibold text-ink-500 uppercase tracking-wide">Edit</p>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Status */}
         <div>
           <label className="text-xs text-ink-400 mb-1 block">Status</label>
@@ -262,12 +262,12 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
         <div className="absolute top-3 right-3 z-10 flex gap-2">
           {updateGame && game && !editing && (
             <button onClick={() => setEditing(true)}
-              className="h-8 px-3 flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 text-xs font-medium transition-colors">
+              className="h-9 px-3 flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 text-xs font-medium transition-colors">
               ✏️ Edit
             </button>
           )}
           <button onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 transition-colors">✕</button>
+            className="w-9 h-9 flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 transition-colors">✕</button>
         </div>
 
         {isLoading && <div className="flex items-center justify-center h-48 text-ink-400">Loading…</div>}
@@ -275,14 +275,14 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
         {game && (
           <div>
             {/* Hero */}
-            <div className="flex gap-4 p-5 pb-4 border-b border-ink-100">
-              <div className="flex-shrink-0 w-28 rounded-xl overflow-hidden border border-ink-200 bg-ink-100 self-start" style={{ aspectRatio: '3/4' }}>
+            <div className="flex flex-col sm:flex-row gap-4 p-5 pb-4 border-b border-ink-100 pt-14 sm:pt-5">
+              <div className="flex-shrink-0 w-24 sm:w-28 rounded-xl overflow-hidden border border-ink-200 bg-ink-100 self-start" style={{ aspectRatio: '3/4' }}>
                 {game.cover_url
                   ? <img src={game.cover_url} alt={game.title} className="w-full h-full object-cover" />
                   : <div className="w-full h-full flex items-center justify-center text-3xl bg-ink-100">🎮</div>}
               </div>
-              <div className="flex-1 min-w-0 pt-1 pr-8">
-                <h2 className="text-lg font-bold text-ink-900 leading-snug mb-0.5">{game.title}</h2>
+              <div className="flex-1 min-w-0 sm:pt-1">
+                <h2 className="text-lg font-bold text-ink-900 leading-snug mb-0.5 pr-0 sm:pr-8">{game.title}</h2>
                 {game.series_name && <p className="text-xs text-ink-400 mb-1.5">⛓ {game.series_name}</p>}
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>{STATUS_LABEL[game.play_status] ?? game.play_status}</span>
@@ -427,10 +427,10 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
       {/* Lightbox */}
       {lightboxIdx !== null && screenshots[lightboxIdx] && (
         <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center" onClick={() => setLightboxIdx(null)}>
-          <button onClick={e => { e.stopPropagation(); prevScreenshot() }} className="absolute left-4 text-white text-2xl bg-black/40 hover:bg-black/60 w-10 h-10 rounded-full flex items-center justify-center">‹</button>
+          <button onClick={e => { e.stopPropagation(); prevScreenshot() }} className="absolute left-4 text-white text-2xl bg-black/40 hover:bg-black/60 w-11 h-11 rounded-full flex items-center justify-center">‹</button>
           <img src={screenshots[lightboxIdx]} alt="" className="max-w-full max-h-full object-contain rounded-lg" onClick={e => e.stopPropagation()} />
-          <button onClick={e => { e.stopPropagation(); nextScreenshot() }} className="absolute right-4 text-white text-2xl bg-black/40 hover:bg-black/60 w-10 h-10 rounded-full flex items-center justify-center">›</button>
-          <button onClick={() => setLightboxIdx(null)} className="absolute top-4 right-4 text-white text-xl bg-black/40 hover:bg-black/60 w-8 h-8 rounded-full flex items-center justify-center">✕</button>
+          <button onClick={e => { e.stopPropagation(); nextScreenshot() }} className="absolute right-4 text-white text-2xl bg-black/40 hover:bg-black/60 w-11 h-11 rounded-full flex items-center justify-center">›</button>
+          <button onClick={() => setLightboxIdx(null)} className="absolute top-4 right-4 text-white text-xl bg-black/40 hover:bg-black/60 w-11 h-11 rounded-full flex items-center justify-center">✕</button>
           <span className="absolute bottom-4 text-white/60 text-xs">{lightboxIdx + 1} / {screenshots.length}</span>
         </div>
       )}

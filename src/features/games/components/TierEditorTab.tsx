@@ -27,7 +27,7 @@ function TierCard({ game, onPickTier }: { game: Game; onPickTier: (game: Game) =
       onClick={() => onPickTier(game)}
       title={`${game.title} — click to change tier`}
       className="relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-all duration-150 bg-ink-100 shadow-sm group flex-shrink-0"
-      style={{ width: 56, aspectRatio: '3/4' }}
+      style={{ width: 64, aspectRatio: '3/4' }}
     >
       {game.cover_url && !err
         ? <img src={game.cover_url} alt={game.title} onError={() => setErr(true)} className="w-full h-full object-cover" />
@@ -54,9 +54,9 @@ function TierPicker({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-2xl border border-ink-200 p-5 w-72"
+        className="bg-white rounded-2xl shadow-2xl border border-ink-200 p-5 w-[min(288px,calc(100vw-32px))]"
         onClick={e => e.stopPropagation()}
       >
         <p className="text-sm font-semibold text-ink-800 mb-1 truncate">{game.title}</p>
@@ -66,7 +66,7 @@ function TierPicker({
             <button
               key={t}
               onClick={() => onSelect(t)}
-              className={`py-2.5 rounded-xl text-sm font-bold border-2 transition-all hover:scale-105 ${
+              className={`py-3 rounded-xl text-sm font-bold border-2 transition-all hover:scale-105 min-h-[44px] ${
                 game.tier === t
                   ? (TIER_BADGE[t] ?? 'bg-ink-200') + ' border-transparent scale-105 ring-2 ring-offset-1 ring-ink-400'
                   : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'
@@ -75,7 +75,7 @@ function TierPicker({
           ))}
           <button
             onClick={() => onSelect(null)}
-            className={`col-span-2 py-2 rounded-xl text-xs text-ink-500 border-2 transition-all hover:border-ink-400 ${
+            className={`col-span-2 py-2.5 rounded-xl text-xs text-ink-500 border-2 transition-all hover:border-ink-400 min-h-[44px] ${
               game.tier == null ? 'border-ink-400 bg-ink-50' : 'border-ink-200 bg-white'
             }`}
           >Remove tier</button>
@@ -122,7 +122,7 @@ export function TierEditorTab() {
                 {label}
               </div>
               {/* Games */}
-              <div className="flex-1 flex items-center gap-2 p-3 overflow-x-auto min-h-[80px]">
+              <div className="flex-1 flex items-center gap-2 p-3 overflow-x-auto min-h-[96px]">
                 {games.length === 0 ? (
                   <span className="text-xs text-ink-300 italic">No games</span>
                 ) : (
