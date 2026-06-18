@@ -38,10 +38,6 @@ jobs:
 
   deploy-functions:
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      contains(toJson(github.event.commits.*.modified), 'supabase/functions/') ||
-      contains(toJson(github.event.commits.*.added), 'supabase/functions/')
     steps:
       - uses: actions/checkout@v4
 
