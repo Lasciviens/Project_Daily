@@ -44,7 +44,7 @@ export function CalendarEventList({ dateStr }: Props) {
           <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400">Calendar</p>
           <button
             onClick={() => setCreating(true)}
-            className="w-5 h-5 flex items-center justify-center rounded-full bg-accent-100 hover:bg-accent-200 text-accent-600 text-xs font-bold transition-colors duration-150"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full bg-accent-100 hover:bg-accent-200 text-accent-600 text-lg font-bold transition-colors duration-150"
             title="New event"
           >+</button>
         </div>

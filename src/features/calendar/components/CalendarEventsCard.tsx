@@ -39,7 +39,7 @@ export function CalendarEventsCard({ dateStr }: Props) {
             )}
             <button
               onClick={() => setCreating(true)}
-              className="w-6 h-6 flex items-center justify-center rounded-full bg-accent-100 hover:bg-accent-200 text-accent-600 text-sm font-bold transition-colors duration-150"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full bg-accent-100 hover:bg-accent-200 text-accent-600 text-lg font-bold transition-colors duration-150"
               title="New event"
             >+</button>
           </div>
