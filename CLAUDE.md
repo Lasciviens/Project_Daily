@@ -115,7 +115,8 @@ src/
 │   ├── training/         ✅ Done — TrainingPage, Strava OAuth, LogWorkoutModal, SessionCard, TrainingWeekView
 │   ├── games/            ✅ Done — GamesPage (Retroid/PlayStation tabs), Library (6 view modes), TierEditorTab, PlayQueueTab (drag-and-drop), GameDetailModal
 │   ├── ai/               ✅ Done — AIPanel (Gemini 2.5 Flash via Edge Function, function calling for create_task)
-│   ├── calendar/         🔄 Read-only done — CalendarEventsCard, CalendarEventList, CalendarConnect, EditCalendarEventModal UI exists but write NOT implemented
+│   ├── calendar/         ✅ Done — OAuth, read/write events, DayCalendarSection with refresh button in Daily page
+│   ├── football/         ✅ Done — FootballPage (My Teams + Tournaments tabs), NextMatchHero, FormGuide, FixtureList, StandingsTable
 │   └── home/             ✅ Done — HomePage dashboard, WidgetShell, WeatherWidget, RuterWidget (Entur transit), CurrencyWidget, NewsWidget, RecentMediaWidget, GamesHomeWidget, TrainingHomeWidget
 │
 ├── shared/
@@ -137,7 +138,8 @@ supabase/
 │   └── 002_media.sql           ✅ Applied
 ├── rp5-migrations/
 │   └── 001_play_order.sql      ✅ Applied in RP5 Supabase
-└── functions/                  AI proxy Edge Function
+└── functions/
+    ├── football-api/index.ts   Proxy for api-sports.io (API-Football v3) — needs FOOTBALL_API_KEY secret
 ```
 
 ---
