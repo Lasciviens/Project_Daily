@@ -1,209 +1,97 @@
 # Lasci's Board — Master Project Guide
 
-> **For any AI continuing this project:** Read this entire file before touching any code.
-> This is a living document — update it whenever architectural decisions change.
+> **For any AI starting a new session:** Read this entire file before touching any code.
+> This is the single source of truth — update it whenever architecture or phase status changes.
+
+---
+
+## How Claude Code Web Sessions Work (Workflow Guide)
+
+This project runs on **Claude Code on the web** (claude.ai/code). Here's what that means in practice:
+
+### Every session starts fresh
+Each time you open a new Claude Code session, the cloud container:
+1. Clones the repo fresh from GitHub
+2. Reads `CLAUDE.md` automatically
+3. Has no memory of previous sessions
+
+This means **everything that matters must be in git**. If it's not committed and pushed, the next session won't know about it.
+
+### The development loop
+```
+1. You describe what you want
+2. Claude creates a branch: claude/<descriptive-name>
+3. Claude writes code, runs npm run build to verify, commits
+4. Claude pushes and opens a draft PR
+5. You review on GitHub, mark ready, merge
+6. GitHub Actions auto-deploys to GitHub Pages in ~1 minute
+```
+
+### Branches and PRs
+- All work goes on `claude/<descriptive-name>` branches — never directly on `main`
+- PRs are opened as drafts automatically
+- You mark them ready and merge when satisfied
+- After merge, `main` auto-deploys via GitHub Actions
+
+### CLAUDE.md is the AI's memory
+Since sessions start fresh, CLAUDE.md is the only persistent context the AI has. It should contain:
+- Architecture decisions and WHY they were made
+- What's been built (so the AI doesn't rebuild it)
+- What's NOT done yet (so the AI doesn't assume it exists)
+- Coding rules that must be followed every session
+
+**Update CLAUDE.md whenever:** a new feature is completed, an architecture decision changes, a new rule is established.
+
+### Live URLs
+- **App:** `https://lasciviens.github.io/Project_Daily/#/login`
+- **Repo:** `https://github.com/Lasciviens/Project_Daily`
 
 ---
 
 ## What This Is
 
-A private personal dashboard for one user. Hosted on GitHub Pages (static), backend on Supabase.
-Covers: daily planning, tasks, media tracking (movies + TV), work tasks, AI assistant, Google Calendar.
+A private personal dashboard for one user (Furkan). Hosted on GitHub Pages (static), backend on Supabase. Single user — no multi-tenancy.
 
-**Single user.** No multi-tenancy complexity. All RLS policies use `auth.uid() = user_id`.
-
-**Live URL:** `https://lasciviens.github.io/Project_Daily/#/login`
-**Repo:** `https://github.com/Lasciviens/Project_Daily`
-**Branch convention:** All work goes on `claude/<descriptive-name>` → PR → merge to `main` → auto-deploy.
+**Covers:** Daily planning, tasks, media tracking (movies + TV), work tasks, projects, AI assistant, Google Calendar, training/Strava, games library (RP5/Retroid), home widgets (weather, transit, currency, news).
 
 ---
 
-## Specialized Agents — Use These First
-
-| Agent | When to invoke | File |
-|---|---|---|
-| **guardian** | Security, RLS, auth, API keys, Edge Functions, any migration | `.claude/agents/guardian.md` |
-| **flex** | Mobile layout, breakpoints, touch targets, bottom sheets | `.claude/agents/flex.md` |
-
-**Hard rule:** New table or auth change → guardian reviews first. New UI component → flex reviews.
-
----
-
-## Tech Stack (with rationale)
+## Tech Stack
 
 | Layer | Choice | Why |
 |---|---|---|
-| Framework | React 18 + TypeScript + Vite | GitHub Pages = static only, no SSR |
-| Routing | HashRouter (`/#/route`) | GitHub Pages 404 fix — no server rewrite available |
+| Framework | React 18 + TypeScript + Vite | GitHub Pages = static only |
+| Routing | HashRouter (`/#/route`) | GitHub Pages has no server rewrite |
 | Styling | Tailwind CSS v3 | Utility-first, design tokens in config |
-| Color theme | CSS custom properties (`--accent-*`) | Runtime theme switching without class rebuilds |
+| Color theme | CSS custom properties (`--accent-*`) | Runtime theme switching |
 | State (UI) | Zustand (`src/app/store.ts`) | Drawer open/close, selectedDate |
-| State (server) | TanStack Query v5 | All Supabase/API calls; cache key: `['domain', 'qualifier', id]` |
+| State (server) | TanStack Query v5 | All Supabase/API calls |
 | Forms | React Hook Form + Zod | Zod schemas in `shared/schemas/` |
-| DB | Supabase (Postgres + Auth + RLS) | Free tier, Edge Functions for API proxying |
+| DB | Supabase (Postgres + Auth + RLS) | Free tier, Edge Functions for proxying |
 | Hosting | GitHub Pages via Actions | Builds on push to `main` |
 
 ### What Is NOT Used
-- **No animation library** — no Framer Motion, no CSS keyframe libraries. Only `transition-colors duration-150` and `transition-shadow duration-150`.
-- **No shadcn/ui installed yet** — planned but not needed until Phase 8 polish.
-- **No server-side rendering** — GitHub Pages is static.
-- **No AI API keys in client** — all AI calls proxy through Supabase Edge Functions.
-
----
-
-## Coding Standards (Strict)
-
-### Comments
-Write comments **only** when the WHY is non-obvious. Never describe what the code does.
-
-```ts
-// Good: explains a non-obvious constraint
-// PostgREST OR with nested AND isn't reliable; two queries + JS merge is safer
-const [a, b] = await Promise.all([query1, query2])
-
-// Bad: describes what the code does
-// Fetch tasks by section
-const tasks = await fetchTasksBySection(section)
-```
-
-Maximum one comment per logical block. No multi-line comment blocks. No JSDoc on internal functions.
-
-### File length
-If a component exceeds ~150 lines, split it. One responsibility per file.
-
-### Component structure
-```tsx
-// 1. imports
-// 2. types/interfaces
-// 3. constants (outside component)
-// 4. component function
-// 5. sub-components (if small and tightly coupled)
-```
-
-### Naming
-- Components: `PascalCase.tsx`
-- Hooks: `useCamelCase.ts`
-- API modules: `camelCaseApi.ts`
-- Types file per feature: `types.ts`
-- Zod schemas: `shared/schemas/camelCaseSchema.ts`
-
-### Date formatting — MANDATORY rule
-
-Always display dates in **DD/MM/YYYY** format. Never MM/DD/YYYY.
-
-```ts
-// Correct
-new Date(dateStr).toLocaleDateString('en-GB')              // "06/06/2026"
-new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) // "6 Jun 2026"
-format(date, 'dd/MM/yyyy')   // date-fns
-
-// Wrong — never use these locales for display
-toLocaleDateString('en-US')  // "6/6/2026" — FORBIDDEN
-```
-
-For `<input type="date">` fields (browser controls display format): always show a DD/MM/YYYY formatted label next to or below the native input so the user can read the date correctly regardless of browser locale.
-
-### No premature abstraction
-Three similar things is not enough to abstract. Five similar things with identical structure: abstract.
-Don't build for hypothetical future requirements. Build for what's in the current phase.
-
-### Home page widget code standards (IMPORTANT — enforced by user request)
-- Every widget lives in its own file under `src/features/home/components/`
-- Every API module lives in its own file under `src/features/home/api/`
-- Every hook lives in its own file under `src/features/home/hooks/`
-- Use TypeScript interfaces for all data shapes — no inline `any`
-- Comment the WHY when it's non-obvious: API quirks, cross-rate math, Entur quay logic, etc.
-- All widgets share `WidgetShell` + `useWidgetState` for collapse/sync/interval controls
-- When collapsed, the widget's query must be disabled (no API calls)
-
-### User feedback — MANDATORY rule
-
-Every async action that the user triggers must give visible feedback. No silent operations.
-
-**Use the global `toast` helper from `src/app/store.ts`:**
-
-```ts
-import { toast } from '../../../app/store'
-
-// Loading → dismiss on done
-const id = toast.loading('Saving…')
-await doSomething()
-toast.dismiss(id)
-toast.success('Saved ✓')
-
-// Quick patterns
-toast.success('Connected ✓')
-toast.error(`Failed: ${err.message}`)
-```
-
-**When to use which feedback:**
-
-| Situation | Feedback type |
-|---|---|
-| Button click triggers async (save, delete, connect) | `toast.loading` → replace with `toast.success` or `toast.error` |
-| Form submit | Inline button spinner + disable, then toast on result |
-| Page/section loading | Skeleton placeholder (already standard) |
-| OAuth / redirect flow | Loading state on widget while code is exchanging |
-| Quick toggle (checkbox, status) | Optimistic UI — no toast unless it fails |
-| Destructive action (delete, disconnect) | Toast confirms ("Deleted" / "Disconnected") |
-
-**Never:**
-- Leave the user guessing whether an action succeeded
-- Show only an error state without a prior loading state for slow operations
-- Re-enable a button mid-flight (keep disabled until done)
-
-**If already connected / already done:**
-- Don't show the "Connect" button if already connected
-- Show the connected state clearly (name, avatar, green/accent dot)
-- Auth flows that complete redirect back must show a loading spinner while processing the OAuth code
-
-### Error handling
-Only at system boundaries (Supabase calls, TMDB calls). Don't wrap internal functions with try/catch.
-TanStack Query handles loading/error states — use `isLoading`, `error` from `useQuery`.
-
-### Query keys
-```ts
-['tasks', 'section', section]         // section tasks
-['tasks', 'day', dateStr, section]    // day view tasks
-['movies', 'user']                    // user's movie entries
-['tv', 'user']                        // user's TV entries
-['tmdb', 'search', query]             // TMDB search results
-['tmdb', 'trending', 'week']          // TMDB trending
-```
-`invalidateQueries({ queryKey: ['movies'] })` invalidates all movie queries at once.
-
----
-
-## Color / Theme System
-
-Accent color is driven by CSS custom properties. Never hardcode `amber-*` — always use `accent-*`.
-
-```css
-/* src/index.css :root — default is Orange */
---accent-50  through --accent-700
-```
-
-```ts
-/* src/shared/components/ThemeSwitcher.tsx */
-applyTheme('blue')  // updates CSS vars + saves to localStorage
-```
-
-Available themes: `orange` (default), `red`, `blue`, `purple`, `yellow`, `black`.
-Theme persists via `localStorage` key `accent-theme`. Applied on mount in `src/app/providers.tsx`.
+- No animation library — only `transition-colors` and `transition-shadow` Tailwind utilities
+- No shadcn/ui
+- No SSR — GitHub Pages is static
+- No AI API keys in client — all AI calls go through Supabase Edge Functions
 
 ---
 
 ## Routing
 
 ```
-/#/login    → LoginPage (public)
-/#/daily    → DailyPage (protected)
-/#/media    → MediaPage (protected) — Phase 3
-/#/work     → WorkPage (protected) — Phase 4
+/#/login      → LoginPage (public)
+/#/           → HomePage (protected) — dashboard overview
+/#/daily      → DailyPage (protected)
+/#/media      → MediaPage (protected)
+/#/work       → WorkPage (protected)
+/#/projects   → ProjectsPage (protected)
+/#/training   → TrainingPage (protected)
+/#/games      → GamesPage (protected)
 ```
 
 Protected routes wrapped by `SessionGuard` in `src/app/router.tsx`.
-`<Navigate to="/login">` not `"/#/login"` — HashRouter adds the `#` automatically.
 
 ---
 
@@ -212,253 +100,45 @@ Protected routes wrapped by `SessionGuard` in `src/app/router.tsx`.
 ```
 src/
 ├── app/
-│   ├── router.tsx        # Route definitions, SessionGuard wrapping
-│   ├── layout.tsx        # Nav, ToDoDrawer, ThemeSwitcher, today's date
+│   ├── router.tsx        # Route definitions, SessionGuard
+│   ├── layout.tsx        # Nav bar, ToDoDrawer toggle, ThemeSwitcher
 │   ├── providers.tsx     # QueryClient, theme init
-│   └── store.ts          # Zustand: isToDoOpen, toggleToDo, (selectedDate future)
+│   └── store.ts          # Zustand: isToDoOpen, toggleToDo
 │
 ├── features/
-│   ├── auth/
-│   │   └── pages/LoginPage.tsx
-│   │
-│   ├── daily/                          ✅ Phase 2 complete
-│   │   ├── pages/DailyPage.tsx         # Tabs: Today/Tomorrow/Week/Month + viewDate state
-│   │   ├── components/
-│   │   │   ├── DayView.tsx             # Task list for a date, uses AddTaskModal
-│   │   │   ├── WeekWidget.tsx          # 7-day grid, week nav, week number, onDayClick
-│   │   │   └── MonthWidget.tsx         # Calendar grid, month nav, onDayClick
-│   │   └── hooks/useDayData.ts         # Maps date → section + calls useTasksForDay
-│   │
-│   ├── todo/                           ✅ Phase 2 complete
-│   │   ├── components/
-│   │   │   ├── ToDoDrawer.tsx          # Fixed panel: bottom sheet mobile / right side desktop
-│   │   │   ├── ToDoSection.tsx         # Collapsible section with AddTaskModal
-│   │   │   └── ToDoItem.tsx            # Checkbox, priority dot, domain badge, hover-delete
-│   │   ├── hooks/useTodos.ts           # useTasksBySection, useTasksForDay, useCreateTask, etc.
-│   │   ├── api/tasksApi.ts             # Supabase CRUD for tasks
-│   │   └── types.ts                    # Task, CreateTaskInput, UpdateTaskInput
-│   │
-│   ├── media/                          🔄 Phase 3 — IN PROGRESS
-│   │   ├── pages/MediaPage.tsx         # Movies tab + TV tab; Trending sections at top
-│   │   ├── components/
-│   │   │   ├── MediaTabs.tsx           # Movies / TV Series tab switcher
-│   │   │   ├── MediaSection.tsx        # Reusable collapsible section (title, items, count)
-│   │   │   ├── MovieCard.tsx           # Movie poster card with actions
-│   │   │   ├── TVCard.tsx              # TV series card with episode progress
-│   │   │   ├── MediaSearch.tsx         # TMDB search bar + results dropdown
-│   │   │   ├── AddMediaConfirm.tsx     # Confirmation dialog before writing to DB
-│   │   │   └── PlanThisButton.tsx      # Date picker popover → creates task (PRIORITY FEATURE)
-│   │   ├── hooks/
-│   │   │   ├── useMovies.ts            # TanStack Query: user movie entries
-│   │   │   ├── useTVSeries.ts          # TanStack Query: user TV entries
-│   │   │   └── useTMDB.ts              # TMDB search, trending, details
-│   │   ├── api/
-│   │   │   ├── moviesApi.ts            # Supabase CRUD for movies + user_movie_entries
-│   │   │   ├── tvApi.ts                # Supabase CRUD for tv_series + user_tv_entries
-│   │   │   └── tmdbApi.ts              # TMDB REST calls (search, trending, details)
-│   │   └── types.ts                    # Movie, TVSeries, UserMovieEntry, UserTVEntry, TMDBResult
-│   │
-│   ├── work/                           📋 Phase 4
-│   ├── ai/                             📋 Phase 5
-│   └── calendar/                       📋 Phase 6
+│   ├── auth/             ✅ Done — LoginPage
+│   ├── daily/            ✅ Done — DailyPage, DayView, DayTimeline, WeekWidget, MonthWidget, AddTimeBlockModal
+│   ├── todo/             ✅ Done — ToDoDrawer (bottom sheet mobile / right panel desktop), ToDoSection, ToDoItem
+│   ├── media/            ✅ Done — MediaPage, MovieCard, TVCard, MediaDetailModal, MediaSearch, PlanThisButton, DiscoveryTabs, TonightPicker, ReleaseCalendar
+│   ├── work/             ✅ Done — WorkPage with task board, stats, week calendar
+│   ├── projects/         ✅ Done — ProjectsPage, ProjectDetail, PhaseCard, ItemRow, StatusCycleChip
+│   ├── training/         ✅ Done — TrainingPage, Strava OAuth, LogWorkoutModal, SessionCard, TrainingWeekView
+│   ├── games/            ✅ Done — GamesPage (Retroid/PlayStation tabs), Library (6 view modes), TierEditorTab, PlayQueueTab (drag-and-drop), GameDetailModal
+│   ├── ai/               ✅ Done — AIPanel (Gemini 2.5 Flash via Edge Function, function calling for create_task)
+│   ├── calendar/         🔄 Read-only done — CalendarEventsCard, CalendarEventList, CalendarConnect, EditCalendarEventModal UI exists but write NOT implemented
+│   └── home/             ✅ Done — HomePage dashboard, WidgetShell, WeatherWidget, RuterWidget (Entur transit), CurrencyWidget, NewsWidget, RecentMediaWidget, GamesHomeWidget, TrainingHomeWidget
 │
 ├── shared/
 │   ├── components/
-│   │   ├── AddTaskModal.tsx            # Full modal: title textarea + section/priority/domain/date
-│   │   └── ThemeSwitcher.tsx           # Color palette dot in nav
-│   ├── hooks/
-│   │   ├── useAuth.ts                  # { session, loading, user }
-│   │   └── useBreakpoint.ts            # (not yet built)
-│   └── schemas/                        # Zod validation schemas
+│   │   ├── AddTaskModal.tsx
+│   │   └── ThemeSwitcher.tsx
+│   └── schemas/
 │
-├── integrations/
-│   ├── supabase/client.ts              # createClient — throws if env vars missing
-│   ├── tmdb/client.ts                  # TMDB base URL + fetch wrapper (Phase 3)
-│   └── (others Phase 5+)
-│
-└── security/
-    ├── supabaseClient.ts               # Re-exports supabase + signIn/signOut/getSession
-    ├── sessionGuard.tsx                # Redirects to /login if no session
-    └── apiProxy.ts                     # Phase 5: Edge Function proxy wrapper
+└── integrations/
+    ├── supabase/client.ts      # Main Supabase client
+    ├── rp5-library/client.ts   # Separate RP5/Retroid Supabase client
+    ├── tmdb/client.ts          # TMDB API
+    ├── anthropic/              # Claude AI (via Edge Function only)
+    └── openai/                 # OpenAI (via Edge Function only)
 
 supabase/
 ├── migrations/
-│   ├── 001_tasks.sql                   ✅ Applied
-│   └── 002_media.sql                   🔄 Phase 3 — needs to be run in Supabase SQL Editor
-└── functions/                          📋 Phase 5+
+│   ├── 001_tasks.sql           ✅ Applied
+│   └── 002_media.sql           ✅ Applied
+├── rp5-migrations/
+│   └── 001_play_order.sql      ✅ Applied in RP5 Supabase
+└── functions/                  AI proxy Edge Function
 ```
-
----
-
-## Data Model
-
-### Completed migrations
-
-#### `tasks` (001_tasks.sql) ✅
-```sql
-tasks (
-  id, user_id, title, description,
-  domain:      personal | work | media,
-  section:     inbox | today | tomorrow | this_week | backlog,
-  status:      open | in_progress | done | cancelled,
-  priority:    low | medium | high,
-  due_date, due_time,
-  source_type: manual | movie | tv_series | calendar | ai,
-  source_id,   -- movies.id or tv_series.id when source_type = movie/tv_series
-  created_at, updated_at
-)
-RLS: auth.uid() = user_id (SELECT + INSERT + UPDATE + DELETE)
-```
-
-### Phase 3 migrations (002_media.sql) — run in Supabase SQL Editor
-
-#### `movies` — canonical TMDB movie data
-```sql
-movies (
-  id, tmdb_id UNIQUE,
-  title, original_title, overview,
-  release_date,       -- NULL = TBA/unknown
-  runtime,            -- minutes
-  status,             -- TMDB status: 'Released' | 'Post Production' | 'Planned' | etc.
-  poster_path,        -- TMDB path; build URL as: https://image.tmdb.org/t/p/w500{poster_path}
-  backdrop_path,
-  genres jsonb,       -- [{ id: number, name: string }]
-  tmdb_rating, tmdb_vote_count,
-  metadata_json,      -- raw TMDB response; never query directly
-  created_at
-)
-RLS: SELECT → all authenticated; INSERT → authenticated only
-```
-
-#### `tv_series` — canonical TMDB TV data
-```sql
-tv_series (
-  id, tmdb_id UNIQUE,
-  title, original_title, overview,
-  first_air_date, last_air_date,
-  status,             -- 'Returning Series' | 'Ended' | 'Canceled' | 'In Production'
-  episode_run_time,   -- typical episode minutes
-  number_of_seasons, number_of_episodes,
-  poster_path, backdrop_path,
-  genres jsonb,
-  tmdb_rating, tmdb_vote_count,
-  metadata_json,
-  created_at
-)
-RLS: same as movies
-```
-
-#### `user_movie_entries` — personal relationship with a movie
-```sql
-user_movie_entries (
-  id, user_id, movie_id UNIQUE(user_id, movie_id),
-  status:             watching | wishlist | completed | dropped,
-  priority:           low | medium | high,
-  personal_note, rating (1-10),
-  planned_date,
-  notify_before_days, -- calendar integration: notify X days before release/planned_date
-  repeat_count DEFAULT 0,
-  watched_at,
-  created_at, updated_at
-)
-RLS: auth.uid() = user_id (all operations)
-```
-
-#### `user_tv_entries` — personal relationship with a TV series
-```sql
-user_tv_entries (
-  id, user_id, tv_series_id UNIQUE(user_id, tv_series_id),
-  status:             watching | wishlist | completed | dropped | paused,
-  priority:           low | medium | high,
-  personal_note, rating (1-10),
-  current_season DEFAULT 1, current_episode DEFAULT 0,
-  planned_date,
-  notify_before_days, -- calendar integration ready
-  repeat_count DEFAULT 0,
-  started_at, finished_at,
-  created_at, updated_at
-)
-RLS: auth.uid() = user_id (all operations)
-```
-
----
-
-## Key Patterns
-
-### "Plan This" Button — Priority Feature
-The most important cross-feature pattern. A media item gets attached to a day via a task.
-
-```
-MovieCard / TVCard → [Plan This] button
-  ↓
-PlanThisButton opens a date popover:
-  [ Today ] [ Tomorrow ] [ This Week ] [ Pick date... ]
-  ↓
-Creates task: {
-  domain: 'media',
-  source_type: 'movie' | 'tv_series',
-  source_id: entry.id,   ← user_movie_entries.id or user_tv_entries.id
-  due_date: selected_date,
-  title: `Watch: ${movie.title}` or `Watch: ${series.title} S${season}E${episode+1}`,
-  section: mapped from due_date (today → 'today', etc.)
-}
-  ↓
-Appears in DayView for that date with a "🎬" or "📺" icon
-  ↓
-DayView links back to the media item
-```
-
-### Confirm Before Adding to DB
-Never write to `user_movie_entries` or `user_tv_entries` directly from search results.
-Always show `AddMediaConfirm` dialog first:
-
-```
-TMDB search result clicked
-  ↓
-AddMediaConfirm: poster + title + "Add to [section] — [Watching / Wishlist]? [Confirm] [Cancel]"
-  ↓
-On confirm:
-  1. Upsert into movies/tv_series (TMDB canonical data)
-  2. Insert into user_movie_entries/user_tv_entries
-  3. invalidateQueries(['movies', 'user']) or ['tv', 'user']
-```
-
-### Unreleased Content Display
-```ts
-// A movie/series is "upcoming" if:
-const isUpcoming = (releaseDate: string | null): boolean => {
-  if (!releaseDate) return true  // TBA
-  return new Date(releaseDate) > new Date()
-}
-```
-Upcoming items: grayscale poster with release date overlay, "Upcoming" badge, different card border.
-Available items: full color poster, normal display.
-
-### TMDB Image URL
-```ts
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p'
-const posterUrl = (path: string | null, size = 'w342') =>
-  path ? `${TMDB_IMAGE_BASE}/${size}${path}` : '/placeholder-poster.png'
-```
-Sizes: `w92`, `w154`, `w185`, `w342`, `w500`, `w780`, `original`.
-
-### TMDB External Links
-Always provide a link to TMDB for more info:
-- Movie: `https://www.themoviedb.org/movie/{tmdb_id}`
-- TV: `https://www.themoviedb.org/tv/{tmdb_id}`
-
-### Calendar Integration (design ready, Phase 6 implements)
-`notify_before_days` is stored now. When Phase 6 arrives:
-- Query entries where `release_date - notify_before_days = today`
-- Create Google Calendar event via Edge Function
-- Or: query at app load and show in-app notification
-
-### Completed Section
-Always collapsed by default (`defaultOpen: false` in `MediaSection`).
-
-### Episode Progress (TV)
-Displayed on TVCard as `S2 E5`. "Next episode" button increments `current_episode`.
-If `current_episode >= episodes_in_season`: auto-advance to next season, reset episode to 0.
 
 ---
 
@@ -466,152 +146,155 @@ If `current_episode >= episodes_in_season`: auto-advance to next season, reset e
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1 — Foundation | ✅ Done | Auth, SessionGuard, layout, routing, design system |
+| 1 — Foundation | ✅ Done | Auth, layout, routing, design system |
 | 2 — Daily + To-Do | ✅ Done | Tasks CRUD, DayView, WeekWidget, MonthWidget, ToDoDrawer |
-| 2.5 — UI Polish | ✅ Done | Color themes, week nav, day click, AddTaskModal, date in nav |
-| 3 — Media | 🔄 In Progress | Migration written; components in progress |
-| 4 — Work | ✅ Done | WorkPage with task board, stats, date nav, week calendar |
-| 5 — AI | ✅ Done | Gemini 2.5 Flash proxy, AIPanel chat, function calling (create_task) |
-| 6 — Calendar | 📋 Pending | Google Calendar OAuth read-only done; **write/edit events = Phase 6.1** |
-| 7 — Games | 📋 Pending | RP5 DB proxy, game cards (reuses media patterns) |
-| 8 — Training | 📋 Pending | See notes below — new page after Work |
-| 9 — Polish | 📋 Pending | Command Bar, Activity Log, PWA, stats widget |
-| 10 — Home Page | 📋 Pending | Landing/dashboard page — see notes below |
+| 2.5 — UI Polish | ✅ Done | Color themes, AddTaskModal, DayTimeline |
+| 3 — Media | ✅ Done | TMDB, Movies + TV, PlanThisButton, TonightPicker, ReleaseCalendar |
+| 4 — Work | ✅ Done | WorkPage task board |
+| 5 — AI | ✅ Done | Gemini 2.5 Flash proxy, AIPanel, create_task function calling |
+| 6 — Calendar | 🔄 Read-only done | Google Calendar OAuth read; **write/edit = Phase 6.1, NOT started** |
+| 7 — Games | ✅ Done | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
+| 8 — Training | ✅ Done | Strava OAuth, workout logging, week view |
+| 9 — Projects | ✅ Done | ProjectsPage with phases, items, status tracking |
+| 9.5 — Mobile | ✅ Done | Full mobile pass — 44px touch targets, bottom sheets, responsive layouts |
+| 10 — Home | ✅ Done | HomePage dashboard with all widgets |
+| 11 — Polish | 📋 Not started | Command Bar (Cmd+K), Activity Log, stats/streaks widget |
+| 12 — Calendar Write | 📋 Not started | Phase 6.1 — create/edit/delete Google Calendar events |
 
 ---
 
-## Phase 6.1 — Google Calendar Event Editing (not yet started)
+## Coding Standards (Strict)
 
-Currently calendar events are **read-only**. Editing requires:
-- Google Calendar API write scope: `https://www.googleapis.com/auth/calendar.events`
-- Re-auth flow (current OAuth only requests read scope)
-- `PATCH /calendar/v3/calendars/{calendarId}/events/{eventId}` for edits
-- `DELETE` for deletions
-- New Supabase Edge Function: `calendar-write`
-- UI: click event in DayTimeline → edit modal (title, time, description)
+### Mobile-first — MANDATORY
 
-**Do not implement until user explicitly starts Phase 6.1.**
+Every component must be mobile-first. The app is used on phones.
 
----
-
-## Phase 8 — Training Page (planned, not started)
-
-New page after Work in the nav: `/#/training`
-
-Goal: Track workouts, runs, gym sessions.
-
-**Potential integrations to research when starting:**
-- **Strava API** — OAuth, free tier; reads activities (runs, rides, swims). Best option.
-- **Garmin Connect API** — Limited, requires partnership. Harder.
-- **Apple Health / Google Fit** — No direct web API; would need a mobile companion.
-- **Manual logging** — Fallback: user manually logs sets/reps/duration into a `training_sessions` table.
-
-**Recommended approach:** Strava OAuth via Edge Function + manual log fallback.
-Migration needed: `training_sessions` table (date, type, duration_minutes, notes, source: 'manual'|'strava').
-
----
-
-## Future Integrations — Research Notes
-
-### Yr.no Weather (Phase 9+)
-Norwegian weather service with a free, no-auth REST API.
-- API: `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat={lat}&lon={lon}`
-- No API key needed. Requires `User-Agent` header with app name + contact email.
-- Returns hourly forecast for 9 days.
-- Show in Daily header: current temp + icon for today's location.
-- User's location: Oslo area (ask user to confirm coords or use browser geolocation).
-- Can be called directly from client (no proxy needed — public API).
-
-### RUTER Public Transit (Phase 9+)
-Oslo public transit real-time data.
-- API: Entur / Ruter uses **EnTur JourneyPlanner API** (GraphQL): `https://api.entur.io/journey-planner/v3/graphql`
-- No API key needed for basic use. Set `ET-Client-Name` header.
-- User wants: select favorite bus/tram lines, see next departures from preferred stops.
-- UI: small widget on Daily page showing "Next 68 bus: 4 min, 12 min"
-- Need to store: user's preferred stop IDs and line numbers (localStorage or Supabase).
-- Can call directly from client.
-
-**Do not build either of these until user explicitly asks to start.**
-
----
-
-## Phase 10 — Home Page (planned, not started)
-
-A dedicated landing/dashboard page at `/#/` or `/#/home` that gives an at-a-glance overview of everything.
-
-**Potential content:**
-- Today's task count + done/open ratio
-- Next calendar event
-- Current weather (yr.no widget when Phase 9 is done)
-- Next Ruter departure (when Phase 9 is done)
-- Recently added media
-- Quick-add task input
-- Week progress bar
-
-**Do not implement until user explicitly asks to start.**
-
----
-
-## Phase 3 — Media — Detailed Plan
-
-### Sections on MediaPage
-
-**Movies tab:**
-1. Trending Today (TMDB `/trending/movie/day`)
-2. Trending This Week (TMDB `/trending/movie/week`)
-3. Popular (TMDB `/movie/popular`)
-4. Currently Watching
-5. Wishlist
-6. Completed ← collapsed by default
-
-**TV tab:**
-1. Trending Today (TMDB `/trending/tv/day`)
-2. Trending This Week (TMDB `/trending/tv/week`)
-3. Popular (TMDB `/tv/popular`)
-4. Currently Watching
-5. Wishlist
-6. Completed ← collapsed by default
-
-### TMDB API Calls
-All calls use `VITE_TMDB_API_KEY` env var. Base: `https://api.themoviedb.org/3`.
-```ts
-GET /search/movie?query=...&language=en-US
-GET /search/tv?query=...&language=en-US
-GET /trending/movie/day    or /week
-GET /trending/tv/day       or /week
-GET /movie/popular
-GET /tv/popular
-GET /movie/{id}            (for detail when adding)
-GET /tv/{id}               (for detail when adding)
-```
-
-### MediaSearch component
-- Single search bar at the top of MediaPage
-- Debounced (300ms) TMDB search
-- Dropdown shows results split: "Movies" section / "TV Series" section
-- Clicking a result → AddMediaConfirm dialog
-- Shows TMDB rating and year in results
-
-### PlanThisButton — detailed spec
 ```tsx
-<PlanThisButton
-  entryId={entry.id}          // user_movie_entries.id or user_tv_entries.id
-  sourceType="movie"           // or 'tv_series'
-  title={movie.title}
-  currentSeason={undefined}    // TV only
-  currentEpisode={undefined}   // TV only
-/>
-```
-Renders as a small amber/accent button: `📅 Plan`.
-On click: popover with [ Today ] [ Tomorrow ] [ This Week ] [ Pick date... ].
-On date select: `createTask(...)` then shows a brief success toast (text only, no library).
+// ✅ Correct — mobile base, desktop override
+<button className="w-full md:w-auto min-h-[44px]">
 
-### Future-proofing checklist (do this in Phase 3)
-- [x] `notify_before_days` column in both user entry tables
-- [x] `source_type: 'movie' | 'tv_series'` in tasks (already in 001_tasks.sql)
-- [x] TMDB external links on every card
-- [x] `isUpcoming()` utility for release date checks
-- [x] Separate `movies` and `tv_series` tables (not merged media_items)
+// ❌ Wrong
+<button className="w-32 h-8">
+```
+
+**Touch target rule:** Every interactive element must have `min-h-[44px]`. No exceptions.
+
+**Hover-only actions are invisible on touch.** Any action hidden behind `hover:` needs an always-visible mobile fallback:
+```tsx
+{/* Mobile: always visible */}
+<div className="flex lg:hidden gap-1">
+  <button className="min-w-[44px] min-h-[44px]">Delete</button>
+</div>
+{/* Desktop: hover reveal */}
+<div className="hidden lg:flex gap-1 opacity-0 group-hover:opacity-100">
+  <button>Delete</button>
+</div>
+```
+
+**No horizontal overflow on the page** — only inside explicit `overflow-x-auto` containers.
+
+**Modal pattern on mobile** — bottom sheet on mobile, centered on `sm:`:
+```tsx
+<div className="fixed inset-0 flex items-end sm:items-center justify-center">
+  <div className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[90vh] overflow-y-auto">
+```
+
+### Comments
+Only when the WHY is non-obvious. Never describe what the code does. One comment per logical block max.
+
+### File length
+Component exceeds ~150 lines → split it.
+
+### Naming
+- Components: `PascalCase.tsx`
+- Hooks: `useCamelCase.ts`
+- API modules: `camelCaseApi.ts`
+
+### Date formatting — MANDATORY
+Always **DD/MM/YYYY**. Never MM/DD/YYYY.
+```ts
+new Date(dateStr).toLocaleDateString('en-GB')  // ✅ "06/06/2026"
+toLocaleDateString('en-US')                     // ❌ FORBIDDEN
+```
+
+### User feedback — MANDATORY
+Every async action must give visible feedback:
+```ts
+import { toast } from '../../../app/store'
+
+const id = toast.loading('Saving…')
+await doSomething()
+toast.dismiss(id)
+toast.success('Saved ✓')
+```
+
+| Situation | Feedback |
+|---|---|
+| Button triggers async (save, delete) | `toast.loading` → `toast.success` or `toast.error` |
+| Quick toggle (checkbox) | Optimistic UI — no toast unless it fails |
+| Destructive action | Toast confirms |
+
+### Error handling
+Only at system boundaries (Supabase calls, external APIs). TanStack Query handles loading/error states.
+
+---
+
+## Color / Theme System
+
+**Never hardcode `amber-*` — always use `accent-*`.**
+
+Available themes: `orange` (default), `red`, `blue`, `purple`, `yellow`, `black`.
+Theme persists via `localStorage` key `accent-theme`. Applied on mount in `src/app/providers.tsx`.
+
+---
+
+## Key Patterns
+
+### Query keys
+```ts
+['tasks', 'section', section]
+['tasks', 'day', dateStr, section]
+['movies', 'user']
+['tv', 'user']
+['tmdb', 'search', query]
+['rp5', 'stats']
+['rp5', 'all-games']
+['rp5', 'play-queue']
+['rp5', 'game', id]
+```
+`invalidateQueries({ queryKey: ['rp5'] })` invalidates all games queries at once.
+
+### RP5 Games Library
+- Separate Supabase instance: `VITE_RP5_SUPABASE_URL` + `VITE_RP5_SUPABASE_ANON_KEY`
+- Client: `src/integrations/rp5-library/client.ts`
+- Read from `v_games_summary` (list view) and `v_games_full` (detail view)
+- Write to raw `games` table directly (views are read-only)
+- `series_name` is computed in the view via JOIN — not in raw `games` table; never select it from `games` directly
+- `play_order` column added via `supabase/rp5-migrations/001_play_order.sql`
+- Play Queue queries: `v_games_full WHERE play_order IS NOT NULL ORDER BY play_order`
+
+### "Plan This" Button
+Creates a task linked to a media item:
+```ts
+createTask({
+  domain: 'media',
+  source_type: 'movie' | 'tv_series',
+  source_id: entry.id,
+  due_date: selected_date,
+  title: `Watch: ${title}`,
+  section: mapped_from_date,
+})
+```
+
+### TMDB Image URL
+```ts
+const posterUrl = (path: string | null, size = 'w342') =>
+  path ? `https://image.tmdb.org/t/p/${size}${path}` : '/placeholder-poster.png'
+```
+
+### Home widgets — WidgetShell pattern
+All home widgets use `WidgetShell` + `useWidgetState` for collapse/sync/interval.
+When collapsed, the widget's query must be disabled (no API calls).
 
 ---
 
@@ -621,38 +304,37 @@ On date select: `createTask(...)` then shows a brief success toast (text only, n
 |---|---|---|
 | `VITE_SUPABASE_URL` | `integrations/supabase/client.ts` | GitHub Secret |
 | `VITE_SUPABASE_ANON_KEY` | `integrations/supabase/client.ts` | GitHub Secret |
-| `VITE_TMDB_API_KEY` | `integrations/tmdb/client.ts` | GitHub Secret — public TMDB read key is safe client-side |
-| `VITE_GOOGLE_CLIENT_ID` | Phase 6 | GitHub Secret |
-| `CLAUDE_API_KEY` | Supabase Vault only | Never in client code |
-| `OPENAI_API_KEY` | Supabase Vault only | Never in client code |
+| `VITE_TMDB_API_KEY` | `integrations/tmdb/client.ts` | Public read key — safe client-side |
+| `VITE_GOOGLE_CLIENT_ID` | Calendar OAuth | GitHub Secret |
+| `VITE_RP5_SUPABASE_URL` | `integrations/rp5-library/client.ts` | GitHub Secret |
+| `VITE_RP5_SUPABASE_ANON_KEY` | `integrations/rp5-library/client.ts` | GitHub Secret |
+| `CLAUDE_API_KEY` | Supabase Vault only | **Never in client code** |
+| `OPENAI_API_KEY` | Supabase Vault only | **Never in client code** |
 
 ---
 
-## Planned Third-Party Integrations
+## What's NOT Done Yet
 
-These are future integrations — **do not build until explicitly started.**
+### Phase 6.1 — Calendar Write (not started)
+- New OAuth scope needed: `https://www.googleapis.com/auth/calendar.events`
+- Re-auth flow (current token is read-only scope)
+- New Edge Function: `calendar-write`
+- UI already exists (`EditCalendarEventModal`) — just needs the backend wired up
 
-| Integration | Phase | Notes |
-|---|---|---|
-| Google Calendar | 6 | OAuth via Edge Function. Read-only events on DayView. `notify_before_days` already stored. |
-| Streaming sync (Netflix/Trakt) | 8+ | Netflix has no public API. Approach: **Trakt.tv API** (free, has watched history, scrobbling) or JustWatch for availability. Design: OAuth → sync `current_season/episode` into `user_tv_entries`. Do not over-engineer now. |
-| RP5 Games Library | 7 | Read-only proxy via Supabase Edge Function to a separate Supabase DB. |
-| Claude AI | 5 | Via Edge Function proxy (`supabase/functions/ai-proxy`). Keys in Supabase Vault only. |
-| OpenAI | 5 | Same proxy as Claude — fallback or specific tasks. |
+### Phase 11 — Polish (not started)
+- Command Bar (`Cmd+K`) — quick navigation + task creation
+- Activity Log — what happened today/this week across all sections
+- Stats/streaks widget on HomePage
+
+### iOS Safari drag-and-drop
+HTML5 drag API doesn't work on iOS Safari. The Play Queue drag-to-reorder works on desktop and Android only. No polyfill added — acceptable limitation.
 
 ---
 
 ## How to Continue Development
 
-1. Pull `main`, create branch `claude/<feature-name>`
-2. Check phase status above — implement the next unchecked item
-3. Run `npm run build` before every commit — no TypeScript errors allowed
-4. Migrations go in `supabase/migrations/NNN_name.sql` — user must run them manually in Supabase SQL Editor
-5. Never push secrets — use GitHub Secrets for Vite env vars, Supabase Vault for server-side keys
-6. Every PR → draft → merge to main → auto-deploys in ~1 min
-
-### Quick file reference
-- Add a new page → `src/features/<name>/pages/<Name>Page.tsx` + route in `src/app/router.tsx`
-- Add a new table → `supabase/migrations/NNN_name.sql` + types in `src/features/<name>/types.ts`
-- Change accent color system → `src/shared/components/ThemeSwitcher.tsx` + `src/index.css`
-- Touch auth/RLS → invoke guardian agent first
+1. Start a new Claude Code web session — it reads this file automatically
+2. Describe what you want to build or fix
+3. Claude creates `claude/<feature-name>` branch, codes, runs `npm run build`, commits, pushes, opens draft PR
+4. Review on GitHub → mark ready → merge → auto-deploys in ~1 min
+5. Update this CLAUDE.md if the change affects architecture or phase status
