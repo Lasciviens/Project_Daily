@@ -232,7 +232,21 @@ toast.success('Saved ✓')
 |---|---|
 | Button triggers async (save, delete) | `toast.loading` → `toast.success` or `toast.error` |
 | Quick toggle (checkbox) | Optimistic UI — no toast unless it fails |
-| Destructive action | Toast confirms |
+| Destructive action (delete) | Toast confirms |
+| Non-critical warning | `toast.warning` (yellow) |
+
+**Toast colors:** 🟢 green = success · 🔴 red = error · 🟡 yellow = warning · ⚫ dark = loading.
+Toasts appear **bottom-left**. Always wrap async in try/catch and dismiss loading before success/error:
+
+```ts
+const tid = toast.loading('Saving…')
+try {
+  await doSomething()
+  toast.dismiss(tid); toast.success('Saved ✓')
+} catch (err) {
+  toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+}
+```
 
 ### Error handling
 Only at system boundaries (Supabase calls, external APIs). TanStack Query handles loading/error states.
