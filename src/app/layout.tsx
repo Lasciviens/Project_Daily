@@ -50,6 +50,7 @@ function Nav() {
           <NavLink to="/training"  className={linkClass}>Training</NavLink>
           <NavLink to="/games"     className={linkClass}>Games</NavLink>
           <NavLink to="/projects"  className={linkClass}>Projects</NavLink>
+          <NavLink to="/football"  className={linkClass}>Football</NavLink>
         </nav>
 
         {/* Right actions */}

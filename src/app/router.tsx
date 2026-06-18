@@ -9,6 +9,7 @@ import { WorkPage } from '../features/work/pages/WorkPage'
 import { TrainingPage } from '../features/training/pages/TrainingPage'
 import { GamesPage } from '../features/games/pages/GamesPage'
 import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
+import { FootballPage } from '../features/football/pages/FootballPage'
 
 export function Router() {
   return (
@@ -31,6 +32,7 @@ export function Router() {
           <Route path="/training"  element={<TrainingPage />} />
           <Route path="/games"     element={<GamesPage />} />
           <Route path="/projects"  element={<ProjectsPage />} />
+          <Route path="/football"  element={<FootballPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
