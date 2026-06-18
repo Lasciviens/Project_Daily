@@ -1,67 +1,114 @@
 import { useState, useEffect } from 'react'
-import { useUpdateCalendarEvent, useDeleteCalendarEvent } from '../hooks/useCalendar'
+import { useUpdateCalendarEvent, useDeleteCalendarEvent, useCreateCalendarEvent } from '../hooks/useCalendar'
 import type { CalendarEvent } from '../types'
 
-interface Props {
-  event:   CalendarEvent
-  onClose: () => void
-}
+// User's local IANA timezone — used for all new/edited events
+const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 function toLocalDatetimeInput(iso: string): string {
-  // Converts ISO 8601 → 'YYYY-MM-DDTHH:MM' for <input type="datetime-local">
   const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export function EditCalendarEventModal({ event, onClose }: Props) {
-  const [title,   setTitle]   = useState(event.summary ?? '')
-  const [desc,    setDesc]    = useState(event.description ?? '')
-  const [startDT, setStartDT] = useState(event.start.dateTime ? toLocalDatetimeInput(event.start.dateTime) : '')
-  const [endDT,   setEndDT]   = useState(event.end.dateTime   ? toLocalDatetimeInput(event.end.dateTime)   : '')
+// Default start/end for a new event: next whole hour + 1h duration
+function defaultTimes(date: string): { start: string; end: string } {
+  const now   = new Date()
+  const base  = new Date(`${date}T${String(now.getHours() + 1).padStart(2, '0')}:00`)
+  const end   = new Date(base.getTime() + 60 * 60_000)
+  return { start: toLocalDatetimeInput(base.toISOString()), end: toLocalDatetimeInput(end.toISOString()) }
+}
+
+interface EditProps {
+  mode:    'edit'
+  event:   CalendarEvent
+  onClose: () => void
+}
+
+interface CreateProps {
+  mode:        'create'
+  initialDate: string   // 'yyyy-MM-dd'
+  onClose:     () => void
+}
+
+type Props = EditProps | CreateProps
+
+export function EditCalendarEventModal(props: Props) {
+  const isCreate = props.mode === 'create'
+
+  const defaults = isCreate
+    ? defaultTimes((props as CreateProps).initialDate)
+    : null
+
+  const event = isCreate ? null : (props as EditProps).event
+
+  const [title,         setTitle]         = useState(event?.summary ?? '')
+  const [desc,          setDesc]          = useState(event?.description ?? '')
+  const [startDT,       setStartDT]       = useState(
+    event?.start.dateTime ? toLocalDatetimeInput(event.start.dateTime) : (defaults?.start ?? '')
+  )
+  const [endDT,         setEndDT]         = useState(
+    event?.end.dateTime   ? toLocalDatetimeInput(event.end.dateTime)   : (defaults?.end   ?? '')
+  )
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const update = useUpdateCalendarEvent()
-  const remove = useDeleteCalendarEvent()
-  const isPending  = update.isPending || remove.isPending
-  const calendarId = event.calendarId ?? 'primary'
+  const update  = useUpdateCalendarEvent()
+  const remove  = useDeleteCalendarEvent()
+  const create  = useCreateCalendarEvent()
 
-  const updateError = update.error instanceof Error ? update.error.message : null
-  const removeError = remove.error instanceof Error ? remove.error.message : null
-  const error       = updateError || removeError
+  const isPending  = update.isPending || remove.isPending || create.isPending
+  const calendarId = event?.calendarId ?? 'primary'
+
+  const anyError     = (update.error || remove.error || create.error) as Error | null
+  const error        = anyError?.message ?? null
   const needsReconnect = error?.includes('403') || error?.includes('insufficientPermissions') || error?.includes('forbidden')
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') props.onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [props.onClose])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
-    const patch: Record<string, unknown> = { summary: title.trim() }
-    if (desc !== (event.description ?? '')) patch.description = desc
-    if (startDT) patch.start = { dateTime: new Date(startDT).toISOString(), timeZone: event.start.timeZone ?? 'UTC' }
-    if (endDT)   patch.end   = { dateTime: new Date(endDT).toISOString(),   timeZone: event.end.timeZone   ?? 'UTC' }
-    await update.mutateAsync({ calendarId, eventId: event.id, patch })
-    onClose()
+
+    if (isCreate) {
+      await create.mutateAsync({
+        calendarId,
+        event: {
+          summary:     title.trim(),
+          description: desc || undefined,
+          start:       { dateTime: new Date(startDT).toISOString(), timeZone: LOCAL_TZ },
+          end:         { dateTime: new Date(endDT).toISOString(),   timeZone: LOCAL_TZ },
+        },
+      })
+    } else {
+      const patch: Record<string, unknown> = { summary: title.trim() }
+      if (desc !== (event!.description ?? '')) patch.description = desc
+      if (startDT) patch.start = { dateTime: new Date(startDT).toISOString(), timeZone: event!.start.timeZone ?? LOCAL_TZ }
+      if (endDT)   patch.end   = { dateTime: new Date(endDT).toISOString(),   timeZone: event!.end.timeZone   ?? LOCAL_TZ }
+      await update.mutateAsync({ calendarId, eventId: event!.id, patch })
+    }
+    props.onClose()
   }
 
   async function handleDelete() {
-    await remove.mutateAsync({ calendarId, eventId: event.id })
-    onClose()
+    await remove.mutateAsync({ calendarId, eventId: event!.id })
+    props.onClose()
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-ink-900/30" onClick={onClose} />
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center px-4 sm:px-4">
+      <div className="absolute inset-0 bg-ink-900/30" onClick={props.onClose} />
 
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-card-hover border border-ink-200">
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-card-hover border border-ink-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <h2 className="text-sm font-semibold text-ink-800">Edit Calendar Event</h2>
+          <h2 className="text-sm font-semibold text-ink-800">
+            {isCreate ? 'New Event' : 'Edit Event'}
+          </h2>
           <button
-            onClick={onClose}
+            onClick={props.onClose}
             className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none"
           >
             ×
@@ -80,39 +127,31 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
                        focus:border-accent-400 transition-colors duration-150"
           />
 
-          {event.start.dateTime && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
-                  Start
-                </label>
-                <input
-                  type="datetime-local"
-                  value={startDT}
-                  onChange={e => setStartDT(e.target.value)}
-                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
-                             focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
-                  End
-                </label>
-                <input
-                  type="datetime-local"
-                  value={endDT}
-                  onChange={e => setEndDT(e.target.value)}
-                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
-                             focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
-                />
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Start</label>
+              <input
+                type="datetime-local"
+                value={startDT}
+                onChange={e => setStartDT(e.target.value)}
+                className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
+                           focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
+              />
             </div>
-          )}
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">End</label>
+              <input
+                type="datetime-local"
+                value={endDT}
+                onChange={e => setEndDT(e.target.value)}
+                className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
+                           focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
+              />
+            </div>
+          </div>
 
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
-              Description
-            </label>
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Description</label>
             <textarea
               value={desc}
               onChange={e => setDesc(e.target.value)}
@@ -138,27 +177,31 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
               disabled={isPending || !title.trim()}
               className="btn-primary flex-1 min-h-[44px] disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {update.isPending ? 'Saving…' : 'Save changes'}
+              {isPending && isCreate  ? 'Creating…'  :
+               isPending && !isCreate ? 'Saving…'    :
+               isCreate               ? 'Create event' : 'Save changes'}
             </button>
 
-            {!confirmDelete ? (
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                disabled={isPending}
-                className="px-3 py-1.5 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
-              >
-                Delete
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={isPending}
-                className="px-3 py-1.5 rounded-lg text-sm bg-red-500 text-white hover:bg-red-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
-              >
-                {remove.isPending ? 'Deleting…' : 'Confirm delete'}
-              </button>
+            {!isCreate && (
+              !confirmDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={isPending}
+                  className="px-3 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
+                >
+                  Delete
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isPending}
+                  className="px-3 rounded-lg text-sm bg-red-500 text-white hover:bg-red-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
+                >
+                  {remove.isPending ? 'Deleting…' : 'Confirm delete'}
+                </button>
+              )
             )}
           </div>
         </form>

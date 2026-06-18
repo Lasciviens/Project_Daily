@@ -505,7 +505,7 @@ export function DayTimeline({ date }: Props) {
           onClose={() => { setModal(false); setClickTime(undefined) }}
         />
       )}
-      {editEvent && <EditCalendarEventModal event={editEvent} onClose={() => setEditEvent(null)} />}
+      {editEvent && <EditCalendarEventModal mode="edit" event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
   )
 }
