@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useCreateTimeBlock, useCreateScheduleBlock } from '../hooks/useSchedule'
+import { toast } from '../../../app/store'
 
 const DURATIONS = [
   { label: '30 min',  value: 30  },
@@ -36,24 +37,30 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
 
   async function handleSubmit() {
     if (!title.trim()) return
-    if (tab === 'once') {
-      await createBlock.mutateAsync({
-        date:             dateStr,
-        title:            title.trim(),
-        start_time:       startTime ? `${startTime}:00` : null,
-        duration_minutes: actualDuration,
-        color:            defaultColor,
-      })
-    } else {
-      await createRecurring.mutateAsync({
-        title:        title.trim(),
-        days_of_week: days,
-        start_time:   `${startTime}:00`,
-        end_time:     `${endTime}:00`,
-        color:        'blue',
-      })
+    const tid = toast.loading(tab === 'once' ? 'Adding block…' : 'Adding recurring block…')
+    try {
+      if (tab === 'once') {
+        await createBlock.mutateAsync({
+          date:             dateStr,
+          title:            title.trim(),
+          start_time:       startTime ? `${startTime}:00` : null,
+          duration_minutes: actualDuration,
+          color:            defaultColor,
+        })
+      } else {
+        await createRecurring.mutateAsync({
+          title:        title.trim(),
+          days_of_week: days,
+          start_time:   `${startTime}:00`,
+          end_time:     `${endTime}:00`,
+          color:        'blue',
+        })
+      }
+      toast.dismiss(tid); toast.success('Block added ✓')
+      onClose()
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to add block')
     }
-    onClose()
   }
 
   const isPending = createBlock.isPending || createRecurring.isPending
