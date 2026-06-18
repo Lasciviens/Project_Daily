@@ -96,9 +96,9 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
           </div>
         )}
 
-        {/* Hover overlay with quick actions */}
+        {/* Hover overlay — desktop only */}
         {!upcoming && entry.status !== 'completed' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-end pb-2 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          <div className="absolute inset-0 hidden md:flex flex-col items-center justify-end pb-2 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
             <div onClick={e => e.stopPropagation()} className="w-full px-2">
               <PlanThisButton
                 entryId={entry.id}
@@ -153,6 +153,40 @@ export function TVCard({ entry, compact, onOpenDetail }: Props) {
           </div>
           {(entry.status === 'watching' || entry.status === 'paused') && series.number_of_episodes && (
             <BingeProgress entry={entry} />
+          )}
+
+          {/* Mobile-only action row — tap targets for touch devices */}
+          {!upcoming && entry.status !== 'completed' && (
+            <div className="flex gap-1 mt-1.5 md:hidden">
+              <div className="flex-1 min-w-0">
+                <PlanThisButton
+                  entryId={entry.id}
+                  sourceType="tv_series"
+                  title={series.title}
+                  currentSeason={entry.current_season}
+                  currentEpisode={entry.current_episode}
+                />
+              </div>
+              {entry.status === 'watching' && (
+                <>
+                  <button
+                    onClick={advanceEpisode}
+                    disabled={update.isPending}
+                    className="min-h-[44px] px-2 text-[10px] rounded bg-accent-500 text-white font-medium hover:bg-accent-600 transition-colors duration-150 flex-shrink-0"
+                  >
+                    +ep
+                  </button>
+                  <button
+                    onClick={markSeriesDone}
+                    disabled={update.isPending}
+                    className="min-h-[44px] px-2 text-[10px] rounded bg-emerald-500 text-white hover:bg-emerald-600 transition-colors duration-150 flex-shrink-0"
+                    title="Mark series as completed"
+                  >
+                    ✓
+                  </button>
+                </>
+              )}
+            </div>
           )}
         </div>
       )}

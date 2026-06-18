@@ -44,53 +44,53 @@ export function AddMediaConfirm({ item, mediaType, onConfirm, onClose, isPending
       onClick={onClose}
     >
       <div
-        className="card p-5 w-full max-w-sm mx-4 flex gap-4"
+        className="card p-4 w-full max-w-sm mx-4"
         onClick={e => e.stopPropagation()}
       >
-        {/* Poster */}
-        <img
-          src={posterUrl(item.poster_path, 'w185')}
-          alt={title}
-          className="w-16 flex-shrink-0 rounded-md object-cover"
-        />
-
-        {/* Details */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-ink-900 leading-snug">{title}</p>
-          {year && <p className="text-xs text-ink-400 mt-0.5">{year}</p>}
-
-          <p className="text-xs text-ink-500 mt-3 mb-2">Add to:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {statuses.map(s => (
-              <button
-                key={s.value}
-                onClick={() => setStatus(s.value)}
-                className={`text-xs px-2.5 py-1 rounded-full border transition-colors duration-150 ${
-                  status === s.value
-                    ? 'bg-accent-500 border-accent-500 text-white'
-                    : 'border-ink-200 text-ink-600 hover:border-accent-400'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
+        {/* Poster + title row */}
+        <div className="flex gap-3 mb-3">
+          <img
+            src={posterUrl(item.poster_path, 'w185')}
+            alt={title}
+            className="w-14 flex-shrink-0 rounded-md object-cover"
+          />
+          <div className="flex-1 min-w-0 pt-0.5">
+            <p className="text-sm font-semibold text-ink-900 leading-snug">{title}</p>
+            {year && <p className="text-xs text-ink-400 mt-0.5">{year}</p>}
           </div>
+        </div>
 
-          <div className="flex gap-2 mt-4">
+        <p className="text-xs text-ink-500 mb-2">Add to:</p>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {statuses.map(s => (
             <button
-              onClick={() => onConfirm(status)}
-              disabled={isPending}
-              className="btn-primary flex-1 text-sm py-1.5"
+              key={s.value}
+              onClick={() => setStatus(s.value)}
+              className={`text-xs px-3 min-h-[44px] rounded-full border transition-colors duration-150 ${
+                status === s.value
+                  ? 'bg-accent-500 border-accent-500 text-white'
+                  : 'border-ink-200 text-ink-600 hover:border-accent-400'
+              }`}
             >
-              {isPending ? 'Adding…' : 'Add'}
+              {s.label}
             </button>
-            <button
-              onClick={onClose}
-              className="flex-1 text-sm py-1.5 rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-100 transition-colors duration-150"
-            >
-              Cancel
-            </button>
-          </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => onConfirm(status)}
+            disabled={isPending}
+            className="btn-primary flex-1 text-sm min-h-[44px]"
+          >
+            {isPending ? 'Adding…' : 'Add'}
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 text-sm min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-100 transition-colors duration-150"
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </div>

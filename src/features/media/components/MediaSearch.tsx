@@ -50,7 +50,7 @@ export function MediaSearch({ onSelectResult }: Props) {
           onChange={e => setQuery(e.target.value)}
           onFocus={() => setFocused(true)}
           placeholder="Search movies or TV series…"
-          className="input w-full pl-9"
+          className="input w-full pl-9 min-h-[44px]"
         />
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-sm">⌕</span>
         {(moviesLoading || tvLoading) && (
@@ -69,7 +69,7 @@ export function MediaSearch({ onSelectResult }: Props) {
                 <button
                   key={m.id}
                   onClick={() => select(m.id, 'movie')}
-                  className="flex items-center gap-3 px-3 py-2 w-full text-left hover:bg-cream-100 transition-colors duration-150"
+                  className="flex items-center gap-3 px-3 py-2.5 w-full text-left hover:bg-cream-100 transition-colors duration-150 min-h-[44px]"
                 >
                   <img src={posterUrl(m.poster_path, 'w92')} alt={m.title}
                     className="w-8 h-12 object-cover rounded flex-shrink-0" />
@@ -92,7 +92,7 @@ export function MediaSearch({ onSelectResult }: Props) {
                 <button
                   key={t.id}
                   onClick={() => select(t.id, 'tv')}
-                  className="flex items-center gap-3 px-3 py-2 w-full text-left hover:bg-cream-100 transition-colors duration-150"
+                  className="flex items-center gap-3 px-3 py-2.5 w-full text-left hover:bg-cream-100 transition-colors duration-150 min-h-[44px]"
                 >
                   <img src={posterUrl(t.poster_path, 'w92')} alt={t.name}
                     className="w-8 h-12 object-cover rounded flex-shrink-0" />
