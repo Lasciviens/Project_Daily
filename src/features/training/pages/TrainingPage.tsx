@@ -44,13 +44,10 @@ export function TrainingPage() {
     sessionDate(b).localeCompare(sessionDate(a))
   )
 
-  const typeFiltered = filterType === 'all'
+  // Always show full list — day selection only drives quick-add date
+  const displayed = filterType === 'all'
     ? sorted
     : sorted.filter(s => s.type === filterType)
-
-  const displayed = selectedDay
-    ? typeFiltered.filter(s => sessionDate(s) === selectedDay)
-    : typeFiltered
 
   const types   = [...new Set(sessions.map(s => s.type))]
   const planned = sessions.filter(s => s.planned_date && !s.completed_at)
@@ -58,6 +55,11 @@ export function TrainingPage() {
 
   function handleDayClick(ds: string) {
     setSelectedDay(prev => prev === ds ? null : ds)
+  }
+
+  function goToToday() {
+    setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
+    setSelectedDay(format(new Date(), 'yyyy-MM-dd'))
   }
 
   return (
@@ -111,42 +113,40 @@ export function TrainingPage() {
             onDayClick={handleDayClick}
             onPrevWeek={() => setWeekStart(w => subWeeks(w, 1))}
             onNextWeek={() => setWeekStart(w => addWeeks(w, 1))}
+            onToday={goToToday}
           />
 
           {/* Stats */}
           <TrainingStats sessions={sessions} />
 
-          {/* Day header or "All sessions" */}
+          {/* Sessions header + filters */}
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              {selectedDay ? (
-                <>
-                  <p className="text-sm font-semibold text-ink-800">
-                    {formatDayHeading(selectedDay)}
-                  </p>
-                  <button
-                    onClick={() => setSelectedDay(null)}
-                    className="text-[10px] text-ink-400 hover:text-ink-600 px-2 py-0.5 rounded bg-ink-100"
-                  >
-                    ✕ All
-                  </button>
-                </>
-              ) : (
-                <p className="text-xs font-semibold uppercase tracking-wider text-ink-500">
-                  All sessions
-                </p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink-500">
+                {selectedDay ? formatDayHeading(selectedDay) : 'All sessions'}
+              </p>
+              {selectedDay && (
+                <button
+                  onClick={() => setSelectedDay(null)}
+                  className="text-[10px] text-ink-400 hover:text-ink-600 px-2 py-0.5 rounded bg-ink-100"
+                >
+                  ✕
+                </button>
               )}
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Quick-add for selected day */}
               {selectedDay && (
                 <button
                   onClick={() => setShowLog(true)}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 min-h-[44px]"
+                  title={`Add session for ${formatDayHeading(selectedDay)}`}
+                  className="w-9 h-9 flex items-center justify-center rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 text-lg font-light leading-none min-h-[44px] min-w-[44px]"
                 >
-                  + Add for this day
+                  +
                 </button>
               )}
+              {/* Type filter pills */}
               <div className="flex gap-1 flex-wrap">
                 <button
                   onClick={() => setFilterType('all')}

@@ -4,6 +4,11 @@ import {
   fetchSessionExercises, saveSessionExercises,
 } from '../api/trainingApi'
 import { syncStravaActivities, disconnectStrava } from '../api/stravaApi'
+import { supabase } from '../../../integrations/supabase/client'
+import { deleteGoogleTask } from '../../todo/api/googleTasksApi'
+import { deleteTask } from '../../todo/api/tasksApi'
+import { getGoogleTaskId, removeGoogleTaskMapping } from '../../todo/api/googleTasksApi'
+import { useCalendarStore } from '../../../app/store'
 import type { CreateSessionInput, Exercise } from '../types'
 
 export function useTrainingSessions() {
@@ -42,8 +47,33 @@ export function useUpdateSession() {
 export function useDeleteSession() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => deleteSession(id),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['training'] }),
+    mutationFn: async (id: string) => {
+      const { linkedTaskId } = await deleteSession(id)
+
+      if (linkedTaskId) {
+        // Look up google_task_id from Supabase (cross-device), fall back to localStorage
+        const { data: taskRow } = await supabase
+          .from('tasks')
+          .select('google_task_id')
+          .eq('id', linkedTaskId)
+          .single()
+
+        const googleTaskId = taskRow?.google_task_id ?? getGoogleTaskId(linkedTaskId)
+        if (googleTaskId) {
+          const token = useCalendarStore.getState().accessToken
+          if (token) {
+            try { await deleteGoogleTask(token, googleTaskId) } catch {}
+          }
+          removeGoogleTaskMapping(linkedTaskId)
+        }
+        await deleteTask(linkedTaskId)
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['training'] })
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['schedule'] })
+    },
   })
 }
 

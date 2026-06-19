@@ -26,6 +26,7 @@ export interface TrainingSession {
   elevation_gain_m:    number | null
   avg_heart_rate:      number | null
   avg_pace_sec_per_km: number | null
+  linked_task_id:      string | null
   created_at:          string
   updated_at:          string
 }
@@ -91,4 +92,5 @@ export interface CreateSessionInput {
   elevation_gain_m?:    number
   avg_heart_rate?:      number
   avg_pace_sec_per_km?: number
+  linked_task_id?:      string | null
 }

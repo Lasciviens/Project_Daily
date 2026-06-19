@@ -17,11 +17,7 @@ concurrency:
 jobs:
   db-migrations:
     runs-on: ubuntu-latest
-    # Only runs when a migration file actually changes
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      contains(toJson(github.event.commits.*.modified), 'supabase/migrations/') ||
-      contains(toJson(github.event.commits.*.added), 'supabase/migrations/')
+    # Always run — supabase db push is idempotent (skips already-applied migrations)
     steps:
       - uses: actions/checkout@v4
 

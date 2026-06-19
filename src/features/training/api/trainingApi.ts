@@ -36,9 +36,23 @@ export async function updateSession(id: string, patch: Partial<CreateSessionInpu
   if (error) throw error
 }
 
-export async function deleteSession(id: string): Promise<void> {
+export async function deleteSession(id: string): Promise<{ linkedTaskId: string | null }> {
+  // Capture linked task before deletion
+  const { data: session } = await supabase
+    .from('train_sessions')
+    .select('linked_task_id')
+    .eq('id', id)
+    .single()
+
+  // Remove companion time block (source_type/source_id link)
+  await supabase.from('time_blocks')
+    .delete()
+    .eq('source_type', 'training_session')
+    .eq('source_id', id)
+
   const { error } = await supabase.from('train_sessions').delete().eq('id', id)
   if (error) throw error
+  return { linkedTaskId: session?.linked_task_id ?? null }
 }
 
 // ─── Session exercises ────────────────────────────────────────────────────────
