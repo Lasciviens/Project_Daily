@@ -37,10 +37,19 @@ const LEG_STRIP_COLOR: Record<string, string> = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+// Solid color badges per mode — more distinct than the pale tints from TRANSPORT_COLOR
+const MODE_BADGE_SOLID: Record<string, string> = {
+  bus:   'bg-blue-600 text-white',
+  tram:  'bg-emerald-600 text-white',
+  metro: 'bg-violet-600 text-white',
+  rail:  'bg-slate-700 text-white',
+  ferry: 'bg-cyan-600 text-white',
+}
+
 function LineBadge({ line, mode }: { line: string; mode: string }) {
-  const colorClass = TRANSPORT_COLOR[mode] ?? 'bg-ink-100 text-ink-700'
+  const colorClass = MODE_BADGE_SOLID[mode] ?? (TRANSPORT_COLOR[mode] ?? 'bg-ink-100 text-ink-700')
   return (
-    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 ${colorClass}`}>
+    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md flex-shrink-0 tracking-wide ${colorClass}`}>
       {line}
     </span>
   )
@@ -82,20 +91,20 @@ function TransitLeg({ leg }: { leg: TripLeg }) {
           <RealtimeDot realtime={leg.realtime} />
         </div>
         {/* Departure time + platform */}
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
           {leg.departure && (
-            <span className="text-[10px] text-ink-400">
+            <span className="text-xs font-semibold text-ink-700">
               {delayed && leg.aimed && (
-                <span className="line-through text-ink-300 mr-1">{fmtTime(leg.aimed)}</span>
+                <span className="line-through text-ink-300 mr-1 font-normal">{fmtTime(leg.aimed)}</span>
               )}
               <span className={delayed ? 'text-orange-500' : ''}>dep {fmtTime(leg.departure)}</span>
             </span>
           )}
           {leg.arrivalTime && (
-            <span className="text-[10px] text-ink-400">arr {fmtTime(leg.arrivalTime)}</span>
+            <span className="text-xs text-ink-400">arr {fmtTime(leg.arrivalTime)}</span>
           )}
           {(leg.quayCode || leg.quayDescription) && (
-            <span className="text-[10px] text-ink-400">
+            <span className="text-[11px] text-ink-400 bg-ink-50 px-1.5 py-0.5 rounded">
               {leg.quayCode ? `Platform ${leg.quayCode}` : ''}
               {leg.quayCode && leg.quayDescription ? ' · ' : ''}
               {leg.quayDescription ?? ''}
@@ -177,26 +186,32 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
       {/* Summary row — tap to expand/collapse leg details */}
       <button
         onClick={() => setExpanded(v => !v)}
-        className="w-full px-3 pt-1.5 pb-2 text-left"
+        className="w-full px-3 pt-2 pb-2.5 text-left min-h-[52px]"
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-3">
+          {/* Left: departure time — large and prominent */}
           <div className="flex items-center gap-2 min-w-0">
             {isBest && (
               <span className="text-[10px] font-semibold text-accent-600 bg-accent-100 px-1.5 py-0.5 rounded flex-shrink-0">
                 Best
               </span>
             )}
-            <span className={`text-sm font-semibold flex-shrink-0 ${isNow ? 'text-red-500' : 'text-ink-800'}`}>
+            <span className={`text-base font-bold flex-shrink-0 ${
+              isNow ? 'text-red-500' : isPast ? 'text-ink-400' : 'text-ink-900'
+            }`}>
               {label}
             </span>
-            <span className="text-xs text-ink-400 flex-shrink-0">{fmtDuration(trip.duration)}</span>
-            {trip.walkDistance > 100 && (
-              <span className="text-xs text-ink-400 flex-shrink-0">{fmtDistance(trip.walkDistance)} walk</span>
-            )}
           </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="text-xs text-ink-500">arr {fmtTime(trip.arrival)}</span>
-            <span className="text-[10px] text-ink-300">{expanded ? '▲' : '▼'}</span>
+          {/* Right: arrival + duration stacked */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="text-right">
+              <div className="text-sm font-semibold text-ink-700">arr {fmtTime(trip.arrival)}</div>
+              <div className="text-[11px] text-ink-400 mt-0.5">
+                {fmtDuration(trip.duration)}
+                {trip.walkDistance > 100 ? ` · ${fmtDistance(trip.walkDistance)} walk` : ''}
+              </div>
+            </div>
+            <span className="text-[10px] text-ink-300 flex-shrink-0">{expanded ? '▲' : '▼'}</span>
           </div>
         </div>
       </button>
