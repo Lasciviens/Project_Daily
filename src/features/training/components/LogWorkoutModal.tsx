@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useCreateSession, useUpdateSession, useSessionExercises, useSaveSessionExercises } from '../hooks/useTrainingSessions'
 import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
+import { useCreateTask } from '../../todo/hooks/useTodos'
 import { fetchLastStrengthExercises, searchExerciseNames } from '../api/trainingApi'
 import type { WorkoutType, Exercise, ExerciseSet, TrainingSession } from '../types'
 
@@ -72,6 +73,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
   const create          = useCreateSession()
   const update          = useUpdateSession()
   const createTimeBlock = useCreateTimeBlock()
+  const createTask      = useCreateTask()
   const isPending       = create.isPending || update.isPending
   const isCardio   = ['run', 'cycling', 'walk', 'swim'].includes(type)
   const isStrength = type === 'strength'
@@ -160,6 +162,18 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
           start_time:       '17:00:00',
           duration_minutes: 45,
           color:            'purple',
+        })
+        // Also create a task so the workout appears in the to-do list
+        const d = new Date(date + 'T00:00:00')
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        const weekAhead = new Date(today); weekAhead.setDate(today.getDate() + 7)
+        const taskSection = d <= today ? 'today' : d <= weekAhead ? 'this_week' : 'backlog'
+        createTask.mutate({
+          title:    title.trim(),
+          section:  taskSection,
+          domain:   'personal',
+          priority: 'medium',
+          due_date: date,
         })
       }
     }

@@ -29,7 +29,7 @@ export function SettingsMenu() {
 
   const login = useGoogleLogin({
     flow:    'auth-code',
-    scope:   'https://www.googleapis.com/auth/calendar.events',
+    scope:   'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks',
     ux_mode: 'popup',
     onSuccess: async ({ code }) => {
       setCalLoading(true)

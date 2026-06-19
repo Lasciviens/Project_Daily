@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useUIStore } from '../../../app/store'
-import { useTasksBySection, useSyncFromTodoist, usePushToTodoist } from '../hooks/useTodos'
+import { useTasksBySection, useSyncFromGoogleTasks, usePushToGoogleTasks } from '../hooks/useTodos'
 import { fetchTasksBySection } from '../api/tasksApi'
 import { ToDoSection } from './ToDoSection'
 import type { TaskSection } from '../types'
@@ -14,8 +14,8 @@ const SECTIONS: { id: TaskSection; label: string; defaultOpen: boolean }[] = [
 
 export function ToDoDrawer() {
   const { isToDoOpen, closeToDo } = useUIStore()
-  const pull  = useSyncFromTodoist()
-  const push  = usePushToTodoist()
+  const pull  = useSyncFromGoogleTasks()
+  const push  = usePushToGoogleTasks()
   const [toast, setToast] = useState<{ msg: string; error?: boolean } | null>(null)
 
   function showToast(msg: string, error = false) {
@@ -26,28 +26,27 @@ export function ToDoDrawer() {
   async function handlePull() {
     try {
       const imported = await pull.mutateAsync()
-      showToast(imported > 0 ? `${imported} görev içe aktarıldı` : 'Zaten güncel')
+      showToast(imported > 0 ? `${imported} tasks imported` : 'Already up to date')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Sync hatası', true)
+      showToast(err instanceof Error ? err.message : 'Sync failed', true)
     }
   }
 
   async function handlePush() {
     try {
-      // Collect all tasks from all sections
       const allTasks = (await Promise.all(
         SECTIONS.map(s => fetchTasksBySection(s.id))
       )).flat()
       const { pushed, failed } = await push.mutateAsync(allTasks)
       if (failed > 0) {
-        showToast(`${pushed} gönderildi, ${failed} başarısız`, true)
+        showToast(`${pushed} synced, ${failed} failed`, true)
       } else if (pushed > 0) {
-        showToast(`${pushed} görev Todoist'e gönderildi`)
+        showToast(`${pushed} tasks synced to Google`)
       } else {
-        showToast('Tümü zaten senkronize')
+        showToast('All already synced')
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Push hatası', true)
+      showToast(err instanceof Error ? err.message : 'Sync failed', true)
     }
   }
 
@@ -71,7 +70,7 @@ export function ToDoDrawer() {
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-ink-800">To-Do</h2>
+            <h2 className="text-sm font-semibold text-ink-800">Tasks</h2>
             {toast && (
               <span className={`text-[10px] font-medium ${toast.error ? 'text-red-500' : 'text-accent-600'}`}>
                 {toast.msg}
@@ -79,23 +78,23 @@ export function ToDoDrawer() {
             )}
           </div>
           <div className="flex items-center gap-1">
-            {/* Pull: Todoist → Board */}
+            {/* Pull: Google Tasks → Board */}
             <button
               onClick={handlePull}
               disabled={isBusy}
               className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] px-2 rounded disabled:opacity-40"
-              title="Todoist'ten içe aktar"
+              title="Import from Google Tasks"
             >
-              {pull.isPending ? '↻' : '↓'} Todoist
+              {pull.isPending ? '↻' : '↓'} Google
             </button>
-            {/* Push: Board → Todoist */}
+            {/* Push: Board → Google Tasks */}
             <button
               onClick={handlePush}
               disabled={isBusy}
               className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] px-2 rounded disabled:opacity-40"
-              title="Todoist'e gönder"
+              title="Sync to Google Tasks"
             >
-              {push.isPending ? '↻' : '↑'} Todoist
+              {push.isPending ? '↻' : '↑'} Google
             </button>
             <button
               onClick={closeToDo}

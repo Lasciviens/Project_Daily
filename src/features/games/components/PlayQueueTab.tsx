@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { usePlayQueue, useUpdateGame, useReorderQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast } from '../../../app/store'
+import { AddTimeBlockModal } from '../../daily/components/AddTimeBlockModal'
 import type { QueueGame } from '../../home/api/gamesApi'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -38,6 +39,7 @@ export function PlayQueueTab() {
   const [items, setItems]       = useState<QueueGame[] | null>(null)
   const dragIdx                 = useRef<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
+  const [scheduleGame, setScheduleGame] = useState<QueueGame | null>(null)
 
   const displayItems: QueueGame[] = items ?? (queue as QueueGame[])
   const playing  = displayItems.filter(g => g.play_status === 'playing')
@@ -178,6 +180,11 @@ export function PlayQueueTab() {
             >▶</button>
           )}
           <button
+            onClick={() => setScheduleGame(game)}
+            className="w-11 h-11 flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors text-sm"
+            title="Schedule session"
+          >📅</button>
+          <button
             onClick={() => handleRemove(game)}
             className="w-11 h-11 flex items-center justify-center rounded-lg bg-ink-100 hover:bg-red-100 text-ink-400 hover:text-red-500 transition-colors text-sm"
             title="Remove from queue"
@@ -222,6 +229,16 @@ export function PlayQueueTab() {
             {upcoming.map((g, i) => <QueueItem key={g.id} game={g} globalIdx={playing.length + i} />)}
           </div>
         </div>
+      )}
+
+      {/* Schedule session modal */}
+      {scheduleGame && (
+        <AddTimeBlockModal
+          dateStr={new Date().toISOString().slice(0, 10)}
+          defaultTitle={scheduleGame.title}
+          defaultColor="blue"
+          onClose={() => setScheduleGame(null)}
+        />
       )}
     </div>
   )
