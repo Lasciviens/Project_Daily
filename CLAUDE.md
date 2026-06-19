@@ -35,7 +35,7 @@ Runs on **Claude Code on the web** (claude.ai/code). Container clones repo fresh
 | DB | Supabase (Postgres + Auth + RLS + Edge Functions) |
 | Hosting | GitHub Pages via GitHub Actions |
 
-No animation library, no shadcn/ui, no SSR, no AI keys in client code.
+UI primitives: `@headlessui/react` v2 (Dialog, Combobox, Popover, Menu). No animation library, no shadcn/ui, no SSR, no AI keys in client code.
 
 ---
 
@@ -97,10 +97,18 @@ Every component mobile-first. `min-h-[44px]` on every interactive element. No ex
 
 Hover-only actions need an always-visible mobile fallback. No horizontal page overflow.
 
-Modal pattern: bottom sheet on mobile, centered on `sm:`:
+Modal pattern — use `@headlessui/react` Dialog (handles Escape, focus trap, portal automatically):
 ```tsx
-<div className="fixed inset-0 flex items-end sm:items-center justify-center">
-  <div className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[90vh] overflow-y-auto">
+import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+
+<Dialog open={isOpen} onClose={onClose} className="relative z-[60]">
+  <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
+  <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+      {/* content */}
+    </DialogPanel>
+  </div>
+</Dialog>
 ```
 
 ### Toast feedback — MANDATORY
@@ -136,6 +144,19 @@ Toasts appear bottom-left. 🟢 success · 🔴 error · 🟡 warning · ⚫ loa
 **TMDB images:** `https://image.tmdb.org/t/p/{size}{path}` (e.g. `w342`)
 
 **Google Calendar:** OAuth scope `calendar.events` covers read + write. Token stored in `useCalendarStore`. Reconnect required if previously connected with read-only scope.
+
+**@headlessui/react v2 — UI primitives (never use manual open/close state for these):**
+
+| Use case | Component | Anchor / notes |
+|---|---|---|
+| Modal / drawer | `Dialog` + `DialogBackdrop` + `DialogPanel` | `transition` prop on both; `data-[closed]:` for exit animation |
+| Search autocomplete | `Combobox` + `ComboboxInput` + `ComboboxOptions` + `ComboboxOption` | `immediate` if options should show on focus; `data-[focus]:bg-cream-50` on option |
+| Floating action panel | `Popover` + `PopoverButton` + `PopoverPanel` | `anchor="top start"` / `anchor="bottom start"` via Floating UI |
+| Dropdown menu | `Menu` + `MenuButton` + `MenuItems` + `MenuItem` | `anchor="bottom end"`; keyboard nav built-in |
+
+All headlessui components handle: click-outside close, Escape key, focus trap, portal rendering, ARIA attributes. Never add these manually.
+
+Reference files: `src/shared/components/AddTaskModal.tsx` (Dialog), `src/features/home/components/ruter/StopSearchInput.tsx` (Combobox), `src/features/media/components/PlanThisButton.tsx` (Popover), `src/shared/components/SettingsMenu.tsx` (Menu).
 
 ---
 
