@@ -66,7 +66,7 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 | Media | ✅ | TMDB, Movies + TV, PlanThisButton, TonightPicker, ReleaseCalendar |
 | Work | ✅ | Task board |
 | AI | ✅ | Gemini 2.5 Flash via Edge Function, create_task function calling |
-| Calendar | ✅ | Google OAuth, read + write events, DayCalendarSection with refresh button |
+| Calendar | ✅ | Google OAuth, read + write events, sync/refresh button in DayTimeline header |
 | Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
 | Training | ✅ | Strava OAuth, workout logging, week view |
 | Projects | ✅ | Phases, items, status tracking |
@@ -79,6 +79,7 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 - Activity Log / stats widget
 - Routes widget (Home): visual improvement pass
 - Routes widget (Home): refresh button — re-fetch only the currently cached from/to values instantly
+- Dark Mode: full dark/light toggle; apply `dark` class on `<html>`, define dark variants for cream/ink/accent tokens
 
 ---
 
