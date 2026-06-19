@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useMemo, useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchTrips, fetchStopDirections, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import { useTransitStops } from '../../hooks/useTransitStops'
@@ -7,6 +7,7 @@ import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
 import { fmtLastUpdated, fmtTime } from './transitUtils'
+import { toast } from '../../../../app/store'
 
 interface RoutesTabProps {
   ws:  WidgetStateResult
@@ -88,7 +89,7 @@ function suggestLabel(from: TransitPlace, to: TransitPlace): string {
 // Stop card with quay direction hints.
 // Uses fetchStopDirections (lightweight: 20 departures, one per line+destination)
 // to get "mot Oslo S" / "mot Snarøya" labels from real departure context.
-function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => void }) {
+function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: string; onClear: () => void }) {
   const { data: hints = [] } = useQuery({
     queryKey:  ['stop-directions', place.kind === 'stop' ? place.id : null],
     queryFn:   () => fetchStopDirections((place as { id: string }).id),
@@ -97,25 +98,28 @@ function PlaceDisplay({ place, onClear }: { place: TransitPlace; onClear: () => 
     retry:     false,
   })
 
-  // Build direction labels: prefer description, fall back to "mot <frontText>"
   const directions = useMemo(() => {
     const labels = hints.map(h => h.description ?? h.fallback).filter((d): d is string => !!d)
     return [...new Set(labels)]
   }, [hints])
 
   return (
-    <div className="flex items-start gap-2 px-3 py-2.5 bg-ink-50 border border-ink-200 rounded-xl min-h-[48px]">
-      <span className="text-base flex-shrink-0 mt-0.5">{place.kind === 'coords' ? '📍' : '🚏'}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-ink-800 leading-snug">{place.name}</p>
-        {directions.length > 0 && (
-          <p className="text-[10px] text-ink-400 mt-0.5">{directions.join(' · ')}</p>
-        )}
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">{label}</span>
+      <div className="flex items-start gap-2 px-3 py-2.5 bg-ink-50 border border-ink-200 rounded-xl min-h-[52px]">
+        <span className="text-lg flex-shrink-0 mt-0.5">{place.kind === 'coords' ? '📍' : '🚏'}</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-ink-900 leading-snug">{place.name}</p>
+          {directions.length > 0 && (
+            <p className="text-[10px] text-ink-400 mt-0.5">{directions.join(' · ')}</p>
+          )}
+        </div>
+        <button
+          onClick={onClear}
+          className="text-ink-300 hover:text-red-400 transition-colors duration-150 flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center"
+          aria-label={`Clear ${label} stop`}
+        >✕</button>
       </div>
-      <button
-        onClick={onClear}
-        className="text-ink-300 hover:text-ink-600 transition-colors duration-150 flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center"
-      >✕</button>
     </div>
   )
 }
@@ -152,6 +156,7 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
 export function RoutesTab({ ws, now }: RoutesTabProps) {
   const { routes, addRoute, removeRoute } = useTransitRoutes()
   const { stops: savedStops } = useTransitStops()
+  const queryClient = useQueryClient()
 
   const [draftFrom,      setDraftFrom]      = useState<TransitPlace | null>(null)
   const [draftTo,        setDraftTo]        = useState<TransitPlace | null>(null)
@@ -170,6 +175,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const [showSaveForm,   setShowSaveForm]   = useState(false)
   const [saving,         setSaving]         = useState(false)
   const [saveMsg,        setSaveMsg]        = useState<string | null>(null)
+  const [refreshing,     setRefreshing]     = useState(false)
 
   const favoriteStops = useMemo(() => {
     const seen = new Set<string>()
@@ -246,8 +252,10 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const toKey = search?.to.kind === 'stop' ? search.to.id
     : search ? `${(search.to as { lat: number }).lat},${(search.to as { lon: number }).lon}` : ''
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['trip', fromKey, toKey, search?.arriveBy, search?.dateTime ?? 'now', search?.version],
+  const tripQueryKey = ['trip', fromKey, toKey, search?.arriveBy, search?.dateTime ?? 'now', search?.version]
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: tripQueryKey,
     queryFn:  async () => {
       const result = await fetchTrips(search!.from, search!.to, undefined, search!.dateTime, search!.arriveBy)
       setLastUpdated(Date.now())
@@ -255,6 +263,24 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     },
     staleTime: Infinity, refetchInterval: false, enabled: !ws.collapsed && !!search,
   })
+
+  // Refresh: re-fetches without changing stops or time preferences
+  const handleRefresh = useCallback(async () => {
+    if (!search || refreshing) return
+    setRefreshing(true)
+    const tid = toast.loading('Refreshing routes…')
+    try {
+      await queryClient.invalidateQueries({ queryKey: tripQueryKey })
+      await refetch()
+      toast.dismiss(tid)
+      toast.success('Routes updated ✓')
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error((err as Error).message ?? 'Failed to refresh')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [search, refreshing, queryClient, tripQueryKey, refetch])
 
   const { filteredData, lineFilterActive, lineMatchCount } = useMemo(() => {
     if (!data) return { filteredData: undefined, lineFilterActive: false, lineMatchCount: 0 }
@@ -342,13 +368,26 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
 
       {/* Planner form — collapses to a summary bar after planning */}
       {formCollapsed && search ? (
-        <div className="flex items-center gap-3 px-3 py-3 bg-accent-50 border border-accent-200 rounded-xl">
+        <div className="flex items-center gap-2 px-3 py-3 bg-accent-50 border border-accent-200 rounded-xl">
+          {/* Route summary */}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-ink-900 truncate">
               {search.from.name.split(',')[0]} → {search.to.name.split(',')[0]}
             </p>
             <p className="text-[11px] text-accent-600 mt-0.5">{search.label}</p>
           </div>
+          {/* Refresh button — solid accent, always visible */}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh routes"
+            aria-label="Refresh routes"
+            className={`flex items-center justify-center rounded-lg bg-accent-500 text-white transition-colors duration-150 flex-shrink-0 min-h-[44px] min-w-[44px] ${
+              refreshing ? 'opacity-70 cursor-not-allowed' : 'hover:bg-accent-600'
+            }`}
+          >
+            <span className={`text-base leading-none select-none ${refreshing ? 'animate-spin' : ''}`}>↻</span>
+          </button>
           <button
             onClick={() => setFormCollapsed(false)}
             className="text-xs font-medium text-accent-600 hover:text-accent-800 transition-colors duration-150 flex-shrink-0 min-h-[44px] px-2 flex items-center"
@@ -357,60 +396,66 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
       ) : (
         <div className="space-y-3">
 
-          {/* FROM */}
-          <div>
-            <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">From</p>
-            {draftFrom ? (
-              <PlaceDisplay place={draftFrom} onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
-            ) : (
-              <div className="space-y-1">
-                <StopSearchInput placeholder="Stop or address…" favorites={favoriteStops}
-                  onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }} />
-                {fromLocState === 'loading' ? (
-                  <span className="text-[11px] text-ink-400 py-1 block">Locating…</span>
-                ) : fromLocState === 'denied' ? (
-                  <span className="text-[11px] text-red-500 py-1 block">Location permission denied</span>
-                ) : (
-                  <button onClick={() => locateFor('from')}
-                    className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1 min-h-[44px] flex items-center">
-                    📍 Use current location
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          {/* FROM + TO — grouped in a single card with a swap divider */}
+          <div className="rounded-xl border border-ink-200 bg-white overflow-hidden divide-y divide-ink-100">
 
-          {/* Swap — only when both stops are set */}
-          {draftFrom && draftTo && (
-            <div className="flex justify-end -mt-1">
-              <button onClick={swapStops}
-                className="text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150 flex items-center gap-1 min-h-[44px] px-2">
-                ⇅ Swap
-              </button>
+            {/* FROM field */}
+            <div className="px-3 pt-3 pb-3">
+              {draftFrom ? (
+                <PlaceDisplay place={draftFrom} label="From" onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
+              ) : (
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">From</span>
+                  <StopSearchInput placeholder="Stop or address…" favorites={favoriteStops}
+                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }} />
+                  {fromLocState === 'loading' ? (
+                    <span className="text-[11px] text-ink-400 py-1 block">Locating…</span>
+                  ) : fromLocState === 'denied' ? (
+                    <span className="text-[11px] text-red-500 py-1 block">Location permission denied</span>
+                  ) : (
+                    <button onClick={() => locateFor('from')}
+                      className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1 min-h-[44px] flex items-center gap-1">
+                      📍 Use current location
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-          )}
 
-          {/* TO */}
-          <div>
-            <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">To</p>
-            {draftTo ? (
-              <PlaceDisplay place={draftTo} onClear={() => { setDraftTo(null); setToLocState('idle') }} />
-            ) : (
-              <div className="space-y-1">
-                <StopSearchInput placeholder="Stop or address…" favorites={favoriteStops}
-                  onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }} />
-                {toLocState === 'loading' ? (
-                  <span className="text-[11px] text-ink-400 py-1 block">Locating…</span>
-                ) : toLocState === 'denied' ? (
-                  <span className="text-[11px] text-red-500 py-1 block">Location permission denied</span>
-                ) : (
-                  <button onClick={() => locateFor('to')}
-                    className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1 min-h-[44px] flex items-center">
-                    📍 Use current location
-                  </button>
-                )}
+            {/* Swap divider — only when both stops are set */}
+            {draftFrom && draftTo && (
+              <div className="flex items-center px-3 bg-ink-50">
+                <div className="flex-1 border-t border-ink-100" />
+                <button onClick={swapStops}
+                  className="text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150 flex items-center gap-1 min-h-[44px] px-3">
+                  ⇅ Swap
+                </button>
+                <div className="flex-1 border-t border-ink-100" />
               </div>
             )}
+
+            {/* TO field */}
+            <div className="px-3 pt-3 pb-3">
+              {draftTo ? (
+                <PlaceDisplay place={draftTo} label="To" onClear={() => { setDraftTo(null); setToLocState('idle') }} />
+              ) : (
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">To</span>
+                  <StopSearchInput placeholder="Stop or address…" favorites={favoriteStops}
+                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }} />
+                  {toLocState === 'loading' ? (
+                    <span className="text-[11px] text-ink-400 py-1 block">Locating…</span>
+                  ) : toLocState === 'denied' ? (
+                    <span className="text-[11px] text-red-500 py-1 block">Location permission denied</span>
+                  ) : (
+                    <button onClick={() => locateFor('to')}
+                      className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1 min-h-[44px] flex items-center gap-1">
+                      📍 Use current location
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* When chips */}
@@ -462,7 +507,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             )}
           </div>
 
-          {/* Plan button — grey with hint text when disabled, solid accent when ready */}
+          {/* Plan button */}
           <button onClick={handlePlan} disabled={!canPlan}
             className={`w-full py-3 rounded-xl text-sm font-semibold transition-colors duration-150 min-h-[48px] ${
               canPlan
@@ -539,7 +584,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
       {filteredData && search && (
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] text-ink-400">{lastUpdated ? fmtLastUpdated(lastUpdated) : ''}</span>
+            <span className="text-[10px] text-ink-400">{lastUpdated ? `Updated ${fmtLastUpdated(lastUpdated)}` : ''}</span>
             {canSave && !alreadySaved && !showSaveForm && (
               <button onClick={() => { setSaveLabel(suggestLabel(search.from, search.to)); setShowSaveForm(true) }}
                 className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center">
