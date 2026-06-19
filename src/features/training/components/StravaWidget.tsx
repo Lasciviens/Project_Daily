@@ -83,7 +83,7 @@ export function StravaWidget() {
     return (
       <a
         href={buildStravaOAuthUrl()}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#FC4C02] text-white text-sm font-medium hover:bg-[#e04400] transition-colors duration-150"
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#FC4C02] text-white text-sm font-medium hover:bg-[#e04400] transition-colors duration-150 min-h-[44px]"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" />
@@ -110,14 +110,14 @@ export function StravaWidget() {
         <button
           onClick={handleSync}
           disabled={sync.isPending}
-          className="text-xs px-2.5 py-1 rounded bg-white border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors duration-150"
+          className="text-xs px-2.5 py-1 rounded bg-white border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors duration-150 min-h-[44px]"
         >
           {sync.isPending ? '…' : '↻ Sync'}
         </button>
         <button
           onClick={handleDisconnect}
           disabled={disconnect.isPending}
-          className="text-xs px-2 py-1 rounded text-red-400 hover:bg-red-50 transition-colors duration-150"
+          className="text-xs px-2 py-1 rounded text-red-400 hover:bg-red-50 transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-center"
           title="Disconnect Strava"
         >
           ✕

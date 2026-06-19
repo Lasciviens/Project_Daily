@@ -5,14 +5,9 @@ import { DeparturesTab } from './ruter/DeparturesTab'
 import { RoutesTab } from './ruter/RoutesTab'
 import { SettingsTab } from './ruter/SettingsTab'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type Tab        = 'departures' | 'routes' | 'settings'
 type LayoutMode = 'compact' | 'medium' | 'wide'
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-// Ticks every 30s so departure countdowns stay accurate without refetching
 function useNow(): number {
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
@@ -22,8 +17,6 @@ function useNow(): number {
   return now
 }
 
-// Measures the actual rendered container width via ResizeObserver.
-// More accurate than viewport breakpoints when the widget shares column space.
 function useElementWidth<T extends HTMLElement>() {
   const ref   = useRef<T | null>(null)
   const [width, setWidth] = useState(0)
@@ -57,17 +50,13 @@ function getLayoutMode(width: number): LayoutMode {
   return 'compact'
 }
 
-// ─── Panel wrapper ────────────────────────────────────────────────────────────
-
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-ink-100 bg-white/60 p-3 min-w-0 overflow-hidden">
+    <div className="rounded-xl border border-ink-100 bg-white/60 p-2 sm:p-3 min-w-0 overflow-hidden">
       {children}
     </div>
   )
 }
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export function RuterWidget() {
   const [tab, setTab] = useState<Tab>('departures')
@@ -81,10 +70,9 @@ export function RuterWidget() {
 
   const tabBar = (
     <div className="flex gap-1">
-      {/* Narrow/medium: individual Departures + Routes tabs */}
       <button
         onClick={() => setTab('departures')}
-        className={`${showSideBySide ? 'hidden' : ''} text-[10px] px-2 py-0.5 rounded font-medium capitalize transition-colors duration-150 min-h-[28px] ${
+        className={`${showSideBySide ? 'hidden' : ''} text-[10px] px-2 rounded font-medium capitalize transition-colors duration-150 min-h-[44px] ${
           tab === 'departures' ? 'bg-accent-500 text-white' : 'text-ink-400 hover:bg-ink-100'
         }`}
       >
@@ -92,29 +80,28 @@ export function RuterWidget() {
       </button>
       <button
         onClick={() => setTab('routes')}
-        className={`${showSideBySide ? 'hidden' : ''} text-[10px] px-2 py-0.5 rounded font-medium capitalize transition-colors duration-150 min-h-[28px] ${
+        className={`${showSideBySide ? 'hidden' : ''} text-[10px] px-2 rounded font-medium capitalize transition-colors duration-150 min-h-[44px] ${
           tab === 'routes' ? 'bg-accent-500 text-white' : 'text-ink-400 hover:bg-ink-100'
         }`}
       >
         routes
       </button>
 
-      {/* Wide: single "Transit" button — both panels visible simultaneously */}
       {showSideBySide && (
         <button
           onClick={() => setTab('departures')}
-          className="text-[10px] px-2 py-0.5 rounded font-medium transition-colors duration-150 min-h-[28px] bg-accent-500 text-white"
+          className="text-[10px] px-2 rounded font-medium transition-colors duration-150 min-h-[44px] bg-accent-500 text-white"
         >
           Transit
         </button>
       )}
 
-      {/* Settings — always visible */}
       <button
         onClick={() => setTab('settings')}
-        className={`text-[10px] px-2 py-0.5 rounded font-medium transition-colors duration-150 min-h-[28px] ${
+        className={`text-[10px] px-2 rounded font-medium transition-colors duration-150 min-h-[44px] ${
           isSettings ? 'bg-accent-500 text-white' : 'text-ink-400 hover:bg-ink-100'
         }`}
+        aria-label="Transit settings"
       >
         ⚙
       </button>
@@ -123,16 +110,13 @@ export function RuterWidget() {
 
   return (
     <WidgetShell title="Transit" ws={ws} headerRight={tabBar}>
-      <div ref={bodyRef} className="w-full">
-
-        {/* ── Settings ── */}
+      <div ref={bodyRef} className="w-full overflow-x-hidden">
         {isSettings && (
           <div className="max-w-2xl mx-auto">
             <SettingsTab />
           </div>
         )}
 
-        {/* ── Wide: side-by-side ── */}
         {showSideBySide && (
           <div className="mx-auto w-full max-w-[1180px]">
             <div className="grid grid-cols-[minmax(340px,420px)_minmax(520px,1fr)] gap-4">
@@ -142,14 +126,12 @@ export function RuterWidget() {
           </div>
         )}
 
-        {/* ── Compact / medium: tabbed ── */}
         {!isSettings && !showSideBySide && (
           <div className={layout === 'medium' ? 'mx-auto w-full max-w-[760px]' : 'w-full'}>
             {tab === 'departures' && <DeparturesTab ws={ws} now={now} />}
             {tab === 'routes'     && <RoutesTab ws={ws} now={now} />}
           </div>
         )}
-
       </div>
     </WidgetShell>
   )

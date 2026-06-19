@@ -36,6 +36,22 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+  deploy-functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Edge Functions
+        run: |
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
   build-and-deploy:
     runs-on: ubuntu-latest
     environment:
@@ -60,6 +76,9 @@ jobs:
           VITE_TMDB_API_KEY:        ${{ secrets.VITE_TMDB_API_KEY }}
           VITE_GOOGLE_CLIENT_ID:    ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_STRAVA_CLIENT_ID:    ${{ secrets.VITE_STRAVA_CLIENT_ID }}
+          VITE_OXR_APP_ID:          ${{ secrets.VITE_OXR_APP_ID }}
+          VITE_RP5_SUPABASE_URL:    ${{ secrets.VITE_RP5_SUPABASE_URL }}
+          VITE_RP5_SUPABASE_ANON_KEY: ${{ secrets.VITE_RP5_SUPABASE_ANON_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

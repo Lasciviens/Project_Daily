@@ -74,13 +74,13 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
   return (
     <div className="mb-6">
       {/* Tab bar + sync controls */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <div className="flex gap-1 bg-cream-100 rounded-lg p-1">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
+        <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-full sm:w-auto overflow-x-auto">
           {TABS.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors duration-150 ${
+              className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 min-h-[44px] whitespace-nowrap ${
                 tab === t.key
                   ? 'bg-white text-ink-900 shadow-sm'
                   : 'text-ink-500 hover:text-ink-700'
@@ -91,27 +91,27 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
           ))}
         </div>
 
-        {/* Sync controls — right side */}
-        <div className="flex items-center gap-1.5 ml-auto">
+        {/* Sync controls */}
+        <div className="flex items-center gap-1.5 sm:ml-auto">
           <span className="text-[10px] text-ink-400 hidden sm:block">{syncLabel}</span>
           <button
             onClick={handleManualSync}
             title="Refresh now"
-            className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150"
+            className="text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-center"
           >
             ↻
           </button>
           <button
             onClick={() => setSyncActive(v => !v)}
             title={syncActive ? 'Pause auto-sync' : 'Resume auto-sync'}
-            className={`text-[11px] transition-colors duration-150 ${syncActive ? 'text-accent-500 hover:text-accent-700' : 'text-ink-300 hover:text-ink-500'}`}
+            className={`text-[11px] transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-center ${syncActive ? 'text-accent-500 hover:text-accent-700' : 'text-ink-300 hover:text-ink-500'}`}
           >
             {syncActive ? '⏸' : '▶'}
           </button>
           <select
             value={intervalMs}
             onChange={e => setIntervalMs(Number(e.target.value))}
-            className="text-[10px] text-ink-500 bg-transparent border-none outline-none cursor-pointer"
+            className="text-[10px] text-ink-500 bg-transparent border-none outline-none cursor-pointer min-h-[44px]"
             title="Refresh interval"
           >
             {INTERVALS.map(iv => (

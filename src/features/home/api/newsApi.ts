@@ -36,10 +36,70 @@ export const FEED_CATEGORIES = [
   { key: 'world' as FeedCategory, label: '🌐 World' },
 ]
 
+// ─── RSS image helpers ────────────────────────────────────────────────────────
+
+// Upgrade http → https, expand protocol-relative URLs, decode HTML entities.
+function normalizeImageUrl(raw: string): string {
+  if (!raw) return ''
+  const url = raw.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  if (url.startsWith('//')) return `https:${url}`
+  if (url.startsWith('http://')) return `https://${url.slice(7)}`
+  return url
+}
+
+function looksLikeImageUrl(url: string): boolean {
+  try {
+    const { pathname } = new URL(url)
+    return /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(pathname) || /\/image/i.test(pathname)
+  } catch { return false }
+}
+
+// First <img src="…"> inside an HTML/CDATA blob.
+function firstImgSrc(html: string): string {
+  const m = html.match(/<img[^>]+src=["']([^"']+)["']/i)
+  return m ? normalizeImageUrl(m[1]) : ''
+}
+
+// Multi-strategy image extraction — tries namespace tags, enclosure, then inline HTML.
+// VG puts images in enclosure without a type attribute; CNN Türk uses content:encoded <img>.
+function extractImageUrl(item: Element): string {
+  const MRSS    = 'http://search.yahoo.com/mrss/'
+  const CONTENT = 'http://purl.org/rss/1.0/modules/content/'
+
+  // 1. <media:thumbnail url="…"> (BBC, many feeds)
+  const mt = item.getElementsByTagNameNS(MRSS, 'thumbnail')[0]
+  if (mt?.getAttribute('url')) return normalizeImageUrl(mt.getAttribute('url')!)
+
+  // 2. <media:content url="…" type="image/…"> (VG, others)
+  const mc = Array.from(item.getElementsByTagNameNS(MRSS, 'content'))
+    .find(el => el.getAttribute('type')?.startsWith('image') || el.getAttribute('url'))
+  if (mc?.getAttribute('url')) return normalizeImageUrl(mc.getAttribute('url')!)
+
+  // 3. <enclosure type="image/…">
+  const encImg = item.querySelector('enclosure[type^="image"]')
+  if (encImg?.getAttribute('url')) return normalizeImageUrl(encImg.getAttribute('url')!)
+
+  // 4. <enclosure> with no type but URL that looks like an image
+  const encAny = item.querySelector('enclosure[url]')
+  if (encAny) {
+    const u = normalizeImageUrl(encAny.getAttribute('url')!)
+    if (looksLikeImageUrl(u)) return u
+  }
+
+  // 5. <img src="…"> inside <description> CDATA
+  const desc = item.querySelector('description')?.textContent ?? ''
+  if (desc) { const src = firstImgSrc(desc); if (src) return src }
+
+  // 6. <img src="…"> inside <content:encoded> CDATA (CNN Türk)
+  const encoded = item.getElementsByTagNameNS(CONTENT, 'encoded')[0]?.textContent ?? ''
+  if (encoded) { const src = firstImgSrc(encoded); if (src) return src }
+
+  return ''
+}
+
 // ─── RSS parser ───────────────────────────────────────────────────────────────
 
 // Parse raw RSS XML string into NewsItem array using browser's DOMParser.
-// Extracts <title>, <link>, <pubDate>, and <media:thumbnail> or <enclosure>.
 function parseRSS(xml: string, count: number): NewsItem[] {
   const doc   = new DOMParser().parseFromString(xml, 'text/xml')
   const items = Array.from(doc.querySelectorAll('item')).slice(0, count)
@@ -47,22 +107,11 @@ function parseRSS(xml: string, count: number): NewsItem[] {
   return items.map(item => {
     const text = (tag: string) => item.querySelector(tag)?.textContent?.trim() ?? ''
 
-    // Thumbnail: try RSS media tags only — description <img> URLs are hotlink-protected on many sites
-    // <media:thumbnail> — BBC, many feeds
-    // <media:content type="image/..."> — VG and others
-    // <enclosure type="image/..."> — some feeds
-    const MRSS = 'http://search.yahoo.com/mrss/'
-    const mediaThumbnail = item.getElementsByTagNameNS(MRSS, 'thumbnail')[0]
-    const mediaContent   = Array.from(item.getElementsByTagNameNS(MRSS, 'content'))
-      .find(el => el.getAttribute('type')?.startsWith('image') || el.getAttribute('url'))
-    const enclosure      = item.querySelector('enclosure[type^="image"]')
+    const thumbnail = extractImageUrl(item)
 
-    const thumbnail = (
-      mediaThumbnail?.getAttribute('url') ??
-      mediaContent?.getAttribute('url')   ??
-      enclosure?.getAttribute('url')      ??
-      ''
-    )
+    if (import.meta.env.DEV) {
+      console.debug('[newsApi] item:', text('title').slice(0, 40), '| img:', thumbnail || '(none)')
+    }
 
     // Excerpt: strip HTML tags from <description>, collapse whitespace, cap at 120 chars
     const rawDesc  = item.querySelector('description')?.textContent ?? ''

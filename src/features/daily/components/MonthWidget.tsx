@@ -47,19 +47,19 @@ export function MonthWidget({ onDayClick, highlightDate }: Props) {
         <div className="flex items-center gap-0.5">
           <button
             onClick={() => setViewDate(p => subMonths(p, 1))}
-            className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 rounded transition-colors duration-150 text-sm"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 rounded transition-colors duration-150 text-sm"
           >
             ‹
           </button>
           <button
             onClick={() => setViewDate(new Date())}
-            className="px-1.5 py-0.5 text-[10px] text-accent-600 hover:bg-accent-50 rounded transition-colors duration-150 font-medium"
+            className="min-h-[44px] px-2 text-[10px] text-accent-600 hover:bg-accent-50 rounded transition-colors duration-150 font-medium"
           >
             Today
           </button>
           <button
             onClick={() => setViewDate(p => addMonths(p, 1))}
-            className="w-6 h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 rounded transition-colors duration-150 text-sm"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 rounded transition-colors duration-150 text-sm"
           >
             ›
           </button>

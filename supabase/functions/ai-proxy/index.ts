@@ -16,6 +16,16 @@ interface Message { role: 'user' | 'assistant'; content: string }
 // deno-lint-ignore no-explicit-any
 type AnyRecord = Record<string, any>
 
+class RateLimitError extends Error {
+  constructor(
+    public readonly dailyLimit: number,
+    public readonly retryAfterSec: number,
+  ) {
+    super('rate_limit')
+    this.name = 'RateLimitError'
+  }
+}
+
 const TOOLS = [
   {
     functionDeclarations: [
@@ -144,6 +154,131 @@ const TOOLS = [
           required: ['title', 'media_type', 'date'],
         },
       },
+      {
+        name: 'get_time_blocks',
+        description: 'Read the day schedule/timeline for a given date. Use this to answer "what do I have today/tomorrow?"',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            date: { type: 'STRING', description: 'YYYY-MM-DD (defaults to today)' },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'delete_time_block',
+        description: 'Delete a time block from the day schedule by its ID. Use get_time_blocks first to find the ID.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            block_id: { type: 'STRING' },
+          },
+          required: ['block_id'],
+        },
+      },
+      {
+        name: 'get_workouts',
+        description: 'Read past workout/training sessions. Use to answer questions about training history.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            limit: { type: 'NUMBER', description: 'Max number of sessions to return (default 10)' },
+            type:  { type: 'STRING', enum: ['strength', 'run', 'cycling', 'walk', 'yoga', 'swim', 'other'], description: 'Filter by workout type (optional)' },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'get_calendar_events',
+        description: 'Read upcoming Google Calendar events. Use to answer "what meetings do I have?" or schedule around events.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            days_ahead: { type: 'NUMBER', description: 'How many days ahead to look (default 7, max 30)' },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'get_projects',
+        description: 'List the user\'s active projects with their phases and items/tasks. Use to answer "what am I working on?" or before creating a project item.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            include_done: { type: 'BOOLEAN', description: 'Also include completed/archived projects (default false)' },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'create_project_item',
+        description: 'Add a new item (task/bug/improvement/wishlist) to a project phase. Use get_projects first to find phase_id.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            phase_id:   { type: 'STRING', description: 'Phase ID from get_projects' },
+            project_id: { type: 'STRING', description: 'Project ID from get_projects' },
+            title:      { type: 'STRING' },
+            type:       { type: 'STRING', enum: ['update', 'improvement', 'ui_request', 'bug', 'wishlist'] },
+            priority:   { type: 'STRING', enum: ['low', 'medium', 'high'] },
+            notes:      { type: 'STRING', description: 'Optional extra details' },
+          },
+          required: ['phase_id', 'project_id', 'title'],
+        },
+      },
+      {
+        name: 'get_health_stats',
+        description: 'Read recent daily health stats (steps, calories, heart rate, exercise minutes). Use to answer fitness questions.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            days: { type: 'NUMBER', description: 'How many days back to look (default 7, max 30)' },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'mark_episode_watched',
+        description: 'Mark a TV episode as watched and advance the series progress. Use get_media first to get the entry_id.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            entry_id: { type: 'STRING', description: 'user_tv_entries.id from get_media' },
+            season:   { type: 'NUMBER', description: 'Season number watched (optional — defaults to current)' },
+            episode:  { type: 'NUMBER', description: 'Episode number watched (optional — defaults to current+1)' },
+            rating:   { type: 'NUMBER', description: '1–10 personal rating (optional)' },
+            note:     { type: 'STRING', description: 'Personal note about the episode (optional)' },
+          },
+          required: ['entry_id'],
+        },
+      },
+      {
+        name: 'update_time_block',
+        description: 'Edit an existing schedule block (change title, start time, or duration). Use get_time_blocks first to find block_id.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            block_id:         { type: 'STRING' },
+            title:            { type: 'STRING' },
+            start_time:       { type: 'STRING', description: 'HH:MM:SS' },
+            duration_minutes: { type: 'NUMBER' },
+            color:            { type: 'STRING', enum: ['blue', 'green', 'orange', 'purple', 'accent', 'red'] },
+          },
+          required: ['block_id'],
+        },
+      },
+      {
+        name: 'get_next_transit',
+        description: 'Get the next departures from a saved transit stop. Use to answer "when is the next bus/tram?"',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            stop_name: { type: 'STRING', description: 'Partial name of saved stop (optional — uses default stop if omitted)' },
+            count:     { type: 'NUMBER', description: 'Number of departures to return (default 5)' },
+          },
+          required: [],
+        },
+      },
     ],
   },
 ]
@@ -195,6 +330,13 @@ Deno.serve(async (req) => {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
   } catch (err) {
+    if (err instanceof RateLimitError) {
+      return new Response(JSON.stringify({
+        error:        'rate_limit',
+        daily_limit:  err.dailyLimit,
+        retry_after:  err.retryAfterSec,
+      }), { status: 429, headers: { ...headers, 'Content-Type': 'application/json' } })
+    }
     console.error('[ai-proxy]', err)
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }), {
       status: 500, headers: { ...headers, 'Content-Type': 'application/json' },
@@ -236,6 +378,18 @@ async function callGemini(
 
     if (!res.ok) {
       const errText = await res.text()
+      if (res.status === 429) {
+        let dailyLimit = 20
+        let retryAfterSec = 60
+        try {
+          const errJson = JSON.parse(errText)
+          const violations = errJson.error?.details?.find((d: AnyRecord) => d.violations)?.violations ?? []
+          if (violations[0]?.quotaValue) dailyLimit = parseInt(violations[0].quotaValue) || 20
+          const retryStr = errJson.error?.details?.find((d: AnyRecord) => d.retryDelay)?.retryDelay ?? ''
+          if (retryStr) retryAfterSec = parseInt(retryStr) || 60
+        } catch { /* ignore */ }
+        throw new RateLimitError(dailyLimit, retryAfterSec)
+      }
       throw new Error(`Gemini ${res.status}: ${errText}`)
     }
 
@@ -284,9 +438,19 @@ async function dispatch(
     case 'delete_task':     return deleteTaskFn(supabase, userId, args)
     case 'create_time_block': return createTimeBlock(supabase, userId, args)
     case 'log_workout':     return logWorkout(supabase, userId, args)
-    case 'get_media':       return getMedia(supabase, userId, args)
-    case 'plan_media':      return planMedia(supabase, userId, args)
-    default:                return { success: false, error: `Unknown function: ${name}` }
+    case 'get_media':           return getMedia(supabase, userId, args)
+    case 'plan_media':          return planMedia(supabase, userId, args)
+    case 'get_time_blocks':     return getTimeBlocks(supabase, userId, args)
+    case 'delete_time_block':   return deleteTimeBlock(supabase, userId, args)
+    case 'get_workouts':        return getWorkouts(supabase, userId, args)
+    case 'get_calendar_events':  return getCalendarEvents(supabase, userId, args)
+    case 'get_projects':         return getProjects(supabase, userId, args)
+    case 'create_project_item':  return createProjectItem(supabase, userId, args)
+    case 'get_health_stats':     return getHealthStats(supabase, userId, args)
+    case 'mark_episode_watched': return markEpisodeWatched(supabase, userId, args)
+    case 'update_time_block':    return updateTimeBlock(supabase, userId, args)
+    case 'get_next_transit':     return getNextTransit(supabase, userId, args)
+    default:                     return { success: false, error: `Unknown function: ${name}` }
   }
 }
 
@@ -523,4 +687,319 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
 
   if (blockErr) return { success: true, task_id: task.id, warning: 'Task created but schedule block failed' }
   return { success: true, task_id: task.id, title: taskTitle, date, section }
+}
+
+async function getTimeBlocks(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const date = args.date ?? new Date().toISOString().slice(0, 10)
+
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('id, title, start_time, duration_minutes, color, source_type')
+    .eq('user_id', userId)
+    .eq('date', date)
+    .order('start_time', { ascending: true })
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, date, blocks: data ?? [] }
+}
+
+async function deleteTimeBlock(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const { error } = await supabase
+    .from('time_blocks')
+    .delete()
+    .eq('id', args.block_id)
+    .eq('user_id', userId)
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, block_id: args.block_id, deleted: true }
+}
+
+async function getWorkouts(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const limit = Math.min(args.limit ?? 10, 30)
+
+  let query = supabase
+    .from('training_sessions')
+    .select('id, title, type, planned_date, completed_at, duration_seconds, distance_meters, notes')
+    .eq('user_id', userId)
+    .order('completed_at', { ascending: false })
+    .limit(limit)
+
+  if (args.type) query = query.eq('type', args.type)
+
+  const { data, error } = await query
+  if (error) return { success: false, error: error.message }
+
+  const sessions = (data ?? []).map((s: AnyRecord) => ({
+    id:           s.id,
+    title:        s.title,
+    type:         s.type,
+    date:         s.planned_date,
+    duration_min: s.duration_seconds ? Math.round(s.duration_seconds / 60) : null,
+    distance_km:  s.distance_meters  ? (s.distance_meters / 1000).toFixed(2) : null,
+    notes:        s.notes,
+  }))
+
+  return { success: true, sessions }
+}
+
+async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const daysAhead = Math.min(args.days_ahead ?? 7, 30)
+
+  // Get the refresh token stored from the Google OAuth flow
+  const { data: tokenRow, error: tokenErr } = await supabase
+    .from('user_calendar_tokens')
+    .select('refresh_token')
+    .eq('user_id', userId)
+    .single()
+
+  if (tokenErr || !tokenRow) {
+    return { success: false, error: 'Google Calendar not connected. Connect it in the Calendar section first.' }
+  }
+
+  // Exchange refresh token for a short-lived access token
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: tokenRow.refresh_token,
+      client_id:     Deno.env.get('GOOGLE_CLIENT_ID')!,
+      client_secret: Deno.env.get('GOOGLE_CLIENT_SECRET')!,
+      grant_type:    'refresh_token',
+    }),
+  })
+
+  if (!tokenRes.ok) return { success: false, error: 'Failed to refresh Google Calendar token' }
+  const { access_token } = await tokenRes.json()
+
+  const timeMin = new Date().toISOString()
+  const timeMax = new Date(Date.now() + daysAhead * 86400_000).toISOString()
+
+  const eventsRes = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=20`,
+    { headers: { Authorization: `Bearer ${access_token}` } }
+  )
+
+  if (!eventsRes.ok) return { success: false, error: 'Failed to fetch calendar events' }
+  const eventsData = await eventsRes.json()
+
+  const events = (eventsData.items ?? []).map((e: AnyRecord) => ({
+    id:       e.id,
+    title:    e.summary,
+    start:    e.start?.dateTime ?? e.start?.date,
+    end:      e.end?.dateTime   ?? e.end?.date,
+    location: e.location ?? null,
+    all_day:  !e.start?.dateTime,
+  }))
+
+  return { success: true, events }
+}
+
+async function getProjects(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const statuses = args.include_done
+    ? ['active', 'on_hold', 'completed', 'archived']
+    : ['active', 'on_hold']
+
+  const { data, error } = await supabase
+    .from('projects')
+    .select(`
+      id, name, description, status, color,
+      project_phases (
+        id, name, status,
+        project_items ( id, title, type, status, priority )
+      )
+    `)
+    .eq('user_id', userId)
+    .in('status', statuses)
+    .order('sort_order', { ascending: true })
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, projects: data ?? [] }
+}
+
+async function createProjectItem(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const { data, error } = await supabase
+    .from('project_items')
+    .insert({
+      user_id:    userId,
+      phase_id:   args.phase_id,
+      project_id: args.project_id,
+      title:      args.title,
+      type:       args.type     ?? 'improvement',
+      priority:   args.priority ?? 'medium',
+      notes:      args.notes    ?? null,
+      status:     'open',
+      sort_order: 0,
+    })
+    .select()
+    .single()
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, item_id: data.id, title: data.title, type: data.type }
+}
+
+async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const days  = Math.min(args.days ?? 7, 30)
+  const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10)
+
+  const { data, error } = await supabase
+    .from('health_daily_stats')
+    .select('date, steps, active_calories, exercise_minutes, stand_hours, heart_rate_avg, heart_rate_resting, heart_rate_max')
+    .eq('user_id', userId)
+    .gte('date', since)
+    .order('date', { ascending: false })
+
+  if (error) return { success: false, error: error.message }
+
+  const stats = data ?? []
+  if (!stats.length) return { success: true, message: 'No health data found for this period', stats: [] }
+
+  // Compute weekly averages for easy AI summarization
+  const avg = (key: string) => {
+    const vals = stats.filter((d: AnyRecord) => d[key] != null).map((d: AnyRecord) => d[key])
+    return vals.length ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : null
+  }
+
+  return {
+    success: true,
+    period_days: days,
+    averages: {
+      steps:             avg('steps'),
+      active_calories:   avg('active_calories'),
+      exercise_minutes:  avg('exercise_minutes'),
+      heart_rate_avg:    avg('heart_rate_avg'),
+      heart_rate_resting: avg('heart_rate_resting'),
+    },
+    daily: stats,
+  }
+}
+
+async function markEpisodeWatched(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  // Load current entry to know which series and current progress
+  const { data: entry, error: entryErr } = await supabase
+    .from('user_tv_entries')
+    .select('id, tv_series_id, current_season, current_episode')
+    .eq('id', args.entry_id)
+    .eq('user_id', userId)
+    .single()
+
+  if (entryErr || !entry) return { success: false, error: 'TV entry not found' }
+
+  const season  = args.season  ?? entry.current_season
+  const episode = args.episode ?? (entry.current_episode + 1)
+
+  // Upsert the episode record (idempotent on re-watch)
+  const { error: epErr } = await supabase
+    .from('user_tv_episodes')
+    .upsert({
+      user_id:        userId,
+      tv_entry_id:    entry.id,
+      tv_series_id:   entry.tv_series_id,
+      season_number:  season,
+      episode_number: episode,
+      watched_at:     new Date().toISOString(),
+      personal_note:  args.note   ?? null,
+      rating:         args.rating ?? null,
+      updated_at:     new Date().toISOString(),
+    }, { onConflict: 'user_id,tv_series_id,season_number,episode_number' })
+
+  if (epErr) return { success: false, error: epErr.message }
+
+  // Advance current progress on the entry
+  const { error: updateErr } = await supabase
+    .from('user_tv_entries')
+    .update({
+      current_season:  season,
+      current_episode: episode,
+      updated_at:      new Date().toISOString(),
+    })
+    .eq('id', entry.id)
+    .eq('user_id', userId)
+
+  if (updateErr) return { success: false, error: updateErr.message }
+
+  return {
+    success: true,
+    season,
+    episode,
+    message: `Marked S${season}E${episode} as watched. Progress updated.`,
+  }
+}
+
+async function updateTimeBlock(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const patch: AnyRecord = { updated_at: new Date().toISOString() }
+  if (args.title            !== undefined) patch.title            = args.title
+  if (args.start_time       !== undefined) patch.start_time       = args.start_time
+  if (args.duration_minutes !== undefined) patch.duration_minutes = args.duration_minutes
+  if (args.color            !== undefined) patch.color            = args.color
+
+  const { error } = await supabase
+    .from('time_blocks')
+    .update(patch)
+    .eq('id', args.block_id)
+    .eq('user_id', userId)
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, block_id: args.block_id, updated: patch }
+}
+
+async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  // Fetch user's saved stops
+  const { data: stops, error: stopsErr } = await supabase
+    .from('user_transit_stops')
+    .select('stop_id, stop_name, label, is_default')
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true })
+
+  if (stopsErr || !stops?.length) {
+    return { success: false, error: 'No saved transit stops. Add stops in the Transit widget first.' }
+  }
+
+  // Pick stop: match by name fragment, or fall back to default / first
+  const stop = args.stop_name
+    ? stops.find((s: AnyRecord) =>
+        s.stop_name.toLowerCase().includes(args.stop_name.toLowerCase()) ||
+        (s.label ?? '').toLowerCase().includes(args.stop_name.toLowerCase())
+      ) ?? stops.find((s: AnyRecord) => s.is_default) ?? stops[0]
+    : stops.find((s: AnyRecord) => s.is_default) ?? stops[0]
+
+  const count = Math.min(args.count ?? 5, 10)
+
+  const query = `{
+    stopPlace(id: "${stop.stop_id}") {
+      name
+      estimatedCalls(numberOfDepartures: ${count}, timeRange: 7200) {
+        realtime
+        expectedDepartureTime
+        destinationDisplay { frontText }
+        serviceJourney { line { publicCode transportMode } }
+      }
+    }
+  }`
+
+  const res = await fetch('https://api.entur.io/journey-planner/v3/graphql', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': 'lasciviens-project-daily' },
+    body:    JSON.stringify({ query }),
+  })
+
+  if (!res.ok) return { success: false, error: `Transit API error: ${res.status}` }
+
+  const json = await res.json()
+  const calls = json.data?.stopPlace?.estimatedCalls ?? []
+
+  const now = Date.now()
+  const departures = calls.map((c: AnyRecord) => {
+    const depMs = new Date(c.expectedDepartureTime).getTime()
+    const minsUntil = Math.round((depMs - now) / 60_000)
+    return {
+      line:        c.serviceJourney?.line?.publicCode,
+      mode:        c.serviceJourney?.line?.transportMode,
+      destination: c.destinationDisplay?.frontText,
+      departure:   c.expectedDepartureTime,
+      mins_until:  minsUntil,
+      realtime:    c.realtime,
+    }
+  })
+
+  return { success: true, stop: stop.stop_name, departures }
 }

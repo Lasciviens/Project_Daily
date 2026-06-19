@@ -127,3 +127,28 @@ export async function deleteCalendarEvent(
     throw new Error(err?.error?.message ?? `Calendar API ${res.status}`)
   }
 }
+
+export async function createCalendarEvent(
+  token: string,
+  calendarId: string,
+  event: {
+    summary:     string
+    description?: string
+    start:       { dateTime: string; timeZone: string }
+    end:         { dateTime: string; timeZone: string }
+  }
+): Promise<CalendarEvent> {
+  const res = await fetch(
+    `${BASE}/calendars/${encodeURIComponent(calendarId)}/events`,
+    {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify(event),
+    }
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message ?? `Calendar API ${res.status}`)
+  }
+  return res.json() as Promise<CalendarEvent>
+}

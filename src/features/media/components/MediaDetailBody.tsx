@@ -147,8 +147,9 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
   }
 
   return (
-    <div className="flex flex-col md:flex-row gap-4 p-5">
-      <div className="flex-shrink-0 self-start">
+    <div className="flex flex-col md:flex-row gap-4 p-4 sm:p-5">
+      {/* Poster — inline on desktop, hidden on mobile (backdrop already shows it) */}
+      <div className="hidden md:block flex-shrink-0 self-start">
         <img
           src={posterUrl(detail.poster_path, 'w342')}
           alt={isMovie ? movie!.title : tv!.name}
@@ -310,7 +311,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                   <button
                     onClick={handleNextEpisode}
                     disabled={updateTV.isPending}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded bg-ink-100 text-ink-700 hover:bg-ink-200 transition-colors duration-150"
+                    className="text-[11px] font-medium px-2.5 min-h-[44px] rounded bg-ink-100 text-ink-700 hover:bg-ink-200 transition-colors duration-150"
                   >
                     + Next episode
                   </button>
@@ -319,7 +320,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                   <button
                     onClick={handleMarkWatched}
                     disabled={updateMovie.isPending}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded bg-ink-100 text-ink-700 hover:bg-ink-200 transition-colors duration-150"
+                    className="text-[11px] font-medium px-2.5 min-h-[44px] rounded bg-ink-100 text-ink-700 hover:bg-ink-200 transition-colors duration-150"
                   >
                     Mark watched
                   </button>
@@ -328,14 +329,14 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                   href={isMovie ? tmdbMovieUrl(movie!.id) : tmdbTVUrl(tv!.id)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[11px] font-medium px-2.5 py-1 rounded bg-ink-100 text-ink-500 hover:bg-ink-200 transition-colors duration-150"
+                  className="text-[11px] font-medium px-2.5 min-h-[44px] flex items-center rounded bg-ink-100 text-ink-500 hover:bg-ink-200 transition-colors duration-150"
                 >
                   TMDB ↗
                 </a>
                 <button
                   onClick={handleRemove}
                   disabled={removeMovie.isPending || removeTV.isPending}
-                  className="text-[11px] font-medium px-2.5 py-1 rounded text-red-500 hover:bg-red-50 transition-colors duration-150"
+                  className="text-[11px] font-medium px-2.5 min-h-[44px] rounded text-red-500 hover:bg-red-50 transition-colors duration-150"
                 >
                   Remove
                 </button>
@@ -348,7 +349,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                   <button
                     key={s.value}
                     onClick={() => setSelectedStatus(s.value)}
-                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors duration-150 ${
+                    className={`text-xs px-3 min-h-[44px] rounded-full border transition-colors duration-150 ${
                       selectedStatus === s.value
                         ? 'bg-accent-500 border-accent-500 text-white'
                         : 'border-ink-200 text-ink-600 hover:border-accent-400'
@@ -358,11 +359,11 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={handleAdd}
                   disabled={isAdding}
-                  className="btn-primary text-sm py-1.5 px-6"
+                  className="btn-primary text-sm min-h-[44px] px-6"
                 >
                   {isAdding ? 'Adding…' : 'Add to library'}
                 </button>
@@ -370,7 +371,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                   href={isMovie ? tmdbMovieUrl(movie!.id) : tmdbTVUrl(tv!.id)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-ink-400 hover:text-ink-600 transition-colors duration-150"
+                  className="text-xs min-h-[44px] flex items-center text-ink-400 hover:text-ink-600 transition-colors duration-150"
                 >
                   TMDB ↗
                 </a>

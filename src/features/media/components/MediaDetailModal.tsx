@@ -59,15 +59,15 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto py-8 px-4"
+      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto py-4 px-2 sm:py-8 sm:px-4"
       onClick={onClose}
     >
       <div
-        className="max-w-3xl w-full rounded-2xl overflow-hidden bg-white max-h-[88vh] flex flex-col"
+        className="max-w-3xl w-full rounded-2xl overflow-hidden bg-white max-h-[92vh] sm:max-h-[88vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Backdrop header */}
-        <div className="relative h-48 flex-shrink-0 bg-ink-200">
+        <div className="relative h-36 sm:h-48 flex-shrink-0 bg-ink-200">
           {backdrop && (
             <img
               src={backdrop}
@@ -78,7 +78,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors duration-150 text-sm"
+            className="absolute top-3 right-3 w-11 h-11 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors duration-150 text-sm"
             aria-label="Close"
           >
             ×

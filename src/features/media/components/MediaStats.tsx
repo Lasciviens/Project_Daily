@@ -19,7 +19,7 @@ export function MediaStats({ movieEntries, tvEntries }: Props) {
     <div className="mb-6">
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 mb-3 w-full text-left group"
+        className="flex items-center gap-2 mb-3 w-full text-left group min-h-[44px]"
       >
         <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">
           📊 Your Stats

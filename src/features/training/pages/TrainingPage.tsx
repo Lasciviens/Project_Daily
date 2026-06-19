@@ -118,7 +118,7 @@ export function TrainingPage() {
           {selectedDay && (
             <button
               onClick={openLog}
-              className="text-xs px-3 py-1.5 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150"
+              className="text-xs px-3 py-1.5 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 min-h-[44px]"
             >
               + Add for this day
             </button>
@@ -127,7 +127,7 @@ export function TrainingPage() {
           <div className="flex gap-1 flex-wrap">
             <button
               onClick={() => setFilterType('all')}
-              className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors duration-150 ${
+              className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors duration-150 min-h-[44px] min-w-[44px] ${
                 filterType === 'all'
                   ? 'bg-accent-500 border-accent-500 text-white'
                   : 'border-ink-200 text-ink-500 hover:border-accent-400'
@@ -139,7 +139,7 @@ export function TrainingPage() {
               <button
                 key={t}
                 onClick={() => setFilterType(t)}
-                className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors duration-150 ${
+                className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors duration-150 min-h-[44px] min-w-[44px] ${
                   filterType === t
                     ? 'bg-accent-500 border-accent-500 text-white'
                     : 'border-ink-200 text-ink-500 hover:border-accent-400'

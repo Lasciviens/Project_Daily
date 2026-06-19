@@ -22,6 +22,7 @@ export interface CurrencyData {
   crossRates: CrossRate[]
   changes:    CurrencyChange[]
   date:       string
+  rawRates:   Record<string, number>  // USD-base rates; converter uses these
 }
 
 // Currency pairs to display
@@ -92,5 +93,5 @@ export async function fetchCurrencyData(): Promise<CurrencyData> {
   })
 
   const date = new Date(today.timestamp * 1000).toISOString().slice(0, 10)
-  return { crossRates, changes, date }
+  return { crossRates, changes, date, rawRates: r }
 }

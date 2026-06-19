@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useCreateTimeBlock, useCreateScheduleBlock } from '../hooks/useSchedule'
+import { toast, useCalendarStore } from '../../../app/store'
+import { createCalendarEvent } from '../../calendar/api/calendarApi'
 
 const DURATIONS = [
   { label: '30 min',  value: 30  },
@@ -11,6 +13,7 @@ const DURATIONS = [
 ]
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const LOCAL_TZ   = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 interface Props {
   dateStr:           string
@@ -21,13 +24,16 @@ interface Props {
 }
 
 export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultTitle = '', defaultColor }: Props) {
-  const [tab,       setTab]       = useState<'once' | 'recurring'>('once')
-  const [title,     setTitle]     = useState(defaultTitle)
-  const [startTime, setStartTime] = useState(defaultStartTime ?? '09:00')
-  const [duration,  setDuration]  = useState(60)
-  const [customMin, setCustomMin] = useState('')
-  const [days,      setDays]      = useState<number[]>([1, 2, 3, 4, 5]) // Mon–Fri
-  const [endTime,   setEndTime]   = useState('17:00')
+  const [tab,          setTab]          = useState<'once' | 'recurring'>('once')
+  const [title,        setTitle]        = useState(defaultTitle)
+  const [startTime,    setStartTime]    = useState(defaultStartTime ?? '09:00')
+  const [duration,     setDuration]     = useState(60)
+  const [customMin,    setCustomMin]    = useState('')
+  const [days,         setDays]         = useState<number[]>([1, 2, 3, 4, 5])
+  const [endTime,      setEndTime]      = useState('17:00')
+  const [addToGcal,    setAddToGcal]    = useState(false)
+
+  const calToken = useCalendarStore(s => s.accessToken)
 
   const createBlock     = useCreateTimeBlock()
   const createRecurring = useCreateScheduleBlock()
@@ -36,34 +42,53 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
 
   async function handleSubmit() {
     if (!title.trim()) return
-    if (tab === 'once') {
-      await createBlock.mutateAsync({
-        date:             dateStr,
-        title:            title.trim(),
-        start_time:       startTime ? `${startTime}:00` : null,
-        duration_minutes: actualDuration,
-        color:            defaultColor,
-      })
-    } else {
-      await createRecurring.mutateAsync({
-        title:        title.trim(),
-        days_of_week: days,
-        start_time:   `${startTime}:00`,
-        end_time:     `${endTime}:00`,
-        color:        'blue',
-      })
+    const tid = toast.loading(tab === 'once' ? 'Adding block…' : 'Adding recurring block…')
+    try {
+      if (tab === 'once') {
+        await createBlock.mutateAsync({
+          date:             dateStr,
+          title:            title.trim(),
+          start_time:       startTime ? `${startTime}:00` : null,
+          duration_minutes: actualDuration,
+          color:            defaultColor,
+        })
+
+        if (addToGcal && calToken && startTime) {
+          const startISO = new Date(`${dateStr}T${startTime}:00`).toISOString()
+          const endISO   = new Date(new Date(`${dateStr}T${startTime}:00`).getTime() + actualDuration * 60_000).toISOString()
+          await createCalendarEvent(calToken, 'primary', {
+            summary: title.trim(),
+            start:   { dateTime: startISO, timeZone: LOCAL_TZ },
+            end:     { dateTime: endISO,   timeZone: LOCAL_TZ },
+          })
+        }
+      } else {
+        await createRecurring.mutateAsync({
+          title:        title.trim(),
+          days_of_week: days,
+          start_time:   `${startTime}:00`,
+          end_time:     `${endTime}:00`,
+          color:        'blue',
+        })
+      }
+      toast.dismiss(tid); toast.success('Block added ✓')
+      onClose()
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to add block')
     }
-    onClose()
   }
 
   const isPending = createBlock.isPending || createRecurring.isPending
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/30">
-      <div className="card w-full max-w-sm p-5 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-ink-900/30">
+      <div className="card w-full sm:max-w-sm p-5 shadow-xl sm:rounded-2xl rounded-t-2xl rounded-b-none overflow-y-auto max-h-[90vh]">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-ink-900">Add time block</h3>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-700 text-xl leading-none">×</button>
+          <button
+            onClick={onClose}
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none"
+          >×</button>
         </div>
 
         {/* Tabs */}
@@ -72,7 +97,7 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`flex-1 text-xs py-1 rounded-md font-medium transition-colors duration-150 ${
+              className={`flex-1 text-xs min-h-[44px] rounded-md font-medium transition-colors duration-150 ${
                 tab === t ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'
               }`}
             >
@@ -130,6 +155,18 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
                   min={5}
                 />
               </div>
+
+              {calToken && (
+                <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={addToGcal}
+                    onChange={e => setAddToGcal(e.target.checked)}
+                    className="w-4 h-4 accent-accent-500 cursor-pointer"
+                  />
+                  <span className="text-sm text-ink-700">Add to Google Calendar</span>
+                </label>
+              )}
             </>
           ) : (
             <>
@@ -142,7 +179,7 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
                       onClick={() => setDays(prev =>
                         prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]
                       )}
-                      className={`w-8 h-8 rounded-full text-[11px] font-medium transition-colors duration-150 ${
+                      className={`min-w-[44px] min-h-[44px] rounded-full text-[11px] font-medium transition-colors duration-150 ${
                         days.includes(i)
                           ? 'bg-accent-500 text-white'
                           : 'bg-ink-100 text-ink-500'
@@ -168,11 +205,11 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
         </div>
 
         <div className="flex gap-2 mt-4">
-          <button onClick={onClose} className="flex-1 btn-secondary text-sm py-1.5">Cancel</button>
+          <button onClick={onClose} className="flex-1 btn-secondary text-sm min-h-[44px]">Cancel</button>
           <button
             onClick={handleSubmit}
             disabled={!title.trim() || isPending}
-            className="flex-1 btn-primary text-sm py-1.5 disabled:opacity-50"
+            className="flex-1 btn-primary text-sm min-h-[44px] disabled:opacity-50"
           >
             {isPending ? 'Adding…' : 'Add block'}
           </button>

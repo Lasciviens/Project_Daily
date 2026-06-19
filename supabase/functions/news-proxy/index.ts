@@ -53,6 +53,7 @@ Deno.serve(async (req: Request) => {
     const upstream = await fetch(imageUrl, {
       headers: {
         'User-Agent': 'lascis-board/1.0 (furkan.hamdemir@power.no)',
+        'Accept':     'image/*,image/webp,*/*;q=0.8',
         // Send no Referer so CDN hotlink checks pass
       },
     })

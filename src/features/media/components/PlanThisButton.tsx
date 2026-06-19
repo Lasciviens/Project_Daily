@@ -120,7 +120,7 @@ export function PlanThisButton({
       )}
       <button
         onClick={() => setOpen(o => !o)}
-        className={`text-[11px] font-medium px-2 py-1 rounded transition-colors duration-150 ${
+        className={`text-[11px] font-medium px-2 min-h-[44px] rounded transition-colors duration-150 ${
           isSuccessShowing
             ? 'bg-green-100 text-green-700'
             : 'bg-accent-100 text-accent-700 hover:bg-accent-200'
@@ -132,7 +132,7 @@ export function PlanThisButton({
       {open && (
         <div
           ref={popoverRef}
-          className="absolute z-30 bottom-8 left-0 card p-3 w-52 shadow-lg"
+          className="absolute z-30 bottom-full mb-1 left-0 card p-3 w-52 max-w-[calc(100vw-2rem)] shadow-lg"
         >
           {plannedFor ? (
             <div className="flex items-center gap-2 py-1">
@@ -173,7 +173,7 @@ export function PlanThisButton({
                       key={key}
                       onClick={() => plan(d)}
                       disabled={!!planning}
-                      className="text-xs text-left px-2 py-1.5 rounded hover:bg-cream-100 text-ink-700 transition-colors duration-150 disabled:opacity-50 flex items-center justify-between"
+                      className="text-xs text-left px-2 py-2.5 rounded hover:bg-cream-100 text-ink-700 transition-colors duration-150 disabled:opacity-50 flex items-center justify-between min-h-[44px]"
                     >
                       <span>{labelForDate(d)}</span>
                       {loading && <span className="text-accent-500 text-[10px]">…</span>}
@@ -187,7 +187,7 @@ export function PlanThisButton({
                     <button
                       onClick={() => plan(releaseOption)}
                       disabled={!!planning}
-                      className="text-xs text-left px-2 py-1.5 rounded hover:bg-cream-100 text-accent-600 transition-colors duration-150 disabled:opacity-50 flex items-center justify-between"
+                      className="text-xs text-left px-2 py-2.5 rounded hover:bg-cream-100 text-accent-600 transition-colors duration-150 disabled:opacity-50 flex items-center justify-between min-h-[44px]"
                     >
                       <span>Release · {format(releaseOption, 'd MMM yyyy')}</span>
                       {planning === format(releaseOption, 'yyyy-MM-dd') && (

@@ -1,4 +1,4 @@
-import { posterUrl } from '../../../integrations/tmdb/client'
+import { posterUrl, tmdbMovieUrl } from '../../../integrations/tmdb/client'
 import type { UserMovieEntry } from '../types'
 import { useUpdateMovie } from '../hooks/useMovies'
 import { PlanThisButton } from './PlanThisButton'
@@ -54,8 +54,8 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
           </div>
         )}
 
-        {/* Hover overlay with quick actions */}
-        <div className="absolute inset-0 flex flex-col items-center justify-end pb-2 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        {/* Hover overlay — desktop only */}
+        <div className="absolute inset-0 hidden md:flex flex-col items-center justify-end pb-2 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
           {!upcoming && entry.status !== 'completed' && (
             <div onClick={e => e.stopPropagation()} className="w-full px-2">
               <PlanThisButton
@@ -77,6 +77,15 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
               ✓ Mark watched
             </button>
           )}
+          <a
+            href={tmdbMovieUrl(movie.tmdb_id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="text-[10px] text-white/60 hover:text-white transition-colors duration-150"
+          >
+            TMDB ↗
+          </a>
         </div>
       </div>
 
@@ -87,11 +96,38 @@ export function MovieCard({ entry, compact, onOpenDetail }: Props) {
             {formatReleaseDate(movie.release_date)}
           </p>
           <div className="flex items-center justify-between mt-0.5">
-            {movie.tmdb_rating && (
+            {entry.rating ? (
+              <span className="text-[10px] text-accent-500 font-medium">★ {entry.rating}/10</span>
+            ) : movie.tmdb_rating ? (
               <span className="text-[10px] text-ink-400">★ {movie.tmdb_rating.toFixed(1)}</span>
-            )}
+            ) : null}
             <span className="text-[10px] text-ink-400">{STATUS_LABELS[entry.status]}</span>
           </div>
+
+          {/* Mobile-only action row — tap targets for touch devices */}
+          {!upcoming && entry.status !== 'completed' && (
+            <div className="flex gap-1 mt-1.5 md:hidden">
+              <div className="flex-1">
+                <PlanThisButton
+                  entryId={entry.id}
+                  sourceType="movie"
+                  title={movie.title}
+                />
+              </div>
+              {entry.status === 'watching' && (
+                <button
+                  onClick={e => {
+                    e.stopPropagation()
+                    update.mutate({ id: entry.id, patch: { status: 'completed', watched_at: new Date().toISOString() } })
+                  }}
+                  disabled={update.isPending}
+                  className="min-h-[44px] px-2 text-[10px] rounded bg-emerald-500 text-white font-medium hover:bg-emerald-600 transition-colors duration-150 flex-shrink-0"
+                >
+                  ✓
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

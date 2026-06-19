@@ -10,6 +10,7 @@ import {
   refreshCalendarToken,
   updateCalendarEvent,
   deleteCalendarEvent,
+  createCalendarEvent,
 } from '../api/calendarApi'
 
 const REFRESH_THRESHOLD_MS = 5 * 60_000  // refresh when ≤5 min remaining
@@ -141,6 +142,23 @@ export function useDeleteCalendarEvent() {
   return useMutation({
     mutationFn: ({ calendarId, eventId }: { calendarId: string; eventId: string }) =>
       deleteCalendarEvent(accessToken!, calendarId, eventId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
+  })
+}
+
+export function useCreateCalendarEvent() {
+  const qc = useQueryClient()
+  const { accessToken } = useCalendarStore()
+  return useMutation({
+    mutationFn: ({ calendarId, event }: {
+      calendarId: string
+      event: {
+        summary:      string
+        description?: string
+        start:        { dateTime: string; timeZone: string }
+        end:          { dateTime: string; timeZone: string }
+      }
+    }) => createCalendarEvent(accessToken!, calendarId, event),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
   })
 }
