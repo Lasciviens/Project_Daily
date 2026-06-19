@@ -44,10 +44,13 @@ export function TrainingPage() {
     sessionDate(b).localeCompare(sessionDate(a))
   )
 
-  // Always show full list — day selection only drives quick-add date
+  // Filter by day first, then by type
+  const dayFiltered = selectedDay
+    ? sorted.filter(s => sessionDate(s) === selectedDay)
+    : sorted
   const displayed = filterType === 'all'
-    ? sorted
-    : sorted.filter(s => s.type === filterType)
+    ? dayFiltered
+    : dayFiltered.filter(s => s.type === filterType)
 
   const types   = [...new Set(sessions.map(s => s.type))]
   const planned = sessions.filter(s => s.planned_date && !s.completed_at)
