@@ -1,4 +1,4 @@
-import { addDays, format, isToday, startOfWeek } from 'date-fns'
+import { addDays, format, isToday, startOfWeek, getWeek } from 'date-fns'
 import type { TrainingSession } from '../types'
 
 const TYPE_DOT: Record<string, string> = {
@@ -12,20 +12,21 @@ const TYPE_DOT: Record<string, string> = {
 }
 
 interface Props {
-  sessions:        TrainingSession[]
-  weekStart:       Date
-  selectedDay?:    string | null
-  onDayClick:      (date: string) => void
-  onPrevWeek:      () => void
-  onNextWeek:      () => void
-  onToday:         () => void
+  sessions:     TrainingSession[]
+  weekStart:    Date
+  selectedDay?: string | null
+  onDayClick:   (date: string) => void
+  onPrevWeek:   () => void
+  onNextWeek:   () => void
+  onToday:      () => void
 }
 
 export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick, onPrevWeek, onNextWeek, onToday }: Props) {
-  const days         = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-  const currentWeek  = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
-  const shownWeek    = format(weekStart, 'yyyy-MM-dd')
-  const isThisWeek   = shownWeek === currentWeek
+  const days        = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+  const currentWeek = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  const shownWeek   = format(weekStart, 'yyyy-MM-dd')
+  const isThisWeek  = shownWeek === currentWeek
+  const weekNumber  = getWeek(weekStart, { weekStartsOn: 1 })
 
   function sessionsForDay(date: Date): TrainingSession[] {
     const ds = format(date, 'yyyy-MM-dd')
@@ -37,34 +38,43 @@ export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick,
 
   return (
     <div className="mb-6">
-      <div className="flex items-center justify-between mb-3">
+      {/* Week header */}
+      <div className="flex items-center justify-between mb-2">
         <button
           onClick={onPrevWeek}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-sm rounded hover:bg-ink-100 transition-colors duration-150"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 rounded hover:bg-ink-100 transition-colors duration-150"
         >
           ‹
         </button>
-        <div className="flex items-center gap-2">
+
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-ink-400">
+              Week {weekNumber}
+            </span>
+            {!isThisWeek && (
+              <button
+                onClick={onToday}
+                className="text-[10px] px-2.5 py-1 rounded-full bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 font-semibold min-h-[28px]"
+              >
+                Today
+              </button>
+            )}
+          </div>
           <span className="text-xs font-semibold text-ink-600">
             {format(weekStart, 'd MMM')} – {format(addDays(weekStart, 6), 'd MMM yyyy')}
           </span>
-          {!isThisWeek && (
-            <button
-              onClick={onToday}
-              className="text-[10px] px-2 py-0.5 rounded bg-accent-100 text-accent-700 hover:bg-accent-200 transition-colors duration-150 font-medium"
-            >
-              Today
-            </button>
-          )}
         </div>
+
         <button
           onClick={onNextWeek}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-sm rounded hover:bg-ink-100 transition-colors duration-150"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 rounded hover:bg-ink-100 transition-colors duration-150"
         >
           ›
         </button>
       </div>
 
+      {/* Day columns */}
       <div className="grid grid-cols-7 gap-1.5">
         {days.map(day => {
           const ds         = format(day, 'yyyy-MM-dd')
@@ -77,16 +87,18 @@ export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick,
             <button
               key={ds}
               onClick={() => onDayClick(ds)}
-              className={`flex flex-col items-center gap-1 py-2 px-1 rounded-xl border transition-all duration-150 ${
+              className={`flex flex-col items-center gap-1 py-2 px-1 rounded-xl border-2 transition-all duration-150 ${
                 isSelected && !today
-                  ? 'bg-accent-100 border-accent-400 ring-2 ring-accent-400/40'
+                  ? 'bg-accent-100 border-accent-400 ring-2 ring-accent-400/30'
+                  : today && isSelected
+                  ? 'bg-accent-600 border-accent-600 ring-2 ring-accent-400/40'
                   : today
-                  ? 'bg-accent-500 border-accent-500 text-white'
+                  ? 'bg-accent-500 border-accent-500'
                   : 'border-ink-100 hover:border-accent-300 hover:bg-accent-50 bg-white'
               }`}
             >
-              <span className={`text-[9px] font-semibold uppercase tracking-wider ${
-                today ? 'text-white/80' : isSelected ? 'text-accent-600' : 'text-ink-400'
+              <span className={`text-[9px] font-bold uppercase tracking-wider ${
+                today || (today && isSelected) ? 'text-white/80' : isSelected ? 'text-accent-600' : 'text-ink-400'
               }`}>
                 {format(day, 'EEE')}
               </span>
@@ -95,7 +107,6 @@ export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick,
               }`}>
                 {format(day, 'd')}
               </span>
-              {/* Activity dots */}
               <div className="flex gap-0.5 min-h-[8px]">
                 {daySess.slice(0, 3).map((s, i) => (
                   <div
