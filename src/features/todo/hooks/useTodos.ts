@@ -13,17 +13,18 @@ import {
   swapTaskOrder,
 } from '../api/tasksApi'
 import {
-  fetchTodoistTasks,
-  todoistPriorityToLocal,
-  getSupabaseIdByTodoistId,
-  createTodoistTask,
-  closeTodoistTask,
-  reopenTodoistTask,
-  deleteTodoistTask,
-  saveTodoistMapping,
-  getTodoistId,
-  removeTodoistMapping,
-} from '../api/todoistApi'
+  fetchGoogleTasks,
+  googleDueToLocalDate,
+  getSupabaseIdByGoogleTaskId,
+  createGoogleTask,
+  completeGoogleTask,
+  reopenGoogleTask,
+  deleteGoogleTask,
+  saveGoogleTaskMapping,
+  getGoogleTaskId,
+  removeGoogleTaskMapping,
+} from '../api/googleTasksApi'
+import { useCalendarStore } from '../../../app/store'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
 
 export function useTasksBySection(section: string) {
@@ -64,15 +65,19 @@ export function useCreateTask() {
   return useMutation({
     mutationFn: async (input: CreateTaskInput) => {
       const task = await createTask(input)
-      let todoistError: string | null = null
-      try {
-        const todoistId = await createTodoistTask(task)
-        saveTodoistMapping(task.id, todoistId)
-      } catch (err) {
-        todoistError = err instanceof Error ? err.message : 'Todoist sync failed'
-        console.warn('[Todoist] create failed:', err)
+      // Sync to Google Tasks — soft failure (never blocks the Supabase write)
+      const token = useCalendarStore.getState().accessToken
+      let googleTaskError: string | null = null
+      if (token) {
+        try {
+          const googleTaskId = await createGoogleTask(token, task)
+          saveGoogleTaskMapping(task.id, googleTaskId)
+        } catch (err) {
+          googleTaskError = err instanceof Error ? err.message : 'Google Tasks sync failed'
+          console.warn('[GoogleTasks] create failed:', err)
+        }
       }
-      return { task, todoistError }
+      return { task, googleTaskError }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
@@ -92,12 +97,15 @@ export function useToggleTask() {
   return useMutation({
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
       const task = await toggleTaskDone(id, isDone)
-      const todoistId = getTodoistId(id)
-      if (todoistId) {
-        try {
-          if (isDone) await closeTodoistTask(todoistId)
-          else        await reopenTodoistTask(todoistId)
-        } catch (err) { console.warn('[Todoist] toggle failed:', err) }
+      const googleTaskId = getGoogleTaskId(id)
+      if (googleTaskId) {
+        const token = useCalendarStore.getState().accessToken
+        if (token) {
+          try {
+            if (isDone) await completeGoogleTask(token, googleTaskId)
+            else        await reopenGoogleTask(token, googleTaskId)
+          } catch (err) { console.warn('[GoogleTasks] toggle failed:', err) }
+        }
       }
       return task
     },
@@ -117,10 +125,13 @@ export function useDeleteTask() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => {
-      const todoistId = getTodoistId(id)
-      if (todoistId) {
-        try { await deleteTodoistTask(todoistId) } catch (err) { console.warn('[Todoist] delete failed:', err) }
-        removeTodoistMapping(id)
+      const googleTaskId = getGoogleTaskId(id)
+      if (googleTaskId) {
+        const token = useCalendarStore.getState().accessToken
+        if (token) {
+          try { await deleteGoogleTask(token, googleTaskId) } catch (err) { console.warn('[GoogleTasks] delete failed:', err) }
+        }
+        removeGoogleTaskMapping(id)
       }
       return deleteTask(id)
     },
@@ -135,24 +146,25 @@ export function useWorkTasks() {
   })
 }
 
-// Pull tasks from Todoist → import new ones to inbox
-export function useSyncFromTodoist() {
+// Pull tasks from Google Tasks → import new ones to inbox
+export function useSyncFromGoogleTasks() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const remoteTasks = await fetchTodoistTasks()
+      const token = useCalendarStore.getState().accessToken
+      if (!token) throw new Error('Google account not connected')
+      const remoteTasks = await fetchGoogleTasks(token)
       let imported = 0
       for (const rt of remoteTasks) {
-        const alreadyMapped = getSupabaseIdByTodoistId(rt.id)
-        if (alreadyMapped) continue
+        if (getSupabaseIdByGoogleTaskId(rt.id)) continue
         const newTask = await createTask({
-          title:    rt.content,
+          title:    rt.title,
           section:  'inbox',
-          priority: todoistPriorityToLocal(rt.priority),
+          priority: 'medium',
           domain:   'personal',
-          due_date: rt.due?.date ?? undefined,
+          due_date: rt.due ? googleDueToLocalDate(rt.due) : undefined,
         })
-        saveTodoistMapping(newTask.id, rt.id)
+        saveGoogleTaskMapping(newTask.id, rt.id)
         imported++
       }
       return imported
@@ -161,18 +173,20 @@ export function useSyncFromTodoist() {
   })
 }
 
-// Push local tasks that aren't in Todoist yet → create them there
-export function usePushToTodoist() {
+// Push local tasks not yet in Google Tasks → create them there
+export function usePushToGoogleTasks() {
   return useMutation({
     mutationFn: async (tasks: import('../types').Task[]) => {
+      const token = useCalendarStore.getState().accessToken
+      if (!token) throw new Error('Google account not connected')
       let pushed = 0
       let failed = 0
       for (const task of tasks) {
-        if (getTodoistId(task.id)) continue // already synced
+        if (getGoogleTaskId(task.id)) continue
         if (task.status === 'done' || task.status === 'cancelled') continue
         try {
-          const todoistId = await createTodoistTask(task)
-          saveTodoistMapping(task.id, todoistId)
+          const googleTaskId = await createGoogleTask(token, task)
+          saveGoogleTaskMapping(task.id, googleTaskId)
           pushed++
         } catch {
           failed++

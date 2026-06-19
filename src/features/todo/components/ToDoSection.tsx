@@ -13,8 +13,9 @@ interface Props {
 }
 
 export function ToDoSection({ title, section, tasks, defaultOpen = true, isLoading }: Props) {
-  const [isOpen,    setIsOpen]    = useState(defaultOpen)
-  const [modalOpen, setModalOpen] = useState(false)
+  const [isOpen,        setIsOpen]        = useState(defaultOpen)
+  const [completedOpen, setCompletedOpen] = useState(false)
+  const [modalOpen,     setModalOpen]     = useState(false)
   const swap = useSwapTaskOrder()
 
   const openTasks = [...tasks.filter(t => t.status === 'open' || t.status === 'in_progress')]
@@ -73,9 +74,25 @@ export function ToDoSection({ title, section, tasks, defaultOpen = true, isLoadi
               <span className="text-base leading-none">+</span> Add task
             </button>
 
+            {/* Completed section — collapsed by default, matching Google Tasks design */}
             {doneTasks.length > 0 && (
-              <div className="mt-1 opacity-50">
-                {doneTasks.map(task => <ToDoItem key={task.id} task={task} />)}
+              <div className="border-t border-ink-50">
+                <button
+                  onClick={() => setCompletedOpen(v => !v)}
+                  className="w-full flex items-center gap-2 px-3 py-2 min-h-[44px] text-left hover:bg-cream-50 transition-colors duration-150"
+                >
+                  <span className={`text-ink-300 text-xs transition-transform duration-150 inline-block ${completedOpen ? 'rotate-90' : ''}`}>
+                    ›
+                  </span>
+                  <span className="text-[11px] text-ink-400">
+                    Completed ({doneTasks.length})
+                  </span>
+                </button>
+                {completedOpen && (
+                  <div className="opacity-60">
+                    {doneTasks.map(task => <ToDoItem key={task.id} task={task} />)}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useCreateTask, useUpdateTask } from '../../features/todo/hooks/useTodos'
 import { useCreateTimeBlock } from '../../features/daily/hooks/useSchedule'
-import { toast } from '../../app/store'
+import { createCalendarEvent } from '../../features/calendar/api/calendarApi'
+import { toast, useCalendarStore } from '../../app/store'
 import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../features/todo/types'
+
+const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 interface Props {
   isOpen:          boolean
@@ -31,12 +34,14 @@ const PRIORITIES: { id: TaskPriority; label: string; color: string }[] = [
 export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaultDate, defaultDomain = 'personal', task }: Props) {
   const editMode = !!task
 
-  const [title,    setTitle]    = useState('')
-  const [section,  setSection]  = useState<TaskSection>(defaultSection)
-  const [priority, setPriority] = useState<TaskPriority>('medium')
-  const [domain,   setDomain]   = useState<TaskDomain>(defaultDomain)
-  const [dueDate,  setDueDate]  = useState(defaultDate ?? '')
+  const [title,      setTitle]      = useState('')
+  const [section,    setSection]    = useState<TaskSection>(defaultSection)
+  const [priority,   setPriority]   = useState<TaskPriority>('medium')
+  const [domain,     setDomain]     = useState<TaskDomain>(defaultDomain)
+  const [dueDate,    setDueDate]    = useState(defaultDate ?? '')
+  const [addToGcal,  setAddToGcal]  = useState(false)
 
+  const calToken = useCalendarStore(s => s.accessToken)
   const create          = useCreateTask()
   const update          = useUpdateTask()
   const createTimeBlock = useCreateTimeBlock()
@@ -56,11 +61,10 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
         setPriority('medium')
         setDomain(defaultDomain)
         setDueDate(defaultDate ?? '')
+        setAddToGcal(false)
       }
     }
   }, [isOpen, defaultSection, defaultDate, defaultDomain, task, editMode])
-
-  // Escape key, focus trap, and portal are all handled by Dialog — no manual listeners needed
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -72,20 +76,21 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
         patch: { title: trimmed, section, priority, domain, due_date: dueDate || null },
       })
     } else {
-      const { task: result, todoistError } = await create.mutateAsync({
+      const { task: result, googleTaskError } = await create.mutateAsync({
         title: trimmed,
         section,
         priority,
         domain,
         due_date: dueDate || null,
       })
-      if (todoistError) {
-        console.warn('[Todoist] create error:', todoistError)
+      if (googleTaskError) {
+        console.warn('[GoogleTasks] create error:', googleTaskError)
       }
       // Auto-schedule onto the day timeline
       if (domain === 'personal' && dueDate) {
         const dow     = new Date(dueDate + 'T00:00:00').getDay()
         const weekend = dow === 0 || dow === 6
+        const startHH = weekend ? '12:00' : '17:00'
         const toastId = toast.loading('Scheduling on timeline…')
         await new Promise<void>(resolve => {
           createTimeBlock.mutate(
@@ -104,6 +109,21 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
             }
           )
         })
+        // Also create a Google Calendar event when the checkbox is checked
+        if (addToGcal && calToken) {
+          try {
+            const startISO = new Date(`${dueDate}T${startHH}:00`).toISOString()
+            const endISO   = new Date(new Date(`${dueDate}T${startHH}:00`).getTime() + 60 * 60_000).toISOString()
+            await createCalendarEvent(calToken, 'primary', {
+              summary: trimmed,
+              start:   { dateTime: startISO, timeZone: LOCAL_TZ },
+              end:     { dateTime: endISO,   timeZone: LOCAL_TZ },
+            })
+            toast.success('Added to Google Calendar ✓')
+          } catch (err) {
+            toast.error(`Calendar: ${(err as Error).message}`)
+          }
+        }
       }
     }
     onClose()
@@ -224,6 +244,19 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
                 />
               </div>
             </div>
+
+            {/* Google Calendar checkbox — only when connected and a due date is set */}
+            {!editMode && calToken && dueDate && (
+              <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={addToGcal}
+                  onChange={e => setAddToGcal(e.target.checked)}
+                  className="w-4 h-4 accent-accent-500 cursor-pointer"
+                />
+                <span className="text-sm text-ink-700">Add to Google Calendar</span>
+              </label>
+            )}
 
             <div className="flex gap-2 pt-1">
               <button
