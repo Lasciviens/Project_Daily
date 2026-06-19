@@ -4,6 +4,7 @@ import { InlineText } from './InlineText'
 import { InlineTextArea } from './InlineTextArea'
 import { useCreateTask } from '../../todo/hooks/useTodos'
 import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
+import { DateInput } from '../../../shared/components/DateInput'
 import type { ProjectItem, ItemType, ItemPriority, ItemStatus } from '../types'
 
 const TYPE_BADGE: Record<ItemType, string> = {
@@ -222,11 +223,9 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
       {/* Plan date picker */}
       {showPlan && (
         <div className="px-3 pb-2 flex items-center gap-2 flex-wrap">
-          <input
-            type="date"
-            lang="en-GB"
+          <DateInput
             value={planDate}
-            onChange={e => setPlanDate(e.target.value)}
+            onChange={setPlanDate}
             className="text-sm border border-ink-200 rounded-lg px-2 py-2 outline-none focus:border-accent-400 min-h-[44px]"
           />
           <button

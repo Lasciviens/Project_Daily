@@ -4,6 +4,7 @@ import { format, addDays, isToday, isTomorrow } from 'date-fns'
 import { useCreateTask } from '../../todo/hooks/useTodos'
 import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
 import { toast as globalToast } from '../../../app/store'
+import { DateInput } from '../../../shared/components/DateInput'
 
 interface Props {
   entryId: string
@@ -188,12 +189,10 @@ export function PlanThisButton({
             </div>
 
             <div className="mt-2 pt-2 border-t border-ink-100">
-              <input
-                type="date"
-                lang="en-GB"
+              <DateInput
                 value={customDate}
-                onChange={e => setCustomDate(e.target.value)}
-                className="input text-xs py-1 px-2 w-full"
+                onChange={setCustomDate}
+                className="input text-xs py-1 px-2 w-full min-h-[44px]"
               />
               {customDate && (
                 <button

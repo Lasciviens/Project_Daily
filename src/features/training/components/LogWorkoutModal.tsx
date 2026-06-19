@@ -3,6 +3,8 @@ import { useCreateSession, useUpdateSession, useSessionExercises, useSaveSession
 import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
 import { useCreateTask } from '../../todo/hooks/useTodos'
 import { fetchLastStrengthExercises, searchExerciseNames } from '../api/trainingApi'
+import { ProgramPickerDialog } from './ProgramPickerDialog'
+import { DateInput } from '../../../shared/components/DateInput'
 import type { WorkoutType, Exercise, ExerciseSet, TrainingSession } from '../types'
 
 const WORKOUT_TYPES: { value: WorkoutType; label: string; icon: string }[] = [
@@ -63,6 +65,8 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
   const [acIdx,     setAcIdx]     = useState<number | null>(null)
   const [acResults, setAcResults] = useState<string[]>([])
   const acTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [showProgramPicker, setShowProgramPicker] = useState(false)
 
   useEffect(() => {
     if (exReady || savedExercises === undefined) return
@@ -181,6 +185,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
   }
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center px-4 py-6"
       onClick={onClose}
@@ -225,18 +230,11 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
           {/* Date + done toggle */}
           <div className="flex gap-3">
             <div className="flex-1">
-              <input
-                type="date"
-                lang="en-GB"
+              <DateInput
                 value={date}
-                onChange={e => setDate(e.target.value)}
+                onChange={setDate}
                 className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-400 min-h-[44px]"
               />
-              {date && (
-                <p className="text-[10px] text-ink-400 mt-0.5 pl-1">
-                  {new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </p>
-              )}
             </div>
             <label className="flex items-center gap-2 text-sm text-ink-600 cursor-pointer">
               <input
@@ -302,16 +300,25 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
                 <p className="text-xs font-semibold uppercase tracking-wider text-ink-400">Exercises</p>
                 <div className="flex gap-2">
                   {!editMode && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const last = await fetchLastStrengthExercises(undefined)
-                        if (last.length) setExercises(last)
-                      }}
-                      className="text-xs text-ink-400 hover:text-ink-600"
-                    >
-                      ↺ Copy last
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowProgramPicker(true)}
+                        className="text-xs text-accent-600 hover:text-accent-700 font-medium"
+                      >
+                        📋 Program
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const last = await fetchLastStrengthExercises(undefined)
+                          if (last.length) setExercises(last)
+                        }}
+                        className="text-xs text-ink-400 hover:text-ink-600"
+                      >
+                        ↺ Copy last
+                      </button>
+                    </>
                   )}
                   <button
                     type="button"
@@ -422,5 +429,13 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
         </form>
       </div>
     </div>
+
+    {showProgramPicker && (
+      <ProgramPickerDialog
+        onLoad={loaded => { setExercises(loaded); setShowProgramPicker(false) }}
+        onClose={() => setShowProgramPicker(false)}
+      />
+    )}
+    </>
   )
 }
