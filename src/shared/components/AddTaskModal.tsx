@@ -4,6 +4,7 @@ import { useCreateTask, useUpdateTask } from '../../features/todo/hooks/useTodos
 import { useCreateTimeBlock } from '../../features/daily/hooks/useSchedule'
 import { createCalendarEvent } from '../../features/calendar/api/calendarApi'
 import { toast, useCalendarStore } from '../../app/store'
+import { DateInput } from './DateInput'
 import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../features/todo/types'
 
 const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -234,13 +235,10 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
                   Due Date
                 </label>
-                <input
-                  type="date"
-                  lang="en-GB"
+                <DateInput
                   value={dueDate}
-                  onChange={e => setDueDate(e.target.value)}
-                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-1.5 text-xs text-ink-700
-                             focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
+                  onChange={setDueDate}
+                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-1.5 text-xs text-ink-700 focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150 min-h-[44px]"
                 />
               </div>
             </div>

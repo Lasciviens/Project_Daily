@@ -52,6 +52,27 @@ export interface TrainingProgram {
   updated_at:  string
 }
 
+export interface ProgramWorkout {
+  id:         string
+  program_id: string
+  user_id:    string
+  name:       string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProgramWorkoutExercise {
+  id:            string
+  workout_id:    string
+  exercise_name: string
+  sort_order:    number
+  sets:          number
+  min_reps:      number | null
+  max_reps:      number | null
+  notes:         string | null
+}
+
 export interface StravaStatus {
   connected:      boolean
   athlete_id:     number | null

@@ -8,6 +8,7 @@ import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
 import { fmtLastUpdated, fmtTime } from './transitUtils'
 import { toast } from '../../../../app/store'
+import { DateInput } from '../../../../shared/components/DateInput'
 
 interface RoutesTabProps {
   ws:  WidgetStateResult
@@ -496,7 +497,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <input type="date" value={draftDate} min={todayString()} onChange={e => setDraftDate(e.target.value)}
+                  <DateInput value={draftDate} onChange={setDraftDate} min={todayString()}
                     className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]" />
                   <select value={draftTime} onChange={e => setDraftTime(e.target.value)}
                     className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]">
