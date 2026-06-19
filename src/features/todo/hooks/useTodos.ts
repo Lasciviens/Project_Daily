@@ -71,6 +71,8 @@ export function useCreateTask() {
       if (token) {
         try {
           const googleTaskId = await createGoogleTask(token, task)
+          // Persist to Supabase (cross-device) and localStorage (fallback)
+          await updateTask(task.id, { google_task_id: googleTaskId })
           saveGoogleTaskMapping(task.id, googleTaskId)
         } catch (err) {
           googleTaskError = err instanceof Error ? err.message : 'Google Tasks sync failed'
@@ -124,8 +126,11 @@ export function useSwapTaskOrder() {
 export function useDeleteTask() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (id: string) => {
-      const googleTaskId = getGoogleTaskId(id)
+    mutationFn: async (taskOrId: string | import('../types').Task) => {
+      const id = typeof taskOrId === 'string' ? taskOrId : taskOrId.id
+      // Prefer google_task_id from passed task object, then localStorage fallback
+      const googleTaskId = (typeof taskOrId === 'object' ? taskOrId.google_task_id : null)
+        ?? getGoogleTaskId(id)
       if (googleTaskId) {
         const token = useCalendarStore.getState().accessToken
         if (token) {

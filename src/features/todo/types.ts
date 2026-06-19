@@ -5,21 +5,23 @@ export type TaskPriority  = 'low' | 'medium' | 'high'
 export type TaskSourceType = 'manual' | 'movie' | 'tv_series' | 'calendar' | 'ai'
 
 export interface Task {
-  id:          string
-  user_id:     string
-  title:       string
-  description: string | null
-  domain:      TaskDomain
-  section:     TaskSection
-  status:      TaskStatus
-  priority:    TaskPriority
-  due_date:    string | null
-  due_time:    string | null
-  source_type: TaskSourceType
-  source_id:   string | null
-  sort_order:  number
-  created_at:  string
-  updated_at:  string
+  id:                       string
+  user_id:                  string
+  title:                    string
+  description:              string | null
+  domain:                   TaskDomain
+  section:                  TaskSection
+  status:                   TaskStatus
+  priority:                 TaskPriority
+  due_date:                 string | null
+  due_time:                 string | null
+  source_type:              TaskSourceType
+  source_id:                string | null
+  sort_order:               number
+  google_task_id:           string | null
+  google_calendar_event_id: string | null
+  created_at:               string
+  updated_at:               string
 }
 
 export interface CreateTaskInput {
@@ -33,11 +35,13 @@ export interface CreateTaskInput {
 }
 
 export interface UpdateTaskInput {
-  title?:       string
-  description?: string | null
-  domain?:      TaskDomain
-  section?:     TaskSection
-  status?:      TaskStatus
-  priority?:    TaskPriority
-  due_date?:    string | null
+  title?:                    string
+  description?:              string | null
+  domain?:                   TaskDomain
+  section?:                  TaskSection
+  status?:                   TaskStatus
+  priority?:                 TaskPriority
+  due_date?:                 string | null
+  google_task_id?:           string | null
+  google_calendar_event_id?: string | null
 }

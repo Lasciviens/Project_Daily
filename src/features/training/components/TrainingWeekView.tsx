@@ -1,4 +1,4 @@
-import { addDays, format, isToday } from 'date-fns'
+import { addDays, format, isToday, startOfWeek } from 'date-fns'
 import type { TrainingSession } from '../types'
 
 const TYPE_DOT: Record<string, string> = {
@@ -18,10 +18,14 @@ interface Props {
   onDayClick:      (date: string) => void
   onPrevWeek:      () => void
   onNextWeek:      () => void
+  onToday:         () => void
 }
 
-export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick, onPrevWeek, onNextWeek }: Props) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick, onPrevWeek, onNextWeek, onToday }: Props) {
+  const days         = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+  const currentWeek  = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  const shownWeek    = format(weekStart, 'yyyy-MM-dd')
+  const isThisWeek   = shownWeek === currentWeek
 
   function sessionsForDay(date: Date): TrainingSession[] {
     const ds = format(date, 'yyyy-MM-dd')
@@ -40,9 +44,19 @@ export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick,
         >
           ‹
         </button>
-        <span className="text-xs font-semibold text-ink-600">
-          {format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d, yyyy')}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-ink-600">
+            {format(weekStart, 'd MMM')} – {format(addDays(weekStart, 6), 'd MMM yyyy')}
+          </span>
+          {!isThisWeek && (
+            <button
+              onClick={onToday}
+              className="text-[10px] px-2 py-0.5 rounded bg-accent-100 text-accent-700 hover:bg-accent-200 transition-colors duration-150 font-medium"
+            >
+              Today
+            </button>
+          )}
+        </div>
         <button
           onClick={onNextWeek}
           className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-sm rounded hover:bg-ink-100 transition-colors duration-150"

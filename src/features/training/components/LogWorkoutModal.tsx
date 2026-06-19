@@ -159,26 +159,30 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
       const newSession = await create.mutateAsync(payload)
       if (isStrength && newSession?.id) await saveExercises.mutateAsync({ sessionId: newSession.id, exercises: validExercises })
       // Auto-schedule new workouts on the day timeline at 17:00, 45 min
-      if (date) {
+      if (date && newSession?.id) {
         createTimeBlock.mutate({
           date,
           title:            title.trim(),
           start_time:       '17:00:00',
           duration_minutes: 45,
           color:            'purple',
+          source_type:      'training_session',
+          source_id:        newSession.id,
         })
-        // Also create a task so the workout appears in the to-do list
+        // Create a task and link it back to the session
         const d = new Date(date + 'T00:00:00')
         const today = new Date(); today.setHours(0, 0, 0, 0)
         const weekAhead = new Date(today); weekAhead.setDate(today.getDate() + 7)
         const taskSection = d <= today ? 'today' : d <= weekAhead ? 'this_week' : 'backlog'
-        createTask.mutate({
+        const { task } = await createTask.mutateAsync({
           title:    title.trim(),
           section:  taskSection,
           domain:   'personal',
           priority: 'medium',
           due_date: date,
         })
+        // Persist the link session → task
+        await update.mutateAsync({ id: newSession.id, patch: { linked_task_id: task.id } })
       }
     }
     onClose()
