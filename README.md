@@ -90,7 +90,7 @@ flowchart LR
 | Media | ✅ | TMDB, Movies + TV, PlanThisButton, TonightPicker, ReleaseCalendar |
 | Work | ✅ | Task board |
 | AI | ✅ | Gemini 2.5 Flash via Edge Function, `create_task` function calling |
-| Calendar | ✅ | Google OAuth, read + write events, DayCalendarSection with refresh button |
+| Calendar | ✅ | Google OAuth, read + write events, sync/refresh button in DayTimeline header |
 | Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
 | Training | ✅ | Strava OAuth, workout logging, week view |
 | Projects | ✅ | Phases, items, status tracking |
@@ -101,6 +101,7 @@ flowchart LR
 - Football data source (Google Calendar integration planned)
 - Command Bar (Cmd+K)
 - Activity Log / stats widget
+- Dark Mode (dark/light toggle)
 
 ---
 
