@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
+import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../app/store'
 import { supabase } from '../../integrations/supabase/client'
@@ -17,24 +18,14 @@ const THEMES: Record<string, { label: string; hex: string }> = {
 }
 
 export function SettingsMenu() {
-  const [open,       setOpen]       = useState(false)
   const [calLoading, setCalLoading] = useState(false)
   const [calError,   setCalError]   = useState<string | null>(null)
   const [theme,      setTheme]      = useState(() => localStorage.getItem('accent-theme') ?? 'orange')
-  const ref = useRef<HTMLDivElement>(null)
 
   const { accessToken, expiresAt, setAccessToken } = useCalendarStore()
   useAutoRefreshCalendarToken()
 
   const isCalConnected = !!accessToken && (!expiresAt || Date.now() < expiresAt - 60_000)
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
 
   const login = useGoogleLogin({
     flow:    'auth-code',
@@ -70,29 +61,30 @@ export function SettingsMenu() {
   }
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(p => !p)}
+    /* Menu handles keyboard navigation, portal, and click-outside — no manual listeners needed */
+    <Menu>
+      <MenuButton
         title="Settings"
-        className={`w-8 h-8 flex items-center justify-center rounded-lg text-lg transition-colors duration-150 ${
-          open ? 'bg-ink-100 text-ink-700' : 'text-ink-400 hover:text-ink-700 hover:bg-ink-100'
-        }`}
+        className="w-8 h-8 flex items-center justify-center rounded-lg text-lg transition-colors duration-150 text-ink-400 hover:text-ink-700 hover:bg-ink-100 data-[open]:bg-ink-100 data-[open]:text-ink-700"
       >
         ⚙
-      </button>
+      </MenuButton>
 
-      {open && (
-        <div className="absolute right-0 top-10 z-50 bg-white border border-ink-200 rounded-xl shadow-card-hover w-60 overflow-hidden">
-
-          {/* Google Calendar */}
-          <div className="px-4 py-3 border-b border-ink-100">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2.5">Google Calendar</p>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isCalConnected ? 'bg-green-400' : 'bg-ink-300'}`} />
-                <span className="text-xs text-ink-600">{isCalConnected ? 'Connected' : 'Not connected'}</span>
-              </div>
-              {isCalConnected ? (
+      <MenuItems
+        anchor="bottom end"
+        transition
+        className="z-50 bg-white border border-ink-200 rounded-xl shadow-card-hover w-60 overflow-hidden [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0 data-[closed]:scale-95"
+      >
+        {/* Google Calendar */}
+        <div className="px-4 py-3 border-b border-ink-100">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2.5">Google Calendar</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isCalConnected ? 'bg-green-400' : 'bg-ink-300'}`} />
+              <span className="text-xs text-ink-600">{isCalConnected ? 'Connected' : 'Not connected'}</span>
+            </div>
+            {isCalConnected ? (
+              <MenuItem>
                 <button
                   onClick={handleDisconnect}
                   disabled={calLoading}
@@ -100,7 +92,9 @@ export function SettingsMenu() {
                 >
                   {calLoading ? 'Disconnecting…' : 'Disconnect'}
                 </button>
-              ) : (
+              </MenuItem>
+            ) : (
+              <MenuItem>
                 <button
                   onClick={() => { setCalError(null); login() }}
                   disabled={calLoading}
@@ -108,18 +102,19 @@ export function SettingsMenu() {
                 >
                   {calLoading ? 'Connecting…' : 'Connect'}
                 </button>
-              )}
-            </div>
-            {calError && <p className="text-[10px] text-red-400 mt-1.5 leading-snug">{calError}</p>}
+              </MenuItem>
+            )}
           </div>
+          {calError && <p className="text-[10px] text-red-400 mt-1.5 leading-snug">{calError}</p>}
+        </div>
 
-          {/* Theme */}
-          <div className="px-4 py-3 border-b border-ink-100">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2.5">Theme</p>
-            <div className="flex items-center gap-2">
-              {Object.entries(THEMES).map(([name, t]) => (
+        {/* Theme */}
+        <div className="px-4 py-3 border-b border-ink-100">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2.5">Theme</p>
+          <div className="flex items-center gap-2">
+            {Object.entries(THEMES).map(([name, t]) => (
+              <MenuItem key={name}>
                 <button
-                  key={name}
                   onClick={() => selectTheme(name)}
                   title={t.label}
                   className={`w-5 h-5 rounded-full border-2 transition-all duration-150 hover:scale-110 ${
@@ -127,19 +122,21 @@ export function SettingsMenu() {
                   }`}
                   style={{ backgroundColor: t.hex }}
                 />
-              ))}
-            </div>
+              </MenuItem>
+            ))}
           </div>
+        </div>
 
-          {/* Sign out */}
+        {/* Sign out */}
+        <MenuItem>
           <button
             onClick={() => signOut()}
-            className="w-full px-4 py-3 text-left text-sm text-ink-500 hover:bg-cream-50 hover:text-red-500 transition-colors duration-150"
+            className="w-full px-4 py-3 text-left text-sm text-ink-500 hover:bg-cream-50 hover:text-red-500 transition-colors duration-150 data-[focus]:bg-cream-50 data-[focus]:text-red-500"
           >
             Sign out
           </button>
-        </div>
-      )}
-    </div>
+        </MenuItem>
+      </MenuItems>
+    </Menu>
   )
 }

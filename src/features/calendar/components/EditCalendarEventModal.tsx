@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useUpdateCalendarEvent, useDeleteCalendarEvent, useCreateCalendarEvent } from '../hooks/useCalendar'
 import { toast } from '../../../app/store'
 import type { CalendarEvent } from '../types'
@@ -16,7 +17,7 @@ function toLocalDatetimeInput(iso: string): string {
 function defaultTimes(date: string): { start: string; end: string } {
   const now      = new Date()
   const nextHour = Math.min(now.getHours() + 1, 23)  // clamp: hour 24 is invalid
-  const base     = new Date(`${date}T${String(nextHour).padStart(2, '0')}:00`)
+  const base     = new Date(`${date}T${String(nextHour).padStart(2, '00')}:00`)
   const end      = new Date(base.getTime() + 60 * 60_000)
   return { start: toLocalDatetimeInput(base.toISOString()), end: toLocalDatetimeInput(end.toISOString()) }
 }
@@ -65,12 +66,6 @@ export function EditCalendarEventModal(props: Props) {
   const error        = anyError?.message ?? null
   const needsReconnect = error?.includes('403') || error?.includes('insufficientPermissions') || error?.includes('forbidden')
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') props.onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [props.onClose])
-
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
@@ -115,113 +110,121 @@ export function EditCalendarEventModal(props: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center px-4 sm:px-4">
-      <div className="absolute inset-0 bg-ink-900/30" onClick={props.onClose} />
-
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-card-hover border border-ink-200 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <h2 className="text-sm font-semibold text-ink-800">
-            {isCreate ? 'New Event' : 'Edit Event'}
-          </h2>
-          <button
-            onClick={props.onClose}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none"
-          >
-            ×
-          </button>
-        </div>
-
-        <form onSubmit={handleSave} className="px-5 pb-5 flex flex-col gap-4">
-          <input
-            autoFocus
-            type="text"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="Event title"
-            className="w-full bg-cream-50 border border-ink-200 rounded-xl px-4 py-3 text-sm text-ink-900
-                       placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
-                       focus:border-accent-400 transition-colors duration-150"
-          />
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Start</label>
-              <input
-                type="datetime-local"
-                value={startDT}
-                onChange={e => setStartDT(e.target.value)}
-                className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
-                           focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">End</label>
-              <input
-                type="datetime-local"
-                value={endDT}
-                onChange={e => setEndDT(e.target.value)}
-                className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
-                           focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Description</label>
-            <textarea
-              value={desc}
-              onChange={e => setDesc(e.target.value)}
-              placeholder="Optional notes…"
-              rows={2}
-              className="w-full bg-cream-50 border border-ink-200 rounded-xl px-4 py-2.5 text-sm text-ink-900
-                         placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
-                         focus:border-accent-400 transition-colors duration-150 resize-none"
-            />
-          </div>
-
-          {error && (
-            <p className="text-xs text-red-500">
-              {needsReconnect
-                ? 'Your Google Calendar needs to be reconnected with edit permissions. Disconnect and reconnect Calendar from the header.'
-                : error}
-            </p>
-          )}
-
-          <div className="flex gap-2 pt-1">
+    /* Dialog handles Escape, focus trap, and portal — no manual implementation needed */
+    <Dialog open onClose={props.onClose} className="relative z-[60]">
+      <DialogBackdrop
+        transition
+        className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0"
+      />
+      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <DialogPanel
+          transition
+          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-white shadow-card-hover border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
+        >
+          <div className="flex items-center justify-between px-5 pt-5 pb-3">
+            <h2 className="text-sm font-semibold text-ink-800">
+              {isCreate ? 'New Event' : 'Edit Event'}
+            </h2>
             <button
-              type="submit"
-              disabled={isPending || !title.trim()}
-              className="btn-primary flex-1 min-h-[44px] disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={props.onClose}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none"
             >
-              {isPending && isCreate  ? 'Creating…'  :
-               isPending && !isCreate ? 'Saving…'    :
-               isCreate               ? 'Create event' : 'Save changes'}
+              ×
             </button>
-
-            {!isCreate && (
-              !confirmDelete ? (
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(true)}
-                  disabled={isPending}
-                  className="px-3 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
-                >
-                  Delete
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={isPending}
-                  className="px-3 rounded-lg text-sm bg-red-500 text-white hover:bg-red-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
-                >
-                  {remove.isPending ? 'Deleting…' : 'Confirm delete'}
-                </button>
-              )
-            )}
           </div>
-        </form>
+
+          <form onSubmit={handleSave} className="px-5 pb-5 flex flex-col gap-4">
+            <input
+              autoFocus
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Event title"
+              className="w-full bg-cream-50 border border-ink-200 rounded-xl px-4 py-3 text-sm text-ink-900
+                         placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
+                         focus:border-accent-400 transition-colors duration-150"
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Start</label>
+                <input
+                  type="datetime-local"
+                  value={startDT}
+                  onChange={e => setStartDT(e.target.value)}
+                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
+                             focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">End</label>
+                <input
+                  type="datetime-local"
+                  value={endDT}
+                  onChange={e => setEndDT(e.target.value)}
+                  className="w-full bg-ink-100 border-none rounded-lg px-3 py-2 text-sm text-ink-700 min-h-[44px]
+                             focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Description</label>
+              <textarea
+                value={desc}
+                onChange={e => setDesc(e.target.value)}
+                placeholder="Optional notes…"
+                rows={2}
+                className="w-full bg-cream-50 border border-ink-200 rounded-xl px-4 py-2.5 text-sm text-ink-900
+                           placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
+                           focus:border-accent-400 transition-colors duration-150 resize-none"
+              />
+            </div>
+
+            {error && (
+              <p className="text-xs text-red-500">
+                {needsReconnect
+                  ? 'Your Google Calendar needs to be reconnected with edit permissions. Disconnect and reconnect Calendar from the header.'
+                  : error}
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="submit"
+                disabled={isPending || !title.trim()}
+                className="btn-primary flex-1 min-h-[44px] disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isPending && isCreate  ? 'Creating…'  :
+                 isPending && !isCreate ? 'Saving…'    :
+                 isCreate               ? 'Create event' : 'Save changes'}
+              </button>
+
+              {!isCreate && (
+                !confirmDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    disabled={isPending}
+                    className="px-3 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
+                  >
+                    Delete
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={isPending}
+                    className="px-3 rounded-lg text-sm bg-red-500 text-white hover:bg-red-600 transition-colors duration-150 disabled:opacity-40 min-h-[44px]"
+                  >
+                    {remove.isPending ? 'Deleting…' : 'Confirm delete'}
+                  </button>
+                )
+              )}
+            </div>
+          </form>
+        </DialogPanel>
       </div>
-    </div>
+    </Dialog>
   )
 }
