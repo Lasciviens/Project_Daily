@@ -52,7 +52,7 @@ Deno.serve(async (req: Request) => {
 
     const upstream = await fetch(imageUrl, {
       headers: {
-        'User-Agent': 'lascis-board/1.0 (furkan.hamdemir@power.no)',
+        'User-Agent': 'lascis-board/1.0 (github.com/Lasciviens/Project_Daily)',
         'Accept':     'image/*,image/webp,*/*;q=0.8',
         // Send no Referer so CDN hotlink checks pass
       },
@@ -96,7 +96,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const upstream = await fetch(url, {
-      headers: { 'User-Agent': 'lascis-board/1.0 (furkan.hamdemir@power.no)' },
+      headers: { 'User-Agent': 'lascis-board/1.0 (github.com/Lasciviens/Project_Daily)' },
     })
     if (!upstream.ok) {
       return new Response(JSON.stringify({ error: `Upstream ${upstream.status}` }), {

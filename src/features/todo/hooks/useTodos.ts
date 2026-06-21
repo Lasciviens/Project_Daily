@@ -99,7 +99,8 @@ export function useToggleTask() {
   return useMutation({
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
       const task = await toggleTaskDone(id, isDone)
-      const googleTaskId = getGoogleTaskId(id)
+      // Prefer google_task_id from Supabase (cross-device), fall back to localStorage
+      const googleTaskId = task.google_task_id ?? getGoogleTaskId(id)
       if (googleTaskId) {
         const token = useCalendarStore.getState().accessToken
         if (token) {
@@ -170,6 +171,8 @@ export function useSyncFromGoogleTasks() {
           due_date: rt.due ? googleDueToLocalDate(rt.due) : undefined,
         })
         saveGoogleTaskMapping(newTask.id, rt.id)
+        // Persist to Supabase for cross-device sync
+        try { await updateTask(newTask.id, { google_task_id: rt.id }) } catch { /* non-fatal */ }
         imported++
       }
       return imported
@@ -192,6 +195,8 @@ export function usePushToGoogleTasks() {
         try {
           const googleTaskId = await createGoogleTask(token, task)
           saveGoogleTaskMapping(task.id, googleTaskId)
+          // Persist to Supabase for cross-device sync
+          try { await updateTask(task.id, { google_task_id: googleTaskId }) } catch { /* non-fatal */ }
           pushed++
         } catch {
           failed++

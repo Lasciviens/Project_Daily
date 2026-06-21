@@ -19,9 +19,10 @@ export async function fetchSessions(): Promise<TrainingSession[]> {
 
 export async function createSession(input: CreateSessionInput): Promise<TrainingSession> {
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
   const { data, error } = await supabase
     .from('train_sessions')
-    .insert({ ...input, user_id: user!.id })
+    .insert({ ...input, user_id: user.id })
     .select()
     .single()
   if (error) throw error
@@ -42,7 +43,7 @@ export async function deleteSession(id: string): Promise<{ linkedTaskId: string 
     .from('train_sessions')
     .select('linked_task_id')
     .eq('id', id)
-    .single()
+    .maybeSingle()
 
   // Remove companion time block (source_type/source_id link)
   await supabase.from('time_blocks')
@@ -114,6 +115,7 @@ export async function fetchLastStrengthExercises(excludeSessionId?: string): Pro
 
 export async function saveSessionExercises(sessionId: string, exercises: Exercise[]): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
   const { error: delErr } = await supabase
     .from('train_session_exercises')
     .delete()
@@ -129,7 +131,7 @@ export async function saveSessionExercises(sessionId: string, exercises: Exercis
       const s = ex.sets[setIdx]
       rows.push({
         session_id:  sessionId,
-        user_id:     user!.id,
+        user_id:     user.id,
         exercise_id: exerciseId,
         sort_order:  exIdx,
         set_number:  setIdx + 1,
@@ -146,19 +148,21 @@ export async function saveSessionExercises(sessionId: string, exercises: Exercis
 
 export async function searchExerciseNames(query: string): Promise<string[]> {
   if (!query.trim()) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('train_exercises')
       .select('name')
       .order('name')
       .limit(20)
+    if (error) throw error
     return (data ?? []).map(r => r.name)
   }
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('train_exercises')
     .select('name')
     .ilike('name', `%${query.trim()}%`)
     .order('name')
     .limit(10)
+  if (error) throw error
   return (data ?? []).map(r => r.name)
 }
 
@@ -175,9 +179,10 @@ export async function fetchPrograms(): Promise<TrainingProgram[]> {
 
 export async function createProgram(name: string, description?: string): Promise<TrainingProgram> {
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
   const { data, error } = await supabase
     .from('train_programs')
-    .insert({ name: name.trim(), description: description?.trim() || null, user_id: user!.id })
+    .insert({ name: name.trim(), description: description?.trim() || null, user_id: user.id })
     .select()
     .single()
   if (error) throw error
@@ -212,9 +217,10 @@ export async function fetchProgramWorkouts(programId: string): Promise<ProgramWo
 
 export async function createProgramWorkout(programId: string, name: string): Promise<ProgramWorkout> {
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
   const { data, error } = await supabase
     .from('train_program_workouts')
-    .insert({ program_id: programId, name: name.trim(), user_id: user!.id })
+    .insert({ program_id: programId, name: name.trim(), user_id: user.id })
     .select()
     .single()
   if (error) throw error
@@ -251,6 +257,7 @@ export async function saveProgramExercises(
   exercises: Omit<ProgramWorkoutExercise, 'id' | 'workout_id'>[]
 ): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
   const { error: delErr } = await supabase
     .from('train_program_exercises')
     .delete()
@@ -259,7 +266,7 @@ export async function saveProgramExercises(
   if (!exercises.length) return
   const rows = exercises.map((ex, idx) => ({
     workout_id:    workoutId,
-    user_id:       user!.id,
+    user_id:       user.id,
     exercise_name: ex.exercise_name,
     sort_order:    idx,
     sets:          ex.sets,

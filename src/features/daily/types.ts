@@ -19,6 +19,7 @@ export interface TimeBlock {
   color:            string
   source_type?:     string | null
   source_id?:       string | null
+  notes:            string | null
   created_at:       string
   updated_at:       string
 }

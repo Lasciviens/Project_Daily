@@ -13,6 +13,8 @@ function corsHeaders(origin: string | null): Record<string, string> {
   }
 }
 
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get('origin')
 
@@ -22,6 +24,27 @@ Deno.serve(async (req: Request) => {
 
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405, headers: corsHeaders(origin) })
+  }
+
+  // Auth check
+  const authHeader = req.headers.get('Authorization')
+  if (!authHeader) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
+    })
+  }
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: authHeader } } }
+  )
+  const { error: authErr } = await supabase.auth.getUser()
+  if (authErr) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
+    })
   }
 
   const apiKey = Deno.env.get('FOOTBALL_API_KEY')

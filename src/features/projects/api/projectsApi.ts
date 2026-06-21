@@ -12,7 +12,7 @@ export async function fetchProjects(): Promise<Project[]> {
     .select('*')
     .order('sort_order')
   if (error) throw error
-  return data
+  return data ?? []
 }
 
 export async function createProject(input: CreateProjectInput): Promise<Project> {
@@ -47,7 +47,7 @@ export async function fetchPhases(projectId: string): Promise<ProjectPhase[]> {
     .eq('project_id', projectId)
     .order('sort_order')
   if (error) throw error
-  return data
+  return data ?? []
 }
 
 export async function createPhase(input: CreatePhaseInput): Promise<ProjectPhase> {
@@ -82,7 +82,7 @@ export async function fetchItems(projectId: string): Promise<ProjectItem[]> {
     .eq('project_id', projectId)
     .order('sort_order')
   if (error) throw error
-  return data
+  return data ?? []
 }
 
 export async function createItem(input: CreateItemInput): Promise<ProjectItem> {
