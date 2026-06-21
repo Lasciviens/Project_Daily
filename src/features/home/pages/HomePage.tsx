@@ -265,7 +265,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
                 <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                   t.status === 'done'     ? 'bg-green-400' :
                   t.priority === 'high'   ? 'bg-red-400'   :
-                  t.priority === 'medium' ? 'bg-amber-400'  : 'bg-ink-300'
+                  t.priority === 'medium' ? 'bg-accent-400'  : 'bg-ink-300'
                 }`} />
                 <span className={`text-sm flex-1 truncate ${
                   t.status === 'done' ? 'line-through text-ink-400' : 'text-ink-700'

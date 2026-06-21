@@ -964,6 +964,11 @@ async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyReco
 
   const count = Math.min(args.count ?? 5, 10)
 
+  // Validate NSR stop_id format to prevent GraphQL injection
+  if (!/^NSR:StopPlace:\d+$/.test(stop.stop_id)) {
+    return { error: 'Invalid stop ID format' }
+  }
+
   const query = `{
     stopPlace(id: "${stop.stop_id}") {
       name

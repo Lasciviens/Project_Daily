@@ -12,6 +12,7 @@ export function useMovies() {
   return useQuery({
     queryKey: ['movies', 'user'],
     queryFn:  fetchUserMovieEntries,
+    staleTime: 5 * 60_000,
   })
 }
 

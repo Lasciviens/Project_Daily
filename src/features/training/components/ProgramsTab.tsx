@@ -71,13 +71,13 @@ function WorkoutRow({
             <div className="flex items-center gap-2 px-4 py-3 border-t border-ink-100">
               <button
                 onClick={() => setShowEdit(true)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-white bg-accent-500 rounded-lg hover:bg-accent-600 transition-colors duration-150 min-h-[40px]"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-white bg-accent-500 rounded-lg hover:bg-accent-600 transition-colors duration-150 min-h-[44px]"
               >
                 {exercises.length === 0 ? '+ Add exercises' : '✎ Edit exercises'}
               </button>
               <button
                 onClick={handleDelete}
-                className="px-3 py-2 text-xs text-ink-400 hover:text-red-500 border border-ink-200 rounded-lg hover:border-red-200 transition-colors duration-150 min-h-[40px]"
+                className="px-3 py-2 text-xs text-ink-400 hover:text-red-500 border border-ink-200 rounded-lg hover:border-red-200 transition-colors duration-150 min-h-[44px]"
               >
                 Delete
               </button>

@@ -65,7 +65,7 @@ export function SettingsMenu() {
     <Menu>
       <MenuButton
         title="Settings"
-        className="w-8 h-8 flex items-center justify-center rounded-lg text-lg transition-colors duration-150 text-ink-400 hover:text-ink-700 hover:bg-ink-100 data-[open]:bg-ink-100 data-[open]:text-ink-700"
+        className="w-11 h-11 flex items-center justify-center rounded-lg text-lg transition-colors duration-150 text-ink-400 hover:text-ink-700 hover:bg-ink-100 data-[open]:bg-ink-100 data-[open]:text-ink-700"
       >
         ⚙
       </MenuButton>
