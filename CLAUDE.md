@@ -174,7 +174,7 @@ Reference files: `src/shared/components/AddTaskModal.tsx` (Dialog), `src/feature
 
 ## Edge Functions (Supabase)
 
-All deployed automatically on push to `main` via GitHub Actions.
+**Deploy: manual via Supabase Dashboard or CLI.** The GitHub Actions pipeline only builds and deploys the frontend — `db-migrations` and `deploy-functions` jobs were removed (were failing; to be re-added properly later).
 
 | Function | Purpose |
 |---|---|
@@ -183,3 +183,5 @@ All deployed automatically on push to `main` via GitHub Actions.
 | `football-api` | API-Football proxy (currently unused — free tier doesn't cover current season) |
 | `news-proxy` | RSS feed proxy |
 | `strava-auth` / `strava-activities` / `strava-disconnect` | Strava OAuth |
+
+**DB Migrations:** Manuel olarak uygulanır — Supabase Dashboard > SQL Editor veya `supabase db push` (local CLI ile). GitHub Actions'ta otomatik çalışmıyor.
