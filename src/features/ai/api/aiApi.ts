@@ -48,7 +48,7 @@ async function buildContext(): Promise<string> {
       .in('status', ['watching', 'paused']).limit(10),
     supabase.from('time_blocks').select('id, title, start_time, duration_minutes')
       .eq('date', today).order('start_time', { ascending: true }).limit(10),
-    supabase.from('training_sessions').select('title, type, planned_date, duration_seconds')
+    supabase.from('train_sessions').select('title, type, planned_date, duration_seconds')
       .order('planned_date', { ascending: false }).limit(5),
   ])
 

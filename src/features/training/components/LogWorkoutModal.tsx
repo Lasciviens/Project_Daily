@@ -55,7 +55,7 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
   const [durMin,    setDurMin]    = useState(secsToMinStr(session?.duration_seconds ?? null))
   const [heartRate, setHeartRate] = useState(session?.avg_heart_rate != null ? String(session.avg_heart_rate) : '')
   const [elevGain,  setElevGain]  = useState(session?.elevation_gain_m != null ? String(session.elevation_gain_m) : '')
-  // Strength exercises — loaded from session_exercises table in edit mode
+  // Strength exercises — loaded from train_session_exercises table in edit mode
   const [exercises, setExercises] = useState<Exercise[]>([emptyExercise()])
   const [exReady,   setExReady]   = useState(!editMode)
 
