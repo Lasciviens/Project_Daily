@@ -31,7 +31,7 @@ export interface TrainingSession {
   updated_at:          string
 }
 
-// Row from session_exercises joined with exercises.name
+// Row from train_session_exercises joined with train_exercises.name
 export interface SessionExerciseRow {
   id:          string
   session_id:  string
