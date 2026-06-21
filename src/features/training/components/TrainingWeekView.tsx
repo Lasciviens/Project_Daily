@@ -55,7 +55,7 @@ export function TrainingWeekView({ sessions, weekStart, selectedDay, onDayClick,
             {!isThisWeek && (
               <button
                 onClick={onToday}
-                className="text-[10px] px-2.5 py-1 rounded-full bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 font-semibold min-h-[28px]"
+                className="text-[10px] px-2.5 py-1 rounded-full bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 font-semibold min-h-[44px]"
               >
                 Today
               </button>

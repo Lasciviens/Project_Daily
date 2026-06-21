@@ -2,7 +2,7 @@ export type TaskDomain    = 'personal' | 'work' | 'media'
 export type TaskSection   = 'inbox' | 'today' | 'tomorrow' | 'this_week' | 'backlog'
 export type TaskStatus    = 'open' | 'in_progress' | 'done' | 'cancelled'
 export type TaskPriority  = 'low' | 'medium' | 'high'
-export type TaskSourceType = 'manual' | 'movie' | 'tv_series' | 'calendar' | 'ai'
+export type TaskSourceType = 'manual' | 'movie' | 'tv_series' | 'media' | 'calendar' | 'ai'
 
 export interface Task {
   id:                       string

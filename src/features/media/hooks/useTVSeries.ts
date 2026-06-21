@@ -12,6 +12,7 @@ export function useTVSeries() {
   return useQuery({
     queryKey: ['tv', 'user'],
     queryFn:  fetchUserTVEntries,
+    staleTime: 5 * 60_000,
   })
 }
 

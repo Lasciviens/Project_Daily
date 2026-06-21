@@ -71,7 +71,7 @@ export function WidgetShell({ title, ws, onManualSync, headerRight, children }: 
               className={`text-xs rounded transition-colors duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center lg:min-w-0 lg:min-h-0 lg:px-1 ${
                 ws.syncActive
                   ? 'text-ink-400 hover:text-ink-700'
-                  : 'text-amber-500 hover:text-amber-700'
+                  : 'text-accent-500 hover:text-accent-700'
               }`}
             >
               {ws.syncActive ? '⏸' : '▶'}

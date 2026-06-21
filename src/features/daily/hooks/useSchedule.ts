@@ -38,6 +38,7 @@ export function useTimeBlocks(dateStr: string) {
   return useQuery({
     queryKey: ['schedule', 'day', dateStr],
     queryFn:  () => fetchTimeBlocks(dateStr),
+    staleTime: 5 * 60_000,
   })
 }
 

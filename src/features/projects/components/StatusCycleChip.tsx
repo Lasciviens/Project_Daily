@@ -14,7 +14,7 @@ const DEFAULT_PHASE_COLORS: Record<string, string> = {
 
 const DEFAULT_PROJECT_COLORS: Record<string, string> = {
   active:    'bg-emerald-50 text-emerald-700',
-  on_hold:   'bg-amber-50 text-amber-700',
+  on_hold:   'bg-accent-50 text-accent-700',
   completed: 'bg-blue-50 text-blue-700',
   archived:  'bg-ink-100 text-ink-400',
 }

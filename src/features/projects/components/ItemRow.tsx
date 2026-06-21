@@ -169,7 +169,7 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
             <button
               onClick={() => setShowNotes(n => !n)}
               className={`min-w-[44px] min-h-[44px] flex items-center justify-center text-sm transition-colors ${
-                hasNotes ? 'text-amber-500' : 'text-ink-300'
+                hasNotes ? 'text-accent-500' : 'text-ink-300'
               }`}
               title={showNotes ? 'Hide notes' : 'Show notes'}
             >≡</button>

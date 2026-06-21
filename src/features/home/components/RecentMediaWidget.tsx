@@ -53,7 +53,7 @@ async function fetchRecentMedia(): Promise<RecentItem[]> {
 
 const STATUS_DOT: Record<string, string> = {
   watching:  'bg-green-400',
-  wishlist:  'bg-amber-400',
+  wishlist:  'bg-accent-400',
   completed: 'bg-ink-300',
   dropped:   'bg-red-300',
   paused:    'bg-blue-400',

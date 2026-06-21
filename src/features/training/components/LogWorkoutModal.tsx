@@ -5,6 +5,7 @@ import { useCreateTask } from '../../todo/hooks/useTodos'
 import { fetchLastStrengthExercises, searchExerciseNames } from '../api/trainingApi'
 import { ProgramPickerDialog } from './ProgramPickerDialog'
 import { DateInput } from '../../../shared/components/DateInput'
+import { toast } from '../../../app/store'
 import type { WorkoutType, Exercise, ExerciseSet, TrainingSession } from '../types'
 
 const WORKOUT_TYPES: { value: WorkoutType; label: string; icon: string }[] = [
@@ -142,7 +143,6 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
       type,
       title:               title.trim(),
       planned_date:        date || undefined,
-      // Preserve original completed_at timestamp in edit mode when already done
       completed_at:        markDone ? (session?.completed_at ?? new Date().toISOString()) : undefined,
       notes:               notes.trim() || undefined,
       distance_meters:     distM,
@@ -152,40 +152,44 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
       avg_pace_sec_per_km: paceSecPerKm,
     }
 
-    if (editMode && session) {
-      await update.mutateAsync({ id: session.id, patch: payload })
-      if (isStrength) await saveExercises.mutateAsync({ sessionId: session.id, exercises: validExercises })
-    } else {
-      const newSession = await create.mutateAsync(payload)
-      if (isStrength && newSession?.id) await saveExercises.mutateAsync({ sessionId: newSession.id, exercises: validExercises })
-      // Auto-schedule new workouts on the day timeline at 17:00, 45 min
-      if (date && newSession?.id) {
-        createTimeBlock.mutate({
-          date,
-          title:            title.trim(),
-          start_time:       '17:00:00',
-          duration_minutes: 45,
-          color:            'purple',
-          source_type:      'training_session',
-          source_id:        newSession.id,
-        })
-        // Create a task and link it back to the session
-        const d = new Date(date + 'T00:00:00')
-        const today = new Date(); today.setHours(0, 0, 0, 0)
-        const weekAhead = new Date(today); weekAhead.setDate(today.getDate() + 7)
-        const taskSection = d <= today ? 'today' : d <= weekAhead ? 'this_week' : 'backlog'
-        const { task } = await createTask.mutateAsync({
-          title:    title.trim(),
-          section:  taskSection,
-          domain:   'personal',
-          priority: 'medium',
-          due_date: date,
-        })
-        // Persist the link session → task
-        await update.mutateAsync({ id: newSession.id, patch: { linked_task_id: task.id } })
+    const tid = toast.loading('Saving…')
+    try {
+      if (editMode && session) {
+        await update.mutateAsync({ id: session.id, patch: payload })
+        if (isStrength) await saveExercises.mutateAsync({ sessionId: session.id, exercises: validExercises })
+      } else {
+        const newSession = await create.mutateAsync(payload)
+        if (isStrength && newSession?.id) await saveExercises.mutateAsync({ sessionId: newSession.id, exercises: validExercises })
+        if (date && newSession?.id) {
+          await createTimeBlock.mutateAsync({
+            date,
+            title:            title.trim(),
+            start_time:       '17:00:00',
+            duration_minutes: 45,
+            color:            'purple',
+            source_type:      'training_session',
+            source_id:        newSession.id,
+          })
+          const d = new Date(date + 'T00:00:00')
+          const todayDate = new Date(); todayDate.setHours(0, 0, 0, 0)
+          const weekAhead = new Date(todayDate); weekAhead.setDate(todayDate.getDate() + 7)
+          const taskSection = d <= todayDate ? 'today' : d <= weekAhead ? 'this_week' : 'backlog'
+          const { task } = await createTask.mutateAsync({
+            title:    title.trim(),
+            section:  taskSection,
+            domain:   'personal',
+            priority: 'medium',
+            due_date: date,
+          })
+          await update.mutateAsync({ id: newSession.id, patch: { linked_task_id: task.id } })
+        }
       }
+      toast.dismiss(tid)
+      onClose()
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error((err as Error).message ?? 'Failed to save')
     }
-    onClose()
   }
 
   return (
