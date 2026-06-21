@@ -179,7 +179,11 @@ export function TrainingPage() {
           </div>
 
           {/* Session list */}
-          {isLoading ? (
+          {!selectedDay ? (
+            <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
+              <p className="text-ink-400 text-sm">Select a day to see sessions</p>
+            </div>
+          ) : isLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="h-16 rounded-xl bg-cream-200 animate-pulse" />
@@ -187,14 +191,8 @@ export function TrainingPage() {
             </div>
           ) : displayed.length === 0 ? (
             <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
-              <p className="text-ink-400 text-sm mb-1">
-                {selectedDay ? `No sessions on ${formatDayHeading(selectedDay)}` : 'No sessions yet'}
-              </p>
-              <p className="text-ink-300 text-xs">
-                {selectedDay
-                  ? 'Click "+ Add for this day" to log one.'
-                  : 'Log a workout or connect Strava to sync activities.'}
-              </p>
+              <p className="text-ink-400 text-sm mb-1">No sessions on {formatDayHeading(selectedDay)}</p>
+              <p className="text-ink-300 text-xs">Tap + to log one.</p>
             </div>
           ) : (
             <div className="space-y-2">
