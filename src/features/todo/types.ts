@@ -1,6 +1,6 @@
 export type TaskDomain    = 'personal' | 'work' | 'media'
 export type TaskSection   = 'inbox' | 'today' | 'tomorrow' | 'this_week' | 'backlog'
-export type TaskStatus    = 'open' | 'in_progress' | 'done' | 'cancelled'
+export type TaskStatus    = 'open' | 'in_progress' | 'waiting' | 'done' | 'cancelled'
 export type TaskPriority  = 'low' | 'medium' | 'high'
 export type TaskSourceType = 'manual' | 'movie' | 'tv_series' | 'media' | 'calendar' | 'ai'
 
@@ -15,6 +15,7 @@ export interface Task {
   priority:                 TaskPriority
   due_date:                 string | null
   due_time:                 string | null
+  waiting_for:              string | null
   source_type:              TaskSourceType
   source_id:                string | null
   sort_order:               number
@@ -42,6 +43,7 @@ export interface UpdateTaskInput {
   status?:                   TaskStatus
   priority?:                 TaskPriority
   due_date?:                 string | null
+  waiting_for?:              string | null
   google_task_id?:           string | null
   google_calendar_event_id?: string | null
 }

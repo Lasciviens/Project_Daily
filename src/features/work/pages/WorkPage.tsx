@@ -1,414 +1,207 @@
-import { useState } from 'react'
-import { addDays, format, isToday, startOfWeek } from 'date-fns'
-import { useWorkTasks, useToggleTask, useDeleteTask, useSwapTaskOrder } from '../../todo/hooks/useTodos'
+import { useState, useEffect, useCallback } from 'react'
+import { format } from 'date-fns'
+import { useWorkTasks, useUpdateTask, useDeleteTask, useToggleTask } from '../../todo/hooks/useTodos'
 import { AddTaskModal } from '../../../shared/components/AddTaskModal'
-import { DayTimeline } from '../../daily/components/DayTimeline'
-import { AddTimeBlockModal } from '../../daily/components/AddTimeBlockModal'
-import type { Task, TaskSection } from '../../todo/types'
+import WorkKanban from '../components/WorkKanban'
+import HeroTaskWidget from '../components/HeroTaskWidget'
+import QuickNotesWidget from '../components/QuickNotesWidget'
+import WeeklyGoalsWidget from '../components/WeeklyGoalsWidget'
+import PinnedLinksWidget from '../components/PinnedLinksWidget'
+import EODSummaryWidget from '../components/EODSummaryWidget'
+import { toast } from '../../../app/store'
+import type { Task, TaskStatus } from '../../todo/types'
 
-const SECTIONS: { id: TaskSection; label: string; defaultOpen: boolean }[] = [
-  { id: 'today',     label: 'Today',     defaultOpen: true  },
-  { id: 'inbox',     label: 'Inbox',     defaultOpen: true  },
-  { id: 'this_week', label: 'This Week', defaultOpen: true  },
-  { id: 'backlog',   label: 'Backlog',   defaultOpen: false },
-]
-
-const PRIORITY_DOT: Record<Task['priority'], string> = {
-  low:    'bg-ink-300',
-  medium: 'bg-accent-400',
-  high:   'bg-red-400 ring-1 ring-red-300',
-}
-
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const FOCUSED_KEY = 'work_focused_task_id'
 
 export function WorkPage() {
-  const [modal,         setModal]         = useState<TaskSection | null>(null)
-  const [selectedDate,  setSelectedDate]  = useState(new Date())
-  const [scheduleTask,  setScheduleTask]  = useState<Task | null>(null)
   const { data: tasks = [], isLoading } = useWorkTasks()
+  const updateTask = useUpdateTask()
+  const deleteTask = useDeleteTask()
+  const toggleTask = useToggleTask()
 
-  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
-  const isSelectedToday = isToday(selectedDate)
+  const [addOpen,      setAddOpen]      = useState(false)
+  const [editTask,     setEditTask]     = useState<Task | null>(null)
+  const [focusedId,    setFocusedId]    = useState<string | null>(
+    () => localStorage.getItem(FOCUSED_KEY)
+  )
 
-  // Stats based on selected date
-  const tasksForDate = tasks.filter(t => t.due_date === selectedDateStr)
-  const openForDate  = tasksForDate.filter(t => t.status === 'open' || t.status === 'in_progress')
-  const doneForDate  = tasksForDate.filter(t => t.status === 'done')
-  const highForDate  = openForDate.filter(t => t.priority === 'high').length
+  // Auto-clear focus when focused task is done/deleted
+  useEffect(() => {
+    if (!focusedId) return
+    const t = tasks.find(t => t.id === focusedId)
+    if (!t || t.status === 'done' || t.status === 'cancelled') {
+      setFocusedId(null)
+      localStorage.removeItem(FOCUSED_KEY)
+    }
+  }, [tasks, focusedId])
 
-  // Work tasks due on the selected date (only shown when not today)
-  const tasksForSelectedDate = !isSelectedToday
-    ? tasks.filter(t => t.due_date === selectedDateStr && (t.status === 'open' || t.status === 'in_progress'))
-    : []
+  const setFocus = useCallback((task: Task) => {
+    setFocusedId(task.id)
+    localStorage.setItem(FOCUSED_KEY, task.id)
+    if (task.status !== 'in_progress') {
+      updateTask.mutate({ id: task.id, patch: { status: 'in_progress' } })
+    }
+  }, [updateTask])
 
-  // Week row: Mon–Sun of the current week
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
-  const weekDays  = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+  const clearFocus = useCallback(() => {
+    setFocusedId(null)
+    localStorage.removeItem(FOCUSED_KEY)
+  }, [])
+
+  const handleStatusChange = useCallback(async (id: string, status: TaskStatus, waitingFor?: string) => {
+    const tid = toast.loading('Updating…')
+    try {
+      await updateTask.mutateAsync({
+        id,
+        patch: { status, ...(waitingFor !== undefined ? { waiting_for: waitingFor } : {}) },
+      })
+      toast.dismiss(tid); toast.success('Updated ✓')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    }
+  }, [updateTask])
+
+  const handleMarkDone = useCallback(async (id: string) => {
+    const tid = toast.loading('Marking done…')
+    try {
+      await toggleTask.mutateAsync({ id, isDone: true })
+      if (focusedId === id) { setFocusedId(null); localStorage.removeItem(FOCUSED_KEY) }
+      toast.dismiss(tid); toast.success('Done! ✓')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    }
+  }, [toggleTask, focusedId])
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (!confirm('Delete this task?')) return
+    const tid = toast.loading('Deleting…')
+    try {
+      await deleteTask.mutateAsync(id)
+      if (focusedId === id) { setFocusedId(null); localStorage.removeItem(FOCUSED_KEY) }
+      toast.dismiss(tid); toast.success('Deleted')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    }
+  }, [deleteTask, focusedId])
+
+  const focusedTask = focusedId ? (tasks.find(t => t.id === focusedId) ?? null) : null
+  const today       = format(new Date(), 'EEEE, d MMM yyyy')
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-14 rounded-xl bg-cream-200 animate-pulse" />
+        ))}
+      </div>
+    )
+  }
 
   return (
-    <div className="max-w-screen-lg mx-auto px-4 sm:px-6 py-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+    <div className="flex flex-col h-full">
+      {/* ── Header ──────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-ink-100 bg-white sticky top-0 z-10">
         <div>
-          <h1 className="text-2xl font-bold text-ink-900">Work</h1>
-          <p className="text-sm text-ink-400 mt-0.5">Task board for work items</p>
+          <h1 className="text-xl font-bold text-ink-900">Work</h1>
+          <p className="text-xs text-ink-400 mt-0.5">{today}</p>
         </div>
         <button
-          onClick={() => setModal('inbox')}
-          className="btn-primary min-h-[44px] flex items-center gap-1.5"
+          onClick={() => setAddOpen(true)}
+          className="flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-white px-4 rounded-xl text-sm font-semibold transition-colors duration-150 min-h-[44px]"
         >
-          <span className="text-base leading-none">+</span> Add task
+          <span className="text-lg leading-none">+</span>
+          <span>New task</span>
         </button>
       </div>
 
-      {/* Date navigation */}
-      <div className="flex items-center gap-2 mb-4">
-        <button
-          onClick={() => setSelectedDate(d => addDays(d, -1))}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
-        >
-          ‹
-        </button>
-        <span className="text-sm font-medium text-ink-800 min-w-[120px] text-center">
-          {isSelectedToday ? 'Today' : format(selectedDate, 'EEEE, MMM d')}
-        </span>
-        <button
-          onClick={() => setSelectedDate(d => addDays(d, 1))}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
-        >
-          ›
-        </button>
-        {!isSelectedToday && (
-          <button
-            onClick={() => setSelectedDate(new Date())}
-            className="min-h-[44px] px-3 text-xs text-accent-600 hover:text-accent-700 font-medium transition-colors duration-150 flex items-center"
-          >
-            Today
-          </button>
-        )}
-      </div>
+      {/* ── Body ────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-hidden lg:grid lg:grid-cols-[1fr_272px]">
 
-      {/* Mini work week calendar */}
-      <div className="flex items-center gap-1 mb-6 p-3 card">
-        {weekDays.map((day, i) => {
-          const dayStr    = format(day, 'yyyy-MM-dd')
-          const hasTasks  = tasks.some(t => t.due_date === dayStr && (t.status === 'open' || t.status === 'in_progress'))
-          const isSelected = dayStr === selectedDateStr
-          const isTodayDay = isToday(day)
-          return (
-            <button
-              key={dayStr}
-              onClick={() => setSelectedDate(day)}
-              className={`flex-1 flex flex-col items-center py-2 min-h-[44px] rounded-lg transition-colors duration-150 ${
-                isSelected
-                  ? 'bg-accent-500 text-white'
-                  : isTodayDay
-                  ? 'bg-accent-50 text-accent-700 hover:bg-accent-100'
-                  : 'hover:bg-ink-100 text-ink-600'
-              }`}
-            >
-              <span className="text-[10px] font-medium">{DAY_LABELS[i]}</span>
-              <span className={`text-xs font-semibold mt-0.5 ${isSelected ? 'text-white' : isTodayDay ? 'text-accent-700' : 'text-ink-800'}`}>
-                {format(day, 'd')}
-              </span>
-              <span className={`w-1 h-1 rounded-full mt-1 ${hasTasks ? (isSelected ? 'bg-white' : 'bg-accent-400') : 'bg-transparent'}`} />
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Tasks for selected date (only when not today) */}
-      {!isSelectedToday && (
-        <div className="mb-6 card overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-ink-100">
-            <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">
-              Work tasks for {format(selectedDate, 'MMMM d')}
-            </span>
-            {tasksForSelectedDate.length > 0 && (
-              <span className="ml-2 text-[10px] bg-accent-50 text-accent-600 font-semibold px-1.5 py-0.5 rounded-full">
-                {tasksForSelectedDate.length}
-              </span>
-            )}
+        {/* Main: hero + kanban */}
+        <div className="flex flex-col overflow-hidden">
+          <div className="px-4 sm:px-6 pt-4 pb-2">
+            <HeroTaskWidget
+              task={focusedTask}
+              onMarkDone={handleMarkDone}
+              onClearFocus={clearFocus}
+            />
           </div>
-          <div className="p-2">
-            {tasksForSelectedDate.length === 0 ? (
-              <p className="text-sm text-ink-300 text-center py-4">No work tasks due on this date</p>
-            ) : (
-              tasksForSelectedDate.map(task => (
-                <DateTaskRow key={task.id} task={task} />
-              ))
-            )}
+
+          <div className="flex-1 overflow-hidden px-2 sm:px-4 pb-4">
+            <WorkKanban
+              tasks={tasks}
+              focusedTaskId={focusedId}
+              onStatusChange={handleStatusChange}
+              onDelete={handleDelete}
+              onEdit={setEditTask}
+              onFocus={setFocus}
+              onAddTask={() => setAddOpen(true)}
+            />
           </div>
         </div>
-      )}
 
-      {/* Stats strip — filtered by selected date; wraps to 2×2 on mobile */}
-      {!isLoading && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 p-4 card">
-          <Stat label="Open" value={openForDate.length} color="text-ink-800" />
-          <Stat label="Done" value={doneForDate.length} color="text-green-600" />
-          <Stat label="High priority" value={highForDate} color={highForDate > 0 ? 'text-red-500' : 'text-ink-400'} />
-          <Stat
-            label={isSelectedToday ? 'Due today' : format(selectedDate, 'MMM d')}
-            value={openForDate.length}
-            color={openForDate.length > 0 ? 'text-accent-600' : 'text-ink-400'}
-          />
-        </div>
-      )}
-
-      {/* Sections */}
-      {isLoading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="card p-5">
-              <div className="h-4 w-24 bg-cream-200 rounded animate-pulse mb-4" />
-              <div className="space-y-3">
-                {[1, 2].map(j => <div key={j} className="h-8 bg-cream-200 rounded-lg animate-pulse" />)}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {SECTIONS.map(s => {
-            const sectionTasks = tasks.filter(t => t.section === s.id)
-            return (
-              <WorkSection
-                key={s.id}
-                section={s.id}
-                label={s.label}
-                tasks={sectionTasks}
-                defaultOpen={s.defaultOpen}
-                featured={s.id === 'today'}
-                onAdd={() => setModal(s.id)}
-                onSchedule={setScheduleTask}
-              />
-            )
-          })}
-        </div>
-      )}
-
-      {/* Day schedule for selected date */}
-      <div className="mt-6">
-        <DayTimeline date={selectedDate} />
+        {/* Sidebar (desktop only) */}
+        <aside className="hidden lg:flex flex-col gap-4 overflow-y-auto p-4 border-l border-ink-100 bg-cream-50/60">
+          <QuickNotesWidget />
+          <div className="border-t border-ink-100 pt-4">
+            <WeeklyGoalsWidget />
+          </div>
+          <div className="border-t border-ink-100 pt-4">
+            <PinnedLinksWidget />
+          </div>
+          <div className="border-t border-ink-100 pt-4">
+            <EODSummaryWidget tasks={tasks} />
+          </div>
+        </aside>
       </div>
 
-      <AddTaskModal
-        isOpen={!!modal}
-        onClose={() => setModal(null)}
-        defaultSection={modal ?? 'inbox'}
-        defaultDomain="work"
-      />
-      {scheduleTask && (
-        <AddTimeBlockModal
-          dateStr={scheduleTask.due_date ?? selectedDateStr}
-          defaultTitle={scheduleTask.title}
-          defaultStartTime="09:00"
-          defaultColor="blue"
-          onClose={() => setScheduleTask(null)}
+      {/* Mobile sidebar accordion */}
+      <MobileSidebar tasks={tasks} />
+
+      {/* Modals */}
+      {(addOpen || editTask) && (
+        <AddTaskModal
+          isOpen={addOpen || !!editTask}
+          defaultDomain="work"
+          defaultSection="today"
+          task={editTask ?? undefined}
+          onClose={() => { setAddOpen(false); setEditTask(null) }}
         />
       )}
     </div>
   )
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="text-center">
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
-      <p className="text-[11px] text-ink-400 mt-0.5">{label}</p>
-    </div>
-  )
-}
+// ── Mobile sidebar accordion ───────────────────────────────────────
+function MobileSidebar({ tasks }: { tasks: Task[] }) {
+  const [open, setOpen] = useState<string | null>(null)
+  const toggle = (id: string) => setOpen(o => o === id ? null : id)
 
-function DateTaskRow({ task }: { task: Task }) {
-  return (
-    <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg">
-      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
-      <span className="text-sm text-ink-800 truncate">{task.title}</span>
-      <span className="ml-auto text-[10px] text-ink-400 flex-shrink-0 capitalize">{task.section.replace('_', ' ')}</span>
-    </div>
-  )
-}
-
-function WorkSection({
-  label, tasks, defaultOpen, featured, onAdd, onSchedule,
-}: {
-  section:    TaskSection
-  label:      string
-  tasks:      Task[]
-  defaultOpen: boolean
-  featured?:  boolean
-  onAdd:      () => void
-  onSchedule: (task: Task) => void
-}) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
-  const toggle = useToggleTask()
-  const remove = useDeleteTask()
-  const swap   = useSwapTaskOrder()
-
-  const openTasks = [...tasks.filter(t => t.status === 'open' || t.status === 'in_progress')]
-    .sort((a, b) => a.sort_order - b.sort_order)
-  const doneTasks = tasks.filter(t => t.status === 'done')
+  const sections = [
+    { id: 'goals', label: '🎯 This Week',   node: <WeeklyGoalsWidget /> },
+    { id: 'notes', label: '📝 Notes',        node: <QuickNotesWidget /> },
+    { id: 'links', label: '🔗 Pinned Links', node: <PinnedLinksWidget /> },
+    { id: 'eod',   label: '📊 Summary',      node: <EODSummaryWidget tasks={tasks} /> },
+  ]
 
   return (
-    <div className={`card overflow-hidden ${featured ? 'ring-2 ring-accent-400/40 shadow-md' : ''}`}>
-      <button
-        onClick={() => setIsOpen(p => !p)}
-        className={`w-full flex items-center justify-between px-5 py-3.5 text-left transition-colors duration-150 border-b border-ink-100 ${
-          featured ? 'bg-accent-50 hover:bg-accent-100/60' : 'hover:bg-cream-50'
-        }`}
-      >
-        <div className="flex items-center gap-2.5">
-          <span className={`text-xs font-semibold uppercase tracking-wider ${featured ? 'text-accent-700' : 'text-ink-500'}`}>
-            {label}
-          </span>
-          {openTasks.length > 0 && (
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${featured ? 'bg-accent-500 text-white' : 'bg-accent-50 text-accent-600'}`}>
-              {openTasks.length}
-            </span>
-          )}
-        </div>
-        <span className={`text-sm transition-transform duration-150 inline-block ${isOpen ? 'rotate-90' : ''} ${featured ? 'text-accent-400' : 'text-ink-300'}`}>›</span>
-      </button>
-
-      {isOpen && (
-        <div className="p-2">
-          {openTasks.length === 0 && doneTasks.length === 0 && (
-            <p className="text-sm text-ink-300 text-center py-4">No tasks here</p>
-          )}
-
-          {openTasks.map((task, idx) => (
-            <WorkTaskRow
-              key={task.id}
-              task={task}
-              canMoveUp={idx > 0}
-              canMoveDown={idx < openTasks.length - 1}
-              onMoveUp={() => swap.mutate({ id1: task.id, id2: openTasks[idx - 1].id })}
-              onMoveDown={() => swap.mutate({ id1: task.id, id2: openTasks[idx + 1].id })}
-              onToggle={() => toggle.mutate({ id: task.id, isDone: true })}
-              onDelete={() => remove.mutate(task.id)}
-              onSchedule={() => onSchedule(task)}
-            />
-          ))}
-
+    <div className="lg:hidden border-t-2 border-ink-100">
+      {sections.map(({ id, label, node }) => (
+        <div key={id} className="border-b border-ink-100">
           <button
-            onClick={onAdd}
-            className="w-full text-left px-3 min-h-[44px] text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 flex items-center gap-1"
+            onClick={() => toggle(id)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-ink-700 hover:bg-cream-50 transition-colors duration-100 min-h-[44px]"
           >
-            <span className="text-base leading-none">+</span> Add task
+            <span>{label}</span>
+            <span className="text-ink-300 text-xs">{open === id ? '▲' : '▼'}</span>
           </button>
-
-          {doneTasks.length > 0 && (
-            <div className="mt-1 pt-2 border-t border-ink-100 opacity-50">
-              {doneTasks.map(task => (
-                <WorkTaskRow
-                  key={task.id}
-                  task={task}
-                  onToggle={() => toggle.mutate({ id: task.id, isDone: false })}
-                  onDelete={() => remove.mutate(task.id)}
-                />
-              ))}
+          {open === id && (
+            <div className="px-4 pb-4 bg-cream-50/50">
+              {node}
             </div>
           )}
         </div>
-      )}
+      ))}
     </div>
-  )
-}
-
-function WorkTaskRow({
-  task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, onToggle, onDelete, onSchedule,
-}: {
-  task: Task
-  canMoveUp?: boolean
-  canMoveDown?: boolean
-  onMoveUp?: () => void
-  onMoveDown?: () => void
-  onToggle: () => void
-  onDelete: () => void
-  onSchedule?: () => void
-}) {
-  const [hovered,  setHovered]  = useState(false)
-  const [editing,  setEditing]  = useState(false)
-  const isDone = task.status === 'done'
-
-  return (
-    <>
-      <div
-        className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors duration-150 ${hovered ? 'bg-cream-100' : ''}`}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        <button
-          onClick={onToggle}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 -ml-2 lg:min-w-0 lg:min-h-0 lg:ml-0 lg:w-4 lg:h-4"
-        >
-          <span className={`w-4 h-4 rounded border flex items-center justify-center transition-colors duration-150 ${
-            isDone ? 'bg-accent-500 border-accent-500 text-white' : 'border-ink-300 hover:border-accent-400'
-          }`}>
-            {isDone && (
-              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                <path d="M1 4L3.5 6.5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-          </span>
-        </button>
-
-        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
-
-        <div className="flex-1 min-w-0">
-          <span className={`text-sm leading-snug truncate block ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}>
-            {task.title}
-          </span>
-          {task.due_date && !isDone && (
-            <span className="text-[10px] text-ink-400">
-              {format(new Date(task.due_date + 'T00:00:00'), 'MMM d')}
-            </span>
-          )}
-        </div>
-
-        {/* Actions: always visible on mobile (no hover), hover-revealed on desktop */}
-        <div className={`flex items-center gap-0.5 flex-shrink-0 lg:hidden`}>
-          <button onClick={() => setEditing(true)}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 active:text-accent-500 transition-colors duration-150 text-sm"
-            title="Edit"
-          >✎</button>
-          <button onClick={onDelete}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 active:text-red-400 transition-colors duration-150 text-sm"
-          >✕</button>
-        </div>
-
-        {hovered && (
-          <div className="hidden lg:flex items-center gap-0.5 flex-shrink-0">
-            {onMoveUp && (
-              <button onClick={onMoveUp} disabled={!canMoveUp}
-                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
-              >↑</button>
-            )}
-            {onMoveDown && (
-              <button onClick={onMoveDown} disabled={!canMoveDown}
-                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
-              >↓</button>
-            )}
-            {onSchedule && (
-              <button onClick={onSchedule}
-                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
-                title="Add to day schedule"
-              >📅</button>
-            )}
-            <button onClick={() => setEditing(true)}
-              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
-              title="Edit"
-            >✎</button>
-            <button onClick={onDelete}
-              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
-            >✕</button>
-          </div>
-        )}
-      </div>
-
-      <AddTaskModal isOpen={editing} onClose={() => setEditing(false)} task={task} />
-    </>
   )
 }
