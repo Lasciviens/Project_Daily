@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useAllGames, useUpdateGame } from '../../home/hooks/useGames'
 import { toast } from '../../../app/store'
 import type { Game } from '../../home/api/gamesApi'
@@ -54,34 +55,36 @@ function TierPicker({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="bg-white rounded-2xl shadow-2xl border border-ink-200 p-5 w-[min(288px,calc(100vw-32px))]"
-        onClick={e => e.stopPropagation()}
-      >
-        <p className="text-sm font-semibold text-ink-800 mb-1 truncate">{game.title}</p>
-        <p className="text-xs text-ink-400 mb-4">Current tier: <strong>{game.tier ?? '—'}</strong></p>
-        <div className="grid grid-cols-4 gap-2">
-          {['S', 'A', 'B', 'C', 'D', 'F'].map(t => (
-            <button
-              key={t}
-              onClick={() => onSelect(t)}
-              className={`py-3 rounded-xl text-sm font-bold border-2 transition-all hover:scale-105 min-h-[44px] ${
-                game.tier === t
-                  ? (TIER_BADGE[t] ?? 'bg-ink-200') + ' border-transparent scale-105 ring-2 ring-offset-1 ring-ink-400'
-                  : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'
-              }`}
-            >{t}</button>
-          ))}
-          <button
-            onClick={() => onSelect(null)}
-            className={`col-span-2 py-2.5 rounded-xl text-xs text-ink-500 border-2 transition-all hover:border-ink-400 min-h-[44px] ${
-              game.tier == null ? 'border-ink-400 bg-ink-50' : 'border-ink-200 bg-white'
-            }`}
-          >Remove tier</button>
-        </div>
+    <Dialog open onClose={onClose} className="relative z-[60]">
+      <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
+      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+          <div className="p-5 w-full">
+            <p className="text-sm font-semibold text-ink-800 mb-1 truncate">{game.title}</p>
+            <p className="text-xs text-ink-400 mb-4">Current tier: <strong>{game.tier ?? '—'}</strong></p>
+            <div className="grid grid-cols-4 gap-2">
+              {['S', 'A', 'B', 'C', 'D', 'F'].map(t => (
+                <button
+                  key={t}
+                  onClick={() => onSelect(t)}
+                  className={`py-3 rounded-xl text-sm font-bold border-2 transition-all hover:scale-105 min-h-[44px] ${
+                    game.tier === t
+                      ? (TIER_BADGE[t] ?? 'bg-ink-200') + ' border-transparent scale-105 ring-2 ring-offset-1 ring-ink-400'
+                      : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'
+                  }`}
+                >{t}</button>
+              ))}
+              <button
+                onClick={() => onSelect(null)}
+                className={`col-span-2 py-2.5 rounded-xl text-xs text-ink-500 border-2 transition-all hover:border-ink-400 min-h-[44px] ${
+                  game.tier == null ? 'border-ink-400 bg-ink-50' : 'border-ink-200 bg-white'
+                }`}
+              >Remove tier</button>
+            </div>
+          </div>
+        </DialogPanel>
       </div>
-    </div>
+    </Dialog>
   )
 }
 

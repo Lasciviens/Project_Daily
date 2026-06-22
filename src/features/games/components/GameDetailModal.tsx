@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useGameDetail, useAddToQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast }         from '../../../app/store'
 import type { PlatformDetail, GamePatch } from '../../home/api/gamesApi'
@@ -254,10 +255,11 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
   }
 
   return (
-    <>
-      <div className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" onClick={onClose} />
+    <Dialog open onClose={onClose} className="relative z-40">
+      <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
 
-      <div className="fixed inset-x-4 top-4 bottom-4 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-2xl z-50 overflow-y-auto bg-white rounded-2xl shadow-2xl">
+      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <DialogPanel transition className="w-full sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl border border-ink-200 shadow-2xl transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
         {/* Controls */}
         <div className="absolute top-3 right-3 z-10 flex gap-2">
           {updateGame && game && !editing && (
@@ -422,6 +424,7 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
             </div>
           </div>
         )}
+      </DialogPanel>
       </div>
 
       {/* Lightbox */}
@@ -434,6 +437,6 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
           <span className="absolute bottom-4 text-white/60 text-xs">{lightboxIdx + 1} / {screenshots.length}</span>
         </div>
       )}
-    </>
+    </Dialog>
   )
 }
