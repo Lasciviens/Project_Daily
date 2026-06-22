@@ -60,3 +60,20 @@ export const getNorwegianTV = () =>
     with_origin_country: 'NO',
     sort_by: 'popularity.desc',
   })
+
+export const getNorwegianTopRatedMovies = () =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/discover/movie', {
+    with_origin_country: 'NO',
+    sort_by: 'vote_average.desc',
+    'vote_count.gte': '50',
+  })
+
+export const getNorwegianTopRatedTV = () =>
+  tmdbFetch<PagedResponse<TMDBSearchTV>>('/discover/tv', {
+    with_origin_country: 'NO',
+    sort_by: 'vote_average.desc',
+    'vote_count.gte': '20',
+  })
+
+export const getSeasonDetails = (tvId: number, season: number) =>
+  tmdbFetch<import('../types').TMDBSeasonDetail>(`/tv/${tvId}/season/${season}`)

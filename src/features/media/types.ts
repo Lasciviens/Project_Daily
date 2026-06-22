@@ -127,6 +127,37 @@ export interface TMDBSearchTV {
 export type MediaStatus = 'watching' | 'wishlist' | 'completed' | 'dropped' | 'paused'
 export type MediaType = 'movie' | 'tv'
 
+export interface TMDBEpisode {
+  id:             number
+  name:           string
+  overview:       string
+  episode_number: number
+  season_number:  number
+  air_date:       string | null
+  runtime:        number | null
+  still_path:     string | null
+  vote_average:   number
+}
+
+export interface TMDBSeasonDetail {
+  id:             number
+  name:           string
+  season_number:  number
+  episode_count:  number
+  episodes:       TMDBEpisode[]
+  poster_path:    string | null
+  air_date:       string | null
+}
+
+export interface WatchedEpisode {
+  id:          string
+  user_id:     string
+  tv_entry_id: string
+  season:      number
+  episode:     number
+  watched_on:  string
+}
+
 export interface TMDBCastMember {
   id: number
   name: string
@@ -177,6 +208,7 @@ export interface TMDBTVFull extends TMDBTVSeries {
   created_by: { id: number; name: string }[]
   networks: { id: number; name: string; logo_path: string | null }[]
   next_episode_to_air: { name: string; air_date: string; episode_number: number; season_number: number } | null
+  seasons: { id: number; name: string; season_number: number; episode_count: number; poster_path: string | null; air_date: string | null }[]
   credits: { cast: TMDBCastMember[]; crew: TMDBCrewMember[] }
   videos: { results: TMDBVideo[] }
   'watch/providers': { results: Record<string, TMDBWatchProviders> }
