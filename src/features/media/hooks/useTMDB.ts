@@ -7,6 +7,7 @@ import {
   getMovieFull, getTVFull,
   getUpcomingMovies, getUpcomingTV,
   getSimilarMovies, getSimilarTV,
+  getNorwegianMovies, getNorwegianTV,
 } from '../api/tmdbApi'
 
 export function useSearchMovies(query: string) {
@@ -113,6 +114,24 @@ export function useUpcomingTV(refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'upcoming', 'tv'],
     queryFn:  () => getUpcomingTV().then(r => r.results),
+    staleTime: 60 * 60_000,
+    refetchInterval,
+  })
+}
+
+export function useNorwegianMovies(refetchInterval?: number | false) {
+  return useQuery({
+    queryKey: ['tmdb', 'norwegian', 'movie'],
+    queryFn:  () => getNorwegianMovies().then(r => r.results),
+    staleTime: 60 * 60_000,
+    refetchInterval,
+  })
+}
+
+export function useNorwegianTV(refetchInterval?: number | false) {
+  return useQuery({
+    queryKey: ['tmdb', 'norwegian', 'tv'],
+    queryFn:  () => getNorwegianTV().then(r => r.results),
     staleTime: 60 * 60_000,
     refetchInterval,
   })

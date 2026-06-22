@@ -48,3 +48,15 @@ export const getSimilarMovies = (tmdbId: number) =>
 
 export const getSimilarTV = (tmdbId: number) =>
   tmdbFetch<PagedResponse<TMDBSearchTV>>(`/tv/${tmdbId}/similar`)
+
+export const getNorwegianMovies = () =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/discover/movie', {
+    with_origin_country: 'NO',
+    sort_by: 'popularity.desc',
+  })
+
+export const getNorwegianTV = () =>
+  tmdbFetch<PagedResponse<TMDBSearchTV>>('/discover/tv', {
+    with_origin_country: 'NO',
+    sort_by: 'popularity.desc',
+  })
