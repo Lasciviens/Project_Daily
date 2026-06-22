@@ -3,18 +3,13 @@ import type { Task, TaskStatus } from '../../todo/types'
 
 interface Props {
   task: Task
+  columnColor?: string
   onStatusChange: (id: string, status: TaskStatus, waitingFor?: string) => void
   onDelete: (id: string) => void
   onEdit: (task: Task) => void
   onFocus: (task: Task) => void
   isFocused: boolean
   isDragging?: boolean
-}
-
-const PRIORITY_BORDER: Record<string, string> = {
-  high:   'border-l-red-500',
-  medium: 'border-l-accent-400',
-  low:    'border-l-ink-200',
 }
 
 const PRIORITY_DOT: Record<string, string> = {
@@ -41,6 +36,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function WorkTaskCard({
   task,
+  columnColor,
   onStatusChange,
   onDelete,
   onEdit,
@@ -72,15 +68,22 @@ export default function WorkTaskCard({
     onStatusChange(task.id, isDone ? 'open' : 'done')
   }
 
+  const cardStyle: React.CSSProperties = {
+    borderLeftColor: columnColor ?? '#CBD5E1',
+    background: columnColor
+      ? `linear-gradient(to right, ${columnColor}1A 0%, white 65%)`
+      : 'white',
+  }
+
   return (
     <div
       draggable
       onDragStart={handleDragStart}
       onClick={() => onEdit(task)}
+      style={cardStyle}
       className={[
-        'group relative bg-white rounded-lg border border-ink-200 border-l-4 p-2 cursor-pointer select-none transition-all hover:shadow-sm hover:border-ink-300',
-        PRIORITY_BORDER[task.priority] ?? 'border-l-ink-200',
-        isDone    ? 'opacity-60' : '',
+        'group relative rounded-lg border border-ink-200 border-l-4 p-2 cursor-pointer select-none transition-all hover:shadow-sm hover:border-ink-300',
+        isDone     ? 'opacity-60' : '',
         isDragging ? 'opacity-40' : '',
       ].join(' ')}
     >
@@ -94,7 +97,7 @@ export default function WorkTaskCard({
         {STATUS_LABEL[task.status] ?? task.status}
       </span>
 
-      {/* Top row: priority dot + title */}
+      {/* Priority dot + title */}
       <div className="flex items-center gap-1 pr-14">
         <span className={['flex-shrink-0 w-1.5 h-1.5 rounded-full', PRIORITY_DOT[task.priority] ?? 'bg-ink-300'].join(' ')} />
         <span className={['text-xs font-semibold text-ink-900 truncate', isDone ? 'line-through text-ink-400' : ''].join(' ')}>
