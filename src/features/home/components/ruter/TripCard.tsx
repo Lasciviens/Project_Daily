@@ -94,11 +94,11 @@ function TransitLeg({ leg }: { leg: TripLeg }) {
         <div className="flex items-center gap-1.5 flex-wrap">
           {leg.destination && (
             <span className="text-xs font-medium text-ink-800 truncate">
-              {TRANSPORT_ICON[leg.mode] ?? '🚐'} mot {leg.destination}
+              {TRANSPORT_ICON[leg.mode] ?? '🚐'} towards {leg.destination}
             </span>
           )}
           {leg.realtime && (
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Sanntid" />
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
           )}
         </div>
         <div className="flex items-center gap-2 mt-0.5 text-xs text-ink-500 flex-wrap">
@@ -107,15 +107,15 @@ function TransitLeg({ leg }: { leg: TripLeg }) {
               {delayed && leg.aimed && (
                 <span className="line-through text-ink-300 mr-1 font-normal">{fmtTime(leg.aimed)}</span>
               )}
-              av {fmtTime(leg.departure)}
+              dep {fmtTime(leg.departure)}
             </span>
           )}
           {leg.arrivalTime && (
-            <span>an {fmtTime(leg.arrivalTime)}</span>
+            <span>arr {fmtTime(leg.arrivalTime)}</span>
           )}
           {leg.quayCode && (
             <span className="bg-ink-100 px-1.5 py-0.5 rounded text-[10px]">
-              Pl. {leg.quayCode}{leg.quayDescription ? ` · ${leg.quayDescription}` : ''}
+              Platform {leg.quayCode}{leg.quayDescription ? ` · ${leg.quayDescription}` : ''}
             </span>
           )}
         </div>
@@ -129,7 +129,7 @@ function WalkLeg({ leg }: { leg: TripLeg }) {
     <div className="flex items-center gap-3 py-1.5 text-xs text-ink-400">
       <span className="text-sm w-5 text-center flex-shrink-0">🚶</span>
       <span className="flex-1 truncate">
-        {leg.to !== leg.from ? `Gå til ${leg.to}` : 'Gå'}
+        {leg.to !== leg.from ? `Walk to ${leg.to}` : 'Walk'}
       </span>
       <span className="flex-shrink-0 tabular-nums">
         {fmtDuration(leg.duration)}
@@ -144,7 +144,7 @@ function TransferMarker({ waitMins }: { waitMins: number | null }) {
     <div className="flex items-center gap-2 py-0.5">
       <div className="flex-1 border-t border-dashed border-ink-100" />
       <span className="text-[9px] font-medium text-ink-300 uppercase tracking-wider flex-shrink-0">
-        {waitMins !== null ? `${waitMins} min bytte` : 'Bytte'}
+        {waitMins !== null ? `${waitMins} min transfer` : 'Transfer'}
       </span>
       <div className="flex-1 border-t border-dashed border-ink-100" />
     </div>
@@ -178,13 +178,13 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
           <div className="flex items-center gap-2 min-w-0">
             {isBest && (
               <span className="text-[9px] font-bold uppercase tracking-wider text-accent-600 bg-accent-100 px-1.5 py-0.5 rounded flex-shrink-0">
-                Raskest
+                Best
               </span>
             )}
             <span className={`text-base font-bold tabular-nums flex-shrink-0 ${
               isNow ? 'text-red-500' : isPast ? 'text-ink-400' : 'text-ink-900'
             }`}>
-              {isNow ? 'Nå' : diffMin <= 90 ? `${diffMin} min` : fmtTime(trip.departure)}
+              {isNow ? 'Now' : diffMin <= 90 ? `${diffMin} min` : fmtTime(trip.departure)}
             </span>
             <span className="text-ink-300 text-sm">→</span>
             <span className="text-base font-bold tabular-nums text-ink-700">
@@ -194,7 +194,7 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="text-xs text-ink-400 tabular-nums">{durationMin}m</span>
             {transfers > 0 && (
-              <span className="text-[10px] text-ink-300">{transfers} bytte</span>
+              <span className="text-[10px] text-ink-300">{transfers} transfer{transfers !== 1 ? 's' : ''}</span>
             )}
             <span className="text-[10px] text-ink-300">{expanded ? '▲' : '▼'}</span>
           </div>
