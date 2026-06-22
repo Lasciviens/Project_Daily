@@ -1,10 +1,10 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchDepartures, TRANSPORT_ICON, TRANSPORT_COLOR, type Departure, type StopResult } from '../../api/ruterApi'
+import { fetchDepartures, type Departure, type StopResult } from '../../api/ruterApi'
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
-import { minsUntil, fmtTime, fmtLastUpdated } from './transitUtils'
+import { minsUntil, fmtTime, fmtLastUpdated, lineStyle } from './transitUtils'
 import { toast } from '../../../../app/store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -16,30 +16,38 @@ interface DeparturesTabProps {
 
 // ─── DepartureRow ─────────────────────────────────────────────────────────────
 
+// Fallback badge colors when no presentation data from EnTur
+const MODE_FALLBACK_BG: Record<string, string> = {
+  bus:   '#E8112D',
+  tram:  '#E8112D',
+  metro: '#E8112D',
+  rail:  '#4A4A4A',
+  ferry: '#0066CC',
+}
+
 function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
-  const mins       = minsUntil(dep.expected, now)
-  const isNow      = mins <= 0
-  const delayed    = Math.abs(new Date(dep.expected).getTime() - new Date(dep.aimed).getTime()) > 60_000
-  const colorClass = TRANSPORT_COLOR[dep.transport] ?? 'bg-ink-200 text-ink-800'
+  const mins    = minsUntil(dep.expected, now)
+  const isNow   = mins <= 0
+  const delayed = Math.abs(new Date(dep.expected).getTime() - new Date(dep.aimed).getTime()) > 60_000
+  const style   = lineStyle(dep.lineColour, dep.lineTextColour)
+  const fallback = { backgroundColor: MODE_FALLBACK_BG[dep.transport] ?? '#555', color: '#fff' }
 
   return (
-    <div className="flex items-center gap-2.5 py-2 min-h-[44px]">
-      {/* Transport icon */}
-      <span className="text-base w-5 text-center flex-shrink-0 leading-none">
-        {TRANSPORT_ICON[dep.transport] ?? '🚐'}
-      </span>
-
-      {/* Line number badge — min-w ensures single-digit lines look square */}
-      <span className={`text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 min-w-[2rem] text-center leading-tight ${colorClass}`}>
+    <div className="flex items-center gap-2.5 py-2.5 min-h-[44px]">
+      {/* Line badge — operator brand color */}
+      <span
+        className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 min-w-[2.25rem] text-center leading-tight"
+        style={style ?? fallback}
+      >
         {dep.line}
       </span>
 
       {/* Destination + platform */}
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-ink-900 truncate leading-snug">{dep.destination}</div>
+        <div className="text-sm font-medium text-ink-900 truncate leading-snug">{dep.destination}</div>
         {(dep.quayCode || dep.quayDescription) && (
           <div className="text-[10px] text-ink-400 mt-0.5 truncate">
-            {dep.quayCode && `Platform ${dep.quayCode}`}
+            {dep.quayCode && `Pl. ${dep.quayCode}`}
             {dep.quayCode && dep.quayDescription && ' · '}
             {dep.quayDescription}
           </div>
@@ -49,16 +57,16 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
       {/* Time column */}
       <div className="text-right flex-shrink-0 flex items-center gap-1.5">
         {delayed && (
-          <span className="text-[10px] text-ink-300 line-through">{fmtTime(dep.aimed)}</span>
+          <span className="text-[10px] text-ink-300 line-through tabular-nums">{fmtTime(dep.aimed)}</span>
         )}
-        <span className={`text-sm font-semibold tabular-nums ${
+        <span className={`text-sm font-bold tabular-nums ${
           isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : delayed ? 'text-orange-500' : 'text-ink-900'
         }`}>
-          {isNow ? 'Now' : `${mins} min`}
+          {isNow ? 'Nå' : `${mins} min`}
         </span>
         {dep.realtime
-          ? <span className="w-2 h-2 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
-          : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Scheduled">~</span>
+          ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Sanntid" />
+          : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Rutebundet">~</span>
         }
       </div>
     </div>

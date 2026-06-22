@@ -1,5 +1,16 @@
 // Shared display helpers for transit widgets.
 // Keep pure — no React, no API calls, no side effects.
+import type React from 'react'
+
+// Converts EnTur presentation colour (hex without #) to inline CSS style object.
+// Falls back to null when no presentation data is available.
+export function lineStyle(colour?: string, textColour?: string): React.CSSProperties | null {
+  if (!colour) return null
+  return {
+    backgroundColor: `#${colour}`,
+    color:           textColour ? `#${textColour}` : '#ffffff',
+  }
+}
 
 export function minsUntil(iso: string, now: number): number {
   return Math.round((new Date(iso).getTime() - now) / 60_000)
