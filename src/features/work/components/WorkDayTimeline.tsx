@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import type { Task } from '../../todo/types'
 
 interface Props {
-  workTasks: Task[]  // used to identify work-linked blocks
+  workTasks: Task[]
 }
 
 const HOUR_START = 7
@@ -51,7 +51,7 @@ export default function WorkDayTimeline({ workTasks }: Props) {
     staleTime: 5 * 60_000,
   })
 
-  // Only show blocks linked to work tasks OR manually created (no source = manual)
+  // Only show blocks linked to work tasks or manual/calendar
   const blocks = allBlocks.filter(b =>
     !b.source_type ||
     b.source_type === 'manual' ||
@@ -60,6 +60,7 @@ export default function WorkDayTimeline({ workTasks }: Props) {
   )
 
   const timedBlocks = blocks.filter(b => b.start_time)
+  const displayLabels = HOUR_LABELS.filter((_, i) => i % 2 === 0)
 
   return (
     <div className="rounded-xl border border-ink-200 bg-white px-4 py-3 w-full">
@@ -67,62 +68,72 @@ export default function WorkDayTimeline({ workTasks }: Props) {
         Today's Schedule
       </p>
 
-      {/* Timeline bar */}
-      <div className="relative h-9 bg-ink-50 rounded-lg overflow-hidden w-full">
-        {/* Hour grid lines */}
-        {HOUR_LABELS.map(h => (
-          <div
-            key={h}
-            className="absolute top-0 bottom-0 border-l border-ink-200/70"
-            style={{ left: leftPct((h - HOUR_START) * 60) }}
-          />
-        ))}
-
-        {/* Time blocks */}
-        {timedBlocks.map(block => {
-          const startMins = timeToMins(block.start_time!)
-          const dur       = block.duration_minutes || 30
-          const endMins   = startMins + dur
-          if (endMins < HOUR_START * 60 || startMins > HOUR_END * 60) return null
-          return (
+      {/* Timeline bar — overflow visible so now-marker dot isn't clipped */}
+      <div className="relative h-12 bg-ink-50 rounded-lg w-full" style={{ overflow: 'visible' }}>
+        {/* Clipped inner for the bar background */}
+        <div className="absolute inset-0 rounded-lg overflow-hidden bg-ink-50">
+          {/* Hour grid lines */}
+          {HOUR_LABELS.map(h => (
             <div
-              key={block.id}
-              title={`${block.start_time?.slice(0, 5)} — ${block.title}`}
-              className="absolute top-1.5 bottom-1.5 rounded text-[9px] text-white font-semibold flex items-center px-1.5 overflow-hidden"
-              style={{
-                left:            leftPct(startMins),
-                width:           widthPct(startMins, endMins),
-                backgroundColor: resolveColor(block.color),
-                minWidth:        '2px',
-              }}
-            >
-              <span className="truncate leading-none">{block.title}</span>
-            </div>
-          )
-        })}
+              key={h}
+              className="absolute top-0 bottom-0 border-l border-ink-200/60"
+              style={{ left: leftPct((h - HOUR_START) * 60) }}
+            />
+          ))}
 
-        {/* Now marker */}
+          {/* Time blocks */}
+          {timedBlocks.map(block => {
+            const startMins = timeToMins(block.start_time!)
+            const dur       = block.duration_minutes || 30
+            const endMins   = startMins + dur
+            if (endMins < HOUR_START * 60 || startMins > HOUR_END * 60) return null
+            return (
+              <div
+                key={block.id}
+                title={`${block.start_time?.slice(0, 5)} — ${block.title}`}
+                className="absolute top-2 bottom-2 rounded text-[9px] text-white font-semibold flex items-center px-1.5 overflow-hidden"
+                style={{
+                  left:            leftPct(startMins),
+                  width:           widthPct(startMins, endMins),
+                  backgroundColor: resolveColor(block.color),
+                  minWidth:        '4px',
+                }}
+              >
+                <span className="truncate leading-none">{block.title}</span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Now marker — outside clipped div so dot shows above bar */}
         {nowMins >= HOUR_START * 60 && nowMins <= HOUR_END * 60 && (
           <div
-            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
+            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
             style={{ left: leftPct(nowMins) }}
           >
-            <div className="absolute -top-0.5 -translate-x-[3px] w-2 h-2 rounded-full bg-red-500" />
+            <div className="absolute -top-1 -translate-x-[3px] w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white" />
           </div>
         )}
       </div>
 
-      {/* Hour labels */}
+      {/* Hour labels — first label left-aligned, last right-aligned, rest centered */}
       <div className="relative h-4 mt-1 w-full">
-        {HOUR_LABELS.filter((_, i) => i % 2 === 0).map(h => (
-          <span
-            key={h}
-            className="absolute text-[9px] text-ink-300 -translate-x-1/2 select-none"
-            style={{ left: leftPct((h - HOUR_START) * 60) }}
-          >
-            {h}
-          </span>
-        ))}
+        {displayLabels.map(h => {
+          const isFirst = h === HOUR_START
+          const isLast  = h >= HOUR_END - 1
+          return (
+            <span
+              key={h}
+              className="absolute text-[9px] text-ink-400 select-none"
+              style={{
+                left:      leftPct((h - HOUR_START) * 60),
+                transform: isFirst ? 'none' : isLast ? 'translateX(-100%)' : 'translateX(-50%)',
+              }}
+            >
+              {h}:00
+            </span>
+          )
+        })}
       </div>
 
       {timedBlocks.length === 0 && (
