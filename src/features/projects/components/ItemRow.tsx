@@ -142,9 +142,11 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
         {/* Priority dot */}
         <button
           onClick={cyclePriority}
-          className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[item.priority]}`}
+          className={`min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0 lg:min-w-0 lg:min-h-0 lg:w-auto lg:h-auto`}
           title={`Priority: ${item.priority} — click to change`}
-        />
+        >
+          <span className={`w-2 h-2 rounded-full block ${PRIORITY_DOT[item.priority]}`} />
+        </button>
 
         {/* Title */}
         <div className="flex-1 min-w-0">

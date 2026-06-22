@@ -149,7 +149,7 @@ export function ProjectDetail({ project, onDelete }: Props) {
         <div className="flex items-center gap-1.5 flex-wrap -mt-2">
           <button
             onClick={() => setTypeFilter(null)}
-            className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+            className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
               typeFilter === null
                 ? 'bg-ink-800 text-white border-ink-800'
                 : 'bg-ink-50 text-ink-500 border-ink-200 hover:border-ink-400'
@@ -164,7 +164,7 @@ export function ProjectDetail({ project, onDelete }: Props) {
               <button
                 key={f.type}
                 onClick={() => setTypeFilter(t => t === f.type ? null : f.type)}
-                className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
                   typeFilter === f.type
                     ? f.cls + ' font-semibold'
                     : 'bg-ink-50 text-ink-500 border-ink-200 hover:border-ink-400'

@@ -9,6 +9,17 @@ const ALLOWED_FEED_DOMAINS = [
   'feeds.bbci.co.uk',
 ]
 
+const ALLOWED_IMAGE_DOMAINS = [
+  'ichef.bbci.co.uk',
+  'vg.no',
+  'cnnturk.com',
+  'bilder.tv2.no',
+  'dbstatic.no',
+  'images.tv2.no',
+  'cdn.cnnturk.com',
+  'c.bilder.no',
+]
+
 function corsHeaders(origin: string | null): Record<string, string> {
   const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
   return {
@@ -35,7 +46,6 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    // Only proxy HTTPS image URLs — no allowlist needed since CORS already restricts callers
     let parsedUrl: URL
     try { parsedUrl = new URL(imageUrl) } catch {
       return new Response(JSON.stringify({ error: 'Invalid url' }), {
@@ -46,6 +56,12 @@ Deno.serve(async (req: Request) => {
     if (parsedUrl.protocol !== 'https:') {
       return new Response(JSON.stringify({ error: 'HTTPS only' }), {
         status: 400,
+        headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
+      })
+    }
+    if (!ALLOWED_IMAGE_DOMAINS.includes(parsedUrl.hostname)) {
+      return new Response(JSON.stringify({ error: 'Domain not allowed' }), {
+        status: 403,
         headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
       })
     }

@@ -31,6 +31,7 @@ export function useTasksBySection(section: string) {
   return useQuery({
     queryKey: ['tasks', 'section', section],
     queryFn: () => fetchTasksBySection(section),
+    staleTime: 30_000,
   })
 }
 
@@ -121,6 +122,7 @@ export function useSwapTaskOrder() {
   return useMutation({
     mutationFn: ({ id1, id2 }: { id1: string; id2: string }) => swapTaskOrder(id1, id2),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    onError:    () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }
 
