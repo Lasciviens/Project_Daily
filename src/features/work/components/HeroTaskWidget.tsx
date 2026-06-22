@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Task } from '../../todo/types'
 
 interface Props {
-  tasks:        Task[]         // all focused tasks
+  tasks:        Task[]
   onMarkDone:   (id: string) => void
   onClearFocus: (id: string) => void
   onEdit:       (task: Task) => void
@@ -29,9 +29,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 function FocusCard({ task, onMarkDone, onClearFocus, onEdit }: {
   task: Task
-  onMarkDone: (id: string) => void
+  onMarkDone:   (id: string) => void
   onClearFocus: (id: string) => void
-  onEdit: (task: Task) => void
+  onEdit:       (task: Task) => void
 }) {
   return (
     <div className="flex-1 min-w-0 rounded-xl border-l-4 border-accent-400 bg-accent-50 border border-accent-200 px-4 py-3 flex flex-col gap-2">
@@ -82,8 +82,10 @@ function FocusCard({ task, onMarkDone, onClearFocus, onEdit }: {
   )
 }
 
+const VISIBLE = 2
+
 export default function HeroTaskWidget({ tasks, onMarkDone, onClearFocus, onEdit }: Props) {
-  const [extraOffset, setExtraOffset] = useState(0)
+  const [offset, setOffset] = useState(0)
 
   if (tasks.length === 0) {
     return (
@@ -94,17 +96,27 @@ export default function HeroTaskWidget({ tasks, onMarkDone, onClearFocus, onEdit
     )
   }
 
-  // Show 2 primary cards; rest navigable via up/down
-  const primaryPair = tasks.slice(0, 2)
-  const extras      = tasks.slice(2)
-  const hasExtras   = extras.length > 0
-  const extraTask   = extras[extraOffset] ?? null
+  const canPrev    = offset > 0
+  const canNext    = offset + VISIBLE < tasks.length
+  const visible    = tasks.slice(offset, offset + VISIBLE)
+  const totalPages = Math.ceil(tasks.length / VISIBLE)
+  const currentPage = Math.floor(offset / VISIBLE) + 1
 
   return (
-    <div className="flex gap-2">
-      {/* Main focus cards */}
-      <div className="flex-1 min-w-0 flex flex-col sm:flex-row gap-2">
-        {primaryPair.map(t => (
+    <div className="flex items-stretch gap-2">
+      {/* ◀ prev */}
+      <button
+        onClick={() => setOffset(o => Math.max(0, o - VISIBLE))}
+        disabled={!canPrev}
+        className="flex-shrink-0 flex items-center justify-center w-9 rounded-xl border border-ink-200 text-ink-400 hover:bg-ink-100 hover:text-ink-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors min-h-[44px]"
+        title="Previous"
+      >
+        ◀
+      </button>
+
+      {/* Focus cards */}
+      <div className="flex-1 min-w-0 flex gap-2">
+        {visible.map(t => (
           <FocusCard
             key={t.id}
             task={t}
@@ -113,41 +125,24 @@ export default function HeroTaskWidget({ tasks, onMarkDone, onClearFocus, onEdit
             onEdit={onEdit}
           />
         ))}
-        {extraTask && (
-          <FocusCard
-            key={extraTask.id}
-            task={extraTask}
-            onMarkDone={onMarkDone}
-            onClearFocus={onClearFocus}
-            onEdit={onEdit}
-          />
-        )}
       </div>
 
-      {/* Vertical navigation for extras */}
-      {hasExtras && (
-        <div className="flex flex-col items-center justify-center gap-1 flex-shrink-0">
-          <button
-            onClick={() => setExtraOffset(o => Math.max(0, o - 1))}
-            disabled={extraOffset === 0}
-            className="flex items-center justify-center w-8 h-10 rounded-lg border border-ink-200 text-ink-400 hover:bg-ink-100 hover:text-ink-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors min-h-[44px]"
-            title="Previous"
-          >
-            ▲
-          </button>
-          <span className="text-[10px] text-ink-400 tabular-nums text-center leading-tight">
-            {extraOffset + 1}/{extras.length}
+      {/* ▶ next + counter */}
+      <div className="flex-shrink-0 flex flex-col items-center justify-center gap-1">
+        <button
+          onClick={() => setOffset(o => Math.min(tasks.length - VISIBLE, o + VISIBLE))}
+          disabled={!canNext}
+          className="flex items-center justify-center w-9 rounded-xl border border-ink-200 text-ink-400 hover:bg-ink-100 hover:text-ink-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors min-h-[44px] flex-1"
+          title="Next"
+        >
+          ▶
+        </button>
+        {tasks.length > VISIBLE && (
+          <span className="text-[10px] text-ink-400 tabular-nums">
+            {currentPage}/{totalPages}
           </span>
-          <button
-            onClick={() => setExtraOffset(o => Math.min(extras.length - 1, o + 1))}
-            disabled={extraOffset >= extras.length - 1}
-            className="flex items-center justify-center w-8 h-10 rounded-lg border border-ink-200 text-ink-400 hover:bg-ink-100 hover:text-ink-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors min-h-[44px]"
-            title="Next"
-          >
-            ▼
-          </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

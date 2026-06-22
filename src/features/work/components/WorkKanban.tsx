@@ -15,18 +15,19 @@ interface Props {
 type ColumnId = 'overdue' | 'open' | 'in_progress' | 'waiting' | 'done'
 
 interface Column {
-  id: ColumnId
-  label: string
-  colorClass: string
-  headerBadge: string
+  id:        ColumnId
+  label:     string
+  color:     string  // status palette hex
+  textColor: string  // badge text
 }
 
+// Status color palette from design spec
 const COLUMNS: Column[] = [
-  { id: 'overdue',     label: 'Overdue',     colorClass: 'text-red-600',    headerBadge: 'bg-red-100 text-red-600' },
-  { id: 'open',        label: 'To-do',       colorClass: 'text-ink-700',    headerBadge: 'bg-ink-100 text-ink-600' },
-  { id: 'in_progress', label: 'In Progress', colorClass: 'text-accent-600', headerBadge: 'bg-accent-100 text-accent-600' },
-  { id: 'waiting',     label: 'Waiting',     colorClass: 'text-sky-600',    headerBadge: 'bg-sky-100 text-sky-700' },
-  { id: 'done',        label: 'Done today',  colorClass: 'text-green-600',  headerBadge: 'bg-green-100 text-green-700' },
+  { id: 'overdue',     label: 'Overdue',     color: '#FF3838', textColor: '#fff' },
+  { id: 'open',        label: 'To-do',       color: '#FCE83A', textColor: '#555' },
+  { id: 'in_progress', label: 'In Progress', color: '#56F000', textColor: '#fff' },
+  { id: 'waiting',     label: 'Waiting',     color: '#2DCCFF', textColor: '#fff' },
+  { id: 'done',        label: 'Done today',  color: '#A4ABB6', textColor: '#fff' },
 ]
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
@@ -43,11 +44,11 @@ function isCompletedToday(task: Task): boolean {
 }
 
 function getColumnId(task: Task): ColumnId {
-  if (isOverdue(task))              return 'overdue'
-  if (task.status === 'open')       return 'open'
+  if (isOverdue(task))               return 'overdue'
+  if (task.status === 'open')        return 'open'
   if (task.status === 'in_progress') return 'in_progress'
-  if (task.status === 'waiting')    return 'waiting'
-  if (task.status === 'done')       return 'done'
+  if (task.status === 'waiting')     return 'waiting'
+  if (task.status === 'done')        return 'done'
   return 'open'
 }
 
@@ -71,7 +72,7 @@ export default function WorkKanban({
   const [draggingId,  setDraggingId]  = useState<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<ColumnId | null>(null)
   const [collapsed,   setCollapsed]   = useState<Partial<Record<ColumnId, boolean>>>({
-    done: true,   // done starts collapsed
+    done: true,
   })
 
   const columnTasks = Object.fromEntries(
@@ -107,10 +108,10 @@ export default function WorkKanban({
   return (
     <div className="flex flex-col gap-1">
       {COLUMNS.map(col => {
-        const colTasks    = columnTasks[col.id]
-        const isCollapsed = !!collapsed[col.id]
+        const colTasks     = columnTasks[col.id]
+        const isCollapsed  = !!collapsed[col.id]
         const isDropTarget = dragOverCol === col.id
-        const isDoneCol   = col.id === 'done'
+        const isDoneCol    = col.id === 'done'
 
         return (
           <div
@@ -119,35 +120,42 @@ export default function WorkKanban({
             onDragLeave={handleDragLeave}
             onDrop={e => handleDrop(e, col.id)}
             className={[
-              'rounded-xl border transition-colors',
-              isDropTarget ? 'border-dashed border-accent-400 bg-accent-50' : 'border-ink-200 bg-cream-50',
+              'rounded-xl border border-ink-200 border-l-4 transition-colors',
+              isDropTarget ? 'border-dashed !border-accent-400 bg-accent-50' : 'bg-cream-50',
             ].join(' ')}
+            style={{ borderLeftColor: col.color }}
           >
             {/* Section header */}
             <button
               onClick={() => toggle(col.id)}
-              className="w-full flex items-center justify-between px-4 py-3 min-h-[48px] hover:bg-ink-50/50 rounded-xl transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 min-h-[40px] hover:bg-ink-50/50 rounded-xl transition-colors"
             >
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-bold uppercase tracking-wider ${col.colorClass}`}>
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider"
+                  style={{ color: col.color }}
+                >
                   {col.label}
                 </span>
-                <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full ${col.headerBadge}`}>
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: col.color, color: col.textColor }}
+                >
                   {colTasks.length}
                 </span>
               </div>
-              <span className="text-ink-300 text-[11px]">{isCollapsed ? '▶' : '▼'}</span>
+              <span className="text-ink-300 text-[10px]">{isCollapsed ? '▶' : '▼'}</span>
             </button>
 
-            {/* Task grid — 2 columns on md+, 1 on mobile */}
+            {/* Task grid */}
             {!isCollapsed && (
-              <div className="px-3 pb-3">
+              <div className="px-2 pb-2">
                 {colTasks.length === 0 ? (
-                  <p className="text-xs text-ink-300 py-2 pl-1">
+                  <p className="text-[11px] text-ink-300 py-1.5 pl-1">
                     {isDoneCol ? 'Nothing completed today' : 'No tasks'}
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1.5">
                     {colTasks.map(task => (
                       <WorkTaskCard
                         key={task.id}
@@ -165,7 +173,7 @@ export default function WorkKanban({
                 {!isDoneCol && (
                   <button
                     onClick={() => onAddTask(COLUMN_STATUS[col.id])}
-                    className="mt-2 w-full min-h-[44px] flex items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 text-xs text-ink-400 hover:border-accent-400 hover:text-accent-500 hover:bg-accent-50 transition-colors"
+                    className="mt-1.5 w-full min-h-[36px] flex items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 text-[11px] text-ink-400 hover:border-accent-400 hover:text-accent-500 hover:bg-accent-50 transition-colors"
                   >
                     + Add
                   </button>
