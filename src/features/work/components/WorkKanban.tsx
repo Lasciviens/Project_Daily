@@ -26,11 +26,10 @@ const COLUMNS: Column[] = [
   { id: 'open',        label: 'To-do',       colorClass: 'text-ink-700',    headerBadge: 'bg-ink-100 text-ink-600' },
   { id: 'in_progress', label: 'In Progress', colorClass: 'text-accent-600', headerBadge: 'bg-accent-100 text-accent-600' },
   { id: 'waiting',     label: 'Waiting',     colorClass: 'text-sky-600',    headerBadge: 'bg-sky-100 text-sky-700' },
-  { id: 'done',        label: 'Done',        colorClass: 'text-green-600',  headerBadge: 'bg-green-100 text-green-700' },
+  { id: 'done',        label: 'Done today',  colorClass: 'text-green-600',  headerBadge: 'bg-green-100 text-green-700' },
 ]
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
-
 const TODAY = new Date().toISOString().slice(0, 10)
 
 function isOverdue(task: Task): boolean {
@@ -40,16 +39,15 @@ function isOverdue(task: Task): boolean {
 }
 
 function isCompletedToday(task: Task): boolean {
-  // Check updated_at starts with today's date
   return task.updated_at?.slice(0, 10) === TODAY
 }
 
 function getColumnId(task: Task): ColumnId {
-  if (isOverdue(task)) return 'overdue'
-  if (task.status === 'open') return 'open'
+  if (isOverdue(task))              return 'overdue'
+  if (task.status === 'open')       return 'open'
   if (task.status === 'in_progress') return 'in_progress'
-  if (task.status === 'waiting') return 'waiting'
-  if (task.status === 'done') return 'done'
+  if (task.status === 'waiting')    return 'waiting'
+  if (task.status === 'done')       return 'done'
   return 'open'
 }
 
@@ -63,28 +61,19 @@ function sortTasks(tasks: Task[]): Task[] {
 }
 
 const COLUMN_STATUS: Record<ColumnId, TaskStatus> = {
-  overdue:     'open',
-  open:        'open',
-  in_progress: 'in_progress',
-  waiting:     'waiting',
-  done:        'done',
+  overdue: 'open', open: 'open', in_progress: 'in_progress',
+  waiting: 'waiting', done: 'done',
 }
 
 export default function WorkKanban({
-  tasks,
-  focusedTaskIds,
-  onStatusChange,
-  onDelete,
-  onEdit,
-  onFocus,
-  onAddTask,
+  tasks, focusedTaskIds, onStatusChange, onDelete, onEdit, onFocus, onAddTask,
 }: Props) {
-  const [draggingId,   setDraggingId]   = useState<string | null>(null)
-  const [dragOverCol,  setDragOverCol]  = useState<ColumnId | null>(null)
-  const [activeTab,    setActiveTab]    = useState<ColumnId>('open')
-  const [collapsed,    setCollapsed]    = useState<Partial<Record<ColumnId, boolean>>>({})
+  const [draggingId,  setDraggingId]  = useState<string | null>(null)
+  const [dragOverCol, setDragOverCol] = useState<ColumnId | null>(null)
+  const [collapsed,   setCollapsed]   = useState<Partial<Record<ColumnId, boolean>>>({
+    done: true,   // done starts collapsed
+  })
 
-  // Group tasks: done column = only today
   const columnTasks = Object.fromEntries(
     COLUMNS.map(col => {
       let colTasks = tasks.filter(t => getColumnId(t) === col.id)
@@ -93,7 +82,7 @@ export default function WorkKanban({
     })
   ) as Record<ColumnId, Task[]>
 
-  function toggleCollapse(colId: ColumnId) {
+  function toggle(colId: ColumnId) {
     setCollapsed(prev => ({ ...prev, [colId]: !prev[colId] }))
   }
 
@@ -111,185 +100,81 @@ export default function WorkKanban({
     e.preventDefault()
     const taskId = e.dataTransfer.getData('taskId')
     if (!taskId) return
-    setDragOverCol(null)
-    setDraggingId(null)
+    setDragOverCol(null); setDraggingId(null)
     onStatusChange(taskId, COLUMN_STATUS[colId])
   }
 
-  function renderColumn(col: Column) {
-    const colTasks    = columnTasks[col.id]
-    const isDropTarget = dragOverCol === col.id
-    const isCollapsed = !!collapsed[col.id]
-    const isDoneCol   = col.id === 'done'
+  return (
+    <div className="flex flex-col gap-1">
+      {COLUMNS.map(col => {
+        const colTasks    = columnTasks[col.id]
+        const isCollapsed = !!collapsed[col.id]
+        const isDropTarget = dragOverCol === col.id
+        const isDoneCol   = col.id === 'done'
 
-    return (
-      <div
-        key={col.id}
-        onDragOver={e => handleDragOver(e, col.id)}
-        onDragLeave={handleDragLeave}
-        onDrop={e => handleDrop(e, col.id)}
-        className={[
-          'flex flex-col rounded-xl border bg-cream-50 transition-colors flex-shrink-0',
-          isCollapsed ? 'min-w-[52px] max-w-[52px]' : 'min-w-[220px] max-w-[260px]',
-          isDropTarget ? 'border-dashed border-accent-400 bg-accent-50' : 'border-ink-200',
-        ].join(' ')}
-      >
-        {/* Column header */}
-        <div className={`flex items-center justify-between px-3 py-2.5 border-b border-ink-100 ${isCollapsed ? 'flex-col gap-2' : ''}`}>
-          {isCollapsed ? (
-            <>
-              <span className={['text-[10px] font-bold uppercase tracking-wide writing-mode-vertical rotate-180', col.colorClass].join(' ')}>
-                {col.label}
-              </span>
-              <span className={['text-[11px] font-semibold px-1.5 py-0.5 rounded-full', col.headerBadge].join(' ')}>
-                {colTasks.length}
-              </span>
-            </>
-          ) : (
-            <>
-              <span className={['text-xs font-bold uppercase tracking-wide', col.colorClass].join(' ')}>
-                {col.label}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span className={['text-[11px] font-semibold px-1.5 py-0.5 rounded-full', col.headerBadge].join(' ')}>
+        return (
+          <div
+            key={col.id}
+            onDragOver={e => handleDragOver(e, col.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={e => handleDrop(e, col.id)}
+            className={[
+              'rounded-xl border transition-colors',
+              isDropTarget ? 'border-dashed border-accent-400 bg-accent-50' : 'border-ink-200 bg-cream-50',
+            ].join(' ')}
+          >
+            {/* Section header */}
+            <button
+              onClick={() => toggle(col.id)}
+              className="w-full flex items-center justify-between px-4 py-3 min-h-[48px] hover:bg-ink-50/50 rounded-xl transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-bold uppercase tracking-wider ${col.colorClass}`}>
+                  {col.label}
+                </span>
+                <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full ${col.headerBadge}`}>
                   {colTasks.length}
                 </span>
-                <button
-                  onClick={() => toggleCollapse(col.id)}
-                  title="Collapse"
-                  className="text-ink-300 hover:text-ink-600 hover:bg-ink-100 rounded p-0.5 transition-colors min-h-[24px] min-w-[24px] flex items-center justify-center text-[10px]"
-                >
-                  ◀
-                </button>
               </div>
-            </>
-          )}
-        </div>
+              <span className="text-ink-300 text-[11px]">{isCollapsed ? '▶' : '▼'}</span>
+            </button>
 
-        {/* Expand button when collapsed */}
-        {isCollapsed && (
-          <button
-            onClick={() => toggleCollapse(col.id)}
-            title="Expand"
-            className="flex items-center justify-center py-2 text-ink-300 hover:text-ink-600 hover:bg-ink-100 transition-colors rounded-b-xl text-[10px]"
-          >
-            ▶
-          </button>
-        )}
-
-        {/* Task list */}
-        {!isCollapsed && (
-          <>
-            <div className="flex flex-col gap-2 p-2 flex-1 overflow-y-auto max-h-[60vh]">
-              {colTasks.length === 0 && (
-                <p className="text-xs text-ink-300 text-center py-4">
-                  {isDoneCol ? 'Nothing done today' : 'No tasks'}
-                </p>
-              )}
-              {colTasks.map(task => (
-                <WorkTaskCard
-                  key={task.id}
-                  task={task}
-                  onStatusChange={onStatusChange}
-                  onDelete={onDelete}
-                  onEdit={onEdit}
-                  onFocus={onFocus}
-                  isFocused={focusedTaskIds.includes(task.id)}
-                  isDragging={task.id === draggingId}
-                />
-              ))}
-            </div>
-            {!isDoneCol && (
-              <div className="px-2 pb-2 pt-1">
-                <button
-                  onClick={() => onAddTask(COLUMN_STATUS[col.id])}
-                  className="w-full min-h-[44px] flex items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 text-xs text-ink-400 hover:border-accent-400 hover:text-accent-500 hover:bg-accent-50 transition-colors"
-                >
-                  + Add
-                </button>
+            {/* Task grid — 2 columns on md+, 1 on mobile */}
+            {!isCollapsed && (
+              <div className="px-3 pb-3">
+                {colTasks.length === 0 ? (
+                  <p className="text-xs text-ink-300 py-2 pl-1">
+                    {isDoneCol ? 'Nothing completed today' : 'No tasks'}
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                    {colTasks.map(task => (
+                      <WorkTaskCard
+                        key={task.id}
+                        task={task}
+                        onStatusChange={onStatusChange}
+                        onDelete={onDelete}
+                        onEdit={onEdit}
+                        onFocus={onFocus}
+                        isFocused={focusedTaskIds.includes(task.id)}
+                        isDragging={task.id === draggingId}
+                      />
+                    ))}
+                  </div>
+                )}
+                {!isDoneCol && (
+                  <button
+                    onClick={() => onAddTask(COLUMN_STATUS[col.id])}
+                    className="mt-2 w-full min-h-[44px] flex items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 text-xs text-ink-400 hover:border-accent-400 hover:text-accent-500 hover:bg-accent-50 transition-colors"
+                  >
+                    + Add
+                  </button>
+                )}
               </div>
             )}
-          </>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <>
-      {/* ── Desktop: horizontal scroll ── */}
-      <div className="hidden md:flex gap-2 overflow-x-auto pb-2">
-        {COLUMNS.map(col => renderColumn(col))}
-      </div>
-
-      {/* ── Mobile: horizontal tab bar + single column ── */}
-      <div className="md:hidden flex flex-col gap-3">
-        <div className="flex overflow-x-auto gap-1 pb-1 no-scrollbar">
-          {COLUMNS.map(col => {
-            const count    = columnTasks[col.id].length
-            const isActive = activeTab === col.id
-            return (
-              <button
-                key={col.id}
-                onClick={() => setActiveTab(col.id)}
-                className={[
-                  'min-h-[44px] flex-shrink-0 flex items-center gap-1.5 px-3 rounded-lg text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-accent-500 text-white'
-                    : 'bg-cream-50 text-ink-600 border border-ink-200',
-                ].join(' ')}
-              >
-                {col.label}
-                <span className={['text-[11px] font-bold px-1.5 py-0.5 rounded-full', isActive ? 'bg-white/20' : col.headerBadge].join(' ')}>
-                  {count}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-        {COLUMNS.filter(col => col.id === activeTab).map(col => {
-          const colTasks = columnTasks[col.id]
-          const isDoneCol = col.id === 'done'
-          return (
-            <div
-              key={col.id}
-              onDragOver={e => handleDragOver(e, col.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={e => handleDrop(e, col.id)}
-              className={[
-                'flex flex-col gap-2 rounded-xl border p-2 min-h-[120px] transition-colors',
-                dragOverCol === col.id ? 'border-dashed border-accent-400 bg-accent-50' : 'border-ink-200 bg-cream-50',
-              ].join(' ')}
-            >
-              {colTasks.length === 0 && (
-                <p className="text-xs text-ink-300 text-center py-4">
-                  {isDoneCol ? 'Nothing done today' : 'No tasks'}
-                </p>
-              )}
-              {colTasks.map(task => (
-                <WorkTaskCard
-                  key={task.id}
-                  task={task}
-                  onStatusChange={onStatusChange}
-                  onDelete={onDelete}
-                  onEdit={onEdit}
-                  onFocus={onFocus}
-                  isFocused={focusedTaskIds.includes(task.id)}
-                  isDragging={task.id === draggingId}
-                />
-              ))}
-              {!isDoneCol && (
-                <button
-                  onClick={() => onAddTask(COLUMN_STATUS[col.id])}
-                  className="w-full min-h-[44px] flex items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 text-xs text-ink-400 hover:border-accent-400 hover:text-accent-500 transition-colors"
-                >
-                  + Add
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </>
+          </div>
+        )
+      })}
+    </div>
   )
 }
