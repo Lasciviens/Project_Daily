@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import type { Task, TaskStatus } from '../../todo/types'
 
 interface Props {
@@ -49,6 +49,18 @@ export default function WorkTaskCard({
   isDragging,
 }: Props) {
   const isDone = task.status === 'done'
+  const [editingWaiting, setEditingWaiting] = useState(false)
+  const [waitingText,    setWaitingText]    = useState(task.waiting_for ?? '')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editingWaiting) inputRef.current?.focus()
+  }, [editingWaiting])
+
+  function commitWaiting() {
+    setEditingWaiting(false)
+    onStatusChange(task.id, 'waiting', waitingText.trim() || undefined)
+  }
 
   function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
     e.dataTransfer.setData('taskId', task.id)
@@ -102,12 +114,32 @@ export default function WorkTaskCard({
         </span>
       </div>
 
-      {/* Waiting pill */}
+      {/* Waiting pill — click to edit */}
       {task.status === 'waiting' && (
         <div className="mt-1.5 pl-3.5">
-          <span className="inline-flex items-center gap-1 text-[11px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">
-            Waiting: {task.waiting_for || '…'}
-          </span>
+          {editingWaiting ? (
+            <input
+              ref={inputRef}
+              value={waitingText}
+              onChange={e => setWaitingText(e.target.value)}
+              onBlur={commitWaiting}
+              onKeyDown={e => {
+                if (e.key === 'Enter') commitWaiting()
+                if (e.key === 'Escape') setEditingWaiting(false)
+              }}
+              placeholder="Waiting for…"
+              className="text-[11px] bg-sky-50 border border-sky-300 text-sky-800 rounded-full px-2 py-0.5 outline-none w-36"
+              onClick={e => e.stopPropagation()}
+            />
+          ) : (
+            <button
+              onClick={e => { e.stopPropagation(); setEditingWaiting(true) }}
+              title="Click to set who/what you're waiting for"
+              className="inline-flex items-center gap-1 text-[11px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full hover:bg-sky-200 transition-colors"
+            >
+              ⏳ {task.waiting_for || <span className="italic opacity-60">tap to add…</span>}
+            </button>
+          )}
         </div>
       )}
 
