@@ -126,10 +126,12 @@ export async function swapTaskOrder(id1: string, id2: string): Promise<void> {
   if (error) throw error
   if (!data || data.length !== 2) return
   const [a, b] = data
-  await Promise.all([
+  const [r1, r2] = await Promise.all([
     supabase.from('tasks').update({ sort_order: b.sort_order, updated_at: new Date().toISOString() }).eq('id', a.id),
     supabase.from('tasks').update({ sort_order: a.sort_order, updated_at: new Date().toISOString() }).eq('id', b.id),
   ])
+  if (r1.error) throw r1.error
+  if (r2.error) throw r2.error
 }
 
 export async function toggleTaskDone(id: string, isDone: boolean): Promise<Task> {

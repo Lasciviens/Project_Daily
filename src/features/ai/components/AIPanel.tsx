@@ -107,7 +107,7 @@ export function AIPanel() {
                   <button
                     key={s}
                     onClick={() => handleSend(s)}
-                    className="w-full text-left text-sm px-3 py-2 rounded-lg bg-cream-100 hover:bg-cream-200 text-ink-700 transition-colors duration-150"
+                    className="w-full text-left text-sm px-3 py-2 min-h-[44px] rounded-lg bg-cream-100 hover:bg-cream-200 text-ink-700 transition-colors duration-150"
                   >
                     {s}
                   </button>
