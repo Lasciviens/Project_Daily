@@ -10,12 +10,8 @@ interface Props {
   onFocus: (task: Task) => void
   isFocused: boolean
   isDragging?: boolean
-}
-
-const PRIORITY_DOT: Record<string, string> = {
-  high:   'bg-red-500',
-  medium: 'bg-accent-400',
-  low:    'bg-ink-300',
+  onDragStart?: (id: string) => void
+  onDragEnd?: () => void
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -43,6 +39,8 @@ export default function WorkTaskCard({
   onFocus,
   isFocused,
   isDragging,
+  onDragStart,
+  onDragEnd,
 }: Props) {
   const isDone = task.status === 'done'
   const [editingWaiting, setEditingWaiting] = useState(false)
@@ -61,6 +59,11 @@ export default function WorkTaskCard({
   function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
     e.dataTransfer.setData('taskId', task.id)
     e.dataTransfer.effectAllowed = 'move'
+    onDragStart?.(task.id)
+  }
+
+  function handleDragEnd() {
+    onDragEnd?.()
   }
 
   function handleToggleDone(e: React.MouseEvent) {
@@ -79,12 +82,13 @@ export default function WorkTaskCard({
     <div
       draggable
       onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onClick={() => onEdit(task)}
       style={cardStyle}
       className={[
         'group relative rounded-lg border border-ink-200 border-l-4 p-2 cursor-pointer select-none transition-all hover:shadow-sm hover:border-ink-300',
         isDone     ? 'opacity-60' : '',
-        isDragging ? 'opacity-40' : '',
+        isDragging ? 'opacity-30 scale-95 shadow-lg' : '',
       ].join(' ')}
     >
       {/* Status badge top-right */}
@@ -97,9 +101,12 @@ export default function WorkTaskCard({
         {STATUS_LABEL[task.status] ?? task.status}
       </span>
 
-      {/* Priority dot + title */}
+      {/* Column-colored dot + title */}
       <div className="flex items-center gap-1 pr-14">
-        <span className={['flex-shrink-0 w-1.5 h-1.5 rounded-full', PRIORITY_DOT[task.priority] ?? 'bg-ink-300'].join(' ')} />
+        <span
+          className="flex-shrink-0 w-1.5 h-1.5 rounded-full"
+          style={{ backgroundColor: columnColor ?? '#CBD5E1' }}
+        />
         <span className={['text-xs font-semibold text-ink-900 truncate', isDone ? 'line-through text-ink-400' : ''].join(' ')}>
           {task.title}
         </span>

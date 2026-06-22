@@ -60,7 +60,7 @@ export default function WorkDayTimeline({ workTasks }: Props) {
   )
 
   const timedBlocks = blocks.filter(b => b.start_time)
-  const displayLabels = HOUR_LABELS.filter((_, i) => i % 2 === 0)
+  const displayLabels = HOUR_LABELS.filter((h, i) => i % 2 === 0 || h === HOUR_END)
 
   return (
     <div className="rounded-xl border border-ink-200 bg-white px-4 py-3 w-full">

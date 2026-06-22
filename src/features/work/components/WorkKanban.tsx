@@ -17,17 +17,17 @@ type ColumnId = 'overdue' | 'open' | 'in_progress' | 'waiting' | 'done'
 interface Column {
   id:        ColumnId
   label:     string
-  color:     string  // status palette hex
-  textColor: string  // badge text
+  color:     string
+  textColor: string
 }
 
-// Status color palette — darkened for contrast
+// Status colors — medium darkness, full red for overdue
 const COLUMNS: Column[] = [
-  { id: 'overdue',     label: 'Overdue',     color: '#B91C1C', textColor: '#fff' },
-  { id: 'open',        label: 'To-do',       color: '#B45309', textColor: '#fff' },
-  { id: 'in_progress', label: 'In Progress', color: '#15803D', textColor: '#fff' },
-  { id: 'waiting',     label: 'Waiting',     color: '#0369A1', textColor: '#fff' },
-  { id: 'done',        label: 'Done today',  color: '#4B5563', textColor: '#fff' },
+  { id: 'overdue',     label: 'Overdue',     color: '#DC2626', textColor: '#fff' },
+  { id: 'open',        label: 'To-do',       color: '#D97706', textColor: '#fff' },
+  { id: 'in_progress', label: 'In Progress', color: '#16A34A', textColor: '#fff' },
+  { id: 'waiting',     label: 'Waiting',     color: '#0284C7', textColor: '#fff' },
+  { id: 'done',        label: 'Done today',  color: '#6B7280', textColor: '#fff' },
 ]
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
@@ -101,7 +101,8 @@ export default function WorkKanban({
     e.preventDefault()
     const taskId = e.dataTransfer.getData('taskId')
     if (!taskId) return
-    setDragOverCol(null); setDraggingId(null)
+    setDragOverCol(null)
+    setDraggingId(null)
     onStatusChange(taskId, COLUMN_STATUS[colId])
   }
 
@@ -121,9 +122,12 @@ export default function WorkKanban({
             onDrop={e => handleDrop(e, col.id)}
             className={[
               'rounded-xl border border-ink-200 border-l-4 transition-colors',
-              isDropTarget ? 'border-dashed !border-accent-400 bg-accent-50' : 'bg-cream-50',
+              isDropTarget ? 'ring-2 bg-opacity-10' : 'bg-cream-50',
             ].join(' ')}
-            style={{ borderLeftColor: col.color }}
+            style={{
+              borderLeftColor: col.color,
+              ...(isDropTarget ? { backgroundColor: col.color + '15', outline: `2px dashed ${col.color}` } : {}),
+            }}
           >
             {/* Section header */}
             <button
@@ -167,6 +171,8 @@ export default function WorkKanban({
                         onFocus={onFocus}
                         isFocused={focusedTaskIds.includes(task.id)}
                         isDragging={task.id === draggingId}
+                        onDragStart={id => setDraggingId(id)}
+                        onDragEnd={() => setDraggingId(null)}
                       />
                     ))}
                   </div>
