@@ -17,18 +17,19 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const LOCAL_TZ   = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 interface Props {
-  dateStr:           string
-  onClose:           () => void
-  defaultStartTime?: string
-  defaultTitle?:     string
-  defaultColor?:     string
+  dateStr:            string
+  onClose:            () => void
+  defaultStartTime?:  string
+  defaultTitle?:      string
+  defaultColor?:      string
+  defaultDuration?:   number
 }
 
-export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultTitle = '', defaultColor }: Props) {
+export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultTitle = '', defaultColor, defaultDuration }: Props) {
   const [tab,          setTab]          = useState<'once' | 'recurring'>('once')
   const [title,        setTitle]        = useState(defaultTitle)
   const [startTime,    setStartTime]    = useState(defaultStartTime ?? '09:00')
-  const [duration,     setDuration]     = useState(60)
+  const [duration,     setDuration]     = useState(defaultDuration ?? 60)
   const [customMin,    setCustomMin]    = useState('')
   const [days,         setDays]         = useState<number[]>([1, 2, 3, 4, 5])
   const [endTime,      setEndTime]      = useState('17:00')
