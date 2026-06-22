@@ -5,7 +5,7 @@ import { useSeasonDetails } from '../hooks/useTMDB'
 import { useWatchedEpisodes, useToggleEpisodeWatched } from '../hooks/useWatchedEpisodes'
 import { markEpisodeWatched } from '../api/watchedEpisodesApi'
 import { useQueryClient } from '@tanstack/react-query'
-import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
+import { AddTimeBlockModal } from '../../daily/components/AddTimeBlockModal'
 import type { TMDBTVFull } from '../types'
 
 interface Props {
@@ -17,15 +17,15 @@ const TODAY = format(new Date(), 'yyyy-MM-dd')
 
 export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const realSeasons = (tv.seasons ?? []).filter(s => s.season_number > 0)
-  const [season,   setSeason]   = useState(realSeasons[0]?.season_number ?? 1)
-  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [season,    setSeason]    = useState(realSeasons[0]?.season_number ?? 1)
+  const [selected,  setSelected]  = useState<Set<number>>(new Set())
+  const [planModal, setPlanModal] = useState(false)
+  const [markingAll, setMarkingAll] = useState(false)
 
   const { data: seasonData, isLoading } = useSeasonDetails(tv.id, season)
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
   const toggle                          = useToggleEpisodeWatched(tvEntryId)
-  const createBlock                     = useCreateTimeBlock()
   const queryClient                     = useQueryClient()
-  const [markingAll, setMarkingAll]     = useState(false)
 
   const watchedSet = new Set(watched.filter(w => w.season === season).map(w => w.episode))
   const watchedMap = new Map(watched.filter(w => w.season === season).map(w => [w.episode, w.watched_on]))
@@ -56,7 +56,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
       for (const ep of unwatched) {
         await markEpisodeWatched(tvEntryId, season, ep.episode_number, TODAY)
       }
-      await queryClient.invalidateQueries({ queryKey: ['watchedEpisodes', tvEntryId] })
+      await queryClient.invalidateQueries({ queryKey: ['watched_episodes', tvEntryId] })
       toast.dismiss(tid)
       toast.success(`Season ${season} marked as watched ✓`)
     } catch (err) {
@@ -67,31 +67,13 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     }
   }
 
-  async function handlePlanSelected() {
-    const episodes = (seasonData?.episodes ?? []).filter(e => selected.has(e.episode_number))
-    if (!episodes.length) return
-    const defaultRuntime = tv.episode_run_time?.[0] ?? 45
-    const tid = toast.loading(`Adding ${episodes.length} episode${episodes.length > 1 ? 's' : ''} to today…`)
-    try {
-      for (const ep of episodes) {
-        const duration = ep.runtime ?? defaultRuntime
-        const title    = `📺 ${tv.name} · S${String(season).padStart(2, '0')}E${String(ep.episode_number).padStart(2, '0')} "${ep.name}"`
-        await createBlock.mutateAsync({
-          date:             TODAY,
-          title,
-          duration_minutes: duration,
-          source_type:      'tv_series',
-          source_id:        tvEntryId,
-        })
-      }
-      toast.dismiss(tid)
-      toast.success(`${episodes.length} episode${episodes.length > 1 ? 's' : ''} added to today ✓`)
-      setSelected(new Set())
-    } catch (err) {
-      toast.dismiss(tid)
-      toast.error((err as Error).message ?? 'Failed to add')
-    }
-  }
+  // Build plan modal pre-fills from selected episodes
+  const selectedEpisodes = (seasonData?.episodes ?? []).filter(e => selected.has(e.episode_number))
+  const defaultRuntime = tv.episode_run_time?.[0] ?? 45
+  const planTitle = selectedEpisodes.length === 1
+    ? `📺 ${tv.name} · S${String(season).padStart(2, '0')}E${String(selectedEpisodes[0].episode_number).padStart(2, '0')} "${selectedEpisodes[0].name}"`
+    : `📺 ${tv.name} · S${String(season).padStart(2, '0')} (${selectedEpisodes.length} ep)`
+  const planDuration = selectedEpisodes.reduce((sum, ep) => sum + (ep.runtime ?? defaultRuntime), 0) || defaultRuntime
 
   if (realSeasons.length === 0) return null
 
@@ -99,7 +81,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     <div className="mt-4">
       <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-2">Episodes</p>
 
-      {/* Season tabs + Select All/Clear */}
+      {/* Season tabs + action buttons */}
       <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-3">
         {realSeasons.map(s => (
           <button
@@ -149,11 +131,10 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             {selected.size} episode{selected.size > 1 ? 's' : ''} selected
           </span>
           <button
-            onClick={handlePlanSelected}
-            disabled={createBlock.isPending}
+            onClick={() => setPlanModal(true)}
             className="text-xs bg-accent-500 text-white px-3 py-1 rounded-lg min-h-[36px] hover:bg-accent-600 transition-colors"
           >
-            Add to today
+            Plan
           </button>
           <button
             onClick={() => setSelected(new Set())}
@@ -183,22 +164,24 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
               <div
                 key={ep.episode_number}
                 className={[
-                  'flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors',
+                  'flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors',
                   isSelected ? 'bg-accent-50 border border-accent-200' : 'hover:bg-cream-50',
                 ].join(' ')}
               >
-                {/* Plan checkbox */}
+                {/* Plan checkbox — small visual, full touch target */}
                 <button
                   onClick={() => toggleSelect(ep.episode_number)}
-                  className={[
-                    'flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors min-h-[44px] min-w-[44px]',
+                  className="flex-shrink-0 flex items-center justify-center min-h-[44px] min-w-[28px]"
+                  title="Select to plan"
+                >
+                  <span className={[
+                    'w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors',
                     isSelected
                       ? 'bg-accent-500 border-accent-500'
                       : 'border-ink-300 hover:border-accent-400',
-                  ].join(' ')}
-                  title="Select to plan"
-                >
-                  {isSelected && <span className="text-white text-[10px] font-bold">✓</span>}
+                  ].join(' ')}>
+                    {isSelected && <span className="text-white text-[8px] font-bold leading-none">✓</span>}
+                  </span>
                 </button>
 
                 {/* Episode info */}
@@ -224,24 +207,36 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                   </div>
                 </div>
 
-                {/* Watched toggle */}
+                {/* Watched toggle — small visual, full touch target */}
                 <button
                   onClick={() => handleToggleWatched(ep.episode_number)}
                   disabled={toggle.isPending}
                   title={isWatched ? 'Mark as unwatched' : 'Mark as watched'}
-                  className={[
-                    'flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors min-h-[44px] min-w-[44px]',
+                  className="flex-shrink-0 flex items-center justify-center min-h-[44px] min-w-[32px]"
+                >
+                  <span className={[
+                    'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
                     isWatched
                       ? 'bg-green-500 border-green-500 text-white'
                       : 'border-ink-200 text-ink-300 hover:border-green-400 hover:text-green-500',
-                  ].join(' ')}
-                >
-                  <span className="text-[10px] font-bold">✓</span>
+                  ].join(' ')}>
+                    <span className="text-[9px] font-bold leading-none">✓</span>
+                  </span>
                 </button>
               </div>
             )
           })}
         </div>
+      )}
+
+      {/* Plan modal */}
+      {planModal && (
+        <AddTimeBlockModal
+          dateStr={TODAY}
+          defaultTitle={planTitle}
+          defaultDuration={planDuration}
+          onClose={() => { setPlanModal(false); setSelected(new Set()) }}
+        />
       )}
     </div>
   )
