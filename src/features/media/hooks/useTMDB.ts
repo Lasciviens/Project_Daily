@@ -10,6 +10,8 @@ import {
   getNorwegianMovies, getNorwegianTV,
   getNorwegianTopRatedMovies, getNorwegianTopRatedTV,
   getSeasonDetails,
+  getMovieGenres, getTVGenres,
+  discoverMovies, discoverTV,
 } from '../api/tmdbApi'
 
 export function useSearchMovies(query: string) {
@@ -182,5 +184,39 @@ export function useSimilarTV(tmdbId: number | null) {
     queryFn:  () => getSimilarTV(tmdbId!).then(r => r.results.slice(0, 12)),
     enabled:  tmdbId !== null,
     staleTime: 24 * 60 * 60_000,
+  })
+}
+
+export function useMovieGenres() {
+  return useQuery({
+    queryKey: ['tmdb', 'genres', 'movie'],
+    queryFn: () => getMovieGenres().then(r => r.genres),
+    staleTime: 24 * 60 * 60_000,
+  })
+}
+
+export function useTVGenres() {
+  return useQuery({
+    queryKey: ['tmdb', 'genres', 'tv'],
+    queryFn: () => getTVGenres().then(r => r.genres),
+    staleTime: 24 * 60 * 60_000,
+  })
+}
+
+export function useDiscoverMovies(params: Record<string, string>, enabled: boolean) {
+  return useQuery({
+    queryKey: ['tmdb', 'discover', 'movie', params],
+    queryFn: () => discoverMovies(params).then(r => r.results),
+    enabled,
+    staleTime: 10 * 60_000,
+  })
+}
+
+export function useDiscoverTV(params: Record<string, string>, enabled: boolean) {
+  return useQuery({
+    queryKey: ['tmdb', 'discover', 'tv', params],
+    queryFn: () => discoverTV(params).then(r => r.results),
+    enabled,
+    staleTime: 10 * 60_000,
   })
 }
