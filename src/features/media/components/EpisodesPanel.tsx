@@ -3,6 +3,8 @@ import { format } from 'date-fns'
 import { toast } from '../../../app/store'
 import { useSeasonDetails } from '../hooks/useTMDB'
 import { useWatchedEpisodes, useToggleEpisodeWatched } from '../hooks/useWatchedEpisodes'
+import { markEpisodeWatched } from '../api/watchedEpisodesApi'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
 import type { TMDBTVFull } from '../types'
 
@@ -22,6 +24,8 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
   const toggle                          = useToggleEpisodeWatched(tvEntryId)
   const createBlock                     = useCreateTimeBlock()
+  const queryClient                     = useQueryClient()
+  const [markingAll, setMarkingAll]     = useState(false)
 
   const watchedSet = new Set(watched.filter(w => w.season === season).map(w => w.episode))
   const watchedMap = new Map(watched.filter(w => w.season === season).map(w => [w.episode, w.watched_on]))
@@ -40,6 +44,26 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
       await toggle.mutateAsync({ season, episode: epNum, watched: isWatched })
     } catch (err) {
       toast.error((err as Error).message ?? 'Failed')
+    }
+  }
+
+  async function handleMarkAllWatched() {
+    const unwatched = (seasonData?.episodes ?? []).filter(ep => !watchedSet.has(ep.episode_number))
+    if (!unwatched.length) return
+    setMarkingAll(true)
+    const tid = toast.loading(`Marking ${unwatched.length} episode${unwatched.length > 1 ? 's' : ''} as watched…`)
+    try {
+      for (const ep of unwatched) {
+        await markEpisodeWatched(tvEntryId, season, ep.episode_number, TODAY)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['watchedEpisodes', tvEntryId] })
+      toast.dismiss(tid)
+      toast.success(`Season ${season} marked as watched ✓`)
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error((err as Error).message ?? 'Failed')
+    } finally {
+      setMarkingAll(false)
     }
   }
 
@@ -93,6 +117,13 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
           </button>
         ))}
         <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+          <button
+            onClick={handleMarkAllWatched}
+            disabled={isLoading || !seasonData || markingAll}
+            className="text-xs px-2 py-1 rounded-lg min-h-[36px] bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 disabled:opacity-40 transition-colors"
+          >
+            ✓ All
+          </button>
           <button
             onClick={() => setSelected(new Set((seasonData?.episodes ?? []).map(e => e.episode_number)))}
             disabled={isLoading || !seasonData}
