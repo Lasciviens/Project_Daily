@@ -35,46 +35,50 @@ export function MediaPage() {
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
 
   return (
-    <div className="relative w-full px-4 sm:px-6 py-6">
-      <MediaBackdrop />
-
-      <div className="relative z-10">
-      <h1 className="text-lg font-semibold text-ink-900 mb-5">Media</h1>
-
-      <div className="flex gap-6 items-start">
+    <div className="w-full px-4 sm:px-6 py-6">
+      <div className="flex gap-4 items-start">
 
         {/* ── Main content ── */}
-        <div className="flex-1 min-w-0">
-          <div className="mb-5">
-            <MediaSearch onSelectResult={(id, type) => openDetail(id, type)} />
-          </div>
+        <div className="flex-1 min-w-0" style={{ maxWidth: 'calc(100% - 22rem)' }}>
 
-          {/* Movies / TV Series tab */}
-          <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-full sm:w-fit mb-4">
-            {(['movies', 'tv'] as Tab[]).map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`flex-1 sm:flex-none px-4 min-h-[44px] rounded-md text-sm font-medium transition-colors duration-150 ${
-                  tab === t
-                    ? 'bg-white text-ink-900 shadow-sm'
-                    : 'text-ink-500 hover:text-ink-700'
-                }`}
-              >
-                {t === 'movies' ? 'Movies' : 'TV Series'}
-              </button>
-            ))}
-          </div>
+          {/* Top section with scoped backdrop */}
+          <div className="relative overflow-hidden rounded-xl mb-4 p-4 bg-cream-50/40">
+            <MediaBackdrop />
+            <div className="relative z-10">
+              <h1 className="text-lg font-semibold text-ink-900 mb-4">Media</h1>
 
-          {/* Compact library strip — above Discovery */}
-          {!moviesLoading && !tvLoading && hasLibrary && (
-            <CompactLibraryStrip
-              tab={tab}
-              movieEntries={movieEntries}
-              tvEntries={tvEntries}
-              onOpenDetail={openDetail}
-            />
-          )}
+              <div className="mb-4">
+                <MediaSearch onSelectResult={(id, type) => openDetail(id, type)} />
+              </div>
+
+              {/* Movies / TV Series tab */}
+              <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-full sm:w-fit mb-4">
+                {(['movies', 'tv'] as Tab[]).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className={`flex-1 sm:flex-none px-4 min-h-[44px] rounded-md text-sm font-medium transition-colors duration-150 ${
+                      tab === t
+                        ? 'bg-white text-ink-900 shadow-sm'
+                        : 'text-ink-500 hover:text-ink-700'
+                    }`}
+                  >
+                    {t === 'movies' ? 'Movies' : 'TV Series'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Compact library strip */}
+              {!moviesLoading && !tvLoading && hasLibrary && (
+                <CompactLibraryStrip
+                  tab={tab}
+                  movieEntries={movieEntries}
+                  tvEntries={tvEntries}
+                  onOpenDetail={openDetail}
+                />
+              )}
+            </div>
+          </div>
 
           {/* Discovery tabs */}
           <DiscoveryTabs
@@ -84,7 +88,7 @@ export function MediaPage() {
         </div>
 
         {/* ── Right sidebar ── */}
-        <aside className="hidden lg:flex flex-col gap-4 w-72 flex-shrink-0 sticky top-20">
+        <aside className="hidden lg:flex flex-col gap-4 w-80 flex-shrink-0 sticky top-20">
           <TonightPicker
             movieEntries={movieEntries}
             tvEntries={tvEntries}
@@ -111,7 +115,6 @@ export function MediaPage() {
           onOpenDetail={openDetail}
         />
       )}
-      </div>
     </div>
   )
 }

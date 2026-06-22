@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTrendingMovies, useTrendingTV } from '../hooks/useTMDB'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w1280'
-const ROTATE_MS = 8000
+const ROTATE_MS = 30000
 const FADE_MS = 1500
 
 export function MediaBackdrop() {
@@ -54,14 +54,14 @@ export function MediaBackdrop() {
   const nextSrc    = nextIdx !== null ? `${TMDB_IMG}${backdrops[nextIdx]}` : null
 
   return (
-    <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
       {/* Current image */}
       <img
         key={currentSrc}
         src={currentSrc}
         alt=""
         aria-hidden="true"
-        className="absolute inset-0 w-full h-full object-cover opacity-[0.06]"
+        className="absolute inset-0 w-full h-full object-cover opacity-[0.12]"
         style={{ transition: `opacity ${FADE_MS}ms ease-in-out` }}
       />
 
@@ -74,7 +74,7 @@ export function MediaBackdrop() {
           aria-hidden="true"
           className="absolute inset-0 w-full h-full object-cover"
           style={{
-            opacity: fading ? 0.06 : 0,
+            opacity: fading ? 0.12 : 0,
             transition: fading ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
           }}
         />

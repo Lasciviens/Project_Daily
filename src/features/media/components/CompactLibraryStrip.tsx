@@ -71,8 +71,39 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
   const filledGroups = groups.filter(g => g.entries.length > 0)
   if (filledGroups.length === 0) return null
 
-  const type = tab === 'movies' ? 'movie' : 'tv'
+  const type  = tab === 'movies' ? 'movie' : 'tv'
   const total = filledGroups.reduce((n, g) => n + g.entries.length, 0)
+
+  // Split groups into two columns: left = even indices, right = odd indices
+  const leftGroups  = filledGroups.filter((_, i) => i % 2 === 0)
+  const rightGroups = filledGroups.filter((_, i) => i % 2 === 1)
+
+  function renderGroup(group: Group) {
+    return (
+      <div key={group.label} className="min-w-0">
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-400">{group.label}</span>
+          <span className="text-[9px] text-ink-300">{group.entries.length}</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {group.entries.map(e => (
+            <button
+              key={e.id}
+              onClick={() => onOpenDetail(e.id, type)}
+              title={e.title}
+              className="min-h-[44px] flex items-center justify-center"
+            >
+              <img
+                src={posterUrl(e.poster_path, 'w185')}
+                alt={e.title}
+                className="w-[86px] h-[120px] rounded object-cover hover:opacity-80 hover:ring-2 hover:ring-accent-400 transition-all"
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="mb-4 rounded-xl border border-ink-100 bg-cream-50/60">
@@ -89,29 +120,9 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
       </button>
 
       {!collapsed && (
-        <div className="px-3 pb-2.5 space-y-2">
-          {filledGroups.map(group => (
-            <div key={group.label} className="flex items-start gap-2 min-w-0">
-              <span className="text-[10px] text-ink-400 w-16 flex-shrink-0 pt-1">{group.label}</span>
-              <div className="flex-1 grid grid-cols-4 gap-1.5">
-                {group.entries.map(e => (
-                  <button
-                    key={e.id}
-                    onClick={() => onOpenDetail(e.id, type)}
-                    title={e.title}
-                    className="min-h-[44px] flex items-center justify-center"
-                  >
-                    <img
-                      src={posterUrl(e.poster_path, 'w92')}
-                      alt={e.title}
-                      className="w-[43px] h-[60px] rounded object-cover hover:opacity-80 hover:ring-2 hover:ring-accent-400 transition-all"
-                    />
-                  </button>
-                ))}
-              </div>
-              <span className="text-[9px] text-ink-300 flex-shrink-0 pt-1">{group.entries.length}</span>
-            </div>
-          ))}
+        <div className="px-3 pb-3 grid grid-cols-2 gap-4">
+          <div className="space-y-4">{leftGroups.map(renderGroup)}</div>
+          <div className="space-y-4">{rightGroups.map(renderGroup)}</div>
         </div>
       )}
     </div>
