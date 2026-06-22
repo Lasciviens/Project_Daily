@@ -21,13 +21,13 @@ interface Column {
   textColor: string  // badge text
 }
 
-// Status color palette from design spec
+// Status color palette — darkened for contrast
 const COLUMNS: Column[] = [
-  { id: 'overdue',     label: 'Overdue',     color: '#FF3838', textColor: '#fff' },
-  { id: 'open',        label: 'To-do',       color: '#FCE83A', textColor: '#555' },
-  { id: 'in_progress', label: 'In Progress', color: '#56F000', textColor: '#fff' },
-  { id: 'waiting',     label: 'Waiting',     color: '#2DCCFF', textColor: '#fff' },
-  { id: 'done',        label: 'Done today',  color: '#A4ABB6', textColor: '#fff' },
+  { id: 'overdue',     label: 'Overdue',     color: '#B91C1C', textColor: '#fff' },
+  { id: 'open',        label: 'To-do',       color: '#B45309', textColor: '#fff' },
+  { id: 'in_progress', label: 'In Progress', color: '#15803D', textColor: '#fff' },
+  { id: 'waiting',     label: 'Waiting',     color: '#0369A1', textColor: '#fff' },
+  { id: 'done',        label: 'Done today',  color: '#4B5563', textColor: '#fff' },
 ]
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
@@ -160,6 +160,7 @@ export default function WorkKanban({
                       <WorkTaskCard
                         key={task.id}
                         task={task}
+                        columnColor={col.color}
                         onStatusChange={onStatusChange}
                         onDelete={onDelete}
                         onEdit={onEdit}

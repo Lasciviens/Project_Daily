@@ -77,7 +77,7 @@ export default function WorkDayTimeline({ workTasks }: Props) {
             <div
               key={h}
               className="absolute top-0 bottom-0 border-l border-ink-200/60"
-              style={{ left: leftPct((h - HOUR_START) * 60) }}
+              style={{ left: leftPct(h * 60) }}
             />
           ))}
 
@@ -126,7 +126,7 @@ export default function WorkDayTimeline({ workTasks }: Props) {
               key={h}
               className="absolute text-[9px] text-ink-400 select-none"
               style={{
-                left:      leftPct((h - HOUR_START) * 60),
+                left:      leftPct(h * 60),
                 transform: isFirst ? 'none' : isLast ? 'translateX(-100%)' : 'translateX(-50%)',
               }}
             >
