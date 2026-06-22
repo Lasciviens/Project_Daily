@@ -77,3 +77,15 @@ export const getNorwegianTopRatedTV = () =>
 
 export const getSeasonDetails = (tvId: number, season: number) =>
   tmdbFetch<import('../types').TMDBSeasonDetail>(`/tv/${tvId}/season/${season}`)
+
+export const getMovieGenres = () =>
+  tmdbFetch<{ genres: { id: number; name: string }[] }>('/genre/movie/list')
+
+export const getTVGenres = () =>
+  tmdbFetch<{ genres: { id: number; name: string }[] }>('/genre/tv/list')
+
+export const discoverMovies = (params: Record<string, string>) =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/discover/movie', params)
+
+export const discoverTV = (params: Record<string, string>) =>
+  tmdbFetch<PagedResponse<TMDBSearchTV>>('/discover/tv', params)
