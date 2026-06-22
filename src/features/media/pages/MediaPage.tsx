@@ -8,6 +8,7 @@ import { MediaDetailModal } from '../components/MediaDetailModal'
 import { TonightPicker } from '../components/TonightPicker'
 import { MediaStats } from '../components/MediaStats'
 import { ReleaseCalendar } from '../components/ReleaseCalendar'
+import { CompactLibraryStrip } from '../components/CompactLibraryStrip'
 import { useMovies } from '../hooks/useMovies'
 import { useTVSeries } from '../hooks/useTVSeries'
 import type { UserMovieEntry, UserTVEntry } from '../types'
@@ -17,7 +18,7 @@ type SortBy = 'added' | 'rating' | 'alpha'
 
 interface DetailState { tmdbId: number; type: 'movie' | 'tv' }
 
-const GRID = 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3'
+const GRID = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-9 gap-3'
 
 function sortMovies(entries: UserMovieEntry[], by: SortBy): UserMovieEntry[] {
   return [...entries].sort((a, b) => {
@@ -63,8 +64,17 @@ export function MediaPage() {
 
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
 
+  const compactLibrary = hasLibrary ? (
+    <CompactLibraryStrip
+      tab={tab}
+      movieEntries={movieEntries}
+      tvEntries={tvEntries}
+      onOpenDetail={openDetail}
+    />
+  ) : null
+
   return (
-    <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
+    <div className="w-full px-4 sm:px-6 py-6">
       <h1 className="text-lg font-semibold text-ink-900 mb-5">Media</h1>
 
       <div className="flex gap-6 items-start">
@@ -76,7 +86,7 @@ export function MediaPage() {
           </div>
 
           {/* Tab switcher + sort */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
             <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-full sm:w-fit">
               {(['movies', 'tv'] as Tab[]).map(t => (
                 <button
@@ -110,19 +120,12 @@ export function MediaPage() {
             )}
           </div>
 
-          {/* Discovery */}
+          {/* Discovery + compact library injected between tab bar and content */}
           <DiscoveryTabs
             mediaType={tab === 'movies' ? 'movie' : 'tv'}
             onOpenDetail={openDetail}
+            librarySlot={compactLibrary}
           />
-
-          {/* Empty state */}
-          {!hasLibrary && !moviesLoading && !tvLoading && (
-            <div className="text-center py-8 text-sm text-ink-400">
-              <p className="text-2xl mb-2">🎬</p>
-              <p>Your library is empty — search above to add a movie or TV series</p>
-            </div>
-          )}
 
           {/* User library */}
           {tab === 'movies' ? (
