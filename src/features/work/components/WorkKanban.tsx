@@ -4,7 +4,7 @@ import WorkTaskCard from './WorkTaskCard'
 
 interface Props {
   tasks: Task[]
-  focusedTaskId: string | null
+  focusedTaskIds: string[]
   onStatusChange: (id: string, status: TaskStatus, waitingFor?: string) => void
   onDelete: (id: string) => void
   onEdit: (task: Task) => void
@@ -39,6 +39,11 @@ function isOverdue(task: Task): boolean {
   return task.due_date < TODAY
 }
 
+function isCompletedToday(task: Task): boolean {
+  // Check updated_at starts with today's date
+  return task.updated_at?.slice(0, 10) === TODAY
+}
+
 function getColumnId(task: Task): ColumnId {
   if (isOverdue(task)) return 'overdue'
   if (task.status === 'open') return 'open'
@@ -57,7 +62,6 @@ function sortTasks(tasks: Task[]): Task[] {
   })
 }
 
-// Status to apply when dropping into a column
 const COLUMN_STATUS: Record<ColumnId, TaskStatus> = {
   overdue:     'open',
   open:        'open',
@@ -68,24 +72,30 @@ const COLUMN_STATUS: Record<ColumnId, TaskStatus> = {
 
 export default function WorkKanban({
   tasks,
-  focusedTaskId,
+  focusedTaskIds,
   onStatusChange,
   onDelete,
   onEdit,
   onFocus,
   onAddTask,
 }: Props) {
-  const [draggingId, setDraggingId]   = useState<string | null>(null)
-  const [dragOverCol, setDragOverCol] = useState<ColumnId | null>(null)
-  const [activeTab, setActiveTab]     = useState<ColumnId>('open')
+  const [draggingId,   setDraggingId]   = useState<string | null>(null)
+  const [dragOverCol,  setDragOverCol]  = useState<ColumnId | null>(null)
+  const [activeTab,    setActiveTab]    = useState<ColumnId>('open')
+  const [collapsed,    setCollapsed]    = useState<Partial<Record<ColumnId, boolean>>>({})
 
-  // Group tasks into columns
+  // Group tasks: done column = only today
   const columnTasks = Object.fromEntries(
-    COLUMNS.map(col => [
-      col.id,
-      sortTasks(tasks.filter(t => getColumnId(t) === col.id)),
-    ])
+    COLUMNS.map(col => {
+      let colTasks = tasks.filter(t => getColumnId(t) === col.id)
+      if (col.id === 'done') colTasks = colTasks.filter(isCompletedToday)
+      return [col.id, sortTasks(colTasks)]
+    })
   ) as Record<ColumnId, Task[]>
+
+  function toggleCollapse(colId: ColumnId) {
+    setCollapsed(prev => ({ ...prev, [colId]: !prev[colId] }))
+  }
 
   function handleDragOver(e: React.DragEvent<HTMLDivElement>, colId: ColumnId) {
     e.preventDefault()
@@ -94,10 +104,7 @@ export default function WorkKanban({
   }
 
   function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
-    // Only clear if actually leaving the column (not entering a child)
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setDragOverCol(null)
-    }
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null)
   }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>, colId: ColumnId) {
@@ -106,14 +113,14 @@ export default function WorkKanban({
     if (!taskId) return
     setDragOverCol(null)
     setDraggingId(null)
-    const newStatus = COLUMN_STATUS[colId]
-    onStatusChange(taskId, newStatus)
+    onStatusChange(taskId, COLUMN_STATUS[colId])
   }
 
   function renderColumn(col: Column) {
-    const colTasks = columnTasks[col.id]
+    const colTasks    = columnTasks[col.id]
     const isDropTarget = dragOverCol === col.id
-    const isDoneCol = col.id === 'done'
+    const isCollapsed = !!collapsed[col.id]
+    const isDoneCol   = col.id === 'done'
 
     return (
       <div
@@ -122,52 +129,87 @@ export default function WorkKanban({
         onDragLeave={handleDragLeave}
         onDrop={e => handleDrop(e, col.id)}
         className={[
-          'flex flex-col rounded-xl border bg-cream-50 transition-colors',
-          'min-w-[220px] max-w-[260px] flex-shrink-0',
-          isDropTarget
-            ? 'border-dashed border-accent-400 bg-accent-50'
-            : 'border-ink-200',
+          'flex flex-col rounded-xl border bg-cream-50 transition-colors flex-shrink-0',
+          isCollapsed ? 'min-w-[52px] max-w-[52px]' : 'min-w-[220px] max-w-[260px]',
+          isDropTarget ? 'border-dashed border-accent-400 bg-accent-50' : 'border-ink-200',
         ].join(' ')}
       >
         {/* Column header */}
-        <div className="flex items-center justify-between px-3 py-2.5 border-b border-ink-100">
-          <span className={['text-xs font-bold uppercase tracking-wide', col.colorClass].join(' ')}>
-            {col.label}
-          </span>
-          <span className={['text-[11px] font-semibold px-1.5 py-0.5 rounded-full', col.headerBadge].join(' ')}>
-            {colTasks.length}
-          </span>
+        <div className={`flex items-center justify-between px-3 py-2.5 border-b border-ink-100 ${isCollapsed ? 'flex-col gap-2' : ''}`}>
+          {isCollapsed ? (
+            <>
+              <span className={['text-[10px] font-bold uppercase tracking-wide writing-mode-vertical rotate-180', col.colorClass].join(' ')}>
+                {col.label}
+              </span>
+              <span className={['text-[11px] font-semibold px-1.5 py-0.5 rounded-full', col.headerBadge].join(' ')}>
+                {colTasks.length}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className={['text-xs font-bold uppercase tracking-wide', col.colorClass].join(' ')}>
+                {col.label}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={['text-[11px] font-semibold px-1.5 py-0.5 rounded-full', col.headerBadge].join(' ')}>
+                  {colTasks.length}
+                </span>
+                <button
+                  onClick={() => toggleCollapse(col.id)}
+                  title="Collapse"
+                  className="text-ink-300 hover:text-ink-600 hover:bg-ink-100 rounded p-0.5 transition-colors min-h-[24px] min-w-[24px] flex items-center justify-center text-[10px]"
+                >
+                  ◀
+                </button>
+              </div>
+            </>
+          )}
         </div>
+
+        {/* Expand button when collapsed */}
+        {isCollapsed && (
+          <button
+            onClick={() => toggleCollapse(col.id)}
+            title="Expand"
+            className="flex items-center justify-center py-2 text-ink-300 hover:text-ink-600 hover:bg-ink-100 transition-colors rounded-b-xl text-[10px]"
+          >
+            ▶
+          </button>
+        )}
 
         {/* Task list */}
-        <div className="flex flex-col gap-2 p-2 flex-1 overflow-y-auto max-h-[60vh]">
-          {colTasks.length === 0 && (
-            <p className="text-xs text-ink-300 text-center py-4">No tasks</p>
-          )}
-          {colTasks.map(task => (
-            <WorkTaskCard
-              key={task.id}
-              task={task}
-              onStatusChange={onStatusChange}
-              onDelete={onDelete}
-              onEdit={onEdit}
-              onFocus={onFocus}
-              isFocused={task.id === focusedTaskId}
-              isDragging={task.id === draggingId}
-            />
-          ))}
-        </div>
-
-        {/* Footer add button */}
-        {!isDoneCol && (
-          <div className="px-2 pb-2 pt-1">
-            <button
-              onClick={() => onAddTask(COLUMN_STATUS[col.id])}
-              className="w-full min-h-[44px] flex items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 text-xs text-ink-400 hover:border-accent-400 hover:text-accent-500 hover:bg-accent-50 transition-colors"
-            >
-              + Add
-            </button>
-          </div>
+        {!isCollapsed && (
+          <>
+            <div className="flex flex-col gap-2 p-2 flex-1 overflow-y-auto max-h-[60vh]">
+              {colTasks.length === 0 && (
+                <p className="text-xs text-ink-300 text-center py-4">
+                  {isDoneCol ? 'Nothing done today' : 'No tasks'}
+                </p>
+              )}
+              {colTasks.map(task => (
+                <WorkTaskCard
+                  key={task.id}
+                  task={task}
+                  onStatusChange={onStatusChange}
+                  onDelete={onDelete}
+                  onEdit={onEdit}
+                  onFocus={onFocus}
+                  isFocused={focusedTaskIds.includes(task.id)}
+                  isDragging={task.id === draggingId}
+                />
+              ))}
+            </div>
+            {!isDoneCol && (
+              <div className="px-2 pb-2 pt-1">
+                <button
+                  onClick={() => onAddTask(COLUMN_STATUS[col.id])}
+                  className="w-full min-h-[44px] flex items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 text-xs text-ink-400 hover:border-accent-400 hover:text-accent-500 hover:bg-accent-50 transition-colors"
+                >
+                  + Add
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     )
@@ -176,16 +218,15 @@ export default function WorkKanban({
   return (
     <>
       {/* ── Desktop: horizontal scroll ── */}
-      <div className="hidden md:flex gap-3 overflow-x-auto pb-2">
+      <div className="hidden md:flex gap-2 overflow-x-auto pb-2">
         {COLUMNS.map(col => renderColumn(col))}
       </div>
 
-      {/* ── Mobile: tab bar + single column ── */}
+      {/* ── Mobile: horizontal tab bar + single column ── */}
       <div className="md:hidden flex flex-col gap-3">
-        {/* Tab bar */}
         <div className="flex overflow-x-auto gap-1 pb-1 no-scrollbar">
           {COLUMNS.map(col => {
-            const count = columnTasks[col.id].length
+            const count    = columnTasks[col.id].length
             const isActive = activeTab === col.id
             return (
               <button
@@ -199,20 +240,13 @@ export default function WorkKanban({
                 ].join(' ')}
               >
                 {col.label}
-                <span
-                  className={[
-                    'text-[11px] font-bold px-1.5 py-0.5 rounded-full',
-                    isActive ? 'bg-white/20' : col.headerBadge,
-                  ].join(' ')}
-                >
+                <span className={['text-[11px] font-bold px-1.5 py-0.5 rounded-full', isActive ? 'bg-white/20' : col.headerBadge].join(' ')}>
                   {count}
                 </span>
               </button>
             )
           })}
         </div>
-
-        {/* Active column content */}
         {COLUMNS.filter(col => col.id === activeTab).map(col => {
           const colTasks = columnTasks[col.id]
           const isDoneCol = col.id === 'done'
@@ -224,13 +258,13 @@ export default function WorkKanban({
               onDrop={e => handleDrop(e, col.id)}
               className={[
                 'flex flex-col gap-2 rounded-xl border p-2 min-h-[120px] transition-colors',
-                dragOverCol === col.id
-                  ? 'border-dashed border-accent-400 bg-accent-50'
-                  : 'border-ink-200 bg-cream-50',
+                dragOverCol === col.id ? 'border-dashed border-accent-400 bg-accent-50' : 'border-ink-200 bg-cream-50',
               ].join(' ')}
             >
               {colTasks.length === 0 && (
-                <p className="text-xs text-ink-300 text-center py-4">No tasks</p>
+                <p className="text-xs text-ink-300 text-center py-4">
+                  {isDoneCol ? 'Nothing done today' : 'No tasks'}
+                </p>
               )}
               {colTasks.map(task => (
                 <WorkTaskCard
@@ -240,7 +274,7 @@ export default function WorkKanban({
                   onDelete={onDelete}
                   onEdit={onEdit}
                   onFocus={onFocus}
-                  isFocused={task.id === focusedTaskId}
+                  isFocused={focusedTaskIds.includes(task.id)}
                   isDragging={task.id === draggingId}
                 />
               ))}

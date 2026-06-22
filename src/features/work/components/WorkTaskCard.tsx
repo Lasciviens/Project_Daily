@@ -67,20 +67,18 @@ export default function WorkTaskCard({
     e.dataTransfer.effectAllowed = 'move'
   }
 
-  function handleToggleDone() {
-    if (isDone) {
-      onStatusChange(task.id, 'open')
-    } else {
-      onStatusChange(task.id, 'done')
-    }
+  function handleToggleDone(e: React.MouseEvent) {
+    e.stopPropagation()
+    onStatusChange(task.id, isDone ? 'open' : 'done')
   }
 
   return (
     <div
       draggable
       onDragStart={handleDragStart}
+      onClick={() => onEdit(task)}
       className={[
-        'group relative bg-white rounded-lg border border-ink-200 border-l-4 p-3 cursor-grab active:cursor-grabbing select-none transition-opacity',
+        'group relative bg-white rounded-lg border border-ink-200 border-l-4 p-3 cursor-pointer select-none transition-all hover:shadow-sm hover:border-ink-300',
         PRIORITY_BORDER[task.priority] ?? 'border-l-ink-200',
         isDone ? 'opacity-60' : '',
         isDragging ? 'opacity-40' : '',
@@ -98,23 +96,20 @@ export default function WorkTaskCard({
 
       {/* Top row: priority dot + title */}
       <div className="flex items-center gap-1.5 pr-16">
-        <span
-          className={[
-            'flex-shrink-0 w-2 h-2 rounded-full',
-            PRIORITY_DOT[task.priority] ?? 'bg-ink-300',
-          ].join(' ')}
-        />
-        <span
-          className={[
-            'text-sm font-semibold text-ink-900 truncate',
-            isDone ? 'line-through text-ink-400' : '',
-          ].join(' ')}
-        >
+        <span className={['flex-shrink-0 w-2 h-2 rounded-full', PRIORITY_DOT[task.priority] ?? 'bg-ink-300'].join(' ')} />
+        <span className={['text-sm font-semibold text-ink-900 truncate', isDone ? 'line-through text-ink-400' : ''].join(' ')}>
           {task.title}
         </span>
       </div>
 
-      {/* Waiting pill — click to edit */}
+      {/* Due date */}
+      {task.due_date && !isDone && (
+        <div className="mt-1 pl-3.5">
+          <span className="text-[10px] text-ink-400">{task.due_date}</span>
+        </div>
+      )}
+
+      {/* Waiting pill */}
       {task.status === 'waiting' && (
         <div className="mt-1.5 pl-3.5">
           {editingWaiting ? (
@@ -143,48 +138,42 @@ export default function WorkTaskCard({
         </div>
       )}
 
-      {/* Action row — always visible on mobile, hover on desktop */}
+      {/* Action row */}
       <div
-        className={[
-          'flex items-center gap-1 mt-2 transition-opacity',
-          'md:opacity-0 md:group-hover:opacity-100',
-        ].join(' ')}
+        className="flex items-center gap-1 mt-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+        onClick={e => e.stopPropagation()}
       >
-        {/* Toggle done */}
         <button
           onClick={handleToggleDone}
           title={isDone ? 'Reopen' : 'Mark done'}
-          className="min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs text-green-600 hover:bg-green-50 transition-colors"
+          className="min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
         >
           {isDone ? '↩' : '✓'}
         </button>
 
-        {/* Focus/unfocus */}
         <button
-          onClick={() => onFocus(task)}
-          title={isFocused ? 'Clear focus' : 'Set as focus'}
+          onClick={e => { e.stopPropagation(); onFocus(task) }}
+          title={isFocused ? 'Remove focus' : 'Set as focus'}
           className={[
             'min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs transition-colors',
             isFocused
-              ? 'text-accent-500 hover:bg-accent-50'
-              : 'text-ink-400 hover:bg-ink-50',
+              ? 'text-accent-500 bg-accent-50 hover:bg-accent-100'
+              : 'text-ink-400 hover:bg-ink-100 hover:text-ink-600',
           ].join(' ')}
         >
           ⚡
         </button>
 
-        {/* Edit */}
         <button
-          onClick={() => onEdit(task)}
+          onClick={e => { e.stopPropagation(); onEdit(task) }}
           title="Edit task"
-          className="min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs text-ink-400 hover:bg-ink-50 transition-colors"
+          className="min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs text-ink-400 hover:bg-ink-100 hover:text-ink-600 transition-colors"
         >
           ✎
         </button>
 
-        {/* Delete */}
         <button
-          onClick={() => onDelete(task.id)}
+          onClick={e => { e.stopPropagation(); onDelete(task.id) }}
           title="Delete task"
           className="min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs text-ink-400 hover:bg-red-50 hover:text-red-500 transition-colors"
         >
