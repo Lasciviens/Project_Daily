@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { MediaBackdrop } from '../components/MediaBackdrop'
 import { MediaSearch } from '../components/MediaSearch'
 import { DiscoveryTabs } from '../components/DiscoveryTabs'
 import { MediaDetailModal } from '../components/MediaDetailModal'
@@ -34,7 +35,10 @@ export function MediaPage() {
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
 
   return (
-    <div className="w-full px-4 sm:px-6 py-6">
+    <div className="relative w-full px-4 sm:px-6 py-6">
+      <MediaBackdrop />
+
+      <div className="relative z-10">
       <h1 className="text-lg font-semibold text-ink-900 mb-5">Media</h1>
 
       <div className="flex gap-6 items-start">
@@ -107,6 +111,7 @@ export function MediaPage() {
           onOpenDetail={openDetail}
         />
       )}
+      </div>
     </div>
   )
 }
