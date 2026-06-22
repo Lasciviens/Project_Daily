@@ -47,7 +47,7 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
         <div className="text-sm font-medium text-ink-900 truncate leading-snug">{dep.destination}</div>
         {(dep.quayCode || dep.quayDescription) && (
           <div className="text-[10px] text-ink-400 mt-0.5 truncate">
-            {dep.quayCode && `Pl. ${dep.quayCode}`}
+            {dep.quayCode && `Platform ${dep.quayCode}`}
             {dep.quayCode && dep.quayDescription && ' · '}
             {dep.quayDescription}
           </div>
@@ -62,11 +62,11 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
         <span className={`text-sm font-bold tabular-nums ${
           isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : delayed ? 'text-orange-500' : 'text-ink-900'
         }`}>
-          {isNow ? 'Nå' : `${mins} min`}
+          {isNow ? 'Now' : `${mins} min`}
         </span>
         {dep.realtime
-          ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Sanntid" />
-          : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Rutebundet">~</span>
+          ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
+          : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Scheduled">~</span>
         }
       </div>
     </div>
@@ -108,7 +108,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
     const seen = new Set<string>()
     const dirs: { key: string; label: string }[] = []
     for (const dep of data.departures) {
-      const label = dep.quayDescription ?? (dep.destination ? `mot ${dep.destination}` : dep.quayCode ? `Plattform ${dep.quayCode}` : null)
+      const label = dep.quayDescription ?? (dep.destination ? `towards ${dep.destination}` : dep.quayCode ? `Platform ${dep.quayCode}` : null)
       const key   = dep.quayDescription ?? dep.quayCode ?? ''
       if (label && key && !seen.has(key)) {
         seen.add(key)
