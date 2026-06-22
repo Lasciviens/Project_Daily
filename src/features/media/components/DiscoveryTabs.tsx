@@ -24,12 +24,6 @@ const TABS: { key: DiscoveryTab; label: string }[] = [
   { key: 'norway',   label: '🇳🇴 Norway' },
 ]
 
-const INTERVALS = [
-  { label: '1h',  ms: 60 * 60_000 },
-  { label: '6h',  ms: 6 * 60 * 60_000 },
-  { label: '24h', ms: 24 * 60 * 60_000 },
-]
-
 const GRID = 'grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-8 xl:grid-cols-10 gap-3'
 
 function SkeletonGrid({ count = 20 }: { count?: number }) {
@@ -91,22 +85,18 @@ function NorwaySection({ mediaType, onOpenDetail }: { mediaType: 'movie' | 'tv';
 }
 
 export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
-  const [tab,         setTab]        = useState<DiscoveryTab>('today')
-  const [syncActive,  setSyncActive] = useState(false)
-  const [intervalMs,  setIntervalMs] = useState(INTERVALS[0].ms)
-  const [lastSynced,  setLastSynced] = useState<Date | null>(null)
+  const [tab,        setTab]       = useState<DiscoveryTab>('today')
+  const [lastSynced, setLastSynced] = useState<Date | null>(null)
 
-  const interval = syncActive ? intervalMs : (false as const)
+  const trendDay  = useTrendingMovies('day',  tab === 'today'    && mediaType === 'movie' ? false as const : false)
+  const trendWeek = useTrendingMovies('week', tab === 'week'     && mediaType === 'movie' ? false as const : false)
+  const popular   = usePopularMovies(         tab === 'popular'  && mediaType === 'movie' ? false as const : false)
+  const upcoming  = useUpcomingMovies(        tab === 'upcoming' && mediaType === 'movie' ? false as const : false)
 
-  const trendDay  = useTrendingMovies('day',  tab === 'today'    && mediaType === 'movie' ? interval : false)
-  const trendWeek = useTrendingMovies('week', tab === 'week'     && mediaType === 'movie' ? interval : false)
-  const popular   = usePopularMovies(         tab === 'popular'  && mediaType === 'movie' ? interval : false)
-  const upcoming  = useUpcomingMovies(        tab === 'upcoming' && mediaType === 'movie' ? interval : false)
-
-  const tvTrendDay  = useTrendingTV('day',  tab === 'today'    && mediaType === 'tv' ? interval : false)
-  const tvTrendWeek = useTrendingTV('week', tab === 'week'     && mediaType === 'tv' ? interval : false)
-  const tvPopular   = usePopularTV(         tab === 'popular'  && mediaType === 'tv' ? interval : false)
-  const tvUpcoming  = useUpcomingTV(        tab === 'upcoming' && mediaType === 'tv' ? interval : false)
+  const tvTrendDay  = useTrendingTV('day',  tab === 'today'    && mediaType === 'tv' ? false as const : false)
+  const tvTrendWeek = useTrendingTV('week', tab === 'week'     && mediaType === 'tv' ? false as const : false)
+  const tvPopular   = usePopularTV(         tab === 'popular'  && mediaType === 'tv' ? false as const : false)
+  const tvUpcoming  = useUpcomingTV(        tab === 'upcoming' && mediaType === 'tv' ? false as const : false)
 
   const activeQuery = tab === 'norway' ? null
     : mediaType === 'movie'
@@ -152,23 +142,6 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
             >
               ↻
             </button>
-            <button
-              onClick={() => setSyncActive(v => !v)}
-              title={syncActive ? 'Pause auto-sync' : 'Resume auto-sync'}
-              className={`text-[11px] transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-center ${syncActive ? 'text-accent-500 hover:text-accent-700' : 'text-ink-300 hover:text-ink-500'}`}
-            >
-              {syncActive ? '⏸' : '▶'}
-            </button>
-            <select
-              value={intervalMs}
-              onChange={e => setIntervalMs(Number(e.target.value))}
-              className="text-[10px] text-ink-500 bg-transparent border-none outline-none cursor-pointer min-h-[44px]"
-              title="Refresh interval"
-            >
-              {INTERVALS.map(iv => (
-                <option key={iv.label} value={iv.ms}>{iv.label}</option>
-              ))}
-            </select>
           </div>
         )}
       </div>

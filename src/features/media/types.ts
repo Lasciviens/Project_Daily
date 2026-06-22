@@ -39,7 +39,7 @@ export interface UserMovieEntry {
   id: string
   user_id: string
   movie_id: string
-  status: 'watching' | 'wishlist' | 'completed' | 'dropped'
+  status: 'watching' | 'wishlist' | 'completed' | 'dropped' | 'upcoming'
   priority: 'low' | 'medium' | 'high'
   personal_note: string | null
   rating: number | null
@@ -126,7 +126,7 @@ export interface TMDBSearchTV {
   overview: string
 }
 
-export type MediaStatus = 'watching' | 'wishlist' | 'completed' | 'dropped' | 'paused'
+export type MediaStatus = 'watching' | 'wishlist' | 'completed' | 'dropped' | 'paused' | 'upcoming'
 export type MediaType = 'movie' | 'tv'
 
 export interface TMDBEpisode {

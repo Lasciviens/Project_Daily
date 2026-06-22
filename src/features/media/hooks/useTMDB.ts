@@ -32,12 +32,12 @@ export function useSearchTV(query: string) {
   })
 }
 
-// Trending/popular data is stable enough for 1hr caching
+// Discovery data cached 24hrs — manual refresh only
 export function useTrendingMovies(window: 'day' | 'week', refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'trending', 'movie', window],
     queryFn:  () => getTrendingMovies(window).then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
@@ -46,7 +46,7 @@ export function useTrendingTV(window: 'day' | 'week', refetchInterval?: number |
   return useQuery({
     queryKey: ['tmdb', 'trending', 'tv', window],
     queryFn:  () => getTrendingTV(window).then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
@@ -55,7 +55,7 @@ export function usePopularMovies(refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'popular', 'movie'],
     queryFn:  () => getPopularMovies().then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
@@ -64,7 +64,7 @@ export function usePopularTV(refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'popular', 'tv'],
     queryFn:  () => getPopularTV().then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
@@ -109,7 +109,7 @@ export function useUpcomingMovies(refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'upcoming', 'movie'],
     queryFn:  () => getUpcomingMovies().then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
@@ -118,7 +118,7 @@ export function useUpcomingTV(refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'upcoming', 'tv'],
     queryFn:  () => getUpcomingTV().then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
@@ -127,7 +127,7 @@ export function useNorwegianMovies(refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'norwegian', 'movie'],
     queryFn:  () => getNorwegianMovies().then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
@@ -136,7 +136,7 @@ export function useNorwegianTV(refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'norwegian', 'tv'],
     queryFn:  () => getNorwegianTV().then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
@@ -145,7 +145,7 @@ export function useNorwegianTopRatedMovies(refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'norwegian', 'movie', 'top-rated'],
     queryFn:  () => getNorwegianTopRatedMovies().then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
@@ -154,7 +154,7 @@ export function useNorwegianTopRatedTV(refetchInterval?: number | false) {
   return useQuery({
     queryKey: ['tmdb', 'norwegian', 'tv', 'top-rated'],
     queryFn:  () => getNorwegianTopRatedTV().then(r => r.results),
-    staleTime: 60 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     refetchInterval,
   })
 }
