@@ -2,25 +2,31 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 interface UIState {
-  isToDoOpen: boolean
-  isAIOpen:   boolean
-  toggleToDo: () => void
-  openToDo:   () => void
-  closeToDo:  () => void
-  toggleAI:   () => void
-  openAI:     () => void
-  closeAI:    () => void
+  isToDoOpen:      boolean
+  isAIOpen:        boolean
+  isCommandBarOpen:boolean
+  toggleToDo:    () => void
+  openToDo:      () => void
+  closeToDo:     () => void
+  toggleAI:      () => void
+  openAI:        () => void
+  closeAI:       () => void
+  openCommandBar:  () => void
+  closeCommandBar: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  isToDoOpen: false,
-  isAIOpen:   false,
-  toggleToDo: () => set(s => ({ isToDoOpen: !s.isToDoOpen, isAIOpen: false })),
-  openToDo:   () => set({ isToDoOpen: true,  isAIOpen: false }),
-  closeToDo:  () => set({ isToDoOpen: false }),
-  toggleAI:   () => set(s => ({ isAIOpen: !s.isAIOpen, isToDoOpen: false })),
-  openAI:     () => set({ isAIOpen: true,  isToDoOpen: false }),
-  closeAI:    () => set({ isAIOpen: false }),
+  isToDoOpen:       false,
+  isAIOpen:         false,
+  isCommandBarOpen: false,
+  toggleToDo:    () => set(s => ({ isToDoOpen: !s.isToDoOpen, isAIOpen: false })),
+  openToDo:      () => set({ isToDoOpen: true,  isAIOpen: false }),
+  closeToDo:     () => set({ isToDoOpen: false }),
+  toggleAI:      () => set(s => ({ isAIOpen: !s.isAIOpen, isToDoOpen: false })),
+  openAI:        () => set({ isAIOpen: true,  isToDoOpen: false }),
+  closeAI:       () => set({ isAIOpen: false }),
+  openCommandBar:  () => set({ isCommandBarOpen: true }),
+  closeCommandBar: () => set({ isCommandBarOpen: false }),
 }))
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
