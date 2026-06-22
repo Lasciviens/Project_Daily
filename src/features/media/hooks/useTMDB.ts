@@ -8,6 +8,8 @@ import {
   getUpcomingMovies, getUpcomingTV,
   getSimilarMovies, getSimilarTV,
   getNorwegianMovies, getNorwegianTV,
+  getNorwegianTopRatedMovies, getNorwegianTopRatedTV,
+  getSeasonDetails,
 } from '../api/tmdbApi'
 
 export function useSearchMovies(query: string) {
@@ -134,6 +136,33 @@ export function useNorwegianTV(refetchInterval?: number | false) {
     queryFn:  () => getNorwegianTV().then(r => r.results),
     staleTime: 60 * 60_000,
     refetchInterval,
+  })
+}
+
+export function useNorwegianTopRatedMovies(refetchInterval?: number | false) {
+  return useQuery({
+    queryKey: ['tmdb', 'norwegian', 'movie', 'top-rated'],
+    queryFn:  () => getNorwegianTopRatedMovies().then(r => r.results),
+    staleTime: 60 * 60_000,
+    refetchInterval,
+  })
+}
+
+export function useNorwegianTopRatedTV(refetchInterval?: number | false) {
+  return useQuery({
+    queryKey: ['tmdb', 'norwegian', 'tv', 'top-rated'],
+    queryFn:  () => getNorwegianTopRatedTV().then(r => r.results),
+    staleTime: 60 * 60_000,
+    refetchInterval,
+  })
+}
+
+export function useSeasonDetails(tvId: number | null, season: number | null) {
+  return useQuery({
+    queryKey: ['tmdb', 'season', tvId, season],
+    queryFn:  () => getSeasonDetails(tvId!, season!),
+    enabled:  tvId !== null && season !== null && season > 0,
+    staleTime: 60 * 60_000,
   })
 }
 

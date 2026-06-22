@@ -3,6 +3,7 @@ import { toast } from '../../../app/store'
 import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { PlanThisButton } from './PlanThisButton'
 import { SimilarRow } from './SimilarRow'
+import { EpisodesPanel } from './EpisodesPanel'
 import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
 import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import type {
@@ -323,6 +324,13 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
             onOpenDetail={(id, type) => onOpenDetail?.(id, type)}
           />
         </div>
+
+        {/* Episodes — TV in library only */}
+        {!isMovie && tvEntry && tv && (tv.seasons?.length ?? 0) > 0 && (
+          <div className="mb-4">
+            <EpisodesPanel tv={tv} tvEntryId={tvEntry.id} />
+          </div>
+        )}
 
         <div className="pt-3 border-t border-ink-100 space-y-3">
           {isOwned && entryId ? (
