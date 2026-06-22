@@ -80,7 +80,7 @@ export function MediaPage() {
         </div>
 
         {/* ── Right sidebar ── */}
-        <aside className="hidden lg:flex flex-col gap-4 w-56 flex-shrink-0 sticky top-20">
+        <aside className="hidden lg:flex flex-col gap-4 w-72 flex-shrink-0 sticky top-20">
           <TonightPicker
             movieEntries={movieEntries}
             tvEntries={tvEntries}

@@ -23,6 +23,7 @@ interface Props {
 
 const MOVIE_STATUSES: { value: MediaStatus; label: string }[] = [
   { value: 'wishlist',  label: 'Wishlist' },
+  { value: 'upcoming',  label: 'Upcoming' },
   { value: 'watching',  label: 'Watching' },
   { value: 'completed', label: 'Completed' },
 ]
@@ -86,12 +87,13 @@ function ProviderLogo({ provider }: { provider: TMDBWatchProvider }) {
 }
 
 export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenDetail }: Props) {
-  const [selectedStatus, setSelectedStatus] = useState<MediaStatus>('wishlist')
-  const [showTrailer,    setShowTrailer]    = useState(false)
-
   const isMovie = mediaType === 'movie'
   const movie   = isMovie ? (detail as TMDBMovieFull) : null
   const tv      = !isMovie ? (detail as TMDBTVFull) : null
+
+  const isFutureMovie = isMovie && !!movie?.release_date && new Date(movie.release_date) > new Date()
+  const [selectedStatus, setSelectedStatus] = useState<MediaStatus>(isFutureMovie ? 'upcoming' : 'wishlist')
+  const [showTrailer,    setShowTrailer]    = useState(false)
 
   const cast          = detail.credits?.cast?.slice(0, 10) ?? []
   const allProviders  = detail['watch/providers']?.results ?? {}
@@ -181,6 +183,20 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
     try {
       await updateMovie.mutateAsync({ id: movieEntry.id, patch: { status: 'completed', watched_at: new Date().toISOString() } })
       toast.dismiss(tid); toast.success('Marked as watched ✓')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    }
+  }
+
+  async function handleRatingChange(value: number) {
+    const tid = toast.loading('Saving rating…')
+    try {
+      if (isMovie && movieEntry) {
+        await updateMovie.mutateAsync({ id: movieEntry.id, patch: { rating: value } })
+      } else if (tvEntry) {
+        await updateTV.mutateAsync({ id: tvEntry.id, patch: { rating: value } })
+      }
+      toast.dismiss(tid); toast.success('Rating saved ✓')
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
     }
@@ -335,6 +351,32 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
         <div className="pt-3 border-t border-ink-100 space-y-3">
           {isOwned && entryId ? (
             <>
+              {/* Personal rating */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">★ Your rating</p>
+                <div className="flex flex-wrap gap-1">
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map(v => {
+                    const currentRating = (movieEntry ?? tvEntry)?.rating
+                    const isActive = currentRating === v
+                    return (
+                      <button
+                        key={v}
+                        onClick={() => handleRatingChange(v)}
+                        disabled={updateMovie.isPending || updateTV.isPending}
+                        className={[
+                          'min-h-[44px] w-8 text-xs rounded transition-colors',
+                          isActive
+                            ? 'bg-accent-500 text-white'
+                            : 'bg-cream-100 text-ink-500 hover:bg-cream-200',
+                        ].join(' ')}
+                      >
+                        {v}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
               {/* Clickable status buttons for owned items */}
               <div className="flex flex-wrap gap-1.5">
                 {statuses.map(s => (

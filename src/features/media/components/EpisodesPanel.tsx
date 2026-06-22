@@ -75,8 +75,8 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
     <div className="mt-4">
       <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-2">Episodes</p>
 
-      {/* Season tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1 mb-3">
+      {/* Season tabs + Select All/Clear */}
+      <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-3">
         {realSeasons.map(s => (
           <button
             key={s.season_number}
@@ -92,6 +92,23 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             <span className="ml-1 text-[9px] opacity-70">{s.episode_count}</span>
           </button>
         ))}
+        <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+          <button
+            onClick={() => setSelected(new Set((seasonData?.episodes ?? []).map(e => e.episode_number)))}
+            disabled={isLoading || !seasonData}
+            className="text-xs px-2 py-1 rounded-lg min-h-[36px] bg-cream-100 text-ink-500 hover:bg-cream-200 disabled:opacity-40 transition-colors"
+          >
+            Select All
+          </button>
+          {selected.size > 0 && (
+            <button
+              onClick={() => setSelected(new Set())}
+              className="text-xs text-accent-500 hover:text-accent-700 px-1.5 min-h-[36px] transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Plan bar */}

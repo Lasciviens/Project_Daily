@@ -20,6 +20,11 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
   const groups: Group[] = tab === 'movies'
     ? [
         {
+          label:   'Upcoming',
+          entries: movieEntries.filter(e => e.status === 'upcoming')
+            .map(e => ({ id: e.movie.tmdb_id, title: e.movie.title, poster_path: e.movie.poster_path })),
+        },
+        {
           label:   'Wishlist',
           entries: movieEntries.filter(e => e.status === 'wishlist')
             .map(e => ({ id: e.movie.tmdb_id, title: e.movie.title, poster_path: e.movie.poster_path })),
@@ -86,25 +91,25 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
       {!collapsed && (
         <div className="px-3 pb-2.5 space-y-2">
           {filledGroups.map(group => (
-            <div key={group.label} className="flex items-center gap-2 min-w-0">
-              <span className="text-[10px] text-ink-400 w-16 flex-shrink-0">{group.label}</span>
-              <div className="flex gap-1 overflow-x-auto no-scrollbar pb-0.5">
+            <div key={group.label} className="flex items-start gap-2 min-w-0">
+              <span className="text-[10px] text-ink-400 w-16 flex-shrink-0 pt-1">{group.label}</span>
+              <div className="flex-1 grid grid-cols-4 gap-1.5">
                 {group.entries.map(e => (
                   <button
                     key={e.id}
                     onClick={() => onOpenDetail(e.id, type)}
                     title={e.title}
-                    className="flex-shrink-0 min-h-[44px] flex items-center"
+                    className="min-h-[44px] flex items-center justify-center"
                   >
                     <img
                       src={posterUrl(e.poster_path, 'w92')}
                       alt={e.title}
-                      className="w-8 h-11 rounded object-cover hover:opacity-80 hover:ring-2 hover:ring-accent-400 transition-all"
+                      className="w-[43px] h-[60px] rounded object-cover hover:opacity-80 hover:ring-2 hover:ring-accent-400 transition-all"
                     />
                   </button>
                 ))}
               </div>
-              <span className="text-[9px] text-ink-300 flex-shrink-0">{group.entries.length}</span>
+              <span className="text-[9px] text-ink-300 flex-shrink-0 pt-1">{group.entries.length}</span>
             </div>
           ))}
         </div>
