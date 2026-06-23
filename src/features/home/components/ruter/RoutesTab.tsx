@@ -1,14 +1,16 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchTrips, fetchStopDirections, type StopResult, type TransitPlace } from '../../api/ruterApi'
+import { fetchTrips, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
-import { useTransitStops } from '../../hooks/useTransitStops'
+import { useTransitRecentSearches } from '../../hooks/useTransitRecentSearches'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
 import { fmtLastUpdated, fmtTime } from './transitUtils'
 import { toast } from '../../../../app/store'
 import { DateInput } from '../../../../shared/components/DateInput'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RoutesTabProps {
   ws:  WidgetStateResult
@@ -20,14 +22,15 @@ type WhenPreset    = 'now' | '+15' | '+30' | '+1h' | 'arriveBy' | 'custom'
 type TripMode      = 'departAt' | 'arriveBy'
 
 interface SearchParams {
-  from:           TransitPlace
-  to:             TransitPlace
-  dateTime?:      string
-  arriveBy:       boolean
-  label:          string
-  preferredLine?: string
-  version:        number
+  from:      TransitPlace
+  to:        TransitPlace
+  dateTime?: string
+  arriveBy:  boolean
+  label:     string
+  version:   number
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getCurrentLocation(): Promise<TransitPlace> {
   return new Promise((resolve, reject) => {
@@ -73,9 +76,9 @@ function toTransitPlace(s: StopResult): TransitPlace | null {
   return null
 }
 
-function planningLabel(preset: WhenPreset, mode: TripMode, dateTime: string | undefined): string {
-  const modeLabel = (preset === 'arriveBy' || mode === 'arriveBy') ? 'Arrive by' : 'Leave'
+function planLabel(preset: WhenPreset, mode: TripMode, dateTime: string | undefined): string {
   if (preset === 'now') return 'Leave now'
+  const modeLabel = (preset === 'arriveBy' || mode === 'arriveBy') ? 'Arrive by' : 'Leave'
   if (dateTime) {
     const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     return `${modeLabel} ${DAYS[new Date(dateTime).getDay()]} ${fmtTime(dateTime)}`
@@ -83,39 +86,53 @@ function planningLabel(preset: WhenPreset, mode: TripMode, dateTime: string | un
   return `${modeLabel} now`
 }
 
-function suggestLabel(from: TransitPlace, to: TransitPlace): string {
-  return `${from.name.split(',')[0].trim()} → ${to.name.split(',')[0].trim()}`
+function useContainerWidth() {
+  const ref  = useRef<HTMLDivElement | null>(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const update = () => setWidth(el.getBoundingClientRect().width)
+    update()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', update)
+      return () => window.removeEventListener('resize', update)
+    }
+    const ro = new ResizeObserver(e => { const r = e[0]; if (r) setWidth(r.contentRect.width) })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return { ref, width }
 }
 
-// Stop card with quay direction hints.
-// Uses fetchStopDirections (lightweight: 20 departures, one per line+destination)
-// to get "mot Oslo S" / "mot Snarøya" labels from real departure context.
-function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: string; onClear: () => void }) {
-  const isFrom = label.toLowerCase() === 'from'
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-  const { data: hints = [] } = useQuery({
-    queryKey:  ['stop-directions', place.kind === 'stop' ? place.id : null],
-    queryFn:   () => fetchStopDirections((place as { id: string }).id),
-    enabled:   place.kind === 'stop',
-    staleTime: 10 * 60_000,
-    retry:     false,
-  })
+// Compact filled-stop display in the horizontal form bar
+function PlaceChip({ place, isFrom, onClear }: { place: TransitPlace; isFrom: boolean; onClear: () => void }) {
+  return (
+    <div className="flex items-center gap-1.5 min-h-[40px] px-2.5 py-1.5 bg-cream-50 rounded-lg border border-ink-100 min-w-0 flex-1">
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isFrom ? 'bg-red-500' : 'bg-green-500'}`} />
+      <span className="text-sm font-medium text-ink-800 truncate flex-1 leading-snug">
+        {place.name.split(',')[0]}
+      </span>
+      <button
+        onClick={onClear}
+        className="text-ink-300 hover:text-red-400 transition-colors duration-150 flex-shrink-0 min-w-[28px] min-h-[28px] flex items-center justify-center"
+        aria-label={`Clear ${isFrom ? 'from' : 'to'} stop`}
+      >✕</button>
+    </div>
+  )
+}
 
-  const directions = useMemo(() => {
-    const labels = hints.map(h => h.description ?? h.fallback).filter((d): d is string => !!d)
-    return [...new Set(labels)]
-  }, [hints])
-
+// Vertical stacked place display (for narrow layout)
+function PlaceDisplayFull({ place, label, onClear }: { place: TransitPlace; label: string; onClear: () => void }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">{label}</span>
       <div className="flex items-start gap-2 px-3 py-2.5 bg-ink-50 border border-ink-200 rounded-xl min-h-[52px]">
-        <span className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ${isFrom ? 'bg-red-500' : 'bg-green-500'}`} />
+        <span className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ${label.toLowerCase() === 'from' ? 'bg-red-500' : 'bg-green-500'}`} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-ink-900 leading-snug">{place.name}</p>
-          {directions.length > 0 && (
-            <p className="text-[10px] text-ink-400 mt-0.5">{directions.join(' · ')}</p>
-          )}
         </div>
         <button
           onClick={onClear}
@@ -127,7 +144,8 @@ function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: s
   )
 }
 
-function SavedRouteChip({ route, active, onSelect, onDelete }: {
+// Quick route chip (saved routes)
+function QuickRouteChip({ route, active, onSelect, onDelete }: {
   route: UserTransitRoute; active: boolean; onSelect: () => void; onDelete: () => void
 }) {
   return (
@@ -156,10 +174,15 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
   )
 }
 
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export function RoutesTab({ ws, now }: RoutesTabProps) {
-  const { routes, addRoute, removeRoute } = useTransitRoutes()
-  const { stops: savedStops } = useTransitStops()
-  const queryClient = useQueryClient()
+  const { routes, addRoute, removeRoute }       = useTransitRoutes()
+  const { searches, addSearch, removeSearch }   = useTransitRecentSearches()
+  const queryClient                              = useQueryClient()
+  const { ref: containerRef, width }            = useContainerWidth()
+
+  const wide = width >= 560
 
   const [draftFrom,      setDraftFrom]      = useState<TransitPlace | null>(null)
   const [draftTo,        setDraftTo]        = useState<TransitPlace | null>(null)
@@ -169,8 +192,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const [draftDate,      setDraftDate]      = useState(todayString)
   const [draftTime,      setDraftTime]      = useState(nowTimeString)
   const [draftMode,      setDraftMode]      = useState<TripMode>('departAt')
-  const [draftLine,      setDraftLine]      = useState('')
-  const [showLineFilter, setShowLineFilter] = useState(false)
+  const [showTimePanel,  setShowTimePanel]  = useState(false)
   const [formCollapsed,  setFormCollapsed]  = useState(false)
   const [search,         setSearch]         = useState<SearchParams | null>(null)
   const [lastUpdated,    setLastUpdated]    = useState<number | null>(null)
@@ -180,44 +202,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const [saveMsg,        setSaveMsg]        = useState<string | null>(null)
   const [refreshing,     setRefreshing]     = useState(false)
 
-  const favoriteStops = useMemo(() => {
-    const seen = new Set<string>()
-    const stops: { id: string; name: string }[] = []
-    for (const r of routes) {
-      if (!seen.has(r.from_stop_id)) { seen.add(r.from_stop_id); stops.push({ id: r.from_stop_id, name: r.from_stop_name }) }
-      if (!seen.has(r.to_stop_id))   { seen.add(r.to_stop_id);   stops.push({ id: r.to_stop_id,   name: r.to_stop_name   }) }
-    }
-    return stops
-  }, [routes])
-
-  function applyPreset(r: UserTransitRoute) {
-    const from: TransitPlace = { kind: 'stop', id: r.from_stop_id, name: r.from_stop_name }
-    const to:   TransitPlace = { kind: 'stop', id: r.to_stop_id,   name: r.to_stop_name   }
-    setDraftFrom(from); setDraftTo(to); setDraftWhen('now'); setSaveMsg(null); setShowSaveForm(false)
-    setSearch({ from, to, dateTime: undefined, arriveBy: false, label: 'Leave now',
-      preferredLine: draftLine.trim() || undefined, version: (search?.version ?? 0) + 1 })
-    setFormCollapsed(true)
-  }
-
   function swapStops() { setDraftFrom(draftTo); setDraftTo(draftFrom) }
-
-  async function planGpsToStop(stopId: string, stopName: string) {
-    setFromLocState('loading')
-    try {
-      const gpsPlace = await getCurrentLocation()
-      const toPlace: TransitPlace = { kind: 'stop', id: stopId, name: stopName }
-      setDraftFrom(gpsPlace); setDraftTo(toPlace); setFromLocState('granted')
-      setSearch({
-        from: gpsPlace, to: toPlace, dateTime: undefined, arriveBy: false,
-        label: 'Leave now', preferredLine: undefined,
-        version: (search?.version ?? 0) + 1,
-      })
-      setShowSaveForm(false); setSaveMsg(null); setFormCollapsed(true)
-    } catch (e) {
-      const err = e as GeolocationPositionError
-      setFromLocState(err.code === 1 ? 'denied' : 'error')
-    }
-  }
 
   async function locateFor(side: 'from' | 'to') {
     const setState = side === 'from' ? setFromLocState : setToLocState
@@ -232,6 +217,36 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     }
   }
 
+  function applyRoute(r: UserTransitRoute) {
+    const from: TransitPlace = { kind: 'stop', id: r.from_stop_id, name: r.from_stop_name }
+    const to:   TransitPlace = { kind: 'stop', id: r.to_stop_id,   name: r.to_stop_name   }
+    setDraftFrom(from); setDraftTo(to); setDraftWhen('now')
+    setSaveMsg(null); setShowSaveForm(false)
+    triggerSearch(from, to, 'now')
+  }
+
+  function applyRecent(fromId: string, fromName: string, toId: string, toName: string) {
+    const from: TransitPlace = { kind: 'stop', id: fromId, name: fromName }
+    const to:   TransitPlace = { kind: 'stop', id: toId,   name: toName   }
+    setDraftFrom(from); setDraftTo(to); setDraftWhen('now')
+    setSaveMsg(null); setShowSaveForm(false)
+    triggerSearch(from, to, 'now')
+  }
+
+  function triggerSearch(from: TransitPlace, to: TransitPlace, when: WhenPreset) {
+    let dateTime: string | undefined
+    if      (when === '+15') dateTime = offsetISO(now, 15)
+    else if (when === '+30') dateTime = offsetISO(now, 30)
+    else if (when === '+1h') dateTime = offsetISO(now, 60)
+    setSearch({
+      from, to, dateTime,
+      arriveBy: false,
+      label: planLabel(when, 'departAt', dateTime),
+      version: (search?.version ?? 0) + 1,
+    })
+    setFormCollapsed(true)
+  }
+
   function handlePlan() {
     if (!draftFrom || !draftTo) return
     let dateTime: string | undefined
@@ -240,14 +255,19 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     else if (draftWhen === '+1h')      dateTime = offsetISO(now, 60)
     else if (draftWhen === 'arriveBy') dateTime = new Date(`${todayString()}T${draftTime}`).toISOString()
     else if (draftWhen === 'custom')   dateTime = new Date(`${draftDate}T${draftTime}`).toISOString()
+
+    const arriveBy = draftWhen === 'arriveBy' || draftMode === 'arriveBy'
     setSearch({
-      from: draftFrom, to: draftTo, dateTime,
-      arriveBy: draftWhen === 'arriveBy' || draftMode === 'arriveBy',
-      label: planningLabel(draftWhen, draftMode, dateTime),
-      preferredLine: draftLine.trim() || undefined,
+      from: draftFrom, to: draftTo, dateTime, arriveBy,
+      label: planLabel(draftWhen, draftMode, dateTime),
       version: (search?.version ?? 0) + 1,
     })
     setShowSaveForm(false); setSaveMsg(null); setFormCollapsed(true)
+    setShowTimePanel(false)
+    // Save to recent searches when both are NSR stops
+    if (draftFrom.kind === 'stop' && draftTo.kind === 'stop') {
+      addSearch(draftFrom.id, draftFrom.name, draftTo.id, draftTo.name)
+    }
   }
 
   const fromKey = search?.from.kind === 'stop' ? search.from.id
@@ -267,7 +287,6 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     staleTime: Infinity, refetchInterval: false, enabled: !ws.collapsed && !!search,
   })
 
-  // Refresh: re-fetches without changing stops or time preferences
   const handleRefresh = useCallback(async () => {
     if (!search || refreshing) return
     setRefreshing(true)
@@ -285,29 +304,18 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     }
   }, [search, refreshing, queryClient, tripQueryKey, refetch])
 
-  const { filteredData, lineFilterActive, lineMatchCount } = useMemo(() => {
-    if (!data) return { filteredData: undefined, lineFilterActive: false, lineMatchCount: 0 }
-    const pref = search?.preferredLine?.trim().toLowerCase()
-    if (!pref) return { filteredData: data, lineFilterActive: false, lineMatchCount: 0 }
-    const matched = data.filter(trip =>
-      trip.legs.some(leg => leg.line?.toLowerCase() === pref || leg.line?.toLowerCase().includes(pref))
-    )
-    return { filteredData: matched.length > 0 ? matched : data, lineFilterActive: true, lineMatchCount: matched.length }
-  }, [data, search?.preferredLine])
-
-  const canSave = !!(search?.from.kind === 'stop' && search.to.kind === 'stop')
+  const canPlan     = !!(draftFrom && draftTo)
+  const canSave     = !!(search?.from.kind === 'stop' && search.to.kind === 'stop')
   const alreadySaved = canSave && routes.some(
     r => r.from_stop_id === (search!.from as { id: string }).id && r.to_stop_id === (search!.to as { id: string }).id
   )
-  // Can save directly from draft (before planning) when both stops are NSR stops
-  const draftCanSave = !formCollapsed && !!(draftFrom?.kind === 'stop' && draftTo?.kind === 'stop')
+  const draftCanSave = !!(draftFrom?.kind === 'stop' && draftTo?.kind === 'stop')
   const draftAlreadySaved = draftCanSave && routes.some(
     r => r.from_stop_id === (draftFrom as { id: string }).id && r.to_stop_id === (draftTo as { id: string }).id
   )
 
   async function handleSaveRoute() {
     if (!saveLabel.trim()) return
-    // Use search state if available, fall back to draft state (before planning)
     const from = search?.from.kind === 'stop' ? search.from : draftFrom
     const to   = search?.to.kind   === 'stop' ? search.to   : draftTo
     if (!from || !to || from.kind !== 'stop' || to.kind !== 'stop') return
@@ -321,58 +329,20 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     } finally { setSaving(false) }
   }
 
-  const canPlan = !!(draftFrom && draftTo)
+  const activeRouteId = useMemo(() => {
+    if (!draftFrom || !draftTo) return null
+    const r = routes.find(
+      r => r.from_stop_id === (draftFrom as { id?: string }).id &&
+           r.to_stop_id   === (draftTo   as { id?: string }).id
+    )
+    return r?.id ?? null
+  }, [routes, draftFrom, draftTo])
 
-  return (
-    <div className="space-y-4">
-
-      {/* Saved routes */}
-      {routes.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-2">Saved routes</p>
-          <div className="flex flex-wrap gap-2">
-            {routes.map(r => {
-              const active = draftFrom?.kind === 'stop' && draftFrom.id === r.from_stop_id &&
-                             draftTo?.kind   === 'stop' && draftTo.id   === r.to_stop_id
-              return (
-                <SavedRouteChip key={r.id} route={r} active={active}
-                  onSelect={() => applyPreset(r)} onDelete={() => removeRoute(r.id)} />
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* GPS → saved stop quick chips */}
-      {savedStops.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-2">Quick route from here</p>
-          <div className="flex flex-wrap gap-2">
-            {savedStops.map(s => (
-              <button
-                key={s.id}
-                onClick={() => planGpsToStop(s.stop_id, s.label ?? s.stop_name)}
-                className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-ink-200 text-ink-700 hover:border-accent-300 transition-colors duration-150 min-h-[44px]"
-              >
-                <span>📍</span>
-                <span>→</span>
-                <span>{s.label ?? s.stop_name.split(',')[0]}</span>
-              </button>
-            ))}
-          </div>
-          {fromLocState === 'denied' && (
-            <p className="text-[11px] text-red-500 mt-1">Location permission denied</p>
-          )}
-          {fromLocState === 'loading' && (
-            <p className="text-[11px] text-ink-400 mt-1">Getting location…</p>
-          )}
-        </div>
-      )}
-
-      {/* Planner form — collapses to a summary bar after planning */}
-      {formCollapsed && search ? (
+  // ── Collapsed summary bar ────────────────────────────────────────────────────
+  if (formCollapsed && search) {
+    return (
+      <div ref={containerRef} className="space-y-4">
         <div className="flex items-center gap-2 px-3 py-3 bg-accent-50 border border-accent-200 rounded-xl">
-          {/* Route summary with colored origin/dest dots */}
           <div className="flex-1 min-w-0 space-y-0.5">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
@@ -384,37 +354,248 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             </div>
             <p className="text-[10px] text-accent-600 pl-3.5">{search.label}</p>
           </div>
-          {/* Refresh button — solid accent, always visible */}
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            title="Refresh routes"
-            aria-label="Refresh routes"
-            className={`flex items-center justify-center rounded-lg bg-accent-500 text-white transition-colors duration-150 flex-shrink-0 min-h-[44px] min-w-[44px] ${
-              refreshing ? 'opacity-70 cursor-not-allowed' : 'hover:bg-accent-600'
-            }`}
-          >
-            <span className={`text-base leading-none select-none ${refreshing ? 'animate-spin' : ''}`}>↻</span>
-          </button>
-          <button
-            onClick={() => setFormCollapsed(false)}
-            className="text-xs font-medium text-accent-600 hover:text-accent-800 transition-colors duration-150 flex-shrink-0 min-h-[44px] px-2 flex items-center"
-          >Edit</button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {lastUpdated && (
+              <span className="text-[10px] text-ink-400">{fmtLastUpdated(lastUpdated)}</span>
+            )}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Refresh routes"
+              className={`flex items-center justify-center rounded-lg bg-accent-500 text-white transition-colors duration-150 flex-shrink-0 min-h-[44px] min-w-[44px] ${
+                refreshing ? 'opacity-70 cursor-not-allowed' : 'hover:bg-accent-600'
+              }`}
+            >
+              <span className={`text-base leading-none select-none ${refreshing ? 'animate-spin' : ''}`}>↻</span>
+            </button>
+            <button
+              onClick={() => setFormCollapsed(false)}
+              className="text-xs font-medium text-accent-600 hover:text-accent-800 transition-colors duration-150 flex-shrink-0 min-h-[44px] px-2 flex items-center"
+            >Edit</button>
+          </div>
+        </div>
+
+        {/* Route results */}
+        {isLoading && <div className="text-sm text-ink-400 py-2">Loading trips…</div>}
+        {error && (
+          <div className="text-xs text-red-500 py-1">
+            {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `⚠ ${(error as Error).message}`}
+          </div>
+        )}
+
+        {data && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              {canSave && !alreadySaved && !showSaveForm && (
+                <button
+                  onClick={() => { setSaveLabel(`${search.from.name.split(',')[0]} → ${search.to.name.split(',')[0]}`); setShowSaveForm(true) }}
+                  className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center"
+                >
+                  + Save this route
+                </button>
+              )}
+            </div>
+            {canSave && !alreadySaved && showSaveForm && (
+              <div className="flex items-center gap-2">
+                <input value={saveLabel} onChange={e => setSaveLabel(e.target.value)}
+                  placeholder="Name this route…" autoFocus onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]" />
+                <button onClick={handleSaveRoute} disabled={!saveLabel.trim() || saving}
+                  className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]">
+                  {saving ? '…' : 'Save'}
+                </button>
+                <button onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
+                  className="text-ink-400 hover:text-ink-600 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
+              </div>
+            )}
+            {saveMsg && <p className={`text-xs ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>{saveMsg}</p>}
+            {data.length === 0
+              ? <p className="text-sm text-ink-400">No trips found</p>
+              : data.map((trip, i) => <TripCard key={i} trip={trip} now={now} isBest={i === 0} />)
+            }
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Planner form ─────────────────────────────────────────────────────────────
+  return (
+    <div ref={containerRef} className="space-y-3">
+
+      {/* Quick routes (saved) */}
+      {routes.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-2">Quick routes</p>
+          <div className="flex flex-wrap gap-2">
+            {routes.map(r => (
+              <QuickRouteChip
+                key={r.id}
+                route={r}
+                active={activeRouteId === r.id}
+                onSelect={() => applyRoute(r)}
+                onDelete={() => removeRoute(r.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent searches */}
+      {searches.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Recent</p>
+          <div className="space-y-0">
+            {searches.map(s => (
+              <div key={s.id} className="group flex items-center gap-2 min-h-[40px]">
+                <button
+                  onClick={() => applyRecent(s.from_stop_id, s.from_stop_name, s.to_stop_id, s.to_stop_name)}
+                  className="flex-1 flex items-center gap-2 py-1.5 text-left hover:text-accent-600 transition-colors duration-150 min-h-[40px]"
+                >
+                  <span className="text-ink-300 text-xs flex-shrink-0">↗</span>
+                  <span className="text-xs text-ink-700 truncate">
+                    {s.from_stop_name.split(',')[0]} → {s.to_stop_name.split(',')[0]}
+                  </span>
+                </button>
+                <button
+                  onClick={() => removeSearch(s.id)}
+                  className="text-ink-200 hover:text-red-400 transition-colors duration-150 opacity-0 group-hover:opacity-100 min-w-[28px] min-h-[28px] flex items-center justify-center flex-shrink-0"
+                  aria-label="Remove"
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── FROM / TO form ── */}
+      {wide ? (
+        /* Wide: horizontal bar */
+        <div className="rounded-xl border border-ink-200 bg-white overflow-hidden">
+          <div className="flex items-stretch gap-0 divide-x divide-ink-100">
+            {/* Fra */}
+            <div className="flex-1 min-w-0 px-3 py-2.5 flex flex-col gap-1">
+              <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Fra</span>
+              {draftFrom ? (
+                <PlaceChip place={draftFrom} isFrom onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <StopSearchInput
+                    placeholder="Stop or address…"
+                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }}
+                  />
+                  {fromLocState === 'loading' ? (
+                    <span className="text-[10px] text-ink-400">Locating…</span>
+                  ) : fromLocState === 'denied' ? (
+                    <span className="text-[10px] text-red-500">Location denied</span>
+                  ) : (
+                    <button onClick={() => locateFor('from')}
+                      className="text-[10px] text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[28px] flex items-center gap-1">
+                      📍 Current location
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Swap */}
+            <div className="flex items-center px-2">
+              <button
+                onClick={swapStops}
+                title="Swap"
+                className="text-ink-300 hover:text-accent-500 transition-colors duration-150 min-w-[36px] min-h-[44px] flex items-center justify-center text-lg"
+              >⇅</button>
+            </div>
+
+            {/* Til */}
+            <div className="flex-1 min-w-0 px-3 py-2.5 flex flex-col gap-1">
+              <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Til</span>
+              {draftTo ? (
+                <PlaceChip place={draftTo} isFrom={false} onClear={() => { setDraftTo(null); setToLocState('idle') }} />
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <StopSearchInput
+                    placeholder="Stop or address…"
+                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }}
+                  />
+                  {toLocState === 'loading' ? (
+                    <span className="text-[10px] text-ink-400">Locating…</span>
+                  ) : toLocState === 'denied' ? (
+                    <span className="text-[10px] text-red-500">Location denied</span>
+                  ) : (
+                    <button onClick={() => locateFor('to')}
+                      className="text-[10px] text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[28px] flex items-center gap-1">
+                      📍 Current location
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Time + Plan row */}
+          <div className="flex items-center gap-2 px-3 py-2.5 border-t border-ink-100 bg-ink-50/50">
+            <div className="flex gap-1.5">
+              {(['now', '+15', '+30'] as WhenPreset[]).map(p => (
+                <button
+                  key={p}
+                  onClick={() => { setDraftWhen(p); setShowTimePanel(false) }}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+                    draftWhen === p && !showTimePanel
+                      ? 'bg-accent-500 text-white border-accent-500'
+                      : 'text-ink-600 border-ink-200 hover:border-accent-300 bg-white'
+                  }`}
+                >
+                  {p === 'now' ? 'Nå' : p}
+                </button>
+              ))}
+              <button
+                onClick={() => setShowTimePanel(v => !v)}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+                  showTimePanel
+                    ? 'bg-ink-800 text-white border-ink-800'
+                    : 'text-ink-600 border-ink-200 hover:border-ink-400 bg-white'
+                }`}
+              >⋯</button>
+            </div>
+            <div className="flex-1" />
+            {/* Save (quick access) */}
+            {draftCanSave && !draftAlreadySaved && !showSaveForm && (
+              <button
+                onClick={() => {
+                  setSaveLabel(`${draftFrom!.name.split(',')[0]} → ${draftTo!.name.split(',')[0]}`)
+                  setShowSaveForm(true)
+                }}
+                className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[36px] flex items-center px-1"
+              >
+                + Save
+              </button>
+            )}
+            <button
+              onClick={handlePlan}
+              disabled={!canPlan}
+              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors duration-150 min-h-[40px] ${
+                canPlan
+                  ? 'bg-ink-900 text-white hover:bg-ink-700'
+                  : 'bg-ink-100 text-ink-400 cursor-not-allowed'
+              }`}
+            >
+              Planlegg
+            </button>
+          </div>
         </div>
       ) : (
+        /* Narrow: stacked layout */
         <div className="space-y-3">
-
-          {/* FROM + TO — grouped in a single card with a swap divider */}
           <div className="rounded-xl border border-ink-200 bg-white overflow-hidden divide-y divide-ink-100">
-
-            {/* FROM field */}
+            {/* FROM */}
             <div className="px-3 pt-3 pb-3">
               {draftFrom ? (
-                <PlaceDisplay place={draftFrom} label="From" onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
+                <PlaceDisplayFull place={draftFrom} label="From" onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
               ) : (
                 <div className="space-y-1.5">
                   <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">From</span>
-                  <StopSearchInput placeholder="Stop or address…" favorites={favoriteStops}
+                  <StopSearchInput placeholder="Stop or address…"
                     onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }} />
                   {fromLocState === 'loading' ? (
                     <span className="text-[11px] text-ink-400 py-1 block">Locating…</span>
@@ -429,8 +610,6 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                 </div>
               )}
             </div>
-
-            {/* Swap divider — only when both stops are set */}
             {draftFrom && draftTo && (
               <div className="flex items-center px-3 bg-ink-50">
                 <div className="flex-1 border-t border-ink-100" />
@@ -441,15 +620,14 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                 <div className="flex-1 border-t border-ink-100" />
               </div>
             )}
-
-            {/* TO field */}
+            {/* TO */}
             <div className="px-3 pt-3 pb-3">
               {draftTo ? (
-                <PlaceDisplay place={draftTo} label="To" onClear={() => { setDraftTo(null); setToLocState('idle') }} />
+                <PlaceDisplayFull place={draftTo} label="To" onClear={() => { setDraftTo(null); setToLocState('idle') }} />
               ) : (
                 <div className="space-y-1.5">
                   <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">To</span>
-                  <StopSearchInput placeholder="Stop or address…" favorites={favoriteStops}
+                  <StopSearchInput placeholder="Stop or address…"
                     onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }} />
                   {toLocState === 'loading' ? (
                     <span className="text-[11px] text-ink-400 py-1 block">Locating…</span>
@@ -467,168 +645,100 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
           </div>
 
           {/* When chips */}
-          <div>
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {(['now', '+15', '+30', '+1h', 'arriveBy', 'custom'] as WhenPreset[]).map(p => (
-                <button key={p} onClick={() => setDraftWhen(p)}
-                  className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[40px] ${
-                    draftWhen === p
-                      ? 'bg-accent-500 text-white border-accent-500'
-                      : 'text-ink-600 border-ink-200 hover:border-accent-300'
-                  }`}>
-                  {p === 'now' ? 'Now' : p === 'arriveBy' ? 'Arrive by…' : p === 'custom' ? 'Custom…' : p}
-                </button>
-              ))}
-            </div>
-
-            {draftWhen === 'arriveBy' && (
-              <div className="space-y-1">
-                <select value={draftTime} onChange={e => setDraftTime(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]">
-                  {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <p className="text-[10px] text-ink-400">Arrive by this time today</p>
-              </div>
-            )}
-
-            {draftWhen === 'custom' && (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  {(['departAt', 'arriveBy'] as TripMode[]).map(m => (
-                    <button key={m} onClick={() => setDraftMode(m)}
-                      className={`flex-1 text-xs py-2 rounded-lg border transition-colors duration-150 min-h-[40px] ${
-                        draftMode === m ? 'bg-ink-700 text-white border-ink-700' : 'text-ink-500 border-ink-200 hover:border-ink-400'
-                      }`}>
-                      {m === 'departAt' ? 'Leave at' : 'Arrive by'}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <DateInput value={draftDate} onChange={setDraftDate} min={todayString()}
-                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]" />
-                  <select value={draftTime} onChange={e => setDraftTime(e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]">
-                    {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-              </div>
-            )}
+          <div className="flex flex-wrap gap-1.5">
+            {(['now', '+15', '+30', '+1h', 'arriveBy', 'custom'] as WhenPreset[]).map(p => (
+              <button key={p} onClick={() => setDraftWhen(p)}
+                className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[40px] ${
+                  draftWhen === p
+                    ? 'bg-accent-500 text-white border-accent-500'
+                    : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                }`}>
+                {p === 'now' ? 'Now' : p === 'arriveBy' ? 'Arrive by…' : p === 'custom' ? 'Custom…' : p}
+              </button>
+            ))}
           </div>
 
-          {/* Plan button */}
           <button onClick={handlePlan} disabled={!canPlan}
             className={`w-full py-3 rounded-xl text-sm font-semibold transition-colors duration-150 min-h-[48px] ${
-              canPlan
-                ? 'bg-accent-500 text-white hover:bg-accent-600'
-                : 'bg-ink-100 text-ink-400 cursor-not-allowed'
+              canPlan ? 'bg-ink-900 text-white hover:bg-ink-700' : 'bg-ink-100 text-ink-400 cursor-not-allowed'
             }`}>
-            Plan route
+            Planlegg
           </button>
 
-          {/* Save as favorite — available as soon as both stops are NSR stops */}
           {draftCanSave && !draftAlreadySaved && !showSaveForm && (
             <button
               onClick={() => {
-                setSaveLabel(suggestLabel(draftFrom!, draftTo!))
+                setSaveLabel(`${draftFrom!.name.split(',')[0]} → ${draftTo!.name.split(',')[0]}`)
                 setShowSaveForm(true)
               }}
               className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center"
             >
-              💾 Save as favorite route
+              💾 Save as quick route
             </button>
           )}
-          {draftCanSave && !draftAlreadySaved && showSaveForm && (
+        </div>
+      )}
+
+      {/* Time panel (shared for both layouts) */}
+      {showTimePanel && wide && (
+        <div className="rounded-xl border border-ink-200 bg-white p-3 space-y-3">
+          <div className="flex flex-wrap gap-1.5">
+            {(['now', '+15', '+30', '+1h', 'arriveBy', 'custom'] as WhenPreset[]).map(p => (
+              <button key={p} onClick={() => { setDraftWhen(p); if (p !== 'arriveBy' && p !== 'custom') setShowTimePanel(false) }}
+                className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[36px] ${
+                  draftWhen === p ? 'bg-accent-500 text-white border-accent-500' : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                }`}>
+                {p === 'now' ? 'Now' : p === 'arriveBy' ? 'Arrive by…' : p === 'custom' ? 'Custom…' : p}
+              </button>
+            ))}
+          </div>
+          {draftWhen === 'arriveBy' && (
+            <select value={draftTime} onChange={e => setDraftTime(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]">
+              {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
+          {draftWhen === 'custom' && (
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Name this route</p>
-              <div className="flex items-center gap-2">
-                <input
-                  value={saveLabel} onChange={e => setSaveLabel(e.target.value)}
-                  placeholder="e.g. İşten eve" autoFocus
-                  onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
-                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
-                />
-                <button onClick={handleSaveRoute} disabled={!saveLabel.trim() || saving}
-                  className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]">
-                  {saving ? '…' : 'Save'}
-                </button>
-                <button onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
-                  className="text-ink-400 hover:text-ink-600 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
+              <div className="flex gap-2">
+                {(['departAt', 'arriveBy'] as TripMode[]).map(m => (
+                  <button key={m} onClick={() => setDraftMode(m)}
+                    className={`flex-1 text-xs py-2 rounded-lg border transition-colors duration-150 min-h-[40px] ${
+                      draftMode === m ? 'bg-ink-700 text-white border-ink-700' : 'text-ink-500 border-ink-200 hover:border-ink-400'
+                    }`}>
+                    {m === 'departAt' ? 'Leave at' : 'Arrive by'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <DateInput value={draftDate} onChange={setDraftDate} min={todayString()}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]" />
+                <select value={draftTime} onChange={e => setDraftTime(e.target.value)}
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]">
+                  {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
             </div>
           )}
-          {saveMsg && !showSaveForm && (
-            <p className={`text-xs ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>{saveMsg}</p>
-          )}
-
-          {/* Line filter — hidden by default */}
-          <div>
-            {!showLineFilter ? (
-              <button onClick={() => setShowLineFilter(true)}
-                className="text-[11px] text-ink-400 hover:text-ink-600 transition-colors duration-150 min-h-[44px] flex items-center">
-                + Filter by line number
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <input value={draftLine} onChange={e => setDraftLine(e.target.value)}
-                  placeholder="e.g. 68, 31E" autoFocus
-                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px] placeholder:text-ink-300" />
-                <button onClick={() => { setDraftLine(''); setShowLineFilter(false) }}
-                  className="text-ink-300 hover:text-ink-600 transition-colors duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
-      {/* Results */}
-      {isLoading && <div className="text-sm text-ink-400 py-2">Loading trips…</div>}
-
-      {error && (
-        <div className="text-xs text-red-500 py-1">
-          {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `⚠ ${(error as Error).message}`}
+      {/* Save form */}
+      {showSaveForm && (
+        <div className="flex items-center gap-2">
+          <input value={saveLabel} onChange={e => setSaveLabel(e.target.value)}
+            placeholder="Name this route…" autoFocus onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
+            className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]" />
+          <button onClick={handleSaveRoute} disabled={!saveLabel.trim() || saving}
+            className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]">
+            {saving ? '…' : 'Save'}
+          </button>
+          <button onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
+            className="text-ink-400 hover:text-ink-600 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
         </div>
       )}
-
-      {filteredData && search && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] text-ink-400">{lastUpdated ? `Updated ${fmtLastUpdated(lastUpdated)}` : ''}</span>
-            {canSave && !alreadySaved && !showSaveForm && (
-              <button onClick={() => { setSaveLabel(suggestLabel(search.from, search.to)); setShowSaveForm(true) }}
-                className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center">
-                + Save this route
-              </button>
-            )}
-          </div>
-
-          {lineFilterActive && (
-            <div className="text-[11px] px-3 py-2 rounded-lg bg-accent-50 border border-accent-100 text-accent-700">
-              {lineMatchCount > 0
-                ? `Showing ${lineMatchCount} trip${lineMatchCount !== 1 ? 's' : ''} using line ${search.preferredLine}`
-                : `No trips found with line ${search.preferredLine} — showing all`}
-            </div>
-          )}
-
-          {canSave && !alreadySaved && showSaveForm && (
-            <div className="flex items-center gap-2">
-              <input value={saveLabel} onChange={e => setSaveLabel(e.target.value)}
-                placeholder="Name this route…" autoFocus onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]" />
-              <button onClick={handleSaveRoute} disabled={!saveLabel.trim() || saving}
-                className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]">
-                {saving ? '…' : 'Save'}
-              </button>
-              <button onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
-                className="text-ink-400 hover:text-ink-600 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
-            </div>
-          )}
-          {saveMsg && <p className={`text-xs ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>{saveMsg}</p>}
-
-          {filteredData.length === 0
-            ? <p className="text-sm text-ink-400">No trips found</p>
-            : filteredData.map((trip, i) => <TripCard key={i} trip={trip} now={now} isBest={i === 0} />)
-          }
-        </div>
+      {saveMsg && !showSaveForm && (
+        <p className={`text-xs ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>{saveMsg}</p>
       )}
     </div>
   )
