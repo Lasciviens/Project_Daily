@@ -17,9 +17,9 @@
 //   OpenStreetMap:  'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 //   OpenTopoMap:    'https://tile.opentopomap.org/{z}/{x}/{y}.png'
 export const TILE_URL =
-  'https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png'
+  'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 
-export const TILE_ATTRIBUTION = '© <a href="https://kartverket.no">Kartverket</a>'
+export const TILE_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
 // ─── Map Defaults ─────────────────────────────────────────────────────────────
 // Oslo S as fallback when no stop is selected / GPS unavailable
@@ -34,8 +34,8 @@ export const WIDGET_ZOOM    = 15   // zoom for the small in-widget map
 // Docs: https://developer.entur.org/pages-real-time-vehicle/
 export const VEHICLES_REST_URL = 'https://api.entur.io/realtime/v2/vehicles/graphql'
 
-// ET-Client-Name must identify the app — same value used elsewhere in the codebase
-export const ET_CLIENT_NAME = 'personal-lascisboard'
+// ET-Client-Name must match the value used in ruterApi.ts
+export const ET_CLIENT_NAME = 'lasciviens-project-daily'
 
 // ─── Ruter (Oslo) ─────────────────────────────────────────────────────────────
 // Ruter's operator codespace in the EnTur system.

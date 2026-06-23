@@ -52,6 +52,7 @@ export interface TripLeg {
   arrivalTime?:     string          // expected arrival at toPlace ISO
   lineColour?:      string          // hex without #, from line.presentation.colour
   lineTextColour?:  string          // hex without #, from line.presentation.textColour
+  legGeometry?:     { points: string; length: number }  // encoded polyline from pointsOnLink
 }
 
 export interface TripPattern {
@@ -321,7 +322,7 @@ export async function fetchTrips(
     ) {
       tripPatterns {
         duration
-        walkDistance
+        streetDistance
         expectedStartTime
         expectedEndTime
         legs {
@@ -347,6 +348,7 @@ export async function fetchTrips(
             quay { publicCode name }
             expectedArrivalTime
           }
+          pointsOnLink { points length }
         }
       }
     }
@@ -354,7 +356,7 @@ export async function fetchTrips(
     trip: {
       tripPatterns: {
         duration:          number | null
-        walkDistance:      number | null
+        streetDistance:    number | null
         expectedStartTime: string
         expectedEndTime:   string
         legs: {
@@ -375,6 +377,7 @@ export async function fetchTrips(
             quay?: { publicCode?: string; name?: string } | null
             expectedArrivalTime: string
           } | null
+          pointsOnLink?: { points: string; length: number } | null
         }[]
       }[]
     }
@@ -384,7 +387,7 @@ export async function fetchTrips(
     .filter(p => p.expectedStartTime && p.legs?.length)
     .map(p => ({
     duration:     p.duration     ?? 0,
-    walkDistance: p.walkDistance ?? 0,
+    walkDistance: p.streetDistance ?? 0,
     departure:    p.expectedStartTime,
     arrival:      p.expectedEndTime,
     // Skip any leg missing required fields so one bad leg doesn't crash the card
@@ -413,6 +416,9 @@ export async function fetchTrips(
       }
       if (l.toEstimatedCall) {
         leg.arrivalTime = l.toEstimatedCall.expectedArrivalTime
+      }
+      if (l.pointsOnLink?.points) {
+        leg.legGeometry = { points: l.pointsOnLink.points, length: l.pointsOnLink.length ?? 0 }
       }
       return leg
     }),

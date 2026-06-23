@@ -1,18 +1,19 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchDepartures, type Departure, type StopResult } from '../../api/ruterApi'
+import { fetchDepartures, fetchStopDirections, type Departure, type StopResult, type QuayDirectionHint } from '../../api/ruterApi'
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
-import { TransitMapPanel } from './map'
 import { minsUntil, fmtTime, fmtLastUpdated, lineStyle } from './transitUtils'
 import { toast } from '../../../../app/store'
+import type { StopPin } from './map'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DeparturesTabProps {
-  ws:  WidgetStateResult
-  now: number
+  ws:              WidgetStateResult
+  now:             number
+  onMapPinChange?: (pin: StopPin | null) => void
 }
 
 const MODE_FALLBACK_BG: Record<string, string> = {
@@ -85,7 +86,7 @@ function DepartureRow({ group, now }: { group: LineGroup; now: number }) {
         <div className="text-sm font-medium text-ink-900 truncate leading-snug">{group.destination}</div>
         {nextTimes.length > 0 && (
           <div className="text-[10px] text-ink-400 truncate leading-tight mt-0.5">
-            Neste {nextTimes.join(', ')}
+            Next: {nextTimes.join(', ')}
           </div>
         )}
       </div>
@@ -97,7 +98,7 @@ function DepartureRow({ group, now }: { group: LineGroup; now: number }) {
         <span className={`text-sm font-bold tabular-nums ${
           isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : delayed ? 'text-orange-500' : 'text-ink-900'
         }`}>
-          {isNow ? 'Nå' : `${mins} min`}
+          {isNow ? 'Now' : `${mins} min`}
         </span>
         {group.realtime
           ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
@@ -108,18 +109,118 @@ function DepartureRow({ group, now }: { group: LineGroup; now: number }) {
   )
 }
 
+// ─── QuaySavePanel ────────────────────────────────────────────────────────────
+
+interface QuaySavePanelProps {
+  stopId:   string
+  stopName: string
+  onSave:   (quayId: string | null, quayDescription: string | null, label: string) => Promise<void>
+  onCancel: () => void
+}
+
+function QuaySavePanel({ stopId, stopName, onSave, onCancel }: QuaySavePanelProps) {
+  const [quays, setQuays]           = useState<QuayDirectionHint[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [selectedQuay, setSelected] = useState<QuayDirectionHint | 'all' | null>(null)
+  const [label, setLabel]           = useState(stopName)
+  const [saving, setSaving]         = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchStopDirections(stopId)
+      .then(data => { if (!cancelled) { setQuays(data); setLoading(false) } })
+      .catch(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [stopId])
+
+  async function handleSave() {
+    if (!selectedQuay) return
+    setSaving(true)
+    const quayId   = selectedQuay === 'all' ? null : selectedQuay.quayId
+    const quayDesc = selectedQuay === 'all' ? null : (selectedQuay.description ?? selectedQuay.fallback ?? (selectedQuay.publicCode ? `Platform ${selectedQuay.publicCode}` : null))
+    await onSave(quayId, quayDesc, label)
+    setSaving(false)
+  }
+
+  return (
+    <div className="mt-2 p-3 rounded-xl border border-ink-200 bg-cream-50 space-y-3">
+      <p className="text-[11px] font-semibold text-ink-600 uppercase tracking-wide">Choose direction to save</p>
+
+      {loading && <p className="text-xs text-ink-400">Loading quays…</p>}
+
+      {!loading && (
+        <div className="flex flex-col gap-1.5">
+          <button
+            onClick={() => setSelected('all')}
+            className={`text-left text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+              selectedQuay === 'all'
+                ? 'bg-accent-500 text-white border-accent-500'
+                : 'text-ink-700 border-ink-200 hover:border-accent-300 bg-white'
+            }`}
+          >
+            All quays
+          </button>
+          {quays.map(q => {
+            const label2 = q.description ?? q.fallback ?? (q.publicCode ? `Platform ${q.publicCode}` : q.quayId)
+            const hint   = q.lines.length > 0 ? q.lines.slice(0, 4).join(', ') : null
+            return (
+              <button
+                key={q.quayId}
+                onClick={() => setSelected(q)}
+                className={`text-left text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+                  selectedQuay !== 'all' && (selectedQuay as QuayDirectionHint)?.quayId === q.quayId
+                    ? 'bg-accent-500 text-white border-accent-500'
+                    : 'text-ink-700 border-ink-200 hover:border-accent-300 bg-white'
+                }`}
+              >
+                <span className="font-medium">{label2}</span>
+                {hint && <span className="ml-1.5 opacity-70">{hint}</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      <div>
+        <label className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide block mb-1">Label</label>
+        <input
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          className="w-full px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+        />
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={handleSave}
+          disabled={!selectedQuay || saving}
+          className="flex-1 text-sm font-medium px-3 py-2 rounded-lg bg-accent-500 text-white min-h-[44px] disabled:opacity-50 hover:bg-accent-600 transition-colors duration-150"
+        >
+          {saving ? 'Saving…' : 'Save stop'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="text-sm px-3 py-2 rounded-lg border border-ink-200 text-ink-600 min-h-[44px] hover:border-ink-400 transition-colors duration-150"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function DeparturesTab({ ws, now }: DeparturesTabProps) {
+export function DeparturesTab({ ws, now, onMapPinChange }: DeparturesTabProps) {
   const { stops, addStop } = useTransitStops()
   const queryClient = useQueryClient()
 
   const defaultStop = stops.find(s => s.is_default) ?? stops[0] ?? null
-  const [activeId,    setActiveId]    = useState<string | null>(null)
-  const [adHocStop,   setAdHocStop]   = useState<StopResult | null>(null)
-  const [saveMsg,     setSaveMsg]     = useState<string | null>(null)
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
-  const [refreshing,  setRefreshing]  = useState(false)
+  const [activeId,       setActiveId]       = useState<string | null>(null)
+  const [adHocStop,      setAdHocStop]      = useState<StopResult | null>(null)
+  const [showSavePanel,  setShowSavePanel]  = useState(false)
+  const [lastUpdated,    setLastUpdated]    = useState<number | null>(null)
+  const [refreshing,     setRefreshing]     = useState(false)
 
   const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
   const queryStop   = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
@@ -136,7 +237,6 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
     enabled:         !ws.collapsed && !!queryStop?.id,
   })
 
-  // Group by quay, then within each quay group by line+destination
   const quayGroups = useMemo(() => {
     if (!data?.departures) return []
     const rawMap = new Map<string, { code?: string; description?: string; deps: Departure[] }>()
@@ -153,6 +253,17 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       lineGroups: buildLineGroups(deps),
     }))
   }, [data])
+
+  // Build a StopPin for the map — needs lat/lon which only adHocStop carries
+  const mapPin = adHocStop?.lat !== undefined && adHocStop?.lon !== undefined
+    ? { id: adHocStop.id, name: adHocStop.name, lat: adHocStop.lat, lon: adHocStop.lon }
+    : null
+
+  // Notify parent when mapPin changes so it can render map full-width
+  useEffect(() => {
+    onMapPinChange?.(mapPin)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapPin?.id])
 
   const departuresQueryKey = ['departures', queryStop?.id ?? '']
 
@@ -176,35 +287,30 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   function handleSearchSelect(stop: StopResult) {
     setAdHocStop(stop)
     setActiveId(null)
-    setSaveMsg(null)
+    setShowSavePanel(false)
   }
 
   function handleSavedStopClick(id: string) {
     setActiveId(id)
     setAdHocStop(null)
-    setSaveMsg(null)
+    setShowSavePanel(false)
   }
 
-  async function handleSaveFavorite() {
+  async function handleSaveFromPanel(quayId: string | null, quayDescription: string | null, label: string) {
     if (!adHocStop) return
+    const tid = toast.loading('Saving stop…')
     try {
-      await addStop(adHocStop)
-      setSaveMsg('Saved ✓')
-      setTimeout(() => setSaveMsg(null), 2500)
+      await addStop(adHocStop, quayId ?? undefined, quayDescription ?? undefined, label !== adHocStop.name ? label : undefined)
+      toast.dismiss(tid)
+      toast.success('Stop saved ✓')
+      setShowSavePanel(false)
     } catch (e) {
-      setSaveMsg(`Failed: ${(e as Error).message}`)
+      toast.dismiss(tid)
+      toast.error((e as Error).message ?? 'Failed to save')
     }
   }
 
   const alreadySaved = adHocStop ? stops.some(s => s.stop_id === adHocStop.id) : false
-
-  // Build a StopPin for the map — needs lat/lon which only adHocStop carries.
-  // Saved stops don't store coords in the DB; we only get them after a search.
-  // So the map is available when the user searches a stop (adHocStop),
-  // but not when they click a pre-saved chip (no coords stored).
-  const mapPin = adHocStop?.lat !== undefined && adHocStop?.lon !== undefined
-    ? { id: adHocStop.id, name: adHocStop.name, lat: adHocStop.lat, lon: adHocStop.lon }
-    : null
 
   return (
     <div>
@@ -217,13 +323,16 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
               <button
                 key={s.id}
                 onClick={() => handleSavedStopClick(s.id)}
-                className={`whitespace-nowrap text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+                className={`flex-shrink-0 text-left text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
                   !adHocStop && activeSaved?.id === s.id
                     ? 'bg-accent-500 text-white border-accent-500'
                     : 'text-ink-600 border-ink-200 hover:border-accent-300'
                 }`}
               >
-                {s.label ?? s.stop_name}
+                <span className="block whitespace-nowrap">{s.label ?? s.stop_name}</span>
+                {s.quay_description && (
+                  <span className="block whitespace-nowrap text-[10px] opacity-70">{s.quay_description}</span>
+                )}
               </button>
             ))}
           </div>
@@ -233,28 +342,23 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       {/* ── Search stop — always visible ── */}
       <div className="mb-3">
         <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Search stop</p>
-        <StopSearchInput placeholder="Search any stop…" onSelect={handleSearchSelect} />
+        <StopSearchInput placeholder="Search any stop…" onSelect={handleSearchSelect} stopsOnly={true} />
       </div>
 
       {/* ── Active stop header + refresh ── */}
       {queryStop && (
-        <div className="flex items-center justify-between mb-3 gap-2">
+        <div className="flex items-center justify-between mb-2 gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <span className="text-[11px] text-ink-500 font-medium truncate">
               📍 {data?.stopName ?? queryStop.name}
             </span>
-            {adHocStop && !alreadySaved && (
+            {adHocStop && !alreadySaved && !showSavePanel && (
               <button
-                onClick={handleSaveFavorite}
+                onClick={() => setShowSavePanel(true)}
                 className="text-[10px] text-accent-500 hover:text-accent-700 transition-colors duration-150 flex-shrink-0 min-h-[44px] flex items-center px-1"
               >
                 + Save
               </button>
-            )}
-            {saveMsg && (
-              <span className={`text-[10px] flex-shrink-0 ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>
-                {saveMsg}
-              </span>
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -274,6 +378,16 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
             </button>
           </div>
         </div>
+      )}
+
+      {/* ── Quay save panel ── */}
+      {showSavePanel && adHocStop && (
+        <QuaySavePanel
+          stopId={adHocStop.id}
+          stopName={adHocStop.name}
+          onSave={handleSaveFromPanel}
+          onCancel={() => setShowSavePanel(false)}
+        />
       )}
 
       {/* ── Empty / loading / error ── */}
@@ -317,9 +431,6 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       {data && quayGroups.length === 0 && (
         <div className="text-ink-400 text-sm py-2">No departures found</div>
       )}
-
-      {/* ── Live map — only visible when a searched stop has coordinates ── */}
-      <TransitMapPanel stop={mapPin} />
     </div>
   )
 }
