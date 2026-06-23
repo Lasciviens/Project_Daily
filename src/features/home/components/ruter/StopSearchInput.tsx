@@ -16,11 +16,12 @@ interface StopSearchInputProps {
   onSelect:     (stop: StopResult) => void
   autoFocus?:   boolean
   favorites?:   FavoriteStop[]
+  stopsOnly?:   boolean
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function StopSearchInput({ placeholder = 'Search stop or address…', onSelect, autoFocus, favorites }: StopSearchInputProps) {
+export function StopSearchInput({ placeholder = 'Search stop or address…', onSelect, autoFocus, favorites, stopsOnly }: StopSearchInputProps) {
   const [q, setQ]                 = useState('')
   const [debounced, setDebounced] = useState('')
 
@@ -40,6 +41,9 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
 
   const hasFavorites   = (favorites?.length ?? 0) > 0
   const showFavorites  = debounced.length < 2 && hasFavorites
+  const filteredResults = stopsOnly
+    ? results?.filter(r => r.layer !== 'address' && r.layer !== 'street')
+    : results
 
   // Combobox manages open/close state; removes click-outside listener boilerplate
   return (
@@ -96,7 +100,7 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
                 </ComboboxOption>
               ))}
               <div className="px-3 py-2 border-t border-ink-100 text-[10px] text-ink-400">
-                Type to search stops or addresses…
+                {stopsOnly ? 'Type to search stops…' : 'Type to search stops or addresses…'}
               </div>
             </>
           )}
@@ -112,10 +116,10 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
                   {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `Error: ${(error as Error).message}`}
                 </div>
               )}
-              {!isLoading && !error && results && results.length === 0 && (
+              {!isLoading && !error && filteredResults && filteredResults.length === 0 && (
                 <div className="px-3 py-2.5 text-ink-400 text-xs">No results for "{debounced}"</div>
               )}
-              {!isLoading && results && results.length > 0 && results.slice(0, 7).map((r, i) => {
+              {!isLoading && filteredResults && filteredResults.length > 0 && filteredResults.slice(0, 7).map((r, i) => {
                 const isAddress = r.layer === 'address' || r.layer === 'street'
                 return (
                   <ComboboxOption

@@ -7,4 +7,6 @@
 
 export { TransitMap }       from './TransitMap'
 export { TransitMapPanel }  from './TransitMapPanel'
+export { RouteMap }         from './RouteMap'
+export { RouteMapPanel }    from './RouteMapPanel'
 export type { StopPin, VehiclePosition } from './types'

@@ -5,13 +5,15 @@ import type { StopResult } from '../api/ruterApi'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface UserTransitStop {
-  id:            string
-  stop_id:       string        // NSR:StopPlace:...
-  stop_name:     string
-  stop_locality: string | null
-  label:         string | null
-  is_default:    boolean
-  sort_order:    number
+  id:               string
+  stop_id:          string        // NSR:StopPlace:...
+  stop_name:        string
+  stop_locality:    string | null
+  label:            string | null
+  is_default:       boolean
+  sort_order:       number
+  quay_id?:         string | null
+  quay_description?: string | null
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -19,7 +21,7 @@ export interface UserTransitStop {
 export function useTransitStops(): {
   stops:      UserTransitStop[]
   isLoading:  boolean
-  addStop:    (stop: StopResult, label?: string) => Promise<void>
+  addStop:    (stop: StopResult, quayId?: string, quayDescription?: string, label?: string) => Promise<void>
   removeStop: (id: string) => Promise<void>
   setDefault: (id: string) => Promise<void>
 } {
@@ -37,19 +39,21 @@ export function useTransitStops(): {
     },
   })
 
-  async function addStop(stop: StopResult, label?: string): Promise<void> {
+  async function addStop(stop: StopResult, quayId?: string, quayDescription?: string, label?: string): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
 
     const isFirst = stops.length === 0
     const { error } = await supabase.from('user_transit_stops').insert({
-      user_id:       user.id,
-      stop_id:       stop.id,
-      stop_name:     stop.name,
-      stop_locality: stop.locality ?? null,
-      label:         label ?? null,
-      is_default:    isFirst,
-      sort_order:    stops.length,
+      user_id:          user.id,
+      stop_id:          stop.id,
+      stop_name:        stop.name,
+      stop_locality:    stop.locality ?? null,
+      label:            label ?? null,
+      is_default:       isFirst,
+      sort_order:       stops.length,
+      quay_id:          quayId ?? null,
+      quay_description: quayDescription ?? null,
     })
     if (error) {
       console.error('[useTransitStops] addStop failed:', error.message)

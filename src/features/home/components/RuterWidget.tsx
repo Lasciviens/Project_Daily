@@ -4,6 +4,8 @@ import { WidgetShell } from './WidgetShell'
 import { DeparturesTab } from './ruter/DeparturesTab'
 import { RoutesTab } from './ruter/RoutesTab'
 import { SettingsTab } from './ruter/SettingsTab'
+import { TransitMapPanel } from './ruter/map'
+import type { StopPin } from './ruter/map'
 
 type Tab        = 'departures' | 'routes' | 'settings'
 type LayoutMode = 'compact' | 'medium' | 'wide'
@@ -60,6 +62,7 @@ function Panel({ children }: { children: React.ReactNode }) {
 
 export function RuterWidget() {
   const [tab, setTab] = useState<Tab>('departures')
+  const [transitMapPin, setTransitMapPin] = useState<StopPin | null>(null)
   const ws  = useWidgetState('ruter', { collapsed: true, intervalMs: 60_000 })
   const now = useNow()
 
@@ -121,16 +124,24 @@ export function RuterWidget() {
           <div className="w-full">
             {/* 40/60 split: departures left, routes right — no max-width cap */}
             <div className="grid grid-cols-[minmax(260px,2fr)_minmax(320px,3fr)] gap-3">
-              <Panel><DeparturesTab ws={ws} now={now} /></Panel>
+              <Panel><DeparturesTab ws={ws} now={now} onMapPinChange={setTransitMapPin} /></Panel>
               <Panel><RoutesTab ws={ws} now={now} /></Panel>
             </div>
+            {transitMapPin && (
+              <div className="mt-3">
+                <TransitMapPanel stop={transitMapPin} />
+              </div>
+            )}
           </div>
         )}
 
         {!isSettings && !showSideBySide && (
           <div className={layout === 'medium' ? 'mx-auto w-full max-w-[760px]' : 'w-full'}>
-            {tab === 'departures' && <DeparturesTab ws={ws} now={now} />}
+            {tab === 'departures' && <DeparturesTab ws={ws} now={now} onMapPinChange={setTransitMapPin} />}
             {tab === 'routes'     && <RoutesTab ws={ws} now={now} />}
+            {tab === 'departures' && transitMapPin && (
+              <TransitMapPanel stop={transitMapPin} />
+            )}
           </div>
         )}
       </div>
