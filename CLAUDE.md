@@ -63,8 +63,8 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 |---|---|---|
 | Auth | ✅ | LoginPage |
 | Daily + To-Do | ✅ | DayView, DayTimeline, WeekWidget, MonthWidget, AddTimeBlockModal, ToDoDrawer |
-| Media | ✅ | TMDB, Movies + TV, PlanThisButton, TonightPicker, ReleaseCalendar |
-| Work | ✅ | Task board |
+| Media | ✅ | See Media section below |
+| Work | ✅ | Vertical kanban (Overdue/To-do/In Progress/Waiting/Done), Developer tab inside Work, drag-and-drop, HeroTaskWidget (2 focus cards), WorkDayTimeline (work tasks only) |
 | AI | ✅ | Gemini 2.5 Flash via Edge Function, create_task function calling |
 | Calendar | ✅ | Google OAuth, read + write events, sync/refresh button in DayTimeline header |
 | Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
@@ -73,13 +73,29 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 | Home | ✅ | WidgetShell, Weather, Ruter transit, Currency, News, Recent Media, Games, Training |
 | Football | ⚠️ | Page + UI built. API-Football free tier only goes to 2024 — data doesn't load. Plan: pull fixtures from Google Calendar instead. |
 
+### Media Feature Detail
+Full-width layout (no max-width constraint). Key components:
+- `MediaSearch` — movie/TV radio toggle, genre/year/rating filters, TMDB `/discover` or `/search`
+- `CompactLibraryStrip` — 4-col poster grid above Discovery; groups: Upcoming/Wishlist/Watching/Paused/Completed; collapse toggle
+- `DiscoveryTabs` — Today/This Week/Popular/Upcoming/Norway tabs; manual sync only (24h stale)
+- `EpisodesPanel` — season selector, per-episode watched checkbox (saves `watched_on` date), plan checkbox for adding to today's schedule as time blocks, Select All season
+- `MediaDetailBody` — personal 1-10 rating, status buttons (save on click), upcoming auto-suggest for future releases
+- `TonightPicker` — random movie/series from My List / Trending / Popular
+- `ReleaseCalendar` — upcoming releases from wishlist
+- `MediaStats` — library stats
+- `MediaBackdrop` — rotating backdrop images (fixed, low opacity crossfade)
+
+DB tables: `movies`, `user_movie_entries` (statuses: watching/wishlist/completed/dropped/upcoming), `tv_series`, `user_tv_entries` (statuses: watching/wishlist/completed/dropped/paused), `watched_episodes` (season, episode, watched_on date)
+Both movie and TV entries have: `rating int (1-10)`, `genres jsonb`, `personal_note`, `priority`
+TMDB images: `posterUrl(path, size)` from `src/integrations/tmdb/client.ts`
+
 **Not done yet:**
 - Football data source (Calendar integration planned)
 - Command Bar (Cmd+K)
 - Activity Log / stats widget
-- Routes widget (Home): visual improvement pass
-- Routes widget (Home): refresh button — re-fetch only the currently cached from/to values instantly
-- Dark Mode: full dark/light toggle; apply `dark` class on `<html>`, define dark variants for cream/ink/accent tokens
+- Routes widget (Home): visual improvement pass + refresh button
+- Dark Mode: full dark/light toggle; apply `dark` class on `<html>`, define dark variants
+- AI update: `ai-proxy` system prompt needs updating to include Media features (episodes, rating, genres, upcoming)
 
 ---
 

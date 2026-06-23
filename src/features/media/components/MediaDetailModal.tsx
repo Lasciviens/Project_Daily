@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 import { useMovieFull, useTVFull } from '../hooks/useTMDB'
 import { MediaDetailBody } from './MediaDetailBody'
 import { posterUrl } from '../../../integrations/tmdb/client'
@@ -47,77 +47,64 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
     ? `https://image.tmdb.org/t/p/w780${detail.backdrop_path}`
     : null
 
-  useEffect(() => {
-    function handler(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
-
-  if (tmdbId === null) return null
-
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto py-4 px-2 sm:py-8 sm:px-4"
-      onClick={onClose}
-    >
-      <div
-        className="max-w-3xl w-full rounded-2xl overflow-hidden bg-white max-h-[92vh] sm:max-h-[88vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Backdrop header */}
-        <div className="relative h-36 sm:h-48 flex-shrink-0 bg-ink-200">
-          {backdrop && (
-            <img
-              src={backdrop}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 w-11 h-11 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors duration-150 text-sm"
-            aria-label="Close"
-          >
-            ×
-          </button>
-          <div className="absolute bottom-0 left-0 p-4">
-            <div className="flex items-end gap-3">
-              {detail && (
-                <img
-                  src={posterUrl(detail.poster_path, 'w92')}
-                  alt={title}
-                  className="w-10 rounded-md flex-shrink-0"
-                />
-              )}
-              <div>
-                {title && <h2 className="text-white font-semibold text-lg leading-tight">{title}</h2>}
-                <div className="flex items-center gap-2 text-white/70 text-xs">
-                  {year && <span>{year}</span>}
-                  {detail?.vote_average ? <span>★ {detail.vote_average.toFixed(1)}</span> : null}
+    <Dialog open={tmdbId !== null} onClose={onClose} className="relative z-[60]">
+      <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
+      <div className="fixed inset-0 flex items-start justify-center overflow-y-auto py-4 px-2 sm:py-8 sm:px-4">
+        <DialogPanel transition className="max-w-3xl w-full rounded-2xl overflow-hidden bg-white max-h-[92vh] sm:max-h-[88vh] flex flex-col transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+          {/* Backdrop header */}
+          <div className="relative h-36 sm:h-48 flex-shrink-0 bg-ink-200">
+            {backdrop && (
+              <img
+                src={backdrop}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+            <button
+              onClick={onClose}
+              className="absolute top-3 right-3 w-11 h-11 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors duration-150 text-sm"
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <div className="absolute bottom-0 left-0 p-4">
+              <div className="flex items-end gap-3">
+                {detail && (
+                  <img
+                    src={posterUrl(detail.poster_path, 'w92')}
+                    alt={title}
+                    className="w-10 rounded-md flex-shrink-0"
+                  />
+                )}
+                <div>
+                  {title && <h2 className="text-white font-semibold text-lg leading-tight">{title}</h2>}
+                  <div className="flex items-center gap-2 text-white/70 text-xs">
+                    {year && <span>{year}</span>}
+                    {detail?.vote_average ? <span>★ {detail.vote_average.toFixed(1)}</span> : null}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Body */}
-        <div className="overflow-y-auto flex-1">
-          {loading || !detail ? (
-            <Skeleton />
-          ) : (
-            <MediaDetailBody
-              detail={detail}
-              mediaType={mediaType}
-              userEntry={userEntry}
-              onAdded={onAdded}
-              onOpenDetail={onOpenDetail}
-            />
-          )}
-        </div>
+          {/* Body */}
+          <div className="overflow-y-auto flex-1">
+            {loading || !detail ? (
+              <Skeleton />
+            ) : (
+              <MediaDetailBody
+                detail={detail}
+                mediaType={mediaType}
+                userEntry={userEntry}
+                onAdded={onAdded}
+                onOpenDetail={onOpenDetail}
+              />
+            )}
+          </div>
+        </DialogPanel>
       </div>
-    </div>
+    </Dialog>
   )
 }

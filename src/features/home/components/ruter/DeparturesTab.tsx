@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { fetchDepartures, TRANSPORT_ICON, TRANSPORT_COLOR, type Departure, type StopResult } from '../../api/ruterApi'
+import { useState, useMemo, useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchDepartures, type Departure, type StopResult } from '../../api/ruterApi'
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
-import { minsUntil, fmtTime, fmtLastUpdated } from './transitUtils'
+import { minsUntil, fmtTime, fmtLastUpdated, lineStyle } from './transitUtils'
+import { toast } from '../../../../app/store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,41 +16,45 @@ interface DeparturesTabProps {
 
 // ─── DepartureRow ─────────────────────────────────────────────────────────────
 
+const MODE_FALLBACK_BG: Record<string, string> = {
+  bus:   '#E8112D',
+  tram:  '#E8112D',
+  metro: '#E8112D',
+  rail:  '#4A4A4A',
+  ferry: '#0066CC',
+}
+
 function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
-  const mins       = minsUntil(dep.expected, now)
-  const isNow      = mins <= 0
-  const delayed    = Math.abs(new Date(dep.expected).getTime() - new Date(dep.aimed).getTime()) > 60_000
-  const colorClass = TRANSPORT_COLOR[dep.transport] ?? 'bg-ink-100 text-ink-700'
+  const mins     = minsUntil(dep.expected, now)
+  const isNow    = mins <= 0
+  const delayed  = Math.abs(new Date(dep.expected).getTime() - new Date(dep.aimed).getTime()) > 60_000
+  const style    = lineStyle(dep.lineColour, dep.lineTextColour)
+  const fallback = { backgroundColor: MODE_FALLBACK_BG[dep.transport] ?? '#555', color: '#fff' }
 
   return (
-    <div className="flex items-start gap-2 py-1.5 min-h-[44px]">
-      <span className="text-base w-5 text-center flex-shrink-0 mt-0.5">
-        {TRANSPORT_ICON[dep.transport] ?? '🚐'}
-      </span>
-      <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 self-start mt-0.5 ${colorClass}`}>
+    <div className="flex items-center gap-2.5 py-2.5 min-h-[44px]">
+      <span
+        className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 min-w-[2.25rem] text-center leading-tight"
+        style={style ?? fallback}
+      >
         {dep.line}
       </span>
+
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-ink-700 truncate">{dep.destination}</div>
-        {(dep.quayCode || dep.quayDescription) && (
-          <div className="text-[10px] text-ink-400 mt-0.5">
-            {dep.quayCode && `Platform ${dep.quayCode}`}
-            {dep.quayCode && dep.quayDescription && ' · '}
-            {dep.quayDescription}
-          </div>
-        )}
+        <div className="text-sm font-medium text-ink-900 truncate leading-snug">{dep.destination}</div>
       </div>
+
       <div className="text-right flex-shrink-0 flex items-center gap-1.5">
         {delayed && (
-          <span className="text-[10px] text-ink-300 line-through">{fmtTime(dep.aimed)}</span>
+          <span className="text-[10px] text-ink-300 line-through tabular-nums">{fmtTime(dep.aimed)}</span>
         )}
-        <span className={`text-sm font-medium ${
-          isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : delayed ? 'text-orange-500' : 'text-ink-700'
+        <span className={`text-sm font-bold tabular-nums ${
+          isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : delayed ? 'text-orange-500' : 'text-ink-900'
         }`}>
           {isNow ? 'Now' : `${mins} min`}
         </span>
         {dep.realtime
-          ? <span className="w-2 h-2 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
+          ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
           : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Scheduled">~</span>
         }
       </div>
@@ -61,12 +66,14 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
 
 export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   const { stops, addStop } = useTransitStops()
+  const queryClient = useQueryClient()
 
   const defaultStop = stops.find(s => s.is_default) ?? stops[0] ?? null
-  const [activeId, setActiveId]         = useState<string | null>(null)
-  const [adHocStop, setAdHocStop]       = useState<StopResult | null>(null)
-  const [saveMsg, setSaveMsg]           = useState<string | null>(null)
-  const [lastUpdated, setLastUpdated]   = useState<number | null>(null)
+  const [activeId,     setActiveId]     = useState<string | null>(null)
+  const [adHocStop,    setAdHocStop]    = useState<StopResult | null>(null)
+  const [saveMsg,      setSaveMsg]      = useState<string | null>(null)
+  const [lastUpdated,  setLastUpdated]  = useState<number | null>(null)
+  const [refreshing,   setRefreshing]   = useState(false)
 
   const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
   const queryStop   = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
@@ -95,6 +102,25 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
     }
     return Array.from(map.values())
   }, [data])
+
+  const departuresQueryKey = ['departures', queryStop?.id ?? '']
+
+  const handleRefresh = useCallback(async () => {
+    if (!queryStop || refreshing) return
+    setRefreshing(true)
+    const tid = toast.loading('Refreshing departures…')
+    try {
+      await queryClient.invalidateQueries({ queryKey: departuresQueryKey })
+      await refetch()
+      toast.dismiss(tid)
+      toast.success('Departures updated ✓')
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error((err as Error).message ?? 'Failed to refresh')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [queryStop, refreshing, queryClient, departuresQueryKey, refetch])
 
   function handleSearchSelect(stop: StopResult) {
     setAdHocStop(stop)
@@ -155,7 +181,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
 
       {/* ── Active stop header + refresh ── */}
       {queryStop && (
-        <div className="flex items-center justify-between mb-2 gap-2">
+        <div className="flex items-center justify-between mb-3 gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <span className="text-[11px] text-ink-500 font-medium truncate">
               📍 {data?.stopName ?? queryStop.name}
@@ -174,15 +200,20 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {lastUpdated && (
               <span className="text-[10px] text-ink-400">{fmtLastUpdated(lastUpdated)}</span>
             )}
             <button
-              onClick={() => { refetch(); ws.markSynced() }}
-              className="text-[10px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] min-w-[44px] flex items-center justify-end"
+              onClick={() => { handleRefresh(); ws.markSynced() }}
+              disabled={refreshing}
+              title="Refresh departures"
+              aria-label="Refresh departures"
+              className={`flex items-center justify-center rounded-lg bg-accent-500 text-white transition-colors duration-150 flex-shrink-0 min-h-[44px] min-w-[44px] ${
+                refreshing ? 'opacity-70 cursor-not-allowed' : 'hover:bg-accent-600'
+              }`}
             >
-              ↻
+              <span className={`text-base leading-none select-none ${refreshing ? 'animate-spin' : ''}`}>↻</span>
             </button>
           </div>
         </div>
@@ -202,7 +233,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
         </div>
       )}
 
-      {/* ── Departures grouped by quay ── */}
+      {/* ── Departures grouped by quay — 2-column layout ── */}
       {data && quayGroups.length > 0 && (
         <div className={quayGroups.length >= 2 ? 'grid grid-cols-2 gap-x-3' : ''}>
           {quayGroups.map((group, i) => (

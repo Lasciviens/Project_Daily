@@ -19,6 +19,7 @@ const STATUS_LABELS: Record<UserMovieEntry['status'], string> = {
   wishlist:  'Wishlist',
   completed: 'Completed',
   dropped:   'Dropped',
+  upcoming:  'Upcoming',
 }
 
 function formatReleaseDate(date: string | null): string {

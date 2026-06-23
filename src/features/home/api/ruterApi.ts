@@ -29,6 +29,8 @@ export interface Departure {
   quayCode?:        string
   quayName?:        string
   quayDescription?: string          // e.g. "mot Oslo"
+  lineColour?:      string          // hex without #, from line.presentation.colour
+  lineTextColour?:  string          // hex without #, from line.presentation.textColour
 }
 
 export interface TripLeg {
@@ -48,6 +50,8 @@ export interface TripLeg {
   quayName?:        string
   quayDescription?: string
   arrivalTime?:     string          // expected arrival at toPlace ISO
+  lineColour?:      string          // hex without #, from line.presentation.colour
+  lineTextColour?:  string          // hex without #, from line.presentation.textColour
 }
 
 export interface TripPattern {
@@ -241,7 +245,11 @@ export async function fetchDepartures(
         destinationDisplay { frontText }
         quay { publicCode name description }
         serviceJourney {
-          line { publicCode transportMode }
+          line {
+            publicCode
+            transportMode
+            presentation { colour textColour }
+          }
         }
       }
     }
@@ -254,7 +262,13 @@ export async function fetchDepartures(
         expectedDepartureTime: string
         destinationDisplay:    { frontText: string }
         quay?: { publicCode?: string; name?: string; description?: string }
-        serviceJourney:        { line: { publicCode: string; transportMode: string } }
+        serviceJourney:        {
+          line: {
+            publicCode: string
+            transportMode: string
+            presentation?: { colour?: string; textColour?: string } | null
+          }
+        }
       }[]
     } | null
   }
@@ -274,6 +288,8 @@ export async function fetchDepartures(
       quayCode:         c.quay?.publicCode,
       quayName:         c.quay?.name,
       quayDescription:  c.quay?.description,
+      lineColour:       c.serviceJourney.line.presentation?.colour,
+      lineTextColour:   c.serviceJourney.line.presentation?.textColour,
     }))
 
   return { stopName: data.stopPlace.name, departures }
@@ -318,6 +334,7 @@ export async function fetchTrips(
             publicCode
             name
             transportMode
+            presentation { colour textColour }
           }
           fromEstimatedCall {
             quay { publicCode name description }
@@ -346,7 +363,7 @@ export async function fetchTrips(
           distance: number | null
           fromPlace: { name: string }
           toPlace:   { name: string }
-          line?: { publicCode: string; name: string; transportMode: string } | null
+          line?: { publicCode: string; name: string; transportMode: string; presentation?: { colour?: string; textColour?: string } | null } | null
           fromEstimatedCall?: {
             quay?: { publicCode?: string; name?: string; description?: string } | null
             aimedDepartureTime:    string
@@ -380,8 +397,10 @@ export async function fetchTrips(
         to:       l.toPlace.name,
       }
       if (l.line) {
-        leg.line        = l.line.publicCode
-        leg.lineName    = l.line.name
+        leg.line          = l.line.publicCode
+        leg.lineName      = l.line.name
+        leg.lineColour    = l.line.presentation?.colour
+        leg.lineTextColour = l.line.presentation?.textColour
       }
       if (l.fromEstimatedCall) {
         leg.destination      = l.fromEstimatedCall.destinationDisplay.frontText

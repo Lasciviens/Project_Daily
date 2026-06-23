@@ -2,6 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { format } from 'date-fns'
 import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
 import { AIPanel } from '../features/ai/components/AIPanel'
+import { CommandBar } from '../shared/components/CommandBar'
 import { SettingsMenu } from '../shared/components/SettingsMenu'
 import { Toaster } from '../shared/components/Toaster'
 import { useUIStore } from './store'
@@ -15,13 +16,14 @@ export function Layout() {
       </main>
       <ToDoDrawer />
       <AIPanel />
+      <CommandBar />
       <Toaster />
     </div>
   )
 }
 
 function Nav() {
-  const { isToDoOpen, toggleToDo, isAIOpen, toggleAI } = useUIStore()
+  const { isToDoOpen, toggleToDo, isAIOpen, toggleAI, openCommandBar } = useUIStore()
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-2.5 min-h-[44px] inline-flex items-center text-sm font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
@@ -59,6 +61,15 @@ function Nav() {
           <span className="text-xs text-ink-400 hidden md:block mr-2">
             {format(new Date(), 'EEEE, MMM d')}
           </span>
+
+          {/* ⌘K command bar trigger */}
+          <button
+            onClick={openCommandBar}
+            className="min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100 transition-colors duration-150 hidden md:flex items-center gap-1.5 border border-ink-200"
+          >
+            <span>Search</span>
+            <kbd className="text-[10px] bg-ink-100 px-1 py-0.5 rounded">⌘K</kbd>
+          </button>
 
           <button
             onClick={toggleAI}

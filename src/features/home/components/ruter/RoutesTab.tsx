@@ -91,6 +91,8 @@ function suggestLabel(from: TransitPlace, to: TransitPlace): string {
 // Uses fetchStopDirections (lightweight: 20 departures, one per line+destination)
 // to get "mot Oslo S" / "mot Snarøya" labels from real departure context.
 function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: string; onClear: () => void }) {
+  const isFrom = label.toLowerCase() === 'from'
+
   const { data: hints = [] } = useQuery({
     queryKey:  ['stop-directions', place.kind === 'stop' ? place.id : null],
     queryFn:   () => fetchStopDirections((place as { id: string }).id),
@@ -108,7 +110,7 @@ function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: s
     <div className="flex flex-col gap-1">
       <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">{label}</span>
       <div className="flex items-start gap-2 px-3 py-2.5 bg-ink-50 border border-ink-200 rounded-xl min-h-[52px]">
-        <span className="text-lg flex-shrink-0 mt-0.5">{place.kind === 'coords' ? '📍' : '🚏'}</span>
+        <span className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ${isFrom ? 'bg-red-500' : 'bg-green-500'}`} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-ink-900 leading-snug">{place.name}</p>
           {directions.length > 0 && (
@@ -370,12 +372,17 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
       {/* Planner form — collapses to a summary bar after planning */}
       {formCollapsed && search ? (
         <div className="flex items-center gap-2 px-3 py-3 bg-accent-50 border border-accent-200 rounded-xl">
-          {/* Route summary */}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-ink-900 truncate">
-              {search.from.name.split(',')[0]} → {search.to.name.split(',')[0]}
-            </p>
-            <p className="text-[11px] text-accent-600 mt-0.5">{search.label}</p>
+          {/* Route summary with colored origin/dest dots */}
+          <div className="flex-1 min-w-0 space-y-0.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+              <p className="text-xs font-medium text-ink-700 truncate">{search.from.name.split(',')[0]}</p>
+            </div>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+              <p className="text-xs font-medium text-ink-700 truncate">{search.to.name.split(',')[0]}</p>
+            </div>
+            <p className="text-[10px] text-accent-600 pl-3.5">{search.label}</p>
           </div>
           {/* Refresh button — solid accent, always visible */}
           <button

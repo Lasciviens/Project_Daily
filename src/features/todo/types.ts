@@ -16,6 +16,7 @@ export interface Task {
   due_date:                 string | null
   due_time:                 string | null
   waiting_for:              string | null
+  is_focused:               boolean
   source_type:              TaskSourceType
   source_id:                string | null
   sort_order:               number
@@ -44,6 +45,7 @@ export interface UpdateTaskInput {
   priority?:                 TaskPriority
   due_date?:                 string | null
   waiting_for?:              string | null
+  is_focused?:               boolean
   google_task_id?:           string | null
   google_calendar_event_id?: string | null
 }

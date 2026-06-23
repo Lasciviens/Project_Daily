@@ -48,3 +48,44 @@ export const getSimilarMovies = (tmdbId: number) =>
 
 export const getSimilarTV = (tmdbId: number) =>
   tmdbFetch<PagedResponse<TMDBSearchTV>>(`/tv/${tmdbId}/similar`)
+
+export const getNorwegianMovies = () =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/discover/movie', {
+    with_origin_country: 'NO',
+    sort_by: 'popularity.desc',
+  })
+
+export const getNorwegianTV = () =>
+  tmdbFetch<PagedResponse<TMDBSearchTV>>('/discover/tv', {
+    with_origin_country: 'NO',
+    sort_by: 'popularity.desc',
+  })
+
+export const getNorwegianTopRatedMovies = () =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/discover/movie', {
+    with_origin_country: 'NO',
+    sort_by: 'vote_average.desc',
+    'vote_count.gte': '50',
+  })
+
+export const getNorwegianTopRatedTV = () =>
+  tmdbFetch<PagedResponse<TMDBSearchTV>>('/discover/tv', {
+    with_origin_country: 'NO',
+    sort_by: 'vote_average.desc',
+    'vote_count.gte': '20',
+  })
+
+export const getSeasonDetails = (tvId: number, season: number) =>
+  tmdbFetch<import('../types').TMDBSeasonDetail>(`/tv/${tvId}/season/${season}`)
+
+export const getMovieGenres = () =>
+  tmdbFetch<{ genres: { id: number; name: string }[] }>('/genre/movie/list')
+
+export const getTVGenres = () =>
+  tmdbFetch<{ genres: { id: number; name: string }[] }>('/genre/tv/list')
+
+export const discoverMovies = (params: Record<string, string>) =>
+  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/discover/movie', params)
+
+export const discoverTV = (params: Record<string, string>) =>
+  tmdbFetch<PagedResponse<TMDBSearchTV>>('/discover/tv', params)

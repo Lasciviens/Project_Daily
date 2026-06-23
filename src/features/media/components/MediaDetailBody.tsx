@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { toast } from '../../../app/store'
 import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { PlanThisButton } from './PlanThisButton'
 import { SimilarRow } from './SimilarRow'
+import { EpisodesPanel } from './EpisodesPanel'
 import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
 import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import type {
@@ -21,6 +23,7 @@ interface Props {
 
 const MOVIE_STATUSES: { value: MediaStatus; label: string }[] = [
   { value: 'wishlist',  label: 'Wishlist' },
+  { value: 'upcoming',  label: 'Upcoming' },
   { value: 'watching',  label: 'Watching' },
   { value: 'completed', label: 'Completed' },
 ]
@@ -84,12 +87,13 @@ function ProviderLogo({ provider }: { provider: TMDBWatchProvider }) {
 }
 
 export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenDetail }: Props) {
-  const [selectedStatus, setSelectedStatus] = useState<MediaStatus>('wishlist')
-  const [showTrailer,    setShowTrailer]    = useState(false)
-
   const isMovie = mediaType === 'movie'
   const movie   = isMovie ? (detail as TMDBMovieFull) : null
   const tv      = !isMovie ? (detail as TMDBTVFull) : null
+
+  const isFutureMovie = isMovie && !!movie?.release_date && new Date(movie.release_date) > new Date()
+  const [selectedStatus, setSelectedStatus] = useState<MediaStatus>(isFutureMovie ? 'upcoming' : 'wishlist')
+  const [showTrailer,    setShowTrailer]    = useState(false)
 
   const cast          = detail.credits?.cast?.slice(0, 10) ?? []
   const allProviders  = detail['watch/providers']?.results ?? {}
@@ -119,31 +123,83 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
   const movieEntry = isMovie && isOwned  ? (userEntry as UserMovieEntry) : null
 
   async function handleAdd() {
-    if (isMovie) {
-      await addMovie.mutateAsync({ tmdb: movie! as TMDBMovieFull, status: selectedStatus as UserMovieEntry['status'] })
-    } else {
-      await addTV.mutateAsync({ tmdb: tv! as TMDBTVFull, status: selectedStatus as UserTVEntry['status'] })
+    const tid = toast.loading('Adding to library…')
+    try {
+      if (isMovie) {
+        await addMovie.mutateAsync({ tmdb: movie! as TMDBMovieFull, status: selectedStatus as UserMovieEntry['status'] })
+      } else {
+        await addTV.mutateAsync({ tmdb: tv! as TMDBTVFull, status: selectedStatus as UserTVEntry['status'] })
+      }
+      toast.dismiss(tid); toast.success('Added to library ✓')
+      onAdded?.()
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to add')
     }
-    onAdded?.()
   }
 
   async function handleRemove() {
     if (!entryId) return
-    if (isMovie) await removeMovie.mutateAsync(entryId)
-    else         await removeTV.mutateAsync(entryId)
-    onAdded?.()
+    const tid = toast.loading('Removing…')
+    try {
+      if (isMovie) await removeMovie.mutateAsync(entryId)
+      else         await removeTV.mutateAsync(entryId)
+      toast.dismiss(tid); toast.success('Removed from library')
+      onAdded?.()
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to remove')
+    }
   }
 
-  function handleNextEpisode() {
+  async function handleStatusChange(newStatus: MediaStatus) {
+    const tid = toast.loading('Updating status…')
+    try {
+      if (isMovie && movieEntry) {
+        await updateMovie.mutateAsync({ id: movieEntry.id, patch: { status: newStatus as UserMovieEntry['status'] } })
+      } else if (tvEntry) {
+        await updateTV.mutateAsync({ id: tvEntry.id, patch: { status: newStatus as UserTVEntry['status'] } })
+      }
+      toast.dismiss(tid); toast.success('Status updated ✓')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    }
+  }
+
+  async function handleNextEpisode() {
     if (!tvEntry) return
     const maxEp = (tv?.number_of_episodes ?? 999)
     const ep    = tvEntry.current_episode + 1
-    updateTV.mutate({ id: tvEntry.id, patch: { current_episode: ep > maxEp ? 0 : ep } })
+    const tid   = toast.loading('Updating episode…')
+    try {
+      await updateTV.mutateAsync({ id: tvEntry.id, patch: { current_episode: ep > maxEp ? 0 : ep } })
+      toast.dismiss(tid); toast.success(`S${tvEntry.current_season} E${ep} ✓`)
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    }
   }
 
-  function handleMarkWatched() {
+  async function handleMarkWatched() {
     if (!movieEntry) return
-    updateMovie.mutate({ id: movieEntry.id, patch: { status: 'completed', watched_at: new Date().toISOString() } })
+    const tid = toast.loading('Marking watched…')
+    try {
+      await updateMovie.mutateAsync({ id: movieEntry.id, patch: { status: 'completed', watched_at: new Date().toISOString() } })
+      toast.dismiss(tid); toast.success('Marked as watched ✓')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    }
+  }
+
+  async function handleRatingChange(value: number) {
+    const tid = toast.loading('Saving rating…')
+    try {
+      if (isMovie && movieEntry) {
+        await updateMovie.mutateAsync({ id: movieEntry.id, patch: { rating: value } })
+      } else if (tvEntry) {
+        await updateTV.mutateAsync({ id: tvEntry.id, patch: { rating: value } })
+      }
+      toast.dismiss(tid); toast.success('Rating saved ✓')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    }
   }
 
   return (
@@ -285,15 +341,61 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
           />
         </div>
 
+        {/* Episodes — TV in library only */}
+        {!isMovie && tvEntry && tv && (tv.seasons?.length ?? 0) > 0 && (
+          <div className="mb-4">
+            <EpisodesPanel tv={tv} tvEntryId={tvEntry.id} />
+          </div>
+        )}
+
         <div className="pt-3 border-t border-ink-100 space-y-3">
           {isOwned && entryId ? (
             <>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-accent-600 bg-accent-50 px-2.5 py-1 rounded-full capitalize">
-                  {userEntry!.status}
-                </span>
+              {/* Personal rating */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">★ Your rating</p>
+                <div className="flex flex-wrap gap-1">
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map(v => {
+                    const currentRating = (movieEntry ?? tvEntry)?.rating
+                    const isActive = currentRating === v
+                    return (
+                      <button
+                        key={v}
+                        onClick={() => handleRatingChange(v)}
+                        disabled={updateMovie.isPending || updateTV.isPending}
+                        className={[
+                          'min-h-[44px] w-8 text-xs rounded transition-colors',
+                          isActive
+                            ? 'bg-accent-500 text-white'
+                            : 'bg-cream-100 text-ink-500 hover:bg-cream-200',
+                        ].join(' ')}
+                      >
+                        {v}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Clickable status buttons for owned items */}
+              <div className="flex flex-wrap gap-1.5">
+                {statuses.map(s => (
+                  <button
+                    key={s.value}
+                    onClick={() => handleStatusChange(s.value)}
+                    disabled={updateMovie.isPending || updateTV.isPending}
+                    className={[
+                      'text-xs px-3 min-h-[36px] rounded-full border transition-colors',
+                      userEntry!.status === s.value
+                        ? 'bg-accent-500 border-accent-500 text-white'
+                        : 'border-ink-200 text-ink-600 hover:border-accent-400',
+                    ].join(' ')}
+                  >
+                    {s.label}
+                  </button>
+                ))}
                 {tvEntry && (
-                  <span className="text-xs text-ink-500">
+                  <span className="text-xs text-ink-500 self-center ml-1">
                     S{tvEntry.current_season} E{tvEntry.current_episode}
                   </span>
                 )}

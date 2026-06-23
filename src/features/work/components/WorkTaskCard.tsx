@@ -3,24 +3,15 @@ import type { Task, TaskStatus } from '../../todo/types'
 
 interface Props {
   task: Task
+  columnColor?: string
   onStatusChange: (id: string, status: TaskStatus, waitingFor?: string) => void
   onDelete: (id: string) => void
   onEdit: (task: Task) => void
   onFocus: (task: Task) => void
   isFocused: boolean
   isDragging?: boolean
-}
-
-const PRIORITY_BORDER: Record<string, string> = {
-  high:   'border-l-red-500',
-  medium: 'border-l-accent-400',
-  low:    'border-l-ink-200',
-}
-
-const PRIORITY_DOT: Record<string, string> = {
-  high:   'bg-red-500',
-  medium: 'bg-accent-400',
-  low:    'bg-ink-300',
+  onDragStart?: (id: string) => void
+  onDragEnd?: () => void
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -41,12 +32,15 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function WorkTaskCard({
   task,
+  columnColor,
   onStatusChange,
   onDelete,
   onEdit,
   onFocus,
   isFocused,
   isDragging,
+  onDragStart,
+  onDragEnd,
 }: Props) {
   const isDone = task.status === 'done'
   const [editingWaiting, setEditingWaiting] = useState(false)
@@ -65,58 +59,69 @@ export default function WorkTaskCard({
   function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
     e.dataTransfer.setData('taskId', task.id)
     e.dataTransfer.effectAllowed = 'move'
+    onDragStart?.(task.id)
   }
 
-  function handleToggleDone() {
-    if (isDone) {
-      onStatusChange(task.id, 'open')
-    } else {
-      onStatusChange(task.id, 'done')
-    }
+  function handleDragEnd() {
+    onDragEnd?.()
+  }
+
+  function handleToggleDone(e: React.MouseEvent) {
+    e.stopPropagation()
+    onStatusChange(task.id, isDone ? 'open' : 'done')
+  }
+
+  const cardStyle: React.CSSProperties = {
+    borderLeftColor: columnColor ?? '#CBD5E1',
+    background: columnColor
+      ? `linear-gradient(to right, ${columnColor}1A 0%, white 65%)`
+      : 'white',
   }
 
   return (
     <div
       draggable
       onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onClick={() => onEdit(task)}
+      style={cardStyle}
       className={[
-        'group relative bg-white rounded-lg border border-ink-200 border-l-4 p-3 cursor-grab active:cursor-grabbing select-none transition-opacity',
-        PRIORITY_BORDER[task.priority] ?? 'border-l-ink-200',
-        isDone ? 'opacity-60' : '',
-        isDragging ? 'opacity-40' : '',
+        'group relative rounded-lg border border-ink-200 border-l-4 p-2 cursor-pointer select-none transition-all hover:shadow-sm hover:border-ink-300',
+        isDone     ? 'opacity-60' : '',
+        isDragging ? 'opacity-30 scale-95 shadow-lg' : '',
       ].join(' ')}
     >
       {/* Status badge top-right */}
       <span
         className={[
-          'absolute top-2 right-2 text-[10px] font-medium px-1.5 py-0.5 rounded-full',
+          'absolute top-1.5 right-1.5 text-[9px] font-medium px-1 py-0.5 rounded-full',
           STATUS_BADGE[task.status] ?? 'bg-ink-100 text-ink-500',
         ].join(' ')}
       >
         {STATUS_LABEL[task.status] ?? task.status}
       </span>
 
-      {/* Top row: priority dot + title */}
-      <div className="flex items-center gap-1.5 pr-16">
+      {/* Column-colored dot + title */}
+      <div className="flex items-center gap-1 pr-14">
         <span
-          className={[
-            'flex-shrink-0 w-2 h-2 rounded-full',
-            PRIORITY_DOT[task.priority] ?? 'bg-ink-300',
-          ].join(' ')}
+          className="flex-shrink-0 w-1.5 h-1.5 rounded-full"
+          style={{ backgroundColor: columnColor ?? '#CBD5E1' }}
         />
-        <span
-          className={[
-            'text-sm font-semibold text-ink-900 truncate',
-            isDone ? 'line-through text-ink-400' : '',
-          ].join(' ')}
-        >
+        <span className={['text-xs font-semibold text-ink-900 truncate', isDone ? 'line-through text-ink-400' : ''].join(' ')}>
           {task.title}
         </span>
       </div>
 
-      {/* Waiting pill — click to edit */}
+      {/* Due date */}
+      {task.due_date && !isDone && (
+        <div className="mt-0.5 pl-2.5">
+          <span className="text-[9px] text-ink-400">{task.due_date}</span>
+        </div>
+      )}
+
+      {/* Waiting pill */}
       {task.status === 'waiting' && (
-        <div className="mt-1.5 pl-3.5">
+        <div className="mt-1 pl-2.5">
           {editingWaiting ? (
             <input
               ref={inputRef}
@@ -128,14 +133,14 @@ export default function WorkTaskCard({
                 if (e.key === 'Escape') setEditingWaiting(false)
               }}
               placeholder="Waiting for…"
-              className="text-[11px] bg-sky-50 border border-sky-300 text-sky-800 rounded-full px-2 py-0.5 outline-none w-36"
+              className="text-[10px] bg-sky-50 border border-sky-300 text-sky-800 rounded-full px-2 py-0.5 outline-none w-32"
               onClick={e => e.stopPropagation()}
             />
           ) : (
             <button
               onClick={e => { e.stopPropagation(); setEditingWaiting(true) }}
               title="Click to set who/what you're waiting for"
-              className="inline-flex items-center gap-1 text-[11px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full hover:bg-sky-200 transition-colors"
+              className="inline-flex items-center gap-1 text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full hover:bg-sky-200 transition-colors"
             >
               ⏳ {task.waiting_for || <span className="italic opacity-60">tap to add…</span>}
             </button>
@@ -143,50 +148,44 @@ export default function WorkTaskCard({
         </div>
       )}
 
-      {/* Action row — always visible on mobile, hover on desktop */}
+      {/* Action row */}
       <div
-        className={[
-          'flex items-center gap-1 mt-2 transition-opacity',
-          'md:opacity-0 md:group-hover:opacity-100',
-        ].join(' ')}
+        className="flex items-center gap-0.5 mt-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+        onClick={e => e.stopPropagation()}
       >
-        {/* Toggle done */}
         <button
           onClick={handleToggleDone}
           title={isDone ? 'Reopen' : 'Mark done'}
-          className="min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs text-green-600 hover:bg-green-50 transition-colors"
+          className="min-h-[44px] min-w-[44px] md:min-h-[24px] md:min-w-[24px] flex items-center justify-center rounded text-[11px] text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
         >
           {isDone ? '↩' : '✓'}
         </button>
 
-        {/* Focus/unfocus */}
         <button
-          onClick={() => onFocus(task)}
-          title={isFocused ? 'Clear focus' : 'Set as focus'}
+          onClick={e => { e.stopPropagation(); onFocus(task) }}
+          title={isFocused ? 'Remove focus' : 'Set as focus'}
           className={[
-            'min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs transition-colors',
+            'min-h-[44px] min-w-[44px] md:min-h-[24px] md:min-w-[24px] flex items-center justify-center rounded text-[11px] transition-colors',
             isFocused
-              ? 'text-accent-500 hover:bg-accent-50'
-              : 'text-ink-400 hover:bg-ink-50',
+              ? 'text-accent-500 bg-accent-50 hover:bg-accent-100'
+              : 'text-ink-400 hover:bg-ink-100 hover:text-ink-600',
           ].join(' ')}
         >
           ⚡
         </button>
 
-        {/* Edit */}
         <button
-          onClick={() => onEdit(task)}
+          onClick={e => { e.stopPropagation(); onEdit(task) }}
           title="Edit task"
-          className="min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs text-ink-400 hover:bg-ink-50 transition-colors"
+          className="min-h-[44px] min-w-[44px] md:min-h-[24px] md:min-w-[24px] flex items-center justify-center rounded text-[11px] text-ink-400 hover:bg-ink-100 hover:text-ink-600 transition-colors"
         >
           ✎
         </button>
 
-        {/* Delete */}
         <button
-          onClick={() => onDelete(task.id)}
+          onClick={e => { e.stopPropagation(); onDelete(task.id) }}
           title="Delete task"
-          className="min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] flex items-center justify-center rounded text-xs text-ink-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+          className="min-h-[44px] min-w-[44px] md:min-h-[24px] md:min-w-[24px] flex items-center justify-center rounded text-[11px] text-ink-400 hover:bg-red-50 hover:text-red-500 transition-colors"
         >
           ×
         </button>

@@ -1,8 +1,6 @@
 import { useState } from 'react'
-import { TRANSPORT_ICON, TRANSPORT_COLOR, type TripPattern, type TripLeg } from '../../api/ruterApi'
-import { fmtTripDeparture, fmtTime, fmtDuration, fmtDistance } from './transitUtils'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { TRANSPORT_ICON, type TripPattern, type TripLeg } from '../../api/ruterApi'
+import { fmtTime, fmtDuration, fmtDistance, lineStyle } from './transitUtils'
 
 interface TripCardProps {
   trip:    TripPattern
@@ -10,14 +8,11 @@ interface TripCardProps {
   isBest?: boolean
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function isDelayed(leg: TripLeg): boolean {
   if (!leg.aimed || !leg.departure) return false
   return Math.abs(new Date(leg.departure).getTime() - new Date(leg.aimed).getTime()) > 60_000
 }
 
-// Minutes between the arrival of one transit leg and the departure of the next
 function transferWaitMins(prev: TripLeg, next: TripLeg): number | null {
   if (!prev.arrivalTime || !next.departure) return null
   const diff = Math.round(
@@ -26,88 +21,101 @@ function transferWaitMins(prev: TripLeg, next: TripLeg): number | null {
   return diff >= 0 ? diff : null
 }
 
-// Bolder solid colors for the leg strip visual
-const LEG_STRIP_COLOR: Record<string, string> = {
-  bus:   'bg-blue-500',
-  tram:  'bg-green-500',
-  metro: 'bg-purple-500',
-  rail:  'bg-gray-600',
-  ferry: 'bg-cyan-500',
+// Fallback solid colors when no presentation data
+const MODE_FALLBACK_BG: Record<string, string> = {
+  bus:   '#E8112D',   // Ruter red
+  tram:  '#E8112D',
+  metro: '#E8112D',
+  rail:  '#4A4A4A',
+  ferry: '#0066CC',
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-// Solid color badges per mode — more distinct than the pale tints from TRANSPORT_COLOR
-const MODE_BADGE_SOLID: Record<string, string> = {
-  bus:   'bg-blue-600 text-white',
-  tram:  'bg-emerald-600 text-white',
-  metro: 'bg-violet-600 text-white',
-  rail:  'bg-slate-700 text-white',
-  ferry: 'bg-cyan-600 text-white',
-}
-
-function LineBadge({ line, mode }: { line: string; mode: string }) {
-  const colorClass = MODE_BADGE_SOLID[mode] ?? (TRANSPORT_COLOR[mode] ?? 'bg-ink-100 text-ink-700')
+function LineBadge({ leg }: { leg: TripLeg }) {
+  if (!leg.line) return null
+  const style = lineStyle(leg.lineColour, leg.lineTextColour)
+  const fallbackBg = MODE_FALLBACK_BG[leg.mode] ?? '#555'
   return (
-    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md flex-shrink-0 tracking-wide ${colorClass}`}>
-      {line}
+    <span
+      className="inline-flex items-center justify-center text-[11px] font-bold px-2 py-0.5 rounded min-w-[1.75rem] flex-shrink-0 leading-tight"
+      style={style ?? { backgroundColor: fallbackBg, color: '#ffffff' }}
+    >
+      {leg.line}
     </span>
   )
 }
 
-function RealtimeDot({ realtime }: { realtime?: boolean }) {
-  if (realtime === undefined) return null
-  return realtime
-    ? <span className="w-2 h-2 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
-    : <span className="text-ink-300 text-xs flex-shrink-0" title="Scheduled">~</span>
+function WalkChip({ leg }: { leg: TripLeg }) {
+  const mins = Math.round(leg.duration / 60)
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[11px] text-ink-500 bg-ink-100 px-2 py-0.5 rounded flex-shrink-0">
+      🚶 {mins}m
+    </span>
+  )
 }
 
-function WalkingLeg({ leg }: { leg: TripLeg }) {
+// Compact horizontal journey summary: badges + walk chips
+function JourneySummaryStrip({ legs }: { legs: TripLeg[] }) {
+  const items: { key: string; el: React.ReactNode }[] = []
+  let i = 0
+  for (const leg of legs) {
+    if (leg.mode === 'foot') {
+      const mins = Math.round(leg.duration / 60)
+      if (mins >= 2) {
+        items.push({ key: `foot-${i}`, el: <WalkChip leg={leg} /> })
+      }
+    } else {
+      items.push({ key: `transit-${i}`, el: <LineBadge leg={leg} /> })
+    }
+    i++
+  }
+
   return (
-    <div className="flex items-center gap-2 py-1.5">
-      <span className="text-sm w-5 text-center flex-shrink-0">{TRANSPORT_ICON.foot}</span>
-      <span className="flex-1 text-xs text-ink-500 truncate">Walk to {leg.to}</span>
-      <span className="text-xs text-ink-400 flex-shrink-0">
-        {fmtDuration(leg.duration)} · {fmtDistance(leg.distance)}
-      </span>
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {items.map((item, idx) => (
+        <span key={item.key} className="flex items-center gap-1.5">
+          {idx > 0 && <span className="text-ink-200 text-[10px] select-none">›</span>}
+          {item.el}
+        </span>
+      ))}
     </div>
   )
 }
 
-function TransitLeg({ leg }: { leg: TripLeg }) {
-  const icon    = TRANSPORT_ICON[leg.mode] ?? '🚐'
-  const delayed = isDelayed(leg)
+import type React from 'react'
 
+function TransitLeg({ leg }: { leg: TripLeg }) {
+  const delayed = isDelayed(leg)
   return (
-    <div className="flex items-start gap-2 py-1.5">
-      <span className="text-sm w-5 text-center flex-shrink-0 mt-0.5">{icon}</span>
+    <div className="flex items-start gap-3 py-2">
+      <div className="flex-shrink-0 mt-0.5">
+        <LineBadge leg={leg} />
+      </div>
       <div className="flex-1 min-w-0">
-        {/* Line + direction + realtime */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          {leg.line && <LineBadge line={leg.line} mode={leg.mode} />}
           {leg.destination && (
-            <span className="text-xs text-ink-700 truncate">towards {leg.destination}</span>
+            <span className="text-xs font-medium text-ink-800 truncate">
+              {TRANSPORT_ICON[leg.mode] ?? '🚐'} towards {leg.destination}
+            </span>
           )}
-          <RealtimeDot realtime={leg.realtime} />
+          {leg.realtime && (
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
+          )}
         </div>
-        {/* Departure time + platform */}
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-ink-500 flex-wrap">
           {leg.departure && (
-            <span className="text-xs font-semibold text-ink-700">
+            <span className={delayed ? 'text-orange-500' : ''}>
               {delayed && leg.aimed && (
                 <span className="line-through text-ink-300 mr-1 font-normal">{fmtTime(leg.aimed)}</span>
               )}
-              <span className={delayed ? 'text-orange-500' : ''}>dep {fmtTime(leg.departure)}</span>
+              dep {fmtTime(leg.departure)}
             </span>
           )}
           {leg.arrivalTime && (
-            <span className="text-xs text-ink-400">arr {fmtTime(leg.arrivalTime)}</span>
+            <span>arr {fmtTime(leg.arrivalTime)}</span>
           )}
-          {(leg.quayCode || leg.quayDescription) && (
-            <span className="text-[11px] text-ink-400 bg-ink-50 px-1.5 py-0.5 rounded">
-              {leg.quayCode ? `Platform ${leg.quayCode}` : ''}
-              {leg.quayCode && leg.quayDescription ? ' · ' : ''}
-              {leg.quayDescription ?? ''}
+          {leg.quayCode && (
+            <span className="bg-ink-100 px-1.5 py-0.5 rounded text-[10px]">
+              Platform {leg.quayCode}{leg.quayDescription ? ` · ${leg.quayDescription}` : ''}
             </span>
           )}
         </div>
@@ -116,109 +124,89 @@ function TransitLeg({ leg }: { leg: TripLeg }) {
   )
 }
 
-function TransferBadge({ waitMins }: { waitMins: number | null }) {
+function WalkLeg({ leg }: { leg: TripLeg }) {
   return (
-    <div className="py-0.5 flex items-center gap-2">
+    <div className="flex items-center gap-3 py-1.5 text-xs text-ink-400">
+      <span className="text-sm w-5 text-center flex-shrink-0">🚶</span>
+      <span className="flex-1 truncate">
+        {leg.to !== leg.from ? `Walk to ${leg.to}` : 'Walk'}
+      </span>
+      <span className="flex-shrink-0 tabular-nums">
+        {fmtDuration(leg.duration)}
+        {leg.distance > 50 ? ` · ${fmtDistance(leg.distance)}` : ''}
+      </span>
+    </div>
+  )
+}
+
+function TransferMarker({ waitMins }: { waitMins: number | null }) {
+  return (
+    <div className="flex items-center gap-2 py-0.5">
       <div className="flex-1 border-t border-dashed border-ink-100" />
-      <span className="text-[10px] text-ink-300 uppercase tracking-wide flex-shrink-0">
-        {waitMins !== null ? `Transfer · ${waitMins} min wait` : 'Transfer'}
+      <span className="text-[9px] font-medium text-ink-300 uppercase tracking-wider flex-shrink-0">
+        {waitMins !== null ? `${waitMins} min transfer` : 'Transfer'}
       </span>
       <div className="flex-1 border-t border-dashed border-ink-100" />
     </div>
   )
 }
 
-// Horizontal proportional leg strip — visual overview of the whole journey
-function LegStrip({ legs }: { legs: TripLeg[] }) {
-  const totalSecs = legs.reduce((s, l) => s + l.duration, 0)
-  if (totalSecs === 0) return null
-
-  return (
-    <div className="flex items-center gap-0.5 w-full h-6 px-3 pt-2">
-      {legs.map((leg, i) => {
-        const pct = (leg.duration / totalSecs) * 100
-        if (leg.mode === 'foot') {
-          // Walking legs: narrow grey notch
-          return (
-            <div
-              key={i}
-              style={{ flexBasis: `${Math.max(pct, 3)}%` }}
-              className="flex-shrink-0 h-1.5 rounded-full bg-ink-200"
-            />
-          )
-        }
-        const color = LEG_STRIP_COLOR[leg.mode] ?? 'bg-ink-400'
-        return (
-          <div
-            key={i}
-            style={{ flexBasis: `${Math.max(pct, 8)}%` }}
-            className={`flex-shrink-0 h-5 rounded-sm flex items-center justify-center overflow-hidden ${color}`}
-          >
-            {leg.line && (
-              <span className="text-[10px] font-bold text-white truncate px-1 leading-none">
-                {leg.line}
-              </span>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export function TripCard({ trip, now, isBest = false }: TripCardProps) {
   const [expanded, setExpanded] = useState(false)
 
-  const depMs  = new Date(trip.departure).getTime()
-  const isPast = depMs < now - 2 * 60_000
-  const isNow  = depMs <= now && !isPast
-  const label  = isPast ? 'Departed' : fmtTripDeparture(trip.departure, now)
+  const depMs    = new Date(trip.departure).getTime()
+  const arrMs    = new Date(trip.arrival).getTime()
+  const diffMin  = Math.round((depMs - now) / 60_000)
+  const isPast   = depMs < now - 2 * 60_000
+  const isNow    = diffMin <= 0 && !isPast
+  const durationMin = Math.round((arrMs - depMs) / 60_000)
+
+  const transitLegs = trip.legs.filter(l => l.mode !== 'foot')
+  const transfers   = Math.max(0, transitLegs.length - 1)
 
   return (
-    <div className={`border rounded-xl overflow-hidden transition-shadow duration-150 hover:shadow-md ${
-      isPast ? 'opacity-50 border-ink-100' : isBest ? 'border-accent-300 shadow-sm' : 'border-ink-200'
+    <div className={`rounded-xl border overflow-hidden transition-shadow duration-150 hover:shadow-sm ${
+      isPast ? 'opacity-40 border-ink-100' : isBest ? 'border-accent-300' : 'border-ink-200'
     }`}>
-      {/* Visual leg strip */}
-      <LegStrip legs={trip.legs} />
-
-      {/* Summary row — tap to expand/collapse leg details */}
+      {/* Summary row — tap to expand */}
       <button
         onClick={() => setExpanded(v => !v)}
-        className="w-full px-3 pt-2 pb-2.5 text-left min-h-[52px]"
+        className="w-full px-3 pt-3 pb-2.5 text-left min-h-[52px] bg-white"
       >
-        <div className="flex items-center justify-between gap-3">
-          {/* Left: departure time — large and prominent */}
+        {/* Time row: HH:MM → HH:MM  Xm */}
+        <div className="flex items-center justify-between gap-2 mb-1.5">
           <div className="flex items-center gap-2 min-w-0">
             {isBest && (
-              <span className="text-[10px] font-semibold text-accent-600 bg-accent-100 px-1.5 py-0.5 rounded flex-shrink-0">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-accent-600 bg-accent-100 px-1.5 py-0.5 rounded flex-shrink-0">
                 Best
               </span>
             )}
-            <span className={`text-base font-bold flex-shrink-0 ${
+            <span className={`text-base font-bold tabular-nums flex-shrink-0 ${
               isNow ? 'text-red-500' : isPast ? 'text-ink-400' : 'text-ink-900'
             }`}>
-              {label}
+              {isNow ? 'Now' : diffMin <= 90 ? `${diffMin} min` : fmtTime(trip.departure)}
+            </span>
+            <span className="text-ink-300 text-sm">→</span>
+            <span className="text-base font-bold tabular-nums text-ink-700">
+              {fmtTime(trip.arrival)}
             </span>
           </div>
-          {/* Right: arrival + duration stacked */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="text-right">
-              <div className="text-sm font-semibold text-ink-700">arr {fmtTime(trip.arrival)}</div>
-              <div className="text-[11px] text-ink-400 mt-0.5">
-                {fmtDuration(trip.duration)}
-                {trip.walkDistance > 100 ? ` · ${fmtDistance(trip.walkDistance)} walk` : ''}
-              </div>
-            </div>
-            <span className="text-[10px] text-ink-300 flex-shrink-0">{expanded ? '▲' : '▼'}</span>
+            <span className="text-xs text-ink-400 tabular-nums">{durationMin}m</span>
+            {transfers > 0 && (
+              <span className="text-[10px] text-ink-300">{transfers} transfer{transfers !== 1 ? 's' : ''}</span>
+            )}
+            <span className="text-[10px] text-ink-300">{expanded ? '▲' : '▼'}</span>
           </div>
         </div>
+
+        {/* Journey strip: line badges + walk chips */}
+        <JourneySummaryStrip legs={trip.legs} />
       </button>
 
       {/* Expandable leg details */}
       {expanded && (
-        <div className="px-3 pb-2 border-t border-ink-50 divide-y divide-ink-50">
+        <div className="px-3 pb-2 border-t border-ink-50 bg-cream-50 divide-y divide-ink-50">
           {trip.legs.map((leg, i) => {
             const prevLeg       = trip.legs[i - 1]
             const isTransit     = leg.mode !== 'foot'
@@ -229,9 +217,9 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
 
             return (
               <div key={i}>
-                {isTransit && prevIsTransit && <TransferBadge waitMins={waitMins} />}
+                {isTransit && prevIsTransit && <TransferMarker waitMins={waitMins} />}
                 {leg.mode === 'foot'
-                  ? <WalkingLeg leg={leg} />
+                  ? <WalkLeg leg={leg} />
                   : <TransitLeg leg={leg} />
                 }
               </div>

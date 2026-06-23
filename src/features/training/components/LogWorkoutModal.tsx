@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useCreateSession, useUpdateSession, useSessionExercises, useSaveSessionExercises } from '../hooks/useTrainingSessions'
 import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
 import { useCreateTask } from '../../todo/hooks/useTodos'
@@ -194,14 +195,10 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
 
   return (
     <>
-    <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center px-4 py-6"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-2xl bg-white overflow-hidden max-h-[90vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
+    <Dialog open={true} onClose={onClose} className="relative z-[60]">
+      <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
+      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95 flex flex-col">
         <div className="px-5 pt-5 pb-3 border-b border-ink-100 flex items-center justify-between">
           <h2 className="text-base font-semibold text-ink-900">{editMode ? 'Edit workout' : 'Log workout'}</h2>
           <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-600 text-lg">×</button>
@@ -435,8 +432,9 @@ export function LogWorkoutModal({ defaultDate, session, onClose }: Props) {
             {isPending ? 'Saving…' : (editMode ? 'Save changes' : 'Save workout')}
           </button>
         </form>
+        </DialogPanel>
       </div>
-    </div>
+    </Dialog>
 
     {showProgramPicker && (
       <ProgramPickerDialog

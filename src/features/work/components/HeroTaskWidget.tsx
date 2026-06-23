@@ -1,15 +1,11 @@
+import { useState } from 'react'
 import type { Task } from '../../todo/types'
 
 interface Props {
-  task: Task | null
-  onMarkDone: (id: string) => void
-  onClearFocus: () => void
-}
-
-const PRIORITY_LABEL: Record<string, string> = {
-  high:   'High',
-  medium: 'Medium',
-  low:    'Low',
+  tasks:        Task[]
+  onMarkDone:   (id: string) => void
+  onClearFocus: (id: string) => void
+  onEdit:       (task: Task) => void
 }
 
 const PRIORITY_BADGE: Record<string, string> = {
@@ -27,76 +23,125 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  open:        'Open',
-  in_progress: 'In Progress',
-  waiting:     'Waiting',
-  done:        'Done',
-  cancelled:   'Cancelled',
+  open: 'Open', in_progress: 'In Progress', waiting: 'Waiting',
+  done: 'Done', cancelled: 'Cancelled',
 }
 
-export default function HeroTaskWidget({ task, onMarkDone, onClearFocus }: Props) {
-  if (!task) {
-    return (
-      <div className="rounded-xl border border-ink-200 bg-cream-50 px-4 py-5 flex items-center gap-2 text-ink-400 text-sm">
-        <span className="text-base">⚡</span>
-        <span>No focus set — click ⚡ on any task to start</span>
-      </div>
-    )
-  }
-
+function FocusCard({ task, onMarkDone, onClearFocus, onEdit }: {
+  task: Task
+  onMarkDone:   (id: string) => void
+  onClearFocus: (id: string) => void
+  onEdit:       (task: Task) => void
+}) {
   return (
-    <div className="rounded-xl border-l-4 border-accent-400 bg-accent-50 border border-accent-200 px-4 py-4 flex flex-col gap-3">
-      {/* Label */}
-      <span className="text-[10px] font-bold uppercase tracking-widest text-accent-500">
-        Focus
-      </span>
+    <div className="flex-1 min-w-0 rounded-xl border-l-4 border-accent-400 bg-accent-50 border border-accent-200 px-4 py-3 flex flex-col gap-2">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-accent-500">Focus</span>
+        <button
+          onClick={() => onClearFocus(task.id)}
+          className="text-[10px] text-ink-400 hover:text-red-400 transition-colors min-h-[28px] px-1"
+        >
+          ✕ Remove
+        </button>
+      </div>
 
-      {/* Title */}
-      <p className="text-lg font-bold text-ink-900 leading-snug">
+      <p
+        className="text-base font-bold text-ink-900 leading-snug cursor-pointer hover:text-accent-700 transition-colors"
+        onClick={() => onEdit(task)}
+      >
         {task.title}
       </p>
 
-      {/* Badges row */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={[
-            'text-[11px] font-medium px-2 py-0.5 rounded-full',
-            PRIORITY_BADGE[task.priority] ?? 'bg-ink-100 text-ink-500',
-          ].join(' ')}
-        >
-          {PRIORITY_LABEL[task.priority] ?? task.priority} priority
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${PRIORITY_BADGE[task.priority] ?? 'bg-ink-100 text-ink-500'}`}>
+          {task.priority} priority
         </span>
-        <span
-          className={[
-            'text-[11px] font-medium px-2 py-0.5 rounded-full',
-            STATUS_BADGE[task.status] ?? 'bg-ink-100 text-ink-500',
-          ].join(' ')}
-        >
+        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[task.status] ?? 'bg-ink-100 text-ink-500'}`}>
           {STATUS_LABEL[task.status] ?? task.status}
         </span>
+        {task.due_date && (
+          <span className="text-[11px] text-ink-400 bg-ink-100 px-2 py-0.5 rounded-full">
+            {task.due_date}
+          </span>
+        )}
       </div>
 
-      {/* Waiting for */}
       {task.waiting_for && (
-        <p className="text-sm text-sky-600">
+        <p className="text-xs text-sky-600">
           Waiting for: <span className="font-medium">{task.waiting_for}</span>
         </p>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center gap-2 pt-1">
+      <button
+        onClick={() => onMarkDone(task.id)}
+        className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-lg bg-accent-500 text-white text-sm font-medium hover:bg-accent-600 transition-colors w-full sm:w-auto sm:px-4"
+      >
+        ✓ Mark done
+      </button>
+    </div>
+  )
+}
+
+const VISIBLE = 2
+
+export default function HeroTaskWidget({ tasks, onMarkDone, onClearFocus, onEdit }: Props) {
+  const [offset, setOffset] = useState(0)
+
+  if (tasks.length === 0) {
+    return (
+      <div className="rounded-xl border border-ink-200 bg-cream-50 px-4 py-5 flex items-center gap-2 text-ink-400 text-sm">
+        <span className="text-base">⚡</span>
+        <span>No focus set — click ⚡ on any task to focus it</span>
+      </div>
+    )
+  }
+
+  const canPrev    = offset > 0
+  const canNext    = offset + VISIBLE < tasks.length
+  const visible    = tasks.slice(offset, offset + VISIBLE)
+  const totalPages = Math.ceil(tasks.length / VISIBLE)
+  const currentPage = Math.floor(offset / VISIBLE) + 1
+
+  return (
+    <div className="flex items-stretch gap-2">
+      {/* ◀ prev */}
+      <button
+        onClick={() => setOffset(o => Math.max(0, o - VISIBLE))}
+        disabled={!canPrev}
+        className="flex-shrink-0 flex items-center justify-center w-9 rounded-xl border border-ink-200 text-ink-400 hover:bg-ink-100 hover:text-ink-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors min-h-[44px]"
+        title="Previous"
+      >
+        ◀
+      </button>
+
+      {/* Focus cards */}
+      <div className="flex-1 min-w-0 flex gap-2">
+        {visible.map(t => (
+          <FocusCard
+            key={t.id}
+            task={t}
+            onMarkDone={onMarkDone}
+            onClearFocus={onClearFocus}
+            onEdit={onEdit}
+          />
+        ))}
+      </div>
+
+      {/* ▶ next + counter */}
+      <div className="flex-shrink-0 flex flex-col items-center justify-center gap-1">
         <button
-          onClick={() => onMarkDone(task.id)}
-          className="min-h-[44px] flex-1 sm:flex-none sm:px-4 flex items-center justify-center gap-1.5 rounded-lg bg-accent-500 text-white text-sm font-medium hover:bg-accent-600 transition-colors"
+          onClick={() => setOffset(o => Math.min(tasks.length - VISIBLE, o + VISIBLE))}
+          disabled={!canNext}
+          className="flex items-center justify-center w-9 rounded-xl border border-ink-200 text-ink-400 hover:bg-ink-100 hover:text-ink-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors min-h-[44px] flex-1"
+          title="Next"
         >
-          ✓ Mark done
+          ▶
         </button>
-        <button
-          onClick={onClearFocus}
-          className="min-h-[44px] px-3 flex items-center justify-center text-sm text-ink-500 hover:text-ink-700 transition-colors"
-        >
-          Clear focus
-        </button>
+        {tasks.length > VISIBLE && (
+          <span className="text-[10px] text-ink-400 tabular-nums">
+            {currentPage}/{totalPages}
+          </span>
+        )}
       </div>
     </div>
   )
