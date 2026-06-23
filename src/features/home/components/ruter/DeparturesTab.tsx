@@ -14,8 +14,6 @@ interface DeparturesTabProps {
   now: number
 }
 
-// ─── DepartureRow ─────────────────────────────────────────────────────────────
-
 const MODE_FALLBACK_BG: Record<string, string> = {
   bus:   '#E8112D',
   tram:  '#E8112D',
@@ -24,12 +22,54 @@ const MODE_FALLBACK_BG: Record<string, string> = {
   ferry: '#0066CC',
 }
 
-function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
-  const mins     = minsUntil(dep.expected, now)
-  const isNow    = mins <= 0
-  const delayed  = Math.abs(new Date(dep.expected).getTime() - new Date(dep.aimed).getTime()) > 60_000
-  const style    = lineStyle(dep.lineColour, dep.lineTextColour)
-  const fallback = { backgroundColor: MODE_FALLBACK_BG[dep.transport] ?? '#555', color: '#fff' }
+interface LineGroup {
+  line:            string
+  destination:     string
+  transport:       string
+  lineColour?:     string
+  lineTextColour?: string
+  realtime:        boolean
+  aimed:           string
+  expected:        string
+  departures:      Departure[]
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function buildLineGroups(deps: Departure[]): LineGroup[] {
+  const map = new Map<string, LineGroup>()
+  for (const dep of deps) {
+    const key = `${dep.line}::${dep.destination}`
+    if (!map.has(key)) {
+      map.set(key, {
+        line:            dep.line,
+        destination:     dep.destination,
+        transport:       dep.transport,
+        lineColour:      dep.lineColour,
+        lineTextColour:  dep.lineTextColour,
+        realtime:        dep.realtime,
+        aimed:           dep.aimed,
+        expected:        dep.expected,
+        departures:      [dep],
+      })
+    } else {
+      map.get(key)!.departures.push(dep)
+    }
+  }
+  return Array.from(map.values())
+}
+
+// ─── DepartureRow ─────────────────────────────────────────────────────────────
+
+function DepartureRow({ group, now }: { group: LineGroup; now: number }) {
+  const first   = group.departures[0]
+  const mins    = minsUntil(first.expected, now)
+  const isNow   = mins <= 0
+  const delayed = Math.abs(new Date(first.expected).getTime() - new Date(first.aimed).getTime()) > 60_000
+  const style   = lineStyle(group.lineColour, group.lineTextColour)
+  const fallback = { backgroundColor: MODE_FALLBACK_BG[group.transport] ?? '#555', color: '#fff' }
+
+  const nextTimes = group.departures.slice(1, 4).map(d => fmtTime(d.expected))
 
   return (
     <div className="flex items-center gap-2.5 py-2.5 min-h-[44px]">
@@ -37,23 +77,28 @@ function DepartureRow({ dep, now }: { dep: Departure; now: number }) {
         className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 min-w-[2.25rem] text-center leading-tight"
         style={style ?? fallback}
       >
-        {dep.line}
+        {group.line}
       </span>
 
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-ink-900 truncate leading-snug">{dep.destination}</div>
+        <div className="text-sm font-medium text-ink-900 truncate leading-snug">{group.destination}</div>
+        {nextTimes.length > 0 && (
+          <div className="text-[10px] text-ink-400 truncate leading-tight mt-0.5">
+            Neste {nextTimes.join(', ')}
+          </div>
+        )}
       </div>
 
       <div className="text-right flex-shrink-0 flex items-center gap-1.5">
         {delayed && (
-          <span className="text-[10px] text-ink-300 line-through tabular-nums">{fmtTime(dep.aimed)}</span>
+          <span className="text-[10px] text-ink-300 line-through tabular-nums">{fmtTime(first.aimed)}</span>
         )}
         <span className={`text-sm font-bold tabular-nums ${
           isNow ? 'text-red-500' : mins <= 2 ? 'text-orange-500' : delayed ? 'text-orange-500' : 'text-ink-900'
         }`}>
-          {isNow ? 'Now' : `${mins} min`}
+          {isNow ? 'Nå' : `${mins} min`}
         </span>
-        {dep.realtime
+        {group.realtime
           ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
           : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Scheduled">~</span>
         }
@@ -69,11 +114,11 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   const queryClient = useQueryClient()
 
   const defaultStop = stops.find(s => s.is_default) ?? stops[0] ?? null
-  const [activeId,     setActiveId]     = useState<string | null>(null)
-  const [adHocStop,    setAdHocStop]    = useState<StopResult | null>(null)
-  const [saveMsg,      setSaveMsg]      = useState<string | null>(null)
-  const [lastUpdated,  setLastUpdated]  = useState<number | null>(null)
-  const [refreshing,   setRefreshing]   = useState(false)
+  const [activeId,    setActiveId]    = useState<string | null>(null)
+  const [adHocStop,   setAdHocStop]   = useState<StopResult | null>(null)
+  const [saveMsg,     setSaveMsg]     = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  const [refreshing,  setRefreshing]  = useState(false)
 
   const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
   const queryStop   = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
@@ -90,17 +135,22 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
     enabled:         !ws.collapsed && !!queryStop?.id,
   })
 
-  // Group departures by quay for side-by-side column layout
+  // Group by quay, then within each quay group by line+destination
   const quayGroups = useMemo(() => {
     if (!data?.departures) return []
-    const map = new Map<string, { label: string; deps: Departure[] }>()
+    const rawMap = new Map<string, { code?: string; description?: string; deps: Departure[] }>()
     for (const dep of data.departures) {
-      const key   = dep.quayDescription ?? dep.quayCode ?? '__default__'
-      const label = dep.quayDescription ?? (dep.quayCode ? `Plattform ${dep.quayCode}` : '')
-      if (!map.has(key)) map.set(key, { label, deps: [] })
-      map.get(key)!.deps.push(dep)
+      const key = dep.quayDescription ?? dep.quayCode ?? '__default__'
+      if (!rawMap.has(key)) {
+        rawMap.set(key, { code: dep.quayCode, description: dep.quayDescription, deps: [] })
+      }
+      rawMap.get(key)!.deps.push(dep)
     }
-    return Array.from(map.values())
+    return Array.from(rawMap.values()).map(({ code, description, deps }) => ({
+      code,
+      description,
+      lineGroups: buildLineGroups(deps),
+    }))
   }, [data])
 
   const departuresQueryKey = ['departures', queryStop?.id ?? '']
@@ -152,9 +202,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       {/* ── Saved stops ── */}
       {stops.length > 0 && (
         <div className="mb-3">
-          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
-            Saved stops
-          </p>
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Saved stops</p>
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
             {stops.map(s => (
               <button
@@ -233,19 +281,24 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
         </div>
       )}
 
-      {/* ── Departures grouped by quay — 2-column layout ── */}
+      {/* ── Departures: 2-col quay grid, lines grouped within each quay ── */}
       {data && quayGroups.length > 0 && (
-        <div className={quayGroups.length >= 2 ? 'grid grid-cols-2 gap-x-3' : ''}>
+        <div className={quayGroups.length >= 2 ? 'grid grid-cols-2 gap-x-4' : ''}>
           {quayGroups.map((group, i) => (
             <div key={i}>
-              {group.label && (
-                <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1 truncate border-b border-ink-100 pb-1">
-                  {group.label}
-                </p>
+              {(group.code || group.description) && (
+                <div className="mb-1 pb-1 border-b border-ink-100">
+                  <p className="text-[11px] font-bold text-ink-700 truncate leading-snug">
+                    {group.code ? `Platform ${group.code}` : group.description}
+                  </p>
+                  {group.code && group.description && (
+                    <p className="text-[10px] text-ink-400 truncate leading-tight">{group.description}</p>
+                  )}
+                </div>
               )}
               <div className="divide-y divide-ink-50">
-                {group.deps.map((dep, j) => (
-                  <DepartureRow key={j} dep={dep} now={now} />
+                {group.lineGroups.map((lg, j) => (
+                  <DepartureRow key={j} group={lg} now={now} />
                 ))}
               </div>
             </div>
