@@ -3,10 +3,11 @@ import { RouteMap } from './RouteMap'
 import type { TripLeg } from '../../../api/ruterApi'
 
 interface RouteMapPanelProps {
-  legs: TripLeg[] | null
+  legs:    TripLeg[] | null
+  height?: number
 }
 
-export function RouteMapPanel({ legs }: RouteMapPanelProps) {
+export function RouteMapPanel({ legs, height = 260 }: RouteMapPanelProps) {
   const [open, setOpen] = useState(false)
 
   // Auto-collapse when legs change (new search)
@@ -15,7 +16,7 @@ export function RouteMapPanel({ legs }: RouteMapPanelProps) {
   if (!legs || legs.length === 0) return null
 
   return (
-    <div className="mt-3">
+    <div>
       <button
         onClick={() => setOpen(v => !v)}
         className={`flex items-center gap-1.5 text-[11px] font-semibold px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[36px] ${
@@ -27,7 +28,7 @@ export function RouteMapPanel({ legs }: RouteMapPanelProps) {
       </button>
       {open && (
         <div className="mt-2">
-          <RouteMap legs={legs} height={260} />
+          <RouteMap legs={legs} height={height} />
         </div>
       )}
     </div>

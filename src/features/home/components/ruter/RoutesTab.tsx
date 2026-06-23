@@ -6,7 +6,6 @@ import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
-import { RouteMapPanel } from './map'
 import { fmtLastUpdated, fmtTime } from './transitUtils'
 import { toast } from '../../../../app/store'
 import { DateInput } from '../../../../shared/components/DateInput'
@@ -181,7 +180,6 @@ export function RoutesTab({ ws, now, onTripLegsChange }: RoutesTabProps) {
   const [saving,         setSaving]         = useState(false)
   const [saveMsg,        setSaveMsg]        = useState<string | null>(null)
   const [refreshing,     setRefreshing]     = useState(false)
-  const [activeRouteLegs, setActiveRouteLegs] = useState<TripLeg[] | null>(null)
 
   const favoriteStops = useMemo(() => {
     const seen = new Set<string>()
@@ -289,9 +287,7 @@ export function RoutesTab({ ws, now, onTripLegsChange }: RoutesTabProps) {
   }, [search, refreshing, queryClient, tripQueryKey, refetch])
 
   useEffect(() => {
-    const legs = data?.[0]?.legs ?? null
-    setActiveRouteLegs(legs)
-    onTripLegsChange?.(legs)
+    onTripLegsChange?.(data?.[0]?.legs ?? null)
   }, [data])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const { filteredData, lineFilterActive, lineMatchCount } = useMemo(() => {
@@ -637,7 +633,6 @@ export function RoutesTab({ ws, now, onTripLegsChange }: RoutesTabProps) {
             ? <p className="text-sm text-ink-400">No trips found</p>
             : filteredData.map((trip, i) => <TripCard key={i} trip={trip} now={now} isBest={i === 0} />)
           }
-          <RouteMapPanel legs={activeRouteLegs} />
         </div>
       )}
     </div>
