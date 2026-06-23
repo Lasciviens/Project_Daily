@@ -280,6 +280,15 @@ export async function fetchDepartures(
 
   if (!data.stopPlace) throw new Error(`Stop not found: ${stopId}`)
 
+  // DEBUG — remove after confirming serviceJourneyId works
+  if (import.meta.env.DEV || true) {
+    const sample = data.stopPlace.estimatedCalls?.[0]
+    console.debug('[ruterApi] fetchDepartures sample call:', {
+      serviceJourneyId: (sample as any)?.serviceJourney?.id,
+      line: (sample as any)?.serviceJourney?.line?.publicCode,
+    })
+  }
+
   // Filter out any malformed calls so one bad item doesn't crash the whole widget
   const departures: Departure[] = (data.stopPlace.estimatedCalls ?? [])
     .filter(c => c.serviceJourney?.line?.publicCode && c.expectedDepartureTime)
