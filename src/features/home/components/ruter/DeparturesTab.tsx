@@ -4,6 +4,7 @@ import { fetchDepartures, type Departure, type StopResult } from '../../api/rute
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
+import { TransitMapPanel } from './map'
 import { minsUntil, fmtTime, fmtLastUpdated, lineStyle } from './transitUtils'
 import { toast } from '../../../../app/store'
 
@@ -197,6 +198,14 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
 
   const alreadySaved = adHocStop ? stops.some(s => s.stop_id === adHocStop.id) : false
 
+  // Build a StopPin for the map — needs lat/lon which only adHocStop carries.
+  // Saved stops don't store coords in the DB; we only get them after a search.
+  // So the map is available when the user searches a stop (adHocStop),
+  // but not when they click a pre-saved chip (no coords stored).
+  const mapPin = adHocStop?.lat !== undefined && adHocStop?.lon !== undefined
+    ? { id: adHocStop.id, name: adHocStop.name, lat: adHocStop.lat, lon: adHocStop.lon }
+    : null
+
   return (
     <div>
       {/* ── Saved stops ── */}
@@ -308,6 +317,9 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       {data && quayGroups.length === 0 && (
         <div className="text-ink-400 text-sm py-2">No departures found</div>
       )}
+
+      {/* ── Live map — only visible when a searched stop has coordinates ── */}
+      <TransitMapPanel stop={mapPin} />
     </div>
   )
 }
