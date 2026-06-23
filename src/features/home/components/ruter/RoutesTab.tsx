@@ -515,7 +515,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                 ? 'bg-accent-500 text-white hover:bg-accent-600'
                 : 'bg-ink-100 text-ink-400 cursor-not-allowed'
             }`}>
-            {canPlan ? 'Plan route' : 'Select From and To first'}
+            Plan route
           </button>
 
           {/* Save as favorite — available as soon as both stops are NSR stops */}
