@@ -21,6 +21,8 @@ import {
   TILE_URL,
   TILE_ATTRIBUTION,
   STOP_ZOOM,
+  WIDGET_ZOOM,
+  DEFAULT_CENTER,
   VEHICLE_COLORS,
   DELAY_THRESHOLDS,
   STOP_MARKER_COLOR,
@@ -123,12 +125,16 @@ export function TransitMap({ stop, userLocation, height = 220 }: TransitMapProps
     if (!el || mapRef.current) return   // already initialized
 
     const map = L.map(el, {
-      zoomControl:       true,
+      zoomControl:        true,
       attributionControl: true,
       // Disable scroll-zoom in the widget to prevent accidental zoom
       // while scrolling the page.  User can still use +/- buttons.
-      scrollWheelZoom:   false,
+      scrollWheelZoom:    false,
     })
+
+    // MUST call setView before any flyTo/panTo calls — Leaflet throws
+    // "Set map center and zoom first" if the map has no initial view.
+    map.setView(DEFAULT_CENTER, WIDGET_ZOOM)
 
     // Kartverket tile layer
     L.tileLayer(TILE_URL, {

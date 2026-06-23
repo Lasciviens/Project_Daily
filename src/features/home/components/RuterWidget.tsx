@@ -45,8 +45,8 @@ function useElementWidth<T extends HTMLElement>() {
 }
 
 function getLayoutMode(width: number): LayoutMode {
-  if (width >= 1100) return 'wide'
-  if (width >= 700)  return 'medium'
+  if (width >= 860) return 'wide'    // lowered from 1100 — fits at 100% zoom
+  if (width >= 560) return 'medium'
   return 'compact'
 }
 
@@ -118,8 +118,9 @@ export function RuterWidget() {
         )}
 
         {showSideBySide && (
-          <div className="mx-auto w-full max-w-[1180px]">
-            <div className="grid grid-cols-[minmax(340px,420px)_minmax(520px,1fr)] gap-4">
+          <div className="w-full">
+            {/* 40/60 split: departures left, routes right — no max-width cap */}
+            <div className="grid grid-cols-[minmax(260px,2fr)_minmax(320px,3fr)] gap-3">
               <Panel><DeparturesTab ws={ws} now={now} /></Panel>
               <Panel><RoutesTab ws={ws} now={now} /></Panel>
             </div>

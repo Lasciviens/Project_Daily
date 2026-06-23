@@ -24,9 +24,15 @@ export function useTransitRecentSearches() {
         .select('*')
         .order('searched_at', { ascending: false })
         .limit(MAX_SEARCHES)
-      if (error) throw error
+      // 404 means the migration hasn't been applied yet — fail silently
+      // so the rest of the widget still works.
+      if (error) {
+        if (error.code === 'PGRST116' || (error as { status?: number }).status === 404) return []
+        throw error
+      }
       return data as RecentSearch[]
     },
+    retry: false,   // don't hammer Supabase when the table doesn't exist yet
   })
 
   async function addSearch(fromId: string, fromName: string, toId: string, toName: string) {
