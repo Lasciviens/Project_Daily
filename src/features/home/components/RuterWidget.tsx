@@ -65,6 +65,11 @@ export function RuterWidget() {
   const [tab, setTab]                         = useState<Tab>('departures')
   const [transitMapPin, setTransitMapPin]     = useState<StopPin | null>(null)
   const [trackedJourneyId, setTrackedJourney] = useState<string | null>(null)
+  // DEBUG — remove after confirming tracking works
+  const handleJourneySelect = (id: string | null) => {
+    console.debug('[RuterWidget] trackedJourneyId →', id, '| mapPin:', transitMapPin?.id ?? 'null')
+    setTrackedJourney(id)
+  }
   const [routeLegs, setRouteLegs]             = useState<TripLeg[] | null>(null)
   const ws  = useWidgetState('ruter', { collapsed: true, intervalMs: 60_000 })
   const now = useNow()
@@ -132,7 +137,7 @@ export function RuterWidget() {
                   ws={ws}
                   now={now}
                   onMapPinChange={setTransitMapPin}
-                  onJourneySelect={setTrackedJourney}
+                  onJourneySelect={handleJourneySelect}
                 />
               </Panel>
               <Panel>
@@ -163,7 +168,7 @@ export function RuterWidget() {
                 ws={ws}
                 now={now}
                 onMapPinChange={setTransitMapPin}
-                onJourneySelect={setTrackedJourney}
+                onJourneySelect={handleJourneySelect}
               />
             )}
             {tab === 'routes' && (

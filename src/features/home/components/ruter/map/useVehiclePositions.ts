@@ -117,16 +117,21 @@ export function useVehiclePositions(target: VehicleTarget): UseVehiclePositionsR
     const pollInterval = t.kind === 'journey' ? TRACKING_POLL_INTERVAL_MS : POLL_INTERVAL_MS
 
     async function fetchVehicles() {
+      // DEBUG — remove after confirming vehicles load
+      const q = buildQuery()
+      console.debug('[useVehiclePositions] fetch target:', t.kind, t.kind === 'journey' ? (t as { kind: 'journey'; serviceJourneyId: string }).serviceJourneyId : '')
       try {
         const res = await fetch(VEHICLES_REST_URL, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json', 'ET-Client-Name': ET_CLIENT_NAME },
-          body:    JSON.stringify({ query: buildQuery() }),
+          body:    JSON.stringify({ query: q }),
         })
         if (!res.ok) throw new Error(`Vehicles API: HTTP ${res.status}`)
 
         const json: VehiclesApiResponse = await res.json()
         const rawList = json.data?.vehicles ?? []
+        // DEBUG
+        console.debug('[useVehiclePositions] response: HTTP', res.status, 'vehicles count:', rawList.length)
 
         if (cancelled) return
 

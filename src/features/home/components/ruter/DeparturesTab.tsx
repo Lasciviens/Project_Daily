@@ -322,10 +322,13 @@ export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: Depa
   }
 
   function handleJourneyToggle(journeyId: string | undefined) {
-    if (!journeyId) return
+    // DEBUG — remove after confirming tracking works
+    console.debug('[DeparturesTab] row clicked, serviceJourneyId:', journeyId)
+    if (!journeyId) { console.warn('[DeparturesTab] no serviceJourneyId on this departure'); return }
     const next = selectedJourneyId === journeyId ? null : journeyId
     setSelectedJourneyId(next)
     onJourneySelect?.(next)
+    console.debug('[DeparturesTab] tracking set to:', next)
   }
 
   async function handleSaveFromPanel(quayId: string | null, quayDescription: string | null, label: string) {
