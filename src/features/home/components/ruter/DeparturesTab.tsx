@@ -11,9 +11,10 @@ import type { StopPin } from './map'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DeparturesTabProps {
-  ws:              WidgetStateResult
-  now:             number
-  onMapPinChange?: (pin: StopPin | null) => void
+  ws:               WidgetStateResult
+  now:              number
+  onMapPinChange?:  (pin: StopPin | null) => void
+  onJourneySelect?: (serviceJourneyId: string | null) => void
 }
 
 const MODE_FALLBACK_BG: Record<string, string> = {
@@ -25,15 +26,16 @@ const MODE_FALLBACK_BG: Record<string, string> = {
 }
 
 interface LineGroup {
-  line:            string
-  destination:     string
-  transport:       string
-  lineColour?:     string
-  lineTextColour?: string
-  realtime:        boolean
-  aimed:           string
-  expected:        string
-  departures:      Departure[]
+  line:              string
+  destination:       string
+  transport:         string
+  lineColour?:       string
+  lineTextColour?:   string
+  realtime:          boolean
+  aimed:             string
+  expected:          string
+  departures:        Departure[]
+  serviceJourneyId?: string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,15 +46,16 @@ function buildLineGroups(deps: Departure[]): LineGroup[] {
     const key = `${dep.line}::${dep.destination}`
     if (!map.has(key)) {
       map.set(key, {
-        line:            dep.line,
-        destination:     dep.destination,
-        transport:       dep.transport,
-        lineColour:      dep.lineColour,
-        lineTextColour:  dep.lineTextColour,
-        realtime:        dep.realtime,
-        aimed:           dep.aimed,
-        expected:        dep.expected,
-        departures:      [dep],
+        line:              dep.line,
+        destination:       dep.destination,
+        transport:         dep.transport,
+        lineColour:        dep.lineColour,
+        lineTextColour:    dep.lineTextColour,
+        realtime:          dep.realtime,
+        aimed:             dep.aimed,
+        expected:          dep.expected,
+        departures:        [dep],
+        serviceJourneyId:  dep.serviceJourneyId,
       })
     } else {
       map.get(key)!.departures.push(dep)
@@ -63,18 +66,33 @@ function buildLineGroups(deps: Departure[]): LineGroup[] {
 
 // ─── DepartureRow ─────────────────────────────────────────────────────────────
 
-function DepartureRow({ group, now }: { group: LineGroup; now: number }) {
-  const first   = group.departures[0]
-  const mins    = minsUntil(first.expected, now)
-  const isNow   = mins <= 0
-  const delayed = Math.abs(new Date(first.expected).getTime() - new Date(first.aimed).getTime()) > 60_000
-  const style   = lineStyle(group.lineColour, group.lineTextColour)
+function DepartureRow({
+  group, now, selected, onClick,
+}: {
+  group:    LineGroup
+  now:      number
+  selected: boolean
+  onClick:  () => void
+}) {
+  const first    = group.departures[0]
+  const mins     = minsUntil(first.expected, now)
+  const isNow    = mins <= 0
+  const delayed  = Math.abs(new Date(first.expected).getTime() - new Date(first.aimed).getTime()) > 60_000
+  const style    = lineStyle(group.lineColour, group.lineTextColour)
   const fallback = { backgroundColor: MODE_FALLBACK_BG[group.transport] ?? '#555', color: '#fff' }
-
   const nextTimes = group.departures.slice(1, 4).map(d => fmtTime(d.expected))
 
   return (
-    <div className="flex items-center gap-2.5 py-2.5 min-h-[44px]">
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 py-2.5 min-h-[44px] rounded-lg px-1 -mx-1 transition-colors duration-150 text-left ${
+        selected
+          ? 'bg-accent-50 ring-1 ring-accent-300'
+          : group.serviceJourneyId
+            ? 'hover:bg-ink-50 cursor-pointer'
+            : 'cursor-default'
+      }`}
+    >
       <span
         className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 min-w-[2.25rem] text-center leading-tight"
         style={style ?? fallback}
@@ -100,12 +118,14 @@ function DepartureRow({ group, now }: { group: LineGroup; now: number }) {
         }`}>
           {isNow ? 'Now' : `${mins} min`}
         </span>
-        {group.realtime
-          ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
-          : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Scheduled">~</span>
+        {selected
+          ? <span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse inline-block flex-shrink-0" title="Tracking" />
+          : group.realtime
+            ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
+            : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Scheduled">~</span>
         }
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -211,16 +231,17 @@ function QuaySavePanel({ stopId, stopName, onSave, onCancel }: QuaySavePanelProp
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function DeparturesTab({ ws, now, onMapPinChange }: DeparturesTabProps) {
+export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: DeparturesTabProps) {
   const { stops, addStop } = useTransitStops()
   const queryClient = useQueryClient()
 
   const defaultStop = stops.find(s => s.is_default) ?? stops[0] ?? null
-  const [activeId,       setActiveId]       = useState<string | null>(null)
-  const [adHocStop,      setAdHocStop]      = useState<StopResult | null>(null)
-  const [showSavePanel,  setShowSavePanel]  = useState(false)
-  const [lastUpdated,    setLastUpdated]    = useState<number | null>(null)
-  const [refreshing,     setRefreshing]     = useState(false)
+  const [activeId,           setActiveId]           = useState<string | null>(null)
+  const [adHocStop,          setAdHocStop]           = useState<StopResult | null>(null)
+  const [showSavePanel,      setShowSavePanel]       = useState(false)
+  const [lastUpdated,        setLastUpdated]         = useState<number | null>(null)
+  const [refreshing,         setRefreshing]          = useState(false)
+  const [selectedJourneyId,  setSelectedJourneyId]  = useState<string | null>(null)
 
   const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
   const queryStop   = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
@@ -288,12 +309,23 @@ export function DeparturesTab({ ws, now, onMapPinChange }: DeparturesTabProps) {
     setAdHocStop(stop)
     setActiveId(null)
     setShowSavePanel(false)
+    setSelectedJourneyId(null)
+    onJourneySelect?.(null)
   }
 
   function handleSavedStopClick(id: string) {
     setActiveId(id)
     setAdHocStop(null)
     setShowSavePanel(false)
+    setSelectedJourneyId(null)
+    onJourneySelect?.(null)
+  }
+
+  function handleJourneyToggle(journeyId: string | undefined) {
+    if (!journeyId) return
+    const next = selectedJourneyId === journeyId ? null : journeyId
+    setSelectedJourneyId(next)
+    onJourneySelect?.(next)
   }
 
   async function handleSaveFromPanel(quayId: string | null, quayDescription: string | null, label: string) {
@@ -421,7 +453,13 @@ export function DeparturesTab({ ws, now, onMapPinChange }: DeparturesTabProps) {
               )}
               <div className="divide-y divide-ink-50">
                 {group.lineGroups.map((lg, j) => (
-                  <DepartureRow key={j} group={lg} now={now} />
+                  <DepartureRow
+                    key={j}
+                    group={lg}
+                    now={now}
+                    selected={!!lg.serviceJourneyId && selectedJourneyId === lg.serviceJourneyId}
+                    onClick={() => handleJourneyToggle(lg.serviceJourneyId)}
+                  />
                 ))}
               </div>
             </div>

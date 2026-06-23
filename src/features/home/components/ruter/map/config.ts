@@ -16,10 +16,10 @@
 // Alternatives (swap the URL if Kartverket ever goes down):
 //   OpenStreetMap:  'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 //   OpenTopoMap:    'https://tile.opentopomap.org/{z}/{x}/{y}.png'
-export const TILE_URL =
-  'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-
-export const TILE_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+// CartoDB Dark Matter — dark style similar to Ruter app, free, no API key
+export const TILE_URL         = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+export const TILE_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>'
+export const TILE_SUBDOMAINS  = 'abcd'
 
 // ─── Map Defaults ─────────────────────────────────────────────────────────────
 // Oslo S as fallback when no stop is selected / GPS unavailable
@@ -45,7 +45,8 @@ export const RUTER_CODESPACE = 'RUT'
 // ─── Polling ──────────────────────────────────────────────────────────────────
 // How often to re-fetch vehicle positions (milliseconds).
 // EnTur updates every ~15 s; polling faster than that wastes bandwidth.
-export const POLL_INTERVAL_MS = 15_000
+export const POLL_INTERVAL_MS          = 15_000   // area mode: matches EnTur refresh cadence
+export const TRACKING_POLL_INTERVAL_MS = 5_000    // journey tracking: near-realtime
 
 // How many seconds a vehicle entry stays in state after the last update
 // before being removed (vehicles that disappear from the feed).

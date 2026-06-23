@@ -1,25 +1,18 @@
-/**
- * Transit Map — TypeScript Types
- *
- * All shared types for the map module.  Import from here, not from
- * individual component files, so refactoring stays in one place.
- */
-
-// ─── Vehicle position received from EnTur Vehicles API ───────────────────────
+// ─── Vehicle position ────────────────────────────────────────────────────────
 export interface VehiclePosition {
-  vehicleId:        string            // unique vehicle identifier
-  publicCode:       string            // line number shown to passengers e.g. "23"
-  lineRef:          string            // internal line ID e.g. "RUT:Line:23"
+  vehicleId:        string
+  publicCode:       string
+  lineRef:          string
   latitude:         number
   longitude:        number
-  bearing?:         number            // heading in degrees (0 = north, 90 = east)
-  delay?:           number            // seconds behind schedule (negative = early)
-  destinationName?: string            // front sign text
-  monitored:        boolean           // false when GPS signal is lost
-  lastSeenAt:       number            // Date.now() of the last update we received
+  bearing?:         number
+  delay?:           number            // seconds, negative = early
+  destinationName?: string
+  monitored:        boolean
+  lastSeenAt:       number            // Date.now() stamp
 }
 
-// ─── A transit stop to pin on the map ────────────────────────────────────────
+// ─── Stop pin ────────────────────────────────────────────────────────────────
 export interface StopPin {
   id:   string   // NSR:StopPlace:... or NSR:Quay:...
   name: string
@@ -27,18 +20,28 @@ export interface StopPin {
   lon:  number
 }
 
-// ─── Raw response shape from the EnTur Vehicles GraphQL endpoint ─────────────
-// Mirrors the exact JSON structure so we can type the fetch result.
+// ─── Route stop (from serviceJourney.passingTimes) ───────────────────────────
+export interface RouteStop {
+  name: string
+  lat:  number
+  lon:  number
+}
+
+// ─── What vehicles to fetch — three modes ────────────────────────────────────
+// stop    → bbox around the stop (area overview)
+// journey → single vehicle by serviceJourneyId (live tracking)
+// bbox    → explicit bounding box (route overview in Routes tab)
+export type VehicleTarget =
+  | { kind: 'stop';    stop: StopPin }
+  | { kind: 'journey'; serviceJourneyId: string }
+  | { kind: 'bbox';    minLat: number; minLon: number; maxLat: number; maxLon: number }
+  | null
+
+// ─── Raw EnTur Vehicles API response ────────────────────────────────────────
 export interface RawVehicle {
   vehicleId: string
-  line: {
-    lineRef:    string
-    publicCode: string
-  } | null
-  location: {
-    latitude:  number
-    longitude: number
-  } | null
+  line: { lineRef: string; publicCode: string } | null
+  location: { latitude: number; longitude: number } | null
   bearing?:         number
   delay?:           number
   destinationName?: string
@@ -46,17 +49,5 @@ export interface RawVehicle {
 }
 
 export interface VehiclesApiResponse {
-  data: {
-    vehicles: RawVehicle[]
-  }
-}
-
-// ─── Props for the public-facing map panel ───────────────────────────────────
-export interface TransitMapPanelProps {
-  /** The stop that's currently selected in DeparturesTab */
-  stop: StopPin | null
-  /** Height of the map area in px (default: 220) */
-  height?: number
-  /** Called when the user clicks a nearby stop pin on the map */
-  onStopClick?: (stop: StopPin) => void
+  data?: { vehicles: RawVehicle[] | null }
 }

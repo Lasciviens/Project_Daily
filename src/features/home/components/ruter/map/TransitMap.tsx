@@ -1,18 +1,3 @@
-/**
- * TransitMap
- *
- * Leaflet-based map showing:
- *   • The selected stop as a red circle pin
- *   • The user's current GPS location (blue circle) — optional
- *   • Live Ruter vehicle positions (colored by delay) — polled every 15 s
- *
- * Self-contained: import <TransitMap> anywhere, pass a StopPin, done.
- * To completely remove: delete the /map/ folder + the import in DeparturesTab.
- *
- * Leaflet requires its CSS to be imported once in the app.
- * We do that here so this module is fully self-contained.
- */
-
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
@@ -20,265 +5,225 @@ import { useVehiclePositions } from './useVehiclePositions'
 import {
   TILE_URL,
   TILE_ATTRIBUTION,
+  TILE_SUBDOMAINS,
   STOP_ZOOM,
-  WIDGET_ZOOM,
   DEFAULT_CENTER,
+  WIDGET_ZOOM,
   VEHICLE_COLORS,
   DELAY_THRESHOLDS,
   STOP_MARKER_COLOR,
   STOP_MARKER_RADIUS,
   USER_LOCATION_COLOR,
 } from './config'
-import type { VehiclePosition, StopPin } from './types'
+import type { VehiclePosition, StopPin, VehicleTarget } from './types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Pick a hex color for a vehicle based on its delay in seconds */
 function vehicleColor(v: VehiclePosition): string {
-  if (!v.monitored)                          return VEHICLE_COLORS.noGPS
-  if ((v.delay ?? 0) <= DELAY_THRESHOLDS.onTime) return VEHICLE_COLORS.onTime
+  if (!v.monitored)                               return VEHICLE_COLORS.noGPS
+  if ((v.delay ?? 0) <= DELAY_THRESHOLDS.onTime)  return VEHICLE_COLORS.onTime
   if ((v.delay ?? 0) <= DELAY_THRESHOLDS.slight)  return VEHICLE_COLORS.slight
   return VEHICLE_COLORS.late
 }
 
-/** Build an SVG bus icon that also shows the line number + direction arrow */
-function makeVehicleIcon(v: VehiclePosition): L.DivIcon {
-  const color    = vehicleColor(v)
-  const bearing  = v.bearing ?? 0
+function makeVehicleIcon(v: VehiclePosition, tracked = false): L.DivIcon {
+  const color   = vehicleColor(v)
+  const bearing = v.bearing ?? 0
+  const size    = tracked ? 44 : 36
+  const badge   = tracked ? 36 : 28
+  const fs      = tracked ? (v.publicCode.length > 2 ? '11' : '14') : (v.publicCode.length > 2 ? '9' : '11')
 
   return L.divIcon({
-    className: '',   // suppress Leaflet's default white box
-    iconSize:  [36, 36],
-    iconAnchor:[18, 18],
+    className: '',
+    iconSize:  [size, size],
+    iconAnchor:[size / 2, size / 2],
     html: `
-      <div style="
-        width:36px; height:36px; position:relative;
-        display:flex; align-items:center; justify-content:center;
-      ">
-        <!-- Direction arrow — rotates to show heading -->
-        <div style="
-          position:absolute; top:-6px; left:50%; transform:translateX(-50%) rotate(${bearing}deg);
-          width:0; height:0;
-          border-left:5px solid transparent;
-          border-right:5px solid transparent;
-          border-bottom:8px solid ${color};
-          opacity:0.85;
-        "></div>
-
-        <!-- Circle badge with line number -->
-        <div style="
-          width:28px; height:28px;
-          background:${color};
-          border-radius:50%;
-          border:2px solid white;
-          display:flex; align-items:center; justify-content:center;
-          font-family:Inter,Arial,sans-serif;
-          font-size:${v.publicCode.length > 2 ? '9' : '11'}px;
-          font-weight:800;
-          color:#fff;
-          box-shadow:0 2px 6px rgba(0,0,0,0.3);
-          line-height:1;
-        ">${v.publicCode}</div>
+      <div style="width:${size}px;height:${size}px;position:relative;display:flex;align-items:center;justify-content:center;">
+        <div style="position:absolute;top:-6px;left:50%;transform:translateX(-50%) rotate(${bearing}deg);
+          width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;
+          border-bottom:8px solid ${color};opacity:0.85;"></div>
+        <div style="width:${badge}px;height:${badge}px;background:${color};border-radius:50%;
+          border:${tracked ? '3px solid white' : '2px solid white'};
+          ${tracked ? 'box-shadow:0 0 0 3px rgba(255,255,255,0.4),0 3px 10px rgba(0,0,0,0.5);' : 'box-shadow:0 2px 6px rgba(0,0,0,0.3);'}
+          display:flex;align-items:center;justify-content:center;
+          font-family:Inter,Arial,sans-serif;font-size:${fs}px;font-weight:800;color:#fff;line-height:1;">
+          ${v.publicCode}
+        </div>
       </div>
     `,
   })
 }
 
-/** Build a popup HTML string for a vehicle */
 function vehiclePopup(v: VehiclePosition): string {
   const delayText = v.delay === undefined ? '' :
-    v.delay <= 0 ? ' · on time' :
-    ` · ${Math.round(v.delay / 60)} min late`
-  return `
-    <div style="font-family:Inter,Arial,sans-serif; font-size:13px; line-height:1.5;">
-      <strong>Line ${v.publicCode}</strong>${v.destinationName ? ' → ' + v.destinationName : ''}
-      <br/><span style="color:#64748b;">${delayText}${!v.monitored ? ' · no GPS' : ''}</span>
-    </div>
-  `
+    v.delay <= 0 ? ' · on time' : ` · ${Math.round(v.delay / 60)} min late`
+  return `<div style="font-family:Inter,Arial,sans-serif;font-size:13px;line-height:1.5;">
+    <strong>Line ${v.publicCode}</strong>${v.destinationName ? ' → ' + v.destinationName : ''}
+    <br/><span style="color:#94a3b8;">${delayText}${!v.monitored ? ' · no GPS' : ''}</span>
+  </div>`
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface TransitMapProps {
-  stop:          StopPin | null
-  userLocation?: [number, number] | null   // [lat, lon]
-  height?:       number                    // px, default 220
+  stop:                     StopPin | null
+  userLocation?:            [number, number] | null
+  height?:                  number
+  trackedServiceJourneyId?: string | null
 }
 
-export function TransitMap({ stop, userLocation, height = 220 }: TransitMapProps) {
-  // We manage the Leaflet map instance ourselves (imperative API)
-  // rather than via react-leaflet, to avoid SSR/hydration issues and
-  // keep full control over marker lifecycle.
-  const containerRef  = useRef<HTMLDivElement>(null)
-  const mapRef        = useRef<L.Map | null>(null)
-  const stopLayerRef  = useRef<L.Layer | null>(null)
-  const userLayerRef  = useRef<L.Layer | null>(null)
+export function TransitMap({ stop, userLocation, height = 220, trackedServiceJourneyId }: TransitMapProps) {
+  const containerRef    = useRef<HTMLDivElement>(null)
+  const mapRef          = useRef<L.Map | null>(null)
+  const stopLayerRef    = useRef<L.Layer | null>(null)
+  const userLayerRef    = useRef<L.Layer | null>(null)
   const vehicleLayerRef = useRef<L.LayerGroup | null>(null)
-  // Track markers by vehicleId so we update-in-place instead of recreating
+  const routeLayerRef   = useRef<L.Layer | null>(null)
   const vehicleMarkersRef = useRef<Map<string, L.Marker>>(new Map())
 
-  const { vehicles, error: vehicleError } = useVehiclePositions(stop)
+  // Build the vehicle fetch target
+  const vehicleTarget: VehicleTarget = trackedServiceJourneyId
+    ? { kind: 'journey', serviceJourneyId: trackedServiceJourneyId }
+    : stop
+      ? { kind: 'stop', stop }
+      : null
 
-  // ── Initialize Leaflet map once on mount ──────────────────────────────────
+  const { vehicles, routeStops, error: vehicleError } = useVehiclePositions(vehicleTarget)
+
+  // ── Initialize map ────────────────────────────────────────────────────────
   useEffect(() => {
     const el = containerRef.current
-    if (!el || mapRef.current) return   // already initialized
+    if (!el || mapRef.current) return
 
-    const map = L.map(el, {
-      zoomControl:        true,
-      attributionControl: true,
-      // Disable scroll-zoom in the widget to prevent accidental zoom
-      // while scrolling the page.  User can still use +/- buttons.
-      scrollWheelZoom:    false,
-    })
-
-    // MUST call setView before any flyTo/panTo calls — Leaflet throws
-    // "Set map center and zoom first" if the map has no initial view.
+    const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false })
     map.setView(DEFAULT_CENTER, WIDGET_ZOOM)
 
-    // Kartverket tile layer
     L.tileLayer(TILE_URL, {
       attribution: TILE_ATTRIBUTION,
+      subdomains:  TILE_SUBDOMAINS,
       maxZoom:     19,
     }).addTo(map)
 
-    // Vehicle layer group — all vehicle markers live here
-    const vehicleLayer = L.layerGroup().addTo(map)
-    vehicleLayerRef.current = vehicleLayer
-
+    vehicleLayerRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
 
     return () => {
-      // Full cleanup on unmount — prevents "map already initialized" errors
       map.remove()
-      mapRef.current        = null
+      mapRef.current = null
       vehicleLayerRef.current = null
       vehicleMarkersRef.current.clear()
     }
-  }, [])  // intentionally empty — run once
+  }, [])
 
-  // ── Fly to selected stop & update stop pin ────────────────────────────────
+  // ── Stop pin & fly ────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-
-    // Remove previous stop marker
-    if (stopLayerRef.current) {
-      map.removeLayer(stopLayerRef.current)
-      stopLayerRef.current = null
-    }
-
+    if (stopLayerRef.current) { map.removeLayer(stopLayerRef.current); stopLayerRef.current = null }
     if (!stop) return
 
-    // Red circle for the selected stop
     const marker = L.circleMarker([stop.lat, stop.lon], {
-      radius:      STOP_MARKER_RADIUS,
-      fillColor:   STOP_MARKER_COLOR,
-      color:       '#fff',
-      weight:      2,
-      opacity:     1,
-      fillOpacity: 0.95,
+      radius: STOP_MARKER_RADIUS, fillColor: STOP_MARKER_COLOR,
+      color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.95,
     }).addTo(map)
-
     marker.bindPopup(`<strong>${stop.name}</strong>`, { closeButton: false })
     stopLayerRef.current = marker
-
-    // Fly to stop
     map.flyTo([stop.lat, stop.lon], STOP_ZOOM, { duration: 0.8 })
   }, [stop?.id, stop?.lat, stop?.lon])
 
-  // ── Update user location pin ──────────────────────────────────────────────
+  // ── User location pin ─────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-
-    if (userLayerRef.current) {
-      map.removeLayer(userLayerRef.current)
-      userLayerRef.current = null
-    }
-
+    if (userLayerRef.current) { map.removeLayer(userLayerRef.current); userLayerRef.current = null }
     if (!userLocation) return
 
     const marker = L.circleMarker(userLocation, {
-      radius:      8,
-      fillColor:   USER_LOCATION_COLOR,
-      color:       '#fff',
-      weight:      2,
-      opacity:     1,
-      fillOpacity: 0.9,
+      radius: 8, fillColor: USER_LOCATION_COLOR,
+      color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.9,
     }).addTo(map)
-
     marker.bindPopup('<strong>Your location</strong>', { closeButton: false })
     userLayerRef.current = marker
   }, [userLocation?.[0], userLocation?.[1]])
 
-  // ── Update vehicle markers ────────────────────────────────────────────────
+  // ── Route stop polyline ───────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (routeLayerRef.current) { map.removeLayer(routeLayerRef.current); routeLayerRef.current = null }
+    if (routeStops.length < 2) return
+
+    const coords = routeStops.map(s => [s.lat, s.lon] as [number, number])
+    const line = L.polyline(coords, {
+      color:   '#e2e8f0',   // light line on dark background
+      weight:  3,
+      opacity: 0.6,
+      dashArray: '6 4',
+    }).addTo(map)
+    routeLayerRef.current = line
+
+    // Fit map to the route when tracking starts
+    if (trackedServiceJourneyId && coords.length > 0) {
+      map.fitBounds(L.latLngBounds(coords), { padding: [30, 30], maxZoom: 14 })
+    }
+  }, [routeStops, trackedServiceJourneyId])
+
+  // ── Vehicle markers ───────────────────────────────────────────────────────
   useEffect(() => {
     const layer   = vehicleLayerRef.current
     const markers = vehicleMarkersRef.current
     if (!layer) return
 
     const incomingIds = new Set(vehicles.map(v => v.vehicleId))
-
-    // Remove markers for vehicles no longer in the feed
     for (const [id, marker] of markers) {
-      if (!incomingIds.has(id)) {
-        layer.removeLayer(marker)
-        markers.delete(id)
-      }
+      if (!incomingIds.has(id)) { layer.removeLayer(marker); markers.delete(id) }
     }
 
-    // Add or update markers for current vehicles
     for (const v of vehicles) {
-      const latlng = new L.LatLng(v.latitude, v.longitude)
-      const icon   = makeVehicleIcon(v)
-      const popup  = vehiclePopup(v)
+      const latlng  = new L.LatLng(v.latitude, v.longitude)
+      const tracked = !!trackedServiceJourneyId   // in journey mode every vehicle returned IS the tracked one
+      const icon    = makeVehicleIcon(v, tracked)
+      const popup   = vehiclePopup(v)
 
       if (markers.has(v.vehicleId)) {
-        // Update existing marker in place (smooth movement, no flicker)
         const m = markers.get(v.vehicleId)!
-        m.setLatLng(latlng)
-        m.setIcon(icon)
-        m.setPopupContent(popup)
+        m.setLatLng(latlng); m.setIcon(icon); m.setPopupContent(popup)
       } else {
-        // Create new marker
         const m = L.marker(latlng, { icon })
         m.bindPopup(popup, { closeButton: false })
         m.addTo(layer)
         markers.set(v.vehicleId, m)
       }
     }
-  }, [vehicles])
+
+    // In tracking mode, pan to the tracked vehicle so it stays visible
+    if (trackedServiceJourneyId && vehicles.length > 0 && mapRef.current) {
+      const v = vehicles[0]
+      mapRef.current.panTo([v.latitude, v.longitude], { animate: true, duration: 0.5 })
+    }
+  }, [vehicles, trackedServiceJourneyId])
 
   // ─────────────────────────────────────────────────────────────────────────
-
   return (
     <div className="relative w-full rounded-xl overflow-hidden border border-ink-100" style={{ height }}>
-      {/* The div Leaflet attaches to — must have explicit dimensions */}
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Live indicator (top-left corner) */}
       {vehicles.length > 0 && (
-        <div
-          className="absolute top-2 left-2 z-[1000] flex items-center gap-1.5
-                     bg-white/90 backdrop-blur-sm rounded-lg px-2 py-1 shadow-sm
-                     pointer-events-none"
-        >
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
-          <span className="text-[10px] font-semibold text-ink-700">
-            {vehicles.length} vehicle{vehicles.length !== 1 ? 's' : ''} live
+        <div className="absolute top-2 left-2 z-[1000] flex items-center gap-1.5
+                        bg-black/60 backdrop-blur-sm rounded-lg px-2 py-1 shadow-sm pointer-events-none">
+          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block" />
+          <span className="text-[10px] font-semibold text-white">
+            {trackedServiceJourneyId
+              ? `Tracking line ${vehicles[0]?.publicCode ?? '…'}`
+              : `${vehicles.length} vehicle${vehicles.length !== 1 ? 's' : ''} live`
+            }
           </span>
         </div>
       )}
 
-      {/* Error badge */}
       {vehicleError && (
-        <div
-          className="absolute top-2 left-2 z-[1000]
-                     bg-red-50 border border-red-200 rounded-lg px-2 py-1 shadow-sm
-                     pointer-events-none"
-        >
-          <span className="text-[10px] text-red-600">⚠ {vehicleError}</span>
+        <div className="absolute top-2 left-2 z-[1000] bg-red-900/80 border border-red-700 rounded-lg px-2 py-1 shadow-sm pointer-events-none">
+          <span className="text-[10px] text-red-200">⚠ {vehicleError}</span>
         </div>
       )}
     </div>

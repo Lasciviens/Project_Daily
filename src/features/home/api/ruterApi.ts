@@ -20,17 +20,18 @@ export interface StopResult {
 }
 
 export interface Departure {
-  line:             string
-  transport:        string
-  destination:      string          // destinationDisplay.frontText — primary direction indicator
-  aimed:            string          // ISO datetime
-  expected:         string          // ISO datetime
-  realtime:         boolean
-  quayCode?:        string
-  quayName?:        string
-  quayDescription?: string          // e.g. "mot Oslo"
-  lineColour?:      string          // hex without #, from line.presentation.colour
-  lineTextColour?:  string          // hex without #, from line.presentation.textColour
+  line:              string
+  transport:         string
+  destination:       string          // destinationDisplay.frontText — primary direction indicator
+  aimed:             string          // ISO datetime
+  expected:          string          // ISO datetime
+  realtime:          boolean
+  quayCode?:         string
+  quayName?:         string
+  quayDescription?:  string          // e.g. "mot Oslo"
+  lineColour?:       string          // hex without #, from line.presentation.colour
+  lineTextColour?:   string          // hex without #, from line.presentation.textColour
+  serviceJourneyId?: string          // for live vehicle tracking
 }
 
 export interface TripLeg {
@@ -52,7 +53,8 @@ export interface TripLeg {
   arrivalTime?:     string          // expected arrival at toPlace ISO
   lineColour?:      string          // hex without #, from line.presentation.colour
   lineTextColour?:  string          // hex without #, from line.presentation.textColour
-  legGeometry?:     { points: string; length: number }  // encoded polyline from pointsOnLink
+  legGeometry?:      { points: string; length: number }  // encoded polyline from pointsOnLink
+  serviceJourneyId?: string                              // for live vehicle tracking
 }
 
 export interface TripPattern {
@@ -246,6 +248,7 @@ export async function fetchDepartures(
         destinationDisplay { frontText }
         quay { publicCode name description }
         serviceJourney {
+          id
           line {
             publicCode
             transportMode
@@ -264,6 +267,7 @@ export async function fetchDepartures(
         destinationDisplay:    { frontText: string }
         quay?: { publicCode?: string; name?: string; description?: string }
         serviceJourney:        {
+          id: string
           line: {
             publicCode: string
             transportMode: string
@@ -280,17 +284,18 @@ export async function fetchDepartures(
   const departures: Departure[] = (data.stopPlace.estimatedCalls ?? [])
     .filter(c => c.serviceJourney?.line?.publicCode && c.expectedDepartureTime)
     .map(c => ({
-      line:             c.serviceJourney.line.publicCode,
-      transport:        c.serviceJourney.line.transportMode,
-      destination:      c.destinationDisplay.frontText,
-      aimed:            c.aimedDepartureTime,
-      expected:         c.expectedDepartureTime,
-      realtime:         c.realtime,
-      quayCode:         c.quay?.publicCode,
-      quayName:         c.quay?.name,
-      quayDescription:  c.quay?.description,
-      lineColour:       c.serviceJourney.line.presentation?.colour,
-      lineTextColour:   c.serviceJourney.line.presentation?.textColour,
+      line:              c.serviceJourney.line.publicCode,
+      transport:         c.serviceJourney.line.transportMode,
+      destination:       c.destinationDisplay.frontText,
+      aimed:             c.aimedDepartureTime,
+      expected:          c.expectedDepartureTime,
+      realtime:          c.realtime,
+      quayCode:          c.quay?.publicCode,
+      quayName:          c.quay?.name,
+      quayDescription:   c.quay?.description,
+      lineColour:        c.serviceJourney.line.presentation?.colour,
+      lineTextColour:    c.serviceJourney.line.presentation?.textColour,
+      serviceJourneyId:  c.serviceJourney.id,
     }))
 
   return { stopName: data.stopPlace.name, departures }
@@ -337,6 +342,7 @@ export async function fetchTrips(
             transportMode
             presentation { colour textColour }
           }
+          serviceJourney { id }
           fromEstimatedCall {
             quay { publicCode name description }
             aimedDepartureTime
@@ -366,6 +372,7 @@ export async function fetchTrips(
           fromPlace: { name: string }
           toPlace:   { name: string }
           line?: { publicCode: string; name: string; transportMode: string; presentation?: { colour?: string; textColour?: string } | null } | null
+          serviceJourney?: { id: string } | null
           fromEstimatedCall?: {
             quay?: { publicCode?: string; name?: string; description?: string } | null
             aimedDepartureTime:    string
@@ -419,6 +426,9 @@ export async function fetchTrips(
       }
       if (l.pointsOnLink?.points) {
         leg.legGeometry = { points: l.pointsOnLink.points, length: l.pointsOnLink.length ?? 0 }
+      }
+      if (l.serviceJourney?.id) {
+        leg.serviceJourneyId = l.serviceJourney.id
       }
       return leg
     }),

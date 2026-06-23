@@ -1,69 +1,57 @@
-/**
- * useVehiclePositions
- *
- * Polls the EnTur Vehicles GraphQL REST endpoint for real-time vehicle
- * positions within a bounding box around the given stop.
- *
- * Why polling instead of WebSocket?
- *   The graphql-ws subscription protocol requires extra coordination and
- *   a library dependency.  REST polling at 15 s is simpler, reliable from
- *   any browser, and EnTur refreshes the data every ~15 s anyway — so
- *   there's no meaningful UX difference.
- *
- * To switch to WebSocket later:
- *   Replace the useEffect body with a graphql-ws client
- *   (npm install graphql-ws) and keep the same setState calls.
- */
-
 import { useState, useEffect, useRef } from 'react'
 import {
   VEHICLES_REST_URL,
   ET_CLIENT_NAME,
   RUTER_CODESPACE,
   POLL_INTERVAL_MS,
+  TRACKING_POLL_INTERVAL_MS,
   VEHICLE_STALE_AFTER_MS,
   BBOX_PADDING_DEG,
 } from './config'
-import type { VehiclePosition, StopPin, RawVehicle, VehiclesApiResponse } from './types'
+import type { VehiclePosition, VehicleTarget, RouteStop, RawVehicle, VehiclesApiResponse } from './types'
 
-// ─── GraphQL query ────────────────────────────────────────────────────────────
-// Fetch vehicles inside a bounding box around the selected stop.
-// Requesting only the fields we actually render keeps the payload small.
-function buildQuery(stop: StopPin): string {
-  const minLat = stop.lat - BBOX_PADDING_DEG
-  const maxLat = stop.lat + BBOX_PADDING_DEG
-  const minLon = stop.lon - BBOX_PADDING_DEG
-  const maxLon = stop.lon + BBOX_PADDING_DEG
+// ─── GraphQL query builders ───────────────────────────────────────────────────
 
-  return `{
-    vehicles(
-      codespaceId: "${RUTER_CODESPACE}"
-      boundingBox: {
-        minLat: ${minLat}
-        minLon: ${minLon}
-        maxLat: ${maxLat}
-        maxLon: ${maxLon}
-      }
-    ) {
-      vehicleId
-      line { lineRef publicCode }
-      location { latitude longitude }
-      bearing
-      delay
-      destinationName
-      monitored
-    }
-  }`
+const VEHICLE_FIELDS = `
+  vehicleId
+  line { lineRef publicCode }
+  location { latitude longitude }
+  bearing delay destinationName monitored
+`
+
+function queryByBbox(minLat: number, minLon: number, maxLat: number, maxLon: number): string {
+  return `{ vehicles(codespaceId: "${RUTER_CODESPACE}" boundingBox: { minLat: ${minLat} minLon: ${minLon} maxLat: ${maxLat} maxLon: ${maxLon} }) { ${VEHICLE_FIELDS} } }`
 }
 
-// ─── Normalise raw API response into our VehiclePosition shape ───────────────
+function queryByJourney(serviceJourneyId: string): string {
+  return `{ vehicles(serviceJourneyId: "${serviceJourneyId}") { ${VEHICLE_FIELDS} } }`
+}
+
+// Fetch route stops from Journey Planner (called once per tracked journey)
+async function fetchRouteStops(serviceJourneyId: string): Promise<RouteStop[]> {
+  const JOURNEY = 'https://api.entur.io/journey-planner/v3/graphql'
+  const res = await fetch(JOURNEY, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': ET_CLIENT_NAME },
+    body: JSON.stringify({ query: `{ serviceJourney(id: "${serviceJourneyId}") { passingTimes { quay { name latitude longitude } } } }` }),
+  })
+  if (!res.ok) return []
+  const json = await res.json() as {
+    data?: { serviceJourney?: { passingTimes: Array<{ quay: { name: string; latitude: number; longitude: number } | null }> } | null }
+  }
+  return (json.data?.serviceJourney?.passingTimes ?? [])
+    .map(pt => pt.quay)
+    .filter((q): q is NonNullable<typeof q> => q !== null && typeof q.latitude === 'number')
+    .map(q => ({ name: q.name, lat: q.latitude, lon: q.longitude }))
+}
+
+// ─── Normalise raw vehicle ───────────────────────────────────────────────────
 function normalise(raw: RawVehicle): VehiclePosition | null {
-  // Skip vehicles without a location — can't put them on a map
   if (!raw.location) return null
   return {
     vehicleId:       raw.vehicleId,
-    publicCode:      raw.line?.publicCode  ?? '?',
-    lineRef:         raw.line?.lineRef     ?? '',
+    publicCode:      raw.line?.publicCode ?? '?',
+    lineRef:         raw.line?.lineRef    ?? '',
     latitude:        raw.location.latitude,
     longitude:       raw.location.longitude,
     bearing:         raw.bearing,
@@ -77,61 +65,78 @@ function normalise(raw: RawVehicle): VehiclePosition | null {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export interface UseVehiclePositionsResult {
   vehicles:   VehiclePosition[]
+  routeStops: RouteStop[]
   isLoading:  boolean
   error:      string | null
-  lastUpdate: number | null   // Date.now() of last successful fetch
+  lastUpdate: number | null
 }
 
-export function useVehiclePositions(stop: StopPin | null): UseVehiclePositionsResult {
+export function useVehiclePositions(target: VehicleTarget): UseVehiclePositionsResult {
   const [vehicles,   setVehicles]   = useState<VehiclePosition[]>([])
+  const [routeStops, setRouteStops] = useState<RouteStop[]>([])
   const [isLoading,  setIsLoading]  = useState(false)
   const [error,      setError]      = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState<number | null>(null)
 
-  // Keep a ref to the current vehicle map so the interval callback always
-  // sees the latest state without a stale closure.
   const vehicleMapRef = useRef<Map<string, VehiclePosition>>(new Map())
 
+  // Build a stable key so the effect only re-runs when the target meaningfully changes
+  const targetKey = !target ? 'null'
+    : target.kind === 'stop'    ? `stop:${target.stop.id}`
+    : target.kind === 'journey' ? `journey:${target.serviceJourneyId}`
+    : `bbox:${target.minLat},${target.minLon},${target.maxLat},${target.maxLon}`
+
   useEffect(() => {
-    // Nothing to fetch when no stop is selected
-    if (!stop) {
-      setVehicles([])
-      setError(null)
+    if (!target) {
+      setVehicles([]); setRouteStops([]); setError(null)
+      vehicleMapRef.current.clear()
       return
     }
 
-    let cancelled = false   // prevents state updates after unmount
+    let cancelled = false
+    const t = target   // non-null snapshot so TS can narrow inside closures
+
+    // Build the GraphQL query for this target
+    function buildQuery(): string {
+      if (t.kind === 'journey') return queryByJourney(t.serviceJourneyId)
+      if (t.kind === 'bbox')    return queryByBbox(t.minLat, t.minLon, t.maxLat, t.maxLon)
+      // stop mode
+      const { lat, lon } = t.stop
+      return queryByBbox(lat - BBOX_PADDING_DEG, lon - BBOX_PADDING_DEG, lat + BBOX_PADDING_DEG, lon + BBOX_PADDING_DEG)
+    }
+
+    // Fetch route stops once for journey tracking
+    if (t.kind === 'journey') {
+      fetchRouteStops(t.serviceJourneyId)
+        .then(stops => { if (!cancelled) setRouteStops(stops) })
+        .catch(() => {})
+    } else {
+      setRouteStops([])
+    }
+
+    const pollInterval = t.kind === 'journey' ? TRACKING_POLL_INTERVAL_MS : POLL_INTERVAL_MS
 
     async function fetchVehicles() {
       try {
         const res = await fetch(VEHICLES_REST_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type':  'application/json',
-            'ET-Client-Name': ET_CLIENT_NAME,
-          },
-          body: JSON.stringify({ query: buildQuery(stop!) }),
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'ET-Client-Name': ET_CLIENT_NAME },
+          body:    JSON.stringify({ query: buildQuery() }),
         })
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) throw new Error(`Vehicles API: HTTP ${res.status}`)
 
         const json: VehiclesApiResponse = await res.json()
-        if (!json.data?.vehicles) throw new Error('Unexpected response shape')
+        const rawList = json.data?.vehicles ?? []
 
         if (cancelled) return
 
         const now = Date.now()
-
-        // Merge new data into our running map, keyed by vehicleId.
-        // This way vehicles that temporarily leave the bbox stay visible
-        // for VEHICLE_STALE_AFTER_MS before disappearing.
         const map = vehicleMapRef.current
-        for (const raw of json.data.vehicles) {
+
+        for (const raw of rawList) {
           const v = normalise(raw)
           if (v) map.set(v.vehicleId, v)
         }
-
-        // Evict stale vehicles (no update for > VEHICLE_STALE_AFTER_MS)
         for (const [id, v] of map) {
           if (now - v.lastSeenAt > VEHICLE_STALE_AFTER_MS) map.delete(id)
         }
@@ -140,29 +145,23 @@ export function useVehiclePositions(stop: StopPin | null): UseVehiclePositionsRe
         setLastUpdate(now)
         setError(null)
       } catch (err) {
-        if (!cancelled) {
-          setError((err as Error).message ?? 'Failed to fetch vehicles')
-        }
+        if (!cancelled) setError((err as Error).message ?? 'Failed to fetch vehicles')
       } finally {
         if (!cancelled) setIsLoading(false)
       }
     }
 
-    // Initial load
     setIsLoading(true)
     fetchVehicles()
-
-    // Poll on interval
-    const timer = setInterval(fetchVehicles, POLL_INTERVAL_MS)
+    const timer = setInterval(fetchVehicles, pollInterval)
 
     return () => {
       cancelled = true
       clearInterval(timer)
-      // Clear the vehicle map so a new stop starts fresh
-      vehicleMapRef.current = new Map()
+      vehicleMapRef.current.clear()
       setVehicles([])
     }
-  }, [stop?.id, stop?.lat, stop?.lon])  // re-run only when the stop changes
+  }, [targetKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { vehicles, isLoading, error, lastUpdate }
+  return { vehicles, routeStops, isLoading, error, lastUpdate }
 }
