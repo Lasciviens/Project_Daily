@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../../integrations/supabase/client'
+import { toast } from '../../../app/store'
 import type { StopResult } from '../api/ruterApi'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -55,10 +56,7 @@ export function useTransitStops(): {
       quay_id:          quayId ?? null,
       quay_description: quayDescription ?? null,
     })
-    if (error) {
-      console.error('[useTransitStops] addStop failed:', error.message)
-      throw error
-    }
+    if (error) throw error
     await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })
   }
 
@@ -66,10 +64,7 @@ export function useTransitStops(): {
     const target = stops.find(s => s.id === id)
 
     const { error } = await supabase.from('user_transit_stops').delete().eq('id', id)
-    if (error) {
-      console.error('[useTransitStops] removeStop failed:', error)
-      throw error
-    }
+    if (error) throw error
 
     // If the removed stop was default, promote the first remaining stop
     if (target?.is_default) {
@@ -79,7 +74,7 @@ export function useTransitStops(): {
           .from('user_transit_stops')
           .update({ is_default: true })
           .eq('id', remaining[0].id)
-        if (promoteError) console.error('[useTransitStops] promote default failed:', promoteError)
+        if (promoteError) toast.error('Failed to update default stop')
       }
     }
 
@@ -92,19 +87,13 @@ export function useTransitStops(): {
       .from('user_transit_stops')
       .update({ is_default: false })
       .neq('id', id)
-    if (clearError) {
-      console.error('[useTransitStops] setDefault clear failed:', clearError)
-      throw clearError
-    }
+    if (clearError) throw clearError
 
     const { error: setError } = await supabase
       .from('user_transit_stops')
       .update({ is_default: true })
       .eq('id', id)
-    if (setError) {
-      console.error('[useTransitStops] setDefault set failed:', setError)
-      throw setError
-    }
+    if (setError) throw setError
 
     await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })
   }

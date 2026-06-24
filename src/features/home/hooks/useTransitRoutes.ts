@@ -50,19 +50,13 @@ export function useTransitRoutes(): {
       to_stop_name:   to.name,
       sort_order:     routes.length,
     })
-    if (error) {
-      console.error('[useTransitRoutes] addRoute failed:', error.message)
-      throw error
-    }
+    if (error) throw error
     await qc.invalidateQueries({ queryKey: ['transit', 'routes'] })
   }
 
   async function removeRoute(id: string): Promise<void> {
     const { error } = await supabase.from('user_transit_routes').delete().eq('id', id)
-    if (error) {
-      console.error('[useTransitRoutes] removeRoute failed:', error)
-      throw error
-    }
+    if (error) throw error
     await qc.invalidateQueries({ queryKey: ['transit', 'routes'] })
   }
 
@@ -71,10 +65,7 @@ export function useTransitRoutes(): {
       .from('user_transit_routes')
       .update({ label })
       .eq('id', id)
-    if (error) {
-      console.error('[useTransitRoutes] updateLabel failed:', error)
-      throw error
-    }
+    if (error) throw error
     await qc.invalidateQueries({ queryKey: ['transit', 'routes'] })
   }
 

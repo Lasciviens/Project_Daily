@@ -77,7 +77,6 @@ export function useCreateTask() {
           saveGoogleTaskMapping(task.id, googleTaskId)
         } catch (err) {
           googleTaskError = err instanceof Error ? err.message : 'Google Tasks sync failed'
-          console.warn('[GoogleTasks] create failed:', err)
         }
       }
       return { task, googleTaskError }
@@ -108,7 +107,7 @@ export function useToggleTask() {
           try {
             if (isDone) await completeGoogleTask(token, googleTaskId)
             else        await reopenGoogleTask(token, googleTaskId)
-          } catch (err) { console.warn('[GoogleTasks] toggle failed:', err) }
+          } catch { /* soft fail — Google Tasks sync is non-blocking */ }
         }
       }
       return task
@@ -137,7 +136,7 @@ export function useDeleteTask() {
       if (googleTaskId) {
         const token = useCalendarStore.getState().accessToken
         if (token) {
-          try { await deleteGoogleTask(token, googleTaskId) } catch (err) { console.warn('[GoogleTasks] delete failed:', err) }
+          try { await deleteGoogleTask(token, googleTaskId) } catch { /* soft fail */ }
         }
         removeGoogleTaskMapping(id)
       }

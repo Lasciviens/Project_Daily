@@ -1,5 +1,3 @@
-import { useState } from 'react'
-
 const THEMES: Record<string, { label: string; hex: string; vars: Record<string, string> }> = {
   orange: {
     label: 'Orange',
@@ -42,46 +40,3 @@ export function applyTheme(name: string) {
   })
 }
 
-export function ThemeSwitcher() {
-  const [open, setOpen] = useState(false)
-  const [current, setCurrent] = useState(
-    () => localStorage.getItem('accent-theme') ?? 'orange'
-  )
-
-  function select(name: string) {
-    applyTheme(name)
-    localStorage.setItem('accent-theme', name)
-    setCurrent(name)
-    setOpen(false)
-  }
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(p => !p)}
-        title="Change accent color"
-        className="w-5 h-5 rounded-full border-2 border-white shadow-sm hover:scale-110 transition-shadow duration-150 flex-shrink-0"
-        style={{ backgroundColor: THEMES[current]?.hex }}
-      />
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-7 z-50 bg-white border border-ink-200 rounded-xl shadow-card-hover p-2.5 flex items-center gap-2">
-            {Object.entries(THEMES).map(([name, t]) => (
-              <button
-                key={name}
-                onClick={() => select(name)}
-                title={t.label}
-                className={`w-5 h-5 rounded-full border-2 transition-shadow duration-150 hover:scale-110 ${
-                  current === name ? 'border-ink-500 scale-110' : 'border-transparent'
-                }`}
-                style={{ backgroundColor: t.hex }}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}

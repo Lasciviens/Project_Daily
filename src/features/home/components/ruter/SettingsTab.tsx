@@ -1,5 +1,6 @@
 import { useTransitStops } from '../../hooks/useTransitStops'
 import { useTransitRoutes } from '../../hooks/useTransitRoutes'
+import { toast } from '../../../../app/store'
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,7 @@ export function SettingsTab() {
           {stops.map(s => (
             <li key={s.id} className="flex items-center gap-2 min-h-[44px]">
               <button
-                onClick={() => setDefault(s.id).catch(console.error)}
+                onClick={() => setDefault(s.id).catch(e => toast.error((e as Error).message ?? 'Failed'))}
                 className="flex-1 text-left"
                 title="Set as default"
               >
@@ -34,7 +35,7 @@ export function SettingsTab() {
                 <span className="text-[10px] text-accent-500 font-medium flex-shrink-0">default</span>
               )}
               <button
-                onClick={() => removeStop(s.id).catch(console.error)}
+                onClick={() => removeStop(s.id).catch(e => toast.error((e as Error).message ?? 'Failed'))}
                 className="text-ink-300 hover:text-red-500 transition-colors duration-150 text-xs min-h-[44px] min-w-[44px] flex items-center justify-center flex-shrink-0"
                 title="Remove"
               >✕</button>
@@ -61,7 +62,7 @@ export function SettingsTab() {
                 <p className="text-xs text-ink-400 truncate">{r.from_stop_name} → {r.to_stop_name}</p>
               </div>
               <button
-                onClick={() => removeRoute(r.id).catch(console.error)}
+                onClick={() => removeRoute(r.id).catch(e => toast.error((e as Error).message ?? 'Failed'))}
                 className="text-ink-300 hover:text-red-500 transition-colors duration-150 text-xs min-h-[44px] min-w-[44px] flex items-center justify-center flex-shrink-0"
                 title="Remove"
               >✕</button>

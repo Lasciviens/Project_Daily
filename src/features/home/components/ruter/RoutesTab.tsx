@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchTrips, fetchStopDirections, type StopResult, type TransitPlace, type TripLeg } from '../../api/ruterApi'
+import { fetchTrips, fetchStopDirections, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
@@ -11,9 +11,8 @@ import { toast } from '../../../../app/store'
 import { DateInput } from '../../../../shared/components/DateInput'
 
 interface RoutesTabProps {
-  ws:                  WidgetStateResult
-  now:                 number
-  onTripLegsChange?:   (legs: TripLeg[] | null) => void
+  ws:  WidgetStateResult
+  now: number
 }
 
 type LocationState = 'idle' | 'loading' | 'granted' | 'denied' | 'error'
@@ -157,7 +156,7 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
   )
 }
 
-export function RoutesTab({ ws, now, onTripLegsChange }: RoutesTabProps) {
+export function RoutesTab({ ws, now }: RoutesTabProps) {
   const { routes, addRoute, removeRoute } = useTransitRoutes()
   const { stops: savedStops } = useTransitStops()
   const queryClient = useQueryClient()
@@ -285,10 +284,6 @@ export function RoutesTab({ ws, now, onTripLegsChange }: RoutesTabProps) {
       setRefreshing(false)
     }
   }, [search, refreshing, queryClient, tripQueryKey, refetch])
-
-  useEffect(() => {
-    onTripLegsChange?.(data?.[0]?.legs ?? null)
-  }, [data])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const { filteredData, lineFilterActive, lineMatchCount } = useMemo(() => {
     if (!data) return { filteredData: undefined, lineFilterActive: false, lineMatchCount: 0 }

@@ -49,7 +49,6 @@ export async function exchangeCalendarCode(
       const body = await (error as any).context?.json?.()
       if (body?.error) detail = body.error
     } catch { /* ignore parse errors */ }
-    console.error('[calendar-oauth]', detail)
     throw new Error(detail)
   }
   if (data?.error) throw new Error(data.error)
