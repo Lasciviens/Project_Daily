@@ -70,9 +70,10 @@ interface TransitMapProps {
   userLocation?:            [number, number] | null
   height?:                  number
   trackedServiceJourneyId?: string | null
+  trackedLineRef?:          string | null
 }
 
-export function TransitMap({ stop, userLocation, height = 220, trackedServiceJourneyId }: TransitMapProps) {
+export function TransitMap({ stop, userLocation, height = 220, trackedServiceJourneyId, trackedLineRef }: TransitMapProps) {
   const containerRef    = useRef<HTMLDivElement>(null)
   const mapRef          = useRef<L.Map | null>(null)
   const stopLayerRef    = useRef<L.Layer | null>(null)
@@ -81,9 +82,11 @@ export function TransitMap({ stop, userLocation, height = 220, trackedServiceJou
   const routeLayerRef   = useRef<L.Layer | null>(null)
   const vehicleMarkersRef = useRef<Map<string, L.Marker>>(new Map())
 
-  // Build the vehicle fetch target
-  const vehicleTarget: VehicleTarget = trackedServiceJourneyId
-    ? { kind: 'journey', serviceJourneyId: trackedServiceJourneyId }
+  // Build the vehicle fetch target.
+  // lineRef queries all active vehicles on the line — reliable.
+  // serviceJourneyId is kept for fetchRouteStops (route polyline) only.
+  const vehicleTarget: VehicleTarget = trackedServiceJourneyId && trackedLineRef
+    ? { kind: 'journey', serviceJourneyId: trackedServiceJourneyId, lineRef: trackedLineRef }
     : stop
       ? { kind: 'stop', stop }
       : null

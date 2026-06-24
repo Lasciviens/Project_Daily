@@ -7,6 +7,7 @@ import { SettingsTab } from './ruter/SettingsTab'
 import { TransitMapPanel, RouteMapPanel } from './ruter/map'
 import type { StopPin } from './ruter/map'
 import type { TripLeg } from '../api/ruterApi'
+import type { JourneyTracking } from './ruter/DeparturesTab'
 
 type Tab        = 'departures' | 'routes' | 'settings'
 type LayoutMode = 'compact' | 'medium' | 'wide'
@@ -64,12 +65,7 @@ function Panel({ children }: { children: React.ReactNode }) {
 export function RuterWidget() {
   const [tab, setTab]                         = useState<Tab>('departures')
   const [transitMapPin, setTransitMapPin]     = useState<StopPin | null>(null)
-  const [trackedJourneyId, setTrackedJourney] = useState<string | null>(null)
-  // DEBUG — remove after confirming tracking works
-  const handleJourneySelect = (id: string | null) => {
-    console.debug('[RuterWidget] trackedJourneyId →', id, '| mapPin:', transitMapPin?.id ?? 'null')
-    setTrackedJourney(id)
-  }
+  const [trackedJourney, setTrackedJourney]   = useState<JourneyTracking | null>(null)
   const [routeLegs, setRouteLegs]             = useState<TripLeg[] | null>(null)
   const ws  = useWidgetState('ruter', { collapsed: true, intervalMs: 60_000 })
   const now = useNow()
@@ -137,7 +133,7 @@ export function RuterWidget() {
                   ws={ws}
                   now={now}
                   onMapPinChange={setTransitMapPin}
-                  onJourneySelect={handleJourneySelect}
+                  onJourneySelect={setTrackedJourney}
                 />
               </Panel>
               <Panel>
@@ -148,7 +144,8 @@ export function RuterWidget() {
               <div className="mt-3">
                 <TransitMapPanel
                   stop={transitMapPin}
-                  trackedServiceJourneyId={trackedJourneyId}
+                  trackedServiceJourneyId={trackedJourney?.serviceJourneyId}
+                  trackedLineRef={trackedJourney?.lineRef}
                   height={300}
                 />
               </div>
@@ -168,7 +165,7 @@ export function RuterWidget() {
                 ws={ws}
                 now={now}
                 onMapPinChange={setTransitMapPin}
-                onJourneySelect={handleJourneySelect}
+                onJourneySelect={setTrackedJourney}
               />
             )}
             {tab === 'routes' && (
@@ -177,7 +174,8 @@ export function RuterWidget() {
             {tab === 'departures' && transitMapPin && (
               <TransitMapPanel
                 stop={transitMapPin}
-                trackedServiceJourneyId={trackedJourneyId}
+                trackedServiceJourneyId={trackedJourney?.serviceJourneyId}
+                trackedLineRef={trackedJourney?.lineRef}
                 height={280}
               />
             )}
