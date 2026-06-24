@@ -6,10 +6,11 @@ interface TransitMapPanelProps {
   stop:                     StopPin | null
   userLocation?:            [number, number] | null
   trackedServiceJourneyId?: string | null
+  trackedLineRef?:          string | null
   height?:                  number
 }
 
-export function TransitMapPanel({ stop, userLocation, trackedServiceJourneyId, height = 280 }: TransitMapPanelProps) {
+export function TransitMapPanel({ stop, userLocation, trackedServiceJourneyId, trackedLineRef, height = 280 }: TransitMapPanelProps) {
   const [open, setOpen] = useState(false)
 
   // Auto-collapse when stop changes
@@ -17,8 +18,8 @@ export function TransitMapPanel({ stop, userLocation, trackedServiceJourneyId, h
 
   // Auto-open when journey tracking starts
   useEffect(() => {
-    if (trackedServiceJourneyId) setOpen(true)
-  }, [trackedServiceJourneyId])
+    if (trackedServiceJourneyId && trackedLineRef) setOpen(true)
+  }, [trackedServiceJourneyId, trackedLineRef])
 
   if (!stop) return null
 
@@ -43,6 +44,7 @@ export function TransitMapPanel({ stop, userLocation, trackedServiceJourneyId, h
             stop={stop}
             userLocation={userLocation}
             trackedServiceJourneyId={trackedServiceJourneyId}
+            trackedLineRef={trackedLineRef}
             height={height}
           />
           {!trackedServiceJourneyId && (

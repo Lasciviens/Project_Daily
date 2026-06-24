@@ -31,7 +31,8 @@ export interface Departure {
   quayDescription?:  string          // e.g. "mot Oslo"
   lineColour?:       string          // hex without #, from line.presentation.colour
   lineTextColour?:   string          // hex without #, from line.presentation.textColour
-  serviceJourneyId?: string          // for live vehicle tracking
+  serviceJourneyId?: string          // for route polyline (fetchRouteStops)
+  lineRef?:          string          // e.g. "RUT:Line:390E" — for Vehicles API query
 }
 
 export interface TripLeg {
@@ -169,6 +170,17 @@ export async function searchStops(query: string): Promise<StopResult[]> {
     }))
 }
 
+// ─── Stop coordinates (for saved stops that have no cached lat/lon) ───────────
+
+export async function fetchStopCoords(stopId: string): Promise<{ lat: number; lon: number } | null> {
+  const data = await gql(`{ stopPlace(id: "${stopId}") { coordinates { latitude longitude } } }`) as {
+    stopPlace?: { coordinates?: { latitude: number; longitude: number } | null } | null
+  }
+  const c = data.stopPlace?.coordinates
+  if (!c) return null
+  return { lat: c.latitude, lon: c.longitude }
+}
+
 // ─── Stop quay directions ─────────────────────────────────────────────────────
 
 export interface QuayDirectionHint {
@@ -250,6 +262,7 @@ export async function fetchDepartures(
         serviceJourney {
           id
           line {
+            id
             publicCode
             transportMode
             presentation { colour textColour }
@@ -269,6 +282,7 @@ export async function fetchDepartures(
         serviceJourney:        {
           id: string
           line: {
+            id: string
             publicCode: string
             transportMode: string
             presentation?: { colour?: string; textColour?: string } | null
@@ -279,15 +293,6 @@ export async function fetchDepartures(
   }
 
   if (!data.stopPlace) throw new Error(`Stop not found: ${stopId}`)
-
-  // DEBUG — remove after confirming serviceJourneyId works
-  if (import.meta.env.DEV || true) {
-    const sample = data.stopPlace.estimatedCalls?.[0]
-    console.debug('[ruterApi] fetchDepartures sample call:', {
-      serviceJourneyId: (sample as any)?.serviceJourney?.id,
-      line: (sample as any)?.serviceJourney?.line?.publicCode,
-    })
-  }
 
   // Filter out any malformed calls so one bad item doesn't crash the whole widget
   const departures: Departure[] = (data.stopPlace.estimatedCalls ?? [])
@@ -305,6 +310,7 @@ export async function fetchDepartures(
       lineColour:        c.serviceJourney.line.presentation?.colour,
       lineTextColour:    c.serviceJourney.line.presentation?.textColour,
       serviceJourneyId:  c.serviceJourney.id,
+      lineRef:           c.serviceJourney.line.id,
     }))
 
   return { stopName: data.stopPlace.name, departures }

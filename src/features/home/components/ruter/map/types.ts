@@ -29,11 +29,11 @@ export interface RouteStop {
 
 // ─── What vehicles to fetch — three modes ────────────────────────────────────
 // stop    → bbox around the stop (area overview)
-// journey → single vehicle by serviceJourneyId (live tracking)
+// journey → all vehicles on a line (lineRef); serviceJourneyId is for route polyline only
 // bbox    → explicit bounding box (route overview in Routes tab)
 export type VehicleTarget =
   | { kind: 'stop';    stop: StopPin }
-  | { kind: 'journey'; serviceJourneyId: string }
+  | { kind: 'journey'; serviceJourneyId: string; lineRef: string }
   | { kind: 'bbox';    minLat: number; minLon: number; maxLat: number; maxLon: number }
   | null
 

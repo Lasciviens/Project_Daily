@@ -23,8 +23,10 @@ function queryByBbox(minLat: number, minLon: number, maxLat: number, maxLon: num
   return `{ vehicles(codespaceId: "${RUTER_CODESPACE}" boundingBox: { minLat: ${minLat} minLon: ${minLon} maxLat: ${maxLat} maxLon: ${maxLon} }) { ${VEHICLE_FIELDS} } }`
 }
 
-function queryByJourney(serviceJourneyId: string): string {
-  return `{ vehicles(serviceJourneyId: "${serviceJourneyId}") { ${VEHICLE_FIELDS} } }`
+function queryByLineRef(lineRef: string): string {
+  // Query all active vehicles on a line. The serviceJourneyId from Journey Planner
+  // is a static NeTEx ID the Vehicles API doesn't match against — lineRef is reliable.
+  return `{ vehicles(lineRef: "${lineRef}") { ${VEHICLE_FIELDS} } }`
 }
 
 // Fetch route stops from Journey Planner (called once per tracked journey)
@@ -83,7 +85,7 @@ export function useVehiclePositions(target: VehicleTarget): UseVehiclePositionsR
   // Build a stable key so the effect only re-runs when the target meaningfully changes
   const targetKey = !target ? 'null'
     : target.kind === 'stop'    ? `stop:${target.stop.id}`
-    : target.kind === 'journey' ? `journey:${target.serviceJourneyId}`
+    : target.kind === 'journey' ? `journey:${target.lineRef}`
     : `bbox:${target.minLat},${target.minLon},${target.maxLat},${target.maxLon}`
 
   useEffect(() => {
@@ -98,7 +100,7 @@ export function useVehiclePositions(target: VehicleTarget): UseVehiclePositionsR
 
     // Build the GraphQL query for this target
     function buildQuery(): string {
-      if (t.kind === 'journey') return queryByJourney(t.serviceJourneyId)
+      if (t.kind === 'journey') return queryByLineRef(t.lineRef)
       if (t.kind === 'bbox')    return queryByBbox(t.minLat, t.minLon, t.maxLat, t.maxLon)
       // stop mode
       const { lat, lon } = t.stop
@@ -117,9 +119,7 @@ export function useVehiclePositions(target: VehicleTarget): UseVehiclePositionsR
     const pollInterval = t.kind === 'journey' ? TRACKING_POLL_INTERVAL_MS : POLL_INTERVAL_MS
 
     async function fetchVehicles() {
-      // DEBUG — remove after confirming vehicles load
       const q = buildQuery()
-      console.debug('[useVehiclePositions] fetch target:', t.kind, t.kind === 'journey' ? (t as { kind: 'journey'; serviceJourneyId: string }).serviceJourneyId : '')
       try {
         const res = await fetch(VEHICLES_REST_URL, {
           method:  'POST',
@@ -130,8 +130,6 @@ export function useVehiclePositions(target: VehicleTarget): UseVehiclePositionsR
 
         const json: VehiclesApiResponse = await res.json()
         const rawList = json.data?.vehicles ?? []
-        // DEBUG
-        console.debug('[useVehiclePositions] response: HTTP', res.status, 'vehicles count:', rawList.length)
 
         if (cancelled) return
 

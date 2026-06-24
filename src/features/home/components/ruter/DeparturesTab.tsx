@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchDepartures, fetchStopDirections, type Departure, type StopResult, type QuayDirectionHint } from '../../api/ruterApi'
+import { fetchDepartures, fetchStopDirections, fetchStopCoords, type Departure, type StopResult, type QuayDirectionHint } from '../../api/ruterApi'
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
@@ -10,11 +10,16 @@ import type { StopPin } from './map'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface JourneyTracking {
+  serviceJourneyId: string
+  lineRef:          string
+}
+
 interface DeparturesTabProps {
   ws:               WidgetStateResult
   now:              number
   onMapPinChange?:  (pin: StopPin | null) => void
-  onJourneySelect?: (serviceJourneyId: string | null) => void
+  onJourneySelect?: (tracking: JourneyTracking | null) => void
 }
 
 const MODE_FALLBACK_BG: Record<string, string> = {
@@ -36,6 +41,7 @@ interface LineGroup {
   expected:          string
   departures:        Departure[]
   serviceJourneyId?: string
+  lineRef?:          string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -56,6 +62,7 @@ function buildLineGroups(deps: Departure[]): LineGroup[] {
         expected:          dep.expected,
         departures:        [dep],
         serviceJourneyId:  dep.serviceJourneyId,
+        lineRef:           dep.lineRef,
       })
     } else {
       map.get(key)!.departures.push(dep)
@@ -242,9 +249,20 @@ export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: Depa
   const [lastUpdated,        setLastUpdated]         = useState<number | null>(null)
   const [refreshing,         setRefreshing]          = useState(false)
   const [selectedJourneyId,  setSelectedJourneyId]  = useState<string | null>(null)
+  const [savedStopCoords,    setSavedStopCoords]    = useState<{ lat: number; lon: number } | null>(null)
 
   const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
   const queryStop   = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
+
+  // Fetch coordinates for saved stops so the map can open
+  useEffect(() => {
+    if (adHocStop || !activeSaved) { setSavedStopCoords(null); return }
+    let cancelled = false
+    fetchStopCoords(activeSaved.stop_id)
+      .then(c => { if (!cancelled) setSavedStopCoords(c) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [activeSaved?.stop_id, adHocStop])
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['departures', queryStop?.id ?? ''],
@@ -275,10 +293,14 @@ export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: Depa
     }))
   }, [data])
 
-  // Build a StopPin for the map — needs lat/lon which only adHocStop carries
-  const mapPin = adHocStop?.lat !== undefined && adHocStop?.lon !== undefined
-    ? { id: adHocStop.id, name: adHocStop.name, lat: adHocStop.lat, lon: adHocStop.lon }
-    : null
+  // Build a StopPin for the map. adHocStop carries lat/lon directly;
+  // saved stops need coords fetched separately via fetchStopCoords.
+  const mapPin: StopPin | null =
+    adHocStop?.lat !== undefined && adHocStop?.lon !== undefined
+      ? { id: adHocStop.id, name: adHocStop.name, lat: adHocStop.lat, lon: adHocStop.lon }
+      : activeSaved && savedStopCoords
+        ? { id: activeSaved.stop_id, name: activeSaved.stop_name, lat: savedStopCoords.lat, lon: savedStopCoords.lon }
+        : null
 
   // Notify parent when mapPin changes so it can render map full-width
   useEffect(() => {
@@ -306,29 +328,20 @@ export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: Depa
   }, [queryStop, refreshing, queryClient, departuresQueryKey, refetch])
 
   function handleSearchSelect(stop: StopResult) {
-    setAdHocStop(stop)
-    setActiveId(null)
-    setShowSavePanel(false)
-    setSelectedJourneyId(null)
-    onJourneySelect?.(null)
+    setAdHocStop(stop); setActiveId(null); setShowSavePanel(false)
+    setSelectedJourneyId(null); onJourneySelect?.(null)
   }
 
   function handleSavedStopClick(id: string) {
-    setActiveId(id)
-    setAdHocStop(null)
-    setShowSavePanel(false)
-    setSelectedJourneyId(null)
-    onJourneySelect?.(null)
+    setActiveId(id); setAdHocStop(null); setShowSavePanel(false)
+    setSelectedJourneyId(null); onJourneySelect?.(null)
   }
 
-  function handleJourneyToggle(journeyId: string | undefined) {
-    // DEBUG — remove after confirming tracking works
-    console.debug('[DeparturesTab] row clicked, serviceJourneyId:', journeyId)
-    if (!journeyId) { console.warn('[DeparturesTab] no serviceJourneyId on this departure'); return }
-    const next = selectedJourneyId === journeyId ? null : journeyId
+  function handleJourneyToggle(lg: LineGroup) {
+    if (!lg.serviceJourneyId || !lg.lineRef) return
+    const next = selectedJourneyId === lg.serviceJourneyId ? null : lg.serviceJourneyId
     setSelectedJourneyId(next)
-    onJourneySelect?.(next)
-    console.debug('[DeparturesTab] tracking set to:', next)
+    onJourneySelect?.(next ? { serviceJourneyId: lg.serviceJourneyId, lineRef: lg.lineRef } : null)
   }
 
   async function handleSaveFromPanel(quayId: string | null, quayDescription: string | null, label: string) {
@@ -461,7 +474,7 @@ export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: Depa
                     group={lg}
                     now={now}
                     selected={!!lg.serviceJourneyId && selectedJourneyId === lg.serviceJourneyId}
-                    onClick={() => handleJourneyToggle(lg.serviceJourneyId)}
+                    onClick={() => handleJourneyToggle(lg)}
                   />
                 ))}
               </div>
