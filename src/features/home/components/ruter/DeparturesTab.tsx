@@ -1,25 +1,17 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchDepartures, fetchStopDirections, fetchStopCoords, type Departure, type StopResult, type QuayDirectionHint } from '../../api/ruterApi'
+import { fetchDepartures, fetchStopDirections, type Departure, type StopResult, type QuayDirectionHint } from '../../api/ruterApi'
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { minsUntil, fmtTime, fmtLastUpdated, lineStyle } from './transitUtils'
 import { toast } from '../../../../app/store'
-import type { StopPin } from './map'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface JourneyTracking {
-  serviceJourneyId: string
-  lineRef:          string
-}
-
 interface DeparturesTabProps {
-  ws:               WidgetStateResult
-  now:              number
-  onMapPinChange?:  (pin: StopPin | null) => void
-  onJourneySelect?: (tracking: JourneyTracking | null) => void
+  ws:  WidgetStateResult
+  now: number
 }
 
 const MODE_FALLBACK_BG: Record<string, string> = {
@@ -31,17 +23,15 @@ const MODE_FALLBACK_BG: Record<string, string> = {
 }
 
 interface LineGroup {
-  line:              string
-  destination:       string
-  transport:         string
-  lineColour?:       string
-  lineTextColour?:   string
-  realtime:          boolean
-  aimed:             string
-  expected:          string
-  departures:        Departure[]
-  serviceJourneyId?: string
-  lineRef?:          string
+  line:            string
+  destination:     string
+  transport:       string
+  lineColour?:     string
+  lineTextColour?: string
+  realtime:        boolean
+  aimed:           string
+  expected:        string
+  departures:      Departure[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -52,17 +42,15 @@ function buildLineGroups(deps: Departure[]): LineGroup[] {
     const key = `${dep.line}::${dep.destination}`
     if (!map.has(key)) {
       map.set(key, {
-        line:              dep.line,
-        destination:       dep.destination,
-        transport:         dep.transport,
-        lineColour:        dep.lineColour,
-        lineTextColour:    dep.lineTextColour,
-        realtime:          dep.realtime,
-        aimed:             dep.aimed,
-        expected:          dep.expected,
-        departures:        [dep],
-        serviceJourneyId:  dep.serviceJourneyId,
-        lineRef:           dep.lineRef,
+        line:          dep.line,
+        destination:   dep.destination,
+        transport:     dep.transport,
+        lineColour:    dep.lineColour,
+        lineTextColour:dep.lineTextColour,
+        realtime:      dep.realtime,
+        aimed:         dep.aimed,
+        expected:      dep.expected,
+        departures:    [dep],
       })
     } else {
       map.get(key)!.departures.push(dep)
@@ -73,14 +61,7 @@ function buildLineGroups(deps: Departure[]): LineGroup[] {
 
 // ─── DepartureRow ─────────────────────────────────────────────────────────────
 
-function DepartureRow({
-  group, now, selected, onClick,
-}: {
-  group:    LineGroup
-  now:      number
-  selected: boolean
-  onClick:  () => void
-}) {
+function DepartureRow({ group, now }: { group: LineGroup; now: number }) {
   const first    = group.departures[0]
   const mins     = minsUntil(first.expected, now)
   const isNow    = mins <= 0
@@ -90,16 +71,7 @@ function DepartureRow({
   const nextTimes = group.departures.slice(1, 4).map(d => fmtTime(d.expected))
 
   return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-2.5 py-2.5 min-h-[44px] rounded-lg px-1 -mx-1 transition-colors duration-150 text-left ${
-        selected
-          ? 'bg-accent-50 ring-1 ring-accent-300'
-          : group.serviceJourneyId
-            ? 'hover:bg-ink-50 cursor-pointer'
-            : 'cursor-default'
-      }`}
-    >
+    <div className="w-full flex items-center gap-2.5 py-2.5 min-h-[44px]">
       <span
         className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 min-w-[2.25rem] text-center leading-tight"
         style={style ?? fallback}
@@ -125,14 +97,12 @@ function DepartureRow({
         }`}>
           {isNow ? 'Now' : `${mins} min`}
         </span>
-        {selected
-          ? <span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse inline-block flex-shrink-0" title="Tracking" />
-          : group.realtime
-            ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
-            : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Scheduled">~</span>
+        {group.realtime
+          ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" title="Realtime" />
+          : <span className="text-[10px] text-ink-300 flex-shrink-0" title="Scheduled">~</span>
         }
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -238,31 +208,19 @@ function QuaySavePanel({ stopId, stopName, onSave, onCancel }: QuaySavePanelProp
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: DeparturesTabProps) {
+export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   const { stops, addStop } = useTransitStops()
   const queryClient = useQueryClient()
 
   const defaultStop = stops.find(s => s.is_default) ?? stops[0] ?? null
-  const [activeId,           setActiveId]           = useState<string | null>(null)
-  const [adHocStop,          setAdHocStop]           = useState<StopResult | null>(null)
-  const [showSavePanel,      setShowSavePanel]       = useState(false)
-  const [lastUpdated,        setLastUpdated]         = useState<number | null>(null)
-  const [refreshing,         setRefreshing]          = useState(false)
-  const [selectedJourneyId,  setSelectedJourneyId]  = useState<string | null>(null)
-  const [savedStopCoords,    setSavedStopCoords]    = useState<{ lat: number; lon: number } | null>(null)
+  const [activeId,      setActiveId]      = useState<string | null>(null)
+  const [adHocStop,     setAdHocStop]     = useState<StopResult | null>(null)
+  const [showSavePanel, setShowSavePanel] = useState(false)
+  const [lastUpdated,   setLastUpdated]   = useState<number | null>(null)
+  const [refreshing,    setRefreshing]    = useState(false)
 
   const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
   const queryStop   = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
-
-  // Fetch coordinates for saved stops so the map can open
-  useEffect(() => {
-    if (adHocStop || !activeSaved) { setSavedStopCoords(null); return }
-    let cancelled = false
-    fetchStopCoords(activeSaved.stop_id)
-      .then(c => { if (!cancelled) setSavedStopCoords(c) })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [activeSaved?.stop_id, adHocStop])
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['departures', queryStop?.id ?? ''],
@@ -293,21 +251,6 @@ export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: Depa
     }))
   }, [data])
 
-  // Build a StopPin for the map. adHocStop carries lat/lon directly;
-  // saved stops need coords fetched separately via fetchStopCoords.
-  const mapPin: StopPin | null =
-    adHocStop?.lat !== undefined && adHocStop?.lon !== undefined
-      ? { id: adHocStop.id, name: adHocStop.name, lat: adHocStop.lat, lon: adHocStop.lon }
-      : activeSaved && savedStopCoords
-        ? { id: activeSaved.stop_id, name: activeSaved.stop_name, lat: savedStopCoords.lat, lon: savedStopCoords.lon }
-        : null
-
-  // Notify parent when mapPin changes so it can render map full-width
-  useEffect(() => {
-    onMapPinChange?.(mapPin)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapPin?.id])
-
   const departuresQueryKey = ['departures', queryStop?.id ?? '']
 
   const handleRefresh = useCallback(async () => {
@@ -329,19 +272,10 @@ export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: Depa
 
   function handleSearchSelect(stop: StopResult) {
     setAdHocStop(stop); setActiveId(null); setShowSavePanel(false)
-    setSelectedJourneyId(null); onJourneySelect?.(null)
   }
 
   function handleSavedStopClick(id: string) {
     setActiveId(id); setAdHocStop(null); setShowSavePanel(false)
-    setSelectedJourneyId(null); onJourneySelect?.(null)
-  }
-
-  function handleJourneyToggle(lg: LineGroup) {
-    if (!lg.serviceJourneyId || !lg.lineRef) return
-    const next = selectedJourneyId === lg.serviceJourneyId ? null : lg.serviceJourneyId
-    setSelectedJourneyId(next)
-    onJourneySelect?.(next ? { serviceJourneyId: lg.serviceJourneyId, lineRef: lg.lineRef } : null)
   }
 
   async function handleSaveFromPanel(quayId: string | null, quayDescription: string | null, label: string) {
@@ -469,13 +403,7 @@ export function DeparturesTab({ ws, now, onMapPinChange, onJourneySelect }: Depa
               )}
               <div className="divide-y divide-ink-50">
                 {group.lineGroups.map((lg, j) => (
-                  <DepartureRow
-                    key={j}
-                    group={lg}
-                    now={now}
-                    selected={!!lg.serviceJourneyId && selectedJourneyId === lg.serviceJourneyId}
-                    onClick={() => handleJourneyToggle(lg)}
-                  />
+                  <DepartureRow key={j} group={lg} now={now} />
                 ))}
               </div>
             </div>
