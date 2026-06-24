@@ -85,7 +85,7 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
         due_date: dueDate || null,
       })
       if (googleTaskError) {
-        console.warn('[GoogleTasks] create error:', googleTaskError)
+        toast.error(`Google Tasks sync failed: ${googleTaskError}`)
       }
       // Auto-schedule onto the day timeline
       if (domain === 'personal' && dueDate) {

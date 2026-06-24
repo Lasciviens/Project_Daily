@@ -101,7 +101,6 @@ async function gql(query: string): Promise<unknown> {
   // GraphQL returns HTTP 200 even for schema errors; errors coexist with partial data
   if (json.errors?.length) {
     const msg = json.errors.map(e => e.message).join(' | ')
-    console.error('[EnTur GraphQL]', msg)
     throw new Error(msg)
   }
 
