@@ -25,6 +25,7 @@ import {
   removeGoogleTaskMapping,
 } from '../api/googleTasksApi'
 import { useCalendarStore } from '../../../app/store'
+import { logError } from '../../../shared/utils/logError'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
 
 export function useTasksBySection(section: string) {
@@ -77,6 +78,7 @@ export function useCreateTask() {
           saveGoogleTaskMapping(task.id, googleTaskId)
         } catch (err) {
           googleTaskError = err instanceof Error ? err.message : 'Google Tasks sync failed'
+          logError(`Google Tasks create failed: ${googleTaskError}`, { taskId: task.id })
         }
       }
       return { task, googleTaskError }
@@ -107,7 +109,9 @@ export function useToggleTask() {
           try {
             if (isDone) await completeGoogleTask(token, googleTaskId)
             else        await reopenGoogleTask(token, googleTaskId)
-          } catch { /* soft fail — Google Tasks sync is non-blocking */ }
+          } catch (err) {
+            logError(`Google Tasks toggle failed: ${err instanceof Error ? err.message : String(err)}`, { taskId: id })
+          }
         }
       }
       return task
@@ -136,7 +140,9 @@ export function useDeleteTask() {
       if (googleTaskId) {
         const token = useCalendarStore.getState().accessToken
         if (token) {
-          try { await deleteGoogleTask(token, googleTaskId) } catch { /* soft fail */ }
+          try { await deleteGoogleTask(token, googleTaskId) } catch (err) {
+            logError(`Google Tasks delete failed: ${err instanceof Error ? err.message : String(err)}`, { taskId: id })
+          }
         }
         removeGoogleTaskMapping(id)
       }
