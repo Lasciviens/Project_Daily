@@ -4,6 +4,7 @@ import { useCreateTask, useUpdateTask } from '../../features/todo/hooks/useTodos
 import { useCreateTimeBlock } from '../../features/daily/hooks/useSchedule'
 import { createCalendarEvent } from '../../features/calendar/api/calendarApi'
 import { toast, useCalendarStore } from '../../app/store'
+import { logError } from '../utils/logError'
 import { DateInput } from './DateInput'
 import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../features/todo/types'
 
@@ -86,6 +87,7 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
       })
       if (googleTaskError) {
         toast.error(`Google Tasks sync failed: ${googleTaskError}`)
+        logError(`Google Tasks sync failed: ${googleTaskError}`, { taskTitle: title })
       }
       // Auto-schedule onto the day timeline
       if (domain === 'personal' && dueDate) {
