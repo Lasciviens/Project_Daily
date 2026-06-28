@@ -68,7 +68,7 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 | AI | ✅ | Gemini 2.5 Flash via Edge Function, create_task function calling |
 | Calendar | ✅ | Google OAuth, read + write events, sync/refresh button in DayTimeline header |
 | Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
-| Training | ✅ | Strava OAuth, workout logging, week view |
+| Training | ✅ | Hevy integration (workouts, PRs, routines, body measurements) + Strava OAuth (runs/cycling). 3 tabs: Hevy / Strava / Programs. |
 | Projects | ✅ | Phases, items, status tracking |
 | Home | ✅ | WidgetShell, Weather, Ruter transit, Currency, News, Recent Media, Games, Training |
 | Football | ⚠️ | Page + UI built. API-Football free tier only goes to 2024 — data doesn't load. Plan: pull fixtures from Google Calendar instead. |
@@ -185,6 +185,7 @@ Reference files: `src/shared/components/AddTaskModal.tsx` (Dialog), `src/feature
 | `VITE_GOOGLE_CLIENT_ID` | Calendar OAuth |
 | `VITE_RP5_SUPABASE_URL` / `VITE_RP5_SUPABASE_ANON_KEY` | RP5 games Supabase |
 | `CLAUDE_API_KEY` / `OPENAI_API_KEY` | Supabase Vault only — never in client |
+| `HEVY_API_KEY` / `HEVY_WEBHOOK_SECRET` / `HEVY_USER_ID` | Supabase Vault only — never in client |
 
 ---
 
@@ -199,5 +200,9 @@ Reference files: `src/shared/components/AddTaskModal.tsx` (Dialog), `src/feature
 | `football-api` | API-Football proxy (currently unused — free tier doesn't cover current season) |
 | `news-proxy` | RSS feed proxy |
 | `strava-auth` / `strava-activities` / `strava-disconnect` | Strava OAuth |
+| `hevy-initial-sync` | Bulk import all Hevy data (workouts, templates, routines, body measurements) |
+| `hevy-sync` | Webhook receiver — new workout from Hevy → upsert to Supabase |
+| `hevy-incremental-sync` | Events-based incremental sync (edits/deletes since last cursor) |
+| `hevy-api` | Write proxy — web → Hevy (create/update workouts, routines, body measurements) |
 
 **DB Migrations:** Manuel olarak uygulanır — Supabase Dashboard > SQL Editor veya `supabase db push` (local CLI ile). GitHub Actions'ta otomatik çalışmıyor.
