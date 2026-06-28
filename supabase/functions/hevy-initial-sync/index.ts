@@ -584,8 +584,9 @@ Deno.serve(async (req) => {
       },
     )
   } catch (err) {
-    console.error('hevy-initial-sync error:', err)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('hevy-initial-sync error:', msg)
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...headers, 'Content-Type': 'application/json' },
     })
