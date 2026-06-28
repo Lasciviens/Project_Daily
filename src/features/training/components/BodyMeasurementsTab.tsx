@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useHevyBodyMeasurements, useUpsertBodyMeasurement } from '../hooks/useHevyBodyMeasurements'
 import type { HevyBodyMeasurement } from '../types.hevy'
@@ -200,6 +200,135 @@ function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
   )
 }
 
+// ─── Weight Chart ─────────────────────────────────────────────────────────────
+
+function WeightChart({ measurements }: { measurements: HevyBodyMeasurement[] }) {
+  const chartData = useMemo(() => {
+    return [...measurements]
+      .filter(m => m.weight_kg != null)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-30)
+  }, [measurements])
+
+  const fatData = useMemo(() => {
+    return [...measurements]
+      .filter(m => m.fat_percent != null)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-30)
+  }, [measurements])
+
+  if (chartData.length < 2) return null
+
+  const W = 400
+  const H = 120
+  const PAD = { top: 10, right: 10, bottom: 20, left: 36 }
+  const innerW = W - PAD.left - PAD.right
+  const innerH = H - PAD.top - PAD.bottom
+
+  const weights = chartData.map(m => m.weight_kg as number)
+  const minW = Math.min(...weights)
+  const maxW = Math.max(...weights)
+  const rangeW = maxW - minW || 1
+  const paddedMin = minW - rangeW * 0.1
+  const paddedMax = maxW + rangeW * 0.1
+  const paddedRange = paddedMax - paddedMin
+
+  function xFrac(i: number, len: number): number {
+    return len === 1 ? 0.5 : i / (len - 1)
+  }
+  function toX(frac: number): number { return PAD.left + frac * innerW }
+  function toY(val: number, min: number, range: number): number {
+    return PAD.top + innerH - ((val - min) / range) * innerH
+  }
+
+  const weightPath = chartData
+    .map((m, i) => {
+      const x = toX(xFrac(i, chartData.length))
+      const y = toY(m.weight_kg as number, paddedMin, paddedRange)
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+
+  // Fat percent on secondary axis (only if enough data)
+  let fatPath: string | null = null
+  if (fatData.length >= 2) {
+    const fats = fatData.map(m => m.fat_percent as number)
+    const minF = Math.min(...fats)
+    const maxF = Math.max(...fats)
+    const rangeF = maxF - minF || 1
+    const pMinF = minF - rangeF * 0.1
+    const pMaxF = maxF + rangeF * 0.1
+    const pRangeF = pMaxF - pMinF
+
+    // Map fat data to same x positions as weight data (approx by index)
+    fatPath = fatData
+      .map((m, i) => {
+        const x = toX(xFrac(i, fatData.length))
+        const y = toY(m.fat_percent as number, pMinF, pRangeF)
+        return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+      })
+      .join(' ')
+  }
+
+  const firstLabel = chartData[0].date.slice(5).replace('-', '/')
+  const lastLabel  = chartData[chartData.length - 1].date.slice(5).replace('-', '/')
+
+  return (
+    <div className="rounded-xl border border-ink-100 bg-white px-3 py-3 overflow-hidden">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-2">Weight over time</p>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        style={{ height: H }}
+        aria-hidden="true"
+      >
+        {/* Y-axis labels */}
+        <text x={PAD.left - 4} y={PAD.top + 4} textAnchor="end" fontSize={9} fill="#94a3b8">{paddedMax.toFixed(1)}</text>
+        <text x={PAD.left - 4} y={PAD.top + innerH} textAnchor="end" fontSize={9} fill="#94a3b8">{paddedMin.toFixed(1)}</text>
+
+        {/* Grid lines */}
+        <line x1={PAD.left} y1={PAD.top} x2={PAD.left + innerW} y2={PAD.top} stroke="#f1f5f9" strokeWidth={1} />
+        <line x1={PAD.left} y1={PAD.top + innerH / 2} x2={PAD.left + innerW} y2={PAD.top + innerH / 2} stroke="#f1f5f9" strokeWidth={1} />
+        <line x1={PAD.left} y1={PAD.top + innerH} x2={PAD.left + innerW} y2={PAD.top + innerH} stroke="#f1f5f9" strokeWidth={1} />
+
+        {/* Fat % line (dashed, secondary) */}
+        {fatPath && (
+          <path d={fatPath} fill="none" stroke="#cbd5e1" strokeWidth={1.5} strokeDasharray="4 3" />
+        )}
+
+        {/* Weight line */}
+        <path d={weightPath} fill="none" stroke="#f59e0b" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Dots */}
+        {chartData.map((m, i) => {
+          const x = toX(xFrac(i, chartData.length))
+          const y = toY(m.weight_kg as number, paddedMin, paddedRange)
+          return (
+            <circle key={m.id} cx={x} cy={y} r={2.5} fill="#f59e0b" />
+          )
+        })}
+
+        {/* X-axis labels */}
+        <text x={toX(0)} y={H - 3} textAnchor="start" fontSize={9} fill="#94a3b8">{firstLabel}</text>
+        <text x={toX(1)} y={H - 3} textAnchor="end" fontSize={9} fill="#94a3b8">{lastLabel}</text>
+      </svg>
+
+      {fatPath && (
+        <div className="flex gap-4 text-[10px] text-ink-400 mt-1">
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-4 h-0.5 bg-accent-500 rounded" />
+            Weight (kg)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-4 h-px bg-ink-300 rounded border-t border-dashed border-ink-300" style={{ borderTopStyle: 'dashed' }} />
+            Body fat (%)
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Latest Hero Card ─────────────────────────────────────────────────────────
 
 function LatestHeroCard({
@@ -349,6 +478,9 @@ export function BodyMeasurementsTab() {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
+          {/* Weight chart */}
+          <WeightChart measurements={measurements} />
+
           {/* Latest hero */}
           <LatestHeroCard m={latest} onEdit={() => setEditTarget(latest)} />
 

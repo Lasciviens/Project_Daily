@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
+import { useHevyPRs } from '../hooks/useHevyPRs'
 import { HevySyncButton } from './HevySyncButton'
 import { HevyWorkoutCard } from './HevyWorkoutCard'
 import { HevyWorkoutDetail } from './HevyWorkoutDetail'
@@ -7,30 +8,119 @@ import { HevyPRList } from './HevyPRList'
 import { RoutinesTab } from './RoutinesTab'
 import { BodyMeasurementsTab } from './BodyMeasurementsTab'
 import { ExerciseTemplatesTab } from './ExerciseTemplatesTab'
+import { TrainingCalendar } from './TrainingCalendar'
+import { LogHevyWorkoutModal } from './LogHevyWorkoutModal'
 
-type SubTab = 'workouts' | 'routines' | 'prs' | 'body' | 'templates'
+type SubTab = 'workouts' | 'routines' | 'prs' | 'body' | 'exercises' | 'calendar'
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
-  { id: 'workouts',  label: 'Workouts'   },
-  { id: 'routines',  label: 'Routines'   },
-  { id: 'prs',       label: 'PRs'        },
-  { id: 'body',      label: 'Body'       },
-  { id: 'templates', label: 'Templates'  },
+  { id: 'workouts',  label: 'Workouts'  },
+  { id: 'routines',  label: 'Routines'  },
+  { id: 'prs',       label: 'PRs'       },
+  { id: 'body',      label: 'Body'      },
+  { id: 'exercises', label: 'Exercises' },
+  { id: 'calendar',  label: 'Calendar'  },
 ]
 
 const PAGE_SIZE = 20
 
+// ─── Weekly/Monthly summary helpers ──────────────────────────────────────────
+
+function startOfWeek(d: Date): Date {
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + diff)
+  monday.setHours(0, 0, 0, 0)
+  return monday
+}
+
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1)
+}
+
+// ─── Best Lifts Card (top 5 by weight) ───────────────────────────────────────
+
+function BestLiftsCard() {
+  const { data: prs = [], isLoading } = useHevyPRs()
+
+  if (isLoading) {
+    return <div className="h-24 rounded-xl bg-cream-200 animate-pulse" />
+  }
+
+  if (prs.length === 0) return null
+
+  const top5 = [...prs]
+    .sort((a, b) => b.max_weight_kg - a.max_weight_kg)
+    .slice(0, 5)
+
+  return (
+    <div className="rounded-xl border border-ink-200 bg-white overflow-hidden mb-3">
+      <div className="px-4 py-2.5 bg-cream-50 border-b border-ink-100">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Top 5 Lifts by Weight</p>
+      </div>
+      <div className="divide-y divide-ink-50">
+        {top5.map((pr, i) => (
+          <div key={pr.exercise_template_id} className="flex items-center gap-3 px-4 py-2.5">
+            <span className="text-xs font-bold text-ink-400 w-4 shrink-0">#{i + 1}</span>
+            <span className="text-sm font-medium text-ink-800 flex-1 truncate">{pr.title}</span>
+            <span className="text-sm font-bold text-accent-700 shrink-0">
+              {pr.max_weight_kg} kg{pr.reps_at_max != null ? ` × ${pr.reps_at_max}` : ''}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Workouts sub-tab ─────────────────────────────────────────────────────────
+
 function WorkoutsSubTab() {
   const [page, setPage] = useState(0)
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
+  const [logOpen, setLogOpen] = useState(false)
 
   const { data: workouts = [], isLoading } = useHevyWorkouts({
     limit:  PAGE_SIZE,
     offset: page * PAGE_SIZE,
   })
 
+  // Fetch a larger set to compute summary counts
+  const { data: allRecent = [] } = useHevyWorkouts({ limit: 200 })
+
+  const { weekCount, monthCount } = useMemo(() => {
+    const now = new Date()
+    const weekStart  = startOfWeek(now).toISOString()
+    const monthStart = startOfMonth(now).toISOString()
+    const weekCount  = allRecent.filter(w => w.hevy_created_at >= weekStart).length
+    const monthCount = allRecent.filter(w => w.hevy_created_at >= monthStart).length
+    return { weekCount, monthCount }
+  }, [allRecent])
+
   return (
     <>
+      {/* Summary + Log button row */}
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex gap-3 text-sm text-ink-500">
+          {allRecent.length > 0 && (
+            <>
+              <span><strong className="text-ink-800">{weekCount}</strong> this week</span>
+              <span className="text-ink-200">·</span>
+              <span><strong className="text-ink-800">{monthCount}</strong> this month</span>
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setLogOpen(true)}
+          className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors flex items-center gap-1.5 shrink-0"
+        >
+          <span className="text-base leading-none">+</span>
+          <span>Log Workout</span>
+        </button>
+      </div>
+
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -82,6 +172,22 @@ function WorkoutsSubTab() {
         workoutId={selectedWorkoutId}
         onClose={() => setSelectedWorkoutId(null)}
       />
+
+      <LogHevyWorkoutModal
+        isOpen={logOpen}
+        onClose={() => setLogOpen(false)}
+      />
+    </>
+  )
+}
+
+// ─── PRs sub-tab with Best Lifts card ────────────────────────────────────────
+
+function PRsSubTab() {
+  return (
+    <>
+      <BestLiftsCard />
+      <HevyPRList />
     </>
   )
 }
@@ -124,9 +230,10 @@ export function HevyTab() {
       <div>
         {activeTab === 'workouts'  && <WorkoutsSubTab />}
         {activeTab === 'routines'  && <RoutinesTab />}
-        {activeTab === 'prs'       && <HevyPRList />}
+        {activeTab === 'prs'       && <PRsSubTab />}
         {activeTab === 'body'      && <BodyMeasurementsTab />}
-        {activeTab === 'templates' && <ExerciseTemplatesTab />}
+        {activeTab === 'exercises' && <ExerciseTemplatesTab />}
+        {activeTab === 'calendar'  && <TrainingCalendar />}
       </div>
     </div>
   )

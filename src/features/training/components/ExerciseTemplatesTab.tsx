@@ -43,8 +43,9 @@ function TemplateCard({ t }: { t: HevyExerciseTemplate }) {
   )
 }
 
-function MuscleGroup({ name, templates }: { name: string; templates: HevyExerciseTemplate[] }) {
+function MuscleGroup({ name, templates, forceOpen }: { name: string; templates: HevyExerciseTemplate[]; forceOpen?: boolean }) {
   const [open, setOpen] = useState(false)
+  const isOpen = forceOpen || open
 
   return (
     <div className="border border-ink-200 rounded-xl overflow-hidden">
@@ -59,9 +60,9 @@ function MuscleGroup({ name, templates }: { name: string; templates: HevyExercis
             {templates.length}
           </span>
         </div>
-        <span className="text-ink-400 text-xs">{open ? '▲' : '▼'}</span>
+        <span className="text-ink-400 text-xs">{isOpen ? '▲' : '▼'}</span>
       </button>
-      {open && (
+      {isOpen && (
         <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2 bg-cream-50 border-t border-ink-100">
           {templates.map(t => (
             <TemplateCard key={t.id} t={t} />
@@ -120,7 +121,7 @@ export function ExerciseTemplatesTab() {
       ) : (
         <div className="flex flex-col gap-2">
           {grouped.map(([name, list]) => (
-            <MuscleGroup key={name} name={name} templates={list} />
+            <MuscleGroup key={name} name={name} templates={list} forceOpen={!!search.trim()} />
           ))}
         </div>
       )}

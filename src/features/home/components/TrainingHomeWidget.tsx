@@ -1,21 +1,7 @@
 import { Link } from 'react-router-dom'
 import { startOfWeek, isAfter, parseISO } from 'date-fns'
-import { useTrainingSessions } from '../../training/hooks/useTrainingSessions'
-import type { TrainingSession } from '../../training/types'
-
-const TYPE_ICON: Record<string, string> = {
-  strength: '🏋️',
-  run:      '🏃',
-  cycling:  '🚴',
-  walk:     '🚶',
-  yoga:     '🧘',
-  swim:     '🏊',
-  other:    '💪',
-}
-
-function sessionDate(s: TrainingSession): string {
-  return s.planned_date ?? s.completed_at?.slice(0, 10) ?? ''
-}
+import { useHevyWorkouts } from '../../training/hooks/useHevyWorkouts'
+import { useStravaActivities } from '../../training/hooks/useStravaActivities'
 
 function formatDuration(sec: number): string {
   const m = Math.round(sec / 60)
@@ -23,21 +9,30 @@ function formatDuration(sec: number): string {
 }
 
 export function TrainingHomeWidget() {
-  const { data: sessions = [], isLoading } = useTrainingSessions()
+  const { data: workouts = [], isLoading: loadingWorkouts } = useHevyWorkouts({ limit: 50 })
+  const { data: stravaActivities = [], isLoading: loadingStrava } = useStravaActivities({ limit: 20 })
+  const isLoading = loadingWorkouts || loadingStrava
 
-  const weekStart   = startOfWeek(new Date(), { weekStartsOn: 1 })
-  const thisWeek    = sessions.filter(s => {
-    const d = sessionDate(s)
-    return d && s.completed_at && isAfter(parseISO(d), weekStart)
-  })
-  const lastSession = [...sessions]
-    .filter(s => s.completed_at)
-    .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? ''))[0]
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
 
-  const weekKm = thisWeek.reduce((sum, s) =>
+  const weekWorkouts = workouts.filter(w =>
+    w.hevy_created_at && isAfter(parseISO(w.hevy_created_at), weekStart)
+  )
+  const weekStrava = stravaActivities.filter(s =>
+    s.start_date && isAfter(parseISO(s.start_date), weekStart)
+  )
+
+  const weekMin = weekWorkouts.reduce((sum, w) => {
+    if (!w.start_time || !w.end_time) return sum
+    return sum + (new Date(w.end_time).getTime() - new Date(w.start_time).getTime()) / 60000
+  }, 0)
+
+  const weekKm = weekStrava.reduce((sum, s) =>
     sum + (s.distance_meters ? s.distance_meters / 1000 : 0), 0)
-  const weekMin = thisWeek.reduce((sum, s) =>
-    sum + (s.duration_seconds ? s.duration_seconds / 60 : 0), 0)
+
+  const lastWorkout = workouts[0]
+
+  const hasData = workouts.length > 0 || stravaActivities.length > 0
 
   return (
     <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
@@ -48,48 +43,46 @@ export function TrainingHomeWidget() {
 
       {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
 
-      {!isLoading && sessions.length === 0 && (
-        <div className="text-ink-400 text-sm">No sessions yet — log a workout or sync Strava.</div>
+      {!isLoading && !hasData && (
+        <div className="text-ink-400 text-sm">No data — sync Hevy or connect Strava.</div>
       )}
 
-      {!isLoading && sessions.length > 0 && (
+      {!isLoading && hasData && (
         <div className="space-y-3">
-          {/* This week summary */}
           <div className="flex gap-3">
             <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
-              <div className="text-lg font-bold text-ink-900">{thisWeek.length}</div>
+              <div className="text-lg font-bold text-ink-900">{weekWorkouts.length + weekStrava.length}</div>
               <div className="text-[10px] text-ink-400 mt-0.5">this week</div>
             </div>
-            {weekKm > 0 && (
-              <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
-                <div className="text-lg font-bold text-ink-900">{weekKm.toFixed(1)}</div>
-                <div className="text-[10px] text-ink-400 mt-0.5">km</div>
-              </div>
-            )}
             {weekMin > 0 && (
               <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
                 <div className="text-lg font-bold text-ink-900">{Math.round(weekMin)}</div>
                 <div className="text-[10px] text-ink-400 mt-0.5">min</div>
               </div>
             )}
+            {weekKm > 0 && (
+              <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
+                <div className="text-lg font-bold text-ink-900">{weekKm.toFixed(1)}</div>
+                <div className="text-[10px] text-ink-400 mt-0.5">km Strava</div>
+              </div>
+            )}
           </div>
 
-          {/* Last session */}
-          {lastSession && (
+          {lastWorkout && (
             <div className="flex items-center gap-2 pt-1 border-t border-ink-100">
-              <span className="text-base">{TYPE_ICON[lastSession.type] ?? '💪'}</span>
+              <span className="text-base">🏋️</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-ink-800 truncate">{lastSession.title}</p>
+                <p className="text-sm font-medium text-ink-800 truncate">{lastWorkout.title}</p>
                 <p className="text-[10px] text-ink-400">
-                  {new Date(sessionDate(lastSession) + 'T00:00:00').toLocaleDateString('en-GB', {
+                  {new Date(lastWorkout.hevy_created_at).toLocaleDateString('en-GB', {
                     weekday: 'short', day: 'numeric', month: 'short',
                   })}
-                  {lastSession.duration_seconds ? ` · ${formatDuration(lastSession.duration_seconds)}` : ''}
+                  {lastWorkout.start_time && lastWorkout.end_time
+                    ? ` · ${formatDuration((new Date(lastWorkout.end_time).getTime() - new Date(lastWorkout.start_time).getTime()) / 1000)}`
+                    : ''}
                 </p>
               </div>
-              {lastSession.source === 'strava' && (
-                <span className="text-[10px] text-[#FC4C02] font-medium flex-shrink-0">Strava</span>
-              )}
+              <span className="text-[10px] text-accent-600 font-medium flex-shrink-0">Hevy</span>
             </div>
           )}
         </div>
