@@ -204,7 +204,7 @@ export function HevyTab() {
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`min-h-[40px] px-3 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px ${
+            className={`min-h-[44px] px-3 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px ${
               activeTab === tab.id
                 ? 'border-accent-500 text-accent-600 font-semibold'
                 : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-200'

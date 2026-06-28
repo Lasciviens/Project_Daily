@@ -124,7 +124,7 @@ export function WorkPage() {
                 key={tab.id}
                 onClick={() => setWorkTab(tab.id)}
                 className={[
-                  'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors min-h-[36px] whitespace-nowrap',
+                  'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors min-h-[44px] whitespace-nowrap',
                   workTab === tab.id
                     ? 'bg-white text-ink-900 shadow-sm'
                     : 'text-ink-500 hover:text-ink-700',
@@ -193,7 +193,7 @@ export function WorkPage() {
                   key={tab.id}
                   onClick={() => setSidebarTab(tab.id)}
                   className={[
-                    'flex-1 min-w-0 whitespace-nowrap text-[11px] font-medium px-2 py-2 rounded-lg transition-colors min-h-[36px]',
+                    'flex-1 min-w-0 whitespace-nowrap text-[11px] font-medium px-2 py-2 rounded-lg transition-colors min-h-[44px]',
                     sidebarTab === tab.id
                       ? 'bg-accent-500 text-white'
                       : 'text-ink-500 hover:bg-ink-100 hover:text-ink-700',

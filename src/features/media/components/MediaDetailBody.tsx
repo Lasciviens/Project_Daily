@@ -385,7 +385,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                     onClick={() => handleStatusChange(s.value)}
                     disabled={updateMovie.isPending || updateTV.isPending}
                     className={[
-                      'text-xs px-3 min-h-[36px] rounded-full border transition-colors',
+                      'text-xs px-3 min-h-[44px] rounded-full border transition-colors',
                       userEntry!.status === s.value
                         ? 'bg-accent-500 border-accent-500 text-white'
                         : 'border-ink-200 text-ink-600 hover:border-accent-400',

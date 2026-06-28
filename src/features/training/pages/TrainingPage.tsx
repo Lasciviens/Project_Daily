@@ -20,7 +20,7 @@ export function TrainingPage() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors duration-150 min-h-[32px] ${
+              className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors duration-150 min-h-[44px] ${
                 tab === t
                   ? 'bg-ink-900 text-white'
                   : 'bg-transparent text-ink-600 hover:text-ink-900'

@@ -39,7 +39,7 @@ export function MediaPage() {
       <div className="flex gap-4 items-start">
 
         {/* ── Main content ── */}
-        <div className="flex-1 min-w-0" style={{ maxWidth: 'calc(100% - 22rem)' }}>
+        <div className="flex-1 min-w-0 lg:max-w-[calc(100%-22rem)]">
 
           {/* Top section with scoped backdrop */}
           <div className="relative overflow-hidden rounded-xl mb-4 p-4 bg-cream-50/40">
@@ -103,6 +103,23 @@ export function MediaPage() {
             <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} />
           )}
         </aside>
+      </div>
+
+      {/* ── Mobile-only sidebar widgets (below main content on <lg) ── */}
+      <div className="lg:hidden mt-4 flex flex-col gap-4">
+        <TonightPicker
+          movieEntries={movieEntries}
+          tvEntries={tvEntries}
+          onOpenDetail={openDetail}
+        />
+        <ReleaseCalendar
+          movieEntries={movieEntries}
+          tvEntries={tvEntries}
+          onOpenDetail={openDetail}
+        />
+        {hasLibrary && (
+          <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} />
+        )}
       </div>
 
       {detail && (

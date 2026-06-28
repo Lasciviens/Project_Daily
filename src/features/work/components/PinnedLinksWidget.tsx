@@ -69,7 +69,7 @@ export default function PinnedLinksWidget() {
           {links.map(link => (
             <div
               key={link.id}
-              className="group flex items-center gap-1.5 rounded-full bg-ink-100 hover:bg-ink-200 transition px-3 py-1.5 min-h-[36px]"
+              className="group flex items-center gap-1.5 rounded-full bg-ink-100 hover:bg-ink-200 transition px-3 py-1.5 min-h-[44px]"
             >
               <a
                 href={link.url}
@@ -82,7 +82,7 @@ export default function PinnedLinksWidget() {
               <button
                 onClick={() => handleDelete(link.id)}
                 aria-label={`Remove ${link.title}`}
-                className="text-ink-300 hover:text-ink-600 leading-none text-base opacity-100 md:opacity-0 md:group-hover:opacity-100 transition ml-0.5"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-ink-600 leading-none text-base opacity-100 md:opacity-0 md:group-hover:opacity-100 transition ml-0.5"
               >
                 ×
               </button>
