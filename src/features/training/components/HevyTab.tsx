@@ -112,7 +112,7 @@ function WorkoutsSubTab() {
         <button
           type="button"
           onClick={() => setLogOpen(true)}
-          className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors flex items-center gap-1.5 shrink-0"
+          className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5 shrink-0"
         >
           <span className="text-base leading-none">+</span>
           <span>Log Workout</span>
@@ -216,7 +216,7 @@ export function HevyTab() {
       </div>
 
       {/* Sub-tab content */}
-      <div>
+      <div className="max-w-2xl mx-auto w-full">
         {activeTab === 'workouts'  && <WorkoutsSubTab />}
         {activeTab === 'routines'  && <RoutinesTab />}
         {activeTab === 'prs'       && <PRsSubTab />}
@@ -225,7 +225,7 @@ export function HevyTab() {
       </div>
 
       {/* Training calendar — always visible below tabs */}
-      <div className="mt-2 max-w-2xl mx-auto w-full">
+      <div className="mt-2 max-w-2xl mx-auto w-full min-h-[200px]">
         <TrainingCalendar />
       </div>
     </div>
