@@ -6,6 +6,9 @@ import type {
   HevyExerciseTemplate,
   HevyBodyMeasurement,
   HevyPR,
+  HevyRoutine,
+  HevyRoutineExercise,
+  HevyRoutineSet,
   StravaActivity,
   HevySyncState,
 } from '../types.hevy'
@@ -203,6 +206,18 @@ export async function fetchStravaActivities(opts: {
 
 // ─── Edge Function Calls ──────────────────────────────────────────────────────
 
+async function throwEdgeFunctionError(res: Response): Promise<never> {
+  const text = await res.text()
+  let message = text
+  try {
+    const json = JSON.parse(text)
+    message = json.error ?? json.message ?? text
+  } catch {
+    // not JSON, use raw text
+  }
+  throw new Error(message)
+}
+
 export async function triggerInitialHevySync(): Promise<{
   exercise_templates: number
   routines: number
@@ -220,7 +235,7 @@ export async function triggerInitialHevySync(): Promise<{
       },
     }
   )
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwEdgeFunctionError(res)
   return res.json()
 }
 
@@ -239,16 +254,160 @@ export async function triggerIncrementalHevySync(): Promise<{
       },
     }
   )
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwEdgeFunctionError(res)
   return res.json()
+}
+
+// ─── Routines ─────────────────────────────────────────────────────────────────
+
+export async function fetchHevyRoutines(): Promise<HevyRoutine[]> {
+  const { data: routines, error: rErr } = await supabase
+    .from('hevy_routines')
+    .select('*')
+    .order('hevy_updated_at', { ascending: false })
+  if (rErr) throw rErr
+  if (!routines?.length) return []
+
+  const routineIds = routines.map(r => r.id)
+
+  const { data: exercises, error: eErr } = await supabase
+    .from('hevy_routine_exercises')
+    .select('*')
+    .in('hevy_routine_id', routineIds)
+    .order('index')
+  if (eErr) throw eErr
+
+  const exerciseList: HevyRoutineExercise[] = exercises ?? []
+  const exerciseIds = exerciseList.map(e => e.id)
+
+  let setMap = new Map<string, HevyRoutineSet[]>()
+  if (exerciseIds.length > 0) {
+    const { data: sets, error: sErr } = await supabase
+      .from('hevy_routine_sets')
+      .select('*')
+      .in('hevy_routine_exercise_id', exerciseIds)
+      .order('index')
+    if (sErr) throw sErr
+    for (const s of (sets ?? []) as HevyRoutineSet[]) {
+      const bucket = setMap.get(s.hevy_routine_exercise_id) ?? []
+      bucket.push(s)
+      setMap.set(s.hevy_routine_exercise_id, bucket)
+    }
+  }
+
+  for (const ex of exerciseList) {
+    ex.sets = setMap.get(ex.id) ?? []
+  }
+
+  const exercisesByRoutine = new Map<string, HevyRoutineExercise[]>()
+  for (const ex of exerciseList) {
+    const bucket = exercisesByRoutine.get(ex.hevy_routine_id) ?? []
+    bucket.push(ex)
+    exercisesByRoutine.set(ex.hevy_routine_id, bucket)
+  }
+
+  // Fetch folders
+  const folderIds = [...new Set(routines.map(r => r.folder_id).filter(Boolean) as number[])]
+  const folderMap = new Map<number, { id: number; title: string }>()
+  if (folderIds.length > 0) {
+    const { data: folders, error: fErr } = await supabase
+      .from('hevy_routine_folders')
+      .select('id, title')
+      .in('id', folderIds)
+    if (fErr) throw fErr
+    for (const f of (folders ?? []) as { id: number; title: string }[]) {
+      folderMap.set(f.id, f)
+    }
+  }
+
+  return routines.map(r => ({
+    ...r,
+    exercises: exercisesByRoutine.get(r.id) ?? [],
+    folder: r.folder_id ? (folderMap.get(r.folder_id) as HevyRoutine['folder']) : undefined,
+  }))
+}
+
+// ─── Exercise Templates ───────────────────────────────────────────────────────
+
+export async function fetchHevyExerciseTemplates(): Promise<HevyExerciseTemplate[]> {
+  const { data: templates, error: tErr } = await supabase
+    .from('hevy_exercise_templates')
+    .select('*')
+    .order('title')
+  if (tErr) throw tErr
+  if (!templates?.length) return []
+
+  const templateIds = templates.map(t => t.id)
+
+  const { data: muscles, error: mErr } = await supabase
+    .from('hevy_exercise_template_muscles')
+    .select('exercise_template_id, muscle_group')
+    .in('exercise_template_id', templateIds)
+  if (mErr) throw mErr
+
+  const musclesByTemplate = new Map<string, string[]>()
+  for (const m of (muscles ?? []) as { exercise_template_id: string; muscle_group: string }[]) {
+    const bucket = musclesByTemplate.get(m.exercise_template_id) ?? []
+    bucket.push(m.muscle_group)
+    musclesByTemplate.set(m.exercise_template_id, bucket)
+  }
+
+  return templates.map(t => ({
+    ...t,
+    secondary_muscle_groups: musclesByTemplate.get(t.id) ?? [],
+  }))
+}
+
+// ─── Sync Status ──────────────────────────────────────────────────────────────
+
+export async function fetchHevySyncStatus(): Promise<{
+  workouts: number
+  routines: number
+  exercise_templates: number
+  body_measurements: number
+  last_synced: string | null
+}> {
+  const [
+    { count: workouts },
+    { count: routines },
+    { count: exercise_templates },
+    { count: body_measurements },
+  ] = await Promise.all([
+    supabase.from('hevy_workouts').select('*', { count: 'exact', head: true }),
+    supabase.from('hevy_routines').select('*', { count: 'exact', head: true }),
+    supabase.from('hevy_exercise_templates').select('*', { count: 'exact', head: true }),
+    supabase.from('hevy_body_measurements').select('*', { count: 'exact', head: true }),
+  ])
+
+  const { data: { user } } = await supabase.auth.getUser()
+  let last_synced: string | null = null
+  if (user) {
+    const { data } = await supabase
+      .from('hevy_workout_events_cursor')
+      .select('last_events_since')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    last_synced = data?.last_events_since ?? null
+  }
+
+  return {
+    workouts:           workouts ?? 0,
+    routines:           routines ?? 0,
+    exercise_templates: exercise_templates ?? 0,
+    body_measurements:  body_measurements ?? 0,
+    last_synced,
+  }
 }
 
 // ─── Sync State ───────────────────────────────────────────────────────────────
 
 export async function fetchHevySyncState(): Promise<HevySyncState | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
   const { data, error } = await supabase
-    .from('hevy_sync_state')
+    .from('hevy_workout_events_cursor')
     .select('*')
+    .eq('user_id', user.id)
     .maybeSingle()
   if (error) throw error
   return data ?? null

@@ -435,7 +435,7 @@ Deno.serve(async (req) => {
           )
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err)
       if (msg.startsWith('Hevy API ')) {
         return new Response(
           JSON.stringify({ error: msg }),
