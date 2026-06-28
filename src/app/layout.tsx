@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { format } from 'date-fns'
+import { format, getISOWeek } from 'date-fns'
 import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
 import { AIPanel } from '../features/ai/components/AIPanel'
 import { CommandBar } from '../shared/components/CommandBar'
@@ -58,7 +58,7 @@ function Nav() {
         <div className="flex items-center gap-1 flex-shrink-0">
           {/* Today's date */}
           <span className="text-xs text-ink-400 hidden md:block mr-2">
-            {format(new Date(), 'EEEE, MMM d')}
+            {format(new Date(), 'EEE, d MMM')} · W{getISOWeek(new Date())}
           </span>
 
           {/* ⌘K command bar trigger */}

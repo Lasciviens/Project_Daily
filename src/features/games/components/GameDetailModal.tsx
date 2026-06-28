@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useGameDetail, useAddToQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast }         from '../../../app/store'
+import { PlanModal }     from '../../../shared/components/PlanModal'
 import type { PlatformDetail, GamePatch } from '../../home/api/gamesApi'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -216,6 +217,7 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
   const { mutate: removeFromQueue } = useRemoveFromQueue()
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
   const [editing,     setEditing]     = useState(false)
+  const [planOpen,    setPlanOpen]    = useState(false)
 
   function handleQueueToggle() {
     if (!game) return
@@ -255,6 +257,7 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
   }
 
   return (
+    <>
     <Dialog open onClose={onClose} className="relative z-40">
       <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
 
@@ -324,16 +327,22 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
                     ))}
                   </div>
                 )}
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     onClick={handleQueueToggle}
-                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                    className={`text-xs font-semibold px-3 py-1.5 min-h-[36px] rounded-lg transition-colors ${
                       game.play_order != null
                         ? 'bg-red-100 hover:bg-red-200 text-red-600'
                         : 'bg-orange-100 hover:bg-orange-200 text-orange-700'
                     }`}
                   >
                     {game.play_order != null ? `✕ Sıradan Çıkar (#${game.play_order})` : '🎮 Sıraya Ekle'}
+                  </button>
+                  <button
+                    onClick={() => setPlanOpen(true)}
+                    className="text-xs font-semibold px-3 py-1.5 min-h-[36px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors"
+                  >
+                    📅 Plan session
                   </button>
                 </div>
               </div>
@@ -438,5 +447,15 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
         </div>
       )}
     </Dialog>
+
+    {game && (
+      <PlanModal
+        open={planOpen}
+        onClose={() => setPlanOpen(false)}
+        defaultTitle={game.title}
+        defaultCategory="games"
+      />
+    )}
+  </>
   )
 }

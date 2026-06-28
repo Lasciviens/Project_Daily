@@ -13,6 +13,7 @@ export function HevyPRList() {
   const { data: prs, isLoading } = useHevyPRs()
   const [activeGroup, setActiveGroup] = useState<string>('All')
 
+
   if (isLoading) {
     return <p className="text-sm text-ink-500 py-4">Loading PRs…</p>
   }
@@ -42,6 +43,15 @@ export function HevyPRList() {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Info banner */}
+      <div className="flex items-start gap-2.5 px-3 py-2.5 bg-accent-50 border border-accent-200 rounded-xl">
+        <span className="text-base leading-none mt-0.5">🏆</span>
+        <div>
+          <p className="text-sm font-semibold text-accent-800">Personal Records</p>
+          <p className="text-xs text-accent-600 mt-0.5">Your all-time heaviest lift for each exercise, sorted by most recent. Weights in kg.</p>
+        </div>
+      </div>
+
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2">
         {['All', ...muscleGroups].map(group => (

@@ -48,8 +48,8 @@ async function buildContext(): Promise<string> {
       .in('status', ['watching', 'paused']).limit(10),
     supabase.from('time_blocks').select('id, title, start_time, duration_minutes')
       .eq('date', today).order('start_time', { ascending: true }).limit(10),
-    supabase.from('train_sessions').select('title, type, planned_date, duration_seconds')
-      .order('planned_date', { ascending: false }).limit(5),
+    supabase.from('hevy_workouts').select('title, hevy_created_at, start_time, end_time')
+      .order('hevy_created_at', { ascending: false }).limit(5),
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -131,11 +131,13 @@ async function buildContext(): Promise<string> {
   }
 
   if (training.length) {
-    lines.push('\nRECENT TRAINING:')
+    lines.push('\nRECENT WORKOUTS (Hevy):')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const s of training) {
-      const dur = s.duration_seconds ? ` (${Math.round(s.duration_seconds / 60)}min)` : ''
-      lines.push(`  ${s.planned_date} — ${s.title} [${s.type}]${dur}`)
+      const dur = (s.start_time && s.end_time)
+        ? ` (${Math.round((new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 60000)}min)`
+        : ''
+      lines.push(`  ${s.hevy_created_at?.slice(0, 10)} — ${s.title}${dur}`)
     }
   }
 
