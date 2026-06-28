@@ -101,7 +101,7 @@ function PlanRoutineDialog({
                 <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
               </div>
             </div>
-            <button type="button" onClick={handleAddTask} disabled={createTask.isPending} className="w-full min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 transition-colors disabled:opacity-50">
+            <button type="button" onClick={handleAddTask} disabled={createTask.isPending} className="w-full min-h-[44px] bg-accent-600 text-white rounded-xl text-sm font-semibold hover:bg-accent-700 transition-colors disabled:opacity-50">
               Add as task
             </button>
             <button type="button" onClick={handleAddToSchedule} disabled={createTimeBlock.isPending} className="w-full min-h-[44px] border border-ink-200 text-ink-700 rounded-xl text-sm font-medium hover:bg-cream-50 transition-colors disabled:opacity-50">
@@ -276,7 +276,7 @@ export function RoutinesTab() {
         <button
           type="button"
           onClick={() => setNewOpen(true)}
-          className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors flex items-center gap-1.5"
+          className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5"
         >
           <span className="text-base leading-none">+</span>
           <span>New Routine</span>

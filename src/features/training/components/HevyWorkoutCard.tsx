@@ -70,7 +70,7 @@ export function HevyWorkoutCard({ workout, onClick }: Props) {
       {/* Left accent bar */}
       <div className={`w-1 shrink-0 ${accentBar}`} />
 
-      <div className="flex-1 px-3 py-2 flex flex-col gap-1 min-w-0">
+      <div className="flex-1 px-3 py-2.5 flex flex-col gap-1 min-w-0">
         {/* Title row */}
         <div className="flex items-start justify-between gap-3">
           <span className="text-sm font-bold text-ink-900 truncate">{workout.title}</span>
