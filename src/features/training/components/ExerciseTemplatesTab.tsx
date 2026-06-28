@@ -22,7 +22,7 @@ function TypeChip({ type }: { type: HevyExerciseTemplate['type'] }) {
 
 function TemplateCard({ t }: { t: HevyExerciseTemplate }) {
   return (
-    <div className="flex flex-col gap-1.5 p-3 bg-white border border-ink-100 rounded-xl hover:border-ink-200 transition-colors">
+    <div className="flex flex-col gap-1 p-2.5 bg-white border border-ink-100 rounded-xl hover:border-ink-200 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <span className="text-sm font-semibold text-ink-800 leading-snug">{t.title}</span>
         <TypeChip type={t.type} />
@@ -52,7 +52,7 @@ function MuscleGroup({ name, templates, forceOpen }: { name: string; templates: 
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 min-h-[44px] bg-cream-50 hover:bg-cream-100 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 min-h-[44px] bg-cream-50 hover:bg-cream-100 transition-colors"
       >
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-ink-800 capitalize">{name}</span>
@@ -63,7 +63,7 @@ function MuscleGroup({ name, templates, forceOpen }: { name: string; templates: 
         <span className="text-ink-400 text-xs">{isOpen ? '▲' : '▼'}</span>
       </button>
       {isOpen && (
-        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2 bg-cream-50 border-t border-ink-100">
+        <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-1.5 bg-cream-50 border-t border-ink-100">
           {templates.map(t => (
             <TemplateCard key={t.id} t={t} />
           ))}

@@ -82,7 +82,7 @@ function WeekDayCell({ day, isToday, selectedDate, onSelect }: DayCellProps) {
 
   return (
     <div
-      className={`flex flex-col gap-1.5 min-h-[80px] p-2 rounded-xl border transition-colors cursor-pointer ${
+      className={`flex flex-col gap-1.5 min-h-[64px] p-1.5 rounded-xl border transition-colors cursor-pointer ${
         isSelected
           ? 'border-accent-400 bg-accent-50'
           : isToday
@@ -214,7 +214,7 @@ function WeekView({ weekStart, workouts, activities, today, onPrev, onNext, onTo
 
       {/* Detail panel */}
       {selectedDay && (selectedDay.workouts.length > 0 || selectedDay.activities.length > 0) && (
-        <div className="border border-ink-200 rounded-xl p-4 flex flex-col gap-3">
+        <div className="border border-ink-200 rounded-xl p-3 flex flex-col gap-2">
           <p className="text-sm font-bold text-ink-800">
             {selectedDay.date.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}
           </p>
@@ -399,7 +399,7 @@ function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNe
 
       {/* Day detail */}
       {selectedDay && (selectedDay.workouts.length > 0 || selectedDay.activities.length > 0) && (
-        <div className="border border-ink-200 rounded-xl p-4 flex flex-col gap-3">
+        <div className="border border-ink-200 rounded-xl p-3 flex flex-col gap-2">
           <p className="text-sm font-bold text-ink-800">
             {selectedDay.date.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}
           </p>
@@ -478,30 +478,34 @@ export function TrainingCalendar() {
 
   if (view === 'week') {
     return (
-      <WeekView
-        weekStart={weekStart}
-        workouts={workouts}
-        activities={activities}
-        today={today}
-        onPrev={handlePrevWeek}
-        onNext={handleNextWeek}
-        onToday={handleTodayWeek}
-        onSwitchToMonth={() => setView('month')}
-      />
+      <div className="max-w-2xl mx-auto w-full">
+        <WeekView
+          weekStart={weekStart}
+          workouts={workouts}
+          activities={activities}
+          today={today}
+          onPrev={handlePrevWeek}
+          onNext={handleNextWeek}
+          onToday={handleTodayWeek}
+          onSwitchToMonth={() => setView('month')}
+        />
+      </div>
     )
   }
 
   return (
-    <MonthView
-      year={monthYear.year}
-      month={monthYear.month}
-      workouts={workouts}
-      activities={activities}
-      today={today}
-      onPrevMonth={handlePrevMonth}
-      onNextMonth={handleNextMonth}
-      onToday={handleTodayMonth}
-      onSwitchToWeek={() => setView('week')}
-    />
+    <div className="max-w-2xl mx-auto w-full">
+      <MonthView
+        year={monthYear.year}
+        month={monthYear.month}
+        workouts={workouts}
+        activities={activities}
+        today={today}
+        onPrevMonth={handlePrevMonth}
+        onNextMonth={handleNextMonth}
+        onToday={handleTodayMonth}
+        onSwitchToWeek={() => setView('week')}
+      />
+    </div>
   )
 }

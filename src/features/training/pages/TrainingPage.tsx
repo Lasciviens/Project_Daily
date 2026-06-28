@@ -9,7 +9,7 @@ export function TrainingPage() {
   const [tab, setTab] = useState<Tab>('hevy')
 
   return (
-    <div className="px-4 py-4">
+    <div className="px-3 py-3">
       {/* Compact header row */}
       <div className="flex items-center gap-2 mb-4">
         <h1 className="text-base font-bold text-ink-900">Training</h1>

@@ -44,12 +44,9 @@ export function HevyPRList() {
   return (
     <div className="flex flex-col gap-3">
       {/* Info banner */}
-      <div className="flex items-start gap-2.5 px-3 py-2.5 bg-accent-50 border border-accent-200 rounded-xl">
-        <span className="text-base leading-none mt-0.5">🏆</span>
-        <div>
-          <p className="text-sm font-semibold text-accent-800">Personal Records</p>
-          <p className="text-xs text-accent-600 mt-0.5">Your all-time heaviest lift for each exercise, sorted by most recent. Weights in kg.</p>
-        </div>
+      <div className="flex items-center gap-2 px-3 py-2 bg-accent-50 border border-accent-200 rounded-xl">
+        <span className="text-sm leading-none">🏆</span>
+        <p className="text-xs text-accent-700 font-medium">All-time heaviest lift per exercise, sorted by most recent. Weights in kg.</p>
       </div>
 
       {/* Filter bar */}
@@ -58,7 +55,7 @@ export function HevyPRList() {
           <button
             key={group}
             onClick={() => setActiveGroup(group)}
-            className={`min-h-[44px] px-3 py-1 rounded-full text-sm font-medium capitalize transition-colors ${
+            className={`min-h-[44px] px-2.5 py-0.5 rounded-full text-xs font-medium capitalize transition-colors ${
               activeGroup === group
                 ? 'bg-accent-500 text-white'
                 : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
@@ -74,7 +71,7 @@ export function HevyPRList() {
         {sorted.map(pr => (
           <li
             key={pr.exercise_template_id}
-            className="flex items-center justify-between gap-3 py-3 border-b border-ink-100 last:border-0"
+            className="flex items-center justify-between gap-3 py-2 border-b border-ink-100 last:border-0"
           >
             <div className="flex flex-col gap-1 min-w-0">
               <span className="font-medium text-sm text-ink-900 truncate">{pr.title}</span>

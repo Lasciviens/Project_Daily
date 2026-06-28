@@ -77,8 +77,7 @@ function formToPayload(
       notes:                null,
       rest_seconds:         null,
       supersets_id:         null,
-      sets: ex.sets.map((s, setIdx) => ({
-        index:           setIdx,
+      sets: ex.sets.map(s => ({
         type:            s.type,
         weight_kg:       s.weight_kg !== '' ? Number(s.weight_kg) : null,
         reps:            s.reps !== '' ? Number(s.reps) : null,
@@ -185,9 +184,14 @@ function RoutineFormContent({ title, onClose, initial }: RoutineFormProps) {
   function addSet(exKey: string) {
     setForm(f => ({
       ...f,
-      exercises: f.exercises.map(e =>
-        e._key === exKey ? { ...e, sets: [...e.sets, blankSet()] } : e
-      ),
+      exercises: f.exercises.map(e => {
+        if (e._key !== exKey) return e
+        const last = e.sets[e.sets.length - 1]
+        const next: FormSet = last
+          ? { ...last, _key: newKey() }
+          : blankSet()
+        return { ...e, sets: [...e.sets, next] }
+      }),
     }))
   }
 

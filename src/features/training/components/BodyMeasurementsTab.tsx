@@ -337,8 +337,8 @@ function LatestHeroCard({
   const heroValues = HERO_FIELDS.filter(f => m[f.key] != null)
 
   return (
-    <div className="rounded-xl bg-gradient-to-br from-accent-50 to-cream-50 border border-accent-200 px-5 py-4">
-      <div className="flex items-start justify-between gap-3 mb-3">
+    <div className="rounded-xl bg-gradient-to-br from-accent-50 to-cream-50 border border-accent-200 px-4 py-3">
+      <div className="flex items-start justify-between gap-3 mb-2">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wider text-accent-600">Latest</p>
           <p className="text-sm font-semibold text-ink-700 mt-0.5">{fmtDate(m.date)}</p>
@@ -354,10 +354,10 @@ function LatestHeroCard({
       </div>
 
       {heroValues.length > 0 ? (
-        <div className="flex flex-wrap gap-6">
+        <div className="flex flex-wrap gap-4">
           {heroValues.map(f => (
             <div key={f.key}>
-              <p className="text-3xl font-black text-ink-900">{m[f.key]}</p>
+              <p className="text-2xl font-black text-ink-900">{m[f.key]}</p>
               <p className="text-xs font-medium text-ink-500 mt-0.5">{f.unit} — {f.label}</p>
             </div>
           ))}
@@ -381,7 +381,7 @@ function MeasurementRow({
   return (
     <div className="border-b border-ink-100 last:border-0">
       {/* Summary row */}
-      <div className="flex items-center gap-2 px-4 py-3 min-h-[52px]">
+      <div className="flex items-center gap-2 px-3 py-2 min-h-[44px]">
         <button
           type="button"
           onClick={() => hasDetails && setExpanded(o => !o)}
@@ -455,7 +455,7 @@ export function BodyMeasurementsTab() {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <div>
           <h3 className="text-base font-bold text-ink-900">Body Measurements</h3>
           <p className="text-xs text-ink-400">{measurements.length} entries</p>
@@ -477,7 +477,7 @@ export function BodyMeasurementsTab() {
           <p className="text-ink-400 text-xs mt-1">Sync from Hevy or log one now</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           {/* Weight chart */}
           <WeightChart measurements={measurements} />
 
