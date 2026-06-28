@@ -84,7 +84,7 @@ export function AddTimeBlockModal({ dateStr, onClose, defaultStartTime, defaultT
 
   return (
     /* Dialog handles Escape, focus trap, and portal — no manual implementation needed */
-    <Dialog open onClose={onClose} className="relative z-50">
+    <Dialog open onClose={onClose} className="relative z-[70]">
       <DialogBackdrop
         transition
         className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0"

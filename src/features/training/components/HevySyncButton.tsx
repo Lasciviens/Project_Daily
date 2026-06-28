@@ -30,40 +30,43 @@ function formatSyncTime(iso: string): string {
 
 interface HevySyncButtonProps {
   compact?: boolean
+  iconOnly?: boolean
 }
 
-export function HevySyncButton({ compact = false }: HevySyncButtonProps) {
+export function HevySyncButton({ compact = false, iconOnly = false }: HevySyncButtonProps) {
   const initialSync     = useInitialHevySync()
   const incrementalSync = useIncrementalHevySync()
   const { data: lastSyncTime } = useLastSyncTime()
 
   const anyPending = initialSync.isPending || incrementalSync.isPending
 
+  // icon-only = tiny ↻ + gear, no text labels, used in page header
+  const sizeClass = iconOnly
+    ? 'min-h-[28px] min-w-[28px] text-xs'
+    : compact
+    ? 'min-h-[36px] px-3 text-xs'
+    : 'min-h-[44px] px-4 text-sm rounded-xl'
+
   return (
-    <div className={compact ? 'flex items-center gap-1.5' : 'flex flex-col gap-1.5'}>
-      <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1">
         {/* Main sync button */}
         <button
           type="button"
           onClick={() => incrementalSync.mutate()}
           disabled={anyPending}
-          title="Fetch new workouts from Hevy"
-          className={`flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
-            compact
-              ? 'min-h-[36px] px-3 text-xs'
-              : 'min-h-[44px] px-4 text-sm rounded-xl'
-          }`}
+          title={incrementalSync.isPending ? 'Syncing…' : 'Sync Hevy'}
+          className={`flex items-center justify-center gap-1 bg-accent-500 hover:bg-accent-600 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${sizeClass}`}
         >
           <span className={incrementalSync.isPending ? 'animate-spin inline-block' : ''}>↻</span>
-          {!compact && <span>{incrementalSync.isPending ? 'Syncing…' : 'Sync'}</span>}
-          {compact && <span>{incrementalSync.isPending ? 'Syncing…' : 'Sync'}</span>}
+          {!iconOnly && <span>{incrementalSync.isPending ? 'Syncing…' : 'Sync'}</span>}
         </button>
 
         {/* Gear button — opens full-re-sync popover */}
         <Popover className="relative">
           <PopoverButton
-            className={`flex items-center justify-center border border-ink-200 rounded-lg text-ink-500 hover:bg-cream-50 hover:text-ink-700 transition-colors text-sm ${
-              compact ? 'min-h-[36px] min-w-[36px]' : 'min-h-[44px] min-w-[44px] rounded-xl'
+            className={`flex items-center justify-center border border-ink-200 rounded-lg text-ink-500 hover:bg-cream-50 hover:text-ink-700 transition-colors ${
+              iconOnly ? 'min-h-[28px] min-w-[28px] text-xs' : compact ? 'min-h-[36px] min-w-[36px] text-sm' : 'min-h-[44px] min-w-[44px] rounded-xl text-base'
             }`}
             title="Sync settings"
           >
@@ -102,7 +105,7 @@ export function HevySyncButton({ compact = false }: HevySyncButtonProps) {
         </Popover>
       </div>
 
-      {!compact && !lastSyncTime && (
+      {!compact && !iconOnly && !lastSyncTime && (
         <div className="flex items-center gap-2 px-3 py-2 bg-accent-50 border border-accent-200 rounded-xl text-xs text-accent-800 font-medium">
           <span>⚠</span>
           <span>No Hevy data yet — click Sync to import your workouts</span>

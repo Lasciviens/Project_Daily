@@ -10,17 +10,17 @@ export function TrainingPage() {
 
   return (
     <div className="px-4 py-4">
-      {/* Compact header: title + tabs + sync/settings in one row */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h1 className="text-base font-bold text-ink-900 mr-1">Training</h1>
+      {/* Compact header row */}
+      <div className="flex items-center gap-2 mb-4">
+        <h1 className="text-base font-bold text-ink-900">Training</h1>
 
-        {/* Tab pills */}
+        {/* Hevy / Strava pills */}
         <div className="flex gap-0.5 p-0.5 bg-ink-100 rounded-lg">
           {(['hevy', 'strava'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold capitalize transition-colors duration-150 min-h-[36px] ${
+              className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors duration-150 min-h-[32px] ${
                 tab === t
                   ? 'bg-ink-900 text-white'
                   : 'bg-transparent text-ink-600 hover:text-ink-900'
@@ -31,10 +31,10 @@ export function TrainingPage() {
           ))}
         </div>
 
-        {/* Sync + settings — compact inline */}
+        {/* Sync — icon-only, appears only on Hevy tab */}
         {tab === 'hevy' && (
           <div className="ml-auto">
-            <HevySyncButton compact />
+            <HevySyncButton iconOnly />
           </div>
         )}
       </div>
