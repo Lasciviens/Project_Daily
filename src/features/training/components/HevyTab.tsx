@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useHevyPRs } from '../hooks/useHevyPRs'
-import { HevySyncButton } from './HevySyncButton'
 import { HevyWorkoutCard } from './HevyWorkoutCard'
 import { HevyWorkoutDetail } from './HevyWorkoutDetail'
 import { HevyPRList } from './HevyPRList'
@@ -11,15 +10,14 @@ import { ExerciseTemplatesTab } from './ExerciseTemplatesTab'
 import { TrainingCalendar } from './TrainingCalendar'
 import { LogHevyWorkoutModal } from './LogHevyWorkoutModal'
 
-type SubTab = 'workouts' | 'routines' | 'prs' | 'body' | 'exercises' | 'calendar'
+type SubTab = 'workouts' | 'routines' | 'prs' | 'body' | 'exercises'
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
-  { id: 'workouts',  label: 'Workouts'  },
-  { id: 'routines',  label: 'Routines'  },
-  { id: 'prs',       label: 'PRs'       },
-  { id: 'body',      label: 'Body'      },
-  { id: 'exercises', label: 'Exercises' },
-  { id: 'calendar',  label: 'Calendar'  },
+  { id: 'workouts',  label: 'Workouts'         },
+  { id: 'routines',  label: 'Routines'          },
+  { id: 'prs',       label: 'Personal Records'  },
+  { id: 'body',      label: 'Body'              },
+  { id: 'exercises', label: 'Exercises'         },
 ]
 
 const PAGE_SIZE = 20
@@ -199,15 +197,6 @@ export function HevyTab() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Top bar: sync button */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-ink-900 leading-tight">Hevy</h2>
-          <p className="text-xs text-ink-400 mt-0.5">Workouts, routines &amp; body data</p>
-        </div>
-        <HevySyncButton />
-      </div>
-
       {/* Sub-tab bar — pill underline style */}
       <div className="flex gap-0 overflow-x-auto border-b border-ink-100 -mx-1 px-1">
         {SUB_TABS.map(tab => (
@@ -215,7 +204,7 @@ export function HevyTab() {
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`min-h-[44px] px-4 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px ${
+            className={`min-h-[44px] px-3 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px ${
               activeTab === tab.id
                 ? 'border-accent-500 text-accent-600 font-semibold'
                 : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-200'
@@ -233,7 +222,11 @@ export function HevyTab() {
         {activeTab === 'prs'       && <PRsSubTab />}
         {activeTab === 'body'      && <BodyMeasurementsTab />}
         {activeTab === 'exercises' && <ExerciseTemplatesTab />}
-        {activeTab === 'calendar'  && <TrainingCalendar />}
+      </div>
+
+      {/* Training calendar — always visible below tabs */}
+      <div className="mt-2">
+        <TrainingCalendar />
       </div>
     </div>
   )

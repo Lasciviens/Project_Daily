@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchBodyMeasurements, callHevyApi } from '../api/hevyApi'
 import { toast } from '../../../app/store'
+import { logError } from '../../../shared/utils/logError'
 
 export function useHevyBodyMeasurements(limit?: number) {
   return useQuery({
@@ -22,7 +23,9 @@ export function useUpsertBodyMeasurement() {
     },
     onError: (err, _vars, tid) => {
       toast.dismiss(tid as string)
-      toast.error((err as Error).message ?? 'Failed to save measurement')
+      const msg = (err as Error).message ?? 'Failed to save measurement'
+      toast.error(msg)
+      logError(`Body measurement save failed: ${msg}`)
     },
   })
 }

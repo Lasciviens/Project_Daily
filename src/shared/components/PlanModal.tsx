@@ -150,7 +150,7 @@ export function PlanModal({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-[60]">
+    <Dialog open={open} onClose={onClose} className="relative z-[70]">
       <DialogBackdrop
         transition
         className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0"

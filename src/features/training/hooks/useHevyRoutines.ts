@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchHevyRoutines, fetchHevyRoutineFolders, callHevyApi, deleteHevyRoutineLocal } from '../api/hevyApi'
 import { toast } from '../../../app/store'
+import { logError } from '../../../shared/utils/logError'
 
 const ROUTINES_KEY = ['hevy', 'routines'] as const
 const FOLDERS_KEY  = ['hevy', 'routine-folders'] as const
@@ -33,7 +34,9 @@ export function useCreateHevyRoutine() {
     },
     onError: (err, _vars, tid) => {
       toast.dismiss(tid as string)
-      toast.error((err as Error).message ?? 'Failed to create routine')
+      const msg = (err as Error).message ?? 'Failed to create routine'
+      toast.error(msg)
+      logError(`Create routine failed: ${msg}`)
     },
   })
 }
@@ -50,7 +53,9 @@ export function useUpdateHevyRoutine() {
     },
     onError: (err, _vars, tid) => {
       toast.dismiss(tid as string)
-      toast.error((err as Error).message ?? 'Failed to save routine')
+      const msg = (err as Error).message ?? 'Failed to save routine'
+      toast.error(msg)
+      logError(`Update routine failed: ${msg}`)
     },
   })
 }
@@ -67,7 +72,9 @@ export function useDeleteHevyRoutineLocal() {
     },
     onError: (err, _vars, tid) => {
       toast.dismiss(tid as string)
-      toast.error((err as Error).message ?? 'Failed to delete routine')
+      const msg = (err as Error).message ?? 'Failed to delete routine'
+      toast.error(msg)
+      logError(`Delete routine failed: ${msg}`)
     },
   })
 }
