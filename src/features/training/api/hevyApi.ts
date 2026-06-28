@@ -203,6 +203,16 @@ export async function fetchStravaActivities(opts: {
 
 // ─── Edge Function Calls ──────────────────────────────────────────────────────
 
+async function throwEdgeFunctionError(res: Response): Promise<never> {
+  const text = await res.text()
+  try {
+    const json = JSON.parse(text)
+    throw new Error(json.error ?? json.message ?? text)
+  } catch {
+    throw new Error(text)
+  }
+}
+
 export async function triggerInitialHevySync(): Promise<{
   exercise_templates: number
   routines: number
@@ -220,7 +230,7 @@ export async function triggerInitialHevySync(): Promise<{
       },
     }
   )
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwEdgeFunctionError(res)
   return res.json()
 }
 
@@ -239,16 +249,19 @@ export async function triggerIncrementalHevySync(): Promise<{
       },
     }
   )
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwEdgeFunctionError(res)
   return res.json()
 }
 
 // ─── Sync State ───────────────────────────────────────────────────────────────
 
 export async function fetchHevySyncState(): Promise<HevySyncState | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
   const { data, error } = await supabase
-    .from('hevy_sync_state')
+    .from('hevy_workout_events_cursor')
     .select('*')
+    .eq('user_id', user.id)
     .maybeSingle()
   if (error) throw error
   return data ?? null
