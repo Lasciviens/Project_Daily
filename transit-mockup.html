@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transit Widget Mockup</title>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f3ef;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+    gap: 32px;
+  }
+
+  h1 { font-size: 13px; color: #888; letter-spacing: .05em; text-transform: uppercase; font-weight: 600; }
+
+  /* ── Widget shell ── */
+  .widget {
+    background: white;
+    border: 1px solid #e8e4dc;
+    border-radius: 16px;
+    padding: 16px;
+    width: 380px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid #f0ece4;
+    margin-bottom: 16px;
+    gap: 0;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 8px 0;
+    font-size: 12px;
+    font-weight: 600;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: #aaa;
+    border-bottom: 2px solid transparent;
+    transition: color .15s, border-color .15s;
+  }
+  .tab-btn.active { color: #e8112d; border-bottom-color: #e8112d; }
+
+  /* ── Tab panels ── */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Section label ── */
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #aaa;
+    margin-bottom: 6px;
+  }
+
+  /* ── Saved stops chips ── */
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid #e0dbd2;
+    background: white;
+    color: #555;
+    cursor: pointer;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    font-weight: 500;
+  }
+  .chip.active { background: #e8112d; color: white; border-color: #e8112d; }
+
+  /* ── Search input ── */
+  .search-box {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e0dbd2;
+    border-radius: 10px;
+    font-size: 13px;
+    color: #333;
+    outline: none;
+    background: #faf8f5;
+    margin-bottom: 12px;
+    min-height: 40px;
+  }
+  .search-box:focus { border-color: #e8112d; background: white; }
+
+  /* ── Stop header ── */
+  .stop-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .stop-name { font-size: 11px; color: #777; font-weight: 500; }
+  .refresh-btn {
+    background: #e8112d;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .refresh-btn:hover { background: #c40e28; }
+
+  /* ── Quay columns ── */
+  .quay-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 12px;
+  }
+  .quay-col {}
+  .quay-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #bbb;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #f0ece4;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Departure row ── */
+  .dep-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid #f9f7f3;
+    min-height: 40px;
+  }
+  .dep-row:last-child { border-bottom: none; }
+  .line-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    min-width: 32px;
+    text-align: center;
+    background: #e8112d;
+    color: white;
+  }
+  .dep-dest { flex: 1; font-size: 12px; font-weight: 500; color: #222; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dep-time { font-size: 12px; font-weight: 700; color: #222; flex-shrink: 0; }
+  .dep-time.now  { color: #e8112d; }
+  .dep-time.soon { color: #f97316; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+
+  /* ── Routes form ── */
+  .from-to-card {
+    border: 1px solid #e0dbd2;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .from-field, .to-field {
+    padding: 10px 12px;
+  }
+  .from-field { border-bottom: 1px solid #f0ece4; }
+  .field-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #bbb;
+    margin-bottom: 4px;
+  }
+  .field-input {
+    width: 100%;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    color: #333;
+    background: none;
+    padding: 0;
+  }
+  .field-input::placeholder { color: #bbb; }
+  .loc-link { font-size: 11px; color: #e8112d; cursor: pointer; margin-top: 4px; display: block; }
+
+  .when-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .when-chip {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid #e0dbd2;
+    background: white;
+    color: #555;
+    cursor: pointer;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+  .when-chip.active { background: #e8112d; color: white; border-color: #e8112d; }
+
+  .plan-btn {
+    width: 100%;
+    padding: 12px;
+    background: #e8112d;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    min-height: 44px;
+    transition: background .15s;
+  }
+  .plan-btn:hover { background: #c40e28; }
+  .plan-btn:disabled { background: #f0ece4; color: #bbb; cursor: default; }
+
+  /* ── Trip result card ── */
+  .trip-card {
+    border: 1px solid #e0dbd2;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: white;
+  }
+  .trip-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .trip-leave { font-size: 12px; font-weight: 600; color: #222; }
+  .trip-dur { font-size: 11px; color: #aaa; }
+  .trip-legs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .leg-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #e8112d;
+    color: white;
+  }
+  .leg-walk { font-size: 11px; color: #aaa; }
+  .leg-arrow { font-size: 10px; color: #ccc; }
+
+  /* ── Toolbar hint ── */
+  .hint {
+    font-size: 11px;
+    color: #aaa;
+    background: #fffbe8;
+    border: 1px solid #f5e88a;
+    border-radius: 8px;
+    padding: 8px 12px;
+    max-width: 380px;
+    line-height: 1.5;
+  }
+  .hint strong { color: #888; }
+
+  /* ── Spacer ── */
+  .spacer { height: 1px; }
+</style>
+</head>
+<body>
+
+<h1>Transit Widget — UI Mockup</h1>
+
+<p class="hint">
+  <strong>Nasıl kullanılır:</strong> Tarayıcıda aç → F12 → Elements sekmesi → Bir elementi seç →
+  Sağdaki Styles panelinden CSS değerlerini değiştir. Beğendiğin düzeni screenshot alıp paylaş.
+  <br>Veya HTML'i doğrudan düzenle: VSCode / Notepad++ ile aç, kaydet, sayfayı yenile.
+</p>
+
+<!-- ══════════════════════════════════════════════════
+     WIDGET
+════════════════════════════════════════════════════ -->
+<div class="widget">
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('departures', this)">Departures</button>
+    <button class="tab-btn"        onclick="switchTab('routes', this)">Routes</button>
+  </div>
+
+  <!-- ── DEPARTURES TAB ── -->
+  <div id="departures" class="panel active">
+
+    <div class="section-label">Saved stops</div>
+    <div class="chips">
+      <button class="chip active">Visperud</button>
+      <button class="chip">Sinsenveien</button>
+    </div>
+
+    <div class="section-label">Search stop</div>
+    <input class="search-box" type="text" placeholder="Search any stop…">
+
+    <!-- Stop header -->
+    <div class="stop-header">
+      <span class="stop-name">📍 Visperud · 08:51</span>
+      <button class="refresh-btn" title="Refresh">↻</button>
+    </div>
+
+    <!-- ──────────────────────────────────────────
+         QUAY COLUMNS
+         Düzenlemek için: grid-template-columns değerini değiştir
+         Örn: "1fr" = tek sütun, "1fr 1fr" = iki eşit sütun
+    ────────────────────────────────────────────── -->
+    <div class="quay-grid">
+
+      <!-- Quay 1 — mot Oslo -->
+      <div class="quay-col">
+        <div class="quay-label">mot Oslo</div>
+
+        <div class="dep-row">
+          <span class="line-badge">100</span>
+          <span class="dep-dest">Oslo bussterminal</span>
+          <span class="dep-time now">Nå</span>
+          <div class="dot"></div>
+        </div>
+
+        <div class="dep-row">
+          <span class="line-badge">100</span>
+          <span class="dep-dest">Kjeller</span>
+          <span class="dep-time soon">1 min</span>
+          <div class="dot"></div>
+        </div>
+
+        <div class="dep-row">
+          <span class="line-badge" style="background:#e87e11">115E</span>
+          <span class="dep-dest">Helsfyr</span>
+          <span class="dep-time soon">3 min</span>
+          <div class="dot"></div>
+        </div>
+
+        <div class="dep-row">
+          <span class="line-badge" style="background:#e87e11">110E</span>
+          <span class="dep-dest">Helsfyr</span>
+          <span class="dep-time">7 min</span>
+          <div class="dot"></div>
+        </div>
+
+        <div class="dep-row">
+          <span class="line-badge">110</span>
+          <span class="dep-dest">Oslo bussterminal</span>
+          <span class="dep-time">8 min</span>
+          <div class="dot"></div>
+        </div>
+      </div>
+
+      <!-- Quay 2 — mot Lillestrøm -->
+      <div class="quay-col">
+        <div class="quay-label">mot Lillestrøm</div>
+
+        <div class="dep-row">
+          <span class="line-badge">67</span>
+          <span class="dep-dest">Økern</span>
+          <span class="dep-time">3 min</span>
+          <div class="dot"></div>
+        </div>
+
+        <div class="dep-row">
+          <span class="line-badge">67</span>
+          <span class="dep-dest">Lørenskog sentrum</span>
+          <span class="dep-time">4 min</span>
+          <div class="dot"></div>
+        </div>
+
+        <div class="dep-row">
+          <span class="line-badge">110</span>
+          <span class="dep-dest">Lillestrøm</span>
+          <span class="dep-time">7 min</span>
+          <div class="dot"></div>
+        </div>
+
+        <div class="dep-row">
+          <span class="line-badge">100</span>
+          <span class="dep-dest">Kjeller</span>
+          <span class="dep-time">17 min</span>
+          <div class="dot"></div>
+        </div>
+
+        <div class="dep-row">
+          <span class="line-badge">110</span>
+          <span class="dep-dest">Lillestrøm</span>
+          <span class="dep-time">16 min</span>
+          <div class="dot"></div>
+        </div>
+      </div>
+
+    </div><!-- /quay-grid -->
+
+  </div><!-- /departures -->
+
+
+  <!-- ── ROUTES TAB ── -->
+  <div id="routes" class="panel">
+
+    <!-- Quick route chips -->
+    <div class="section-label">Quick route from here</div>
+    <div class="chips" style="margin-bottom: 16px;">
+      <button class="chip">📍 → Sinsenveien</button>
+    </div>
+
+    <!-- From / To card -->
+    <div class="from-to-card">
+      <div class="from-field">
+        <div class="field-label">From</div>
+        <input class="field-input" placeholder="Stop or address…">
+        <span class="loc-link">📍 Use current location</span>
+      </div>
+      <div class="to-field">
+        <div class="field-label">To</div>
+        <input class="field-input" placeholder="Stop or address…">
+        <span class="loc-link">📍 Use current location</span>
+      </div>
+    </div>
+
+    <!-- When chips -->
+    <div class="when-chips">
+      <button class="when-chip active">Now</button>
+      <button class="when-chip">+15</button>
+      <button class="when-chip">+30</button>
+      <button class="when-chip">+1h</button>
+      <button class="when-chip">Arrive by…</button>
+      <button class="when-chip">Custom…</button>
+    </div>
+
+    <!-- Plan button (disabled = no stops selected) -->
+    <button class="plan-btn" disabled>Plan route</button>
+
+    <!-- ── Example result (visible after planning) ── -->
+    <div style="margin-top: 16px;">
+      <div class="section-label" style="margin-bottom: 8px;">Results</div>
+
+      <div class="trip-card">
+        <div class="trip-header">
+          <span class="trip-leave">Leave in 4 min · 09:12</span>
+          <span class="trip-dur">38 min</span>
+        </div>
+        <div class="trip-legs">
+          <span class="leg-badge">110E</span>
+          <span class="leg-arrow">→</span>
+          <span class="leg-badge" style="background:#4a4a4a">T-bane 5</span>
+          <span class="leg-walk">🚶 3 min</span>
+        </div>
+      </div>
+
+      <div class="trip-card">
+        <div class="trip-header">
+          <span class="trip-leave">Leave in 9 min · 09:17</span>
+          <span class="trip-dur">42 min</span>
+        </div>
+        <div class="trip-legs">
+          <span class="leg-badge">100</span>
+          <span class="leg-arrow">→</span>
+          <span class="leg-badge" style="background:#4a4a4a">T-bane 2</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- /routes -->
+
+</div><!-- /widget -->
+
+<script>
+  function switchTab(id, btn) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'))
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
+    document.getElementById(id).classList.add('active')
+    btn.classList.add('active')
+  }
+
+  // Make chips interactive
+  document.querySelectorAll('.chips .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      chip.closest('.chips').querySelectorAll('.chip').forEach(c => c.classList.remove('active'))
+      chip.classList.add('active')
+    })
+  })
+  document.querySelectorAll('.when-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      chip.closest('.when-chips').querySelectorAll('.when-chip').forEach(c => c.classList.remove('active'))
+      chip.classList.add('active')
+    })
+  })
+</script>
+</body>
+</html>
