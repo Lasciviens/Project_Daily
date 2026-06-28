@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
       index: number
       title: string
       notes: string | null
-      supersets_id: string | null
+      supersets_id: number | null
       sets: Array<{
         index: number
         type: string
