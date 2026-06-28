@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
     const origin2 = req.headers.get('origin')
     const headers2 = corsHeaders(origin2)
     return new Response(
-      JSON.stringify({ error: (err as Error).message ?? 'Internal server error' }),
+      JSON.stringify({ error: err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err) }),
       { status: 500, headers: { ...headers2, 'Content-Type': 'application/json' } }
     )
   }

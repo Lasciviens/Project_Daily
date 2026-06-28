@@ -550,7 +550,7 @@ Deno.serve(async (req) => {
       workouts = await syncWorkouts(supabase, user.id, hevyApiKey)
       bodyMeasurements = await syncBodyMeasurements(supabase, user.id, hevyApiKey)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err)
       if (msg.includes('Hevy API error')) {
         return new Response(JSON.stringify({ error: msg }), {
           status: 502,
@@ -584,7 +584,9 @@ Deno.serve(async (req) => {
       },
     )
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = err instanceof Error
+      ? err.message
+      : (err as any)?.message ?? JSON.stringify(err)
     console.error('hevy-initial-sync error:', msg)
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,

@@ -205,12 +205,14 @@ export async function fetchStravaActivities(opts: {
 
 async function throwEdgeFunctionError(res: Response): Promise<never> {
   const text = await res.text()
+  let message = text
   try {
     const json = JSON.parse(text)
-    throw new Error(json.error ?? json.message ?? text)
+    message = json.error ?? json.message ?? text
   } catch {
-    throw new Error(text)
+    // not JSON, use raw text
   }
+  throw new Error(message)
 }
 
 export async function triggerInitialHevySync(): Promise<{
