@@ -1,0 +1,296 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Headers': 'authorization, content-type, x-client-info, apikey',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
+}
+
+const hevyApiKey = Deno.env.get('HEVY_API_KEY')
+
+async function hevyGet(path: string) {
+  const res = await fetch(`https://api.hevyapp.com${path}`, {
+    headers: { 'api-key': hevyApiKey! },
+  })
+  if (!res.ok) throw new Error(`Hevy API ${res.status}: ${path}`)
+  return res.json()
+}
+
+Deno.serve(async (req) => {
+  const origin = req.headers.get('origin')
+  const headers = corsHeaders(origin)
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers })
+  }
+
+  try {
+    // Guard: HEVY_API_KEY must be set
+    if (!hevyApiKey) {
+      return new Response(
+        JSON.stringify({ error: 'HEVY_API_KEY not configured' }),
+        { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Verify JWT
+    const authHeader = req.headers.get('authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization' }),
+        { status: 401, headers: { ...headers, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid token' }),
+        { status: 401, headers: { ...headers, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Step 1: Read last cursor
+    const { data: cursorRow } = await supabase
+      .from('hevy_workout_events_cursor')
+      .select('last_events_since')
+      .eq('user_id', user.id)
+      .single()
+
+    const since = cursorRow?.last_events_since ?? '1970-01-01T00:00:00Z'
+
+    // Step 2: Paginate all events since the cursor
+    const allEvents: Array<{ type: 'updated' | 'deleted'; workout_id: string; updated_at: string }> = []
+    let page = 1
+
+    while (true) {
+      let data: { page: number; page_count: number; events: typeof allEvents }
+      try {
+        data = await hevyGet(
+          `/v1/workouts/events?page=${page}&pageSize=10&since=${encodeURIComponent(since)}`
+        )
+      } catch (err) {
+        return new Response(
+          JSON.stringify({ error: `Hevy fetch failed: ${(err as Error).message}` }),
+          { status: 502, headers: { ...headers, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      allEvents.push(...(data.events ?? []))
+
+      if (page >= data.page_count) break
+      page++
+    }
+
+    // Separate events into update and delete sets (deduplicated)
+    const toDeleteSet = new Set<string>()
+    const toUpdateSet = new Set<string>()
+
+    for (const event of allEvents) {
+      if (event.type === 'deleted') {
+        toDeleteSet.add(event.workout_id)
+      } else if (event.type === 'updated') {
+        toUpdateSet.add(event.workout_id)
+      }
+    }
+
+    // Step 3: Process deletions
+    for (const workoutId of toDeleteSet) {
+      const { error: deleteError } = await supabase
+        .from('hevy_workouts')
+        .delete()
+        .eq('id', workoutId)
+        .eq('user_id', user.id)
+      // CASCADE handles hevy_workout_exercises and hevy_sets
+
+      if (deleteError) {
+        return new Response(
+          JSON.stringify({ error: `delete hevy_workouts: ${deleteError.message}` }),
+          { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
+    // Step 4: Process updates (skip workouts that were also deleted)
+    let updatedCount = 0
+
+    for (const workoutId of toUpdateSet) {
+      if (toDeleteSet.has(workoutId)) continue
+
+      // Fetch full workout from Hevy
+      let workout: {
+        id: string
+        title: string
+        routine_id: string | null
+        description: string | null
+        start_time: string
+        end_time: string
+        updated_at: string
+        created_at: string
+        exercises: Array<{
+          exercise_template_id: string
+          index: number
+          title: string
+          notes: string | null
+          supersets_id: number | null
+          sets: Array<{
+            index: number
+            type: string
+            weight_kg: number | null
+            reps: number | null
+            distance_meters: number | null
+            duration_seconds: number | null
+            rpe: number | null
+            custom_metric: number | null
+          }>
+        }>
+      }
+
+      try {
+        const data = await hevyGet(`/v1/workouts/${workoutId}`)
+        workout = data.workout
+      } catch (err) {
+        return new Response(
+          JSON.stringify({ error: `Hevy fetch failed: ${(err as Error).message}` }),
+          { status: 502, headers: { ...headers, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Upsert hevy_workouts
+      const { error: upsertWorkoutError } = await supabase
+        .from('hevy_workouts')
+        .upsert(
+          {
+            id: workout.id,
+            user_id: user.id,
+            title: workout.title,
+            routine_id: workout.routine_id ?? null,
+            description: workout.description ?? null,
+            start_time: workout.start_time,
+            end_time: workout.end_time,
+            hevy_updated_at: workout.updated_at,
+            hevy_created_at: workout.created_at,
+            synced_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        )
+
+      if (upsertWorkoutError) {
+        return new Response(
+          JSON.stringify({ error: `upsert hevy_workouts: ${upsertWorkoutError.message}` }),
+          { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Delete existing exercises for this workout (full replacement)
+      const { error: deleteExError } = await supabase
+        .from('hevy_workout_exercises')
+        .delete()
+        .eq('hevy_workout_id', workout.id)
+        .eq('user_id', user.id)
+
+      if (deleteExError) {
+        return new Response(
+          JSON.stringify({ error: `delete hevy_workout_exercises: ${deleteExError.message}` }),
+          { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Insert exercises and their sets
+      for (const ex of workout.exercises) {
+        const { data: exerciseRow, error: exInsertError } = await supabase
+          .from('hevy_workout_exercises')
+          .insert({
+            user_id: user.id,
+            hevy_workout_id: workout.id,
+            exercise_template_id: ex.exercise_template_id,
+            index: ex.index,
+            title: ex.title,
+            notes: ex.notes ?? null,
+            supersets_id: ex.supersets_id ?? null,
+          })
+          .select('id')
+          .single()
+
+        if (exInsertError || !exerciseRow) {
+          return new Response(
+            JSON.stringify({ error: `insert hevy_workout_exercises: ${exInsertError?.message}` }),
+            { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        if (ex.sets.length === 0) continue
+
+        const setsPayload = ex.sets.map((s) => ({
+          user_id: user.id,
+          hevy_exercise_id: exerciseRow.id,
+          exercise_template_id: ex.exercise_template_id,
+          index: s.index,
+          type: s.type,
+          weight_kg: s.weight_kg ?? null,
+          reps: s.reps ?? null,
+          distance_meters: s.distance_meters ?? null,
+          duration_seconds: s.duration_seconds ?? null,
+          rpe: s.rpe ?? null,
+          custom_metric: s.custom_metric ?? null,
+        }))
+
+        const { error: setsInsertError } = await supabase
+          .from('hevy_sets')
+          .insert(setsPayload)
+
+        if (setsInsertError) {
+          return new Response(
+            JSON.stringify({ error: `insert hevy_sets: ${setsInsertError.message}` }),
+            { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
+          )
+        }
+      }
+
+      updatedCount++
+    }
+
+    // Step 5: Advance cursor to now
+    const { error: cursorError } = await supabase
+      .from('hevy_workout_events_cursor')
+      .upsert(
+        {
+          user_id: user.id,
+          last_events_since: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      )
+
+    if (cursorError) {
+      return new Response(
+        JSON.stringify({ error: `upsert hevy_workout_events_cursor: ${cursorError.message}` }),
+        { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    return new Response(
+      JSON.stringify({ updated: updatedCount, deleted: toDeleteSet.size }),
+      { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } }
+    )
+  } catch (err) {
+    const origin2 = req.headers.get('origin')
+    const headers2 = corsHeaders(origin2)
+    return new Response(
+      JSON.stringify({ error: (err as Error).message ?? 'Internal server error' }),
+      { status: 500, headers: { ...headers2, 'Content-Type': 'application/json' } }
+    )
+  }
+})
