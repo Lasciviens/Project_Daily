@@ -92,9 +92,10 @@ export function HevySyncButton() {
       </div>
 
       {!lastSyncTime && (
-        <p className="text-xs text-ink-400">
-          Never synced — click Sync to fetch your Hevy data
-        </p>
+        <div className="flex items-center gap-2 px-3 py-2 bg-accent-50 border border-accent-200 rounded-xl text-xs text-accent-800 font-medium">
+          <span>⚠</span>
+          <span>No Hevy data yet — click Sync to import your workouts</span>
+        </div>
       )}
     </div>
   )

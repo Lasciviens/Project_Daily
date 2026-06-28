@@ -1,14 +1,12 @@
 import { useState } from 'react'
-import { ProgramsTab } from '../components/ProgramsTab'
 import { HevyTab } from '../components/HevyTab'
 import { StravaTab } from '../components/StravaTab'
 
-type Tab = 'hevy' | 'strava' | 'programs'
+type Tab = 'hevy' | 'strava'
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'hevy',     label: 'Hevy'     },
-  { key: 'strava',   label: 'Strava'   },
-  { key: 'programs', label: 'Programs' },
+  { key: 'hevy',   label: 'Hevy'   },
+  { key: 'strava', label: 'Strava' },
 ]
 
 export function TrainingPage() {
@@ -16,12 +14,10 @@ export function TrainingPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      {/* Header */}
       <div className="mb-5">
         <h1 className="text-lg font-semibold text-ink-900">Training</h1>
       </div>
 
-      {/* Tab bar */}
       <div className="flex gap-1 mb-5 p-1 bg-ink-100 rounded-xl w-fit">
         {TABS.map(t => (
           <button
@@ -38,10 +34,8 @@ export function TrainingPage() {
         ))}
       </div>
 
-      {/* Tab content */}
-      {tab === 'hevy'     && <HevyTab />}
-      {tab === 'strava'   && <StravaTab />}
-      {tab === 'programs' && <ProgramsTab />}
+      {tab === 'hevy'   && <HevyTab />}
+      {tab === 'strava' && <StravaTab />}
     </div>
   )
 }
