@@ -105,41 +105,27 @@ async function syncRoutineFolders(
   userId: string,
   hevyApiKey: string,
 ): Promise<number> {
-  let page = 1
-  let totalSynced = 0
+  // routine_folders doesn't support pageSize param — fetch all at once
+  const data = await hevyGet(`/v1/routine_folders`, hevyApiKey)
+  const folders: Array<{ id: number; title: string }> = data.routine_folders ?? []
 
-  while (true) {
-    const data = await hevyGet(
-      `/v1/routine_folders?page=${page}&pageSize=100`,
-      hevyApiKey,
+  if (folders.length === 0) return 0
+
+  const now = new Date().toISOString()
+  const { error } = await supabase
+    .from('hevy_routine_folders')
+    .upsert(
+      folders.map((f) => ({
+        id: f.id,
+        user_id: userId,
+        title: f.title,
+        synced_at: now,
+      })),
+      { onConflict: 'id' },
     )
-    const folders: Array<{ id: string; title: string }> =
-      data.routine_folders ?? []
+  if (error) throw error
 
-    if (folders.length === 0) break
-
-    const now = new Date().toISOString()
-
-    const { error } = await supabase
-      .from('hevy_routine_folders')
-      .upsert(
-        folders.map((f) => ({
-          id: f.id,
-          user_id: userId,
-          title: f.title,
-          synced_at: now,
-        })),
-        { onConflict: 'id' },
-      )
-    if (error) throw error
-
-    totalSynced += folders.length
-
-    if (page >= data.page_count) break
-    page++
-  }
-
-  return totalSynced
+  return folders.length
 }
 
 // ---------------------------------------------------------------------------
