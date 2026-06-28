@@ -297,7 +297,7 @@ function RoutineFormContent({ title, onClose, initial }: RoutineFormProps) {
                     <button
                       type="button"
                       onClick={() => removeExercise(ex._key)}
-                      className="min-h-[36px] min-w-[36px] flex items-center justify-center text-ink-400 hover:text-red-500 transition-colors text-sm"
+                      className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 transition-colors text-sm"
                     >
                       ✕
                     </button>
@@ -362,7 +362,7 @@ function RoutineFormContent({ title, onClose, initial }: RoutineFormProps) {
                     <button
                       type="button"
                       onClick={() => addSet(ex._key)}
-                      className="mt-1 text-xs text-accent-600 font-medium hover:text-accent-700 text-left min-h-[32px]"
+                      className="mt-1 text-xs text-accent-600 font-medium hover:text-accent-700 text-left min-h-[44px]"
                     >
                       + Add set
                     </button>

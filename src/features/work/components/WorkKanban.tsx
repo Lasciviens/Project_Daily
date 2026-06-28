@@ -132,7 +132,7 @@ export default function WorkKanban({
             {/* Section header */}
             <button
               onClick={() => toggle(col.id)}
-              className="w-full flex items-center justify-between px-3 py-2 min-h-[40px] hover:bg-ink-50/50 rounded-xl transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 min-h-[44px] hover:bg-ink-50/50 rounded-xl transition-colors"
             >
               <div className="flex items-center gap-2">
                 <span
@@ -180,7 +180,7 @@ export default function WorkKanban({
                 {!isDoneCol && (
                   <button
                     onClick={() => onAddTask(COLUMN_STATUS[col.id])}
-                    className="mt-1.5 w-full min-h-[36px] flex items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 text-[11px] text-ink-400 hover:border-accent-400 hover:text-accent-500 hover:bg-accent-50 transition-colors"
+                    className="mt-1.5 w-full min-h-[44px] flex items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 text-[11px] text-ink-400 hover:border-accent-400 hover:text-accent-500 hover:bg-accent-50 transition-colors"
                   >
                     + Add
                   </button>

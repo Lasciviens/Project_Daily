@@ -82,7 +82,7 @@ function WeekDayCell({ day, isToday, selectedDate, onSelect }: DayCellProps) {
 
   return (
     <div
-      className={`flex flex-col gap-1.5 min-h-[64px] p-1.5 rounded-xl border transition-colors cursor-pointer ${
+      className={`flex flex-col gap-1.5 min-h-[60px] p-1.5 rounded-xl border transition-colors cursor-pointer ${
         isSelected
           ? 'border-accent-400 bg-accent-50'
           : isToday
@@ -92,9 +92,9 @@ function WeekDayCell({ day, isToday, selectedDate, onSelect }: DayCellProps) {
       onClick={() => onSelect(isSelected ? '' : dateStr)}
     >
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] font-bold text-ink-400 uppercase">{formatDayLabel(day.date)}</span>
+        <span className="text-[10px] font-bold text-ink-500 uppercase">{formatDayLabel(day.date)}</span>
         <span className={`text-xs font-semibold rounded-full w-5 h-5 flex items-center justify-center ${
-          isToday ? 'bg-accent-500 text-white' : 'text-ink-600'
+          isToday ? 'bg-accent-600 text-white' : 'text-ink-600'
         }`}>
           {day.date.getDate()}
         </span>
@@ -348,7 +348,7 @@ function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNe
       {/* Day-of-week headers */}
       <div className="grid grid-cols-7 gap-1">
         {DAY_LABELS.map(d => (
-          <div key={d} className="text-[10px] font-bold text-ink-400 uppercase text-center py-1">{d}</div>
+          <div key={d} className="text-[10px] font-bold text-ink-500 uppercase text-center py-1">{d}</div>
         ))}
       </div>
 
@@ -378,7 +378,7 @@ function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNe
               }`}
             >
               <span className={`text-xs font-semibold ${
-                isToday ? 'text-accent-600' : 'text-ink-700'
+                isToday ? 'text-accent-700' : 'text-ink-700'
               }`}>
                 {date.getDate()}
               </span>

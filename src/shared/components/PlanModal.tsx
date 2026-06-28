@@ -225,7 +225,7 @@ export function PlanModal({
                 <button
                   type="button"
                   onClick={() => setDate(today)}
-                  className={`flex-1 min-h-[36px] text-xs font-medium rounded-lg border transition-colors ${
+                  className={`flex-1 min-h-[44px] text-xs font-medium rounded-lg border transition-colors ${
                     date === today
                       ? 'bg-accent-500 text-white border-accent-500'
                       : 'border-ink-200 text-ink-600 hover:bg-cream-50'
@@ -236,7 +236,7 @@ export function PlanModal({
                 <button
                   type="button"
                   onClick={() => setDate(tomorrowStr())}
-                  className={`flex-1 min-h-[36px] text-xs font-medium rounded-lg border transition-colors ${
+                  className={`flex-1 min-h-[44px] text-xs font-medium rounded-lg border transition-colors ${
                     date === tomorrowStr()
                       ? 'bg-accent-500 text-white border-accent-500'
                       : 'border-ink-200 text-ink-600 hover:bg-cream-50'
@@ -283,7 +283,7 @@ export function PlanModal({
                     key={d}
                     type="button"
                     onClick={() => { setDuration(d); setCustomMin('') }}
-                    className={`min-h-[36px] px-3 text-xs font-medium rounded-lg border transition-colors ${
+                    className={`min-h-[44px] px-3 text-xs font-medium rounded-lg border transition-colors ${
                       duration === d && customMin === ''
                         ? 'bg-accent-500 text-white border-accent-500'
                         : 'border-ink-200 text-ink-600 hover:bg-cream-50'
@@ -298,7 +298,7 @@ export function PlanModal({
                   value={customMin}
                   onChange={e => setCustomMin(e.target.value)}
                   placeholder="Custom"
-                  className="min-h-[36px] w-20 bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-400"
+                  className="min-h-[44px] w-20 bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-400"
                 />
               </div>
             </div>
@@ -326,7 +326,7 @@ export function PlanModal({
                     key={o.value}
                     type="button"
                     onClick={() => setRecurrence(o.value)}
-                    className={`min-h-[36px] px-3 text-xs font-medium rounded-lg border transition-colors ${
+                    className={`min-h-[44px] px-3 text-xs font-medium rounded-lg border transition-colors ${
                       recurrence === o.value
                         ? 'bg-ink-900 text-white border-ink-900'
                         : 'border-ink-200 text-ink-600 hover:bg-cream-50'

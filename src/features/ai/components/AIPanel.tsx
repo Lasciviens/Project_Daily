@@ -83,7 +83,7 @@ export function AIPanel() {
             {messages.length > 0 && (
               <button
                 onClick={() => { setMessages([]); setError(null) }}
-                className="text-[11px] text-ink-400 hover:text-ink-600 px-2 py-1 rounded transition-colors duration-150"
+                className="text-[11px] text-ink-400 hover:text-ink-600 min-h-[44px] px-2 py-1 rounded transition-colors duration-150"
               >
                 Clear
               </button>

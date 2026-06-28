@@ -189,7 +189,7 @@ function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
               type="button"
               onClick={handleSave}
               disabled={upsert.isPending || !form.date}
-              className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 min-h-[44px] bg-accent-600 text-white rounded-xl text-sm font-semibold hover:bg-accent-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {upsert.isPending ? 'Saving…' : 'Save'}
             </button>
@@ -463,7 +463,7 @@ export function BodyMeasurementsTab() {
         <button
           type="button"
           onClick={() => { setLogKey(k => k + 1); setLogOpen(true) }}
-          className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors flex items-center gap-1.5"
+          className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5"
         >
           <span className="text-base leading-none">+</span>
           <span>Log Measurement</span>

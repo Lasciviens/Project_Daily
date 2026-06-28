@@ -88,7 +88,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             key={s.season_number}
             onClick={() => { setSeason(s.season_number); setSelected(new Set()) }}
             className={[
-              'flex-shrink-0 text-xs px-2.5 py-1 rounded-lg min-h-[36px] transition-colors',
+              'flex-shrink-0 text-xs px-2.5 py-1 rounded-lg min-h-[44px] transition-colors',
               season === s.season_number
                 ? 'bg-accent-500 text-white font-semibold'
                 : 'bg-cream-100 text-ink-500 hover:bg-cream-200',
@@ -102,21 +102,21 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
           <button
             onClick={handleMarkAllWatched}
             disabled={isLoading || !seasonData || markingAll}
-            className="text-xs px-2 py-1 rounded-lg min-h-[36px] bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 disabled:opacity-40 transition-colors"
+            className="text-xs px-2 py-1 rounded-lg min-h-[44px] bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 disabled:opacity-40 transition-colors"
           >
             ✓ All
           </button>
           <button
             onClick={() => setSelected(new Set((seasonData?.episodes ?? []).map(e => e.episode_number)))}
             disabled={isLoading || !seasonData}
-            className="text-xs px-2 py-1 rounded-lg min-h-[36px] bg-cream-100 text-ink-500 hover:bg-cream-200 disabled:opacity-40 transition-colors"
+            className="text-xs px-2 py-1 rounded-lg min-h-[44px] bg-cream-100 text-ink-500 hover:bg-cream-200 disabled:opacity-40 transition-colors"
           >
             Select All
           </button>
           {selected.size > 0 && (
             <button
               onClick={() => setSelected(new Set())}
-              className="text-xs text-accent-500 hover:text-accent-700 px-1.5 min-h-[36px] transition-colors"
+              className="text-xs text-accent-500 hover:text-accent-700 px-1.5 min-h-[44px] transition-colors"
             >
               Clear
             </button>
@@ -132,13 +132,13 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
           </span>
           <button
             onClick={() => setPlanModal(true)}
-            className="text-xs bg-accent-500 text-white px-3 py-1 rounded-lg min-h-[36px] hover:bg-accent-600 transition-colors"
+            className="text-xs bg-accent-500 text-white px-3 py-1 rounded-lg min-h-[44px] hover:bg-accent-600 transition-colors"
           >
             Plan
           </button>
           <button
             onClick={() => setSelected(new Set())}
-            className="text-xs text-accent-500 hover:text-accent-700 px-2 min-h-[36px]"
+            className="text-xs text-accent-500 hover:text-accent-700 px-2 min-h-[44px]"
           >
             Clear
           </button>

@@ -39,7 +39,7 @@ function FocusCard({ task, onMarkDone, onClearFocus, onEdit }: {
         <span className="text-[10px] font-bold uppercase tracking-widest text-accent-500">Focus</span>
         <button
           onClick={() => onClearFocus(task.id)}
-          className="text-[10px] text-ink-400 hover:text-red-400 transition-colors min-h-[28px] px-1"
+          className="text-[10px] text-ink-400 hover:text-red-400 transition-colors min-h-[44px] px-2"
         >
           ✕ Remove
         </button>

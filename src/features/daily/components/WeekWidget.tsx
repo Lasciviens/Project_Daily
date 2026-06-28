@@ -85,7 +85,7 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
           {calList.length > 1 && (
             <button
               onClick={() => setShowCalFilter(p => !p)}
-              className={`text-[10px] px-1.5 py-0.5 rounded transition-colors duration-150 font-medium ${
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center text-[10px] px-1.5 py-0.5 rounded transition-colors duration-150 font-medium ${
                 showCalFilter ? 'bg-accent-100 text-accent-700' : 'text-ink-400 hover:text-ink-600'
               }`}
               title="Filter calendars"

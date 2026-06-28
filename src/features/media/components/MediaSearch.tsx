@@ -66,7 +66,7 @@ export function MediaSearch({ onSelectResult }: Props) {
         <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg flex-shrink-0">
           <button
             onClick={() => setMediaType('movie')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 min-h-[36px] ${
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 min-h-[44px] ${
               mediaType === 'movie'
                 ? 'bg-white text-ink-800 shadow-sm'
                 : 'text-ink-500 hover:text-ink-700'
@@ -76,7 +76,7 @@ export function MediaSearch({ onSelectResult }: Props) {
           </button>
           <button
             onClick={() => setMediaType('tv')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 min-h-[36px] ${
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 min-h-[44px] ${
               mediaType === 'tv'
                 ? 'bg-white text-ink-800 shadow-sm'
                 : 'text-ink-500 hover:text-ink-700'

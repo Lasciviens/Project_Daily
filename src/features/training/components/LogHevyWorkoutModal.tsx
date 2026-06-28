@@ -133,7 +133,7 @@ function ExerciseRowEditor({ ex, templates, onChange, onRemove }: ExerciseRowPro
             <select
               value={s.type}
               onChange={e => updateSet(s.id, { type: e.target.value as SetType })}
-              className="min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-ink-700 focus:outline-none focus:ring-1 focus:ring-accent-400"
+              className="min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-ink-700 focus:outline-none focus:ring-1 focus:ring-accent-400"
             >
               <option value="normal">Normal</option>
               <option value="warmup">Warmup</option>
@@ -147,7 +147,7 @@ function ExerciseRowEditor({ ex, templates, onChange, onRemove }: ExerciseRowPro
               value={s.weight_kg}
               onChange={e => updateSet(s.id, { weight_kg: e.target.value })}
               placeholder="—"
-              className="min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-400"
+              className="min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-400"
             />
             <input
               type="number"
@@ -155,13 +155,13 @@ function ExerciseRowEditor({ ex, templates, onChange, onRemove }: ExerciseRowPro
               value={s.reps}
               onChange={e => updateSet(s.id, { reps: e.target.value })}
               placeholder="—"
-              className="min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-400"
+              className="min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-400"
             />
             <button
               type="button"
               onClick={() => removeSet(s.id)}
               disabled={ex.sets.length === 1}
-              className="min-h-[36px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors disabled:opacity-30 text-xs"
+              className="min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors disabled:opacity-30 text-xs"
             >
               ✕
             </button>
@@ -171,7 +171,7 @@ function ExerciseRowEditor({ ex, templates, onChange, onRemove }: ExerciseRowPro
         <button
           type="button"
           onClick={addSet}
-          className="text-xs text-accent-600 hover:text-accent-800 font-medium min-h-[36px] flex items-center gap-1 mb-1"
+          className="text-xs text-accent-600 hover:text-accent-800 font-medium min-h-[44px] flex items-center gap-1 mb-1"
         >
           + Add set
         </button>

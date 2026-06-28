@@ -267,12 +267,12 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
         <div className="absolute top-3 right-3 z-10 flex gap-2">
           {updateGame && game && !editing && (
             <button onClick={() => setEditing(true)}
-              className="h-9 px-3 flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 text-xs font-medium transition-colors">
+              className="min-h-[44px] px-3 flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 text-xs font-medium transition-colors">
               ✏️ Edit
             </button>
           )}
           <button onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 transition-colors">✕</button>
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 transition-colors">✕</button>
         </div>
 
         {isLoading && <div className="flex items-center justify-center h-48 text-ink-400">Loading…</div>}
@@ -330,7 +330,7 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     onClick={handleQueueToggle}
-                    className={`text-xs font-semibold px-3 py-1.5 min-h-[36px] rounded-lg transition-colors ${
+                    className={`text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg transition-colors ${
                       game.play_order != null
                         ? 'bg-red-100 hover:bg-red-200 text-red-600'
                         : 'bg-orange-100 hover:bg-orange-200 text-orange-700'
@@ -340,7 +340,7 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
                   </button>
                   <button
                     onClick={() => setPlanOpen(true)}
-                    className="text-xs font-semibold px-3 py-1.5 min-h-[36px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors"
+                    className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors"
                   >
                     📅 Plan session
                   </button>

@@ -199,7 +199,7 @@ export function ProjectDetail({ project, onDelete }: Props) {
             <button
               onClick={handleAddPhase}
               disabled={createPhase.isPending}
-              className="w-full text-xs text-ink-400 hover:text-accent-600 py-2 rounded-xl border border-dashed border-ink-200 hover:border-accent-300 transition-colors"
+              className="w-full text-xs text-ink-400 hover:text-accent-600 min-h-[44px] py-2 rounded-xl border border-dashed border-ink-200 hover:border-accent-300 transition-colors"
             >
               + Add phase
             </button>

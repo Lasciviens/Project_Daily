@@ -42,9 +42,9 @@ export function HevySyncButton({ compact = false, iconOnly = false }: HevySyncBu
 
   // icon-only = tiny ↻ + gear, no text labels, used in page header
   const sizeClass = iconOnly
-    ? 'min-h-[28px] min-w-[28px] text-xs'
+    ? 'min-h-[44px] min-w-[44px] text-xs'
     : compact
-    ? 'min-h-[36px] px-3 text-xs'
+    ? 'min-h-[44px] px-3 text-xs'
     : 'min-h-[44px] px-4 text-sm rounded-xl'
 
   return (
@@ -66,7 +66,7 @@ export function HevySyncButton({ compact = false, iconOnly = false }: HevySyncBu
         <Popover className="relative">
           <PopoverButton
             className={`flex items-center justify-center border border-ink-200 rounded-lg text-ink-500 hover:bg-cream-50 hover:text-ink-700 transition-colors ${
-              iconOnly ? 'min-h-[28px] min-w-[28px] text-xs' : compact ? 'min-h-[36px] min-w-[36px] text-sm' : 'min-h-[44px] min-w-[44px] rounded-xl text-base'
+              iconOnly ? 'min-h-[44px] min-w-[44px] text-xs' : compact ? 'min-h-[44px] min-w-[44px] text-sm' : 'min-h-[44px] min-w-[44px] rounded-xl text-base'
             }`}
             title="Sync settings"
           >

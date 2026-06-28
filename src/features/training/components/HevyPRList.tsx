@@ -57,7 +57,7 @@ export function HevyPRList() {
             onClick={() => setActiveGroup(group)}
             className={`min-h-[44px] px-2.5 py-0.5 rounded-full text-xs font-medium capitalize transition-colors ${
               activeGroup === group
-                ? 'bg-accent-500 text-white'
+                ? 'bg-accent-600 text-white'
                 : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
             }`}
           >

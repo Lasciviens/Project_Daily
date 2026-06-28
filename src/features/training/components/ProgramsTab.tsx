@@ -191,7 +191,7 @@ function ProgramCard({ program }: { program: TrainingProgram }) {
           <div className="px-4 pb-3 border-t border-ink-100 pt-2">
             <button
               onClick={handleDeleteProgram}
-              className="text-[11px] text-red-400 hover:text-red-600 min-h-[36px]"
+              className="text-[11px] text-red-400 hover:text-red-600 min-h-[44px]"
             >
               Delete program
             </button>
