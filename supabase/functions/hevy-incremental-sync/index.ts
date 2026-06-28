@@ -72,7 +72,8 @@ Deno.serve(async (req) => {
     const since = cursorRow?.last_events_since ?? '1970-01-01T00:00:00Z'
 
     // Step 2: Paginate all events since the cursor
-    const allEvents: Array<{ type: 'updated' | 'deleted'; workout_id: string; updated_at: string }> = []
+    // Hevy events have shape: { id: string, type: 'updated'|'deleted', updated_at: string }
+    const allEvents: Array<{ type: 'updated' | 'deleted'; id: string; updated_at: string }> = []
     let page = 1
 
     while (true) {
@@ -99,10 +100,11 @@ Deno.serve(async (req) => {
     const toUpdateSet = new Set<string>()
 
     for (const event of allEvents) {
+      if (!event.id) continue
       if (event.type === 'deleted') {
-        toDeleteSet.add(event.workout_id)
+        toDeleteSet.add(event.id)
       } else if (event.type === 'updated') {
-        toUpdateSet.add(event.workout_id)
+        toUpdateSet.add(event.id)
       }
     }
 

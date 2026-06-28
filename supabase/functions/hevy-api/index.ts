@@ -25,7 +25,10 @@ async function hevyRequest(
     headers: { 'api-key': hevyApiKey, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   })
-  if (!res.ok) throw new Error(`Hevy API ${res.status} ${method} ${path}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Hevy API ${res.status} ${method} ${path}: ${body}`)
+  }
   return res.json()
 }
 
