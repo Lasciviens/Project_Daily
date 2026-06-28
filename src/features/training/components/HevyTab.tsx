@@ -7,16 +7,15 @@ import { HevyPRList } from './HevyPRList'
 import { RoutinesTab } from './RoutinesTab'
 import { BodyMeasurementsTab } from './BodyMeasurementsTab'
 import { ExerciseTemplatesTab } from './ExerciseTemplatesTab'
-import { SyncStatusPanel } from './SyncStatusPanel'
 
 type SubTab = 'workouts' | 'routines' | 'prs' | 'body' | 'templates'
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
-  { id: 'workouts',  label: 'Workouts'  },
-  { id: 'routines',  label: 'Routines'  },
-  { id: 'prs',       label: 'PRs'       },
-  { id: 'body',      label: 'Body'      },
-  { id: 'templates', label: 'Templates' },
+  { id: 'workouts',  label: 'Workouts'   },
+  { id: 'routines',  label: 'Routines'   },
+  { id: 'prs',       label: 'PRs'        },
+  { id: 'body',      label: 'Body'       },
+  { id: 'templates', label: 'Templates'  },
 ]
 
 const PAGE_SIZE = 20
@@ -33,18 +32,19 @@ function WorkoutsSubTab() {
   return (
     <>
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-16 rounded-xl bg-cream-200 animate-pulse" />
+            <div key={i} className="h-[72px] rounded-xl bg-cream-200 animate-pulse" />
           ))}
-          <p className="text-sm text-ink-400 text-center pt-1">Loading workouts…</p>
         </div>
       ) : workouts.length === 0 ? (
-        <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
-          <p className="text-ink-400 text-sm">No workouts yet — click Sync all to import your Hevy data</p>
+        <div className="text-center py-14 border border-dashed border-ink-200 rounded-xl">
+          <p className="text-2xl mb-2">🏋️</p>
+          <p className="text-ink-600 font-medium text-sm">No workouts yet</p>
+          <p className="text-ink-400 text-xs mt-1">Click Sync to import your Hevy data</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {workouts.map(workout => (
             <HevyWorkoutCard
               key={workout.id}
@@ -56,7 +56,7 @@ function WorkoutsSubTab() {
       )}
 
       {!isLoading && (
-        <div className="flex gap-2 justify-between">
+        <div className="flex gap-2 justify-between pt-1">
           {page > 0 ? (
             <button
               type="button"
@@ -66,7 +66,6 @@ function WorkoutsSubTab() {
               ← Previous
             </button>
           ) : <div />}
-
           {workouts.length === PAGE_SIZE ? (
             <button
               type="button"
@@ -91,41 +90,29 @@ function WorkoutsSubTab() {
 
 export function HevyTab() {
   const [activeTab, setActiveTab] = useState<SubTab>('workouts')
-  const [syncStatusOpen, setSyncStatusOpen] = useState(false)
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Top controls */}
-      <HevySyncButton />
-
-      {/* Sync status collapsible */}
-      <div className="border border-ink-100 rounded-xl overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setSyncStatusOpen(o => !o)}
-          className="w-full flex items-center justify-between px-4 py-3 min-h-[44px] text-sm font-semibold text-ink-700 hover:bg-cream-50 transition-colors"
-        >
-          <span>Sync Status</span>
-          <span className="text-ink-400 text-xs">{syncStatusOpen ? '▲' : '▼'}</span>
-        </button>
-        {syncStatusOpen && (
-          <div className="px-3 pb-3 border-t border-ink-100">
-            <SyncStatusPanel />
-          </div>
-        )}
+    <div className="flex flex-col gap-5">
+      {/* Top bar: sync button */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-ink-900 leading-tight">Hevy</h2>
+          <p className="text-xs text-ink-400 mt-0.5">Workouts, routines &amp; body data</p>
+        </div>
+        <HevySyncButton />
       </div>
 
-      {/* Sub-tab bar */}
-      <div className="flex gap-1 overflow-x-auto pb-0.5 -mx-1 px-1">
+      {/* Sub-tab bar — pill underline style */}
+      <div className="flex gap-0 overflow-x-auto border-b border-ink-100 -mx-1 px-1">
         {SUB_TABS.map(tab => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`min-h-[44px] px-4 text-sm font-medium rounded-xl whitespace-nowrap transition-colors shrink-0 ${
+            className={`min-h-[44px] px-4 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px ${
               activeTab === tab.id
-                ? 'bg-accent-500 text-white'
-                : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
+                ? 'border-accent-500 text-accent-600 font-semibold'
+                : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-200'
             }`}
           >
             {tab.label}
@@ -134,11 +121,13 @@ export function HevyTab() {
       </div>
 
       {/* Sub-tab content */}
-      {activeTab === 'workouts'  && <WorkoutsSubTab />}
-      {activeTab === 'routines'  && <RoutinesTab />}
-      {activeTab === 'prs'       && <HevyPRList />}
-      {activeTab === 'body'      && <BodyMeasurementsTab />}
-      {activeTab === 'templates' && <ExerciseTemplatesTab />}
+      <div>
+        {activeTab === 'workouts'  && <WorkoutsSubTab />}
+        {activeTab === 'routines'  && <RoutinesTab />}
+        {activeTab === 'prs'       && <HevyPRList />}
+        {activeTab === 'body'      && <BodyMeasurementsTab />}
+        {activeTab === 'templates' && <ExerciseTemplatesTab />}
+      </div>
     </div>
   )
 }

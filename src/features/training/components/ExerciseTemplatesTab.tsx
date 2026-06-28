@@ -12,20 +12,20 @@ const TYPE_LABELS: Record<HevyExerciseTemplate['type'], string> = {
   weight_distance:      'Weight × Dist',
 }
 
-function TypeBadge({ type }: { type: HevyExerciseTemplate['type'] }) {
+function TypeChip({ type }: { type: HevyExerciseTemplate['type'] }) {
   return (
-    <span className="inline-block text-[10px] font-medium bg-ink-100 text-ink-500 rounded px-1.5 py-0.5 shrink-0">
+    <span className="inline-block text-[10px] font-semibold bg-ink-100 text-ink-500 rounded-full px-2 py-0.5 shrink-0">
       {TYPE_LABELS[type] ?? type}
     </span>
   )
 }
 
-function TemplateRow({ t }: { t: HevyExerciseTemplate }) {
+function TemplateCard({ t }: { t: HevyExerciseTemplate }) {
   return (
-    <div className="flex flex-col gap-1 py-2.5 border-b border-ink-100 last:border-0 px-4">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-ink-800 font-medium truncate">{t.title}</span>
-        <TypeBadge type={t.type} />
+    <div className="flex flex-col gap-1.5 p-3 bg-white border border-ink-100 rounded-xl hover:border-ink-200 transition-colors">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-sm font-semibold text-ink-800 leading-snug">{t.title}</span>
+        <TypeChip type={t.type} />
       </div>
       {(t.secondary_muscle_groups?.length ?? 0) > 0 && (
         <div className="flex flex-wrap gap-1">
@@ -53,16 +53,18 @@ function MuscleGroup({ name, templates }: { name: string; templates: HevyExercis
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-4 py-3 min-h-[44px] bg-cream-50 hover:bg-cream-100 transition-colors"
       >
-        <span className="text-sm font-semibold text-ink-800 capitalize">{name}</span>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-ink-400">{templates.length}</span>
-          <span className="text-ink-400 text-xs">{open ? '▲' : '▼'}</span>
+          <span className="text-sm font-bold text-ink-800 capitalize">{name}</span>
+          <span className="text-xs font-semibold bg-ink-200 text-ink-600 rounded-full px-2 py-0.5">
+            {templates.length}
+          </span>
         </div>
+        <span className="text-ink-400 text-xs">{open ? '▲' : '▼'}</span>
       </button>
       {open && (
-        <div className="divide-y divide-ink-100">
+        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2 bg-cream-50 border-t border-ink-100">
           {templates.map(t => (
-            <TemplateRow key={t.id} t={t} />
+            <TemplateCard key={t.id} t={t} />
           ))}
         </div>
       )}
@@ -95,8 +97,6 @@ export function ExerciseTemplatesTab() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-ink-400 italic">Synced from Hevy — not editable here</p>
-
       <input
         type="search"
         value={search}
@@ -107,13 +107,12 @@ export function ExerciseTemplatesTab() {
 
       {isLoading ? (
         <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-12 rounded-xl bg-cream-200 animate-pulse" />
           ))}
-          <p className="text-sm text-ink-400 text-center pt-1">Loading templates…</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
+        <div className="text-center py-12 border border-dashed border-ink-200 rounded-xl">
           <p className="text-ink-400 text-sm">
             {search ? 'No exercises match your search' : 'No templates yet — sync your Hevy data first'}
           </p>
