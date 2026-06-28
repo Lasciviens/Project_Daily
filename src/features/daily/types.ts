@@ -9,6 +9,8 @@ export interface ScheduleBlock {
   created_at:   string
 }
 
+export type TimeBlockCategory = 'daily' | 'training' | 'media' | 'games' | 'work' | 'projects' | 'other'
+
 export interface TimeBlock {
   id:               string
   user_id:          string
@@ -17,6 +19,7 @@ export interface TimeBlock {
   start_time:       string | null
   duration_minutes: number
   color:            string
+  category:         TimeBlockCategory
   source_type?:     string | null
   source_id?:       string | null
   notes:            string | null
@@ -30,6 +33,7 @@ export interface CreateTimeBlockInput {
   start_time?:      string | null
   duration_minutes: number
   color?:           string
+  category?:        TimeBlockCategory
   source_type?:     string
   source_id?:       string
 }

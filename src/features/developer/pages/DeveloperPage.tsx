@@ -70,7 +70,17 @@ export function DeveloperPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => refetch()}
+            onClick={async () => {
+              const tid = toast.loading('Refreshing…')
+              try {
+                await refetch()
+                toast.dismiss(tid)
+                toast.success('Refreshed ✓')
+              } catch (err) {
+                toast.dismiss(tid)
+                toast.error((err as Error).message ?? 'Refresh failed')
+              }
+            }}
             className="text-xs px-3 py-2 rounded-lg border border-ink-200 text-ink-600 hover:border-ink-400 transition-colors duration-150 min-h-[44px]"
           >
             ↻ Refresh
