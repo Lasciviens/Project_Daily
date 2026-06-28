@@ -54,12 +54,12 @@ function BestLiftsCard() {
 
   return (
     <div className="rounded-xl border border-ink-200 bg-white overflow-hidden mb-3">
-      <div className="px-4 py-2.5 bg-cream-50 border-b border-ink-100">
+      <div className="px-3 py-2 bg-cream-50 border-b border-ink-100">
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Top 5 Lifts by Weight</p>
       </div>
       <div className="divide-y divide-ink-50">
         {top5.map((pr, i) => (
-          <div key={pr.exercise_template_id} className="flex items-center gap-3 px-4 py-2.5">
+          <div key={pr.exercise_template_id} className="flex items-center gap-3 px-3 py-2">
             <span className="text-xs font-bold text-ink-400 w-4 shrink-0">#{i + 1}</span>
             <span className="text-sm font-medium text-ink-800 flex-1 truncate">{pr.title}</span>
             <span className="text-sm font-bold text-accent-700 shrink-0">
@@ -132,7 +132,7 @@ function WorkoutsSubTab() {
           <p className="text-ink-400 text-xs mt-1">Click Sync to import your Hevy data</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
           {workouts.map(workout => (
             <HevyWorkoutCard
               key={workout.id}
@@ -196,7 +196,7 @@ export function HevyTab() {
   const [activeTab, setActiveTab] = useState<SubTab>('workouts')
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       {/* Sub-tab bar — pill underline style */}
       <div className="flex gap-0 overflow-x-auto border-b border-ink-100 -mx-1 px-1">
         {SUB_TABS.map(tab => (
@@ -204,7 +204,7 @@ export function HevyTab() {
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`min-h-[44px] px-3 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px ${
+            className={`min-h-[40px] px-3 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px ${
               activeTab === tab.id
                 ? 'border-accent-500 text-accent-600 font-semibold'
                 : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-200'
@@ -225,7 +225,7 @@ export function HevyTab() {
       </div>
 
       {/* Training calendar — always visible below tabs */}
-      <div className="mt-2">
+      <div className="mt-2 max-w-2xl mx-auto w-full">
         <TrainingCalendar />
       </div>
     </div>

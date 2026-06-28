@@ -65,12 +65,12 @@ export function HevyWorkoutCard({ workout, onClick }: Props) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left rounded-xl border border-ink-100 bg-white min-h-[72px] cursor-pointer hover:border-accent-200 hover:shadow-sm transition-all duration-150 flex overflow-hidden"
+      className="w-full text-left rounded-xl border border-ink-100 bg-white min-h-[60px] cursor-pointer hover:border-accent-200 hover:shadow-sm transition-all duration-150 flex overflow-hidden"
     >
       {/* Left accent bar */}
       <div className={`w-1 shrink-0 ${accentBar}`} />
 
-      <div className="flex-1 px-4 py-3 flex flex-col gap-1.5 min-w-0">
+      <div className="flex-1 px-3 py-2 flex flex-col gap-1 min-w-0">
         {/* Title row */}
         <div className="flex items-start justify-between gap-3">
           <span className="text-sm font-bold text-ink-900 truncate">{workout.title}</span>

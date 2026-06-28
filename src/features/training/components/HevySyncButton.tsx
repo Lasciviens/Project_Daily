@@ -14,7 +14,7 @@ function useLastSyncTime() {
         .from('hevy_workout_events_cursor')
         .select('last_events_since')
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle()
       return data?.last_events_since ?? null
     },
     staleTime: 30_000,

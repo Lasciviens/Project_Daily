@@ -130,8 +130,11 @@ interface RoutineCardProps {
   onEdit:  (r: HevyRoutine) => void
 }
 
+const EXERCISES_PREVIEW = 5
+
 function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [showAllExercises, setShowAllExercises] = useState(false)
   const [planOpen,  setPlanOpen]  = useState(false)
   const deleteMutation = useDeleteHevyRoutineLocal()
 
@@ -147,7 +150,7 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
   return (
     <div className={`border border-ink-200 border-l-4 ${accentBorder} rounded-xl overflow-hidden bg-white`}>
       {/* Card header */}
-      <div className="flex items-start gap-3 px-4 py-3.5">
+      <div className="flex items-start gap-3 px-3 py-2.5">
         <button
           type="button"
           onClick={() => setExpanded(o => !o)}
@@ -204,22 +207,38 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
 
       {/* Expanded exercises */}
       {expanded && (
-        <div className="border-t border-ink-100 bg-cream-50 px-4 py-3 flex flex-col gap-3">
-          {(routine.exercises ?? []).map(ex => (
-            <div key={ex.id}>
-              <p className="text-xs font-bold text-ink-700 mb-1.5">{ex.title}</p>
-              <div className="flex flex-wrap gap-1 pl-2">
-                {(ex.sets ?? []).map((s, i) => (
-                  <SetChip key={s.id ?? i} s={s} />
-                ))}
-              </div>
-              {ex.notes && (
-                <p className="text-xs text-ink-400 italic mt-1 pl-2">{ex.notes}</p>
-              )}
-            </div>
-          ))}
-          {exerciseCount === 0 && (
+        <div className="border-t border-ink-100 bg-cream-50 px-3 py-2 flex flex-col gap-2">
+          {exerciseCount === 0 ? (
             <p className="text-xs text-ink-400 italic">No exercises</p>
+          ) : (
+            <>
+              {(routine.exercises ?? [])
+                .slice(0, showAllExercises ? undefined : EXERCISES_PREVIEW)
+                .map(ex => (
+                  <div key={ex.id}>
+                    <p className="text-xs font-bold text-ink-700 mb-1">{ex.title}</p>
+                    <div className="flex flex-wrap gap-1 pl-2">
+                      {(ex.sets ?? []).map((s, i) => (
+                        <SetChip key={s.id ?? i} s={s} />
+                      ))}
+                    </div>
+                    {ex.notes && (
+                      <p className="text-xs text-ink-400 italic mt-1 pl-2">{ex.notes}</p>
+                    )}
+                  </div>
+                ))}
+              {exerciseCount > EXERCISES_PREVIEW && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllExercises(o => !o)}
+                  className="text-xs text-accent-600 hover:text-accent-700 font-medium text-left min-h-[44px] flex items-center"
+                >
+                  {showAllExercises
+                    ? '▲ Show less'
+                    : `▼ Show all ${exerciseCount} exercises`}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -249,7 +268,7 @@ export function RoutinesTab() {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <div>
           <h3 className="text-base font-bold text-ink-900">Routines</h3>
           <p className="text-xs text-ink-400">{routines.length} routine{routines.length !== 1 ? 's' : ''}</p>
