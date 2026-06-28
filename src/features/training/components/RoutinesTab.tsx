@@ -10,7 +10,7 @@ import type { HevyRoutine, HevyRoutineSet } from '../types.hevy'
 const TODAY = format(new Date(), 'yyyy-MM-dd')
 
 const SET_TYPE_BADGE: Record<HevyRoutineSet['type'], { label: string; cls: string }> = {
-  warmup:  { label: 'W', cls: 'bg-amber-100 text-amber-700' },
+  warmup:  { label: 'W', cls: 'bg-accent-100 text-accent-700' },
   normal:  { label: 'N', cls: 'bg-ink-100 text-ink-600' },
   dropset: { label: 'D', cls: 'bg-blue-100 text-blue-700' },
   failure: { label: 'F', cls: 'bg-red-100 text-red-700' },
