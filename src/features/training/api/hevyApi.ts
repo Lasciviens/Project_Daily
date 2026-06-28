@@ -9,6 +9,7 @@ import type {
   HevyRoutine,
   HevyRoutineExercise,
   HevyRoutineSet,
+  HevyRoutineFolder,
   StravaActivity,
   HevySyncState,
 } from '../types.hevy'
@@ -397,6 +398,46 @@ export async function fetchHevySyncStatus(): Promise<{
     body_measurements:  body_measurements ?? 0,
     last_synced,
   }
+}
+
+// ─── Hevy API (write operations via Edge Function) ────────────────────────────
+
+export async function callHevyApi(action: string, payload: unknown): Promise<unknown> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/hevy-api`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session?.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action, payload }),
+    }
+  )
+  if (!res.ok) await throwEdgeFunctionError(res)
+  return res.json()
+}
+
+// ─── Delete routine from local DB only (no Hevy API delete exists) ────────────
+
+export async function deleteHevyRoutineLocal(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('hevy_routines')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
+// ─── Routine Folders ──────────────────────────────────────────────────────────
+
+export async function fetchHevyRoutineFolders(): Promise<HevyRoutineFolder[]> {
+  const { data, error } = await supabase
+    .from('hevy_routine_folders')
+    .select('*')
+    .order('title')
+  if (error) throw error
+  return data ?? []
 }
 
 // ─── Sync State ───────────────────────────────────────────────────────────────
