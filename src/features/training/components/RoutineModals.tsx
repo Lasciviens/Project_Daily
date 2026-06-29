@@ -65,12 +65,26 @@ function blankExercise(template: HevyExerciseTemplate): FormExercise {
 // Mirrors how Hevy itself renders set fields per exercise type.
 function setFieldsForType(type: string | undefined) {
   switch (type) {
-    case 'duration':          return { weight: false, reps: false, duration: true,  distance: false }
-    case 'distance_duration': return { weight: false, reps: false, duration: true,  distance: true  }
-    case 'weight_distance':   return { weight: true,  reps: false, duration: false, distance: true  }
-    case 'bodyweight_reps':   return { weight: false, reps: true,  duration: false, distance: false }
-    // weight_reps, weighted_bodyweight, assisted_bodyweight, and unknown → weight + reps
-    default:                  return { weight: true,  reps: true,  duration: false, distance: false }
+    // reps only, no weight
+    case 'reps_only':
+    case 'bodyweight_reps':
+      return { weight: false, reps: true,  duration: false, distance: false }
+    // time only
+    case 'duration':
+      return { weight: false, reps: false, duration: true,  distance: false }
+    // weight + time
+    case 'weight_duration':
+      return { weight: true,  reps: false, duration: true,  distance: false }
+    // distance + time
+    case 'distance_duration':
+      return { weight: false, reps: false, duration: true,  distance: true  }
+    // weight + distance
+    case 'short_distance_weight':
+    case 'weight_distance':
+      return { weight: true,  reps: false, duration: false, distance: true  }
+    // weight + reps (incl. weighted/assisted bodyweight variants) and unknown
+    default:
+      return { weight: true,  reps: true,  duration: false, distance: false }
   }
 }
 

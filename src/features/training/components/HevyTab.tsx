@@ -226,7 +226,7 @@ export function HevyTab() {
         </div>
 
         {/* Training calendar — right rail on desktop, stacked below on mobile */}
-        <div className="w-full lg:w-[340px] lg:flex-shrink-0 min-h-[200px]">
+        <div className="w-full lg:w-[400px] xl:w-[480px] lg:flex-shrink-0 min-h-[200px]">
           <TrainingCalendar />
         </div>
       </div>
