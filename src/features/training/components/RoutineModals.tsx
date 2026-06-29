@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop, Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import { useHevyRoutineFolders, useCreateHevyRoutine, useUpdateHevyRoutine } from '../hooks/useHevyRoutines'
@@ -145,7 +145,20 @@ const SET_TYPE_OPTIONS: { value: SetType; label: string }[] = [
 ]
 
 const inputCls =
-  'min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg text-sm text-ink-900 px-2.5 focus:outline-none focus:ring-2 focus:ring-accent-400'
+  'min-h-[44px] w-full bg-cream-50 border border-ink-200 rounded-lg text-sm text-ink-900 px-2.5 text-center focus:outline-none focus:ring-2 focus:ring-accent-400'
+
+// Tiny field-label sits above a set input so the column is scannable.
+// The label only renders on the header row; later rows keep the spacing.
+function SetField({ label, showLabel, children }: { label: string; showLabel: boolean; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-0.5 min-w-0 flex-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400 text-center leading-none h-[10px]">
+        {showLabel ? label : ' '}
+      </span>
+      {children}
+    </label>
+  )
+}
 
 // ─── Exercise search combobox ─────────────────────────────────────────────────
 
@@ -204,82 +217,113 @@ interface SetRowProps {
   fields:    ReturnType<typeof setFieldsForType>
   useRange:  boolean
   canRemove: boolean
+  showLabel: boolean
   onChange:  (patch: Partial<FormSet>) => void
   onRemove:  () => void
 }
 
-function SetRow({ set, index, fields, useRange, canRemove, onChange, onRemove }: SetRowProps) {
+function SetRow({ set, index, fields, useRange, canRemove, showLabel, onChange, onRemove }: SetRowProps) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-[11px] text-ink-400 w-4 text-center shrink-0">{index + 1}</span>
-      <select
-        value={set.type}
-        onChange={e => onChange({ type: e.target.value as SetType })}
-        className={`${inputCls} w-[88px]`}
-      >
-        {SET_TYPE_OPTIONS.map(o => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
+    <div className="flex items-end gap-2">
+      {/* Set number badge */}
+      <div className="flex flex-col gap-0.5 shrink-0">
+        <span className="text-[10px] leading-none h-[10px]" aria-hidden />
+        <span className="flex items-center justify-center w-7 min-h-[44px] rounded-lg bg-cream-100 text-xs font-bold text-ink-400">
+          {index + 1}
+        </span>
+      </div>
 
-      {fields.weight && (
-        <input
-          type="number" inputMode="decimal" value={set.weight_kg}
-          onChange={e => onChange({ weight_kg: e.target.value })}
-          placeholder="kg" className={`${inputCls} w-16`}
-        />
-      )}
+      {/* Type — fixed width, the rest of the metrics share a flexible grid */}
+      <div className="shrink-0 w-[84px] sm:w-[96px]">
+        <SetField label="Type" showLabel={showLabel}>
+          <select
+            value={set.type}
+            onChange={e => onChange({ type: e.target.value as SetType })}
+            className={`${inputCls} !text-left px-2`}
+          >
+            {SET_TYPE_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </SetField>
+      </div>
 
-      {fields.reps && !useRange && (
-        <input
-          type="number" inputMode="numeric" value={set.reps}
-          onChange={e => onChange({ reps: e.target.value })}
-          placeholder="reps" className={`${inputCls} w-16`}
-        />
-      )}
+      <div className="flex-1 min-w-0 flex items-end gap-2">
+        {fields.weight && (
+          <SetField label="kg" showLabel={showLabel}>
+            <input
+              type="number" inputMode="decimal" value={set.weight_kg}
+              onChange={e => onChange({ weight_kg: e.target.value })}
+              placeholder="–" className={inputCls}
+            />
+          </SetField>
+        )}
 
-      {fields.reps && useRange && (
-        <>
-          <input
-            type="number" inputMode="numeric" value={set.rep_range_start}
-            onChange={e => onChange({ rep_range_start: e.target.value })}
-            placeholder="min" className={`${inputCls} w-14`}
-          />
-          <span className="text-xs text-ink-400">–</span>
-          <input
-            type="number" inputMode="numeric" value={set.rep_range_end}
-            onChange={e => onChange({ rep_range_end: e.target.value })}
-            placeholder="max" className={`${inputCls} w-14`}
-          />
-        </>
-      )}
+        {fields.reps && !useRange && (
+          <SetField label="Reps" showLabel={showLabel}>
+            <input
+              type="number" inputMode="numeric" value={set.reps}
+              onChange={e => onChange({ reps: e.target.value })}
+              placeholder="–" className={inputCls}
+            />
+          </SetField>
+        )}
 
-      {fields.duration && (
-        <input
-          type="number" inputMode="numeric" value={set.duration_seconds}
-          onChange={e => onChange({ duration_seconds: e.target.value })}
-          placeholder="sec" className={`${inputCls} w-16`}
-        />
-      )}
+        {fields.reps && useRange && (
+          <SetField label="Rep range" showLabel={showLabel}>
+            <div className="flex items-center gap-1">
+              <input
+                type="number" inputMode="numeric" value={set.rep_range_start}
+                onChange={e => onChange({ rep_range_start: e.target.value })}
+                placeholder="min" className={inputCls}
+              />
+              <span className="text-xs text-ink-300 shrink-0">–</span>
+              <input
+                type="number" inputMode="numeric" value={set.rep_range_end}
+                onChange={e => onChange({ rep_range_end: e.target.value })}
+                placeholder="max" className={inputCls}
+              />
+            </div>
+          </SetField>
+        )}
 
-      {fields.distance && (
-        <input
-          type="number" inputMode="numeric" value={set.distance_meters}
-          onChange={e => onChange({ distance_meters: e.target.value })}
-          placeholder="m" className={`${inputCls} w-16`}
-        />
-      )}
+        {fields.duration && (
+          <SetField label="Sec" showLabel={showLabel}>
+            <input
+              type="number" inputMode="numeric" value={set.duration_seconds}
+              onChange={e => onChange({ duration_seconds: e.target.value })}
+              placeholder="–" className={inputCls}
+            />
+          </SetField>
+        )}
 
-      {canRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-300 hover:text-red-500 transition-colors"
-          aria-label={`Remove set ${index + 1}`}
-        >
-          ✕
-        </button>
-      )}
+        {fields.distance && (
+          <SetField label="Meters" showLabel={showLabel}>
+            <input
+              type="number" inputMode="numeric" value={set.distance_meters}
+              onChange={e => onChange({ distance_meters: e.target.value })}
+              placeholder="–" className={inputCls}
+            />
+          </SetField>
+        )}
+      </div>
+
+      {/* Remove — fixed slot so columns stay aligned across rows */}
+      <div className="flex flex-col gap-0.5 shrink-0">
+        <span className="text-[10px] leading-none h-[10px]" aria-hidden />
+        {canRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-300 hover:text-red-500 transition-colors"
+            aria-label={`Remove set ${index + 1}`}
+          >
+            ✕
+          </button>
+        ) : (
+          <span className="min-h-[44px] min-w-[44px] block" aria-hidden />
+        )}
+      </div>
     </div>
   )
 }
@@ -485,47 +529,50 @@ function RoutineFormContent({ title, onClose, initial }: RoutineFormProps) {
                     {/* Details: rest, rep-range toggle, superset, notes */}
                     {detailsOpen && (
                       <div className="px-3 py-3 bg-cream-50/60 border-b border-ink-100 flex flex-col gap-3">
-                        <div className="flex flex-wrap items-end gap-3">
-                          <label className="flex flex-col gap-1">
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="flex flex-col gap-1 min-w-0">
                             <span className="text-[11px] font-semibold text-ink-500">Rest (sec)</span>
                             <input
                               type="number" inputMode="numeric" value={ex.rest_seconds}
                               onChange={e => patchExercise(ex._key, { rest_seconds: e.target.value })}
-                              placeholder="e.g. 90" className={`${inputCls} w-24`}
+                              placeholder="e.g. 90" className={`${inputCls} !text-left`}
                             />
                           </label>
-                          <label className="flex flex-col gap-1">
+                          <label className="flex flex-col gap-1 min-w-0">
                             <span className="text-[11px] font-semibold text-ink-500">Superset group</span>
                             <input
                               type="number" inputMode="numeric" value={ex.superset_id}
                               onChange={e => patchExercise(ex._key, { superset_id: e.target.value })}
-                              placeholder="none" className={`${inputCls} w-24`}
+                              placeholder="none" className={`${inputCls} !text-left`}
                             />
                           </label>
-                          {fields.reps && (
-                            <label className="flex items-center gap-2 min-h-[44px] cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={ex.use_rep_range}
-                                onChange={e => patchExercise(ex._key, { use_rep_range: e.target.checked })}
-                                className="w-4 h-4 accent-accent-600"
-                              />
-                              <span className="text-xs font-medium text-ink-600">Use rep range</span>
-                            </label>
-                          )}
                         </div>
-                        <textarea
-                          value={ex.notes}
-                          onChange={e => patchExercise(ex._key, { notes: e.target.value })}
-                          placeholder="Exercise notes…"
-                          rows={2}
-                          className="w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-y"
-                        />
+                        {fields.reps && (
+                          <label className="flex items-center gap-2 min-h-[44px] cursor-pointer border-t border-ink-100 pt-2">
+                            <input
+                              type="checkbox"
+                              checked={ex.use_rep_range}
+                              onChange={e => patchExercise(ex._key, { use_rep_range: e.target.checked })}
+                              className="w-4 h-4 accent-accent-600"
+                            />
+                            <span className="text-xs font-medium text-ink-600">Use rep range instead of fixed reps</span>
+                          </label>
+                        )}
+                        <label className="flex flex-col gap-1">
+                          <span className="text-[11px] font-semibold text-ink-500">Notes</span>
+                          <textarea
+                            value={ex.notes}
+                            onChange={e => patchExercise(ex._key, { notes: e.target.value })}
+                            placeholder="Exercise notes…"
+                            rows={2}
+                            className="w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-y"
+                          />
+                        </label>
                       </div>
                     )}
 
                     {/* Sets */}
-                    <div className="px-3 py-2 flex flex-col gap-2">
+                    <div className="px-3 py-2.5 flex flex-col gap-1.5">
                       {ex.sets.map((s, sIdx) => (
                         <SetRow
                           key={s._key}
@@ -534,6 +581,7 @@ function RoutineFormContent({ title, onClose, initial }: RoutineFormProps) {
                           fields={fields}
                           useRange={ex.use_rep_range}
                           canRemove={ex.sets.length > 1}
+                          showLabel={sIdx === 0}
                           onChange={patch => updateSet(ex._key, s._key, patch)}
                           onRemove={() => removeSet(ex._key, s._key)}
                         />
@@ -542,7 +590,7 @@ function RoutineFormContent({ title, onClose, initial }: RoutineFormProps) {
                       <button
                         type="button"
                         onClick={() => addSet(ex._key)}
-                        className="mt-1 text-xs text-accent-600 font-medium hover:text-accent-700 text-left min-h-[44px]"
+                        className="mt-1 self-start text-xs text-accent-600 font-semibold hover:text-accent-700 px-2 rounded-lg hover:bg-accent-50 min-h-[44px] transition-colors"
                       >
                         + Add set
                       </button>
