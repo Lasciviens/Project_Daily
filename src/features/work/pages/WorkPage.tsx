@@ -151,7 +151,7 @@ export function WorkPage() {
 
       {/* ── Board tab ── */}
       {workTab === 'board' && (
-        <div className="flex-1 overflow-hidden lg:grid lg:grid-cols-[1fr_272px]">
+        <div className="flex-1 overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_380px]">
 
           {/* Main: timeline + hero + kanban */}
           <div className="flex flex-col overflow-hidden">

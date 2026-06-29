@@ -30,9 +30,7 @@ export function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-accent-500 rounded-full flex items-center justify-center text-white text-xl font-bold mb-3">
-            L
-          </div>
+          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Lasci's Board" className="w-12 h-12 mb-3" />
           <h1 className="text-xl font-semibold text-ink-900">Lasci's Board</h1>
           <p className="text-sm text-ink-500 mt-1">Sign in to your board</p>
         </div>

@@ -15,8 +15,8 @@ export function TrainingPage() {
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-      {/* Header banner with faint training backdrop */}
-      <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-6">
+      {/* Header banner with faint training backdrop — sized to its content */}
+      <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-6 w-fit max-w-full">
         <div
           className="absolute inset-0 bg-cover bg-center opacity-20"
           style={{ backgroundImage: `url(${HEADER_BG})` }}
