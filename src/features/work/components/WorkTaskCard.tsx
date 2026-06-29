@@ -115,7 +115,7 @@ export default function WorkTaskCard({
       {/* Due date */}
       {task.due_date && !isDone && (
         <div className="mt-0.5 pl-2.5">
-          <span className="text-[9px] text-ink-400">{task.due_date}</span>
+          <span className="text-[9px] text-ink-400">{new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-GB')}</span>
         </div>
       )}
 
@@ -130,7 +130,7 @@ export default function WorkTaskCard({
               onBlur={commitWaiting}
               onKeyDown={e => {
                 if (e.key === 'Enter') commitWaiting()
-                if (e.key === 'Escape') setEditingWaiting(false)
+                if (e.key === 'Escape') { setWaitingText(task.waiting_for ?? ''); setEditingWaiting(false) }
               }}
               placeholder="Waiting for…"
               className="text-[10px] bg-sky-50 border border-sky-300 text-sky-800 rounded-full px-2 py-0.5 outline-none w-32"

@@ -4,8 +4,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        // App page background (canvas)
-        canvas: '#b5c1c7',
+        // App page background (canvas) — soft warm taupe
+        canvas: '#b3ac9d',
         cream: {
           50:  '#fefcf9',
           100: '#faf8f4',

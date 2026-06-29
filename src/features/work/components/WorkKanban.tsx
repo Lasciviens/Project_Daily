@@ -31,16 +31,22 @@ const COLUMNS: Column[] = [
 ]
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
-const TODAY = new Date().toISOString().slice(0, 10)
+
+// Local calendar date (not UTC) computed at call time so it stays correct
+// across midnight and timezones.
+function todayStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 function isOverdue(task: Task): boolean {
   if (!task.due_date) return false
   if (task.status === 'done' || task.status === 'cancelled') return false
-  return task.due_date < TODAY
+  return task.due_date < todayStr()
 }
 
 function isCompletedToday(task: Task): boolean {
-  return task.updated_at?.slice(0, 10) === TODAY
+  return task.updated_at?.slice(0, 10) === todayStr()
 }
 
 function getColumnId(task: Task): ColumnId {

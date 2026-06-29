@@ -216,7 +216,7 @@ export function PlayQueueTab() {
         <div>
           <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">▶ Now Playing</p>
           <div className="space-y-2">
-            {playing.map((g, i) => <QueueItem key={g.id} game={g} globalIdx={i} />)}
+            {playing.map(g => <QueueItem key={g.id} game={g} globalIdx={displayItems.indexOf(g)} />)}
           </div>
         </div>
       )}
@@ -226,7 +226,7 @@ export function PlayQueueTab() {
         <div>
           <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-2">Up Next</p>
           <div className="space-y-2">
-            {upcoming.map((g, i) => <QueueItem key={g.id} game={g} globalIdx={playing.length + i} />)}
+            {upcoming.map(g => <QueueItem key={g.id} game={g} globalIdx={displayItems.indexOf(g)} />)}
           </div>
         </div>
       )}
