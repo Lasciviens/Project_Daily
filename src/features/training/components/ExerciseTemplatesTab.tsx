@@ -82,7 +82,7 @@ function MuscleGroup({ name, templates, forceOpen }: { name: string; templates: 
         <span className="text-ink-400 text-xs">{isOpen ? '▲' : '▼'}</span>
       </button>
       {isOpen && (
-        <div className="p-2.5 columns-1 sm:columns-2 xl:columns-3 gap-2 bg-cream-50 border-t border-ink-100">
+        <div className="p-2.5 columns-1 sm:columns-2 gap-2 bg-cream-50 border-t border-ink-100">
           {templates.map(t => (
             <TemplateCard key={t.id} t={t} />
           ))}
