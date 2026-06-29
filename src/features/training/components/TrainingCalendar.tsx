@@ -478,7 +478,7 @@ export function TrainingCalendar() {
 
   if (view === 'week') {
     return (
-      <div className="max-w-2xl mx-auto w-full">
+      <div className="w-full">
         <WeekView
           weekStart={weekStart}
           workouts={workouts}
@@ -494,7 +494,7 @@ export function TrainingCalendar() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
+    <div className="w-full">
       <MonthView
         year={monthYear.year}
         month={monthYear.month}

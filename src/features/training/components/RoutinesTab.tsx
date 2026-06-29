@@ -290,7 +290,7 @@ export function RoutinesTab() {
           <p className="text-ink-400 text-xs mt-1">Sync from Hevy or create one here</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
           {routines.map((r, i) => (
             <RoutineCard key={r.id} routine={r} index={i} onEdit={setEditingRoutine} />
           ))}
