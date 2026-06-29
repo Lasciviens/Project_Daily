@@ -215,18 +215,20 @@ export function HevyTab() {
         ))}
       </div>
 
-      {/* Sub-tab content */}
-      <div className="max-w-2xl mx-auto w-full">
-        {activeTab === 'workouts'  && <WorkoutsSubTab />}
-        {activeTab === 'routines'  && <RoutinesTab />}
-        {activeTab === 'prs'       && <PRsSubTab />}
-        {activeTab === 'body'      && <BodyMeasurementsTab />}
-        {activeTab === 'exercises' && <ExerciseTemplatesTab />}
-      </div>
+      {/* Desktop: content left, calendar as a right rail. Mobile: stacked. */}
+      <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+        <div className="flex-1 min-w-0">
+          {activeTab === 'workouts'  && <WorkoutsSubTab />}
+          {activeTab === 'routines'  && <RoutinesTab />}
+          {activeTab === 'prs'       && <PRsSubTab />}
+          {activeTab === 'body'      && <BodyMeasurementsTab />}
+          {activeTab === 'exercises' && <ExerciseTemplatesTab />}
+        </div>
 
-      {/* Training calendar — always visible below tabs */}
-      <div className="mt-2 max-w-2xl mx-auto w-full min-h-[200px]">
-        <TrainingCalendar />
+        {/* Training calendar — right rail on desktop, stacked below on mobile */}
+        <div className="w-full lg:w-[340px] lg:flex-shrink-0 min-h-[200px]">
+          <TrainingCalendar />
+        </div>
       </div>
     </div>
   )

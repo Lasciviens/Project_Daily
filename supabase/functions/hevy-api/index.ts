@@ -275,7 +275,9 @@ async function handleUpdateWorkout(
 ) {
   const workoutId = payload.id as string
   if (!workoutId) throw new Error('payload.id is required for update_workout')
-  const data = await hevyRequest('PUT', `/v1/workouts/${workoutId}`, hevyApiKey, { workout: payload })
+  // id belongs in the URL only — Hevy rejects it inside the request body
+  const { id: _id, ...workoutBody } = payload
+  const data = await hevyRequest('PUT', `/v1/workouts/${workoutId}`, hevyApiKey, { workout: workoutBody })
   const workout: HevyWorkout = data.workout ?? data
   await upsertWorkoutToDb(supabase, userId, workout)
   return { ok: true }
@@ -301,7 +303,9 @@ async function handleUpdateRoutine(
 ) {
   const routineId = payload.id as string
   if (!routineId) throw new Error('payload.id is required for update_routine')
-  const data = await hevyRequest('PUT', `/v1/routines/${routineId}`, hevyApiKey, { routine: payload })
+  // id belongs in the URL only — Hevy rejects it inside the request body
+  const { id: _id, ...routineBody } = payload
+  const data = await hevyRequest('PUT', `/v1/routines/${routineId}`, hevyApiKey, { routine: routineBody })
   const routine: HevyRoutine = data.routine ?? data
   await upsertRoutineToDb(supabase, userId, routine)
   return { ok: true }

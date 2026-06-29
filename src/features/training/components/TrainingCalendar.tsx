@@ -9,6 +9,12 @@ function toDateStr(iso: string): string {
   return iso.slice(0, 10)
 }
 
+// The day a workout was actually performed (session start), falling back to
+// the Hevy record creation time only when start_time is missing.
+function workoutDay(w: HevyWorkout): string {
+  return toDateStr(w.start_time ?? w.hevy_created_at)
+}
+
 function getMondayOfWeek(date: Date): Date {
   const d = new Date(date)
   const day = d.getDay()
@@ -148,7 +154,7 @@ function WeekView({ weekStart, workouts, activities, today, onPrev, onNext, onTo
       const dateStr = toDateStr(date.toISOString())
       return {
         date,
-        workouts: workouts.filter(w => toDateStr(w.hevy_created_at) === dateStr),
+        workouts: workouts.filter(w => workoutDay(w) === dateStr),
         activities: activities.filter(a => a.start_date && toDateStr(a.start_date) === dateStr),
       }
     })
@@ -292,14 +298,14 @@ function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNe
     return { cells, monthLabel }
   }, [year, month])
 
-  const workoutDates = useMemo(() => new Set(workouts.map(w => toDateStr(w.hevy_created_at))), [workouts])
+  const workoutDates = useMemo(() => new Set(workouts.map(workoutDay)), [workouts])
   const activityDates = useMemo(() => new Set(activities.filter(a => a.start_date).map(a => toDateStr(a.start_date!))), [activities])
 
   const selectedDay = useMemo(() => {
     if (!selectedDate) return null
     return {
       date: new Date(selectedDate + 'T12:00:00'),
-      workouts: workouts.filter(w => toDateStr(w.hevy_created_at) === selectedDate),
+      workouts: workouts.filter(w => workoutDay(w) === selectedDate),
       activities: activities.filter(a => a.start_date && toDateStr(a.start_date) === selectedDate),
     }
   }, [selectedDate, workouts, activities])
@@ -478,7 +484,7 @@ export function TrainingCalendar() {
 
   if (view === 'week') {
     return (
-      <div className="max-w-2xl mx-auto w-full">
+      <div className="w-full">
         <WeekView
           weekStart={weekStart}
           workouts={workouts}
@@ -494,7 +500,7 @@ export function TrainingCalendar() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
+    <div className="w-full">
       <MonthView
         year={monthYear.year}
         month={monthYear.month}
