@@ -13,11 +13,14 @@ const TYPE_LABELS: Record<string, string> = {
   weighted_bodyweight:      'Weighted BW',
   bodyweight_assisted_reps: 'Assisted BW',
   assisted_bodyweight:      'Assisted BW',
+  bodyweight_assisted:      'Assisted BW',
   duration:                 'Duration',
   weight_duration:          'Weight × Time',
   distance_duration:        'Distance × Time',
   short_distance_weight:    'Weighted Distance',
   weight_distance:          'Weight × Dist',
+  floors_duration:          'Floors × Time',
+  steps_duration:           'Steps × Time',
 }
 
 function humanizeType(type: string): string {
