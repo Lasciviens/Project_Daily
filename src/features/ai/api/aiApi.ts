@@ -34,7 +34,7 @@ async function buildContext(): Promise<string> {
   const today = format(new Date(), 'yyyy-MM-dd')
 
   const results = await Promise.allSettled([
-    supabase.from('tasks').select('id, title, status, priority, domain, section, notes')
+    supabase.from('tasks').select('id, title, status, priority, domain, section, description')
       .or(`section.eq.today,due_date.eq.${today}`).neq('status', 'cancelled'),
     supabase.from('tasks').select('id, title, priority, domain')
       .eq('section', 'this_week').neq('status', 'cancelled').neq('status', 'done').limit(8),
@@ -85,7 +85,7 @@ async function buildContext(): Promise<string> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const t of todayTasks) {
       const mark = t.status === 'done' ? '[done]' : '[open]'
-      lines.push(`  ${mark} [id:${t.id}] ${t.title} — ${t.priority} priority, ${t.domain}${t.notes ? ` | notes: ${t.notes}` : ''}`)
+      lines.push(`  ${mark} [id:${t.id}] ${t.title} — ${t.priority} priority, ${t.domain}${t.description ? ` | notes: ${t.description}` : ''}`)
     }
   } else {
     lines.push("\nTODAY'S TASKS: none")

@@ -56,7 +56,7 @@ export function useDeleteSession() {
           .from('tasks')
           .select('google_task_id')
           .eq('id', linkedTaskId)
-          .single()
+          .maybeSingle()
 
         const googleTaskId = taskRow?.google_task_id ?? getGoogleTaskId(linkedTaskId)
         if (googleTaskId) {

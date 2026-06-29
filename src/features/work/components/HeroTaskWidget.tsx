@@ -61,7 +61,7 @@ function FocusCard({ task, onMarkDone, onClearFocus, onEdit }: {
         </span>
         {task.due_date && (
           <span className="text-[11px] text-ink-400 bg-ink-100 px-2 py-0.5 rounded-full">
-            {task.due_date}
+            {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-GB')}
           </span>
         )}
       </div>
