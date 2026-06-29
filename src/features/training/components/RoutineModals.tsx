@@ -69,8 +69,10 @@ function setFieldsForType(type: string | undefined) {
     case 'reps_only':
     case 'bodyweight_reps':
       return { weight: false, reps: true,  duration: false, distance: false }
-    // time only
+    // time only (incl. stair-machine floors/steps — closest input is duration)
     case 'duration':
+    case 'floors_duration':
+    case 'steps_duration':
       return { weight: false, reps: false, duration: true,  distance: false }
     // weight + time
     case 'weight_duration':
