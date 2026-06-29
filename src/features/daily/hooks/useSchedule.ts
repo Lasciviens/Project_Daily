@@ -4,6 +4,7 @@ import {
   createScheduleBlock,
   deleteScheduleBlock,
   fetchTimeBlocks,
+  fetchTrainingBlocksRange,
   createTimeBlock,
   updateTimeBlock,
   deleteTimeBlock,
@@ -38,6 +39,14 @@ export function useTimeBlocks(dateStr: string) {
   return useQuery({
     queryKey: ['schedule', 'day', dateStr],
     queryFn:  () => fetchTimeBlocks(dateStr),
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useTrainingBlocks(from: string, to: string) {
+  return useQuery({
+    queryKey: ['schedule', 'training-range', from, to],
+    queryFn:  () => fetchTrainingBlocksRange(from, to),
     staleTime: 5 * 60_000,
   })
 }

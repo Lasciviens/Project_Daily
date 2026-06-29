@@ -7,7 +7,6 @@ import { HevyPRList } from './HevyPRList'
 import { RoutinesTab } from './RoutinesTab'
 import { BodyMeasurementsTab } from './BodyMeasurementsTab'
 import { ExerciseTemplatesTab } from './ExerciseTemplatesTab'
-import { TrainingCalendar } from './TrainingCalendar'
 import { LogHevyWorkoutModal } from './LogHevyWorkoutModal'
 
 type SubTab = 'workouts' | 'routines' | 'prs' | 'body' | 'exercises'
@@ -215,21 +214,13 @@ export function HevyTab() {
         ))}
       </div>
 
-      {/* Content sized to a comfortable reading width and left-aligned; the
-          calendar sits to its right. Unused space stays on the far right. */}
-      <div className="flex flex-col lg:flex-row lg:items-start gap-6">
-        <div className="w-full lg:max-w-2xl">
-          {activeTab === 'workouts'  && <WorkoutsSubTab />}
-          {activeTab === 'routines'  && <RoutinesTab />}
-          {activeTab === 'prs'       && <PRsSubTab />}
-          {activeTab === 'body'      && <BodyMeasurementsTab />}
-          {activeTab === 'exercises' && <ExerciseTemplatesTab />}
-        </div>
-
-        {/* Training calendar — right rail on desktop, stacked below on mobile */}
-        <div className="w-full lg:w-[360px] lg:flex-shrink-0 min-h-[200px]">
-          <TrainingCalendar />
-        </div>
+      {/* Sub-tab content — width is managed by the page (calendar lives there) */}
+      <div>
+        {activeTab === 'workouts'  && <WorkoutsSubTab />}
+        {activeTab === 'routines'  && <RoutinesTab />}
+        {activeTab === 'prs'       && <PRsSubTab />}
+        {activeTab === 'body'      && <BodyMeasurementsTab />}
+        {activeTab === 'exercises' && <ExerciseTemplatesTab />}
       </div>
     </div>
   )

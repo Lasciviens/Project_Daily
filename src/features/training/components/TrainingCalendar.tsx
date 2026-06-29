@@ -1,12 +1,28 @@
 import { useState, useMemo } from 'react'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useStravaActivities } from '../hooks/useStravaActivities'
+import { useTrainingBlocks } from '../../daily/hooks/useSchedule'
+import { HevyWorkoutDetail } from './HevyWorkoutDetail'
 import type { HevyWorkout, StravaActivity } from '../types.hevy'
+import type { TimeBlock } from '../../daily/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toDateStr(iso: string): string {
   return iso.slice(0, 10)
+}
+
+// Local YYYY-MM-DD (avoids the UTC shift that toISOString would introduce)
+function ymd(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+
+// Dot colour for a planned training day, relative to today.
+function planDotClass(dateStr: string, todayStr: string): string {
+  if (dateStr === todayStr) return 'bg-green-500'
+  return dateStr > todayStr ? 'bg-blue-500' : 'bg-red-500'
 }
 
 // The day a workout was actually performed (session start), falling back to
@@ -73,17 +89,20 @@ interface DayData {
   date: Date
   workouts: HevyWorkout[]
   activities: StravaActivity[]
+  plans: TimeBlock[]
 }
 
 interface DayCellProps {
   day: DayData
   isToday: boolean
   selectedDate: string | null
+  todayStr: string
   onSelect: (d: string) => void
+  onOpenWorkout: (id: string) => void
 }
 
-function WeekDayCell({ day, isToday, selectedDate, onSelect }: DayCellProps) {
-  const dateStr = toDateStr(day.date.toISOString())
+function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWorkout }: DayCellProps) {
+  const dateStr = ymd(day.date)
   const isSelected = selectedDate === dateStr
 
   return (
@@ -107,16 +126,30 @@ function WeekDayCell({ day, isToday, selectedDate, onSelect }: DayCellProps) {
       </div>
 
       <div className="flex flex-col gap-1">
+        {/* Planned training sessions (future blue / today green / past red) */}
+        {day.plans.map(p => (
+          <div
+            key={p.id}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 bg-cream-100 text-ink-600 text-[10px] font-medium leading-tight truncate"
+            title={`Planned: ${p.title}`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${planDotClass(dateStr, todayStr)}`} />
+            <span className="truncate">{p.title}</span>
+          </div>
+        ))}
+
         {day.workouts.map(w => {
           const dur = getWorkoutDuration(w)
           return (
-            <div
+            <button
               key={w.id}
-              className="rounded px-1.5 py-0.5 bg-accent-100 text-accent-800 text-[10px] font-medium leading-tight truncate"
-              title={w.title}
+              type="button"
+              onClick={e => { e.stopPropagation(); onOpenWorkout(w.id) }}
+              className="text-left rounded px-1.5 py-0.5 bg-accent-100 text-accent-800 text-[10px] font-medium leading-tight truncate hover:bg-accent-200 transition-colors"
+              title={`${w.title} — view details`}
             >
               {w.title}{dur ? ` · ${dur}m` : ''}
-            </div>
+            </button>
           )
         })}
 
@@ -138,32 +171,36 @@ interface WeekViewProps {
   weekStart: Date
   workouts: HevyWorkout[]
   activities: StravaActivity[]
+  plansByDate: Map<string, TimeBlock[]>
+  todayStr: string
   today: Date
   onPrev: () => void
   onNext: () => void
   onToday: () => void
   onSwitchToMonth: () => void
+  onOpenWorkout: (id: string) => void
 }
 
-function WeekView({ weekStart, workouts, activities, today, onPrev, onNext, onToday, onSwitchToMonth }: WeekViewProps) {
+function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, today, onPrev, onNext, onToday, onSwitchToMonth, onOpenWorkout }: WeekViewProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const days: DayData[] = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
       const date = addDays(weekStart, i)
-      const dateStr = toDateStr(date.toISOString())
+      const dateStr = ymd(date)
       return {
         date,
         workouts: workouts.filter(w => workoutDay(w) === dateStr),
         activities: activities.filter(a => a.start_date && toDateStr(a.start_date) === dateStr),
+        plans: plansByDate.get(dateStr) ?? [],
       }
     })
-  }, [weekStart, workouts, activities])
+  }, [weekStart, workouts, activities, plansByDate])
 
   const weekLabel = `${formatDate(weekStart)} – ${formatDate(addDays(weekStart, 6))}`
 
   const selectedDay = selectedDate
-    ? days.find(d => toDateStr(d.date.toISOString()) === selectedDate)
+    ? days.find(d => ymd(d.date) === selectedDate)
     : null
 
   return (
@@ -213,17 +250,33 @@ function WeekView({ weekStart, workouts, activities, today, onPrev, onNext, onTo
             day={day}
             isToday={isSameDay(day.date, today)}
             selectedDate={selectedDate}
+            todayStr={todayStr}
             onSelect={setSelectedDate}
+            onOpenWorkout={onOpenWorkout}
           />
         ))}
       </div>
 
       {/* Detail panel */}
-      {selectedDay && (selectedDay.workouts.length > 0 || selectedDay.activities.length > 0) && (
+      {selectedDay && (selectedDay.workouts.length > 0 || selectedDay.activities.length > 0 || selectedDay.plans.length > 0) && (
         <div className="border border-ink-200 rounded-xl p-3 flex flex-col gap-2">
           <p className="text-sm font-bold text-ink-800">
             {selectedDay.date.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}
           </p>
+
+          {selectedDay.plans.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5">Planned</p>
+              <div className="flex flex-col gap-2">
+                {selectedDay.plans.map(p => (
+                  <div key={p.id} className="flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${planDotClass(ymd(selectedDay.date), todayStr)}`} />
+                    <span className="text-sm font-medium text-ink-900">{p.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {selectedDay.workouts.length > 0 && (
             <div>
@@ -232,10 +285,15 @@ function WeekView({ weekStart, workouts, activities, today, onPrev, onNext, onTo
                 {selectedDay.workouts.map(w => {
                   const dur = getWorkoutDuration(w)
                   return (
-                    <div key={w.id} className="flex items-center justify-between gap-2 p-2.5 bg-accent-50 border border-accent-100 rounded-lg">
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => onOpenWorkout(w.id)}
+                      className="w-full text-left flex items-center justify-between gap-2 p-2.5 bg-accent-50 border border-accent-100 rounded-lg hover:bg-accent-100 transition-colors min-h-[44px]"
+                    >
                       <span className="text-sm font-medium text-ink-900">{w.title}</span>
                       {dur && <span className="text-xs text-accent-600 shrink-0">{dur} min</span>}
-                    </div>
+                    </button>
                   )
                 })}
               </div>
@@ -270,14 +328,17 @@ interface MonthViewProps {
   month: number   // 0-based
   workouts: HevyWorkout[]
   activities: StravaActivity[]
+  plansByDate: Map<string, TimeBlock[]>
+  todayStr: string
   today: Date
   onPrevMonth: () => void
   onNextMonth: () => void
   onToday: () => void
   onSwitchToWeek: () => void
+  onOpenWorkout: (id: string) => void
 }
 
-function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNextMonth, onToday, onSwitchToWeek }: MonthViewProps) {
+function MonthView({ year, month, workouts, activities, plansByDate, todayStr, today, onPrevMonth, onNextMonth, onToday, onSwitchToWeek, onOpenWorkout }: MonthViewProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const { cells, monthLabel } = useMemo(() => {
@@ -307,8 +368,9 @@ function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNe
       date: new Date(selectedDate + 'T12:00:00'),
       workouts: workouts.filter(w => workoutDay(w) === selectedDate),
       activities: activities.filter(a => a.start_date && toDateStr(a.start_date) === selectedDate),
+      plans: plansByDate.get(selectedDate) ?? [],
     }
-  }, [selectedDate, workouts, activities])
+  }, [selectedDate, workouts, activities, plansByDate])
 
   const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -364,9 +426,10 @@ function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNe
           if (!date) {
             return <div key={`empty-${idx}`} className="aspect-square" />
           }
-          const dateStr = toDateStr(date.toISOString())
+          const dateStr = ymd(date)
           const hasWorkout = workoutDates.has(dateStr)
           const hasActivity = activityDates.has(dateStr)
+          const hasPlan = plansByDate.has(dateStr)
           const isToday = isSameDay(date, today)
           const isSelected = selectedDate === dateStr
 
@@ -389,8 +452,9 @@ function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNe
                 {date.getDate()}
               </span>
               <div className="flex gap-0.5 mt-0.5">
+                {hasPlan && <span className={`w-1.5 h-1.5 rounded-full ${planDotClass(dateStr, todayStr)}`} />}
                 {hasWorkout && <span className="w-1.5 h-1.5 rounded-full bg-accent-500" />}
-                {hasActivity && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                {hasActivity && <span className="w-1.5 h-1.5 rounded-full bg-[#FC4C02]" />}
               </div>
             </button>
           )
@@ -398,17 +462,34 @@ function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNe
       </div>
 
       {/* Legend */}
-      <div className="flex gap-4 text-[11px] text-ink-500">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-accent-500 inline-block" /> Hevy workout</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Strava</span>
+      <div className="flex gap-3 flex-wrap text-[11px] text-ink-500">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Plan today</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Plan upcoming</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Plan past</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-accent-500 inline-block" /> Workout</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#FC4C02] inline-block" /> Strava</span>
       </div>
 
       {/* Day detail */}
-      {selectedDay && (selectedDay.workouts.length > 0 || selectedDay.activities.length > 0) && (
+      {selectedDay && (selectedDay.workouts.length > 0 || selectedDay.activities.length > 0 || selectedDay.plans.length > 0) && (
         <div className="border border-ink-200 rounded-xl p-3 flex flex-col gap-2">
           <p className="text-sm font-bold text-ink-800">
             {selectedDay.date.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}
           </p>
+
+          {selectedDay.plans.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5">Planned</p>
+              <div className="flex flex-col gap-2">
+                {selectedDay.plans.map(p => (
+                  <div key={p.id} className="flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${planDotClass(selectedDate!, todayStr)}`} />
+                    <span className="text-sm font-medium text-ink-900">{p.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {selectedDay.workouts.length > 0 && (
             <div>
@@ -417,10 +498,15 @@ function MonthView({ year, month, workouts, activities, today, onPrevMonth, onNe
                 {selectedDay.workouts.map(w => {
                   const dur = getWorkoutDuration(w)
                   return (
-                    <div key={w.id} className="flex items-center justify-between gap-2 p-2.5 bg-accent-50 border border-accent-100 rounded-lg">
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => onOpenWorkout(w.id)}
+                      className="w-full text-left flex items-center justify-between gap-2 p-2.5 bg-accent-50 border border-accent-100 rounded-lg hover:bg-accent-100 transition-colors min-h-[44px]"
+                    >
                       <span className="text-sm font-medium text-ink-900">{w.title}</span>
                       {dur && <span className="text-xs text-accent-600 shrink-0">{dur} min</span>}
-                    </div>
+                    </button>
                   )
                 })}
               </div>
@@ -461,8 +547,36 @@ export function TrainingCalendar() {
     month: today.getMonth(),
   }))
 
+  const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
+
   const { data: workouts = [] } = useHevyWorkouts({ limit: 200 })
   const { data: activities = [] } = useStravaActivities({ limit: 200 })
+
+  // Visible date range for the current view → fetch planned training sessions.
+  const { rangeFrom, rangeTo } = useMemo(() => {
+    if (view === 'week') {
+      return { rangeFrom: ymd(weekStart), rangeTo: ymd(addDays(weekStart, 6)) }
+    }
+    return {
+      rangeFrom: ymd(new Date(monthYear.year, monthYear.month, 1)),
+      rangeTo:   ymd(new Date(monthYear.year, monthYear.month + 1, 0)),
+    }
+  }, [view, weekStart, monthYear])
+
+  const { data: planBlocks = [] } = useTrainingBlocks(rangeFrom, rangeTo)
+
+  // date → planned training blocks for that day
+  const plansByDate = useMemo(() => {
+    const m = new Map<string, TimeBlock[]>()
+    for (const b of planBlocks) {
+      const bucket = m.get(b.date) ?? []
+      bucket.push(b)
+      m.set(b.date, bucket)
+    }
+    return m
+  }, [planBlocks])
+
+  const todayStr = ymd(today)
 
   function handlePrevWeek() { setWeekStart(d => addDays(d, -7)) }
   function handleNextWeek() { setWeekStart(d => addDays(d, 7)) }
@@ -482,35 +596,42 @@ export function TrainingCalendar() {
     setMonthYear({ year: today.getFullYear(), month: today.getMonth() })
   }
 
-  if (view === 'week') {
-    return (
-      <div className="w-full">
+  return (
+    <div className="w-full">
+      {view === 'week' ? (
         <WeekView
           weekStart={weekStart}
           workouts={workouts}
           activities={activities}
+          plansByDate={plansByDate}
+          todayStr={todayStr}
           today={today}
           onPrev={handlePrevWeek}
           onNext={handleNextWeek}
           onToday={handleTodayWeek}
           onSwitchToMonth={() => setView('month')}
+          onOpenWorkout={setSelectedWorkoutId}
         />
-      </div>
-    )
-  }
+      ) : (
+        <MonthView
+          year={monthYear.year}
+          month={monthYear.month}
+          workouts={workouts}
+          activities={activities}
+          plansByDate={plansByDate}
+          todayStr={todayStr}
+          today={today}
+          onPrevMonth={handlePrevMonth}
+          onNextMonth={handleNextMonth}
+          onToday={handleTodayMonth}
+          onSwitchToWeek={() => setView('week')}
+          onOpenWorkout={setSelectedWorkoutId}
+        />
+      )}
 
-  return (
-    <div className="w-full">
-      <MonthView
-        year={monthYear.year}
-        month={monthYear.month}
-        workouts={workouts}
-        activities={activities}
-        today={today}
-        onPrevMonth={handlePrevMonth}
-        onNextMonth={handleNextMonth}
-        onToday={handleTodayMonth}
-        onSwitchToWeek={() => setView('week')}
+      <HevyWorkoutDetail
+        workoutId={selectedWorkoutId}
+        onClose={() => setSelectedWorkoutId(null)}
       />
     </div>
   )
