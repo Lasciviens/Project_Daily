@@ -478,11 +478,11 @@ export function BodyMeasurementsTab() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {/* Weight chart */}
-          <WeightChart measurements={measurements} />
-
-          {/* Latest hero */}
-          <LatestHeroCard m={latest} onEdit={() => setEditTarget(latest)} />
+          {/* Latest (compact) + chart beside it on wider screens */}
+          <div className="grid gap-3 sm:grid-cols-[15rem_1fr] items-start">
+            <LatestHeroCard m={latest} onEdit={() => setEditTarget(latest)} />
+            <WeightChart measurements={measurements} />
+          </div>
 
           {/* History */}
           {rest.length > 0 && (

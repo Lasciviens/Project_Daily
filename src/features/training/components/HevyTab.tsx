@@ -215,9 +215,10 @@ export function HevyTab() {
         ))}
       </div>
 
-      {/* Desktop: content left, calendar as a right rail. Mobile: stacked. */}
-      <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-        <div className="flex-1 min-w-0">
+      {/* Content sized to a comfortable reading width and left-aligned; the
+          calendar sits to its right. Unused space stays on the far right. */}
+      <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+        <div className="w-full lg:max-w-2xl">
           {activeTab === 'workouts'  && <WorkoutsSubTab />}
           {activeTab === 'routines'  && <RoutinesTab />}
           {activeTab === 'prs'       && <PRsSubTab />}
@@ -226,7 +227,7 @@ export function HevyTab() {
         </div>
 
         {/* Training calendar — right rail on desktop, stacked below on mobile */}
-        <div className="w-full lg:w-[400px] xl:w-[480px] lg:flex-shrink-0 min-h-[200px]">
+        <div className="w-full lg:w-[360px] lg:flex-shrink-0 min-h-[200px]">
           <TrainingCalendar />
         </div>
       </div>

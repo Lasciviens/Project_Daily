@@ -140,6 +140,13 @@ try {
 ```
 Toasts appear bottom-left. 🟢 success · 🔴 error · 🟡 warning · ⚫ loading.
 
+### Layout width — content-sized, left-aligned (MANDATORY)
+Never stretch content edge-to-edge. Widgets are sized to their content, not the viewport.
+- Page wrapper: `w-full px-4 sm:px-6 lg:px-8` (left indent, NOT `mx-auto` centered).
+- Each content block gets a `max-w-*` capped to what it needs, **left-aligned** — leftover horizontal space stays on the right. Reference: reading/list column caps at `max-w-2xl`; small stat cards much smaller (`max-w-xs` / `~15rem`); a side rail (e.g. calendar) is a fixed `w-[360px]`.
+- Small cards flow side-by-side (grid/flex-wrap), never stack full-width.
+- Page background is `bg-cream-300`; cards stay white for contrast.
+
 ### Other rules
 - Date format: always `en-GB` (DD/MM/YYYY). Never `en-US`.
 - Never hardcode `amber-*` — use `accent-*`.
