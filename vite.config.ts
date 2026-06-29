@@ -14,7 +14,7 @@ export default defineConfig({
         name: "Lasci's Board",
         short_name: 'Board',
         description: 'Personal dashboard — daily planning, tasks, media, training',
-        theme_color: '#f97316',
+        theme_color: '#ef4444',
         background_color: '#fffdf7',
         display: 'standalone',
         start_url: '/Project_Daily/',

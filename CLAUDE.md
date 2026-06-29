@@ -50,8 +50,10 @@ UI primitives: `@headlessui/react` v2 (Dialog, Combobox, Popover, Menu). No anim
 /#/projects   → ProjectsPage
 /#/training   → TrainingPage
 /#/games      → GamesPage
-/#/football   → FootballPage
+/#/developer  → DeveloperPage
 ```
+
+(No `/football` route — Football is deferred; see Features.)
 
 Protected by `SessionGuard` in `src/app/router.tsx`.
 
@@ -68,10 +70,12 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 | AI | ✅ | Gemini 2.5 Flash via Edge Function, create_task function calling |
 | Calendar | ✅ | Google OAuth, read + write events, sync/refresh button in DayTimeline header |
 | Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
-| Training | ✅ | Hevy integration (workouts, PRs, routines, body measurements) + Strava OAuth (runs/cycling). 3 tabs: Hevy / Strava / Programs. |
+| Training | ✅ | See Training section below. Hevy (workouts, PRs, routines, body) + Strava OAuth. Page-level calendar pinned right. |
 | Projects | ✅ | Phases, items, status tracking |
+| Developer | ✅ | Standalone `/developer` page (also a tab inside Work) |
 | Home | ✅ | WidgetShell, Weather, Ruter transit, Currency, News, Recent Media, Games, Training |
-| Football | ⚠️ | Page + UI built. API-Football free tier only goes to 2024 — data doesn't load. Plan: pull fixtures from Google Calendar instead. |
+| Command Bar | ✅ | `CommandBar` (⌘K) via `useUIStore.openCommandBar` |
+| Football | ⛔ | Deferred — no route wired. API-Football free tier stops at 2024. Future: fixtures from Google Calendar. |
 
 ### Media Feature Detail
 Full-width layout (no max-width constraint). Key components:
@@ -89,9 +93,18 @@ DB tables: `movies`, `user_movie_entries` (statuses: watching/wishlist/completed
 Both movie and TV entries have: `rating int (1-10)`, `genres jsonb`, `personal_note`, `priority`
 TMDB images: `posterUrl(path, size)` from `src/integrations/tmdb/client.ts`
 
+### Training Feature Detail
+Page layout (`TrainingPage`): faint training-photo header banner; Hevy/Strava pill tabs + Sync/Settings on the **left**; content column (`max-w-4xl`, left-aligned) with `TrainingCalendar` **pinned to the right edge (440px)**, independent of the active tab.
+- `HevyTab` sub-tabs: Workouts, Routines, Personal Records, Body, Exercises.
+- `TrainingCalendar` — week/month; shows Hevy workouts + Strava activities + **planned training sessions** (`time_blocks` where `category='training'`) as time-coloured dots (upcoming=blue, today=green, past=red). Click a workout → `HevyWorkoutDetail` modal.
+- `RoutineModals` — create/edit routines. **Payload must match the Hevy OpenAPI schema exactly** (no extra keys → 400): set fields = `type, weight_kg, reps, rep_range:{start,end}, distance_meters, duration_seconds, custom_metric` (NO `rpe`/`index`); exercise = `exercise_template_id, superset_id, rest_seconds, notes, sets` (NO `index`/`title`). Set inputs render per exercise `type` via `setFieldsForType`.
+- Hevy exercise `type` is the `CustomExerciseType` enum (`weight_reps`, `reps_only`, `bodyweight_reps`, `bodyweight_weighted`, `bodyweight_assisted`, `duration`, `weight_duration`, `distance_duration`, `short_distance_weight`, `floors_duration`, `steps_duration`) — typed as `string`, humanised labels in `ExerciseTemplatesTab`.
+- Edge functions normalise Hevy responses (`unwrapEntity`) — Hevy may return an entity directly, wrapped, or array-wrapped. Incremental sync reads `event.workout` (updates) / `event.id` (deletes).
+
+DB (Hevy): `hevy_workouts`/`_exercises`/`hevy_sets`, `hevy_routines`/`_exercises`/`hevy_routine_sets` (routine sets also have `rep_range_start/end`), `hevy_exercise_templates`(+`_muscles`), `hevy_routine_folders`, `hevy_body_measurements`, `hevy_workout_events_cursor`.
+
 **Not done yet:**
-- Football data source (Calendar integration planned)
-- Command Bar (Cmd+K)
+- Football data source (Calendar integration planned; no route wired)
 - Activity Log / stats widget
 - Routes widget (Home): visual improvement pass + refresh button
 - Dark Mode: full dark/light toggle; apply `dark` class on `<html>`, define dark variants
