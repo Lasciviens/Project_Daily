@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
-import { useCreateTask, useUpdateTask } from '../../features/todo/hooks/useTodos'
+import { useCreateTask, useUpdateTask, useDeleteTask } from '../../features/todo/hooks/useTodos'
 import { useCreateTimeBlock } from '../../features/daily/hooks/useSchedule'
 import { createCalendarEvent } from '../../features/calendar/api/calendarApi'
 import { toast, useCalendarStore } from '../../app/store'
@@ -36,33 +36,40 @@ const PRIORITIES: { id: TaskPriority; label: string; color: string }[] = [
 export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaultDate, defaultDomain = 'personal', task }: Props) {
   const editMode = !!task
 
-  const [title,      setTitle]      = useState('')
-  const [section,    setSection]    = useState<TaskSection>(defaultSection)
-  const [priority,   setPriority]   = useState<TaskPriority>('medium')
-  const [domain,     setDomain]     = useState<TaskDomain>(defaultDomain)
-  const [dueDate,    setDueDate]    = useState(defaultDate ?? '')
-  const [addToGcal,  setAddToGcal]  = useState(false)
+  const [title,       setTitle]       = useState('')
+  const [description, setDescription] = useState('')
+  const [section,     setSection]     = useState<TaskSection>(defaultSection)
+  const [priority,    setPriority]    = useState<TaskPriority>('medium')
+  const [domain,      setDomain]      = useState<TaskDomain>(defaultDomain)
+  const [dueDate,     setDueDate]     = useState(defaultDate ?? '')
+  const [dueTime,     setDueTime]     = useState('')
+  const [addToGcal,   setAddToGcal]   = useState(false)
 
   const calToken = useCalendarStore(s => s.accessToken)
   const create          = useCreateTask()
   const update          = useUpdateTask()
+  const remove          = useDeleteTask()
   const createTimeBlock = useCreateTimeBlock()
-  const isPending = create.isPending || update.isPending
+  const isPending = create.isPending || update.isPending || remove.isPending
 
   useEffect(() => {
     if (isOpen) {
       if (editMode && task) {
         setTitle(task.title)
+        setDescription(task.description ?? '')
         setSection(task.section)
         setPriority(task.priority)
         setDomain(task.domain)
         setDueDate(task.due_date ?? '')
+        setDueTime(task.due_time ? task.due_time.slice(0, 5) : '')
       } else {
         setTitle('')
+        setDescription('')
         setSection(defaultSection)
         setPriority('medium')
         setDomain(defaultDomain)
         setDueDate(defaultDate ?? '')
+        setDueTime('')
         setAddToGcal(false)
       }
     }
@@ -73,10 +80,25 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
     const trimmed = title.trim()
     if (!trimmed) return
     if (editMode && task) {
-      await update.mutateAsync({
-        id: task.id,
-        patch: { title: trimmed, section, priority, domain, due_date: dueDate || null },
-      })
+      const tid = toast.loading('Saving…')
+      try {
+        await update.mutateAsync({
+          id: task.id,
+          patch: {
+            title:       trimmed,
+            description: description.trim() || null,
+            section,
+            priority,
+            domain,
+            due_date:    dueDate || null,
+            due_time:    dueTime ? `${dueTime}:00` : null,
+          },
+        })
+        toast.dismiss(tid); toast.success('Saved ✓')
+      } catch (err) {
+        toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+        return
+      }
     } else {
       const { task: result, googleTaskError } = await create.mutateAsync({
         title: trimmed,
@@ -132,6 +154,19 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
     onClose()
   }
 
+  async function handleDelete() {
+    if (!task) return
+    if (!confirm('Delete this task?')) return
+    const tid = toast.loading('Deleting…')
+    try {
+      await remove.mutateAsync(task)
+      toast.dismiss(tid); toast.success('Deleted ✓')
+      onClose()
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    }
+  }
+
   return (
     /* Dialog handles Escape, focus trap, and portal — no manual implementation needed */
     <Dialog open={isOpen} onClose={onClose} className="relative z-[60]">
@@ -165,6 +200,21 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
                          placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
                          focus:border-accent-400 transition-colors duration-150 resize-none"
             />
+
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
+                Notes
+              </label>
+              <textarea
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder="Add details (optional)"
+                rows={2}
+                className="w-full bg-cream-50 border border-ink-200 rounded-xl px-4 py-3 text-sm text-ink-900
+                           placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
+                           focus:border-accent-400 transition-colors duration-150 resize-none"
+              />
+            </div>
 
             <div>
               <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
@@ -245,6 +295,18 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
               </div>
             </div>
 
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
+                Due Time
+              </label>
+              <input
+                type="time"
+                value={dueTime}
+                onChange={e => setDueTime(e.target.value)}
+                className="w-full bg-ink-100 border-none rounded-lg px-3 py-1.5 text-xs text-ink-700 focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors duration-150 min-h-[44px]"
+              />
+            </div>
+
             {/* Google Calendar checkbox — only when connected and a due date is set */}
             {!editMode && calToken && dueDate && (
               <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer select-none">
@@ -270,6 +332,17 @@ export function AddTaskModal({ isOpen, onClose, defaultSection = 'inbox', defaul
                 Cancel
               </button>
             </div>
+
+            {editMode && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isPending}
+                className="min-h-[44px] text-sm font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Delete Task
+              </button>
+            )}
           </form>
         </DialogPanel>
       </div>

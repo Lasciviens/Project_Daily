@@ -4,6 +4,8 @@ export default {
   theme: {
     extend: {
       colors: {
+        // App page background (canvas) — muted teal
+        canvas: '#6d9191',
         cream: {
           50:  '#fefcf9',
           100: '#faf8f4',

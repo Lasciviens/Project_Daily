@@ -12,6 +12,7 @@ import { CurrencyWidget } from '../components/CurrencyWidget'
 import { NewsWidget } from '../components/NewsWidget'
 import { TrainingHomeWidget } from '../components/TrainingHomeWidget'
 import { GamesHomeWidget } from '../components/GamesHomeWidget'
+import { ProjectsHomeWidget } from '../components/ProjectsHomeWidget'
 import { RecentMediaWidget } from '../components/RecentMediaWidget'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ export function HomePage() {
       {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
       <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-4">
         <CurrencyWidget />
+        <ProjectsHomeWidget />
         <TrainingHomeWidget />
         <GamesHomeWidget />
       </div>

@@ -43,8 +43,14 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
 
   return (
     <>
+      {/* Entire row is a click target that opens the edit modal.
+          Inline controls (checkbox / action buttons) stopPropagation so they act independently. */}
       <div
-        className={`group flex items-start gap-2.5 px-3 py-2 rounded-lg transition-colors duration-150 ${
+        role="button"
+        tabIndex={0}
+        onClick={() => setEditing(true)}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true) } }}
+        className={`group flex items-start gap-2.5 px-3 py-2 min-h-[44px] rounded-lg cursor-pointer transition-colors duration-150 ${
           hovered ? 'bg-cream-100' : ''
         }`}
         onMouseEnter={() => setHovered(true)}
@@ -52,7 +58,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
       >
         {/* Circle checkbox — matches Google Tasks iPhone style */}
         <button
-          onClick={() => toggle.mutate({ id: task.id, isDone: !isDone })}
+          onClick={e => { e.stopPropagation(); toggle.mutate({ id: task.id, isDone: !isDone }) }}
           disabled={toggle.isPending}
           aria-label={isDone ? 'Mark as open' : 'Mark as done'}
           className="flex-shrink-0 flex items-center justify-center min-w-[44px] min-h-[44px] lg:min-w-0 lg:min-h-0 lg:w-auto lg:h-auto -ml-3 lg:ml-0 lg:mt-0.5"
@@ -97,7 +103,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
         <div className="flex items-center gap-0.5 flex-shrink-0 lg:hidden">
           {onMoveUp && (
             <button
-              onClick={onMoveUp}
+              onClick={e => { e.stopPropagation(); onMoveUp() }}
               disabled={!canMoveUp}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
               title="Move up"
@@ -105,19 +111,19 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
           )}
           {onMoveDown && (
             <button
-              onClick={onMoveDown}
+              onClick={e => { e.stopPropagation(); onMoveDown() }}
               disabled={!canMoveDown}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
               title="Move down"
             >↓</button>
           )}
           <button
-            onClick={() => setEditing(true)}
+            onClick={e => { e.stopPropagation(); setEditing(true) }}
             className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
             title="Edit"
           >✎</button>
           <button
-            onClick={() => remove.mutate(task.id)}
+            onClick={e => { e.stopPropagation(); remove.mutate(task.id) }}
             disabled={remove.isPending}
             className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
             title="Delete"
@@ -127,7 +133,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
           <div className="hidden lg:flex items-center gap-0.5 flex-shrink-0 mt-0.5">
             {onMoveUp && (
               <button
-                onClick={onMoveUp}
+                onClick={e => { e.stopPropagation(); onMoveUp() }}
                 disabled={!canMoveUp}
                 className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
                 title="Move up"
@@ -135,19 +141,19 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             )}
             {onMoveDown && (
               <button
-                onClick={onMoveDown}
+                onClick={e => { e.stopPropagation(); onMoveDown() }}
                 disabled={!canMoveDown}
                 className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
                 title="Move down"
               >↓</button>
             )}
             <button
-              onClick={() => setEditing(true)}
+              onClick={e => { e.stopPropagation(); setEditing(true) }}
               className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
               title="Edit"
             >✎</button>
             <button
-              onClick={() => remove.mutate(task.id)}
+              onClick={e => { e.stopPropagation(); remove.mutate(task.id) }}
               disabled={remove.isPending}
               className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
               title="Delete"

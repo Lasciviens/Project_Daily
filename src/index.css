@@ -15,7 +15,7 @@
   }
 
   body {
-    @apply bg-cream-100 text-ink-900 m-0;
+    @apply bg-canvas text-ink-900 m-0;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
