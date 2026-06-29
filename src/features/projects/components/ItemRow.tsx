@@ -167,15 +167,13 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
               title="Schedule this item"
             >📅</button>
           )}
-          {(hasNotes || true) && (
-            <button
-              onClick={() => setShowNotes(n => !n)}
-              className={`min-w-[44px] min-h-[44px] flex items-center justify-center text-sm transition-colors ${
-                hasNotes ? 'text-accent-500' : 'text-ink-300'
-              }`}
-              title={showNotes ? 'Hide notes' : 'Show notes'}
-            >≡</button>
-          )}
+          <button
+            onClick={() => setShowNotes(n => !n)}
+            className={`min-w-[44px] min-h-[44px] flex items-center justify-center text-sm transition-colors ${
+              hasNotes ? 'text-accent-500' : 'text-ink-300'
+            }`}
+            title={showNotes ? 'Hide notes' : 'Show notes'}
+          >≡</button>
           <button
             onClick={onDelete}
             className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 active:text-red-400 text-sm"

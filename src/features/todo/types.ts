@@ -44,6 +44,7 @@ export interface UpdateTaskInput {
   status?:                   TaskStatus
   priority?:                 TaskPriority
   due_date?:                 string | null
+  due_time?:                 string | null
   waiting_for?:              string | null
   is_focused?:               boolean
   google_task_id?:           string | null

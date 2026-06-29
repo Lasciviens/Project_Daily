@@ -25,6 +25,26 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   return data
 }
 
+export interface ProjectStat { total: number; done: number; in_progress: number; open: number }
+
+// One aggregate query for every item's (project_id, status) → per-project counts.
+export async function fetchProjectStats(): Promise<Record<string, ProjectStat>> {
+  const { data, error } = await supabase
+    .from('project_items')
+    .select('project_id, status')
+  if (error) throw error
+  const map: Record<string, ProjectStat> = {}
+  for (const row of (data ?? []) as { project_id: string; status: string }[]) {
+    const s = map[row.project_id] ?? { total: 0, done: 0, in_progress: 0, open: 0 }
+    s.total++
+    if (row.status === 'done') s.done++
+    else if (row.status === 'in_progress') s.in_progress++
+    else if (row.status === 'open') s.open++
+    map[row.project_id] = s
+  }
+  return map
+}
+
 export async function updateProject(id: string, patch: Partial<CreateProjectInput>): Promise<void> {
   const { error } = await supabase
     .from('projects')
