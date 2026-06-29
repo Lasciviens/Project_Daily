@@ -55,7 +55,7 @@ function ActivityCard({ activity }: { activity: StravaActivity }) {
   const color = TYPE_COLOR[activity.type] ?? 'bg-ink-50 text-ink-600 border-ink-100'
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-xl border border-ink-100 bg-white hover:border-ink-200 transition-colors duration-150">
+    <div className="flex items-start gap-3 p-3 rounded-xl border border-ink-100 bg-white hover:border-ink-200 hover:shadow-sm transition-shadow duration-150">
       <div className={`w-9 h-9 flex-shrink-0 rounded-lg border flex items-center justify-center text-lg ${color}`}>
         {icon}
       </div>
@@ -67,7 +67,7 @@ function ActivityCard({ activity }: { activity: StravaActivity }) {
         </div>
 
         {activity.start_date && (
-          <p className="text-[10px] text-ink-400 mt-0.5">{formatDate(activity.start_date)}</p>
+          <p className="text-xs text-ink-400 mt-0.5">{formatDate(activity.start_date)}</p>
         )}
 
         <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-ink-500">
@@ -96,6 +96,15 @@ function ActivityCard({ activity }: { activity: StravaActivity }) {
   )
 }
 
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="max-w-[10rem] flex-1 min-w-[7rem] p-3 rounded-xl border border-ink-100 bg-white">
+      <p className="text-lg font-semibold text-ink-800 leading-none">{value}</p>
+      <p className="mt-1 text-xs text-ink-400">{label}</p>
+    </div>
+  )
+}
+
 export function StravaTab() {
   const [filterType, setFilterType] = useState<ActivityType>('all')
 
@@ -105,10 +114,22 @@ export function StravaTab() {
     type: filterType === 'all' ? undefined : filterType,
   })
 
+  const totalDistanceKm = activities.reduce((sum, a) => sum + (a.distance_meters ?? 0), 0) / 1000
+  const totalDurationSec = activities.reduce((sum, a) => sum + (a.duration_seconds ?? 0), 0)
+
   return (
     <div className="space-y-5">
       {/* Strava connection widget */}
       <StravaWidget />
+
+      {/* Stats strip */}
+      {activities.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <StatCard label="Activities" value={String(activities.length)} />
+          <StatCard label="Distance" value={`${totalDistanceKm.toFixed(1)} km`} />
+          <StatCard label="Duration" value={formatDuration(totalDurationSec)} />
+        </div>
+      )}
 
       {/* Type filter pills */}
       <div className="flex gap-1.5 flex-wrap">
@@ -116,7 +137,7 @@ export function StravaTab() {
           <button
             key={f.key}
             onClick={() => setFilterType(f.key)}
-            className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors duration-150 min-h-[44px] min-w-[44px] ${
+            className={`inline-flex items-center min-h-[44px] px-3 rounded-full border text-xs font-medium transition-colors duration-150 ${
               filterType === f.key
                 ? 'bg-accent-500 border-accent-500 text-white'
                 : 'border-ink-200 text-ink-500 hover:border-accent-400'
@@ -129,7 +150,7 @@ export function StravaTab() {
 
       {/* Activity list */}
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-start">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-16 rounded-xl bg-cream-200 animate-pulse" />
           ))}
@@ -145,7 +166,7 @@ export function StravaTab() {
           )}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-start">
           {activities.map(a => (
             <ActivityCard key={a.id} activity={a} />
           ))}

@@ -37,6 +37,20 @@ export async function fetchTimeBlocks(dateStr: string): Promise<TimeBlock[]> {
   return data ?? []
 }
 
+// All training-category blocks within a date range (inclusive) — used by the
+// Training calendar to show planned/future sessions.
+export async function fetchTrainingBlocksRange(from: string, to: string): Promise<TimeBlock[]> {
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('*')
+    .eq('category', 'training')
+    .gte('date', from)
+    .lte('date', to)
+    .order('date', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
 export async function createTimeBlock(input: CreateTimeBlockInput): Promise<TimeBlock> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
