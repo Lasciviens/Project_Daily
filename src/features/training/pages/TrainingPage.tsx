@@ -15,16 +15,16 @@ export function TrainingPage() {
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-      {/* Header banner with faint training backdrop — sized to its content */}
-      <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-6 w-fit max-w-full">
+      {/* Full-width header banner with faint training backdrop */}
+      <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-6 w-full min-h-[88px] sm:min-h-[96px]">
         <div
           className="absolute inset-0 bg-cover bg-center opacity-20"
           style={{ backgroundImage: `url(${HEADER_BG})` }}
           aria-hidden
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-cream-50/80 via-cream-50/50 to-transparent" aria-hidden />
+        <div className="absolute inset-0 bg-gradient-to-r from-cream-50/85 via-cream-50/55 to-cream-50/20" aria-hidden />
 
-        <div className="relative flex items-center gap-2 flex-wrap px-4 py-4 sm:px-5">
+        <div className="relative z-10 flex min-h-[88px] sm:min-h-[96px] items-center gap-2 flex-wrap px-4 py-4 sm:px-5">
           <h1 className="text-lg font-bold text-ink-900">Training</h1>
 
           {/* Hevy / Strava pills */}
