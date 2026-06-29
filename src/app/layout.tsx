@@ -37,7 +37,7 @@ function Nav() {
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
-          <div className="w-7 h-7 bg-accent-500 rounded-lg flex items-center justify-center text-white text-sm font-bold">
+          <div className="w-7 h-7 bg-accent-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
             L
           </div>
           <span className="font-semibold text-ink-900 text-sm hidden sm:block">Lasci's Board</span>
