@@ -72,7 +72,8 @@ Deno.serve(async (req) => {
       index: number
       title: string
       notes: string | null
-      supersets_id: number | null
+      superset_id?: number | null
+      supersets_id?: number | null
       sets: Array<{
         index: number
         type: string
@@ -87,7 +88,10 @@ Deno.serve(async (req) => {
   }
   try {
     const data = await hevyGet(`/v1/workouts/${workoutId}`)
-    workout = data.workout
+    // GET /v1/workouts/{id} returns the workout directly; tolerate wrapped/array shapes too
+    const raw = data?.workout ?? data
+    workout = Array.isArray(raw) ? raw[0] : raw
+    if (!workout?.id) throw new Error('no workout in Hevy response')
   } catch (err) {
     return new Response(
       JSON.stringify({ error: `Hevy fetch failed: ${(err as Error).message}` }),
@@ -147,7 +151,7 @@ Deno.serve(async (req) => {
         index: ex.index,
         title: ex.title,
         notes: ex.notes ?? null,
-        supersets_id: ex.supersets_id ?? null,
+        supersets_id: ex.superset_id ?? ex.supersets_id ?? null,
       })
       .select('id')
       .single()

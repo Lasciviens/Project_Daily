@@ -32,6 +32,14 @@ async function hevyRequest(
   return res.json()
 }
 
+// Hevy responses are inconsistent: an entity may come back directly, wrapped
+// as { routine: {...} }, or wrapped as an array { routine: [ {...} ] }.
+// Normalize all three shapes to a single entity object.
+function unwrapEntity<T = any>(data: any, key: string): T {
+  const v = data?.[key] ?? data
+  return (Array.isArray(v) ? v[0] : v) as T
+}
+
 // ---------------------------------------------------------------------------
 // Workout sync helpers (mirrors hevy-initial-sync Step 4)
 // ---------------------------------------------------------------------------
@@ -51,7 +59,8 @@ interface HevyWorkoutExercise {
   title: string
   notes: string | null
   exercise_template_id: string
-  supersets_id: number | null
+  superset_id?: number | null
+  supersets_id?: number | null
   sets: HevyWorkoutSet[]
 }
 
@@ -113,7 +122,7 @@ async function upsertWorkoutToDb(
         index: exercise.index,
         title: exercise.title,
         notes: exercise.notes,
-        supersets_id: exercise.supersets_id,
+        supersets_id: exercise.superset_id ?? exercise.supersets_id ?? null,
       })
       .select('id')
       .single()
@@ -163,7 +172,8 @@ interface HevyRoutineExercise {
   notes: string | null
   rest_seconds: number | null
   exercise_template_id: string
-  supersets_id: number | null
+  superset_id?: number | null
+  supersets_id?: number | null
   sets: HevyRoutineSet[]
 }
 
@@ -222,7 +232,7 @@ async function upsertRoutineToDb(
         title: exercise.title,
         notes: exercise.notes,
         rest_seconds: exercise.rest_seconds,
-        supersets_id: exercise.supersets_id,
+        supersets_id: exercise.superset_id ?? exercise.supersets_id ?? null,
       })
       .select('id')
       .single()
@@ -262,7 +272,8 @@ async function handleCreateWorkout(
   payload: unknown,
 ) {
   const data = await hevyRequest('POST', '/v1/workouts', hevyApiKey, { workout: payload })
-  const workout: HevyWorkout = data.workout ?? data
+  const workout = unwrapEntity<HevyWorkout>(data, 'workout')
+  if (!workout?.id) throw new Error('Hevy returned no workout id from create_workout')
   await upsertWorkoutToDb(supabase, userId, workout)
   return { workout_id: workout.id }
 }
@@ -278,7 +289,8 @@ async function handleUpdateWorkout(
   // id belongs in the URL only — Hevy rejects it inside the request body
   const { id: _id, ...workoutBody } = payload
   const data = await hevyRequest('PUT', `/v1/workouts/${workoutId}`, hevyApiKey, { workout: workoutBody })
-  const workout: HevyWorkout = data.workout ?? data
+  const workout = unwrapEntity<HevyWorkout>(data, 'workout')
+  if (!workout?.id) throw new Error('Hevy returned no workout id from update_workout')
   await upsertWorkoutToDb(supabase, userId, workout)
   return { ok: true }
 }
@@ -290,7 +302,8 @@ async function handleCreateRoutine(
   payload: unknown,
 ) {
   const data = await hevyRequest('POST', '/v1/routines', hevyApiKey, { routine: payload })
-  const routine: HevyRoutine = data.routine ?? data
+  const routine = unwrapEntity<HevyRoutine>(data, 'routine')
+  if (!routine?.id) throw new Error('Hevy returned no routine id from create_routine')
   await upsertRoutineToDb(supabase, userId, routine)
   return { routine_id: routine.id }
 }
@@ -306,7 +319,8 @@ async function handleUpdateRoutine(
   // id belongs in the URL only — Hevy rejects it inside the request body
   const { id: _id, ...routineBody } = payload
   const data = await hevyRequest('PUT', `/v1/routines/${routineId}`, hevyApiKey, { routine: routineBody })
-  const routine: HevyRoutine = data.routine ?? data
+  const routine = unwrapEntity<HevyRoutine>(data, 'routine')
+  if (!routine?.id) throw new Error('Hevy returned no routine id from update_routine')
   await upsertRoutineToDb(supabase, userId, routine)
   return { ok: true }
 }
