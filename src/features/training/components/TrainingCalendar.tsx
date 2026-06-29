@@ -88,19 +88,19 @@ function WeekDayCell({ day, isToday, selectedDate, onSelect }: DayCellProps) {
 
   return (
     <div
-      className={`flex flex-col gap-1.5 min-h-[60px] p-1.5 rounded-xl border transition-colors cursor-pointer ${
+      className={`flex flex-col items-stretch gap-1.5 min-h-[76px] p-1.5 rounded-2xl border transition-colors cursor-pointer ${
         isSelected
-          ? 'border-accent-400 bg-accent-50'
+          ? 'border-accent-400 bg-accent-50 ring-1 ring-accent-300'
           : isToday
-          ? 'border-accent-200 bg-accent-50/50'
-          : 'border-ink-100 bg-white hover:border-ink-200'
+          ? 'border-accent-200 bg-accent-50/40'
+          : 'border-ink-100 bg-white hover:border-ink-300 hover:bg-cream-50'
       }`}
       onClick={() => onSelect(isSelected ? '' : dateStr)}
     >
-      <div className="flex items-center gap-1.5">
-        <span className="text-[10px] font-bold text-ink-500 uppercase">{formatDayLabel(day.date)}</span>
-        <span className={`text-xs font-semibold rounded-full w-5 h-5 flex items-center justify-center ${
-          isToday ? 'bg-accent-600 text-white' : 'text-ink-600'
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">{formatDayLabel(day.date)}</span>
+        <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full ${
+          isToday ? 'bg-accent-600 text-white' : 'text-ink-700'
         }`}>
           {day.date.getDate()}
         </span>

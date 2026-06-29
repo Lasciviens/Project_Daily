@@ -34,7 +34,7 @@ function Nav() {
 
   return (
     <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-ink-200">
-      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-2">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
           <div className="w-7 h-7 bg-accent-500 rounded-lg flex items-center justify-center text-white text-sm font-bold">

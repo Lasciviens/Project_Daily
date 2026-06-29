@@ -67,17 +67,52 @@ Deno.serve(async (req) => {
       .from('hevy_workout_events_cursor')
       .select('last_events_since')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
     const since = cursorRow?.last_events_since ?? '1970-01-01T00:00:00Z'
 
-    // Step 2: Paginate all events since the cursor
-    // Hevy events have shape: { id: string, type: 'updated'|'deleted', updated_at: string }
-    const allEvents: Array<{ type: 'updated' | 'deleted'; id: string; updated_at: string }> = []
+    // Step 2: Paginate all events since the cursor.
+    // Hevy event shapes (oneOf):
+    //   updated → { type: 'updated', workout: { ...full workout... } }
+    //   deleted → { type: 'deleted', id: string, deleted_at: string }
+    // NOTE: 'updated' events embed the full workout — there is no event.id on them.
+    type WorkoutPayload = {
+      id: string
+      title: string
+      routine_id: string | null
+      description: string | null
+      start_time: string
+      end_time: string
+      updated_at: string
+      created_at: string
+      exercises: Array<{
+        exercise_template_id: string
+        index: number
+        title: string
+        notes: string | null
+        superset_id?: number | null
+        supersets_id?: number | null
+        sets: Array<{
+          index: number
+          type: string
+          weight_kg: number | null
+          reps: number | null
+          distance_meters: number | null
+          duration_seconds: number | null
+          rpe: number | null
+          custom_metric: number | null
+        }>
+      }>
+    }
+    type HevyEvent =
+      | { type: 'updated'; workout: WorkoutPayload }
+      | { type: 'deleted'; id: string; deleted_at: string }
+
+    const allEvents: HevyEvent[] = []
     let page = 1
 
     while (true) {
-      let data: { page: number; page_count: number; events: typeof allEvents }
+      let data: { page: number; page_count: number; events: HevyEvent[] }
       try {
         data = await hevyGet(
           `/v1/workouts/events?page=${page}&pageSize=10&since=${encodeURIComponent(since)}`
@@ -95,16 +130,16 @@ Deno.serve(async (req) => {
       page++
     }
 
-    // Separate events into update and delete sets (deduplicated)
+    // Separate events. Deletes carry an id; updates carry the full workout.
+    // Dedupe updates by workout id (later events win).
     const toDeleteSet = new Set<string>()
-    const toUpdateSet = new Set<string>()
+    const toUpdate = new Map<string, WorkoutPayload>()
 
     for (const event of allEvents) {
-      if (!event.id) continue
       if (event.type === 'deleted') {
-        toDeleteSet.add(event.id)
-      } else if (event.type === 'updated') {
-        toUpdateSet.add(event.id)
+        if (event.id) toDeleteSet.add(event.id)
+      } else if (event.type === 'updated' && event.workout?.id) {
+        toUpdate.set(event.workout.id, event.workout)
       }
     }
 
@@ -125,50 +160,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Step 4: Process updates (skip workouts that were also deleted)
+    // Step 4: Process updates (skip workouts that were also deleted).
+    // The workout payload is already embedded in the event — no re-fetch needed.
     let updatedCount = 0
 
-    for (const workoutId of toUpdateSet) {
+    for (const [workoutId, workout] of toUpdate) {
       if (toDeleteSet.has(workoutId)) continue
-
-      // Fetch full workout from Hevy
-      let workout: {
-        id: string
-        title: string
-        routine_id: string | null
-        description: string | null
-        start_time: string
-        end_time: string
-        updated_at: string
-        created_at: string
-        exercises: Array<{
-          exercise_template_id: string
-          index: number
-          title: string
-          notes: string | null
-          supersets_id: number | null
-          sets: Array<{
-            index: number
-            type: string
-            weight_kg: number | null
-            reps: number | null
-            distance_meters: number | null
-            duration_seconds: number | null
-            rpe: number | null
-            custom_metric: number | null
-          }>
-        }>
-      }
-
-      try {
-        const data = await hevyGet(`/v1/workouts/${workoutId}`)
-        workout = data.workout
-      } catch (err) {
-        return new Response(
-          JSON.stringify({ error: `Hevy fetch failed: ${(err as Error).message}` }),
-          { status: 502, headers: { ...headers, 'Content-Type': 'application/json' } }
-        )
-      }
 
       // Upsert hevy_workouts
       const { error: upsertWorkoutError } = await supabase
@@ -221,7 +218,7 @@ Deno.serve(async (req) => {
             index: ex.index,
             title: ex.title,
             notes: ex.notes ?? null,
-            supersets_id: ex.supersets_id ?? null,
+            supersets_id: ex.superset_id ?? ex.supersets_id ?? null,
           })
           .select('id')
           .single()
