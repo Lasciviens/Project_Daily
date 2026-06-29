@@ -2,43 +2,59 @@ import { useState, useMemo } from 'react'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import type { HevyExerciseTemplate } from '../types.hevy'
 
-const TYPE_LABELS: Record<HevyExerciseTemplate['type'], string> = {
-  weight_reps:          'Weight × Reps',
-  bodyweight_reps:      'Bodyweight',
-  weighted_bodyweight:  'Weighted BW',
-  assisted_bodyweight:  'Assisted BW',
-  duration:             'Duration',
-  distance_duration:    'Distance',
-  weight_distance:      'Weight × Dist',
+// Friendly labels for Hevy's CustomExerciseType enum. Anything not listed
+// falls back to a humanized version (snake_case → "Title Case") so raw values
+// like "reps_only" never leak into the UI.
+const TYPE_LABELS: Record<string, string> = {
+  weight_reps:              'Weight × Reps',
+  reps_only:                'Reps',
+  bodyweight_reps:          'Bodyweight',
+  bodyweight_weighted:      'Weighted BW',
+  weighted_bodyweight:      'Weighted BW',
+  bodyweight_assisted_reps: 'Assisted BW',
+  assisted_bodyweight:      'Assisted BW',
+  duration:                 'Duration',
+  weight_duration:          'Weight × Time',
+  distance_duration:        'Distance × Time',
+  short_distance_weight:    'Weighted Distance',
+  weight_distance:          'Weight × Dist',
 }
 
-function TypeChip({ type }: { type: HevyExerciseTemplate['type'] }) {
+function humanizeType(type: string): string {
+  return TYPE_LABELS[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function TypeChip({ type }: { type: string }) {
   return (
-    <span className="inline-block text-[10px] font-semibold bg-ink-100 text-ink-500 rounded-full px-2 py-0.5 shrink-0">
-      {TYPE_LABELS[type] ?? type}
+    <span className="inline-block text-[10px] font-semibold bg-ink-100 text-ink-500 rounded-full px-2 py-0.5 shrink-0 whitespace-nowrap">
+      {humanizeType(type)}
     </span>
   )
 }
 
 function TemplateCard({ t }: { t: HevyExerciseTemplate }) {
+  const muscles = t.secondary_muscle_groups ?? []
   return (
-    <div className="flex flex-col gap-1 p-2.5 bg-white border border-ink-100 rounded-xl hover:border-ink-200 transition-colors">
+    <div className="break-inside-avoid mb-2 flex flex-col gap-1.5 p-3 bg-white border border-ink-100 rounded-xl hover:border-accent-300 hover:shadow-sm transition-all">
       <div className="flex items-start justify-between gap-2">
         <span className="text-sm font-semibold text-ink-800 leading-snug">{t.title}</span>
         <TypeChip type={t.type} />
       </div>
-      {(t.secondary_muscle_groups?.length ?? 0) > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {t.secondary_muscle_groups!.map(m => (
-            <span
-              key={m}
-              className="text-[10px] bg-accent-50 text-accent-700 border border-accent-200 rounded-full px-2 py-0.5 capitalize"
-            >
-              {m}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-1">
+        {t.primary_muscle_group && (
+          <span className="text-[10px] font-medium bg-accent-100 text-accent-700 rounded-full px-2 py-0.5 capitalize">
+            {t.primary_muscle_group}
+          </span>
+        )}
+        {muscles.map(m => (
+          <span
+            key={m}
+            className="text-[10px] bg-cream-100 text-ink-500 border border-ink-200 rounded-full px-2 py-0.5 capitalize"
+          >
+            {m}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -63,7 +79,7 @@ function MuscleGroup({ name, templates, forceOpen }: { name: string; templates: 
         <span className="text-ink-400 text-xs">{isOpen ? '▲' : '▼'}</span>
       </button>
       {isOpen && (
-        <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-1.5 bg-cream-50 border-t border-ink-100">
+        <div className="p-2.5 columns-1 sm:columns-2 xl:columns-3 gap-2 bg-cream-50 border-t border-ink-100">
           {templates.map(t => (
             <TemplateCard key={t.id} t={t} />
           ))}

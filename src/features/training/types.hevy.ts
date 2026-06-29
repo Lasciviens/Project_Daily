@@ -3,7 +3,9 @@ export interface HevyExerciseTemplate {
   id: string
   user_id: string
   title: string
-  type: 'weight_reps' | 'bodyweight_reps' | 'weighted_bodyweight' | 'assisted_bodyweight' | 'duration' | 'distance_duration' | 'weight_distance'
+  // Hevy's CustomExerciseType enum (and may add more) — keep as string so new
+  // values don't break typing or the per-type set-field logic.
+  type: string
   primary_muscle_group: string | null
   is_custom: boolean
   created_at: string
