@@ -1,0 +1,62 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  UnifiedPlanModal — INTERNAL FORM STATE
+//  The single source of truth for both tabs while the modal is open. Title is
+//  shared (Plan title === Task title). Seeded from PlanDefaults / `task`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { TimeBlockCategory } from '../../../features/daily/types'
+import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
+import { todayStr, WEEKDAYS } from './planModal.config'
+import type { PlanDefaults, RecurrenceMode } from './planModal.types'
+
+export interface PlanForm {
+  // Shared
+  title: string
+
+  // Schedule tab
+  date: string
+  startTime: string
+  duration: number
+  customMin: string
+  category: TimeBlockCategory
+  recurrence: RecurrenceMode
+  weeklyDays: number[]
+  alsoCreateTask: boolean
+
+  // Task tab
+  notes: string
+  section: TaskSection
+  priority: TaskPriority
+  domain: TaskDomain
+  dueDate: string
+  dueTime: string
+
+  // Shared
+  gcal: boolean
+}
+
+/** Build the initial form from defaults, overlaying an editing task when present. */
+export function buildInitialForm(defaults?: PlanDefaults, task?: Task): PlanForm {
+  const today = todayStr()
+  return {
+    title:          task?.title ?? defaults?.title ?? '',
+
+    date:           defaults?.date ?? today,
+    startTime:      defaults?.startTime ?? '09:00',
+    duration:       defaults?.duration ?? 60,
+    customMin:      '',
+    category:       defaults?.category ?? 'other',
+    recurrence:     defaults?.recurrence ?? 'none',
+    weeklyDays:     defaults?.daysOfWeek ?? WEEKDAYS,
+    alsoCreateTask: defaults?.alsoCreateTask ?? false,
+
+    notes:          task?.description ?? defaults?.notes ?? '',
+    section:        task?.section ?? defaults?.section ?? 'today',
+    priority:       task?.priority ?? defaults?.priority ?? 'medium',
+    domain:         task?.domain ?? defaults?.domain ?? 'personal',
+    dueDate:        task?.due_date ?? defaults?.dueDate ?? '',
+    dueTime:        task?.due_time ? task.due_time.slice(0, 5) : (defaults?.dueTime ?? ''),
+
+    gcal:           defaults?.gcal ?? false,
+  }
+}
