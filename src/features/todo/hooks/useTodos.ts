@@ -148,7 +148,10 @@ export function useDeleteTask() {
       }
       return deleteTask(id)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['schedule'] })
+    },
   })
 }
 

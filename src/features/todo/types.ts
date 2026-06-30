@@ -32,6 +32,7 @@ export interface CreateTaskInput {
   section?:    TaskSection
   priority?:   TaskPriority
   due_date?:   string | null
+  due_time?:   string | null
   source_type?: TaskSourceType
   source_id?:   string | null
 }

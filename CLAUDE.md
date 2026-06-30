@@ -158,7 +158,7 @@ Never stretch content edge-to-edge. Widgets are sized to their content, not the 
 - Page wrapper: `w-full px-4 sm:px-6 lg:px-8` (left indent, NOT `mx-auto` centered).
 - Each content block gets a `max-w-*` capped to what it needs, **left-aligned** — leftover horizontal space stays on the right. Reference: reading/list column caps at `max-w-2xl`; small stat cards much smaller (`max-w-xs` / `~15rem`); a side rail (e.g. calendar) is a fixed `w-[360px]`.
 - Small cards flow side-by-side (grid/flex-wrap), never stack full-width.
-- Page background is `bg-canvas` (#B3AC9D, soft warm taupe); cards stay white for contrast.
+- Page background is `bg-canvas` (#EDE4D5, soft warm cream); cards stay white for contrast.
 
 ### Other rules
 - Date format: always `en-GB` (DD/MM/YYYY). Never `en-US`.
@@ -172,6 +172,14 @@ Never stretch content edge-to-edge. Widgets are sized to their content, not the 
 ## Key Patterns
 
 **Toast store:** `import { toast } from '../../../app/store'`
+
+**Planning — `UnifiedPlanModal`:** The ONE modal for all task/time-block planning (`src/shared/components/plan-modal/`). Schedule + Task tabs, shared editable title, always-on-top z-index. Shape it entirely from the call site — never edit the modal folder:
+- `config` → `tabs`, `defaultTab`, `heading`, `hide*/lock*` field keys per tab
+- `defaults` → prefills (title/date/startTime/duration/category/color/section/priority/domain/dueDate…)
+- `source` → `{ sourceType, sourceId, taskSourceType }`; `sourceType` MUST be a valid `time_blocks.source_type` (`task`/`training_session`/`movie`/`tv_episode`/`project_item`/`calendar`/`manual`)
+- `scheduleExtra` / `taskExtra` → caller-owned children injected into a tab
+- `task` → edit mode (Task tab) · `onSaved` → post-save hook
+- Rules + changelog live at the top of `UnifiedPlanModal.tsx`; log every logic change there.
 
 **RP5 Games:** Separate Supabase instance (`VITE_RP5_SUPABASE_URL`). Read from `v_games_summary` / `v_games_full` views. Write to raw `games` table. `series_name` only exists in the view — never select from raw `games`.
 
@@ -192,7 +200,7 @@ Never stretch content edge-to-edge. Widgets are sized to their content, not the 
 
 All headlessui components handle: click-outside close, Escape key, focus trap, portal rendering, ARIA attributes. Never add these manually.
 
-Reference files: `src/shared/components/AddTaskModal.tsx` (Dialog), `src/features/home/components/ruter/StopSearchInput.tsx` (Combobox), `src/features/media/components/PlanThisButton.tsx` (Popover), `src/shared/components/SettingsMenu.tsx` (Menu).
+Reference files: `src/shared/components/plan-modal/UnifiedPlanModal.tsx` (Dialog), `src/features/home/components/ruter/StopSearchInput.tsx` (Combobox), `src/features/media/components/PlanThisButton.tsx` (Popover), `src/shared/components/SettingsMenu.tsx` (Menu).
 
 ---
 

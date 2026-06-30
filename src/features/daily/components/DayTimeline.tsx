@@ -430,8 +430,8 @@ export function DayTimeline({ date }: Props) {
                     ? (e) => e.stopPropagation()
                     : (e) => { e.stopPropagation(); setSelectedId(isSelected ? null : block.id) }}
                 onMouseDown={block.deletable && !isSelected && !isEditing ? (e) => handleBlockMouseDown(e, block.id, baseTopPx) : undefined}
-                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 overflow-hidden group ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : block.deletable ? 'cursor-pointer' : 'cursor-default'} ${isDraggingThis ? 'opacity-80 shadow-lg z-20' : ''} ${isSelected ? 'ring-2 ring-accent-400 z-10' : ''} ${isOverlap && !isSelected ? 'ring-1 ring-red-400' : ''}`}
-                style={{ top: `${topPx}px`, height: `${heightPx}px` }}
+                className={`absolute left-11 right-1 rounded-lg border px-2 py-1 group ${isSelected ? 'overflow-visible z-30 shadow-lg' : 'overflow-hidden'} ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : block.deletable ? 'cursor-pointer' : 'cursor-default'} ${isDraggingThis ? 'opacity-80 shadow-lg z-20' : ''} ${isSelected ? 'ring-2 ring-accent-400' : ''} ${isOverlap && !isSelected ? 'ring-1 ring-red-400' : ''}`}
+                style={isSelected ? { top: `${topPx}px`, minHeight: `${heightPx}px` } : { top: `${topPx}px`, height: `${heightPx}px` }}
               >
                 {block.deletable && !isSelected && !isEditing && (
                   <span className="absolute top-1 left-1 text-[10px] opacity-0 group-hover:opacity-40 transition-opacity select-none">⠿</span>
