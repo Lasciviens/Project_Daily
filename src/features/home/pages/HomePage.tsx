@@ -5,7 +5,7 @@ import { useTasksBySection } from '../../todo/hooks/useTodos'
 import { useCreateTask } from '../../todo/hooks/useTodos'
 import { useTimeBlocks } from '../../daily/hooks/useSchedule'
 import type { Task } from '../../todo/types'
-import { AddTaskModal } from '../../../shared/components/AddTaskModal'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { WeatherWidget } from '../components/WeatherWidget'
 import { RuterWidget } from '../components/RuterWidget'
 import { CurrencyWidget } from '../components/CurrencyWidget'
@@ -118,9 +118,10 @@ export function HomePage() {
         <RecentMediaWidget />
       </div>
 
-      <AddTaskModal
-        isOpen={!!editingTask}
+      <UnifiedPlanModal
+        open={!!editingTask}
         onClose={() => setEditingTask(null)}
+        config={{ tabs: ['task', 'schedule'], heading: 'Edit Task' }}
         task={editingTask ?? undefined}
       />
     </div>

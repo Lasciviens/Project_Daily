@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { format, isToday, isTomorrow, isPast } from 'date-fns'
 import type { Task } from '../types'
 import { useToggleTask, useDeleteTask } from '../hooks/useTodos'
-import { AddTaskModal } from '../../../shared/components/AddTaskModal'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 
 const PRIORITY_DOT: Record<Task['priority'], string> = {
   low:    'bg-ink-300',
@@ -162,9 +162,10 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
         )}
       </div>
 
-      <AddTaskModal
-        isOpen={editing}
+      <UnifiedPlanModal
+        open={editing}
         onClose={() => setEditing(false)}
+        config={{ tabs: ['task', 'schedule'], heading: 'Edit Task' }}
         task={task}
       />
     </>

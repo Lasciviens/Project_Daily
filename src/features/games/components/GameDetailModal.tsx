@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useGameDetail, useAddToQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast }         from '../../../app/store'
-import { PlanModal }     from '../../../shared/components/PlanModal'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import type { PlatformDetail, GamePatch } from '../../home/api/gamesApi'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -449,11 +449,11 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
     </Dialog>
 
     {game && (
-      <PlanModal
+      <UnifiedPlanModal
         open={planOpen}
         onClose={() => setPlanOpen(false)}
-        defaultTitle={game.title}
-        defaultCategory="games"
+        config={{ tabs: ['schedule', 'task'], heading: 'Plan session' }}
+        defaults={{ title: game.title, category: 'games', color: 'blue' }}
       />
     )}
   </>

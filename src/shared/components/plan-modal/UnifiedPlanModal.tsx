@@ -95,13 +95,14 @@ export function UnifiedPlanModal({
     let linkedTaskId: string | undefined
 
     if (form.alsoCreateTask) {
-      // Map category → task domain (enum: personal | work | media).
-      const taskDomain = form.category === 'work' ? 'work' : form.category === 'media' ? 'media' : 'personal'
+      // Caller can pin the domain/priority; otherwise derive domain from category.
+      const taskDomain = defaults?.domain
+        ?? (form.category === 'work' ? 'work' : form.category === 'media' ? 'media' : 'personal')
       const { task: created, googleTaskError } = await createTask.mutateAsync({
         title:       form.title.trim(),
         section:     sectionForDate(form.date),
         domain:      taskDomain,
-        priority:    'medium',
+        priority:    defaults?.priority ?? 'medium',
         due_date:    form.date,
         source_type: source?.taskSourceType,
         source_id:   source?.sourceId,

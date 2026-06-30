@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { toast } from '../../../app/store'
 import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { PlanThisButton } from './PlanThisButton'
+import { StarRating } from './StarRating'
 import { SimilarRow } from './SimilarRow'
 import { EpisodesPanel } from './EpisodesPanel'
 import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
@@ -351,30 +352,14 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
         <div className="pt-3 border-t border-ink-100 space-y-3">
           {isOwned && entryId ? (
             <>
-              {/* Personal rating */}
+              {/* Personal rating — 5 stars, half-step (1–10) */}
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">★ Your rating</p>
-                <div className="flex flex-wrap gap-1">
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map(v => {
-                    const currentRating = (movieEntry ?? tvEntry)?.rating
-                    const isActive = currentRating === v
-                    return (
-                      <button
-                        key={v}
-                        onClick={() => handleRatingChange(v)}
-                        disabled={updateMovie.isPending || updateTV.isPending}
-                        className={[
-                          'min-h-[44px] w-8 text-xs rounded transition-colors',
-                          isActive
-                            ? 'bg-accent-500 text-white'
-                            : 'bg-cream-100 text-ink-500 hover:bg-cream-200',
-                        ].join(' ')}
-                      >
-                        {v}
-                      </button>
-                    )
-                  })}
-                </div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">Your rating</p>
+                <StarRating
+                  value={(movieEntry ?? tvEntry)?.rating}
+                  onChange={handleRatingChange}
+                  disabled={updateMovie.isPending || updateTV.isPending}
+                />
               </div>
 
               {/* Clickable status buttons for owned items */}
