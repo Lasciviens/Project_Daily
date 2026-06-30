@@ -95,26 +95,38 @@ export function DateStepperField({
   )
 }
 
-// ── Time stepper — 24h input · −30m / +30m ────────────────────────────────────
+// ── Time field — strict 24h (HH + MM selects, NO AM/PM) · −30m / +30m ─────────
+//  Native <input type="time"> renders AM/PM in some locales — selects guarantee
+//  24h everywhere. Minutes step by 5; the ±30m buttons keep the value on-grid.
 
-export function TimeStepperField({
+const HOUR_OPTS   = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
+const MINUTE_OPTS = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))
+
+export function Time24Field({
   value, onChange, onShift, locked,
 }: {
-  value: string
+  value: string                       // 'HH:MM'
   onChange: (v: string) => void
   onShift: (deltaMin: number) => void
   locked?: boolean
 }) {
+  const [hh = '09', mm = '00'] = value.split(':')
+  const selectCls = 'min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-2 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400 disabled:opacity-60'
   return (
     <div className="flex items-center gap-2">
       <button
         type="button" disabled={locked} onClick={() => onShift(-30)}
         className="min-h-[44px] px-2.5 flex items-center justify-center border border-ink-200 rounded-xl text-ink-600 hover:bg-cream-50 transition-colors text-xs font-medium disabled:opacity-40"
       >−30m</button>
-      <input
-        type="time" value={value} disabled={locked} onChange={e => onChange(e.target.value)}
-        className="flex-1 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-4 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400 text-center disabled:opacity-60"
-      />
+      <div className="flex-1 flex items-center justify-center gap-1">
+        <select value={hh} disabled={locked} onChange={e => onChange(`${e.target.value}:${mm}`)} className={selectCls}>
+          {HOUR_OPTS.map(h => <option key={h} value={h}>{h}</option>)}
+        </select>
+        <span className="text-ink-400 font-bold">:</span>
+        <select value={mm} disabled={locked} onChange={e => onChange(`${hh}:${e.target.value}`)} className={selectCls}>
+          {(MINUTE_OPTS.includes(mm) ? MINUTE_OPTS : [mm, ...MINUTE_OPTS]).map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
       <button
         type="button" disabled={locked} onClick={() => onShift(30)}
         className="min-h-[44px] px-2.5 flex items-center justify-center border border-ink-200 rounded-xl text-ink-600 hover:bg-cream-50 transition-colors text-xs font-medium disabled:opacity-40"

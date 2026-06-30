@@ -19,6 +19,13 @@
 //  2026-06-30 · v1 · Created. Merges legacy PlanModal + AddTimeBlockModal +
 //                    AddTaskModal into one config-driven modal. Recurrence is now
 //                    functional (one-off time block vs recurring schedule block).
+//  2026-06-30 · v2 · Media feedback: default start time = next half-hour slot
+//                    (planForm/nextPlanTime); 24h-only time field (Time24Field,
+//                    no AM/PM). Cross-table consistency: when "also create task"
+//                    is on, task is created FIRST and the time block links to it
+//                    (source_type='task') — fixes time_blocks_source_type_check
+//                    violation from passing 'media'. Callers now pass a VALID
+//                    time_blocks source_type for the no-task path.
 // ═════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useState } from 'react'
@@ -77,11 +84,36 @@ export function UnifiedPlanModal({
   const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
 
   // ── Save: Schedule tab ──────────────────────────────────────────────────────
+  //  Order matters for cross-table consistency: create the task FIRST so the
+  //  time block can link to it (source_type='task'), matching the rest of the
+  //  app (AddTaskModal). Only when no task is created does the block link to the
+  //  caller's source entity — whose `sourceType` MUST be a valid time_blocks
+  //  source_type ('movie'|'tv_episode'|'training_session'|'project_item'|…).
   async function saveSchedule() {
     const effDuration = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
     let recurringCreated = false
+    let linkedTaskId: string | undefined
+
+    if (form.alsoCreateTask) {
+      // Map category → task domain (enum: personal | work | media).
+      const taskDomain = form.category === 'work' ? 'work' : form.category === 'media' ? 'media' : 'personal'
+      const { task: created, googleTaskError } = await createTask.mutateAsync({
+        title:       form.title.trim(),
+        section:     sectionForDate(form.date),
+        domain:      taskDomain,
+        priority:    'medium',
+        due_date:    form.date,
+        source_type: source?.taskSourceType,
+        source_id:   source?.sourceId,
+      })
+      if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
+      linkedTaskId = created.id
+    }
 
     if (form.recurrence === 'none') {
+      const link = linkedTaskId
+        ? { source_type: 'task', source_id: linkedTaskId }
+        : { source_type: source?.sourceType, source_id: source?.sourceId }
       await createBlock.mutateAsync({
         date:             form.date,
         title:            form.title.trim(),
@@ -89,8 +121,7 @@ export function UnifiedPlanModal({
         duration_minutes: effDuration,
         color:            defaults?.color,
         category:         form.category,
-        source_type:      source?.sourceType,
-        source_id:        source?.sourceId,
+        ...link,
       })
     } else {
       await createRecur.mutateAsync({
@@ -101,18 +132,6 @@ export function UnifiedPlanModal({
         color:        defaults?.color ?? 'blue',
       })
       recurringCreated = true
-    }
-
-    if (form.alsoCreateTask) {
-      await createTask.mutateAsync({
-        title:       form.title.trim(),
-        section:     sectionForDate(form.date),
-        domain:      form.category === 'work' ? 'work' : 'personal',
-        priority:    'medium',
-        due_date:    form.date,
-        source_type: source?.taskSourceType,
-        source_id:   source?.sourceId,
-      })
     }
 
     if (form.gcal && calToken && form.recurrence === 'none') {
@@ -129,7 +148,7 @@ export function UnifiedPlanModal({
       }
     }
 
-    onSaved?.({ tab: 'schedule', timeBlockCreated: !recurringCreated, recurringCreated })
+    onSaved?.({ tab: 'schedule', taskId: linkedTaskId, timeBlockCreated: !recurringCreated, recurringCreated })
   }
 
   // ── Save: Task tab ───────────────────────────────────────────────────────────

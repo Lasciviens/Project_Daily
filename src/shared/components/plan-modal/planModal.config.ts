@@ -72,6 +72,22 @@ export function shiftTime(hhmm: string, deltaMin: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
+/**
+ * Default plan time: now + 30 min, rounded up to the next half-hour grid point.
+ * e.g. 15:56 → 16:30, 15:30 → 16:00, 15:01 → 15:30.
+ */
+export function nextPlanTime(): string {
+  const d = new Date()
+  let total = d.getHours() * 60 + d.getMinutes() + 30
+  total = (Math.ceil(total / 30) * 30) % 1440
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+/** Round minutes UP to the next 15-min quarter (min 15). 44→45, 31→45, 90→90. */
+export function ceilToQuarter(min: number): number {
+  return Math.max(15, Math.ceil(min / 15) * 15)
+}
+
 /** End time = start + duration, used when creating recurring schedule blocks. */
 export function endTimeFrom(startHHMM: string, durationMin: number): string {
   return shiftTime(startHHMM, durationMin)
