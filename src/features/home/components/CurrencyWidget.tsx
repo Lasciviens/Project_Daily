@@ -112,13 +112,13 @@ export function CurrencyWidget() {
   })
 
   const modeTabs = (
-    <div className="flex gap-1">
+    <div className="flex gap-0.5 bg-cream-100 p-0.5 rounded-lg">
       {(['rates', 'convert', 'change'] as Mode[]).map(m => (
         <button
           key={m}
           onClick={() => setMode(m)}
-          className={`text-[10px] px-2 py-1 rounded font-medium transition-colors duration-150 capitalize min-h-[44px] min-w-[44px] ${
-            mode === m ? 'bg-accent-500 text-white' : 'text-ink-400 hover:bg-ink-100'
+          className={`text-[10px] px-2 rounded-md font-medium transition-colors duration-150 capitalize min-h-[36px] ${
+            mode === m ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
           }`}
         >
           {m}
@@ -163,7 +163,7 @@ export function CurrencyWidget() {
 
       {data && mode === 'change' && (
         <div className="space-y-2.5">
-          <p className="text-[10px] text-ink-400 mb-2">24h change vs yesterday (USD base)</p>
+          <p className="text-[10px] text-ink-400 mb-2">Each currency's own 24h move — not against another currency</p>
           {data.changes.map(c => {
             const up   = c.change > 0
             const flat = Math.abs(c.change) < 0.01

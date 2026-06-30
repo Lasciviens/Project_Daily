@@ -6,12 +6,18 @@ import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 
 interface Props { date: Date }
 
+// Rule: a "Done" task only stays visible for 24h after completion — older
+// completions disappear from this list (they're not deleted, just hidden here).
+function completedWithinLast24h(updatedAt: string): boolean {
+  return Date.now() - new Date(updatedAt).getTime() < 24 * 60 * 60 * 1000
+}
+
 export function DayView({ date }: Props) {
   const { tasks, isLoading, section } = useDayData(date)
   const [modalOpen, setModalOpen] = useState(false)
 
   const openTasks = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
-  const doneTasks = tasks.filter(t => t.status === 'done')
+  const doneTasks = tasks.filter(t => t.status === 'done' && completedWithinLast24h(t.updated_at))
 
   return (
     <>

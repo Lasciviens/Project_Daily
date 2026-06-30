@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { addDays, addWeeks, format, startOfWeek, endOfWeek, isToday, isSameDay, getISOWeek } from 'date-fns'
+import { useState, useEffect } from 'react'
+import { addDays, addWeeks, format, startOfWeek, endOfWeek, isToday, isSameDay, getISOWeek, differenceInCalendarWeeks } from 'date-fns'
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange, useCalendarList } from '../../calendar/hooks/useCalendar'
 import { useCalendarStore } from '../../../app/store'
@@ -19,6 +19,17 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
   const weekEnd       = endOfWeek(weekStart, { weekStartsOn: 1 })
   const weekNumber    = getISOWeek(weekStart)
   const isCurrentWeek = weekOffset === 0
+
+  // Structurally independent of the day view, but its position still follows
+  // it: jump to the week containing highlightDate whenever it lands outside
+  // the week currently on screen (e.g. paging many days ahead via Daily's ‹ ›).
+  const highlightKey = highlightDate ? format(highlightDate, 'yyyy-MM-dd') : null
+  useEffect(() => {
+    if (!highlightDate) return
+    const target = differenceInCalendarWeeks(highlightDate, baseWeekStart, { weekStartsOn: 1 })
+    setWeekOffset(target)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightKey])
 
   const { data: tasks = [] } = useTasksByWeek(weekStart, weekEnd)
   const { data: calDates }   = useCalendarEventDatesForRange(weekStart, weekEnd)

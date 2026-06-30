@@ -16,6 +16,12 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-06-30 · v4 · Task tab redesign: grouped layout (Section+Priority side
+//                    by side, "When" divider above Due Date/Time, Notes moved
+//                    after), 24h Time24Field for Due Time, explicit "+ Set a
+//                    time" / clear affordance instead of always showing a time
+//                    value — makes the auto-schedule trigger (date AND time
+//                    both set) visible to the user instead of implicit.
 //  2026-06-30 · v1 · Created. Merges legacy PlanModal + AddTimeBlockModal +
 //                    AddTaskModal into one config-driven modal. Recurrence is now
 //                    functional (one-off time block vs recurring schedule block).

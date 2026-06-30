@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { rp5 } from '../../../integrations/rp5-library/client'
-import { useGameStats, useRecentGames } from '../hooks/useGames'
+import { useGameStats, useRecentGames, usePlayQueue } from '../hooks/useGames'
 import type { Game } from '../api/gamesApi'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -33,6 +33,8 @@ function CoverThumb({ game }: { game: Game }) {
 export function GamesHomeWidget() {
   const { data: stats, isLoading: statsLoading, error: statsError } = useGameStats()
   const { data: recent = [] } = useRecentGames(6)
+  const { data: queue  = [] } = usePlayQueue()
+  const playing = queue.find(g => g.play_status === 'playing')
 
   if (!rp5) {
     return (
@@ -70,19 +72,30 @@ export function GamesHomeWidget() {
 
       {!statsLoading && !statsError && stats && (
         <div className="space-y-3">
+          {/* Now playing */}
+          {playing && (
+            <div className="flex items-center gap-2.5 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-2">
+              <span className="text-base flex-shrink-0">▶</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-orange-500">Playing</p>
+                <p className="text-sm font-medium text-ink-800 truncate">{playing.title}</p>
+              </div>
+            </div>
+          )}
+
           {/* Stats pills */}
           <div className="flex gap-1.5">
             <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
               <div className="text-lg font-bold text-orange-600">{stats.playing}</div>
-              <div className="text-[10px] text-ink-400 mt-0.5">playing</div>
+              <div className="text-[10px] text-ink-400 mt-0.5">Playing</div>
             </div>
             <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
               <div className="text-lg font-bold text-ink-900">{stats.backlog + stats.wishlist}</div>
-              <div className="text-[10px] text-ink-400 mt-0.5">queued</div>
+              <div className="text-[10px] text-ink-400 mt-0.5">Total</div>
             </div>
             <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
               <div className="text-lg font-bold text-green-600">{stats.completed}</div>
-              <div className="text-[10px] text-ink-400 mt-0.5">done</div>
+              <div className="text-[10px] text-ink-400 mt-0.5">Done</div>
             </div>
           </div>
 

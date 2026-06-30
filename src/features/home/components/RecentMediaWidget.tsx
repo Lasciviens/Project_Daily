@@ -4,65 +4,63 @@ import { supabase } from '../../../integrations/supabase/client'
 import { posterUrl } from '../../../integrations/tmdb/client'
 
 interface RecentItem {
-  id:         string
-  type:       'movie' | 'tv'
-  title:      string
-  status:     string
-  poster:     string | null
-  created_at: string
+  id:          string
+  type:        'movie' | 'tv'
+  title:       string
+  poster:      string | null
+  watched_at:  string
 }
 
-async function fetchRecentMedia(): Promise<RecentItem[]> {
-  const [movies, tv] = await Promise.all([
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rows<T>(res: { data: T[] | null }): any[] { return res.data ?? [] }
+
+async function fetchRecentlyWatched(): Promise<RecentItem[]> {
+  const [movies, episodes] = await Promise.all([
     supabase
       .from('user_movie_entries')
-      .select('id, status, created_at, movie:movies(title, poster_path)')
-      .order('created_at', { ascending: false })
+      .select('id, watched_at, movie:movies(title, poster_path)')
+      .not('watched_at', 'is', null)
+      .order('watched_at', { ascending: false })
       .limit(4),
     supabase
-      .from('user_tv_entries')
-      .select('id, status, created_at, tv_series:tv_series(title, poster_path)')
-      .order('created_at', { ascending: false })
-      .limit(4),
+      .from('watched_episodes')
+      .select('id, watched_on, tv_entry_id, tv_entry:user_tv_entries(tv_series(title, poster_path))')
+      .order('watched_on', { ascending: false })
+      .limit(12),
   ])
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const movieItems: RecentItem[] = (movies.data ?? []).map((m: any) => ({
+  const movieItems: RecentItem[] = rows(movies).map(m => ({
     id:         m.id,
     type:       'movie' as const,
     title:      m.movie?.title ?? 'Unknown',
-    status:     m.status,
     poster:     m.movie?.poster_path ?? null,
-    created_at: m.created_at,
+    watched_at: m.watched_at,
   }))
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tvItems: RecentItem[] = (tv.data ?? []).map((s: any) => ({
-    id:         s.id,
-    type:       'tv' as const,
-    title:      s.tv_series?.title ?? 'Unknown',
-    status:     s.status,
-    poster:     s.tv_series?.poster_path ?? null,
-    created_at: s.created_at,
-  }))
+  // One row per series — keep only the most recently watched episode of each.
+  const seenSeries = new Set<string>()
+  const episodeItems: RecentItem[] = []
+  for (const e of rows(episodes)) {
+    if (seenSeries.has(e.tv_entry_id)) continue
+    seenSeries.add(e.tv_entry_id)
+    episodeItems.push({
+      id:         e.id,
+      type:       'tv' as const,
+      title:      e.tv_entry?.tv_series?.title ?? 'Unknown',
+      poster:     e.tv_entry?.tv_series?.poster_path ?? null,
+      watched_at: e.watched_on,
+    })
+  }
 
-  return [...movieItems, ...tvItems]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  return [...movieItems, ...episodeItems]
+    .sort((a, b) => new Date(b.watched_at).getTime() - new Date(a.watched_at).getTime())
     .slice(0, 6)
-}
-
-const STATUS_DOT: Record<string, string> = {
-  watching:  'bg-green-400',
-  wishlist:  'bg-accent-400',
-  completed: 'bg-ink-300',
-  dropped:   'bg-red-300',
-  paused:    'bg-blue-400',
 }
 
 export function RecentMediaWidget() {
   const { data, isLoading } = useQuery({
-    queryKey:  ['recent-media'],
-    queryFn:   fetchRecentMedia,
+    queryKey:  ['recent-media', 'watched'],
+    queryFn:   fetchRecentlyWatched,
     staleTime: 5 * 60_000,
   })
 
@@ -72,7 +70,7 @@ export function RecentMediaWidget() {
   return (
     <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Recently Added</h3>
+        <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Recently Watched</h3>
         <Link to="/media" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
       </div>
       <div className="grid grid-cols-6 gap-1.5">
@@ -85,7 +83,9 @@ export function RecentMediaWidget() {
                 className="w-full h-full object-cover group-hover:brightness-90 transition-all duration-150"
                 loading="lazy"
               />
-              <span className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${STATUS_DOT[item.status] ?? 'bg-ink-300'}`} />
+              <span className={`absolute top-1 right-1 text-[8px] font-bold px-1 rounded ${item.type === 'movie' ? 'bg-purple-500 text-white' : 'bg-blue-500 text-white'}`}>
+                {item.type === 'movie' ? '🎬' : '📺'}
+              </span>
             </div>
             <p className="text-[9px] text-ink-600 truncate mt-0.5 leading-tight">{item.title}</p>
           </Link>

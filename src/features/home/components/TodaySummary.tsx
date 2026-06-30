@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   format, addDays, parseISO, startOfWeek, endOfWeek, eachDayOfInterval,
-  isToday, isPast, differenceInCalendarDays,
+  isToday, isPast, differenceInCalendarDays, getISOWeek,
 } from 'date-fns'
 import { useTasksBySection } from '../../todo/hooks/useTodos'
 import { useTimeBlocks, useTrainingBlocks } from '../../daily/hooks/useSchedule'
@@ -66,7 +66,9 @@ export function TodaySummary() {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-ink-900">{greeting()}, Furkan</h1>
-          <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), 'EEEE, d MMMM yyyy')}</p>
+          <p className="text-xs text-ink-400 mt-0.5">
+            {format(new Date(), 'EEEE, d MMMM yyyy')} · Week {getISOWeek(new Date())}
+          </p>
         </div>
         {weather && (
           <div className="flex items-center gap-1.5 flex-shrink-0">

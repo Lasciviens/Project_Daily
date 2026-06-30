@@ -218,9 +218,13 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   const [showSavePanel, setShowSavePanel] = useState(false)
   const [lastUpdated,   setLastUpdated]   = useState<number | null>(null)
   const [refreshing,    setRefreshing]    = useState(false)
+  const [visibleCount,  setVisibleCount]  = useState(4)
 
   const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
   const queryStop   = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
+
+  // Reset the load-more window whenever the viewed stop changes.
+  useEffect(() => { setVisibleCount(4) }, [queryStop?.id])
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['departures', queryStop?.id ?? ''],
@@ -402,10 +406,18 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
                 </div>
               )}
               <div className="divide-y divide-ink-50">
-                {group.lineGroups.map((lg, j) => (
+                {group.lineGroups.slice(0, visibleCount).map((lg, j) => (
                   <DepartureRow key={j} group={lg} now={now} />
                 ))}
               </div>
+              {group.lineGroups.length > visibleCount && (
+                <button
+                  onClick={() => setVisibleCount(c => c + 4)}
+                  className="w-full text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[36px] border-t border-ink-100 pt-1 mt-1"
+                >
+                  Show {Math.min(4, group.lineGroups.length - visibleCount)} more ▾
+                </button>
+              )}
             </div>
           ))}
         </div>
