@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { usePlayQueue, useUpdateGame, useReorderQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast } from '../../../app/store'
-import { AddTimeBlockModal } from '../../daily/components/AddTimeBlockModal'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import type { QueueGame } from '../../home/api/gamesApi'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -232,14 +232,12 @@ export function PlayQueueTab() {
       )}
 
       {/* Schedule session modal */}
-      {scheduleGame && (
-        <AddTimeBlockModal
-          dateStr={new Date().toISOString().slice(0, 10)}
-          defaultTitle={scheduleGame.title}
-          defaultColor="blue"
-          onClose={() => setScheduleGame(null)}
-        />
-      )}
+      <UnifiedPlanModal
+        open={!!scheduleGame}
+        onClose={() => setScheduleGame(null)}
+        config={{ tabs: ['schedule', 'task'], heading: 'Schedule session' }}
+        defaults={{ title: scheduleGame?.title ?? '', category: 'games', color: 'blue' }}
+      />
     </div>
   )
 }

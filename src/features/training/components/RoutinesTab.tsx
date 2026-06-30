@@ -1,14 +1,8 @@
 import { useState } from 'react'
-import { format } from 'date-fns'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useHevyRoutines, useDeleteHevyRoutineLocal } from '../hooks/useHevyRoutines'
-import { useCreateTask } from '../../todo/hooks/useTodos'
-import { useCreateTimeBlock } from '../../daily/hooks/useSchedule'
-import { toast } from '../../../app/store'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { NewRoutineModal, EditRoutineModal } from './RoutineModals'
 import type { HevyRoutine, HevyRoutineSet } from '../types.hevy'
-
-const TODAY = format(new Date(), 'yyyy-MM-dd')
 
 // ─── Set chip display ─────────────────────────────────────────────────────────
 
@@ -38,79 +32,6 @@ function SetChip({ s }: { s: HevyRoutineSet }) {
     >
       {setLabel(s)}
     </span>
-  )
-}
-
-// ─── Plan Routine Dialog ──────────────────────────────────────────────────────
-
-function PlanRoutineDialog({
-  routine, isOpen, onClose,
-}: { routine: HevyRoutine; isOpen: boolean; onClose: () => void }) {
-  const [date, setDate]           = useState(TODAY)
-  const [startTime, setStartTime] = useState('07:00')
-  const createTask                = useCreateTask()
-  const createTimeBlock           = useCreateTimeBlock()
-
-  async function handleAddTask() {
-    const tid = toast.loading('Adding task…')
-    try {
-      await createTask.mutateAsync({
-        title:    routine.title,
-        section:  'today',
-        priority: 'medium',
-        domain:   'personal',
-        due_date: date || null,
-      })
-      toast.dismiss(tid)
-      toast.success('Task added ✓')
-      onClose()
-    } catch (err) {
-      toast.dismiss(tid)
-      toast.error((err as Error).message ?? 'Failed')
-    }
-  }
-
-  function handleAddToSchedule() {
-    const tid = toast.loading('Adding to schedule…')
-    createTimeBlock.mutate(
-      { date, title: routine.title, start_time: startTime ? `${startTime}:00` : null, duration_minutes: 60, color: 'accent', source_type: 'routine' },
-      {
-        onSuccess: () => { toast.dismiss(tid); toast.success('Added to schedule ✓'); onClose() },
-        onError:   (err) => { toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed') },
-      }
-    )
-  }
-
-  return (
-    <Dialog open={isOpen} onClose={onClose} className="relative z-[70]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-ink-100">
-            <h2 className="text-sm font-bold text-ink-800">Plan: {routine.title}</h2>
-            <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none">×</button>
-          </div>
-          <div className="px-5 py-4 flex flex-col gap-4">
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Date</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
-              </div>
-              <div className="flex-1">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Start time</label>
-                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
-              </div>
-            </div>
-            <button type="button" onClick={handleAddTask} disabled={createTask.isPending} className="w-full min-h-[44px] bg-accent-600 text-white rounded-xl text-sm font-semibold hover:bg-accent-700 transition-colors disabled:opacity-50">
-              Add as task
-            </button>
-            <button type="button" onClick={handleAddToSchedule} disabled={createTimeBlock.isPending} className="w-full min-h-[44px] border border-ink-200 text-ink-700 rounded-xl text-sm font-medium hover:bg-cream-50 transition-colors disabled:opacity-50">
-              Add to today's schedule
-            </button>
-          </div>
-        </DialogPanel>
-      </div>
-    </Dialog>
   )
 }
 
@@ -243,7 +164,13 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
         </div>
       )}
 
-      <PlanRoutineDialog routine={routine} isOpen={planOpen} onClose={() => setPlanOpen(false)} />
+      <UnifiedPlanModal
+        open={planOpen}
+        onClose={() => setPlanOpen(false)}
+        config={{ tabs: ['schedule', 'task'], heading: 'Plan routine' }}
+        defaults={{ title: routine.title, category: 'training', color: 'accent' }}
+        source={{ sourceType: 'training_session', sourceId: routine.id }}
+      />
     </div>
   )
 }

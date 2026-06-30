@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { format } from 'date-fns'
 import { useWorkTasks, useUpdateTask, useDeleteTask, useToggleTask } from '../../todo/hooks/useTodos'
-import { AddTaskModal } from '../../../shared/components/AddTaskModal'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import WorkKanban from '../components/WorkKanban'
 import HeroTaskWidget from '../components/HeroTaskWidget'
 import WorkDayTimeline from '../components/WorkDayTimeline'
@@ -218,15 +218,13 @@ export function WorkPage() {
       {workTab === 'board' && <MobileSidebar tasks={tasks} />}
 
       {/* Modals */}
-      {(addOpen || editTask) && (
-        <AddTaskModal
-          isOpen={addOpen || !!editTask}
-          defaultDomain="work"
-          defaultSection="today"
-          task={editTask ?? undefined}
-          onClose={() => { setAddOpen(false); setEditTask(null) }}
-        />
-      )}
+      <UnifiedPlanModal
+        open={addOpen || !!editTask}
+        onClose={() => { setAddOpen(false); setEditTask(null) }}
+        config={{ tabs: ['task', 'schedule'], heading: editTask ? 'Edit Task' : 'New Task' }}
+        defaults={{ domain: 'work', section: 'today' }}
+        task={editTask ?? undefined}
+      />
     </div>
   )
 }

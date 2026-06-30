@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Task, TaskSection } from '../types'
 import { ToDoItem } from './ToDoItem'
-import { AddTaskModal } from '../../../shared/components/AddTaskModal'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { useSwapTaskOrder } from '../hooks/useTodos'
 
 interface Props {
@@ -99,10 +99,11 @@ export function ToDoSection({ title, section, tasks, defaultOpen = true, isLoadi
         )}
       </div>
 
-      <AddTaskModal
-        isOpen={modalOpen}
+      <UnifiedPlanModal
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
-        defaultSection={section}
+        config={{ tabs: ['task', 'schedule'], heading: 'New Task' }}
+        defaults={{ section }}
       />
     </>
   )

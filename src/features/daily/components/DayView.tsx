@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { format } from 'date-fns'
 import { useDayData } from '../hooks/useDayData'
 import { ToDoItem } from '../../todo/components/ToDoItem'
-import { AddTaskModal } from '../../../shared/components/AddTaskModal'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 
 interface Props { date: Date }
 
@@ -82,11 +82,11 @@ export function DayView({ date }: Props) {
         </div>
       </div>
 
-      <AddTaskModal
-        isOpen={modalOpen}
+      <UnifiedPlanModal
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
-        defaultSection={section}
-        defaultDate={format(date, 'yyyy-MM-dd')}
+        config={{ tabs: ['task', 'schedule'], heading: 'New Task' }}
+        defaults={{ section, date: format(date, 'yyyy-MM-dd'), dueDate: format(date, 'yyyy-MM-dd') }}
       />
 
     </>

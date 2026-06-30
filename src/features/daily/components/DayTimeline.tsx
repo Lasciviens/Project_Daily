@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock } from '../hooks/useSchedule'
 import { useUpdateTask } from '../../todo/hooks/useTodos'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
-import { AddTimeBlockModal } from './AddTimeBlockModal'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
 import { supabase } from '../../../integrations/supabase/client'
 import { useCalendarStore, toast } from '../../../app/store'
@@ -522,13 +522,12 @@ export function DayTimeline({ date }: Props) {
         </div>
       </div>
 
-      {modal && (
-        <AddTimeBlockModal
-          dateStr={dateStr}
-          defaultStartTime={clickTime}
-          onClose={() => { setModal(false); setClickTime(undefined) }}
-        />
-      )}
+      <UnifiedPlanModal
+        open={modal}
+        onClose={() => { setModal(false); setClickTime(undefined) }}
+        config={{ tabs: ['schedule', 'task'], heading: 'Add time block' }}
+        defaults={{ date: dateStr, startTime: clickTime, category: 'daily' }}
+      />
       {editEvent && <EditCalendarEventModal mode="edit" event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
   )
