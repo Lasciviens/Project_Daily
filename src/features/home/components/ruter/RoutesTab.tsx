@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchTrips, fetchStopDirections, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
@@ -107,22 +107,19 @@ function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: s
   }, [hints])
 
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">{label}</span>
-      <div className="flex items-start gap-2 px-3 py-2.5 bg-ink-50 border border-ink-200 rounded-xl min-h-[52px]">
-        <span className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ${isFrom ? 'bg-red-500' : 'bg-green-500'}`} />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-ink-900 leading-snug">{place.name}</p>
-          {directions.length > 0 && (
-            <p className="text-[10px] text-ink-400 mt-0.5">{directions.join(' · ')}</p>
-          )}
-        </div>
-        <button
-          onClick={onClear}
-          className="text-ink-300 hover:text-red-400 transition-colors duration-150 flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center"
-          aria-label={`Clear ${label} stop`}
-        >✕</button>
+    <div className="flex items-center gap-2 px-2.5 py-2 bg-ink-50 border border-ink-200 rounded-xl min-h-[44px]">
+      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isFrom ? 'bg-red-500' : 'bg-green-500'}`} />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-ink-900 truncate leading-snug">{place.name}</p>
+        {directions.length > 0 && (
+          <p className="text-[10px] text-ink-400 truncate leading-tight">{directions.join(' · ')}</p>
+        )}
       </div>
+      <button
+        onClick={onClear}
+        className="text-ink-300 hover:text-red-400 transition-colors duration-150 flex-shrink-0 min-w-[36px] min-h-[36px] flex items-center justify-center text-sm"
+        aria-label={`Clear ${label} stop`}
+      >✕</button>
     </div>
   )
 }
@@ -179,6 +176,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const [saving,         setSaving]         = useState(false)
   const [saveMsg,        setSaveMsg]        = useState<string | null>(null)
   const [refreshing,     setRefreshing]     = useState(false)
+  const [visibleCount,   setVisibleCount]   = useState(4)
 
   const favoriteStops = useMemo(() => {
     const seen = new Set<string>()
@@ -256,6 +254,9 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     : search ? `${(search.to as { lat: number }).lat},${(search.to as { lon: number }).lon}` : ''
 
   const tripQueryKey = ['trip', fromKey, toKey, search?.arriveBy, search?.dateTime ?? 'now', search?.version]
+
+  // Reset the load-more window whenever a fresh search runs.
+  useEffect(() => { setVisibleCount(4) }, [search?.version])
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: tripQueryKey,
@@ -412,19 +413,24 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
               {draftFrom ? (
                 <PlaceDisplay place={draftFrom} label="From" onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
               ) : (
-                <div className="space-y-1.5">
-                  <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">From</span>
-                  <StopSearchInput placeholder="Stop or address…" favorites={favoriteStops}
-                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }} />
-                  {fromLocState === 'loading' ? (
-                    <span className="text-[11px] text-ink-400 py-1 block">Locating…</span>
-                  ) : fromLocState === 'denied' ? (
-                    <span className="text-[11px] text-red-500 py-1 block">Location permission denied</span>
-                  ) : (
-                    <button onClick={() => locateFor('from')}
-                      className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1 min-h-[44px] flex items-center gap-1">
-                      📍 Use current location
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 min-w-0">
+                      <StopSearchInput placeholder="From — stop or address…" favorites={favoriteStops}
+                        onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }} />
+                    </div>
+                    <button
+                      onClick={() => locateFor('from')}
+                      disabled={fromLocState === 'loading'}
+                      title="Use current location"
+                      aria-label="Use current location"
+                      className="flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center text-base rounded-lg hover:bg-accent-50 transition-colors duration-150 disabled:opacity-50"
+                    >
+                      {fromLocState === 'loading' ? '…' : '📍'}
                     </button>
+                  </div>
+                  {fromLocState === 'denied' && (
+                    <span className="text-[11px] text-red-500 block">Location permission denied</span>
                   )}
                 </div>
               )}
@@ -447,28 +453,33 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
               {draftTo ? (
                 <PlaceDisplay place={draftTo} label="To" onClear={() => { setDraftTo(null); setToLocState('idle') }} />
               ) : (
-                <div className="space-y-1.5">
-                  <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">To</span>
-                  <StopSearchInput placeholder="Stop or address…" favorites={favoriteStops}
-                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }} />
-                  {toLocState === 'loading' ? (
-                    <span className="text-[11px] text-ink-400 py-1 block">Locating…</span>
-                  ) : toLocState === 'denied' ? (
-                    <span className="text-[11px] text-red-500 py-1 block">Location permission denied</span>
-                  ) : (
-                    <button onClick={() => locateFor('to')}
-                      className="text-[11px] text-accent-500 hover:text-accent-700 transition-colors duration-150 py-1 min-h-[44px] flex items-center gap-1">
-                      📍 Use current location
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 min-w-0">
+                      <StopSearchInput placeholder="To — stop or address…" favorites={favoriteStops}
+                        onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }} />
+                    </div>
+                    <button
+                      onClick={() => locateFor('to')}
+                      disabled={toLocState === 'loading'}
+                      title="Use current location"
+                      aria-label="Use current location"
+                      className="flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center text-base rounded-lg hover:bg-accent-50 transition-colors duration-150 disabled:opacity-50"
+                    >
+                      {toLocState === 'loading' ? '…' : '📍'}
                     </button>
+                  </div>
+                  {toLocState === 'denied' && (
+                    <span className="text-[11px] text-red-500 block">Location permission denied</span>
                   )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* When chips */}
+          {/* When chips + line filter trigger, same row */}
           <div>
-            <div className="flex flex-wrap gap-1.5 mb-2">
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
               {(['now', '+15', '+30', '+1h', 'arriveBy', 'custom'] as WhenPreset[]).map(p => (
                 <button key={p} onClick={() => setDraftWhen(p)}
                   className={`text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[40px] ${
@@ -479,6 +490,21 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                   {p === 'now' ? 'Now' : p === 'arriveBy' ? 'Arrive by…' : p === 'custom' ? 'Custom…' : p}
                 </button>
               ))}
+
+              {!showLineFilter ? (
+                <button onClick={() => setShowLineFilter(true)}
+                  className="text-xs px-3 py-2 rounded-lg border border-dashed border-ink-200 text-ink-400 hover:text-ink-600 hover:border-ink-300 transition-colors duration-150 min-h-[40px]">
+                  + Line №
+                </button>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <input value={draftLine} onChange={e => setDraftLine(e.target.value)}
+                    placeholder="e.g. 68" autoFocus
+                    className="w-20 px-2 py-2 text-xs rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[40px] placeholder:text-ink-300" />
+                  <button onClick={() => { setDraftLine(''); setShowLineFilter(false) }}
+                    className="text-ink-300 hover:text-ink-600 transition-colors duration-150 min-w-[36px] min-h-[36px] flex items-center justify-center text-sm">✕</button>
+                </div>
+              )}
             </div>
 
             {draftWhen === 'arriveBy' && (
@@ -515,15 +541,13 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             )}
           </div>
 
-          {/* Plan button */}
-          <button onClick={handlePlan} disabled={!canPlan}
-            className={`w-full py-3 rounded-xl text-sm font-semibold transition-colors duration-150 min-h-[48px] ${
-              canPlan
-                ? 'bg-accent-500 text-white hover:bg-accent-600'
-                : 'bg-ink-100 text-ink-400 cursor-not-allowed'
-            }`}>
-            {canPlan ? 'Plan route' : 'Select From and To first'}
-          </button>
+          {/* Plan button — only shown once both stops are picked */}
+          {canPlan && (
+            <button onClick={handlePlan}
+              className="w-full py-3 rounded-xl text-sm font-semibold transition-colors duration-150 min-h-[48px] bg-accent-500 text-white hover:bg-accent-600">
+              Plan route
+            </button>
+          )}
 
           {/* Save as favorite — available as soon as both stops are NSR stops */}
           {draftCanSave && !draftAlreadySaved && !showSaveForm && (
@@ -559,24 +583,6 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
           {saveMsg && !showSaveForm && (
             <p className={`text-xs ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>{saveMsg}</p>
           )}
-
-          {/* Line filter — hidden by default */}
-          <div>
-            {!showLineFilter ? (
-              <button onClick={() => setShowLineFilter(true)}
-                className="text-[11px] text-ink-400 hover:text-ink-600 transition-colors duration-150 min-h-[44px] flex items-center">
-                + Filter by line number
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <input value={draftLine} onChange={e => setDraftLine(e.target.value)}
-                  placeholder="e.g. 68, 31E" autoFocus
-                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px] placeholder:text-ink-300" />
-                <button onClick={() => { setDraftLine(''); setShowLineFilter(false) }}
-                  className="text-ink-300 hover:text-ink-600 transition-colors duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -626,8 +632,17 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
 
           {filteredData.length === 0
             ? <p className="text-sm text-ink-400">No trips found</p>
-            : filteredData.map((trip, i) => <TripCard key={i} trip={trip} now={now} isBest={i === 0} />)
+            : filteredData.slice(0, visibleCount).map((trip, i) => <TripCard key={i} trip={trip} now={now} isBest={i === 0} />)
           }
+
+          {filteredData.length > visibleCount && (
+            <button
+              onClick={() => setVisibleCount(c => c + 4)}
+              className="w-full text-[11px] text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[36px] border-t border-ink-100 pt-2"
+            >
+              Show {Math.min(4, filteredData.length - visibleCount)} more ▾
+            </button>
+          )}
         </div>
       )}
     </div>

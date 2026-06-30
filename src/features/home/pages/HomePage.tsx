@@ -5,6 +5,7 @@ import { useTasksBySection } from '../../todo/hooks/useTodos'
 import { useCreateTask } from '../../todo/hooks/useTodos'
 import { useTimeBlocks } from '../../daily/hooks/useSchedule'
 import type { Task } from '../../todo/types'
+import { DOMAIN_TAG_CLASS, DOMAIN_LABEL } from '../../todo/domainColors'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { TodaySummary } from '../components/TodaySummary'
 import { WeatherWidget } from '../components/WeatherWidget'
@@ -22,18 +23,17 @@ interface NavCard {
   to:    string
   label: string
   icon:  string
-  desc:  string
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const NAV_CARDS: NavCard[] = [
-  { to: '/daily',    label: 'Daily',    icon: '📅', desc: 'Tasks, schedule & calendar' },
-  { to: '/media',    label: 'Media',    icon: '🎬', desc: 'Movies & TV series' },
-  { to: '/work',     label: 'Work',     icon: '💼', desc: 'Work tasks & timeline' },
-  { to: '/training', label: 'Training', icon: '🏋️', desc: 'Workouts & health' },
-  { to: '/games',    label: 'Games',    icon: '🎮', desc: 'RP5 library — coming soon' },
-  { to: '/projects', label: 'Projects', icon: '📋', desc: 'Track project progress' },
+  { to: '/daily',    label: 'Daily',    icon: '📅' },
+  { to: '/media',    label: 'Media',    icon: '🎬' },
+  { to: '/work',     label: 'Work',     icon: '💼' },
+  { to: '/training', label: 'Training', icon: '🏋️' },
+  { to: '/games',    label: 'Games',    icon: '🎮' },
+  { to: '/projects', label: 'Projects', icon: '📋' },
 ]
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -70,19 +70,18 @@ export function HomePage() {
         {/* Overview summary — leads the page */}
         <TodaySummary />
 
-        {/* Quick nav cards — 2-col on mobile, 3-col on sm+ */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {/* Quick nav — compact pills, all six fit on one row from sm+ */}
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           {NAV_CARDS.map(card => (
             <Link
               key={card.to}
               to={card.to}
-              className="group bg-white rounded-xl border border-ink-200 p-3 shadow-sm hover:shadow-md hover:border-accent-300 transition-shadow duration-150 min-h-[44px]"
+              className="group flex items-center justify-center gap-1.5 bg-white rounded-lg border border-ink-200 px-2 min-h-[44px] shadow-sm hover:shadow-md hover:border-accent-300 transition-shadow duration-150"
             >
-              <div className="text-xl mb-1.5">{card.icon}</div>
-              <div className="text-sm font-semibold text-ink-900 group-hover:text-accent-600 transition-colors duration-150">
+              <span className="text-base leading-none">{card.icon}</span>
+              <span className="text-xs font-semibold text-ink-800 group-hover:text-accent-600 transition-colors duration-150 truncate">
                 {card.label}
-              </div>
-              <div className="text-xs text-ink-400 mt-0.5 hidden sm:block leading-tight">{card.desc}</div>
+              </span>
             </Link>
           ))}
         </div>
@@ -208,7 +207,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
             <span className="text-xs text-ink-500 flex-shrink-0">{done}/{tasks.length}</span>
           </div>
 
-          <ul className="space-y-2 mb-3">
+          <ul className="space-y-1 mb-3">
             {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').slice(0, 5).map(t => (
               <li
                 key={t.id}
@@ -225,8 +224,11 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
                 }`}>
                   {t.title}
                 </span>
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${DOMAIN_TAG_CLASS[t.domain]}`}>
+                  {DOMAIN_LABEL[t.domain]}
+                </span>
                 {t.due_time && (
-                  <span className="text-xs text-ink-400 flex-shrink-0">{t.due_time.slice(0, 5)}</span>
+                  <span className="text-xs text-ink-400 flex-shrink-0 font-mono">{t.due_time.slice(0, 5)}</span>
                 )}
               </li>
             ))}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   format, startOfMonth, endOfMonth,
   startOfWeek, endOfWeek, addDays,
@@ -14,6 +14,16 @@ interface Props {
 
 export function MonthWidget({ onDayClick, highlightDate }: Props) {
   const [viewDate, setViewDate] = useState(new Date())
+
+  // Structurally independent of the day view, but its position still follows
+  // it: jump to the month containing highlightDate whenever it lands outside
+  // the month currently on screen.
+  const highlightKey = highlightDate ? format(highlightDate, 'yyyy-MM') : null
+  useEffect(() => {
+    if (!highlightDate) return
+    setViewDate(highlightDate)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightKey])
 
   const monthStart = startOfMonth(viewDate)
   const monthEnd   = endOfMonth(viewDate)

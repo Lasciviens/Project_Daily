@@ -93,11 +93,9 @@ function YesterdayView({ date, onDayClick }: { date: Date; onDayClick: (d: Date)
         <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
         <p className="text-sm text-ink-400 mt-0.5">Yesterday</p>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
-        <div className="flex flex-col gap-4">
-          <DayView date={date} />
-          <DayTimeline date={date} />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-5">
+        <div className="lg:pl-1"><DayView date={date} /></div>
+        <DayTimeline date={date} />
         <WeekWidget onDayClick={onDayClick} highlightDate={date} />
       </div>
     </div>
@@ -161,14 +159,12 @@ function TodayView({
 
       <UpcomingReleasesBanner />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] xl:grid-cols-[1fr_360px] gap-5">
-        {/* Left: tasks + schedule */}
-        <div className="flex flex-col gap-4">
-          <DayView date={date} />
-          <DayTimeline date={date} />
-        </div>
-
-        {/* Right: navigation widgets */}
+      {/* Left: Tasks (indented, narrower) · Middle: Schedule · Right: date
+          widgets — structurally independent column, kept in sync with the
+          viewed date via highlightDate (see WeekWidget/MonthWidget). */}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] xl:grid-cols-[340px_1fr_320px] gap-5">
+        <div className="lg:pl-1"><DayView date={date} /></div>
+        <DayTimeline date={date} />
         <div className="flex flex-col gap-4">
           <WeekWidget onDayClick={onDayClick} highlightDate={date} />
           <MonthWidget onDayClick={onDayClick} highlightDate={date} />
@@ -185,11 +181,9 @@ function TomorrowView({ date, onDayClick }: { date: Date; onDayClick: (d: Date) 
         <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
         <p className="text-sm text-ink-400 mt-0.5">Tomorrow</p>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
-        <div className="flex flex-col gap-4">
-          <DayView date={date} />
-          <DayTimeline date={date} />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-5">
+        <div className="lg:pl-1"><DayView date={date} /></div>
+        <DayTimeline date={date} />
         <WeekWidget onDayClick={onDayClick} highlightDate={date} />
       </div>
     </div>

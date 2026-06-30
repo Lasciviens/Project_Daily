@@ -3,6 +3,7 @@ import { format, isToday, isTomorrow, isPast } from 'date-fns'
 import type { Task } from '../types'
 import { useToggleTask, useDeleteTask } from '../hooks/useTodos'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
 
 const PRIORITY_DOT: Record<Task['priority'], string> = {
   low:    'bg-ink-300',
@@ -84,19 +85,20 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
               {task.title}
             </span>
           </div>
-          {/* Due date chip + description */}
-          {(task.due_date || task.description) && (
-            <div className="flex items-center gap-1.5 mt-1 ml-3">
-              {task.due_date && (
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${dueDateCls(task.due_date, isDone)}`}>
-                  {dueDateLabel(task.due_date)}
-                </span>
-              )}
-              {task.description && (
-                <span className="text-[11px] text-ink-400 truncate max-w-[150px]">{task.description}</span>
-              )}
-            </div>
-          )}
+          {/* Domain tag + due date chip + description */}
+          <div className="flex items-center gap-1.5 mt-1 ml-3">
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${DOMAIN_TAG_CLASS[task.domain]}`}>
+              {DOMAIN_LABEL[task.domain]}
+            </span>
+            {task.due_date && (
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${dueDateCls(task.due_date, isDone)}`}>
+                {dueDateLabel(task.due_date)}
+              </span>
+            )}
+            {task.description && (
+              <span className="text-[11px] text-ink-400 truncate max-w-[150px]">{task.description}</span>
+            )}
+          </div>
         </div>
 
         {/* Actions — always visible on mobile, hover on desktop */}

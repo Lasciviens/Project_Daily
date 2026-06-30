@@ -1,12 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  UnifiedPlanModal — TASK TAB
-//  To-Do creation/editing. Mirrors the old AddTaskModal fields. Pure view:
-//  reads `form`, writes via `patch`. Field visibility comes from `config`.
+//  To-Do creation/editing. Pure view: reads `form`, writes via `patch`.
+//  Field visibility comes from `config`.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { FieldLabel, PillGroup } from './fields'
+import { FieldLabel, PillGroup, Time24Field } from './fields'
 import { DateInput } from '../DateInput'
-import { isTaskFieldHidden, isTaskFieldLocked } from './planModal.config'
+import { isTaskFieldHidden, isTaskFieldLocked, shiftTime, nextPlanTime } from './planModal.config'
+import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import type { PlanModalConfig } from './planModal.types'
 import type { PlanForm } from './planForm'
 import type { TaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
@@ -26,9 +27,9 @@ const PRIORITIES: { id: TaskPriority; label: string; dot: string }[] = [
 ]
 
 const DOMAINS: { id: TaskDomain; label: string }[] = [
-  { id: 'personal', label: 'Personal' },
-  { id: 'work',     label: 'Work'     },
-  { id: 'media',    label: 'Media'    },
+  { id: 'personal', label: DOMAIN_LABEL.personal },
+  { id: 'work',     label: DOMAIN_LABEL.work     },
+  { id: 'media',    label: DOMAIN_LABEL.media    },
 ]
 
 interface Props {
@@ -40,6 +41,15 @@ interface Props {
   extra?: React.ReactNode
 }
 
+function SectionDivider({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 -mb-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-300">{children}</span>
+      <div className="flex-1 h-px bg-ink-100" />
+    </div>
+  )
+}
+
 export function TaskTab({ form, patch, config, gcalAvailable, editMode, extra }: Props) {
   const hidden = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const locked = (f: Parameters<typeof isTaskFieldLocked>[0]) => isTaskFieldLocked(f, config)
@@ -47,12 +57,85 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode, extra }:
   return (
     <div className="px-5 py-4 flex flex-col gap-4">
       {!hidden('title') && (
-        <textarea
-          autoFocus value={form.title} disabled={locked('title')} rows={2}
-          onChange={e => patch({ title: e.target.value })}
-          placeholder="What needs to be done?"
-          className="w-full bg-cream-50 border border-ink-200 rounded-xl px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none disabled:opacity-60"
-        />
+        <div>
+          <FieldLabel>Title <span className="text-red-400">*</span></FieldLabel>
+          <textarea
+            autoFocus value={form.title} disabled={locked('title')} rows={2}
+            onChange={e => patch({ title: e.target.value })}
+            placeholder="What needs to be done?"
+            className="w-full bg-cream-50 border border-ink-200 rounded-xl px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none disabled:opacity-60"
+          />
+        </div>
+      )}
+
+      {(!hidden('section') || !hidden('priority')) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {!hidden('section') && (
+            <div>
+              <FieldLabel>Section</FieldLabel>
+              <PillGroup options={SECTIONS} value={form.section} onChange={v => patch({ section: v })} locked={locked('section')} />
+            </div>
+          )}
+          {!hidden('priority') && (
+            <div>
+              <FieldLabel>Priority</FieldLabel>
+              <PillGroup options={PRIORITIES} value={form.priority} onChange={v => patch({ priority: v })} locked={locked('priority')} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {!hidden('domain') && (
+        <div>
+          <FieldLabel>Domain</FieldLabel>
+          <PillGroup options={DOMAINS} value={form.domain} onChange={v => patch({ domain: v })} locked={locked('domain')} />
+        </div>
+      )}
+
+      {(!hidden('dueDate') || !hidden('dueTime')) && (
+        <>
+          <SectionDivider>When</SectionDivider>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {!hidden('dueDate') && (
+              <div>
+                <FieldLabel>Due Date</FieldLabel>
+                <DateInput
+                  value={form.dueDate} onChange={v => patch({ dueDate: v })}
+                  className="w-full bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px]"
+                />
+              </div>
+            )}
+            {!hidden('dueTime') && (
+              <div>
+                <FieldLabel>Due Time</FieldLabel>
+                {form.dueTime ? (
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1">
+                      <Time24Field
+                        value={form.dueTime}
+                        onChange={v => patch({ dueTime: v })}
+                        onShift={delta => patch({ dueTime: shiftTime(form.dueTime, delta) })}
+                        locked={locked('dueTime')}
+                      />
+                    </div>
+                    <button
+                      type="button" onClick={() => patch({ dueTime: '' })} disabled={locked('dueTime')}
+                      title="Clear time" aria-label="Clear time"
+                      className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors disabled:opacity-40"
+                    >✕</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button" onClick={() => patch({ dueTime: nextPlanTime() })} disabled={locked('dueTime')}
+                    className="w-full min-h-[44px] bg-cream-50 border border-dashed border-ink-200 rounded-xl text-sm text-ink-400 hover:text-accent-600 hover:border-accent-300 transition-colors disabled:opacity-40"
+                  >
+                    + Set a time
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {!hidden('notes') && (
@@ -66,49 +149,6 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode, extra }:
           />
         </div>
       )}
-
-      {!hidden('section') && (
-        <div>
-          <FieldLabel>Section</FieldLabel>
-          <PillGroup options={SECTIONS} value={form.section} onChange={v => patch({ section: v })} locked={locked('section')} />
-        </div>
-      )}
-
-      {!hidden('priority') && (
-        <div>
-          <FieldLabel>Priority</FieldLabel>
-          <PillGroup options={PRIORITIES} value={form.priority} onChange={v => patch({ priority: v })} locked={locked('priority')} />
-        </div>
-      )}
-
-      {!hidden('domain') && (
-        <div>
-          <FieldLabel>Domain</FieldLabel>
-          <PillGroup options={DOMAINS} value={form.domain} onChange={v => patch({ domain: v })} locked={locked('domain')} />
-        </div>
-      )}
-
-      <div className="flex gap-3">
-        {!hidden('dueDate') && (
-          <div className="flex-1">
-            <FieldLabel>Due Date</FieldLabel>
-            <DateInput
-              value={form.dueDate} onChange={v => patch({ dueDate: v })}
-              className="w-full bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px]"
-            />
-          </div>
-        )}
-        {!hidden('dueTime') && (
-          <div className="flex-1">
-            <FieldLabel>Due Time</FieldLabel>
-            <input
-              type="time" value={form.dueTime} disabled={locked('dueTime')}
-              onChange={e => patch({ dueTime: e.target.value })}
-              className="w-full bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] disabled:opacity-60"
-            />
-          </div>
-        )}
-      </div>
 
       {/* Caller-injected extra fields (Yol 1) */}
       {extra}
