@@ -3,6 +3,7 @@ import { HevyTab } from '../components/HevyTab'
 import { StravaTab } from '../components/StravaTab'
 import { HevySyncButton } from '../components/HevySyncButton'
 import { TrainingCalendar } from '../components/TrainingCalendar'
+import { NextSessionBanner } from '../components/NextSessionBanner'
 
 type Tab = 'hevy' | 'strava'
 
@@ -52,6 +53,7 @@ export function TrainingPage() {
       {/* Content (left, sized) + calendar pinned to the right edge */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
         <div className="w-full lg:max-w-4xl min-w-0">
+          <NextSessionBanner />
           {tab === 'hevy'   && <HevyTab />}
           {tab === 'strava' && <StravaTab />}
         </div>
