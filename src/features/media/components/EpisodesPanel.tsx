@@ -5,7 +5,7 @@ import { useSeasonDetails } from '../hooks/useTMDB'
 import { useWatchedEpisodes, useToggleEpisodeWatched } from '../hooks/useWatchedEpisodes'
 import { markEpisodeWatched } from '../api/watchedEpisodesApi'
 import { useQueryClient } from '@tanstack/react-query'
-import { AddTimeBlockModal } from '../../daily/components/AddTimeBlockModal'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import type { TMDBTVFull } from '../types'
 
 interface Props {
@@ -230,14 +230,20 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
       )}
 
       {/* Plan modal */}
-      {planModal && (
-        <AddTimeBlockModal
-          dateStr={TODAY}
-          defaultTitle={planTitle}
-          defaultDuration={planDuration}
-          onClose={() => { setPlanModal(false); setSelected(new Set()) }}
-        />
-      )}
+      <UnifiedPlanModal
+        open={planModal}
+        onClose={() => { setPlanModal(false); setSelected(new Set()) }}
+        config={{ tabs: ['schedule'], heading: 'Plan episodes', lockScheduleFields: ['category'] }}
+        defaults={{
+          title:    planTitle,
+          date:     TODAY,
+          startTime: '20:00',
+          duration: planDuration,
+          category: 'media',
+          color:    'blue',
+        }}
+        source={{ sourceType: 'media', sourceId: tvEntryId, taskSourceType: 'tv_series' }}
+      />
     </div>
   )
 }
