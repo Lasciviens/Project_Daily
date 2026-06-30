@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  FieldLabel, TextField, DateStepperField, TimeStepperField, DurationField,
+  FieldLabel, TextField, DateStepperField, Time24Field, DurationField,
   CategorySelect, RecurrenceField, CheckboxRow,
 } from './fields'
 import { stepDate, shiftTime, isScheduleFieldHidden, isScheduleFieldLocked } from './planModal.config'
@@ -56,7 +56,7 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
       {!hidden('time') && (
         <div>
           <FieldLabel>Start time (24h)</FieldLabel>
-          <TimeStepperField
+          <Time24Field
             value={form.startTime} onChange={v => patch({ startTime: v })}
             onShift={delta => patch({ startTime: shiftTime(form.startTime, delta) })} locked={locked('time')}
           />

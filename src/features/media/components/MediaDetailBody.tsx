@@ -401,21 +401,21 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <PlanThisButton
-                  entryId={entryId}
-                  sourceType={isMovie ? 'movie' : 'tv_series'}
-                  title={isMovie ? movie!.title : tv!.name}
-                  currentSeason={tvEntry?.current_season}
-                  currentEpisode={tvEntry?.current_episode}
-                  releaseDate={isMovie ? movie!.release_date : tv!.first_air_date}
-                />
+                {isMovie && (
+                  <PlanThisButton
+                    entryId={entryId}
+                    title={movie!.title}
+                    runtimeMinutes={movie!.runtime}
+                  />
+                )}
                 {tvEntry?.status === 'watching' && (
                   <button
                     onClick={handleNextEpisode}
                     disabled={updateTV.isPending}
+                    title="Move your watching position forward by one episode"
                     className="text-[11px] font-medium px-2.5 min-h-[44px] rounded bg-ink-100 text-ink-700 hover:bg-ink-200 transition-colors duration-150"
                   >
-                    + Next episode
+                    Advance to next episode ▸
                   </button>
                 )}
                 {movieEntry?.status === 'watching' && (

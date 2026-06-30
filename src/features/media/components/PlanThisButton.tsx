@@ -1,56 +1,39 @@
 import { useState } from 'react'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
 import type { PlanModalConfig, PlanDefaults, PlanSource } from '../../../shared/components/plan-modal'
 
 interface Props {
   entryId: string
-  sourceType: 'movie' | 'tv_series'
   title: string
-  currentSeason?: number
-  currentEpisode?: number
-  releaseDate?: string | null
+  /** Movie runtime in minutes — becomes the plan duration (rounded up to 15m). */
+  runtimeMinutes?: number | null
 }
 
 /**
- * Media "Plan to watch" entry point. Thin wrapper around UnifiedPlanModal:
- * - config locks Category to Media (caller-side, no modal edits)
- * - TV injects a read-only episode summary via `scheduleExtra` (children slot)
+ * Movie "Plan to watch" entry point. TV planning lives in EpisodesPanel (plan
+ * selected episodes), so this button is movie-only. Thin wrapper around
+ * UnifiedPlanModal — all shaping is done here via config/defaults/source.
  */
-export function PlanThisButton({
-  entryId, sourceType, title, currentSeason, currentEpisode,
-}: Props) {
-  const isTV    = sourceType === 'tv_series'
-  const season  = currentSeason ?? 1
-  const episode = (currentEpisode ?? 0) + 1
+export function PlanThisButton({ entryId, title, runtimeMinutes }: Props) {
   const [open, setOpen] = useState(false)
 
-  const planTitle = isTV ? `Watch: ${title} S${season}E${episode}` : `Watch: ${title}`
-
   const config: PlanModalConfig = {
-    tabs:               ['schedule'],
-    heading:            'Plan to watch',
-    lockScheduleFields: ['category'],
+    tabs:    ['schedule'],
+    heading: 'Plan to watch',
   }
   const defaults: PlanDefaults = {
-    title:          planTitle,
-    startTime:      '20:00',
-    duration:       isTV ? 45 : 120,
+    title:          `Watch: ${title}`,
+    duration:       ceilToQuarter(runtimeMinutes || 120),
     category:       'media',
-    color:          isTV ? 'blue' : 'purple',
+    color:          'purple',
     alsoCreateTask: true,
   }
   const source: PlanSource = {
-    sourceType:     'media',
+    sourceType:     'movie',        // valid time_blocks source_type (no-task path)
     sourceId:       entryId,
-    taskSourceType: sourceType,
+    taskSourceType: 'movie',
   }
-
-  const episodeNote = isTV ? (
-    <div className="text-xs text-ink-500 bg-cream-50 border border-ink-200 rounded-xl px-4 py-2.5">
-      📺 Next up · <span className="font-semibold text-ink-700">S{season} E{episode}</span>
-      <span className="text-ink-400"> — edit the title above to plan a different episode.</span>
-    </div>
-  ) : undefined
 
   return (
     <>
@@ -67,7 +50,6 @@ export function PlanThisButton({
         config={config}
         defaults={defaults}
         source={source}
-        scheduleExtra={episodeNote}
       />
     </>
   )

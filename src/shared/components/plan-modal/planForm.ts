@@ -6,7 +6,7 @@
 
 import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
-import { todayStr, WEEKDAYS } from './planModal.config'
+import { todayStr, nextPlanTime, WEEKDAYS } from './planModal.config'
 import type { PlanDefaults, RecurrenceMode } from './planModal.types'
 
 export interface PlanForm {
@@ -42,7 +42,7 @@ export function buildInitialForm(defaults?: PlanDefaults, task?: Task): PlanForm
     title:          task?.title ?? defaults?.title ?? '',
 
     date:           defaults?.date ?? today,
-    startTime:      defaults?.startTime ?? '09:00',
+    startTime:      defaults?.startTime ?? nextPlanTime(),
     duration:       defaults?.duration ?? 60,
     customMin:      '',
     category:       defaults?.category ?? 'other',
