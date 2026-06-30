@@ -96,6 +96,7 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
       section:     input.section     ?? 'inbox',
       priority:    input.priority    ?? 'medium',
       due_date:    input.due_date    ?? null,
+      due_time:    input.due_time    ?? null,
       status:      'open',
       sort_order:  0,
       source_type: input.source_type ?? 'manual',
@@ -139,6 +140,8 @@ export async function toggleTaskDone(id: string, isDone: boolean): Promise<Task>
 }
 
 export async function deleteTask(id: string): Promise<void> {
+  // Keep the schedule consistent — remove any auto-created blocks linked to this task.
+  await supabase.from('time_blocks').delete().eq('source_type', 'task').eq('source_id', id)
   const { error } = await supabase.from('tasks').delete().eq('id', id)
   if (error) throw error
 }

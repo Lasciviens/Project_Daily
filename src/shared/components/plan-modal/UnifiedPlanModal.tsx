@@ -19,6 +19,12 @@
 //  2026-06-30 · v1 · Created. Merges legacy PlanModal + AddTimeBlockModal +
 //                    AddTaskModal into one config-driven modal. Recurrence is now
 //                    functional (one-off time block vs recurring schedule block).
+//  2026-06-30 · v3 · Task↔schedule consistency: a personal task earns an auto
+//                    schedule block ONLY when it has BOTH a due date and a due
+//                    time (kills the 17:00 pile-up). Edit/create now sync the
+//                    linked block (update/create/delete via syncTaskBlock);
+//                    delete is handled in deleteTask. due_time is persisted on
+//                    create so the round-trip is stable.
 //  2026-06-30 · v2 · Media feedback: default start time = next half-hour slot
 //                    (planForm/nextPlanTime); 24h-only time field (Time24Field,
 //                    no AM/PM). Cross-table consistency: when "also create task"
@@ -30,10 +36,13 @@
 
 import { useEffect, useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast, useCalendarStore } from '../../../app/store'
 import { useCreateTimeBlock, useCreateScheduleBlock } from '../../../features/daily/hooks/useSchedule'
+import { updateTimeBlock, deleteTimeBlock } from '../../../features/daily/api/scheduleApi'
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
 import { createCalendarEvent } from '../../../features/calendar/api/calendarApi'
+import { supabase } from '../../../integrations/supabase/client'
 import { ScheduleTab } from './ScheduleTab'
 import { TaskTab } from './TaskTab'
 import { buildInitialForm } from './planForm'
@@ -66,6 +75,7 @@ export function UnifiedPlanModal({
   const [form,      setForm]      = useState<PlanForm>(() => buildInitialForm(defaults, task))
   const [saving,    setSaving]    = useState(false)
 
+  const qc          = useQueryClient()
   const calToken    = useCalendarStore(s => s.accessToken)
   const createBlock = useCreateTimeBlock()
   const createRecur = useCreateScheduleBlock()
@@ -153,12 +163,53 @@ export function UnifiedPlanModal({
   }
 
   // ── Save: Task tab ───────────────────────────────────────────────────────────
+  // Keep a task's linked schedule block in sync. A personal task earns a block
+  // ONLY when it has both a due date AND a due time (no more 17:00 pile-ups);
+  // otherwise any existing auto-block is removed. Idempotent: update / create /
+  // delete to converge on the desired state.
+  async function syncTaskBlock(taskId: string) {
+    const title     = form.title.trim()
+    const startTime = form.dueTime ? `${form.dueTime}:00` : null
+    const wantBlock = form.domain === 'personal' && !!form.dueDate && !!startTime
+
+    const { data: existing } = await supabase
+      .from('time_blocks').select('id')
+      .eq('source_type', 'task').eq('source_id', taskId)
+    const blocks = existing ?? []
+
+    if (wantBlock) {
+      if (blocks.length) {
+        await updateTimeBlock(blocks[0].id, { date: form.dueDate, start_time: startTime!, title })
+        for (const b of blocks.slice(1)) await deleteTimeBlock(b.id)   // drop dupes
+      } else {
+        await createBlock.mutateAsync({
+          date: form.dueDate, title, start_time: startTime!, duration_minutes: 60,
+          color: 'accent', category: 'daily', source_type: 'task', source_id: taskId,
+        })
+      }
+      if (form.gcal && calToken) {
+        try {
+          const base   = new Date(`${form.dueDate}T${form.dueTime}:00`)
+          await createCalendarEvent(calToken, 'primary', {
+            summary: title,
+            start:   { dateTime: base.toISOString(), timeZone: LOCAL_TZ },
+            end:     { dateTime: new Date(base.getTime() + 60 * 60_000).toISOString(), timeZone: LOCAL_TZ },
+          })
+        } catch { toast.error('Saved locally, Google Calendar sync failed') }
+      }
+    } else {
+      for (const b of blocks) await deleteTimeBlock(b.id)
+    }
+    qc.invalidateQueries({ queryKey: ['schedule'] })
+  }
+
   async function saveTask() {
+    const title = form.title.trim()
     if (editMode && task) {
       await updateTask.mutateAsync({
         id: task.id,
         patch: {
-          title:       form.title.trim(),
+          title,
           description: form.notes.trim() || null,
           section:     form.section,
           priority:    form.priority,
@@ -167,49 +218,23 @@ export function UnifiedPlanModal({
           due_time:    form.dueTime ? `${form.dueTime}:00` : null,
         },
       })
+      await syncTaskBlock(task.id)
       onSaved?.({ tab: 'task', taskId: task.id })
       return
     }
 
     const { task: created, googleTaskError } = await createTask.mutateAsync({
-      title:       form.title.trim(),
+      title,
       section:     form.section,
       priority:    form.priority,
       domain:      form.domain,
       due_date:    form.dueDate || null,
+      due_time:    form.dueTime ? `${form.dueTime}:00` : null,
       source_type: source?.taskSourceType,
       source_id:   source?.sourceId,
     })
     if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
-
-    // Auto-schedule personal tasks with a due date (mirrors legacy AddTaskModal).
-    if (form.domain === 'personal' && form.dueDate) {
-      const weekend = [0, 6].includes(new Date(form.dueDate + 'T00:00:00').getDay())
-      const startHH = weekend ? '12:00' : '17:00'
-      await createBlock.mutateAsync({
-        date:             form.dueDate,
-        title:            form.title.trim(),
-        start_time:       `${startHH}:00`,
-        duration_minutes: 60,
-        color:            'accent',
-        category:         'daily',
-        source_type:      'task',
-        source_id:        created.id,
-      })
-      if (form.gcal && calToken) {
-        try {
-          const startISO = new Date(`${form.dueDate}T${startHH}:00`).toISOString()
-          const endISO   = new Date(new Date(`${form.dueDate}T${startHH}:00`).getTime() + 60 * 60_000).toISOString()
-          await createCalendarEvent(calToken, 'primary', {
-            summary: form.title.trim(),
-            start:   { dateTime: startISO, timeZone: LOCAL_TZ },
-            end:     { dateTime: endISO,   timeZone: LOCAL_TZ },
-          })
-        } catch {
-          toast.error('Saved locally, Google Calendar sync failed')
-        }
-      }
-    }
+    await syncTaskBlock(created.id)
     onSaved?.({ tab: 'task', taskId: created.id })
   }
 
