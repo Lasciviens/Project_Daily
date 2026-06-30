@@ -1,11 +1,12 @@
 import { useState, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isToday, isPast } from 'date-fns'
+import { format } from 'date-fns'
 import { useTasksBySection } from '../../todo/hooks/useTodos'
 import { useCreateTask } from '../../todo/hooks/useTodos'
 import { useTimeBlocks } from '../../daily/hooks/useSchedule'
 import type { Task } from '../../todo/types'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { TodaySummary } from '../components/TodaySummary'
 import { WeatherWidget } from '../components/WeatherWidget'
 import { RuterWidget } from '../components/RuterWidget'
 import { CurrencyWidget } from '../components/CurrencyWidget'
@@ -34,13 +35,6 @@ const NAV_CARDS: NavCard[] = [
   { to: '/games',    label: 'Games',    icon: '🎮', desc: 'RP5 library — coming soon' },
   { to: '/projects', label: 'Projects', icon: '📋', desc: 'Track project progress' },
 ]
-
-function greeting(): string {
-  const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 17) return 'Good afternoon'
-  return 'Good evening'
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -73,14 +67,8 @@ export function HomePage() {
 
       {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 space-y-4">
-        {/* Greeting + week strip */}
-        <div className="pt-1">
-          <h1 className="text-xl font-bold text-ink-900">{greeting()}, Furkan</h1>
-          <p className="text-xs text-ink-400 mt-0.5">{format(new Date(), "EEEE, d MMMM yyyy")}</p>
-        </div>
-
-        {/* Week progress strip */}
-        <WeekStrip />
+        {/* Overview summary — leads the page */}
+        <TodaySummary />
 
         {/* Quick nav cards — 2-col on mobile, 3-col on sm+ */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -99,14 +87,14 @@ export function HomePage() {
           ))}
         </div>
 
-        {/* Weather */}
-        <WeatherWidget />
+        {/* Weather + transit side-by-side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          <WeatherWidget />
+          <RuterWidget />
+        </div>
 
         {/* Today's schedule */}
         <TodayScheduleWidget />
-
-        {/* RUTER */}
-        <RuterWidget />
 
         {/* Today's tasks */}
         <TodayTasksWidget tasks={tasks} done={done} open={open} progress={progress} isLoading={today.isLoading} onEdit={setEditingTask} />
@@ -124,44 +112,6 @@ export function HomePage() {
         config={{ tabs: ['task', 'schedule'], heading: 'Edit Task' }}
         task={editingTask ?? undefined}
       />
-    </div>
-  )
-}
-
-// ─── Week strip ───────────────────────────────────────────────────────────────
-
-function WeekStrip() {
-  const now   = new Date()
-  const start = startOfWeek(now, { weekStartsOn: 1 })
-  const end   = endOfWeek(now,   { weekStartsOn: 1 })
-  const days  = eachDayOfInterval({ start, end })
-
-  return (
-    <div className="bg-white rounded-xl border border-ink-200 shadow-sm px-4 py-3">
-      <div className="flex items-center justify-between">
-        {days.map(day => {
-          const isT  = isToday(day)
-          const past = !isT && isPast(day)
-          return (
-            <Link
-              key={day.toISOString()}
-              to={`/daily?date=${format(day, 'yyyy-MM-dd')}`}
-              className="flex flex-col items-center gap-1 group"
-            >
-              <span className="text-[9px] font-medium uppercase text-ink-400">
-                {format(day, 'EEE')}
-              </span>
-              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors duration-150 ${
-                isT  ? 'bg-accent-500 text-white' :
-                past ? 'bg-ink-100 text-ink-400'  :
-                       'text-ink-700 group-hover:bg-ink-100'
-              }`}>
-                {format(day, 'd')}
-              </span>
-            </Link>
-          )
-        })}
-      </div>
     </div>
   )
 }
@@ -259,7 +209,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
           </div>
 
           <ul className="space-y-2 mb-3">
-            {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').slice(0, 6).map(t => (
+            {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').slice(0, 5).map(t => (
               <li
                 key={t.id}
                 onClick={() => onEdit(t)}
@@ -282,7 +232,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
             ))}
           </ul>
 
-          {open > 6 && (
+          {open > 5 && (
             <div className="mb-3 text-xs text-ink-400">{open} tasks remaining</div>
           )}
         </>
