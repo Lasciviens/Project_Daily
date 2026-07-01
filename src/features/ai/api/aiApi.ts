@@ -20,11 +20,13 @@ TRAINING: log_workout, get_workouts
 HEALTH: get_health_stats
 TRANSIT: get_next_transit
 CALENDAR: get_calendar_events
+SHOP: get_shop_categories, create_shop_category, create_shop_item
 
 Rules:
 - Always call get_tasks first when user refers to a task by name — you need the ID.
 - Always call get_time_blocks before updating/deleting a schedule block.
 - Always call get_projects before creating a project item.
+- Shop: always call get_shop_categories first. Only use create_shop_category/create_shop_item once you're confident about placement (an existing subcategory clearly matches, or the user explicitly named a category) — if unsure, ask a clarifying question in plain text instead of guessing.
 - Confirm actions taken concisely.
 - Respond in the same language the user writes in (Turkish or English).`
 
@@ -160,14 +162,11 @@ function friendlyError(body: { error?: string; daily_limit?: number; retry_after
   return body.error
 }
 
-// ─── Main send function ───────────────────────────────────────────────────────
+// ─── Shared invoke ────────────────────────────────────────────────────────────
 
-export async function sendMessage(messages: Message[]): Promise<string> {
-  const context = await buildContext()
-  const systemWithContext = `${SYSTEM_PROMPT}\n\n---\nLIVE DATA:\n${context}`
-
+async function invokeAI(messages: Message[], systemPrompt: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
-    body: { messages, systemPrompt: systemWithContext },
+    body: { messages, systemPrompt },
   })
 
   if (error) {
@@ -183,4 +182,46 @@ export async function sendMessage(messages: Message[]): Promise<string> {
 
   if (data?.error) throw new Error(friendlyError(data, data.error))
   return data.text as string
+}
+
+// ─── Main send function ───────────────────────────────────────────────────────
+
+export async function sendMessage(messages: Message[]): Promise<string> {
+  const context = await buildContext()
+  const systemWithContext = `${SYSTEM_PROMPT}\n\n---\nLIVE DATA:\n${context}`
+  return invokeAI(messages, systemWithContext)
+}
+
+// ─── Shop-scoped send function ───────────────────────────────────────────────
+//  Narrower system prompt than the general assistant — restricted to shop
+//  categorization so it never drifts into unrelated tasks/media actions from
+//  the dedicated Shop-page prompt box.
+
+const SHOP_SYSTEM_PROMPT = `You help categorize shopping-wishlist items for Lasci's Board.
+
+You have exactly these tools: get_shop_categories, create_shop_category, create_shop_item.
+
+Categories are a STRICT 2-level tree: top category -> subcategory. Items always
+attach to a SUBCATEGORY, never to a top category directly.
+
+Process for every request:
+1. Call get_shop_categories first, always.
+2. If an existing subcategory is a clear, confident match for the item, use
+   create_shop_item with that subcategory's ID immediately — don't ask.
+3. If no subcategory is a clear match, DO NOT create one yourself. Instead ask
+   the user a short clarifying question in plain text: suggest where you think
+   it might fit (existing top category + a new subcategory name, or a brand
+   new top category if nothing fits), and ask them to confirm or correct it.
+4. Once the user confirms in their reply, call create_shop_category for the
+   new subcategory (with parent_id if it belongs under an existing top
+   category, omitted if it's a new top category too), then create_shop_item.
+5. Extract any details the user mentions (price, platform, URL, priority,
+   region TR/NO, planned date) into the item — don't ask about fields the
+   user didn't mention.
+6. After creating something, confirm concisely: what was added and where.
+
+Respond in the same language the user writes in (Turkish or English).`
+
+export async function sendShopMessage(messages: Message[]): Promise<string> {
+  return invokeAI(messages, SHOP_SYSTEM_PROMPT)
 }
