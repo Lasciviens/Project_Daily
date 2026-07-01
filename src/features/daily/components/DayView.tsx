@@ -3,14 +3,9 @@ import { format } from 'date-fns'
 import { useDayData } from '../hooks/useDayData'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { completedWithinLast24h } from '../../todo/taskRules'
 
 interface Props { date: Date }
-
-// Rule: a "Done" task only stays visible for 24h after completion — older
-// completions disappear from this list (they're not deleted, just hidden here).
-function completedWithinLast24h(updatedAt: string): boolean {
-  return Date.now() - new Date(updatedAt).getTime() < 24 * 60 * 60 * 1000
-}
 
 export function DayView({ date }: Props) {
   const { tasks, isLoading, section } = useDayData(date)

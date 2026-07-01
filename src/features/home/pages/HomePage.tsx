@@ -1,11 +1,11 @@
 import { useState, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
-import { useTasksBySection } from '../../todo/hooks/useTodos'
-import { useCreateTask } from '../../todo/hooks/useTodos'
+import { useTasksForDay, useCreateTask } from '../../todo/hooks/useTodos'
 import { useTimeBlocks } from '../../daily/hooks/useSchedule'
 import type { Task } from '../../todo/types'
 import { DOMAIN_TAG_CLASS, DOMAIN_LABEL } from '../../todo/domainColors'
+import { completedWithinLast24h } from '../../todo/taskRules'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { TodaySummary } from '../components/TodaySummary'
 import { WeatherWidget } from '../components/WeatherWidget'
@@ -39,11 +39,15 @@ const NAV_CARDS: NavCard[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function HomePage() {
-  const today        = useTasksBySection('today')
-  const tasks        = today.data ?? []
-  const done         = tasks.filter(t => t.status === 'done').length
-  const open         = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
-  const progress     = tasks.length > 0 ? (done / tasks.length) * 100 : 0
+  // Same date-scoped query Daily uses — section='today' AND due today (or
+  // undated), rather than every task ever filed into the 'today' bucket.
+  const today        = useTasksForDay(new Date(), 'today')
+  const allTasks      = today.data ?? []
+  const doneTasks     = allTasks.filter(t => t.status === 'done' && completedWithinLast24h(t.updated_at))
+  const tasks         = allTasks.filter(t => t.status !== 'done' || completedWithinLast24h(t.updated_at))
+  const done          = doneTasks.length
+  const open          = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
+  const progress      = tasks.length > 0 ? (done / tasks.length) * 100 : 0
   const [editingTask, setEditingTask] = useState<Task | null>(null)
 
   return (
@@ -157,7 +161,7 @@ function TodayScheduleWidget() {
 // ─── Today's Tasks sub-widget ─────────────────────────────────────────────────
 
 interface TodayTasksProps {
-  tasks:     ReturnType<typeof useTasksBySection>['data'] extends undefined ? never : NonNullable<ReturnType<typeof useTasksBySection>['data']>
+  tasks:     Task[]
   done:      number
   open:      number
   progress:  number
