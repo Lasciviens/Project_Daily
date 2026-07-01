@@ -4,9 +4,10 @@ import {
   format, addDays, parseISO, startOfWeek, endOfWeek, eachDayOfInterval,
   isToday, isPast, differenceInCalendarDays, getISOWeek,
 } from 'date-fns'
-import { useTasksBySection } from '../../todo/hooks/useTodos'
+import { useTasksForDay } from '../../todo/hooks/useTodos'
 import { useTimeBlocks, useTrainingBlocks } from '../../daily/hooks/useSchedule'
 import { fetchWeather, weatherIcon } from '../api/weatherApi'
+import { completedWithinLast24h } from '../../todo/taskRules'
 
 const OSLO = { lat: 59.9139, lon: 10.7522 }
 
@@ -33,7 +34,7 @@ function relativeDay(dateStr: string): string {
 export function TodaySummary() {
   const todayStr = format(new Date(), 'yyyy-MM-dd')
 
-  const { data: tasks = [] }  = useTasksBySection('today')
+  const { data: allTasks = [] } = useTasksForDay(new Date(), 'today')
   const { data: blocks = [] } = useTimeBlocks(todayStr)
   const { data: training = [] } = useTrainingBlocks(todayStr, format(addDays(new Date(), 30), 'yyyy-MM-dd'))
   const { data: weather } = useQuery({
@@ -42,8 +43,10 @@ export function TodaySummary() {
     staleTime: 10 * 60_000,
   })
 
-  const open = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
-  const done = tasks.filter(t => t.status === 'done').length
+  // Same 24h done-visibility rule as Daily/Home — stale completions drop out.
+  const tasks = allTasks.filter(t => t.status !== 'done' || completedWithinLast24h(t.updated_at))
+  const open  = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
+  const done  = tasks.filter(t => t.status === 'done').length
 
   const nowHHMM = format(new Date(), 'HH:mm')
   const nextBlock = blocks
