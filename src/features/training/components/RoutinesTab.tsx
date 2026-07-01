@@ -168,7 +168,7 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
         open={planOpen}
         onClose={() => setPlanOpen(false)}
         config={{ tabs: ['schedule', 'task'], heading: 'Plan routine' }}
-        defaults={{ title: routine.title, category: 'training', color: 'accent' }}
+        defaults={{ title: routine.title, category: 'training', color: 'accent', alsoCreateTask: true }}
         source={{ sourceType: 'training_session', sourceId: routine.id }}
       />
     </div>
