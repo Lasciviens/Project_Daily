@@ -44,7 +44,8 @@ UI primitives: `@headlessui/react` v2 (Dialog, Combobox, Popover, Menu). No anim
 ```
 /#/login      → LoginPage (public)
 /#/home       → HomePage
-/#/daily      → DailyPage
+/#/daily      → DailyPage   (nav: grouped under "Personal" dropdown with Shop)
+/#/shop       → ShopPage    (nav: grouped under "Personal" dropdown with Daily)
 /#/media      → MediaPage
 /#/work       → WorkPage
 /#/projects   → ProjectsPage
@@ -65,6 +66,7 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 |---|---|---|
 | Auth | ✅ | LoginPage |
 | Daily + To-Do | ✅ | DayView, DayTimeline, WeekWidget, MonthWidget, AddTimeBlockModal, ToDoDrawer |
+| Shop | ✅ | See Shop section below. Nav: "Personal" dropdown (Daily, Shop) in `src/app/layout.tsx` |
 | Media | ✅ | See Media section below |
 | Work | ✅ | Vertical kanban (Overdue/To-do/In Progress/Waiting/Done), Developer tab inside Work, drag-and-drop, HeroTaskWidget (2 focus cards), WorkDayTimeline (work tasks only) |
 | AI | ✅ | Gemini 2.5 Flash via Edge Function, create_task function calling |
@@ -92,6 +94,15 @@ Full-width layout (no max-width constraint). Key components:
 DB tables: `movies`, `user_movie_entries` (statuses: watching/wishlist/completed/dropped/upcoming), `tv_series`, `user_tv_entries` (statuses: watching/wishlist/completed/dropped/paused), `watched_episodes` (season, episode, watched_on date)
 Both movie and TV entries have: `rating int (1-10)`, `genres jsonb`, `personal_note`, `priority`
 TMDB images: `posterUrl(path, size)` from `src/integrations/tmdb/client.ts`
+
+### Shop Feature Detail
+Wishlist/shopping-planner under `src/features/shop/`. Strict **2-level** category tree — `shop_categories.parent_id` null = top category, set = subcategory; items always attach to a subcategory (`shop_items.category_id`), never to a top category.
+- `ShopAIBox` — free-text prompt box (separate from the app-wide ✦ Ask AI panel) using `sendShopMessage` (aiApi.ts) with a categorization-only system prompt. Keeps a short local conversation so the AI can ask a clarifying question ("hangi kategoriye koyayım?") when no existing subcategory confidently matches, then create the category + item once the user replies — it never guesses a new category silently.
+- `AddShopItemModal` — manual add: top category / subcategory cascading selects, each with "+ New…" to create on the fly.
+- `ShopItemCard` — title, notes, price (+ `price_source`: `manual` or `ai_estimate`), platform, link, priority dot, region flag (🇹🇷/🇳🇴), planned date, mark bought/delete.
+- No live price-lookup API (Prisjakt/Akakçe have no public free API) — price is manual entry; AI can only give a rough text estimate on request via the prompt box, never auto-writes a price.
+- DB: `shop_categories` (id, user_id, name, parent_id), `shop_items` (category_id, title, notes, price, price_source, platform, url, priority, region `TR`/`NO`, planned_date, status `wishlist`/`bought`/`dropped`, source_type `manual`/`ai`). Migration `029_shop.sql`.
+- AI tools (ai-proxy): `get_shop_categories`, `create_shop_category`, `create_shop_item` — same Gemini function-calling pattern as `create_task`.
 
 ### Training Feature Detail
 Page layout (`TrainingPage`): faint training-photo header banner; Hevy/Strava pill tabs + Sync/Settings on the **left**; content column (`max-w-4xl`, left-aligned) with `TrainingCalendar` **pinned to the right edge (440px)**, independent of the active tab.
@@ -223,7 +234,7 @@ Reference files: `src/shared/components/plan-modal/UnifiedPlanModal.tsx` (Dialog
 
 | Function | Purpose |
 |---|---|
-| `ai-proxy` | Gemini AI calls |
+| `ai-proxy` | Gemini AI calls — function-calling tools incl. tasks/schedule/media/training/projects/transit/**shop** (see Shop Feature Detail) |
 | `calendar-oauth` / `calendar-token` / `calendar-disconnect` | Google Calendar OAuth |
 | `football-api` | API-Football proxy (currently unused — free tier doesn't cover current season) |
 | `news-proxy` | RSS feed proxy |

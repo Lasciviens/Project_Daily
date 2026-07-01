@@ -268,6 +268,42 @@ const TOOLS = [
         },
       },
       {
+        name: 'get_shop_categories',
+        description: 'List all shopping-wishlist categories (top categories and their subcategories). ALWAYS call this before create_shop_category or create_shop_item to check for an existing matching subcategory.',
+        parameters: { type: 'OBJECT', properties: {}, required: [] },
+      },
+      {
+        name: 'create_shop_category',
+        description: 'Create a shopping category. Omit parent_id to create a NEW TOP category; pass parent_id (from get_shop_categories) to create a subcategory under an existing top category. Only ever call this after get_shop_categories found no matching subcategory, and only after the user has confirmed the category name/placement if it was ambiguous.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            name:      { type: 'STRING' },
+            parent_id: { type: 'STRING', description: 'Top category ID (omit to create a new top category)' },
+          },
+          required: ['name'],
+        },
+      },
+      {
+        name: 'create_shop_item',
+        description: 'Add a wishlist item to a shopping subcategory. category_id MUST be a subcategory ID (one that itself has a parent) from get_shop_categories or a just-created create_shop_category result — never a top-category ID.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            category_id:  { type: 'STRING', description: 'Subcategory ID' },
+            title:        { type: 'STRING' },
+            notes:        { type: 'STRING' },
+            price:        { type: 'NUMBER' },
+            platform:     { type: 'STRING', description: 'e.g. PS5, PC, iOS (optional)' },
+            url:          { type: 'STRING' },
+            priority:     { type: 'STRING', enum: ['low', 'medium', 'high'] },
+            region:       { type: 'STRING', enum: ['TR', 'NO'], description: 'Which country this purchase relates to (optional)' },
+            planned_date: { type: 'STRING', description: 'YYYY-MM-DD — when the user plans to buy this (optional)' },
+          },
+          required: ['category_id', 'title'],
+        },
+      },
+      {
         name: 'get_next_transit',
         description: 'Get the next departures from a saved transit stop. Use to answer "when is the next bus/tram?"',
         parameters: {
@@ -449,6 +485,9 @@ async function dispatch(
     case 'get_health_stats':     return getHealthStats(supabase, userId, args)
     case 'mark_episode_watched': return markEpisodeWatched(supabase, userId, args)
     case 'update_time_block':    return updateTimeBlock(supabase, userId, args)
+    case 'get_shop_categories':  return getShopCategories(supabase, userId)
+    case 'create_shop_category': return createShopCategoryFn(supabase, userId, args)
+    case 'create_shop_item':     return createShopItemFn(supabase, userId, args)
     case 'get_next_transit':     return getNextTransit(supabase, userId, args)
     default:                     return { success: false, error: `Unknown function: ${name}` }
   }
@@ -940,6 +979,63 @@ async function updateTimeBlock(supabase: AnyRecord, userId: string, args: AnyRec
 
   if (error) return { success: false, error: error.message }
   return { success: true, block_id: args.block_id, updated: patch }
+}
+
+async function getShopCategories(supabase: AnyRecord, userId: string): Promise<AnyRecord> {
+  const { data, error } = await supabase
+    .from('shop_categories')
+    .select('id, name, parent_id')
+    .eq('user_id', userId)
+    .order('name', { ascending: true })
+
+  if (error) return { success: false, error: error.message }
+
+  const rows = data ?? []
+  const top = rows.filter((c: AnyRecord) => !c.parent_id)
+  const categories = top.map((t: AnyRecord) => ({
+    id:   t.id,
+    name: t.name,
+    subcategories: rows
+      .filter((c: AnyRecord) => c.parent_id === t.id)
+      .map((s: AnyRecord) => ({ id: s.id, name: s.name })),
+  }))
+
+  return { success: true, categories }
+}
+
+async function createShopCategoryFn(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const { data, error } = await supabase
+    .from('shop_categories')
+    .insert({ user_id: userId, name: args.name, parent_id: args.parent_id ?? null })
+    .select()
+    .single()
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, category_id: data.id, name: data.name, is_top: !data.parent_id }
+}
+
+async function createShopItemFn(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const { data, error } = await supabase
+    .from('shop_items')
+    .insert({
+      user_id:      userId,
+      category_id:  args.category_id,
+      title:        args.title,
+      notes:        args.notes ?? null,
+      price:        args.price ?? null,
+      price_source: args.price != null ? 'manual' : null,
+      platform:     args.platform ?? null,
+      url:          args.url ?? null,
+      priority:     args.priority ?? 'medium',
+      region:       args.region ?? null,
+      planned_date: args.planned_date ?? null,
+      source_type:  'ai',
+    })
+    .select()
+    .single()
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, item_id: data.id, title: data.title, category_id: data.category_id }
 }
 
 async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
