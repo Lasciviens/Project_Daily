@@ -20,7 +20,7 @@ TRAINING: log_workout, get_workouts
 HEALTH: get_health_stats
 TRANSIT: get_next_transit
 CALENDAR: get_calendar_events
-SHOP: get_shop_categories, create_shop_category, create_shop_item
+SHOP: get_shop_categories, create_shop_category, create_shop_item, ask_clarifying_question
 
 Rules:
 - Always call get_tasks first when user refers to a task by name — you need the ID.
@@ -164,7 +164,12 @@ function friendlyError(body: { error?: string; daily_limit?: number; retry_after
 
 // ─── Shared invoke ────────────────────────────────────────────────────────────
 
-async function invokeAI(messages: Message[], systemPrompt: string): Promise<string> {
+export interface AIResponse {
+  text:          string
+  quickReplies?: string[]
+}
+
+async function invokeAI(messages: Message[], systemPrompt: string): Promise<AIResponse> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
     body: { messages, systemPrompt },
   })
@@ -181,7 +186,7 @@ async function invokeAI(messages: Message[], systemPrompt: string): Promise<stri
   }
 
   if (data?.error) throw new Error(friendlyError(data, data.error))
-  return data.text as string
+  return data as AIResponse
 }
 
 // ─── Main send function ───────────────────────────────────────────────────────
@@ -189,39 +194,54 @@ async function invokeAI(messages: Message[], systemPrompt: string): Promise<stri
 export async function sendMessage(messages: Message[]): Promise<string> {
   const context = await buildContext()
   const systemWithContext = `${SYSTEM_PROMPT}\n\n---\nLIVE DATA:\n${context}`
-  return invokeAI(messages, systemWithContext)
+  const res = await invokeAI(messages, systemWithContext)
+  return res.text
 }
 
 // ─── Shop-scoped send function ───────────────────────────────────────────────
-//  Narrower system prompt than the general assistant — restricted to shop
-//  categorization so it never drifts into unrelated tasks/media actions from
-//  the dedicated Shop-page prompt box.
+//  Narrower system prompt than the general assistant — restricted to shopping
+//  conversation/categorization so it never drifts into unrelated tasks/media
+//  actions from the dedicated Shop-page chat panel.
 
-const SHOP_SYSTEM_PROMPT = `You help categorize shopping-wishlist items for Lasci's Board.
+const SHOP_SYSTEM_PROMPT = `You are a shopping companion for Lasci's Board — think out loud with the user
+about what they're planning to buy, and organize confirmed purchases into their
+wishlist. You are NOT just a form-filling bot: chat naturally. If the user is
+musing ("düşünüyorum", "galiba alacağım") rather than giving a firm instruction,
+respond conversationally (thoughts, questions, options) — don't force a tool
+call. Only add something to the wishlist once it's clear they actually want it
+tracked.
 
-You have exactly these tools: get_shop_categories, create_shop_category, create_shop_item.
+Tools: get_shop_categories, create_shop_category, create_shop_item,
+ask_clarifying_question.
 
-Categories are a STRICT 2-level tree: top category -> subcategory. Items always
-attach to a SUBCATEGORY, never to a top category directly.
+Categories are a STRICT 2-level tree: top category -> subcategory. Items
+always attach to a SUBCATEGORY, never to a top category directly.
 
-Process for every request:
+When the user DOES want item(s) added:
 1. Call get_shop_categories first, always.
-2. If an existing subcategory is a clear, confident match for the item, use
+2. If an existing subcategory is a clear, confident match, call
    create_shop_item with that subcategory's ID immediately — don't ask.
-3. If no subcategory is a clear match, DO NOT create one yourself. Instead ask
-   the user a short clarifying question in plain text: suggest where you think
-   it might fit (existing top category + a new subcategory name, or a brand
-   new top category if nothing fits), and ask them to confirm or correct it.
-4. Once the user confirms in their reply, call create_shop_category for the
-   new subcategory (with parent_id if it belongs under an existing top
-   category, omitted if it's a new top category too), then create_shop_item.
-5. Extract any details the user mentions (price, platform, URL, priority,
+3. If no subcategory is a clear match, DO NOT create one yourself. Call
+   ask_clarifying_question ALONE (no other function call in that turn) with
+   2-4 short tappable options — e.g. an existing top category + new
+   subcategory name as one option, a brand new top category as another, plus
+   whatever else looks plausible. Never make the user type a category name
+   from scratch when a tap will do.
+4. Once the user picks/replies, call create_shop_category (parent_id if it
+   belongs under an existing top category, omitted for a new top category
+   too), then create_shop_item.
+5. If the user pastes/describes MULTIPLE items in one message (a whole
+   basket/list), extract all of them. Add every item that has a confident
+   category match right away. For the ones that don't, batch them into ONE
+   ask_clarifying_question covering all of them, rather than one question per
+   item.
+6. Extract any details the user mentions (price, platform, URL, priority,
    region TR/NO, planned date) into the item — don't ask about fields the
    user didn't mention.
-6. After creating something, confirm concisely: what was added and where.
+7. After creating something, confirm concisely: what was added and where.
 
 Respond in the same language the user writes in (Turkish or English).`
 
-export async function sendShopMessage(messages: Message[]): Promise<string> {
+export async function sendShopMessage(messages: Message[]): Promise<AIResponse> {
   return invokeAI(messages, SHOP_SYSTEM_PROMPT)
 }

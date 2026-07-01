@@ -304,6 +304,18 @@ const TOOLS = [
         },
       },
       {
+        name: 'ask_clarifying_question',
+        description: 'Ask the user a clarifying yes/no or multiple-choice question and present the choices as tappable buttons, instead of asking them to type a free-text answer. Use this whenever you need a decision from the user before proceeding (e.g. confirming a new category) — do NOT combine this with other function calls in the same turn; ask first, wait for their tap, then act.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            question: { type: 'STRING' },
+            options:  { type: 'ARRAY', items: { type: 'STRING' }, description: '2-4 short tappable option labels' },
+          },
+          required: ['question', 'options'],
+        },
+      },
+      {
         name: 'get_next_transit',
         description: 'Get the next departures from a saved transit stop. Use to answer "when is the next bus/tram?"',
         parameters: {
@@ -361,8 +373,8 @@ Deno.serve(async (req) => {
       })
     }
 
-    const text = await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id)
-    return new Response(JSON.stringify({ text }), {
+    const result = await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id)
+    return new Response(JSON.stringify(result), {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
   } catch (err) {
@@ -387,7 +399,7 @@ async function callGemini(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   userId: string,
-): Promise<string> {
+): Promise<{ text: string; quickReplies?: string[] }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`
 
   let contents: AnyRecord[] = messages.map(m => ({
@@ -438,7 +450,16 @@ async function callGemini(
 
     if (fnCallParts.length === 0) {
       // No more function calls — return the text response
-      return parts.find((p: AnyRecord) => p.text)?.text ?? ''
+      return { text: parts.find((p: AnyRecord) => p.text)?.text ?? '' }
+    }
+
+    // ask_clarifying_question short-circuits the loop: the "answer" has to
+    // come from the human as a real next turn, not a synthesized tool
+    // response, so we return immediately instead of continuing the loop.
+    const clarifyCall = fnCallParts.find((p: AnyRecord) => p.functionCall.name === 'ask_clarifying_question')
+    if (clarifyCall) {
+      const { question, options } = clarifyCall.functionCall.args
+      return { text: question, quickReplies: Array.isArray(options) ? options : [] }
     }
 
     // Preserve candidate.content verbatim — dropping it loses the encrypted thoughtSignature
@@ -456,7 +477,7 @@ async function callGemini(
     contents = [...contents, { role: 'tool', parts: toolResponseParts }]
   }
 
-  return 'Done — all requested actions completed.'
+  return { text: 'Done — all requested actions completed.' }
 }
 
 async function dispatch(
