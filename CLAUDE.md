@@ -46,6 +46,7 @@ UI primitives: `@headlessui/react` v2 (Dialog, Combobox, Popover, Menu). No anim
 /#/home       → HomePage
 /#/daily      → DailyPage   (nav: grouped under "Personal" dropdown with Shop)
 /#/shop       → ShopPage    (nav: grouped under "Personal" dropdown with Daily)
+/#/recipes    → RecipesPage (nav: grouped under "Personal" dropdown)
 /#/media      → MediaPage
 /#/work       → WorkPage
 /#/projects   → ProjectsPage
@@ -66,7 +67,8 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 |---|---|---|
 | Auth | ✅ | LoginPage |
 | Daily + To-Do | ✅ | DayView, DayTimeline, WeekWidget, MonthWidget, AddTimeBlockModal, ToDoDrawer |
-| Shop | ✅ | See Shop section below. Nav: "Personal" dropdown (Daily, Shop) in `src/app/layout.tsx` |
+| Shop | ✅ | See Shop section below. Nav: "Personal" dropdown (Daily, Shop, Recipes) in `src/app/layout.tsx` |
+| Recipes | 🚧 | Phase 1 only (CRUD + serving scaling + per-serving macros). See Recipes section. Phase 2: weekly meal plan. Phase 3: pantry checkbox → Shop shopping-list. Phase 4: AI macro estimate / recipe parse |
 | Media | ✅ | See Media section below |
 | Work | ✅ | Vertical kanban (Overdue/To-do/In Progress/Waiting/Done), Developer tab inside Work, drag-and-drop, HeroTaskWidget (2 focus cards), WorkDayTimeline (work tasks only) |
 | AI | ✅ | Gemini 2.5 Flash via Edge Function, create_task function calling |
@@ -104,6 +106,13 @@ Wishlist/shopping-planner under `src/features/shop/`. Strict **2-level** categor
 - No live price-lookup API (Prisjakt/Akakçe have no public free API) — price is manual entry; AI can only give a rough text estimate on request via the chat panel, never auto-writes a price.
 - DB: `shop_categories` (id, user_id, name, parent_id), `shop_items` (category_id, title, notes, price, price_source, platform, url, priority, region `TR`/`NO`, planned_date, status `wishlist`/`bought`/`dropped`, source_type `manual`/`ai`). Migrations `029_shop.sql` (schema) + `030_shop_seed_categories.sql` (partial-unique indexes + a starter taxonomy — Electronics/Clothing/Home & Living/Personal Care & Health/Hobby & Games/Sports & Outdoor/Groceries/Books & Stationery — seeded idempotently for every existing user).
 - AI tools (ai-proxy, shared with the main Ask AI panel too): `get_shop_categories`, `create_shop_category`, `create_shop_item`, `ask_clarifying_question` — same Gemini function-calling pattern as `create_task`.
+
+### Recipes Feature Detail
+Personal recipe collection under `src/features/recipes/` (nav: Personal → Recipes). **Phase 1 shipped** = CRUD + serving scaling + per-serving macros; later phases add a weekly meal plan, a pantry checkbox that pushes missing ingredients to the Shop shopping-list, and AI macro-estimate / recipe-paste-parse. Built fresh in Supabase (RecipeSage was evaluated as an integration/self-host target but rejected — AGPL + separate tRPC service + needs its own server; no consumer recipe app has a usable public API).
+- DB (migration `031_recipes.sql`): `recipes` (title, description, `servings` base count, instructions, per-serving `calories`/`protein_g`/`carbs_g`/`fat_g`, image_url, source_url) + `recipe_ingredients` (name, `quantity` nullable=to-taste, unit, note, sort_order). Ingredient quantities are stored for the base `servings`; macros are stored **per serving**.
+- `RecipeModal` — create/edit: title, base servings, dynamic ingredient rows (qty/unit/name/remove), instructions (one step per line), per-serving macro row. Manual entry (AI estimate is a later phase). Save replaces all ingredient rows.
+- `RecipeDetail` — view + serving stepper: changing servings rescales ingredient quantities (× target/base) and totals macros (per-serving × target). Edit/delete.
+- `RecipeCard` / `RecipesPage` — card grid landing.
 
 ### Training Feature Detail
 Page layout (`TrainingPage`): faint training-photo header banner; Hevy/Strava pill tabs + Sync/Settings on the **left**; content column (`max-w-4xl`, left-aligned) with `TrainingCalendar` **pinned to the right edge (440px)**, independent of the active tab.

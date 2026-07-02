@@ -27,7 +27,7 @@ export function Layout() {
 // entry via a dropdown menu — kept separate from the flat top-level routes.
 function PersonalNavMenu() {
   const location = useLocation()
-  const isActive = location.pathname === '/daily' || location.pathname === '/shop'
+  const isActive = ['/daily', '/shop', '/recipes'].includes(location.pathname)
 
   return (
     <Menu as="div" className="relative">
@@ -48,6 +48,9 @@ function PersonalNavMenu() {
         </MenuItem>
         <MenuItem>
           <Link to="/shop" className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 data-[focus]:bg-cream-50">Shop</Link>
+        </MenuItem>
+        <MenuItem>
+          <Link to="/recipes" className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 data-[focus]:bg-cream-50">Recipes</Link>
         </MenuItem>
       </MenuItems>
     </Menu>

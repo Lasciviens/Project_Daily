@@ -5,6 +5,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage'
 import { HomePage } from '../features/home/pages/HomePage'
 import { DailyPage } from '../features/daily/pages/DailyPage'
 import { ShopPage } from '../features/shop/pages/ShopPage'
+import { RecipesPage } from '../features/recipes/pages/RecipesPage'
 import { MediaPage } from '../features/media/pages/MediaPage'
 import { WorkPage } from '../features/work/pages/WorkPage'
 import { TrainingPage } from '../features/training/pages/TrainingPage'
@@ -28,7 +29,8 @@ export function Router() {
           <Route index element={<Navigate to="/home" replace />} />
           <Route path="/home"  element={<HomePage />} />
           <Route path="/daily" element={<DailyPage />} />
-          <Route path="/shop"  element={<ShopPage />} />
+          <Route path="/shop"    element={<ShopPage />} />
+          <Route path="/recipes" element={<RecipesPage />} />
           <Route path="/media" element={<MediaPage />} />
           <Route path="/work"     element={<WorkPage />} />
           <Route path="/training"  element={<TrainingPage />} />
