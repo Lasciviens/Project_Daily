@@ -62,7 +62,8 @@ export function MealPlanWeek() {
               {days.map(day => {
                 const dateStr = format(day, 'yyyy-MM-dd')
                 const entry = entryFor(dateStr, slot)
-                const label = entry?.recipe?.title ?? entry?.custom_title ?? null
+                const label = entry?.recipe?.title ?? entry?.custom_title
+                  ?? (entry?.ingredient?.name ? `${entry.ingredient_quantity ?? ''}${entry.ingredient_unit ?? ''} ${entry.ingredient.name}`.trim() : null)
                 return (
                   <button
                     key={`${slot}-${dateStr}`}
