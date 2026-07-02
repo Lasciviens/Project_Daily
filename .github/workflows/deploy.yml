@@ -12,7 +12,11 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # false (not true) per GitHub's own Pages template — cancelling the Actions
+  # job doesn't necessarily cancel the in-flight Pages-side deployment, which
+  # can leave that environment in a stuck state for the *next* run and is a
+  # plausible contributor to "Deployment failed, try again later" errors.
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
