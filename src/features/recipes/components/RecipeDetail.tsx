@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { toast } from '../../../app/store'
 import { useDeleteRecipe } from '../hooks/useRecipes'
+import { useAddMissingIngredientsToShop } from '../hooks/useShopIntegration'
 import type { RecipeWithIngredients } from '../types'
 
 interface Props {
@@ -20,8 +21,28 @@ function scaledQty(q: number | null, factor: number): string {
 
 export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const [servings, setServings] = useState(recipe.servings)
-  const remove = useDeleteRecipe()
+  const [have,      setHave]     = useState<Set<string>>(new Set())
+  const remove       = useDeleteRecipe()
+  const addToShop    = useAddMissingIngredientsToShop()
   const factor = recipe.servings > 0 ? servings / recipe.servings : 1
+
+  function toggleHave(id: string) {
+    setHave(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function handleAddMissingToShop() {
+    const missing = recipe.ingredients.filter(i => !have.has(i.id))
+    if (!missing.length) { toast.error('Everything is checked off — nothing to add'); return }
+    const tid = toast.loading('Adding to Shop…')
+    addToShop.mutate({ ingredients: missing, recipeTitle: recipe.title }, {
+      onSuccess: (count) => { toast.dismiss(tid); toast.success(`Added ${count} item${count !== 1 ? 's' : ''} to Shop ✓`) },
+      onError:   (e)     => { toast.dismiss(tid); toast.error((e as Error).message) },
+    })
+  }
 
   const macro = (perServing: number | null) =>
     perServing == null ? null : Math.round(perServing * servings)
@@ -83,20 +104,43 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
               </div>
             )}
 
-            {/* Ingredients */}
+            {/* Ingredients — checkbox = "I already have this" */}
             {recipe.ingredients.length > 0 && (
               <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Ingredients</label>
-                <ul className="flex flex-col gap-1">
-                  {recipe.ingredients.map(ing => (
-                    <li key={ing.id} className="flex items-baseline gap-2 text-sm text-ink-800">
-                      <span className="font-medium tabular-nums text-ink-900 min-w-[3rem]">
-                        {scaledQty(ing.quantity, factor)} {ing.unit ?? ''}
-                      </span>
-                      <span className="flex-1">{ing.name}{ing.note ? <span className="text-ink-400"> · {ing.note}</span> : ''}</span>
-                    </li>
-                  ))}
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Ingredients</label>
+                  <span className="text-[10px] text-ink-400">Check what you already have</span>
+                </div>
+                <ul className="flex flex-col gap-0.5">
+                  {recipe.ingredients.map(ing => {
+                    const checked = have.has(ing.id)
+                    return (
+                      <li key={ing.id}>
+                        <button
+                          type="button" onClick={() => toggleHave(ing.id)}
+                          className={`w-full flex items-center gap-2 text-sm text-left rounded-lg px-1.5 py-1 min-h-[36px] transition-colors ${checked ? 'opacity-50' : 'hover:bg-cream-50'}`}
+                        >
+                          <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${checked ? 'bg-accent-500 border-accent-500' : 'border-ink-300'}`}>
+                            {checked && <span className="text-white text-[9px] font-bold leading-none">✓</span>}
+                          </span>
+                          <span className={`font-medium tabular-nums text-ink-900 min-w-[3rem] ${checked ? 'line-through' : ''}`}>
+                            {scaledQty(ing.quantity, factor)} {ing.unit ?? ''}
+                          </span>
+                          <span className={`flex-1 text-ink-800 ${checked ? 'line-through' : ''}`}>
+                            {ing.name}{ing.note ? <span className="text-ink-400"> · {ing.note}</span> : ''}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
                 </ul>
+                <button
+                  onClick={handleAddMissingToShop}
+                  disabled={addToShop.isPending}
+                  className="mt-2 w-full min-h-[40px] text-xs font-medium text-accent-600 border border-accent-200 rounded-lg hover:bg-accent-50 disabled:opacity-50 transition-colors"
+                >
+                  🛍️ Add missing to Shop
+                </button>
               </div>
             )}
 
