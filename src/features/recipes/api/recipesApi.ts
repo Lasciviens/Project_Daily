@@ -167,3 +167,8 @@ export async function deleteRecipe(id: string): Promise<void> {
   const { error } = await supabase.from('recipes').delete().eq('id', id)
   if (error) throw error
 }
+
+export async function incrementTimesCooked(id: string, current: number): Promise<void> {
+  const { error } = await supabase.from('recipes').update({ times_cooked: current + 1 }).eq('id', id)
+  if (error) throw error
+}

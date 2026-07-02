@@ -50,6 +50,7 @@ export interface Recipe {
   sugar_g:      number | null
   image_url:    string | null
   source_url:   string | null
+  times_cooked: number
   created_at:   string
   updated_at:   string
 }

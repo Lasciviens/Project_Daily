@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRecipes } from '../hooks/useRecipes'
 import { RecipeCard } from '../components/RecipeCard'
 import { RecipeModal } from '../components/RecipeModal'
 import { RecipeDetail } from '../components/RecipeDetail'
 import { MealPlanWeek } from '../components/MealPlanWeek'
+import { RecipeBackdrop } from '../components/RecipeBackdrop'
 import type { RecipeWithIngredients } from '../types'
 
 type Tab = 'library' | 'plan'
@@ -14,41 +15,71 @@ export function RecipesPage() {
   const [addOpen,   setAddOpen]   = useState(false)
   const [detail,    setDetail]    = useState<RecipeWithIngredients | null>(null)
   const [editing,   setEditing]   = useState<RecipeWithIngredients | null>(null)
+  const [query,     setQuery]     = useState('')
 
   // Keep the open detail/edit view in sync with refreshed query data.
   const liveDetail  = detail  ? recipes.find(r => r.id === detail.id)  ?? null : null
   const liveEditing = editing ? recipes.find(r => r.id === editing.id) ?? editing : null
 
+  const filteredRecipes = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return recipes
+    return recipes.filter(r =>
+      r.title.toLowerCase().includes(q) ||
+      (r.description ?? '').toLowerCase().includes(q) ||
+      r.ingredients.some(i => i.name.toLowerCase().includes(q))
+    )
+  }, [recipes, query])
+
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-ink-900">Recipes</h1>
-          <p className="text-xs text-ink-400 mt-0.5">Your recipes — scale servings, track macros</p>
+      {/* Header banner — rotating recipe-photo backdrop, Media/Training-style */}
+      <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-5 w-full min-h-[92px]">
+        <RecipeBackdrop recipes={recipes} />
+        <div className="absolute inset-0 bg-gradient-to-r from-cream-50/90 via-cream-50/60 to-cream-50/10" aria-hidden />
+        <div className="relative z-10 flex items-center justify-between gap-2 flex-wrap min-h-[92px] px-4 py-4 sm:px-5">
+          <div>
+            <h1 className="text-xl font-bold text-ink-900">Recipes</h1>
+            <p className="text-xs text-ink-500 mt-0.5">Your recipes — scale servings, track macros</p>
+          </div>
+          {tab === 'library' && (
+            <button
+              onClick={() => setAddOpen(true)}
+              className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm"
+            >
+              + Add recipe
+            </button>
+          )}
         </div>
-        {tab === 'library' && (
-          <button
-            onClick={() => setAddOpen(true)}
-            className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors"
-          >
-            + Add recipe
-          </button>
-        )}
       </div>
 
       {/* Tab toggle */}
-      <div className="flex gap-1 mb-5 bg-white border border-ink-200 p-1 rounded-xl w-fit">
-        {(['library', 'plan'] as Tab[]).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
-              tab === t ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
-            }`}
-          >
-            {t === 'library' ? 'Library' : 'Meal Plan'}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+        <div className="flex gap-1 bg-white border border-ink-200 p-1 rounded-xl w-fit">
+          {(['library', 'plan'] as Tab[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
+                tab === t ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
+              }`}
+            >
+              {t === 'library' ? 'Library' : 'Meal Plan'}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'library' && recipes.length > 0 && (
+          <div className="relative flex-1 max-w-xs min-w-[180px]">
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search recipes or ingredients…"
+              className="w-full min-h-[40px] bg-white border border-ink-200 rounded-xl pl-8 pr-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
+            />
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-300 text-sm">🔍</span>
+          </div>
+        )}
       </div>
 
       {tab === 'plan' && <MealPlanWeek />}
@@ -65,8 +96,12 @@ export function RecipesPage() {
             </div>
           )}
 
+          {!isLoading && recipes.length > 0 && filteredRecipes.length === 0 && (
+            <p className="text-sm text-ink-400 py-10 text-center">No recipes match "{query}"</p>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {recipes.map(r => (
+            {filteredRecipes.map(r => (
               <RecipeCard key={r.id} recipe={r} onClick={() => setDetail(r)} />
             ))}
           </div>

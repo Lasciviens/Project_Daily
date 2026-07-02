@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { toast } from '../../../app/store'
-import { useDeleteRecipe } from '../hooks/useRecipes'
+import { useDeleteRecipe, useIncrementTimesCooked } from '../hooks/useRecipes'
 import { useAddMissingIngredientsToShop } from '../hooks/useShopIntegration'
+import { MacroBar } from './MacroBar'
+import { CookMode } from './CookMode'
 import type { RecipeWithIngredients } from '../types'
 
 interface Props {
@@ -22,9 +24,19 @@ function scaledQty(q: number | null, factor: number): string {
 export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const [servings, setServings] = useState(recipe.servings)
   const [have,      setHave]     = useState<Set<string>>(new Set())
+  const [cookMode,  setCookMode] = useState(false)
+  const [imgError,  setImgError] = useState(false)
   const remove       = useDeleteRecipe()
   const addToShop    = useAddMissingIngredientsToShop()
+  const cooked        = useIncrementTimesCooked()
   const factor = recipe.servings > 0 ? servings / recipe.servings : 1
+
+  function handleMadeThis() {
+    cooked.mutate({ id: recipe.id, current: recipe.times_cooked }, {
+      onSuccess: () => toast.success(recipe.times_cooked === 0 ? 'First time — nice! 🎉' : `Made it ${recipe.times_cooked + 1} times 🔥`),
+      onError:   e  => toast.error((e as Error).message),
+    })
+  }
 
   function toggleHave(id: string) {
     setHave(prev => {
@@ -65,22 +77,40 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
     { label: 'Sugar', v: macro(recipe.sugar_g), suffix: 'g' },
   ].filter(t => t.v != null)
 
+  const hasImage = !!recipe.image_url && !imgError
+
   return (
     <Dialog open onClose={onClose} className="relative z-[65]">
       <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[92vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          <div className="flex items-start justify-between gap-2 px-5 pt-5 pb-3 border-b border-ink-100 sticky top-0 bg-white z-10">
+          {/* Cover image banner */}
+          {hasImage && (
+            <div className="relative w-full aspect-[16/9] flex-shrink-0">
+              <img src={recipe.image_url!} alt={recipe.title} onError={() => setImgError(true)} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+              <button onClick={onClose} className="absolute top-3 right-3 min-w-[36px] min-h-[36px] flex items-center justify-center text-white bg-black/30 hover:bg-black/50 rounded-full text-lg transition-colors">×</button>
+              {recipe.times_cooked > 0 && (
+                <span className="absolute bottom-3 left-4 flex items-center gap-1 text-xs font-semibold bg-black/40 text-white px-2 py-1 rounded-full backdrop-blur-sm">
+                  🔥 Made {recipe.times_cooked}×
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className={`flex items-start justify-between gap-2 px-5 pt-5 pb-3 border-b border-ink-100 sticky top-0 bg-white z-10 ${hasImage ? '-mt-4 rounded-t-2xl' : ''}`}>
             <div className="min-w-0">
               <h2 className="text-base font-bold text-ink-900 leading-snug">{recipe.title}</h2>
               {recipe.description && <p className="text-xs text-ink-400 mt-0.5">{recipe.description}</p>}
             </div>
-            <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl flex-shrink-0">×</button>
+            {!hasImage && (
+              <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl flex-shrink-0">×</button>
+            )}
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-4">
-            {/* Serving scaler */}
-            <div className="flex items-center gap-3">
+            {/* Serving scaler + Cook actions */}
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Servings</span>
               <div className="flex items-center gap-1">
                 <button onClick={() => setServings(s => Math.max(1, s - 1))} className="min-w-[36px] min-h-[36px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">−</button>
@@ -90,6 +120,16 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
               {servings !== recipe.servings && (
                 <button onClick={() => setServings(recipe.servings)} className="text-[11px] text-accent-600 hover:text-accent-700">reset</button>
               )}
+              <div className="flex items-center gap-1.5 ml-auto">
+                {steps.length > 0 && (
+                  <button onClick={() => setCookMode(true)} className="min-h-[36px] px-3 text-xs font-semibold bg-ink-900 text-white rounded-lg hover:bg-ink-800 transition-colors">
+                    👨‍🍳 Cook Mode
+                  </button>
+                )}
+                <button onClick={handleMadeThis} disabled={cooked.isPending} title="I made this!" className="min-h-[36px] min-w-[36px] flex items-center justify-center text-base bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors disabled:opacity-50">
+                  🔥
+                </button>
+              </div>
             </div>
 
             {/* Macros (scaled to selected servings) */}
@@ -103,6 +143,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                 ))}
               </div>
             )}
+            {totals.length > 0 && <MacroBar protein={macro(recipe.protein_g)} carbs={macro(recipe.carbs_g)} fat={macro(recipe.fat_g)} />}
 
             {/* Ingredients — checkbox = "I already have this" */}
             {recipe.ingredients.length > 0 && (
@@ -170,6 +211,8 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
           </div>
         </DialogPanel>
       </div>
+
+      {cookMode && <CookMode recipe={recipe} steps={steps} onClose={() => setCookMode(false)} />}
     </Dialog>
   )
 }
