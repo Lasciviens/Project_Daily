@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchRecipes, createRecipe, updateRecipe, deleteRecipe } from '../api/recipesApi'
+import { fetchRecipes, createRecipe, updateRecipe, deleteRecipe, incrementTimesCooked } from '../api/recipesApi'
 import type { RecipeInput } from '../types'
 
 export function useRecipes() {
@@ -30,6 +30,14 @@ export function useDeleteRecipe() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteRecipe(id),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['recipes'] }),
+  })
+}
+
+export function useIncrementTimesCooked() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, current }: { id: string; current: number }) => incrementTimesCooked(id, current),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['recipes'] }),
   })
 }
