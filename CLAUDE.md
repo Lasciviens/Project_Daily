@@ -68,7 +68,7 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 | Auth | ✅ | LoginPage |
 | Daily + To-Do | ✅ | DayView, DayTimeline, WeekWidget, MonthWidget, AddTimeBlockModal, ToDoDrawer |
 | Shop | ✅ | See Shop section below. Nav: "Personal" dropdown (Daily, Shop, Recipes) in `src/app/layout.tsx` |
-| Recipes | 🚧 | Phase 1 only (CRUD + serving scaling + per-serving macros). See Recipes section. Phase 2: weekly meal plan. Phase 3: pantry checkbox → Shop shopping-list. Phase 4: AI macro estimate / recipe parse |
+| Recipes | 🚧 | Phase 1+2 done (CRUD + serving scaling + macros + weekly meal plan). See Recipes section. Phase 3: pantry checkbox → Shop shopping-list. Phase 4: AI macro estimate / recipe parse |
 | Media | ✅ | See Media section below |
 | Work | ✅ | Vertical kanban (Overdue/To-do/In Progress/Waiting/Done), Developer tab inside Work, drag-and-drop, HeroTaskWidget (2 focus cards), WorkDayTimeline (work tasks only) |
 | AI | ✅ | Gemini 2.5 Flash via Edge Function, create_task function calling |
@@ -112,7 +112,8 @@ Personal recipe collection under `src/features/recipes/` (nav: Personal → Reci
 - DB (migration `031_recipes.sql`): `recipes` (title, description, `servings` base count, instructions, per-serving `calories`/`protein_g`/`carbs_g`/`fat_g`, image_url, source_url) + `recipe_ingredients` (name, `quantity` nullable=to-taste, unit, note, sort_order). Ingredient quantities are stored for the base `servings`; macros are stored **per serving**.
 - `RecipeModal` — create/edit: title, base servings, dynamic ingredient rows (qty/unit/name/remove), instructions (one step per line), per-serving macro row. Manual entry (AI estimate is a later phase). Save replaces all ingredient rows.
 - `RecipeDetail` — view + serving stepper: changing servings rescales ingredient quantities (× target/base) and totals macros (per-serving × target). Edit/delete.
-- `RecipeCard` / `RecipesPage` — card grid landing.
+- `RecipeCard` / `RecipesPage` — card grid landing, with a **Library / Meal Plan** tab toggle.
+- **Phase 2 — meal plan** (migration `032_meal_plan.sql`): `meal_plan_entries` (date, `meal_slot` breakfast/lunch/dinner/snack, `recipe_id` nullable + `custom_title` fallback for non-recipe meals like "eating out", servings, notes). One entry per `(user_id, date, meal_slot)` — unique index, upserted. `MealPlanWeek` — 7-day × 4-slot grid, week nav, click a cell → `AssignMealModal` (pick existing recipe or type a custom title + servings). Independent of the Daily schedule (its own calendar, by design).
 
 ### Training Feature Detail
 Page layout (`TrainingPage`): faint training-photo header banner; Hevy/Strava pill tabs + Sync/Settings on the **left**; content column (`max-w-4xl`, left-aligned) with `TrainingCalendar` **pinned to the right edge (440px)**, independent of the active tab.

@@ -38,6 +38,30 @@ export interface IngredientDraft {
   note:     string | null
 }
 
+export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack'
+
+export interface MealPlanEntry {
+  id:           string
+  user_id:      string
+  date:         string          // yyyy-MM-dd
+  meal_slot:    MealSlot
+  recipe_id:    string | null
+  custom_title: string | null
+  servings:     number
+  notes:        string | null
+  created_at:   string
+  recipe?:      Pick<Recipe, 'id' | 'title' | 'calories'> | null
+}
+
+export interface CreateMealPlanEntryInput {
+  date:         string
+  meal_slot:    MealSlot
+  recipe_id?:   string | null
+  custom_title?: string | null
+  servings?:    number
+  notes?:       string | null
+}
+
 export interface RecipeInput {
   title:        string
   description?:  string | null
