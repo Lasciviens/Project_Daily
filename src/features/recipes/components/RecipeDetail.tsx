@@ -37,10 +37,11 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
 
   const steps = (recipe.instructions ?? '').split('\n').map(s => s.trim()).filter(Boolean)
   const totals = [
-    { label: 'kcal', v: macro(recipe.calories) },
+    { label: 'Calories', v: macro(recipe.calories) },
     { label: 'Protein', v: macro(recipe.protein_g), suffix: 'g' },
     { label: 'Carbs', v: macro(recipe.carbs_g), suffix: 'g' },
     { label: 'Fat', v: macro(recipe.fat_g), suffix: 'g' },
+    { label: 'Sugar', v: macro(recipe.sugar_g), suffix: 'g' },
   ].filter(t => t.v != null)
 
   return (
@@ -72,7 +73,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
 
             {/* Macros (scaled to selected servings) */}
             {totals.length > 0 && (
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
                 {totals.map(t => (
                   <div key={t.label} className="text-center bg-ink-50 rounded-lg py-2">
                     <div className="text-sm font-bold text-ink-900">{t.v}{t.suffix ?? ''}</div>

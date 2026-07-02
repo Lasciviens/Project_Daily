@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { toast } from '../../../app/store'
 import { useRecipes } from '../hooks/useRecipes'
+import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import { useSetMealPlanEntry, useDeleteMealPlanEntry } from '../hooks/useMealPlan'
 import type { MealSlot, MealPlanEntry } from '../types'
 
@@ -13,36 +14,59 @@ interface Props {
   existing?: MealPlanEntry | null
 }
 
-const NO_RECIPE = '__custom__'
+type Mode = 'recipe' | 'custom' | 'ingredient'
 
 export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Props) {
-  const { data: recipes = [] } = useRecipes()
+  const { data: recipes = [] }  = useRecipes()
+  const { data: library = [] }  = useIngredientLibrary()
   const setEntry = useSetMealPlanEntry()
   const remove   = useDeleteMealPlanEntry()
 
-  const [recipeId,    setRecipeId]    = useState(NO_RECIPE)
+  const [mode,        setMode]        = useState<Mode>('recipe')
+  const [recipeId,    setRecipeId]    = useState('')
   const [customTitle, setCustomTitle] = useState('')
+  const [ingredientId, setIngredientId] = useState('')
+  const [ingredientQty, setIngredientQty] = useState('')
+  const [ingredientUnit, setIngredientUnit] = useState('g')
   const [servings,    setServings]    = useState('1')
   const [saving,      setSaving]      = useState(false)
 
   useEffect(() => {
     if (!open) return
-    setRecipeId(existing?.recipe_id ?? NO_RECIPE)
-    setCustomTitle(existing?.recipe_id ? '' : (existing?.custom_title ?? ''))
+    if (existing?.library_ingredient_id) {
+      setMode('ingredient')
+      setIngredientId(existing.library_ingredient_id)
+      setIngredientQty(existing.ingredient_quantity != null ? String(existing.ingredient_quantity) : '')
+      setIngredientUnit(existing.ingredient_unit ?? 'g')
+    } else if (existing?.recipe_id) {
+      setMode('recipe')
+      setRecipeId(existing.recipe_id)
+    } else if (existing?.custom_title) {
+      setMode('custom')
+      setCustomTitle(existing.custom_title)
+    } else {
+      setMode('recipe'); setRecipeId(''); setCustomTitle('')
+      setIngredientId(''); setIngredientQty(''); setIngredientUnit('g')
+    }
     setServings(String(existing?.servings ?? 1))
   }, [open, existing])
 
   async function handleSave() {
-    const usingRecipe = recipeId !== NO_RECIPE
-    if (!usingRecipe && !customTitle.trim()) { toast.error('Pick a recipe or type a title'); return }
+    if (mode === 'recipe' && !recipeId)       { toast.error('Pick a recipe'); return }
+    if (mode === 'custom' && !customTitle.trim()) { toast.error('Type a title'); return }
+    if (mode === 'ingredient' && !ingredientId)   { toast.error('Pick an ingredient'); return }
+
     setSaving(true)
     const tid = toast.loading('Saving…')
     try {
       await setEntry.mutateAsync({
         date, meal_slot: mealSlot,
-        recipe_id:    usingRecipe ? recipeId : null,
-        custom_title: usingRecipe ? null : customTitle.trim(),
-        servings:     Math.max(0.5, Number(servings) || 1),
+        recipe_id:             mode === 'recipe'     ? recipeId : null,
+        custom_title:          mode === 'custom'     ? customTitle.trim() : null,
+        library_ingredient_id: mode === 'ingredient' ? ingredientId : null,
+        ingredient_quantity:   mode === 'ingredient' ? Number(ingredientQty) || null : null,
+        ingredient_unit:       mode === 'ingredient' ? (ingredientUnit.trim() || null) : null,
+        servings:              Math.max(0.5, Number(servings) || 1),
       })
       toast.dismiss(tid); toast.success('Saved ✓')
       onClose()
@@ -78,19 +102,57 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-3">
-            <select value={recipeId} onChange={e => setRecipeId(e.target.value)} className={inputCls}>
-              <option value={NO_RECIPE}>No recipe — type a title…</option>
-              {recipes.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
-            </select>
+            {/* Mode toggle */}
+            <div className="flex gap-1 bg-cream-100 p-0.5 rounded-lg">
+              {(['recipe', 'ingredient', 'custom'] as Mode[]).map(m => (
+                <button key={m} type="button" onClick={() => setMode(m)}
+                  className={`flex-1 text-[11px] min-h-[32px] rounded-md font-medium transition-colors ${
+                    mode === m ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
+                  }`}>
+                  {m === 'recipe' ? 'Recipe' : m === 'ingredient' ? 'Ingredient' : 'Custom'}
+                </button>
+              ))}
+            </div>
 
-            {recipeId === NO_RECIPE && (
+            {mode === 'recipe' && (
+              <select value={recipeId} onChange={e => setRecipeId(e.target.value)} className={inputCls}>
+                <option value="">Pick a recipe…</option>
+                {recipes.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+              </select>
+            )}
+
+            {mode === 'custom' && (
               <input value={customTitle} onChange={e => setCustomTitle(e.target.value)} placeholder="e.g. Eating out, Leftovers" className={inputCls} />
             )}
 
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Servings</label>
-              <input type="number" min="0.5" step="0.5" value={servings} onChange={e => setServings(e.target.value)} className="w-24 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
-            </div>
+            {mode === 'ingredient' && (
+              <div className="flex flex-col gap-2">
+                <select value={ingredientId} onChange={e => {
+                  setIngredientId(e.target.value)
+                  const lib = library.find(l => l.id === e.target.value)
+                  if (lib) setIngredientUnit(lib.unit)
+                }} className={inputCls}>
+                  <option value="">Pick from ingredient library…</option>
+                  {library.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                {library.length === 0 && (
+                  <p className="text-[11px] text-ink-400">No library ingredients yet — add one via a recipe's "From ingredients" macro mode first.</p>
+                )}
+                <div className="flex gap-2">
+                  <input type="number" min="0" step="any" value={ingredientQty} onChange={e => setIngredientQty(e.target.value)} placeholder="Qty"
+                    className="flex-1 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                  <input value={ingredientUnit} onChange={e => setIngredientUnit(e.target.value)} placeholder="Unit"
+                    className="w-20 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                </div>
+              </div>
+            )}
+
+            {mode !== 'ingredient' && (
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Servings</label>
+                <input type="number" min="0.5" step="0.5" value={servings} onChange={e => setServings(e.target.value)} className="w-24 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
+              </div>
+            )}
           </div>
 
           <div className="px-5 py-4 border-t border-ink-100 flex gap-3">
