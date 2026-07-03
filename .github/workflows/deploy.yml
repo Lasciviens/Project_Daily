@@ -1,3 +1,5 @@
+# Redeploy nudge: 2026-07-03 — forces a fresh commit SHA so GitHub Pages
+# creates a brand-new deployment instead of retrying a wedged one on the same SHA.
 name: Deploy to GitHub Pages
 
 on:
