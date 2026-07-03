@@ -67,6 +67,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
   const [fat,          setFat]          = useState('')
   const [sugar,        setSugar]        = useState('')
   const [sourceUrl,    setSourceUrl]    = useState('')
+  const [imageUrl,     setImageUrl]     = useState('')
   const [saving,       setSaving]       = useState(false)
   const [newIngredientRow, setNewIngredientRow] = useState<number | null>(null)
   const [pasteOpen,    setPasteOpen]    = useState(false)
@@ -93,10 +94,11 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
       setFat(recipe.fat_g?.toString() ?? '')
       setSugar(recipe.sugar_g?.toString() ?? '')
       setSourceUrl(recipe.source_url ?? '')
+      setImageUrl(recipe.image_url ?? '')
     } else {
       setTitle(''); setServings('1'); setIngredients([{ ...EMPTY_ROW }])
       setInstructions(''); setDescription(''); setMacroMode('manual')
-      setCalories(''); setProtein(''); setCarbs(''); setSugar(''); setFat(''); setSourceUrl('')
+      setCalories(''); setProtein(''); setCarbs(''); setSugar(''); setFat(''); setSourceUrl(''); setImageUrl('')
     }
     setNewIngredientRow(null)
     setPasteOpen(false); setPasteMode('text'); setPasteText(''); setUrlInput('')
@@ -193,6 +195,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
       calories: numOrNull(calories), protein_g: numOrNull(protein), carbs_g: numOrNull(carbs),
       fat_g: numOrNull(fat), sugar_g: numOrNull(sugar),
       source_url: sourceUrl.trim() || null,
+      image_url: imageUrl.trim() || null,
       ingredients: ingredients.filter(i => i.name.trim()),
     }
     setSaving(true)
@@ -391,6 +394,16 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                   </p>
                 </div>
               )}
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Image URL (optional)</label>
+              <div className="flex items-center gap-2">
+                {imageUrl.trim() && (
+                  <img src={imageUrl} alt="" className="w-11 h-11 rounded-lg object-cover border border-ink-200 flex-shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
+                )}
+                <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} type="url" placeholder="https://…" className={inputCls} />
+              </div>
             </div>
 
             <input value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} placeholder="Source link (optional)" className={inputCls} />
