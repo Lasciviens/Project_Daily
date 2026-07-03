@@ -3,7 +3,7 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { toast } from '../../../app/store'
 import { useCreateRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
-import { parseRecipeText, estimateRecipeMacros } from '../../ai/api/aiApi'
+import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
 
 interface Props {
@@ -70,7 +70,9 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
   const [saving,       setSaving]       = useState(false)
   const [newIngredientRow, setNewIngredientRow] = useState<number | null>(null)
   const [pasteOpen,    setPasteOpen]    = useState(false)
+  const [pasteMode,    setPasteMode]    = useState<'text' | 'url'>('text')
   const [pasteText,    setPasteText]    = useState('')
+  const [urlInput,     setUrlInput]     = useState('')
   const [parsing,      setParsing]      = useState(false)
   const [estimating,   setEstimating]   = useState(false)
 
@@ -97,7 +99,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
       setCalories(''); setProtein(''); setCarbs(''); setSugar(''); setFat(''); setSourceUrl('')
     }
     setNewIngredientRow(null)
-    setPasteOpen(false); setPasteText('')
+    setPasteOpen(false); setPasteMode('text'); setPasteText(''); setUrlInput('')
   }, [open, recipe])
 
   function setRow(idx: number, patch: Partial<IngredientDraft>) {
@@ -114,30 +116,49 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
 
   const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, Math.max(1, Number(servings) || 1), library) : null
 
+  function applyParsedRecipe(parsed: Awaited<ReturnType<typeof parseRecipeText>>) {
+    setTitle(parsed.title)
+    setServings(String(Math.max(1, parsed.servings || 1)))
+    setInstructions(parsed.instructions ?? '')
+    setIngredients(parsed.ingredients.length
+      ? parsed.ingredients.map(i => ({ name: i.name, quantity: i.quantity, unit: i.unit, note: i.note, library_ingredient_id: null }))
+      : [{ ...EMPTY_ROW }])
+    if (parsed.macro_estimate) {
+      setMacroMode('manual')
+      setCalories(parsed.macro_estimate.calories?.toString() ?? '')
+      setProtein(parsed.macro_estimate.protein_g?.toString() ?? '')
+      setCarbs(parsed.macro_estimate.carbs_g?.toString() ?? '')
+      setFat(parsed.macro_estimate.fat_g?.toString() ?? '')
+      setSugar(parsed.macro_estimate.sugar_g?.toString() ?? '')
+    }
+  }
+
   async function handleParsePaste() {
     if (!pasteText.trim()) return
     setParsing(true)
     const tid = toast.loading('Parsing recipe with AI…')
     try {
-      const parsed = await parseRecipeText(pasteText)
-      setTitle(parsed.title)
-      setServings(String(Math.max(1, parsed.servings || 1)))
-      setInstructions(parsed.instructions ?? '')
-      setIngredients(parsed.ingredients.length
-        ? parsed.ingredients.map(i => ({ name: i.name, quantity: i.quantity, unit: i.unit, note: i.note, library_ingredient_id: null }))
-        : [{ ...EMPTY_ROW }])
-      if (parsed.macro_estimate) {
-        setMacroMode('manual')
-        setCalories(parsed.macro_estimate.calories?.toString() ?? '')
-        setProtein(parsed.macro_estimate.protein_g?.toString() ?? '')
-        setCarbs(parsed.macro_estimate.carbs_g?.toString() ?? '')
-        setFat(parsed.macro_estimate.fat_g?.toString() ?? '')
-        setSugar(parsed.macro_estimate.sugar_g?.toString() ?? '')
-      }
+      applyParsedRecipe(await parseRecipeText(pasteText))
       toast.dismiss(tid); toast.success('Parsed ✓ — review before saving')
       setPasteOpen(false); setPasteText('')
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to parse')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  async function handleParseUrl() {
+    if (!urlInput.trim()) return
+    setParsing(true)
+    const tid = toast.loading('Fetching and parsing recipe…')
+    try {
+      applyParsedRecipe(await parseRecipeFromUrl(urlInput.trim()))
+      setSourceUrl(urlInput.trim())
+      toast.dismiss(tid); toast.success('Parsed ✓ — review before saving')
+      setPasteOpen(false); setUrlInput('')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to fetch/parse URL')
     } finally {
       setParsing(false)
     }
@@ -211,16 +232,44 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
 
             {pasteOpen && (
               <div className="p-3 rounded-xl border border-accent-200 bg-accent-50/50 flex flex-col gap-2">
-                <p className="text-[11px] text-accent-700">Paste a recipe (from anywhere) — AI will fill in the title, servings, ingredients, instructions, and a rough macro estimate.</p>
-                <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5} placeholder="Paste recipe text here…"
-                  className="w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[36px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
-                  <button type="button" onClick={handleParsePaste} disabled={parsing || !pasteText.trim()}
-                    className="flex-1 min-h-[36px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
-                    {parsing ? 'Parsing…' : 'Parse with AI'}
-                  </button>
+                <div className="flex gap-1 bg-white p-0.5 rounded-lg w-fit">
+                  {(['text', 'url'] as const).map(m => (
+                    <button key={m} type="button" onClick={() => setPasteMode(m)}
+                      className={`text-[10px] px-2.5 min-h-[28px] rounded-md font-medium transition-colors ${
+                        pasteMode === m ? 'bg-accent-500 text-white' : 'text-ink-400 hover:text-ink-600'
+                      }`}>
+                      {m === 'text' ? 'Paste text' : 'From URL'}
+                    </button>
+                  ))}
                 </div>
+
+                {pasteMode === 'text' ? (
+                  <>
+                    <p className="text-[11px] text-accent-700">Paste a recipe (from anywhere) — AI will fill in the title, servings, ingredients, instructions, and a rough macro estimate (translated to Turkish).</p>
+                    <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5} placeholder="Paste recipe text here…"
+                      className="w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[36px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
+                      <button type="button" onClick={handleParsePaste} disabled={parsing || !pasteText.trim()}
+                        className="flex-1 min-h-[36px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
+                        {parsing ? 'Parsing…' : 'Parse with AI'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[11px] text-accent-700">Paste a recipe page link — AI will fetch it, extract the recipe, and translate everything to Turkish.</p>
+                    <input value={urlInput} onChange={e => setUrlInput(e.target.value)} type="url" placeholder="https://…"
+                      className="w-full min-h-[40px] bg-white border border-ink-200 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[36px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
+                      <button type="button" onClick={handleParseUrl} disabled={parsing || !urlInput.trim()}
+                        className="flex-1 min-h-[36px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
+                        {parsing ? 'Fetching…' : 'Fetch & Parse'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description (optional)" rows={2}
