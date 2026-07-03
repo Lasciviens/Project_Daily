@@ -71,7 +71,7 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 | Recipes | ✅ | Phase 1+2+3+4 done (CRUD + serving scaling + macros + weekly meal plan + pantry checkbox → Shop + AI paste-parse/macro-estimate). See Recipes section. UX: cover-image backdrop/cards, MacroBar, Cook Mode, search, seeded Turkish classics |
 | Media | ✅ | See Media section below |
 | Work | ✅ | Vertical kanban (Overdue/To-do/In Progress/Waiting/Done), Developer tab inside Work, drag-and-drop, HeroTaskWidget (2 focus cards), WorkDayTimeline (work tasks only) |
-| AI | ✅ | Gemini 3.5 Flash via Edge Function, create_task function calling |
+| AI | ✅ | Gemini 3.5 Flash via Edge Function. Generic DB tool layer (describe_database + db_query/insert/update/delete) — reads/writes any allow-listed user table; + special-purpose tools (calendar/transit/media/shop). See AI section below. |
 | Calendar | ✅ | Google OAuth, read + write events, sync/refresh button in DayTimeline header |
 | Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
 | Training | ✅ | See Training section below. Hevy (workouts, PRs, routines, body) + Strava OAuth. Page-level calendar pinned right. |
@@ -252,7 +252,7 @@ Reference files: `src/shared/components/plan-modal/UnifiedPlanModal.tsx` (Dialog
 
 | Function | Purpose |
 |---|---|
-| `ai-proxy` | Gemini AI calls — function-calling tools incl. tasks/schedule/media/training/projects/transit/**shop**/**recipes** (see Shop/Recipes Feature Detail) |
+| `ai-proxy` | Gemini AI calls. **Generic DB layer** (`describe_database`, `db_query`, `db_insert`, `db_update`, `db_delete`) over a curated `DB_CATALOG` allow-list — the AI reads/writes any of the user's own tables (tasks, time_blocks, recipes+ingredients+meal_plans, shop_*, projects, media entries). Guardrails: default-deny allow-list (token/secret/auth tables unreachable), `access: 'rw'|'ro'` per table (hevy_*/strava_activities/health_daily_stats/movies/tv_series are read-only — synced externally), every op force-scoped to `user_id`, no DDL (structured ops, not raw SQL), update/delete refuse empty filters. Plus special-purpose tools that generic CRUD can't cover: `get_calendar_events`/`get_next_transit` (external APIs), `get_media`/`plan_media`/`mark_episode_watched` (media logic), `get_health_stats` (weekly avgs), `get_shop_categories`/`create_shop_category`/`create_shop_item`/`ask_clarifying_question` (Shop chat panel). Also `responseSchema` (structured recipe extraction) + `fetchUrl` (server-side page fetch) modes. Dead `log_workout`/`get_workouts` removed (hit the dropped `training_sessions` table — training is now Hevy/Strava, read via `db_query`; planned sessions = `time_blocks` category='training'). |
 | `calendar-oauth` / `calendar-token` / `calendar-disconnect` | Google Calendar OAuth |
 | `football-api` | API-Football proxy (currently unused — free tier doesn't cover current season) |
 | `news-proxy` | RSS feed proxy |

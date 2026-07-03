@@ -79,104 +79,79 @@ class RateLimitError extends Error {
 const TOOLS = [
   {
     functionDeclarations: [
+      // ─── Generic database access (the primary interface) ──────────────────
+      // These 5 tools let the assistant read and write ANY of the user's own
+      // data tables. Call describe_database first to learn the schema, then
+      // db_query / db_insert / db_update / db_delete. Every operation is
+      // automatically scoped to the current user and restricted to an
+      // allow-listed set of tables (see DB_CATALOG) — token/secret/auth tables
+      // are never reachable, and externally-synced tables (Hevy, Strava) are
+      // read-only. filters/values are passed as JSON strings.
       {
-        name: 'get_tasks',
-        description: 'Fetch the user\'s tasks with their IDs. Use this before updating, completing, or deleting a task by name.',
+        name: 'describe_database',
+        description: 'Return the database schema catalog: which tables exist, their purpose, columns, enum values, relationships, and business rules. ALWAYS call this first (once) when you are unsure which table or column to use for a read/write. Pass a table name to get its full detail, or omit for the overview of all tables.',
         parameters: {
           type: 'OBJECT',
           properties: {
-            section: { type: 'STRING', enum: ['today', 'tomorrow', 'this_week', 'inbox', 'backlog'] },
-            domain:  { type: 'STRING', enum: ['personal', 'work', 'media'] },
-            status:  { type: 'STRING', enum: ['open', 'in_progress', 'done'] },
+            table: { type: 'STRING', description: 'Optional — a single table name to get full column/enum/rule detail for.' },
           },
           required: [],
         },
       },
       {
-        name: 'create_task',
-        description: 'Create a new task. Optionally also adds it to the day timeline.',
+        name: 'db_query',
+        description: 'Read rows from a table. Automatically scoped to the current user. Use describe_database to learn valid tables/columns first.',
         parameters: {
           type: 'OBJECT',
           properties: {
-            title:           { type: 'STRING' },
-            section:         { type: 'STRING', enum: ['today', 'tomorrow', 'this_week', 'inbox', 'backlog'] },
-            priority:        { type: 'STRING', enum: ['low', 'medium', 'high'] },
-            domain:          { type: 'STRING', enum: ['personal', 'work', 'media'] },
-            due_date:        { type: 'STRING', description: 'YYYY-MM-DD (optional)' },
-            add_to_schedule: { type: 'BOOLEAN', description: 'Also add to day timeline (optional)' },
-            schedule_time:   { type: 'STRING', description: 'HH:MM:SS start time, e.g. "17:00:00" (optional)' },
+            table:   { type: 'STRING', description: 'Table name (must be in the catalog).' },
+            filters: { type: 'STRING', description: 'Optional JSON object of column filters. Plain value = equals; null = IS NULL; array = IN; object with gte/lte/gt/lt/neq/like keys for ranges/patterns. E.g. {"status":"open"} or {"date":{"gte":"2026-07-01","lte":"2026-07-07"}}.' },
+            select:  { type: 'STRING', description: 'Optional Postgrest select string. Default "*". Supports embedded joins, e.g. "id, status, movie:movies(title)" or "title, hevy_workout_exercises(title, hevy_sets(weight_kg, reps))".' },
+            order_by:  { type: 'STRING', description: 'Optional column to order by.' },
+            ascending: { type: 'BOOLEAN', description: 'Order direction (default false = newest/highest first).' },
+            limit:     { type: 'NUMBER', description: 'Max rows (default 50, max 200).' },
           },
-          required: ['title', 'section', 'priority', 'domain'],
+          required: ['table'],
         },
       },
       {
-        name: 'update_task',
-        description: 'Update an existing task by its ID. Get the ID via get_tasks first.',
+        name: 'db_insert',
+        description: 'Insert a new row into a writable table. user_id is set automatically; do not include it. Returns the created row (with its id). Use describe_database to learn required columns, enums, and business rules first.',
         parameters: {
           type: 'OBJECT',
           properties: {
-            task_id:  { type: 'STRING' },
-            title:    { type: 'STRING' },
-            section:  { type: 'STRING', enum: ['today', 'tomorrow', 'this_week', 'inbox', 'backlog'] },
-            priority: { type: 'STRING', enum: ['low', 'medium', 'high'] },
-            due_date: { type: 'STRING', description: 'YYYY-MM-DD (optional, null to clear)' },
+            table:  { type: 'STRING', description: 'Table name (must be writable in the catalog).' },
+            values: { type: 'STRING', description: 'JSON object of column→value for the new row. E.g. {"title":"...","date":"2026-07-05","category":"training"}.' },
           },
-          required: ['task_id'],
+          required: ['table', 'values'],
         },
       },
       {
-        name: 'complete_task',
-        description: 'Mark a task as done by its ID.',
+        name: 'db_update',
+        description: 'Update existing rows matching filters in a writable table. Automatically scoped to the current user; updated_at is set automatically when the column exists. Returns the updated row(s). Provide a filter (usually {"id":"..."}) to avoid updating everything.',
         parameters: {
           type: 'OBJECT',
           properties: {
-            task_id: { type: 'STRING' },
+            table:   { type: 'STRING', description: 'Table name (must be writable in the catalog).' },
+            filters: { type: 'STRING', description: 'JSON object identifying rows to update, e.g. {"id":"..."}. Required and must be non-empty.' },
+            values:  { type: 'STRING', description: 'JSON object of column→new value. user_id cannot be changed.' },
           },
-          required: ['task_id'],
+          required: ['table', 'filters', 'values'],
         },
       },
       {
-        name: 'delete_task',
-        description: 'Permanently delete a task by its ID.',
+        name: 'db_delete',
+        description: 'Delete rows matching filters from a writable table. Automatically scoped to the current user. Filters are required and must be non-empty. When deleting a task, also delete its linked time_blocks (source_type="task", source_id=<task id>).',
         parameters: {
           type: 'OBJECT',
           properties: {
-            task_id: { type: 'STRING' },
+            table:   { type: 'STRING', description: 'Table name (must be writable in the catalog).' },
+            filters: { type: 'STRING', description: 'JSON object identifying rows to delete, e.g. {"id":"..."}. Required and must be non-empty.' },
           },
-          required: ['task_id'],
+          required: ['table', 'filters'],
         },
       },
-      {
-        name: 'create_time_block',
-        description: 'Add a block to the day schedule/timeline.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            date:             { type: 'STRING', description: 'YYYY-MM-DD' },
-            title:            { type: 'STRING' },
-            start_time:       { type: 'STRING', description: 'HH:MM:SS, e.g. "17:00:00"' },
-            duration_minutes: { type: 'NUMBER' },
-            color:            { type: 'STRING', enum: ['blue', 'green', 'orange', 'purple', 'accent', 'red'] },
-          },
-          required: ['date', 'title', 'start_time', 'duration_minutes'],
-        },
-      },
-      {
-        name: 'log_workout',
-        description: 'Log a training/workout session. Also adds a time block to the schedule.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            title:            { type: 'STRING', description: 'e.g. "Morning Run", "Chest Day"' },
-            type:             { type: 'STRING', enum: ['strength', 'run', 'cycling', 'walk', 'yoga', 'swim', 'other'] },
-            date:             { type: 'STRING', description: 'YYYY-MM-DD (defaults to today)' },
-            duration_minutes: { type: 'NUMBER' },
-            distance_km:      { type: 'NUMBER', description: 'For cardio activities (optional)' },
-            notes:            { type: 'STRING' },
-          },
-          required: ['title', 'type'],
-        },
-      },
+      // ─── Media (kept — non-trivial multi-step logic) ──────────────────────
       {
         name: 'get_media',
         description: 'Get the user\'s media library (movies and TV series). Use entry IDs with plan_media.',
@@ -205,40 +180,6 @@ const TOOLS = [
         },
       },
       {
-        name: 'get_time_blocks',
-        description: 'Read the day schedule/timeline for a given date. Use this to answer "what do I have today/tomorrow?"',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            date: { type: 'STRING', description: 'YYYY-MM-DD (defaults to today)' },
-          },
-          required: [],
-        },
-      },
-      {
-        name: 'delete_time_block',
-        description: 'Delete a time block from the day schedule by its ID. Use get_time_blocks first to find the ID.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            block_id: { type: 'STRING' },
-          },
-          required: ['block_id'],
-        },
-      },
-      {
-        name: 'get_workouts',
-        description: 'Read past workout/training sessions. Use to answer questions about training history.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            limit: { type: 'NUMBER', description: 'Max number of sessions to return (default 10)' },
-            type:  { type: 'STRING', enum: ['strength', 'run', 'cycling', 'walk', 'yoga', 'swim', 'other'], description: 'Filter by workout type (optional)' },
-          },
-          required: [],
-        },
-      },
-      {
         name: 'get_calendar_events',
         description: 'Read upcoming Google Calendar events. Use to answer "what meetings do I have?" or schedule around events.',
         parameters: {
@@ -250,35 +191,8 @@ const TOOLS = [
         },
       },
       {
-        name: 'get_projects',
-        description: 'List the user\'s active projects with their phases and items/tasks. Use to answer "what am I working on?" or before creating a project item.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            include_done: { type: 'BOOLEAN', description: 'Also include completed/archived projects (default false)' },
-          },
-          required: [],
-        },
-      },
-      {
-        name: 'create_project_item',
-        description: 'Add a new item (task/bug/improvement/wishlist) to a project phase. Use get_projects first to find phase_id.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            phase_id:   { type: 'STRING', description: 'Phase ID from get_projects' },
-            project_id: { type: 'STRING', description: 'Project ID from get_projects' },
-            title:      { type: 'STRING' },
-            type:       { type: 'STRING', enum: ['update', 'improvement', 'ui_request', 'bug', 'wishlist'] },
-            priority:   { type: 'STRING', enum: ['low', 'medium', 'high'] },
-            notes:      { type: 'STRING', description: 'Optional extra details' },
-          },
-          required: ['phase_id', 'project_id', 'title'],
-        },
-      },
-      {
         name: 'get_health_stats',
-        description: 'Read recent daily health stats (steps, calories, heart rate, exercise minutes). Use to answer fitness questions.',
+        description: 'Read recent daily health stats (steps, calories, heart rate, exercise minutes) with weekly averages. Use to answer fitness questions.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -300,21 +214,6 @@ const TOOLS = [
             note:     { type: 'STRING', description: 'Personal note about the episode (optional)' },
           },
           required: ['entry_id'],
-        },
-      },
-      {
-        name: 'update_time_block',
-        description: 'Edit an existing schedule block (change title, start time, or duration). Use get_time_blocks first to find block_id.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            block_id:         { type: 'STRING' },
-            title:            { type: 'STRING' },
-            start_time:       { type: 'STRING', description: 'HH:MM:SS' },
-            duration_minutes: { type: 'NUMBER' },
-            color:            { type: 'STRING', enum: ['blue', 'green', 'orange', 'purple', 'accent', 'red'] },
-          },
-          required: ['block_id'],
         },
       },
       {
@@ -350,41 +249,6 @@ const TOOLS = [
             planned_date: { type: 'STRING', description: 'YYYY-MM-DD — when the user plans to buy this (optional)' },
           },
           required: ['category_id', 'title'],
-        },
-      },
-      {
-        name: 'get_recipes',
-        description: 'List the user\'s saved recipes (title, servings, calories). Use to check whether a recipe already exists before creating a duplicate, or to answer questions about saved recipes.',
-        parameters: { type: 'OBJECT', properties: {}, required: [] },
-      },
-      {
-        name: 'create_recipe',
-        description: 'Save a food recipe (a dish with ingredients + preparation steps) to the user\'s recipe collection. ALWAYS use this — never create_shop_item / create_shop_category — whenever the user shares, pastes, or describes a recipe or dish. A recipe is never a shopping-wishlist item, even though it involves food/ingredients. Always write the title, ingredient names, and instructions in TURKISH, translating them if the user\'s text was in another language.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            title:        { type: 'STRING' },
-            servings:     { type: 'NUMBER', description: 'Base serving count (default 1)' },
-            instructions: { type: 'STRING', description: 'One step per line' },
-            ingredients: {
-              type: 'ARRAY',
-              items: {
-                type: 'OBJECT',
-                properties: {
-                  name:     { type: 'STRING' },
-                  quantity: { type: 'NUMBER', description: 'Omit if "to taste" or unspecified' },
-                  unit:     { type: 'STRING' },
-                },
-                required: ['name'],
-              },
-            },
-            calories:  { type: 'NUMBER', description: 'Per serving (optional — estimate if not given)' },
-            protein_g: { type: 'NUMBER', description: 'Per serving (optional)' },
-            carbs_g:   { type: 'NUMBER', description: 'Per serving (optional)' },
-            fat_g:     { type: 'NUMBER', description: 'Per serving (optional)' },
-            sugar_g:   { type: 'NUMBER', description: 'Per serving (optional)' },
-          },
-          required: ['title', 'ingredients'],
         },
       },
       {
@@ -643,182 +507,22 @@ async function dispatch(
   userId: string,
 ): Promise<AnyRecord> {
   switch (name) {
-    case 'get_tasks':       return getTasks(supabase, userId, args)
-    case 'create_task':     return createTask(supabase, userId, args)
-    case 'update_task':     return updateTask(supabase, userId, args)
-    case 'complete_task':   return completeTask(supabase, userId, args)
-    case 'delete_task':     return deleteTaskFn(supabase, userId, args)
-    case 'create_time_block': return createTimeBlock(supabase, userId, args)
-    case 'log_workout':     return logWorkout(supabase, userId, args)
-    case 'get_media':           return getMedia(supabase, userId, args)
-    case 'plan_media':          return planMedia(supabase, userId, args)
-    case 'get_time_blocks':     return getTimeBlocks(supabase, userId, args)
-    case 'delete_time_block':   return deleteTimeBlock(supabase, userId, args)
-    case 'get_workouts':        return getWorkouts(supabase, userId, args)
+    case 'describe_database':    return describeDatabase(args)
+    case 'db_query':             return dbQuery(supabase, userId, args)
+    case 'db_insert':            return dbInsert(supabase, userId, args)
+    case 'db_update':            return dbUpdate(supabase, userId, args)
+    case 'db_delete':            return dbDelete(supabase, userId, args)
+    case 'get_media':            return getMedia(supabase, userId, args)
+    case 'plan_media':           return planMedia(supabase, userId, args)
     case 'get_calendar_events':  return getCalendarEvents(supabase, userId, args)
-    case 'get_projects':         return getProjects(supabase, userId, args)
-    case 'create_project_item':  return createProjectItem(supabase, userId, args)
     case 'get_health_stats':     return getHealthStats(supabase, userId, args)
     case 'mark_episode_watched': return markEpisodeWatched(supabase, userId, args)
-    case 'update_time_block':    return updateTimeBlock(supabase, userId, args)
     case 'get_shop_categories':  return getShopCategories(supabase, userId)
     case 'create_shop_category': return createShopCategoryFn(supabase, userId, args)
     case 'create_shop_item':     return createShopItemFn(supabase, userId, args)
     case 'get_next_transit':     return getNextTransit(supabase, userId, args)
-    case 'get_recipes':          return getRecipes(supabase, userId)
-    case 'create_recipe':        return createRecipeFn(supabase, userId, args)
     default:                     return { success: false, error: `Unknown function: ${name}` }
   }
-}
-
-async function getTasks(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  let query = supabase
-    .from('tasks')
-    .select('id, title, status, priority, domain, section, due_date, description')
-    .eq('user_id', userId)
-    .neq('status', 'cancelled')
-    .limit(50)
-
-  if (args.section) query = query.eq('section', args.section)
-  if (args.domain)  query = query.eq('domain',  args.domain)
-  if (args.status)  query = query.eq('status',  args.status)
-
-  const { data, error } = await query
-  if (error) return { success: false, error: error.message }
-  return { success: true, tasks: data ?? [] }
-}
-
-async function createTask(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .insert({
-      user_id:    userId,
-      title:      args.title,
-      section:    args.section   ?? 'inbox',
-      priority:   args.priority  ?? 'medium',
-      domain:     args.domain    ?? 'personal',
-      due_date:   args.due_date  ?? null,
-      status:     'open',
-      sort_order: 0,
-      source_type: 'ai',
-    })
-    .select()
-    .single()
-
-  if (error) return { success: false, error: error.message }
-
-  // Optionally add to day schedule
-  if (args.add_to_schedule && args.due_date) {
-    const startTime = args.schedule_time ?? '17:00:00'
-    await supabase.from('time_blocks').insert({
-      user_id:          userId,
-      date:             args.due_date,
-      title:            args.title,
-      start_time:       startTime,
-      duration_minutes: 60,
-      color:            'accent',
-      source_type:      'task',
-      source_id:        data.id,
-      updated_at:       new Date().toISOString(),
-    })
-  }
-
-  return { success: true, task_id: data.id, title: data.title, section: data.section }
-}
-
-async function updateTask(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const patch: AnyRecord = {}
-  if (args.title    !== undefined) patch.title    = args.title
-  if (args.section  !== undefined) patch.section  = args.section
-  if (args.priority !== undefined) patch.priority = args.priority
-  if (args.due_date !== undefined) patch.due_date = args.due_date || null
-
-  const { error } = await supabase
-    .from('tasks')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', args.task_id)
-    .eq('user_id', userId)
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, task_id: args.task_id, updated: patch }
-}
-
-async function completeTask(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const { error } = await supabase
-    .from('tasks')
-    .update({ status: 'done', updated_at: new Date().toISOString() })
-    .eq('id', args.task_id)
-    .eq('user_id', userId)
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, task_id: args.task_id, status: 'done' }
-}
-
-async function deleteTaskFn(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const { error } = await supabase
-    .from('tasks')
-    .delete()
-    .eq('id', args.task_id)
-    .eq('user_id', userId)
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, task_id: args.task_id, deleted: true }
-}
-
-async function createTimeBlock(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const { data, error } = await supabase
-    .from('time_blocks')
-    .insert({
-      user_id:          userId,
-      date:             args.date,
-      title:            args.title,
-      start_time:       args.start_time,
-      duration_minutes: args.duration_minutes,
-      color:            args.color ?? 'accent',
-      updated_at:       new Date().toISOString(),
-    })
-    .select()
-    .single()
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, block_id: data.id, date: data.date, start_time: data.start_time }
-}
-
-async function logWorkout(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const today    = new Date().toISOString().slice(0, 10)
-  const date     = args.date ?? today
-  const durationSec = args.duration_minutes ? args.duration_minutes * 60 : null
-
-  const { data, error } = await supabase
-    .from('training_sessions')
-    .insert({
-      user_id:          userId,
-      planned_date:     date,
-      completed_at:     new Date().toISOString(),
-      type:             args.type,
-      title:            args.title,
-      notes:            args.notes ?? null,
-      source:           'manual',
-      duration_seconds: durationSec,
-      distance_meters:  args.distance_km ? Math.round(args.distance_km * 1000) : null,
-    })
-    .select()
-    .single()
-
-  if (error) return { success: false, error: error.message }
-
-  // Auto-create time block at 17:00 (45min, purple)
-  await supabase.from('time_blocks').insert({
-    user_id:          userId,
-    date,
-    title:            args.title,
-    start_time:       '17:00:00',
-    duration_minutes: args.duration_minutes ?? 45,
-    color:            'purple',
-    updated_at:       new Date().toISOString(),
-  })
-
-  return { success: true, session_id: data.id, title: data.title, date }
 }
 
 async function getMedia(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
@@ -906,59 +610,6 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
   return { success: true, task_id: task.id, title: taskTitle, date, section }
 }
 
-async function getTimeBlocks(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const date = args.date ?? new Date().toISOString().slice(0, 10)
-
-  const { data, error } = await supabase
-    .from('time_blocks')
-    .select('id, title, start_time, duration_minutes, color, source_type')
-    .eq('user_id', userId)
-    .eq('date', date)
-    .order('start_time', { ascending: true })
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, date, blocks: data ?? [] }
-}
-
-async function deleteTimeBlock(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const { error } = await supabase
-    .from('time_blocks')
-    .delete()
-    .eq('id', args.block_id)
-    .eq('user_id', userId)
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, block_id: args.block_id, deleted: true }
-}
-
-async function getWorkouts(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const limit = Math.min(args.limit ?? 10, 30)
-
-  let query = supabase
-    .from('training_sessions')
-    .select('id, title, type, planned_date, completed_at, duration_seconds, distance_meters, notes')
-    .eq('user_id', userId)
-    .order('completed_at', { ascending: false })
-    .limit(limit)
-
-  if (args.type) query = query.eq('type', args.type)
-
-  const { data, error } = await query
-  if (error) return { success: false, error: error.message }
-
-  const sessions = (data ?? []).map((s: AnyRecord) => ({
-    id:           s.id,
-    title:        s.title,
-    type:         s.type,
-    date:         s.planned_date,
-    duration_min: s.duration_seconds ? Math.round(s.duration_seconds / 60) : null,
-    distance_km:  s.distance_meters  ? (s.distance_meters / 1000).toFixed(2) : null,
-    notes:        s.notes,
-  }))
-
-  return { success: true, sessions }
-}
-
 async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   const daysAhead = Math.min(args.days_ahead ?? 7, 30)
 
@@ -1009,49 +660,6 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
   }))
 
   return { success: true, events }
-}
-
-async function getProjects(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const statuses = args.include_done
-    ? ['active', 'on_hold', 'completed', 'archived']
-    : ['active', 'on_hold']
-
-  const { data, error } = await supabase
-    .from('projects')
-    .select(`
-      id, name, description, status, color,
-      project_phases (
-        id, name, status,
-        project_items ( id, title, type, status, priority )
-      )
-    `)
-    .eq('user_id', userId)
-    .in('status', statuses)
-    .order('sort_order', { ascending: true })
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, projects: data ?? [] }
-}
-
-async function createProjectItem(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const { data, error } = await supabase
-    .from('project_items')
-    .insert({
-      user_id:    userId,
-      phase_id:   args.phase_id,
-      project_id: args.project_id,
-      title:      args.title,
-      type:       args.type     ?? 'improvement',
-      priority:   args.priority ?? 'medium',
-      notes:      args.notes    ?? null,
-      status:     'open',
-      sort_order: 0,
-    })
-    .select()
-    .single()
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, item_id: data.id, title: data.title, type: data.type }
 }
 
 async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
@@ -1140,23 +748,6 @@ async function markEpisodeWatched(supabase: AnyRecord, userId: string, args: Any
     episode,
     message: `Marked S${season}E${episode} as watched. Progress updated.`,
   }
-}
-
-async function updateTimeBlock(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const patch: AnyRecord = { updated_at: new Date().toISOString() }
-  if (args.title            !== undefined) patch.title            = args.title
-  if (args.start_time       !== undefined) patch.start_time       = args.start_time
-  if (args.duration_minutes !== undefined) patch.duration_minutes = args.duration_minutes
-  if (args.color            !== undefined) patch.color            = args.color
-
-  const { error } = await supabase
-    .from('time_blocks')
-    .update(patch)
-    .eq('id', args.block_id)
-    .eq('user_id', userId)
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, block_id: args.block_id, updated: patch }
 }
 
 async function getShopCategories(supabase: AnyRecord, userId: string): Promise<AnyRecord> {
@@ -1282,55 +873,233 @@ async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyReco
   return { success: true, stop: stop.stop_name, departures }
 }
 
-async function getRecipes(supabase: AnyRecord, userId: string): Promise<AnyRecord> {
-  const { data, error } = await supabase
-    .from('recipes')
-    .select('id, title, servings, calories')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(50)
+// ─── Generic DB access layer ────────────────────────────────────────────────
+// Curated allow-list of the user's OWN data tables the assistant may touch.
+// access 'rw' = read+write, 'ro' = read-only (externally synced — writing here
+// would desync from the source system). Any table NOT listed here is
+// unreachable — this is how token/secret/auth tables stay private (default-deny).
+interface CatalogEntry { access: 'rw' | 'ro'; purpose: string; columns: string; rules?: string }
 
-  if (error) return { success: false, error: error.message }
-  return { success: true, recipes: data ?? [] }
+const DB_CATALOG: Record<string, CatalogEntry> = {
+  // ── read+write (the user's own app data) ──
+  tasks: {
+    access: 'rw',
+    purpose: 'To-do tasks (the To-Do feature IS this table).',
+    columns: 'id, title, description, domain(personal|work|media), section(inbox|today|tomorrow|this_week|backlog), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai), source_id(uuid), sort_order, created_at, updated_at',
+    rules: 'When deleting a task, also db_delete from time_blocks where source_type="task" and source_id=<task id> to avoid orphaned schedule blocks.',
+  },
+  time_blocks: {
+    access: 'rw',
+    purpose: 'One-off day schedule / timeline blocks for a specific date.',
+    columns: 'id, date(date), title, start_time(time HH:MM:SS), duration_minutes(int), color(blue|green|orange|purple|accent|red), category(daily|training|media|games|work|projects|other), source_type(task|training_session|movie|tv_episode|project_item|calendar|manual), source_id(uuid), notes, created_at, updated_at',
+    rules: 'Set category to match the block type (e.g. "training" for a planned workout) — training/media/work calendar views filter by it. To reschedule to another day, update the date column.',
+  },
+  recipes: {
+    access: 'rw',
+    purpose: 'Saved food recipes (a dish). A recipe is NEVER a shopping item — never put a recipe in shop_items.',
+    columns: 'id, title, description, servings(int>0), instructions(text; one step per line), macro_mode(manual|from_ingredients), calories, protein_g, carbs_g, fat_g, sugar_g (numeric, PER SERVING), image_url, source_url, times_cooked(int), created_at, updated_at',
+    rules: 'Store title/instructions/ingredient names in TURKISH (translate if needed). For AI-entered macros use macro_mode="manual". Ingredient rows go in recipe_ingredients with recipe_id.',
+  },
+  recipe_ingredients: {
+    access: 'rw',
+    purpose: 'Ingredient rows belonging to a recipe.',
+    columns: 'id, recipe_id(uuid FK recipes), name, quantity(numeric; null="to taste"), unit, note, sort_order, library_ingredient_id(uuid FK recipe_ingredient_library, nullable)',
+  },
+  recipe_ingredient_library: {
+    access: 'rw',
+    purpose: 'Reusable ingredient catalog with macros per 100g.',
+    columns: 'id, name(unique per user), unit(default g), calories, protein_g, carbs_g, fat_g, sugar_g (per 100g), created_at',
+  },
+  recipe_meal_plans: {
+    access: 'rw',
+    purpose: 'Weekly meal plan — one entry per (date, meal_slot).',
+    columns: 'id, date(date), meal_slot(breakfast|lunch|dinner|snack), recipe_id(uuid, nullable), custom_title(text, nullable), library_ingredient_id(uuid, nullable), ingredient_quantity(numeric), ingredient_unit(text), servings(numeric>0), notes, created_at',
+    rules: 'At least one of recipe_id / custom_title / library_ingredient_id must be set. Unique on (user_id, date, meal_slot): to fill an occupied slot, db_query it first then db_update the existing row.',
+  },
+  shop_categories: {
+    access: 'rw',
+    purpose: 'Shopping wishlist categories — a STRICT 2-level tree.',
+    columns: 'id, name, parent_id(uuid; null=top category, set=subcategory), created_at',
+    rules: 'Items attach to a SUBCATEGORY (a category whose parent_id is set), never to a top category.',
+  },
+  shop_items: {
+    access: 'rw',
+    purpose: 'Shopping wishlist items (things to BUY). A recipe is never a shop item.',
+    columns: 'id, category_id(uuid FK shop_categories; must be a subcategory), title, notes, price(numeric), price_source(manual|ai_estimate), platform, url, priority(low|medium|high), region(TR|NO), planned_date(date), status(wishlist|bought|dropped), source_type(manual|ai), created_at, updated_at',
+    rules: 'Do not set price yourself (leave null) — price is manual-entry only. To mark an item bought/dropped, update its status.',
+  },
+  user_movie_entries: {
+    access: 'rw',
+    purpose: "User's movie library entries. Join the movie via select \"movie:movies(title, release_date)\".",
+    columns: 'id, movie_id(uuid FK movies), status(watching|wishlist|completed|dropped|upcoming), priority(low|medium|high), rating(int 1-10), personal_note, planned_date, watched_at, created_at, updated_at',
+  },
+  user_tv_entries: {
+    access: 'rw',
+    purpose: "User's TV series library entries. Join the series via select \"tv_series:tv_series(title)\".",
+    columns: 'id, tv_series_id(uuid FK tv_series), status(watching|wishlist|completed|dropped|paused), priority, rating(int 1-10), personal_note, current_season(int), current_episode(int), planned_date, created_at, updated_at',
+  },
+  user_tv_episodes: {
+    access: 'rw',
+    purpose: 'Per-episode watched tracking for TV entries.',
+    columns: 'id, tv_entry_id(uuid FK user_tv_entries), tv_series_id(uuid FK tv_series, required), season_number(int), episode_number(int), watched_at(timestamptz; null=planned/not watched), rating(int 1-10), personal_note, created_at, updated_at',
+    rules: 'Unique on (user_id, tv_series_id, season_number, episode_number). tv_series_id is required — read it from the parent user_tv_entries row first.',
+  },
+  projects: {
+    access: 'rw',
+    purpose: 'Projects (top level).',
+    columns: 'id, name, description, status(active|on_hold|completed|archived), color, sort_order, created_at, updated_at',
+  },
+  project_phases: {
+    access: 'rw',
+    purpose: 'Phases within a project.',
+    columns: 'id, project_id(uuid FK projects), name, description, status(pending|in_progress|done), sort_order, created_at, updated_at',
+  },
+  project_items: {
+    access: 'rw',
+    purpose: 'Items/tasks within a project phase.',
+    columns: 'id, phase_id(uuid FK project_phases), project_id(uuid FK projects), title, notes, type(update|improvement|ui_request|bug|wishlist), status(open|in_progress|done|cancelled), priority(low|medium|high), sort_order, created_at, updated_at',
+  },
+  // ── read-only (synced from external systems — write at the source, not here) ──
+  hevy_workouts: {
+    access: 'ro',
+    purpose: 'Completed Hevy strength workouts (synced from Hevy). For detail use embedded select: "title, start_time, hevy_workout_exercises(title, hevy_sets(weight_kg, reps, type))".',
+    columns: 'id, title, routine_id, start_time, end_time, hevy_created_at, hevy_updated_at',
+  },
+  hevy_routines: {
+    access: 'ro',
+    purpose: 'Hevy routines/templates. Embedded detail: "title, hevy_routine_exercises(title, hevy_routine_sets(weight_kg, reps, rep_range_start, rep_range_end))".',
+    columns: 'id, folder_id, title, notes, hevy_created_at, hevy_updated_at',
+  },
+  hevy_exercise_templates: {
+    access: 'ro',
+    purpose: 'Hevy exercise catalog (names + muscle groups).',
+    columns: 'id, title, type, primary_muscle_group, is_custom',
+  },
+  hevy_body_measurements: {
+    access: 'ro',
+    purpose: 'Body measurements synced from Hevy (bodyweight, fat %, circumferences).',
+    columns: 'id, date, weight_kg, lean_mass_kg, fat_percent (+ circumference columns); unique per (user_id, date)',
+  },
+  strava_activities: {
+    access: 'ro',
+    purpose: 'Cardio activities synced from Strava.',
+    columns: 'id, strava_activity_id, type(run|cycling|walk|swim|yoga|other), title, start_date, distance_meters, duration_seconds, elevation_gain_m, avg_heart_rate, avg_pace_sec_per_km, notes',
+  },
+  health_daily_stats: {
+    access: 'ro',
+    purpose: 'Daily health stats. Prefer the get_health_stats tool for weekly averages.',
+    columns: 'date, steps, active_calories, exercise_minutes, stand_hours, heart_rate_avg, heart_rate_resting, heart_rate_max',
+  },
 }
 
-async function createRecipeFn(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const servings = args.servings ?? 1
-
-  const { data, error } = await supabase
-    .from('recipes')
-    .insert({
-      user_id:      userId,
-      title:        args.title,
-      servings,
-      instructions: args.instructions ?? null,
-      macro_mode:   'manual',
-      calories:     args.calories  ?? null,
-      protein_g:    args.protein_g ?? null,
-      carbs_g:      args.carbs_g   ?? null,
-      fat_g:        args.fat_g     ?? null,
-      sugar_g:      args.sugar_g   ?? null,
-    })
-    .select('id')
-    .single()
-
-  if (error) return { success: false, error: error.message }
-
-  const rows = (args.ingredients ?? [])
-    .filter((i: AnyRecord) => i.name?.trim())
-    .map((i: AnyRecord, idx: number) => ({
-      user_id:    userId,
-      recipe_id:  data.id,
-      name:       i.name.trim(),
-      quantity:   i.quantity ?? null,
-      unit:       i.unit ?? null,
-      sort_order: idx,
-    }))
-
-  if (rows.length) {
-    const { error: ingErr } = await supabase.from('recipe_ingredients').insert(rows)
-    if (ingErr) return { success: true, recipe_id: data.id, warning: `Recipe created but ingredients failed: ${ingErr.message}` }
+function describeDatabase(args: AnyRecord): AnyRecord {
+  if (args.table) {
+    const e = DB_CATALOG[args.table]
+    if (!e) return { success: false, error: `Table "${args.table}" is not accessible.` }
+    return { success: true, table: args.table, access: e.access, purpose: e.purpose, columns: e.columns, rules: e.rules ?? null }
   }
+  const tables: AnyRecord = {}
+  for (const [name, e] of Object.entries(DB_CATALOG)) tables[name] = { access: e.access, purpose: e.purpose }
+  return {
+    success: true,
+    tables,
+    note: 'Only these tables are accessible; everything else (tokens, auth, secrets) is off-limits. Every read/write is auto-scoped to you (user_id). Call describe_database with a table name for its columns, enums and rules.',
+  }
+}
 
-  return { success: true, recipe_id: data.id, title: args.title }
+function assertAccess(table: string, write: boolean): CatalogEntry {
+  const e = DB_CATALOG[table]
+  if (!e) throw new Error(`Table "${table}" is not accessible.`)
+  if (write && e.access !== 'rw') throw new Error(`Table "${table}" is read-only (synced from an external system — change it at the source).`)
+  return e
+}
+
+// deno-lint-ignore no-explicit-any
+function parseJsonArg(raw: any, label: string): AnyRecord {
+  if (raw == null || raw === '') return {}
+  if (typeof raw === 'object') return raw
+  try { return JSON.parse(raw) } catch { throw new Error(`Invalid JSON for ${label}: ${raw}`) }
+}
+
+// Applies a filter object to a Supabase query. Plain value = eq; null = IS NULL;
+// array = IN; nested object supports gte/lte/gt/lt/neq/like/in for ranges/patterns.
+function applyFilters(query: AnyRecord, filters: AnyRecord): AnyRecord {
+  for (const [col, cond] of Object.entries(filters)) {
+    if (cond === null) { query = query.is(col, null); continue }
+    if (Array.isArray(cond)) { query = query.in(col, cond); continue }
+    if (typeof cond === 'object') {
+      for (const [op, val] of Object.entries(cond as AnyRecord)) {
+        switch (op) {
+          case 'gte':  query = query.gte(col, val); break
+          case 'lte':  query = query.lte(col, val); break
+          case 'gt':   query = query.gt(col, val); break
+          case 'lt':   query = query.lt(col, val); break
+          case 'neq':  query = query.neq(col, val); break
+          case 'like': query = query.ilike(col, `%${val}%`); break
+          case 'in':   query = query.in(col, val as unknown[]); break
+          default: throw new Error(`Unknown filter operator "${op}" on column "${col}"`)
+        }
+      }
+      continue
+    }
+    query = query.eq(col, cond)
+  }
+  return query
+}
+
+async function dbQuery(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  try {
+    assertAccess(args.table, false)
+    const filters = parseJsonArg(args.filters, 'filters')
+    const limit = Math.min(args.limit ?? 50, 200)
+    let query = supabase.from(args.table).select(args.select || '*').eq('user_id', userId)
+    query = applyFilters(query, filters)
+    if (args.order_by) query = query.order(args.order_by, { ascending: args.ascending ?? false })
+    query = query.limit(limit)
+    const { data, error } = await query
+    if (error) return { success: false, error: error.message }
+    return { success: true, count: data?.length ?? 0, rows: data ?? [] }
+  } catch (e) { return { success: false, error: (e as Error).message } }
+}
+
+async function dbInsert(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  try {
+    const entry = assertAccess(args.table, true)
+    const values = parseJsonArg(args.values, 'values')
+    delete values.user_id
+    values.user_id = userId
+    if (entry.columns.includes('updated_at')) values.updated_at = new Date().toISOString()
+    const { data, error } = await supabase.from(args.table).insert(values).select().single()
+    if (error) return { success: false, error: error.message }
+    return { success: true, id: data.id, row: data }
+  } catch (e) { return { success: false, error: (e as Error).message } }
+}
+
+async function dbUpdate(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  try {
+    const entry = assertAccess(args.table, true)
+    const filters = parseJsonArg(args.filters, 'filters')
+    if (!Object.keys(filters).length) return { success: false, error: 'Refusing to update without filters — provide at least one, e.g. {"id":"..."}.' }
+    const values = parseJsonArg(args.values, 'values')
+    delete values.user_id  // owner is immutable
+    if (entry.columns.includes('updated_at')) values.updated_at = new Date().toISOString()
+    let query = supabase.from(args.table).update(values).eq('user_id', userId)
+    query = applyFilters(query, filters)
+    const { data, error } = await query.select()
+    if (error) return { success: false, error: error.message }
+    return { success: true, updated_count: data?.length ?? 0, rows: data ?? [] }
+  } catch (e) { return { success: false, error: (e as Error).message } }
+}
+
+async function dbDelete(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  try {
+    assertAccess(args.table, true)
+    const filters = parseJsonArg(args.filters, 'filters')
+    if (!Object.keys(filters).length) return { success: false, error: 'Refusing to delete without filters — provide at least one, e.g. {"id":"..."}.' }
+    let query = supabase.from(args.table).delete().eq('user_id', userId)
+    query = applyFilters(query, filters)
+    const { data, error } = await query.select()
+    if (error) return { success: false, error: error.message }
+    return { success: true, deleted_count: data?.length ?? 0 }
+  } catch (e) { return { success: false, error: (e as Error).message } }
 }
