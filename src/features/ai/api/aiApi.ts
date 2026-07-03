@@ -247,3 +247,122 @@ Respond in the same language the user writes in (Turkish or English).`
 export async function sendShopMessage(messages: Message[]): Promise<AIResponse> {
   return invokeAI(messages, SHOP_SYSTEM_PROMPT)
 }
+
+// ─── Structured extraction (recipes) ──────────────────────────────────────
+//  Single-shot "read this, return JSON" calls — no chat loop, no tools.
+//  Reuses the same edge function; passing `responseSchema` routes ai-proxy
+//  into callGeminiStructured instead of the conversational tool-calling path.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function invokeStructured<T>(prompt: string, responseSchema: any): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', {
+    body: { messages: [{ role: 'user', content: prompt }], responseSchema },
+  })
+
+  if (error) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = await (error as any).context?.json?.()
+      throw new Error(friendlyError(body, error.message))
+    } catch (inner) {
+      if (inner instanceof Error && inner !== error) throw inner
+    }
+    throw new Error(error.message)
+  }
+  if (data?.error) throw new Error(friendlyError(data, data.error))
+  return data.data as T
+}
+
+export interface ParsedRecipeIngredient {
+  name:     string
+  quantity: number | null
+  unit:     string | null
+  note:     string | null
+}
+
+export interface ParsedRecipe {
+  title:          string
+  servings:       number
+  instructions:   string | null
+  ingredients:    ParsedRecipeIngredient[]
+  macro_estimate: {
+    calories:  number | null
+    protein_g: number | null
+    carbs_g:   number | null
+    fat_g:     number | null
+    sugar_g:   number | null
+  } | null
+}
+
+const RECIPE_PARSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    title:        { type: 'STRING' },
+    servings:     { type: 'NUMBER' },
+    instructions: { type: 'STRING', description: 'One step per line, plain text' },
+    ingredients: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name:     { type: 'STRING' },
+          quantity: { type: 'NUMBER', description: 'Omit if "to taste" or unspecified' },
+          unit:     { type: 'STRING' },
+          note:     { type: 'STRING' },
+        },
+        required: ['name'],
+      },
+    },
+    macro_estimate: {
+      type: 'OBJECT',
+      description: 'Your best rough estimate PER SERVING, using the servings count above',
+      properties: {
+        calories:  { type: 'NUMBER' },
+        protein_g: { type: 'NUMBER' },
+        carbs_g:   { type: 'NUMBER' },
+        fat_g:     { type: 'NUMBER' },
+        sugar_g:   { type: 'NUMBER' },
+      },
+    },
+  },
+  required: ['title', 'servings', 'ingredients'],
+}
+
+const RECIPE_PARSE_PROMPT = `Extract structured recipe data from the pasted text below. Identify the title,
+base serving count, ingredients (name/quantity/unit/note — split combined lines like "2 cups flour" into quantity=2, unit="cups", name="flour"), instructions (one step per line), and give your best rough per-serving macro estimate (calories/protein/carbs/fat/sugar) based on the ingredients and servings. If the text isn't a recipe, do your best guess anyway — never refuse.`
+
+export async function parseRecipeText(text: string): Promise<ParsedRecipe> {
+  return invokeStructured<ParsedRecipe>(`${RECIPE_PARSE_PROMPT}\n\n---\n${text}`, RECIPE_PARSE_SCHEMA)
+}
+
+export interface MacroEstimate {
+  calories:  number | null
+  protein_g: number | null
+  carbs_g:   number | null
+  fat_g:     number | null
+  sugar_g:   number | null
+}
+
+const MACRO_ESTIMATE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    calories:  { type: 'NUMBER' },
+    protein_g: { type: 'NUMBER' },
+    carbs_g:   { type: 'NUMBER' },
+    fat_g:     { type: 'NUMBER' },
+    sugar_g:   { type: 'NUMBER' },
+  },
+  required: ['calories', 'protein_g', 'carbs_g', 'fat_g', 'sugar_g'],
+}
+
+export async function estimateRecipeMacros(
+  ingredients: { name: string; quantity: number | null; unit: string | null }[],
+  servings: number,
+): Promise<MacroEstimate> {
+  const list = ingredients
+    .filter(i => i.name.trim())
+    .map(i => `- ${i.quantity ?? ''} ${i.unit ?? ''} ${i.name}`.trim())
+    .join('\n')
+  const prompt = `Estimate the PER-SERVING macros (calories, protein_g, carbs_g, fat_g, sugar_g) for a recipe with ${servings} serving(s) made from these ingredients:\n${list}\n\nGive your best rough estimate — never refuse, round to sensible whole/half numbers.`
+  return invokeStructured<MacroEstimate>(prompt, MACRO_ESTIMATE_SCHEMA)
+}
