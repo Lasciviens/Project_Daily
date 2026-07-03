@@ -358,7 +358,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { messages, systemPrompt } = await req.json() as { messages: Message[]; systemPrompt?: string }
+    const { messages, systemPrompt, responseSchema } = await req.json() as
+      { messages: Message[]; systemPrompt?: string; responseSchema?: AnyRecord }
     if (!messages?.length) {
       return new Response(JSON.stringify({ error: 'messages required' }), {
         status: 400, headers: { ...headers, 'Content-Type': 'application/json' },
@@ -372,7 +373,11 @@ Deno.serve(async (req) => {
       })
     }
 
-    const result = await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id)
+    // Structured single-shot extraction (no tool-calling loop) — used for
+    // things like parsing pasted recipe text into a JSON shape.
+    const result = responseSchema
+      ? await callGeminiStructured(GEMINI_KEY, messages, systemPrompt, responseSchema)
+      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id)
     return new Response(JSON.stringify(result), {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
@@ -477,6 +482,60 @@ async function callGemini(
   }
 
   return { text: 'Done — all requested actions completed.' }
+}
+
+// Single-shot structured extraction — no tools, no multi-turn loop, just
+// "read this text, return JSON matching this schema." Used for pasted-recipe
+// parsing and macro estimation, where the caller wants data back, not chat.
+async function callGeminiStructured(
+  apiKey: string,
+  messages: Message[],
+  systemPrompt: string | undefined,
+  responseSchema: AnyRecord,
+): Promise<{ data: AnyRecord }> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`
+
+  const contents: AnyRecord[] = messages.map(m => ({
+    role:  m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }))
+
+  const body: AnyRecord = {
+    contents,
+    generationConfig: {
+      thinking_config:  { thinking_level: 'MINIMAL' },
+      responseMimeType: 'application/json',
+      responseSchema,
+    },
+  }
+  if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] }
+
+  const res = await fetch(url, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    if (res.status === 429) {
+      let dailyLimit = 20
+      let retryAfterSec = 60
+      try {
+        const errJson = JSON.parse(errText)
+        const violations = errJson.error?.details?.find((d: AnyRecord) => d.violations)?.violations ?? []
+        if (violations[0]?.quotaValue) dailyLimit = parseInt(violations[0].quotaValue) || 20
+        const retryStr = errJson.error?.details?.find((d: AnyRecord) => d.retryDelay)?.retryDelay ?? ''
+        if (retryStr) retryAfterSec = parseInt(retryStr) || 60
+      } catch { /* ignore */ }
+      throw new RateLimitError(dailyLimit, retryAfterSec)
+    }
+    throw new Error(`Gemini ${res.status}: ${errText}`)
+  }
+
+  const data      = await res.json()
+  const text      = data.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text ?? '{}'
+  return { data: JSON.parse(text) }
 }
 
 async function dispatch(

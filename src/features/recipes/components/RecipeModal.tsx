@@ -3,6 +3,7 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { toast } from '../../../app/store'
 import { useCreateRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
+import { parseRecipeText, estimateRecipeMacros } from '../../ai/api/aiApi'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
 
 interface Props {
@@ -68,6 +69,10 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
   const [sourceUrl,    setSourceUrl]    = useState('')
   const [saving,       setSaving]       = useState(false)
   const [newIngredientRow, setNewIngredientRow] = useState<number | null>(null)
+  const [pasteOpen,    setPasteOpen]    = useState(false)
+  const [pasteText,    setPasteText]    = useState('')
+  const [parsing,      setParsing]      = useState(false)
+  const [estimating,   setEstimating]   = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -92,6 +97,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
       setCalories(''); setProtein(''); setCarbs(''); setSugar(''); setFat(''); setSourceUrl('')
     }
     setNewIngredientRow(null)
+    setPasteOpen(false); setPasteText('')
   }, [open, recipe])
 
   function setRow(idx: number, patch: Partial<IngredientDraft>) {
@@ -107,6 +113,55 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
   }
 
   const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, Math.max(1, Number(servings) || 1), library) : null
+
+  async function handleParsePaste() {
+    if (!pasteText.trim()) return
+    setParsing(true)
+    const tid = toast.loading('Parsing recipe with AI…')
+    try {
+      const parsed = await parseRecipeText(pasteText)
+      setTitle(parsed.title)
+      setServings(String(Math.max(1, parsed.servings || 1)))
+      setInstructions(parsed.instructions ?? '')
+      setIngredients(parsed.ingredients.length
+        ? parsed.ingredients.map(i => ({ name: i.name, quantity: i.quantity, unit: i.unit, note: i.note, library_ingredient_id: null }))
+        : [{ ...EMPTY_ROW }])
+      if (parsed.macro_estimate) {
+        setMacroMode('manual')
+        setCalories(parsed.macro_estimate.calories?.toString() ?? '')
+        setProtein(parsed.macro_estimate.protein_g?.toString() ?? '')
+        setCarbs(parsed.macro_estimate.carbs_g?.toString() ?? '')
+        setFat(parsed.macro_estimate.fat_g?.toString() ?? '')
+        setSugar(parsed.macro_estimate.sugar_g?.toString() ?? '')
+      }
+      toast.dismiss(tid); toast.success('Parsed ✓ — review before saving')
+      setPasteOpen(false); setPasteText('')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to parse')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  async function handleEstimateMacros() {
+    const named = ingredients.filter(i => i.name.trim())
+    if (!named.length) { toast.error('Add at least one ingredient first'); return }
+    setEstimating(true)
+    const tid = toast.loading('Estimating macros with AI…')
+    try {
+      const est = await estimateRecipeMacros(named, Math.max(1, Number(servings) || 1))
+      setCalories(est.calories?.toString() ?? '')
+      setProtein(est.protein_g?.toString() ?? '')
+      setCarbs(est.carbs_g?.toString() ?? '')
+      setFat(est.fat_g?.toString() ?? '')
+      setSugar(est.sugar_g?.toString() ?? '')
+      toast.dismiss(tid); toast.success('Estimated ✓ — adjust if needed')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to estimate')
+    } finally {
+      setEstimating(false)
+    }
+  }
 
   async function handleSave() {
     if (!title.trim()) { toast.error('Title is required'); return }
@@ -146,7 +201,28 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-4">
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Recipe title" autoFocus className={inputCls} />
+            <div className="flex items-center justify-between">
+              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Recipe title" autoFocus className={inputCls + ' mr-2'} />
+              <button type="button" onClick={() => setPasteOpen(o => !o)}
+                className="flex-shrink-0 text-xs text-accent-600 hover:text-accent-700 min-h-[44px] px-2 whitespace-nowrap">
+                ✨ Paste recipe
+              </button>
+            </div>
+
+            {pasteOpen && (
+              <div className="p-3 rounded-xl border border-accent-200 bg-accent-50/50 flex flex-col gap-2">
+                <p className="text-[11px] text-accent-700">Paste a recipe (from anywhere) — AI will fill in the title, servings, ingredients, instructions, and a rough macro estimate.</p>
+                <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5} placeholder="Paste recipe text here…"
+                  className="w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[36px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
+                  <button type="button" onClick={handleParsePaste} disabled={parsing || !pasteText.trim()}
+                    className="flex-1 min-h-[36px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
+                    {parsing ? 'Parsing…' : 'Parse with AI'}
+                  </button>
+                </div>
+              </div>
+            )}
             <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description (optional)" rows={2}
               className="w-full bg-cream-50 border border-ink-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
 
@@ -222,20 +298,26 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
               </div>
 
               {macroMode === 'manual' ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {[
-                    { v: calories, set: setCalories, label: 'Calories (kcal)' },
-                    { v: protein,  set: setProtein,  label: 'Protein (g)' },
-                    { v: carbs,    set: setCarbs,    label: 'Carbs (g)' },
-                    { v: fat,      set: setFat,      label: 'Fat (g)' },
-                    { v: sugar,    set: setSugar,    label: 'Sugar (g)' },
-                  ].map(m => (
-                    <div key={m.label}>
-                      <label className="text-[10px] text-ink-400 block mb-0.5">{m.label}</label>
-                      <input value={m.v} onChange={e => m.set(e.target.value)} inputMode="decimal"
-                        className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                    </div>
-                  ))}
+                <div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { v: calories, set: setCalories, label: 'Calories (kcal)' },
+                      { v: protein,  set: setProtein,  label: 'Protein (g)' },
+                      { v: carbs,    set: setCarbs,    label: 'Carbs (g)' },
+                      { v: fat,      set: setFat,      label: 'Fat (g)' },
+                      { v: sugar,    set: setSugar,    label: 'Sugar (g)' },
+                    ].map(m => (
+                      <div key={m.label}>
+                        <label className="text-[10px] text-ink-400 block mb-0.5">{m.label}</label>
+                        <input value={m.v} onChange={e => m.set(e.target.value)} inputMode="decimal"
+                          className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={handleEstimateMacros} disabled={estimating}
+                    className="mt-2 text-xs text-accent-600 hover:text-accent-700 min-h-[36px] disabled:opacity-50">
+                    {estimating ? 'Estimating…' : '✨ Estimate with AI'}
+                  </button>
                 </div>
               ) : (
                 <div>
