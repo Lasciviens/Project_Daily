@@ -9,7 +9,7 @@ import {
 
 export function useWatchedEpisodes(tvEntryId: string | null) {
   return useQuery({
-    queryKey: ['watched_episodes', tvEntryId],
+    queryKey: ['watched-episodes', tvEntryId],
     queryFn:  () => fetchWatchedEpisodes(tvEntryId!),
     enabled:  !!tvEntryId,
     staleTime: 5 * 60_000,
@@ -18,7 +18,7 @@ export function useWatchedEpisodes(tvEntryId: string | null) {
 
 export function useToggleEpisodeWatched(tvEntryId: string) {
   const qc = useQueryClient()
-  const key = ['watched_episodes', tvEntryId]
+  const key = ['watched-episodes', tvEntryId]
 
   return useMutation({
     mutationFn: async ({ season, episode, watched }: { season: number; episode: number; watched: boolean }) => {
@@ -34,15 +34,16 @@ export function useToggleEpisodeWatched(tvEntryId: string) {
       qc.setQueryData<WatchedEpisode[]>(key, old => {
         if (!old) return old
         if (watched) {
-          return old.filter(w => !(w.season === season && w.episode === episode))
+          return old.filter(w => !(w.season_number === season && w.episode_number === episode))
         }
         return [...old, {
-          id:          'optimistic',
-          user_id:     '',
-          tv_entry_id: tvEntryId,
-          season,
-          episode,
-          watched_on:  format(new Date(), 'yyyy-MM-dd'),
+          id:             'optimistic',
+          user_id:        '',
+          tv_entry_id:    tvEntryId,
+          tv_series_id:   '',
+          season_number:  season,
+          episode_number: episode,
+          watched_at:     new Date().toISOString(),
         }]
       })
       return { previous }
@@ -53,4 +54,3 @@ export function useToggleEpisodeWatched(tvEntryId: string) {
     onSettled: () => qc.invalidateQueries({ queryKey: key }),
   })
 }
-

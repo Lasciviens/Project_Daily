@@ -78,7 +78,7 @@ export function GamesHomeWidget() {
               <div className="text-[10px] text-ink-400 mt-0.5">Playing</div>
             </div>
             <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">
-              <div className="text-lg font-bold text-ink-900">{stats.backlog + stats.wishlist}</div>
+              <div className="text-lg font-bold text-ink-900">{stats.total}</div>
               <div className="text-[10px] text-ink-400 mt-0.5">Total</div>
             </div>
             <div className="flex-1 text-center bg-ink-50 rounded-lg py-2 px-1">

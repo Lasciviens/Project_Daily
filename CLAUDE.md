@@ -71,7 +71,7 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 | Recipes | 🚧 | Phase 1+2+3 done (CRUD + serving scaling + macros + weekly meal plan + pantry checkbox → Shop). See Recipes section. Phase 4: AI macro estimate / recipe parse. UX: cover-image backdrop/cards, MacroBar, Cook Mode, search, seeded Turkish classics |
 | Media | ✅ | See Media section below |
 | Work | ✅ | Vertical kanban (Overdue/To-do/In Progress/Waiting/Done), Developer tab inside Work, drag-and-drop, HeroTaskWidget (2 focus cards), WorkDayTimeline (work tasks only) |
-| AI | ✅ | Gemini 2.5 Flash via Edge Function, create_task function calling |
+| AI | ✅ | Gemini 3.5 Flash via Edge Function, create_task function calling |
 | Calendar | ✅ | Google OAuth, read + write events, sync/refresh button in DayTimeline header |
 | Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
 | Training | ✅ | See Training section below. Hevy (workouts, PRs, routines, body) + Strava OAuth. Page-level calendar pinned right. |

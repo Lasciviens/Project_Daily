@@ -101,8 +101,7 @@ export function UnifiedPlanModal({
 
   // ── Save: Schedule tab ──────────────────────────────────────────────────────
   //  Order matters for cross-table consistency: create the task FIRST so the
-  //  time block can link to it (source_type='task'), matching the rest of the
-  //  app (AddTaskModal). Only when no task is created does the block link to the
+  //  time block can link to it (source_type='task'). Only when no task is created does the block link to the
   //  caller's source entity — whose `sourceType` MUST be a valid time_blocks
   //  source_type ('movie'|'tv_episode'|'training_session'|'project_item'|…).
   async function saveSchedule() {

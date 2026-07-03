@@ -23,9 +23,10 @@ async function fetchRecentlyWatched(): Promise<RecentItem[]> {
       .order('watched_at', { ascending: false })
       .limit(4),
     supabase
-      .from('watched_episodes')
-      .select('id, watched_on, tv_entry_id, tv_entry:user_tv_entries(tv_series(title, poster_path))')
-      .order('watched_on', { ascending: false })
+      .from('user_tv_episodes')
+      .select('id, watched_at, tv_entry_id, tv_entry:user_tv_entries(tv_series(title, poster_path))')
+      .not('watched_at', 'is', null)
+      .order('watched_at', { ascending: false })
       .limit(12),
   ])
 
@@ -48,7 +49,7 @@ async function fetchRecentlyWatched(): Promise<RecentItem[]> {
       type:       'tv' as const,
       title:      e.tv_entry?.tv_series?.title ?? 'Unknown',
       poster:     e.tv_entry?.tv_series?.poster_path ?? null,
-      watched_at: e.watched_on,
+      watched_at: e.watched_at,
     })
   }
 
