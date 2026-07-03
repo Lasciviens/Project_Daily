@@ -117,13 +117,13 @@ export function DayTimeline({ date }: Props) {
   const { data: linkedTaskNotes = [] } = useQuery({
     queryKey: ['tasks', 'notes', dateStr, taskSourceIds.join(',')],
     queryFn:  async () => {
-      const { data } = await supabase.from('tasks').select('id, notes').in('id', taskSourceIds)
+      const { data } = await supabase.from('tasks').select('id, description').in('id', taskSourceIds)
       return data ?? []
     },
     enabled:   taskSourceIds.length > 0,
     staleTime: 5 * 60_000,
   })
-  const taskNotesMap = new Map(linkedTaskNotes.map(t => [t.id, t.notes as string | null]))
+  const taskNotesMap = new Map(linkedTaskNotes.map(t => [t.id, t.description as string | null]))
 
   const handleBlockMouseDown = useCallback((e: React.MouseEvent, blockId: string, topPx: number) => {
     e.stopPropagation()

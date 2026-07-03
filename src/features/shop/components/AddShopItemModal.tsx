@@ -50,7 +50,9 @@ export function AddShopItemModal({ open, onClose }: Props) {
   async function handleSave() {
     if (!title.trim()) { toast.error('Title is required'); return }
     const topName = topId === NEW_TOP ? newTop.trim() : ''
-    const subName = subId === NEW_SUB ? newSub.trim() : ''
+    // A brand-new top category has no existing subcategories to pick from,
+    // so its subcategory name also comes from the `newSub` field.
+    const subName = (subId === NEW_SUB || topId === NEW_TOP) ? newSub.trim() : ''
     if (topId === NEW_TOP && !topName) { toast.error('Enter a name for the new top category'); return }
     if ((subId === NEW_SUB || !subId) && !subName && topId !== NEW_TOP) { toast.error('Choose or name a subcategory'); return }
     if (topId === NEW_TOP && !subName) { toast.error('A new top category needs a subcategory name too'); return }

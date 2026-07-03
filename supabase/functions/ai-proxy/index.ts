@@ -286,14 +286,13 @@ const TOOLS = [
       },
       {
         name: 'create_shop_item',
-        description: 'Add a wishlist item to a shopping subcategory. category_id MUST be a subcategory ID (one that itself has a parent) from get_shop_categories or a just-created create_shop_category result — never a top-category ID.',
+        description: 'Add a wishlist item to a shopping subcategory. category_id MUST be a subcategory ID (one that itself has a parent) from get_shop_categories or a just-created create_shop_category result — never a top-category ID. Never invent a price — there is no price field here; price is manual-entry only in the app UI.',
         parameters: {
           type: 'OBJECT',
           properties: {
             category_id:  { type: 'STRING', description: 'Subcategory ID' },
             title:        { type: 'STRING' },
             notes:        { type: 'STRING' },
-            price:        { type: 'NUMBER' },
             platform:     { type: 'STRING', description: 'e.g. PS5, PC, iOS (optional)' },
             url:          { type: 'STRING' },
             priority:     { type: 'STRING', enum: ['low', 'medium', 'high'] },
@@ -517,7 +516,7 @@ async function dispatch(
 async function getTasks(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   let query = supabase
     .from('tasks')
-    .select('id, title, status, priority, domain, section, due_date, notes')
+    .select('id, title, status, priority, domain, section, due_date, description')
     .eq('user_id', userId)
     .neq('status', 'cancelled')
     .limit(50)
@@ -1043,8 +1042,7 @@ async function createShopItemFn(supabase: AnyRecord, userId: string, args: AnyRe
       category_id:  args.category_id,
       title:        args.title,
       notes:        args.notes ?? null,
-      price:        args.price ?? null,
-      price_source: args.price != null ? 'manual' : null,
+      // No price field — AI never auto-writes a price (manual-entry only, per design).
       platform:     args.platform ?? null,
       url:          args.url ?? null,
       priority:     args.priority ?? 'medium',
