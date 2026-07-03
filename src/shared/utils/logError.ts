@@ -5,12 +5,22 @@ export async function logError(message: string, context?: Record<string, unknown
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
+    // Always capture environment context so a log entry is self-contained and
+    // trackable, then merge in whatever the caller passed (payloads, raw API
+    // errors, ids, etc.). Kept best-effort — never throw.
+    const enriched: Record<string, unknown> = {
+      at:         new Date().toISOString(),
+      route:      typeof location !== 'undefined' ? location.hash || location.pathname : undefined,
+      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+      ...(context ?? {}),
+    }
+
     // Insert new log entry and clean up entries older than 2 days in one go
     await Promise.all([
       supabase.from('app_error_logs').insert({
         user_id: user.id,
         message,
-        context: context ?? null,
+        context: enriched,
       }),
       supabase
         .from('app_error_logs')

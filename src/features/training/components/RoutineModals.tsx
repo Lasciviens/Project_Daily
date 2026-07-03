@@ -136,17 +136,26 @@ function formToPayload(form: RoutineForm, routineId?: string) {
       superset_id:          numOrNull(ex.superset_id),
       rest_seconds:         numOrNull(ex.rest_seconds),
       notes:                ex.notes.trim() || null,
-      sets: ex.sets.map(s => ({
-        type:             s.type,
-        weight_kg:        numOrNull(s.weight_kg),
-        reps:             ex.use_rep_range ? null : numOrNull(s.reps),
-        rep_range:        ex.use_rep_range && s.rep_range_start.trim() !== '' && s.rep_range_end.trim() !== ''
-                            ? { start: Number(s.rep_range_start), end: Number(s.rep_range_end) }
-                            : null,
-        distance_meters:  numOrNull(s.distance_meters),
-        duration_seconds: numOrNull(s.duration_seconds),
-        custom_metric:    numOrNull(s.custom_metric),
-      })),
+      sets: ex.sets.map(s => {
+        // Hevy requires rep_range to be a { start, end } object OR absent — it
+        // rejects `rep_range: null` with a 400. So include it only when a real
+        // range is entered; otherwise send fixed reps and omit the key entirely.
+        const hasRange = ex.use_rep_range && s.rep_range_start.trim() !== '' && s.rep_range_end.trim() !== ''
+        const set: Record<string, unknown> = {
+          type:             s.type,
+          weight_kg:        numOrNull(s.weight_kg),
+          distance_meters:  numOrNull(s.distance_meters),
+          duration_seconds: numOrNull(s.duration_seconds),
+          custom_metric:    numOrNull(s.custom_metric),
+        }
+        if (hasRange) {
+          set.reps      = null
+          set.rep_range = { start: Number(s.rep_range_start), end: Number(s.rep_range_end) }
+        } else {
+          set.reps = numOrNull(s.reps)
+        }
+        return set
+      }),
     })),
   }
 }

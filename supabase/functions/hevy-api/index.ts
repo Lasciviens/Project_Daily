@@ -295,12 +295,26 @@ async function handleUpdateWorkout(
   return { ok: true }
 }
 
+// Hevy rejects `rep_range: null` on a set (it must be a { start, end } object
+// or absent). Defensive belt-and-suspenders: drop any null rep_range from every
+// set before sending, so no caller can trigger the 400 — without ever touching
+// a real range object.
+// deno-lint-ignore no-explicit-any
+function stripNullRepRange(payload: any): void {
+  for (const ex of payload?.exercises ?? []) {
+    for (const set of ex?.sets ?? []) {
+      if (set && set.rep_range == null && 'rep_range' in set) delete set.rep_range
+    }
+  }
+}
+
 async function handleCreateRoutine(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   hevyApiKey: string,
   payload: unknown,
 ) {
+  stripNullRepRange(payload)
   const data = await hevyRequest('POST', '/v1/routines', hevyApiKey, { routine: payload })
   const routine = unwrapEntity<HevyRoutine>(data, 'routine')
   if (!routine?.id) throw new Error('Hevy returned no routine id from create_routine')
@@ -318,6 +332,7 @@ async function handleUpdateRoutine(
   if (!routineId) throw new Error('payload.id is required for update_routine')
   // id belongs in the URL only — Hevy rejects it inside the request body
   const { id: _id, ...routineBody } = payload
+  stripNullRepRange(routineBody)
   const data = await hevyRequest('PUT', `/v1/routines/${routineId}`, hevyApiKey, { routine: routineBody })
   const routine = unwrapEntity<HevyRoutine>(data, 'routine')
   if (!routine?.id) throw new Error('Hevy returned no routine id from update_routine')

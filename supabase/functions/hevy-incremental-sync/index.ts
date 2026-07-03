@@ -21,6 +21,92 @@ async function hevyGet(path: string) {
   return res.json()
 }
 
+// Routines, routine folders and body measurements have NO event feed on Hevy,
+// so the workout-events delta above never picks up a routine you created in the
+// Hevy app. These are small collections — on each Sync we just re-fetch them all
+// and upsert, so "Sync" keeps everything current without a full re-import.
+// deno-lint-ignore no-explicit-any
+async function refreshRoutineFolders(supabase: any, userId: string): Promise<void> {
+  const data = await hevyGet(`/v1/routine_folders`)
+  const folders: Array<{ id: number; title: string }> = data.routine_folders ?? []
+  if (folders.length === 0) return
+  const now = new Date().toISOString()
+  const { error } = await supabase.from('hevy_routine_folders').upsert(
+    folders.map((f) => ({ id: f.id, user_id: userId, title: f.title, synced_at: now })),
+    { onConflict: 'id' },
+  )
+  if (error) throw error
+}
+
+// deno-lint-ignore no-explicit-any
+async function refreshRoutines(supabase: any, userId: string): Promise<number> {
+  let page = 1
+  let total = 0
+  while (true) {
+    const data = await hevyGet(`/v1/routines?page=${page}&pageSize=10`)
+    // deno-lint-ignore no-explicit-any
+    const routines: any[] = data.routines ?? []
+    if (routines.length === 0) break
+    const now = new Date().toISOString()
+    for (const routine of routines) {
+      const { error: rErr } = await supabase.from('hevy_routines').upsert({
+        id: routine.id, user_id: userId, folder_id: routine.folder_id ?? null,
+        title: routine.title, notes: routine.notes ?? null,
+        hevy_updated_at: routine.updated_at, hevy_created_at: routine.created_at, synced_at: now,
+      }, { onConflict: 'id' })
+      if (rErr) throw rErr
+
+      const { error: delErr } = await supabase.from('hevy_routine_exercises')
+        .delete().eq('hevy_routine_id', routine.id).eq('user_id', userId)
+      if (delErr) throw delErr
+
+      for (const ex of routine.exercises ?? []) {
+        const { data: exRow, error: exErr } = await supabase.from('hevy_routine_exercises').insert({
+          user_id: userId, hevy_routine_id: routine.id,
+          exercise_template_id: ex.exercise_template_id, index: ex.index, title: ex.title,
+          notes: ex.notes ?? null, rest_seconds: ex.rest_seconds ?? null, supersets_id: ex.supersets_id ?? null,
+        }).select('id').single()
+        if (exErr) throw exErr
+        if ((ex.sets ?? []).length > 0) {
+          // deno-lint-ignore no-explicit-any
+          const { error: sErr } = await supabase.from('hevy_routine_sets').insert(ex.sets.map((s: any) => ({
+            user_id: userId, hevy_routine_exercise_id: exRow.id, index: s.index, type: s.type,
+            weight_kg: s.weight_kg, reps: s.reps,
+            rep_range_start: s.rep_range?.start ?? null, rep_range_end: s.rep_range?.end ?? null,
+            distance_meters: s.distance_meters, duration_seconds: s.duration_seconds,
+            rpe: s.rpe, custom_metric: s.custom_metric,
+          })))
+          if (sErr) throw sErr
+        }
+      }
+    }
+    total += routines.length
+    if (page >= data.page_count) break
+    page++
+  }
+  return total
+}
+
+// deno-lint-ignore no-explicit-any
+async function refreshBodyMeasurements(supabase: any, userId: string): Promise<void> {
+  let page = 1
+  while (true) {
+    const data = await hevyGet(`/v1/body_measurements?page=${page}&pageSize=10`)
+    // deno-lint-ignore no-explicit-any
+    const measurements: any[] = data.body_measurements ?? []
+    if (measurements.length === 0) break
+    const now = new Date().toISOString()
+    const { error } = await supabase.from('hevy_body_measurements').upsert(
+      // deno-lint-ignore no-explicit-any
+      measurements.map((m: any) => ({ ...m, user_id: userId, updated_at: now })),
+      { onConflict: 'user_id,date' },
+    )
+    if (error) throw error
+    if (page >= data.page_count) break
+    page++
+  }
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin')
   const headers = corsHeaders(origin)
@@ -261,6 +347,21 @@ Deno.serve(async (req) => {
       updatedCount++
     }
 
+    // Step 4b: Re-fetch the small, event-less collections so routines/folders/
+    // body measurements created or edited in the Hevy app show up on Sync
+    // (no more needing "Import all" for a new routine).
+    let routinesSynced = 0
+    try {
+      await refreshRoutineFolders(supabase, user.id)
+      routinesSynced = await refreshRoutines(supabase, user.id)
+      await refreshBodyMeasurements(supabase, user.id)
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: `refresh routines/body failed: ${(err as Error).message}` }),
+        { status: 502, headers: { ...headers, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Step 5: Advance cursor to now
     const { error: cursorError } = await supabase
       .from('hevy_workout_events_cursor')
@@ -281,7 +382,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ updated: updatedCount, deleted: toDeleteSet.size }),
+      JSON.stringify({ updated: updatedCount, deleted: toDeleteSet.size, routines: routinesSynced }),
       { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } }
     )
   } catch (err) {
