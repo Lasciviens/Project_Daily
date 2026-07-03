@@ -32,11 +32,11 @@ export function useCreateHevyRoutine() {
       toast.dismiss(tid as string)
       toast.success('Routine created ✓')
     },
-    onError: (err, _vars, tid) => {
+    onError: (err, vars, tid) => {
       toast.dismiss(tid as string)
       const msg = (err as Error).message ?? 'Failed to create routine'
       toast.error(msg)
-      logError(`Create routine failed: ${msg}`)
+      logError(`Create routine failed: ${msg}`, { action: 'create_routine', payload: vars })
     },
   })
 }
@@ -51,11 +51,11 @@ export function useUpdateHevyRoutine() {
       toast.dismiss(tid as string)
       toast.success('Routine saved ✓')
     },
-    onError: (err, _vars, tid) => {
+    onError: (err, vars, tid) => {
       toast.dismiss(tid as string)
       const msg = (err as Error).message ?? 'Failed to save routine'
       toast.error(msg)
-      logError(`Update routine failed: ${msg}`)
+      logError(`Update routine failed: ${msg}`, { action: 'update_routine', payload: vars })
     },
   })
 }
@@ -70,11 +70,11 @@ export function useDeleteHevyRoutineLocal() {
       toast.dismiss(tid as string)
       toast.success('Routine removed ✓')
     },
-    onError: (err, _vars, tid) => {
+    onError: (err, vars, tid) => {
       toast.dismiss(tid as string)
       const msg = (err as Error).message ?? 'Failed to delete routine'
       toast.error(msg)
-      logError(`Delete routine failed: ${msg}`)
+      logError(`Delete routine failed: ${msg}`, { action: 'delete_routine_local', routine_id: vars })
     },
   })
 }

@@ -1021,6 +1021,11 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: 'Daily health stats. Prefer the get_health_stats tool for weekly averages.',
     columns: 'date, steps, active_calories, exercise_minutes, stand_hours, heart_rate_avg, heart_rate_resting, heart_rate_max',
   },
+  app_error_logs: {
+    access: 'ro',
+    purpose: 'Recent app error logs (last ~2 days). Use to help the user diagnose "why did X fail?" — the context column holds the payload/API error/route.',
+    columns: 'id, message, context(jsonb — action, payload, raw API error, route, user_agent, at), created_at',
+  },
 }
 
 function describeDatabase(args: AnyRecord): AnyRecord {
