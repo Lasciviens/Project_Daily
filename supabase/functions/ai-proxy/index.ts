@@ -16,6 +16,56 @@ interface Message { role: 'user' | 'assistant'; content: string }
 // deno-lint-ignore no-explicit-any
 type AnyRecord = Record<string, any>
 
+// Blocks the obvious SSRF targets (localhost/loopback/link-local/private
+// ranges) — this fetches whatever URL the user pastes, server-side.
+function isPrivateHost(hostname: string): boolean {
+  const h = hostname.toLowerCase()
+  if (h === 'localhost' || h === '0.0.0.0' || h === '::1') return true
+  if (/^127\./.test(h))                    return true
+  if (/^10\./.test(h))                     return true
+  if (/^192\.168\./.test(h))               return true
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true
+  if (/^169\.254\./.test(h))               return true
+  return false
+}
+
+// Strips scripts/styles/tags and decodes common entities to leave plain
+// readable text — good enough for an LLM to extract a recipe from, without
+// pulling in a full HTML-parsing dependency.
+function extractReadableText(html: string): string {
+  let s = html
+  s = s.replace(/<script[\s\S]*?<\/script>/gi, ' ')
+  s = s.replace(/<style[\s\S]*?<\/style>/gi, ' ')
+  s = s.replace(/<!--[\s\S]*?-->/g, ' ')
+  s = s.replace(/<[^>]+>/g, '\n')
+  s = s
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+  s = s.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+  return s.slice(0, 15000)
+}
+
+async function fetchPageText(rawUrl: string): Promise<string> {
+  let url: URL
+  try { url = new URL(rawUrl) } catch { throw new Error('Invalid URL') }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Invalid URL')
+  if (isPrivateHost(url.hostname)) throw new Error('URL not allowed')
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+  try {
+    const res = await fetch(url.toString(), {
+      signal:  controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LascisBoardRecipeBot/1.0)' },
+    })
+    if (!res.ok) throw new Error(`Failed to fetch URL: ${res.status}`)
+    const html = await res.text()
+    return extractReadableText(html)
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 class RateLimitError extends Error {
   constructor(
     public readonly dailyLimit: number,
@@ -358,10 +408,22 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { messages, systemPrompt, responseSchema } = await req.json() as
-      { messages: Message[]; systemPrompt?: string; responseSchema?: AnyRecord }
+    const body = await req.json() as
+      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string }
+
+    // Fetch-and-extract-text is a distinct, lightweight action (no Gemini
+    // call) — used to pull a recipe page's readable text server-side, since
+    // the browser can't fetch arbitrary third-party URLs due to CORS.
+    if (body.fetchUrl) {
+      const text = await fetchPageText(body.fetchUrl)
+      return new Response(JSON.stringify({ text }), {
+        status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { messages, systemPrompt, responseSchema } = body
     if (!messages?.length) {
-      return new Response(JSON.stringify({ error: 'messages required' }), {
+      return new Response(JSON.stringify({ error: 'messages or fetchUrl required' }), {
         status: 400, headers: { ...headers, 'Content-Type': 'application/json' },
       })
     }

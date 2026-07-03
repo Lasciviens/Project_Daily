@@ -328,11 +328,39 @@ const RECIPE_PARSE_SCHEMA = {
   required: ['title', 'servings', 'ingredients'],
 }
 
-const RECIPE_PARSE_PROMPT = `Extract structured recipe data from the pasted text below. Identify the title,
-base serving count, ingredients (name/quantity/unit/note — split combined lines like "2 cups flour" into quantity=2, unit="cups", name="flour"), instructions (one step per line), and give your best rough per-serving macro estimate (calories/protein/carbs/fat/sugar) based on the ingredients and servings. If the text isn't a recipe, do your best guess anyway — never refuse.`
+const RECIPE_PARSE_PROMPT = `Extract structured recipe data from the text below. Identify the title,
+base serving count, ingredients (name/quantity/unit/note — split combined lines like "2 cups flour" into quantity=2, unit="cups", name="flour"), instructions (one step per line), and give your best rough per-serving macro estimate (calories/protein/carbs/fat/sugar) based on the ingredients and servings. If the text isn't a recipe, do your best guess anyway — never refuse.
+
+IMPORTANT: Always output the title, ingredient names/notes, and instructions in TURKISH — translate them if the source text is in any other language. Never leave any of it in the original language.`
 
 export async function parseRecipeText(text: string): Promise<ParsedRecipe> {
   return invokeStructured<ParsedRecipe>(`${RECIPE_PARSE_PROMPT}\n\n---\n${text}`, RECIPE_PARSE_SCHEMA)
+}
+
+// Fetches a recipe page's readable text server-side (ai-proxy does the fetch
+// — the browser can't hit arbitrary third-party origins due to CORS) and
+// parses it the same way as pasted text, always translating to Turkish.
+export async function fetchUrlText(url: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', {
+    body: { fetchUrl: url },
+  })
+  if (error) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = await (error as any).context?.json?.()
+      throw new Error(friendlyError(body, error.message))
+    } catch (inner) {
+      if (inner instanceof Error && inner !== error) throw inner
+    }
+    throw new Error(error.message)
+  }
+  if (data?.error) throw new Error(friendlyError(data, data.error))
+  return data.text as string
+}
+
+export async function parseRecipeFromUrl(url: string): Promise<ParsedRecipe> {
+  const pageText = await fetchUrlText(url)
+  return parseRecipeText(pageText)
 }
 
 export interface MacroEstimate {
