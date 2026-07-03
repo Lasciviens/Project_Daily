@@ -133,6 +133,7 @@ Page layout (`TrainingPage`): faint training-photo header banner; Hevy/Strava pi
 DB (Hevy): `hevy_workouts`/`_exercises`/`hevy_sets`, `hevy_routines`/`_exercises`/`hevy_routine_sets` (routine sets also have `rep_range_start/end`), `hevy_exercise_templates`(+`_muscles`), `hevy_routine_folders`, `hevy_body_measurements`, `hevy_workout_events_cursor`.
 
 **Not done yet:**
+- ⭐ **HIGH PRIORITY — AI transit trip planning**: add an `ai-proxy` tool that calls EnTur's `trip` journey-planner (from→to, `numTripPatterns`, legs with transfers) so the AI can answer "eve gideceğim, 110 sonra 23 ile aktarma" style routing. Current `get_next_transit` only reads next departures from one saved stop — no routing/transfers. Runs server-side (edge function) so no browser CORS issue.
 - Football data source (Calendar integration planned; no route wired)
 - Activity Log / stats widget
 - Routes widget (Home): visual improvement pass + refresh button

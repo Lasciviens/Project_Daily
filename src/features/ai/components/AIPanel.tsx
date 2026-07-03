@@ -1,7 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
+import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useUIStore } from '../../../app/store'
 import { sendMessage } from '../api/aiApi'
 import type { Message } from '../api/aiApi'
+
+const STORAGE_KEY = 'lasci-ai-chat'
+
+// Chat messages carry an optional activity trace (tool calls the AI ran),
+// shown behind a "Show detail" link. The extra field is ignored by the backend.
+interface ChatMessage extends Message { steps?: string[] }
 
 const SUGGESTIONS = [
   'What should I focus on today?',
@@ -12,10 +19,14 @@ const SUGGESTIONS = [
 
 export function AIPanel() {
   const { isAIOpen, closeAI } = useUIStore()
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input,    setInput]    = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) as ChatMessage[] : [] }
+    catch { return [] }
+  })
+  const [input,       setInput]       = useState('')
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
+  const [detailSteps, setDetailSteps] = useState<string[] | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
 
@@ -27,11 +38,16 @@ export function AIPanel() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
+  // Persist the conversation so it survives a page refresh.
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch { /* quota */ }
+  }, [messages])
+
   async function handleSend(text: string) {
     const trimmed = text.trim()
     if (!trimmed || loading) return
 
-    const userMsg: Message = { role: 'user', content: trimmed }
+    const userMsg: ChatMessage = { role: 'user', content: trimmed }
     const next = [...messages, userMsg]
     setMessages(next)
     setInput('')
@@ -40,7 +56,7 @@ export function AIPanel() {
 
     try {
       const reply = await sendMessage(next)
-      setMessages(m => [...m, { role: 'assistant', content: reply }])
+      setMessages(m => [...m, { role: 'assistant', content: reply.text, steps: reply.steps }])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
@@ -82,7 +98,7 @@ export function AIPanel() {
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
               <button
-                onClick={() => { setMessages([]); setError(null) }}
+                onClick={() => { setMessages([]); setError(null); try { localStorage.removeItem(STORAGE_KEY) } catch { /* */ } }}
                 className="text-[11px] text-ink-400 hover:text-ink-600 min-h-[44px] px-2 py-1 rounded transition-colors duration-150"
               >
                 Clear
@@ -118,14 +134,24 @@ export function AIPanel() {
 
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                  msg.role === 'user'
-                    ? 'bg-accent-500 text-white rounded-br-sm'
-                    : 'bg-cream-100 text-ink-800 rounded-bl-sm'
-                }`}
-              >
-                {msg.content}
+              <div className={`max-w-[85%] flex flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                <div
+                  className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                    msg.role === 'user'
+                      ? 'bg-accent-500 text-white rounded-br-sm'
+                      : 'bg-cream-100 text-ink-800 rounded-bl-sm'
+                  }`}
+                >
+                  {msg.content}
+                </div>
+                {msg.role === 'assistant' && msg.steps && msg.steps.length > 0 && (
+                  <button
+                    onClick={() => setDetailSteps(msg.steps!)}
+                    className="text-[11px] text-accent-600 hover:text-accent-700 underline underline-offset-2 px-1 min-h-[28px]"
+                  >
+                    Show detail ({msg.steps.length})
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -182,6 +208,26 @@ export function AIPanel() {
           <p className="text-[10px] text-ink-300 mt-1.5">Shift+Enter for new line</p>
         </div>
       </div>
+
+      {/* Activity-trace detail modal — what the AI did behind the scenes */}
+      <Dialog open={detailSteps !== null} onClose={() => setDetailSteps(null)} className="relative z-[60]">
+        <DialogBackdrop className="fixed inset-0 bg-ink-900/30" />
+        <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <DialogPanel className="w-full sm:max-w-md max-h-[80vh] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl border border-ink-200">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-white">
+              <h3 className="text-sm font-semibold text-ink-800">AI activity</h3>
+              <button onClick={() => setDetailSteps(null)} className="w-9 h-9 flex items-center justify-center text-ink-400 hover:text-ink-700 text-lg">×</button>
+            </div>
+            <div className="px-4 py-3 space-y-1.5">
+              {(detailSteps ?? []).map((s, i) => (
+                <div key={i} className="text-xs font-mono text-ink-700 bg-cream-50 border border-ink-100 rounded-lg px-2.5 py-1.5 whitespace-pre-wrap break-words">
+                  {s}
+                </div>
+              ))}
+            </div>
+          </DialogPanel>
+        </div>
+      </Dialog>
     </>
   )
 }

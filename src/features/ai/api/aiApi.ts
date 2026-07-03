@@ -174,6 +174,7 @@ function friendlyError(body: { error?: string; daily_limit?: number; retry_after
 export interface AIResponse {
   text:          string
   quickReplies?: string[]
+  steps?:        string[]   // activity trace of tool calls the AI ran
 }
 
 async function invokeAI(messages: Message[], systemPrompt: string): Promise<AIResponse> {
@@ -198,11 +199,10 @@ async function invokeAI(messages: Message[], systemPrompt: string): Promise<AIRe
 
 // ─── Main send function ───────────────────────────────────────────────────────
 
-export async function sendMessage(messages: Message[]): Promise<string> {
+export async function sendMessage(messages: Message[]): Promise<AIResponse> {
   const context = await buildContext()
   const systemWithContext = `${SYSTEM_PROMPT}\n\n---\nLIVE DATA:\n${context}`
-  const res = await invokeAI(messages, systemWithContext)
-  return res.text
+  return invokeAI(messages, systemWithContext)
 }
 
 // ─── Shop-scoped send function ───────────────────────────────────────────────
