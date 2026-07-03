@@ -96,9 +96,22 @@ async function refreshBodyMeasurements(supabase: any, userId: string): Promise<v
     const measurements: any[] = data.body_measurements ?? []
     if (measurements.length === 0) break
     const now = new Date().toISOString()
+    // Map explicit columns — do NOT spread ...m: Hevy's measurement object
+    // carries its own numeric `id`, which would land in the uuid `id` column
+    // ("invalid input syntax for type uuid").
     const { error } = await supabase.from('hevy_body_measurements').upsert(
       // deno-lint-ignore no-explicit-any
-      measurements.map((m: any) => ({ ...m, user_id: userId, updated_at: now })),
+      measurements.map((m: any) => ({
+        user_id: userId, date: m.date,
+        weight_kg: m.weight_kg ?? null, lean_mass_kg: m.lean_mass_kg ?? null, fat_percent: m.fat_percent ?? null,
+        neck_cm: m.neck_cm ?? null, shoulder_cm: m.shoulder_cm ?? null, chest_cm: m.chest_cm ?? null,
+        left_bicep_cm: m.left_bicep_cm ?? null, right_bicep_cm: m.right_bicep_cm ?? null,
+        left_forearm_cm: m.left_forearm_cm ?? null, right_forearm_cm: m.right_forearm_cm ?? null,
+        abdomen_cm: m.abdomen_cm ?? null, waist_cm: m.waist_cm ?? null, hips_cm: m.hips_cm ?? null,
+        left_thigh_cm: m.left_thigh_cm ?? null, right_thigh_cm: m.right_thigh_cm ?? null,
+        left_calf_cm: m.left_calf_cm ?? null, right_calf_cm: m.right_calf_cm ?? null,
+        updated_at: now,
+      })),
       { onConflict: 'user_id,date' },
     )
     if (error) throw error
