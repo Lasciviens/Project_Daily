@@ -364,13 +364,17 @@ async function callGemini(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   userId: string,
-): Promise<{ text: string; quickReplies?: string[] }> {
+): Promise<{ text: string; quickReplies?: string[]; steps?: string[] }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`
 
   let contents: AnyRecord[] = messages.map(m => ({
     role:  m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }))
+
+  // Descriptions of each tool call performed — surfaced to the client as an
+  // activity trace (shown behind a "Show detail" link, not spoken inline).
+  const steps: string[] = []
 
   // thinking_level MINIMAL keeps latency low while satisfying the thought_signature requirement
   const baseBody: AnyRecord = {
@@ -381,8 +385,8 @@ async function callGemini(
     baseBody.systemInstruction = { parts: [{ text: systemPrompt }] }
   }
 
-  // Multi-turn function calling loop (max 6 iterations)
-  for (let turn = 0; turn < 6; turn++) {
+  // Multi-turn function calling loop
+  for (let turn = 0; turn < 12; turn++) {
     const res = await fetch(url, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -415,7 +419,7 @@ async function callGemini(
 
     if (fnCallParts.length === 0) {
       // No more function calls — return the text response
-      return { text: parts.find((p: AnyRecord) => p.text)?.text ?? '' }
+      return { text: parts.find((p: AnyRecord) => p.text)?.text ?? '', steps: steps.length ? steps : undefined }
     }
 
     // ask_clarifying_question short-circuits the loop: the "answer" has to
@@ -424,7 +428,7 @@ async function callGemini(
     const clarifyCall = fnCallParts.find((p: AnyRecord) => p.functionCall.name === 'ask_clarifying_question')
     if (clarifyCall) {
       const { question, options } = clarifyCall.functionCall.args
-      return { text: question, quickReplies: Array.isArray(options) ? options : [] }
+      return { text: question, quickReplies: Array.isArray(options) ? options : [], steps: steps.length ? steps : undefined }
     }
 
     // Preserve candidate.content verbatim — dropping it loses the encrypted thoughtSignature
@@ -436,13 +440,40 @@ async function callGemini(
       fnCallParts.map(async (part: AnyRecord) => {
         const { name, args } = part.functionCall
         const result = await dispatch(name, args, supabase, userId)
+        steps.push(describeStep(name, args, result))
         return { functionResponse: { name, response: result } }
       })
     )
     contents = [...contents, { role: 'tool', parts: toolResponseParts }]
   }
 
-  return { text: 'Done — all requested actions completed.' }
+  // Ran out of tool-loop turns — make one final, tool-free call so the model
+  // actually answers (or honestly says it couldn't) instead of a canned line.
+  const finalBody: AnyRecord = { ...baseBody, contents }
+  delete finalBody.tools
+  const finalRes = await fetch(url, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(finalBody),
+  })
+  if (finalRes.ok) {
+    const finalData = await finalRes.json()
+    const finalText = finalData.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text
+    if (finalText) return { text: finalText, steps: steps.length ? steps : undefined }
+  }
+  return { text: 'Bir sonuca varamadım — tekrar sorar mısın?', steps: steps.length ? steps : undefined }
+}
+
+// One-line description of a tool call for the client-side activity trace.
+function describeStep(name: string, args: AnyRecord, result: AnyRecord): string {
+  const tbl = args?.table ? ` ${args.table}` : ''
+  if (result?.success === false) return `✗ ${name}${tbl} — ${result.error ?? 'error'}`
+  let detail = ''
+  if (result?.count !== undefined) detail = ` → ${result.count} rows`
+  else if (result?.updated_count !== undefined) detail = ` → ${result.updated_count} updated`
+  else if (result?.deleted_count !== undefined) detail = ` → ${result.deleted_count} deleted`
+  else if (result?.id) detail = ` → id ${result.id}`
+  return `✓ ${name}${tbl}${detail}`
 }
 
 // Single-shot structured extraction — no tools, no multi-turn loop, just
