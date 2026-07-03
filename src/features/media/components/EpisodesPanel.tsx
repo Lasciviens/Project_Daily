@@ -27,8 +27,8 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
   const queryClient                     = useQueryClient()
 
-  const watchedSet = new Set(watched.filter(w => w.season === season).map(w => w.episode))
-  const watchedMap = new Map(watched.filter(w => w.season === season).map(w => [w.episode, w.watched_on]))
+  const watchedSet = new Set(watched.filter(w => w.season_number === season).map(w => w.episode_number))
+  const watchedMap = new Map(watched.filter(w => w.season_number === season).map(w => [w.episode_number, w.watched_at]))
 
   function toggleSelect(epNum: number) {
     setSelected(prev => {
@@ -47,7 +47,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
       for (const epNum of selected) {
         await markEpisodeWatched(tvEntryId, season, epNum, TODAY)
       }
-      await queryClient.invalidateQueries({ queryKey: ['watched_episodes', tvEntryId] })
+      await queryClient.invalidateQueries({ queryKey: ['watched-episodes', tvEntryId] })
       toast.dismiss(tid)
       toast.success(`Marked as watched ✓`)
       setSelected(new Set())
@@ -192,7 +192,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                     )}
                     {isWatched && watchedOn && (
                       <span className="text-[9px] text-green-600 font-medium">
-                        ✓ Watched {new Date(watchedOn + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        ✓ Watched {new Date(watchedOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                       </span>
                     )}
                   </div>

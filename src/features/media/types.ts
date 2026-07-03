@@ -151,13 +151,18 @@ export interface TMDBSeasonDetail {
   air_date:       string | null
 }
 
+// Matches the real `user_tv_episodes` table (migration 011_tv_episodes.sql).
+// Earlier code referenced a nonexistent `watched_episodes` table with
+// `season`/`episode`/`watched_on` — that table was never created; this is
+// the corrected shape.
 export interface WatchedEpisode {
-  id:          string
-  user_id:     string
-  tv_entry_id: string
-  season:      number
-  episode:     number
-  watched_on:  string
+  id:             string
+  user_id:        string
+  tv_entry_id:    string
+  tv_series_id:   string
+  season_number:  number
+  episode_number: number
+  watched_at:     string | null   // null = planned/not yet watched
 }
 
 export interface TMDBCastMember {
