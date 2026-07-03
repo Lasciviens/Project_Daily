@@ -353,6 +353,41 @@ const TOOLS = [
         },
       },
       {
+        name: 'get_recipes',
+        description: 'List the user\'s saved recipes (title, servings, calories). Use to check whether a recipe already exists before creating a duplicate, or to answer questions about saved recipes.',
+        parameters: { type: 'OBJECT', properties: {}, required: [] },
+      },
+      {
+        name: 'create_recipe',
+        description: 'Save a food recipe (a dish with ingredients + preparation steps) to the user\'s recipe collection. ALWAYS use this — never create_shop_item / create_shop_category — whenever the user shares, pastes, or describes a recipe or dish. A recipe is never a shopping-wishlist item, even though it involves food/ingredients. Always write the title, ingredient names, and instructions in TURKISH, translating them if the user\'s text was in another language.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            title:        { type: 'STRING' },
+            servings:     { type: 'NUMBER', description: 'Base serving count (default 1)' },
+            instructions: { type: 'STRING', description: 'One step per line' },
+            ingredients: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  name:     { type: 'STRING' },
+                  quantity: { type: 'NUMBER', description: 'Omit if "to taste" or unspecified' },
+                  unit:     { type: 'STRING' },
+                },
+                required: ['name'],
+              },
+            },
+            calories:  { type: 'NUMBER', description: 'Per serving (optional — estimate if not given)' },
+            protein_g: { type: 'NUMBER', description: 'Per serving (optional)' },
+            carbs_g:   { type: 'NUMBER', description: 'Per serving (optional)' },
+            fat_g:     { type: 'NUMBER', description: 'Per serving (optional)' },
+            sugar_g:   { type: 'NUMBER', description: 'Per serving (optional)' },
+          },
+          required: ['title', 'ingredients'],
+        },
+      },
+      {
         name: 'ask_clarifying_question',
         description: 'Ask the user a clarifying yes/no or multiple-choice question and present the choices as tappable buttons, instead of asking them to type a free-text answer. Use this whenever you need a decision from the user before proceeding (e.g. confirming a new category) — do NOT combine this with other function calls in the same turn; ask first, wait for their tap, then act.',
         parameters: {
@@ -630,6 +665,8 @@ async function dispatch(
     case 'create_shop_category': return createShopCategoryFn(supabase, userId, args)
     case 'create_shop_item':     return createShopItemFn(supabase, userId, args)
     case 'get_next_transit':     return getNextTransit(supabase, userId, args)
+    case 'get_recipes':          return getRecipes(supabase, userId)
+    case 'create_recipe':        return createRecipeFn(supabase, userId, args)
     default:                     return { success: false, error: `Unknown function: ${name}` }
   }
 }
@@ -1243,4 +1280,57 @@ async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyReco
   })
 
   return { success: true, stop: stop.stop_name, departures }
+}
+
+async function getRecipes(supabase: AnyRecord, userId: string): Promise<AnyRecord> {
+  const { data, error } = await supabase
+    .from('recipes')
+    .select('id, title, servings, calories')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, recipes: data ?? [] }
+}
+
+async function createRecipeFn(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const servings = args.servings ?? 1
+
+  const { data, error } = await supabase
+    .from('recipes')
+    .insert({
+      user_id:      userId,
+      title:        args.title,
+      servings,
+      instructions: args.instructions ?? null,
+      macro_mode:   'manual',
+      calories:     args.calories  ?? null,
+      protein_g:    args.protein_g ?? null,
+      carbs_g:      args.carbs_g   ?? null,
+      fat_g:        args.fat_g     ?? null,
+      sugar_g:      args.sugar_g   ?? null,
+    })
+    .select('id')
+    .single()
+
+  if (error) return { success: false, error: error.message }
+
+  const rows = (args.ingredients ?? [])
+    .filter((i: AnyRecord) => i.name?.trim())
+    .map((i: AnyRecord, idx: number) => ({
+      user_id:    userId,
+      recipe_id:  data.id,
+      name:       i.name.trim(),
+      quantity:   i.quantity ?? null,
+      unit:       i.unit ?? null,
+      sort_order: idx,
+    }))
+
+  if (rows.length) {
+    const { error: ingErr } = await supabase.from('recipe_ingredients').insert(rows)
+    if (ingErr) return { success: true, recipe_id: data.id, warning: `Recipe created but ingredients failed: ${ingErr.message}` }
+  }
+
+  return { success: true, recipe_id: data.id, title: args.title }
 }
