@@ -126,10 +126,13 @@ const numOrNull = (v: string) => (v.trim() !== '' ? Number(v) : null)
 // "… is not allowed" 400. Notably: no exercise index/title, no set index/rpe,
 // superset_id is singular, and rep ranges use the nested { start, end } object.
 function formToPayload(form: RoutineForm, routineId?: string) {
+  const isUpdate = !!routineId
   return {
     ...(routineId ? { id: routineId } : {}),
     title:     form.title.trim(),
-    folder_id: form.folder_id ? Number(form.folder_id) : null,
+    // Hevy's PUT /v1/routines/{id} rejects folder_id ("not allowed") — it's only
+    // accepted on create (POST). So send it on create, omit it on update.
+    ...(isUpdate ? {} : { folder_id: form.folder_id ? Number(form.folder_id) : null }),
     notes:     form.notes.trim() || null,
     exercises: form.exercises.map(ex => ({
       exercise_template_id: ex.exercise_template_id,

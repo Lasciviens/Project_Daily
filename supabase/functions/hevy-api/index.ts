@@ -330,8 +330,9 @@ async function handleUpdateRoutine(
 ) {
   const routineId = payload.id as string
   if (!routineId) throw new Error('payload.id is required for update_routine')
-  // id belongs in the URL only — Hevy rejects it inside the request body
-  const { id: _id, ...routineBody } = payload
+  // id belongs in the URL only — Hevy rejects it inside the request body.
+  // folder_id is also rejected on update ("not allowed") — only valid on create.
+  const { id: _id, folder_id: _folderId, ...routineBody } = payload
   stripNullRepRange(routineBody)
   const data = await hevyRequest('PUT', `/v1/routines/${routineId}`, hevyApiKey, { routine: routineBody })
   const routine = unwrapEntity<HevyRoutine>(data, 'routine')
