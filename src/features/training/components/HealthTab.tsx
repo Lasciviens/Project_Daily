@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { format, subDays } from 'date-fns'
+import { format, isSameDay, startOfDay, subDays } from 'date-fns'
 import { useHealthWorkouts, useHealthMetrics } from '../hooks/useHealthExport'
 import type { HealthWorkout } from '../api/healthApi'
 
-// Verification/browse view — a plain table over whatever Health Auto Export
-// has sent so far. No per-metric chart/visualization pass yet (deliberate:
-// confirm the pipeline + full data shape first, polish later).
+// Verification/browse view — a plain, filterable/sortable table over whatever
+// Health Auto Export has sent so far. No per-metric chart/visualization pass
+// yet (deliberate: confirm the pipeline + full data shape first, polish later).
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
@@ -48,6 +48,53 @@ function HealthWorkoutRow({ workout }: { workout: HealthWorkout }) {
   )
 }
 
+// ─── Metric categorization ────────────────────────────────────────────────
+// Health Auto Export's own metric_name strings aren't fully documented
+// (vendor's site only lists display names, not every internal id) — keyword
+// matching against the id is a pragmatic stand-in for a hardcoded lookup
+// table we can't fully verify. Unmatched metrics fall into "Other" rather
+// than guessing wrong.
+
+const CATEGORY_KEYWORDS: [string, string[]][] = [
+  ['Sleep',           ['sleep']],
+  ['Cardiovascular',  ['heart', 'blood_pressure', 'afib', 'atrial']],
+  ['Respiratory',     ['respiratory', 'oxygen_saturation', 'expiratory', 'vital_capacity', 'inhaler', 'perfusion', 'peak_flow']],
+  ['Mobility',        ['walking', 'stair', 'running_', 'six_minute']],
+  ['Body',            ['weight', 'height', 'body_mass', 'body_fat', 'lean_body', 'waist']],
+  ['Nutrition',       ['dietary', 'protein', 'carbohydrate', 'total_fat', 'fiber', 'sodium', 'potassium', 'calcium', 'iron', 'magnesium',
+                        'phosphorus', 'zinc', 'copper', 'manganese', 'selenium', 'iodine', 'chromium', 'molybdenum', 'chloride', 'caffeine',
+                        'biotin', 'folate', 'niacin', 'pantothenic', 'riboflavin', 'thiamin', 'vitamin', 'cholesterol', 'sugar', 'water']],
+  ['Health Records',  ['blood_glucose', 'insulin']],
+  ['Lifestyle',        ['sexual_activity', 'handwashing', 'toothbrushing', 'fallen', 'alcohol', 'mindful']],
+  ['Environmental',   ['audio_exposure', 'uv_exposure', 'daylight', 'underwater']],
+  ['Activity',         ['step', 'energy', 'distance', 'flights', 'stand', 'move_time', 'exercise_time', 'cadence', 'vo2',
+                        'physical_effort', 'push_count', 'swim', 'cycling']],
+  ['Vitals',           ['temperature']],
+]
+
+function categorize(metricName: string): string {
+  const n = metricName.toLowerCase()
+  for (const [category, keywords] of CATEGORY_KEYWORDS) {
+    if (keywords.some(k => n.includes(k))) return category
+  }
+  return 'Other'
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  Activity:        'bg-orange-400',
+  Body:            'bg-purple-400',
+  Cardiovascular:  'bg-rose-400',
+  Mobility:        'bg-teal-400',
+  Respiratory:     'bg-sky-400',
+  Sleep:           'bg-indigo-400',
+  Vitals:          'bg-pink-400',
+  Nutrition:       'bg-lime-500',
+  'Health Records': 'bg-red-400',
+  Lifestyle:       'bg-fuchsia-400',
+  Environmental:   'bg-emerald-400',
+  Other:           'bg-ink-300',
+}
+
 // Metric value shape varies wildly (qty vs Min/Avg/Max vs multi-field sleep
 // vs systolic/diastolic, etc.) — rather than a per-metric switch, show every
 // field the point actually has (minus the columns already shown separately).
@@ -60,39 +107,103 @@ function formatMetricValue(value: Record<string, unknown>): string {
     .join(' · ')
 }
 
-const DAY_FILTERS: { label: string; days: number | null }[] = [
-  { label: 'Last 7 days',  days: 7    },
-  { label: 'Last 30 days', days: 30   },
-  { label: 'Last 90 days', days: 90   },
-  { label: 'All time',     days: null },
+type DayFilter = 'today' | 'yesterday' | '7' | '30' | '90' | 'all'
+
+const DAY_FILTER_OPTIONS: { value: DayFilter; label: string }[] = [
+  { value: 'today',     label: 'Today'        },
+  { value: 'yesterday', label: 'Yesterday'    },
+  { value: '7',         label: 'Last 7 days'  },
+  { value: '30',        label: 'Last 30 days' },
+  { value: '90',        label: 'Last 90 days' },
+  { value: 'all',       label: 'All time'     },
 ]
+
+function matchesDayFilter(dateStr: string, filter: DayFilter): boolean {
+  if (filter === 'all') return true
+  const d = new Date(dateStr)
+  const today = startOfDay(new Date())
+  if (filter === 'today') return isSameDay(d, today)
+  if (filter === 'yesterday') return isSameDay(d, subDays(today, 1))
+  return d >= subDays(today, Number(filter))
+}
+
+type SortCol = 'date' | 'category' | 'metric' | 'source'
+
+function SortHeader({
+  label, col, sortBy, sortDir, onSort,
+}: {
+  label: string
+  col: SortCol
+  sortBy: SortCol
+  sortDir: 'asc' | 'desc'
+  onSort: (col: SortCol) => void
+}) {
+  const active = sortBy === col
+  return (
+    <th
+      onClick={() => onSort(col)}
+      className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:text-ink-800 select-none"
+    >
+      {label} <span className={active ? 'text-accent-600' : 'text-ink-300'}>{active && sortDir === 'asc' ? '▲' : '▼'}</span>
+    </th>
+  )
+}
 
 export function HealthTab() {
   const { data: workouts = [], isLoading: workoutsLoading } = useHealthWorkouts({ limit: 20 })
   const { data: metrics = [], isLoading: metricsLoading } = useHealthMetrics()
 
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const [metricFilter, setMetricFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
-  const [dayFilter, setDayFilter] = useState<number | null>(30)
+  const [dayFilter, setDayFilter] = useState<DayFilter>('30')
+  const [sortBy, setSortBy] = useState<SortCol>('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-  const metricNames = useMemo(
-    () => [...new Set(metrics.map(m => m.metric_name))].sort(),
+  const withCategory = useMemo(
+    () => metrics.map(m => ({ ...m, __category: categorize(m.metric_name) })),
     [metrics]
+  )
+
+  const categories = useMemo(
+    () => [...new Set(withCategory.map(m => m.__category))].sort(),
+    [withCategory]
+  )
+  const metricNames = useMemo(
+    () => [...new Set(
+      withCategory
+        .filter(m => categoryFilter === 'all' || m.__category === categoryFilter)
+        .map(m => m.metric_name)
+    )].sort(),
+    [withCategory, categoryFilter]
   )
   const sources = useMemo(
     () => [...new Set(metrics.map(m => m.source).filter(Boolean))].sort(),
     [metrics]
   )
 
-  const filteredMetrics = useMemo(() => {
-    const cutoff = dayFilter != null ? subDays(new Date(), dayFilter) : null
-    return metrics.filter(m => {
+  function toggleSort(col: SortCol) {
+    if (sortBy === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortBy(col); setSortDir('asc') }
+  }
+
+  const rows = useMemo(() => {
+    const filtered = withCategory.filter(m => {
+      if (categoryFilter !== 'all' && m.__category !== categoryFilter) return false
       if (metricFilter !== 'all' && m.metric_name !== metricFilter) return false
       if (sourceFilter !== 'all' && m.source !== sourceFilter) return false
-      if (cutoff && new Date(m.date) < cutoff) return false
+      if (!matchesDayFilter(m.date, dayFilter)) return false
       return true
     })
-  }, [metrics, metricFilter, sourceFilter, dayFilter])
+    const cmp = (a: (typeof filtered)[number], b: (typeof filtered)[number]) => {
+      if (sortBy === 'date') return a.date.localeCompare(b.date)
+      if (sortBy === 'category') return a.__category.localeCompare(b.__category)
+      if (sortBy === 'metric') return a.metric_name.localeCompare(b.metric_name)
+      return (a.source || '').localeCompare(b.source || '')
+    }
+    filtered.sort((a, b) => (sortDir === 'asc' ? cmp(a, b) : -cmp(a, b)))
+    return filtered
+  }, [withCategory, categoryFilter, metricFilter, sourceFilter, dayFilter, sortBy, sortDir])
 
   return (
     <div className="flex flex-col gap-4">
@@ -109,10 +220,7 @@ export function HealthTab() {
         ) : workouts.length === 0 ? (
           <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
             <p className="text-2xl mb-2">📱</p>
-            <p className="text-ink-600 font-medium text-sm">No data synced yet</p>
-            <p className="text-ink-400 text-xs mt-1">
-              Configure a Health Auto Export REST API automation to send data here
-            </p>
+            <p className="text-ink-600 font-medium text-sm">No workouts synced yet</p>
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
@@ -122,35 +230,59 @@ export function HealthTab() {
       </div>
 
       <div>
-        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Health Metrics</p>
-          <div className="flex gap-2 flex-wrap">
-            <select
-              value={metricFilter}
-              onChange={e => setMetricFilter(e.target.value)}
-              className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 mb-2">Health Metrics</p>
+
+        {/* Category pills — quick filter, derived from data actually present */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2">
+          <button
+            type="button"
+            onClick={() => { setCategoryFilter('all'); setMetricFilter('all') }}
+            className={`min-h-[32px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition-colors ${
+              categoryFilter === 'all' ? 'bg-ink-900 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
+            }`}
+          >
+            All
+          </button>
+          {categories.map(c => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => { setCategoryFilter(c); setMetricFilter('all') }}
+              className={`min-h-[32px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors ${
+                categoryFilter === c ? 'bg-ink-900 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
+              }`}
             >
-              <option value="all">All metrics</option>
-              {metricNames.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-            <select
-              value={sourceFilter}
-              onChange={e => setSourceFilter(e.target.value)}
-              className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
-            >
-              <option value="all">All sources</option>
-              {sources.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select
-              value={dayFilter ?? 'all'}
-              onChange={e => setDayFilter(e.target.value === 'all' ? null : Number(e.target.value))}
-              className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
-            >
-              {DAY_FILTERS.map(f => (
-                <option key={f.label} value={f.days ?? 'all'}>{f.label}</option>
-              ))}
-            </select>
-          </div>
+              <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_COLORS[c] ?? 'bg-ink-300'}`} />
+              {c}
+            </button>
+          ))}
+        </div>
+
+        {/* Secondary filters */}
+        <div className="flex gap-2 flex-wrap mb-2">
+          <select
+            value={metricFilter}
+            onChange={e => setMetricFilter(e.target.value)}
+            className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
+          >
+            <option value="all">All metrics{categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''}</option>
+            {metricNames.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <select
+            value={sourceFilter}
+            onChange={e => setSourceFilter(e.target.value)}
+            className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
+          >
+            <option value="all">All sources</option>
+            {sources.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select
+            value={dayFilter}
+            onChange={e => setDayFilter(e.target.value as DayFilter)}
+            className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
+          >
+            {DAY_FILTER_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
         </div>
 
         {metricsLoading ? (
@@ -159,7 +291,7 @@ export function HealthTab() {
               <div key={i} className="h-10 rounded-lg bg-cream-200 animate-pulse" />
             ))}
           </div>
-        ) : filteredMetrics.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
             <p className="text-2xl mb-2">📊</p>
             <p className="text-ink-600 font-medium text-sm">No metrics match this filter</p>
@@ -167,18 +299,25 @@ export function HealthTab() {
         ) : (
           <div className="rounded-xl border border-ink-200 bg-white overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-cream-50 border-b border-ink-100">
+              <thead className="bg-cream-50 border-b border-ink-100 sticky top-0">
                 <tr>
-                  <th className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider whitespace-nowrap">Date</th>
-                  <th className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider whitespace-nowrap">Metric</th>
-                  <th className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider whitespace-nowrap">Source</th>
+                  <SortHeader label="Date"     col="date"     sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <SortHeader label="Category" col="category" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <SortHeader label="Metric"   col="metric"   sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <SortHeader label="Source"   col="source"   sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
                   <th className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider">Value</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-50">
-                {filteredMetrics.map(m => (
-                  <tr key={m.id}>
+                {rows.map(m => (
+                  <tr key={m.id} className="hover:bg-cream-50">
                     <td className="px-3 py-2 text-ink-500 whitespace-nowrap">{format(new Date(m.date), 'd MMM yyyy')}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-600">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${CATEGORY_COLORS[m.__category] ?? 'bg-ink-300'}`} />
+                        {m.__category}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 text-ink-800 font-medium whitespace-nowrap">{m.metric_name}</td>
                     <td className="px-3 py-2 text-ink-500 whitespace-nowrap max-w-[160px] truncate">{m.source || '—'}</td>
                     <td className="px-3 py-2 text-ink-700">{formatMetricValue(m.value)}</td>
@@ -188,7 +327,7 @@ export function HealthTab() {
             </table>
           </div>
         )}
-        <p className="text-[11px] text-ink-400 mt-1">{filteredMetrics.length} / {metrics.length} rows</p>
+        <p className="text-[11px] text-ink-400 mt-1">{rows.length} / {metrics.length} rows</p>
       </div>
     </div>
   )
