@@ -44,6 +44,17 @@ function safeIso(s: string | undefined): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString()
 }
 
+// Workout numeric fields arrive either as a plain number or as a
+// { qty, units } quantity object (confirmed in production: heartRate.avg/min/max
+// come through as quantity objects, not plain numbers, despite the interface
+// above) — passing an object straight into a `numeric` column fails the whole
+// upsert. Unwrap either shape, or null if neither.
+function numOrQty(v: unknown): number | null {
+  if (typeof v === 'number') return v
+  if (v && typeof v === 'object' && typeof (v as AnyRecord).qty === 'number') return (v as AnyRecord).qty
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204 })
@@ -113,12 +124,12 @@ Deno.serve(async (req) => {
         name: raw.name,
         start_time: safeIso(raw.start),
         end_time: safeIso(raw.end),
-        duration_seconds: raw.duration ?? null,
-        active_energy_kj: raw.activeEnergyBurned?.qty ?? null,
-        total_energy_kj: raw.totalEnergy?.qty ?? null,
-        avg_heart_rate: raw.heartRate?.avg ?? null,
-        min_heart_rate: raw.heartRate?.min ?? null,
-        max_heart_rate: raw.heartRate?.max ?? null,
+        duration_seconds: numOrQty(raw.duration),
+        active_energy_kj: numOrQty(raw.activeEnergyBurned),
+        total_energy_kj: numOrQty(raw.totalEnergy),
+        avg_heart_rate: numOrQty(raw.heartRate?.avg),
+        min_heart_rate: numOrQty(raw.heartRate?.min),
+        max_heart_rate: numOrQty(raw.heartRate?.max),
         raw,
         updated_at: now,
         synced_at: now,

@@ -9,13 +9,10 @@ export function useHealthWorkouts(opts: { limit?: number; offset?: number } = {}
   })
 }
 
-export function useHealthMetric(
-  metricName: string,
-  opts: { from?: string; to?: string; limit?: number } = {},
-) {
+export function useHealthMetrics(opts: { limit?: number } = {}) {
   return useQuery({
-    queryKey: ['health', 'metric', metricName, opts],
-    queryFn:  () => fetchHealthMetrics(metricName, opts),
+    queryKey: ['health', 'metrics', opts],
+    queryFn:  () => fetchHealthMetrics(opts),
     staleTime: 5 * 60_000,
   })
 }
