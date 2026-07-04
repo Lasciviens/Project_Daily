@@ -1,5 +1,4 @@
-import { Outlet, NavLink, useLocation, Link } from 'react-router-dom'
-import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
 import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
 import { AIPanel } from '../features/ai/components/AIPanel'
@@ -23,37 +22,23 @@ export function Layout() {
   )
 }
 
-// "Personal" groups the personal-life sub-pages (Daily, Shop) under one nav
-// entry via a dropdown menu — kept separate from the flat top-level routes.
-function PersonalNavMenu() {
+// "Personal" groups the personal-life sub-pages (Daily, Shop, Recipes) under
+// one nav entry. It's a single link to /daily — PersonalLayout renders a
+// Work-style tab bar there for switching between the three (see
+// src/features/personal/components/PersonalLayout.tsx).
+function PersonalNavLink() {
   const location = useLocation()
   const isActive = ['/daily', '/shop', '/recipes'].includes(location.pathname)
 
   return (
-    <Menu as="div" className="relative">
-      <MenuButton
-        className={`px-3 py-2.5 min-h-[44px] inline-flex items-center gap-1 text-sm font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
-          isActive ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
-        }`}
-      >
-        Personal <span className="text-[10px] opacity-70">▾</span>
-      </MenuButton>
-      <MenuItems
-        anchor="bottom start"
-        transition
-        className="z-50 mt-1 w-40 rounded-xl border border-ink-200 bg-white shadow-lg py-1 [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0 data-[closed]:scale-95"
-      >
-        <MenuItem>
-          <Link to="/daily" className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 data-[focus]:bg-cream-50">Daily</Link>
-        </MenuItem>
-        <MenuItem>
-          <Link to="/shop" className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 data-[focus]:bg-cream-50">Shop</Link>
-        </MenuItem>
-        <MenuItem>
-          <Link to="/recipes" className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 data-[focus]:bg-cream-50">Recipes</Link>
-        </MenuItem>
-      </MenuItems>
-    </Menu>
+    <NavLink
+      to="/daily"
+      className={`px-3 py-2.5 min-h-[44px] inline-flex items-center text-sm font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
+        isActive ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
+      }`}
+    >
+      Personal
+    </NavLink>
   )
 }
 
@@ -79,7 +64,7 @@ function Nav() {
         {/* Nav links — scrollable on mobile so they never wrap or overflow */}
         <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-none flex-1 min-w-0">
           <NavLink to="/home"      className={linkClass}>Home</NavLink>
-          <PersonalNavMenu />
+          <PersonalNavLink />
           <NavLink to="/media"     className={linkClass}>Media</NavLink>
           <NavLink to="/work"      className={linkClass}>Work</NavLink>
           <NavLink to="/training"  className={linkClass}>Training</NavLink>

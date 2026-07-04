@@ -1,5 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
-import type { ScheduleBlock, TimeBlock, CreateTimeBlockInput, CreateScheduleBlockInput } from '../types'
+import type { ScheduleBlock, TimeBlock, TimeBlockCategory, CreateTimeBlockInput, CreateScheduleBlockInput } from '../types'
 
 export async function fetchScheduleBlocks(): Promise<ScheduleBlock[]> {
   const { data, error } = await supabase
@@ -63,7 +63,7 @@ export async function createTimeBlock(input: CreateTimeBlockInput): Promise<Time
   return data
 }
 
-export async function updateTimeBlock(id: string, patch: { start_time?: string; date?: string; title?: string }): Promise<void> {
+export async function updateTimeBlock(id: string, patch: { start_time?: string; date?: string; title?: string; duration_minutes?: number; category?: TimeBlockCategory; color?: string }): Promise<void> {
   const { error } = await supabase
     .from('time_blocks')
     .update({ ...patch, updated_at: new Date().toISOString() })

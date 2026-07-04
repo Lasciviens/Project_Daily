@@ -93,10 +93,10 @@ export function TodaySummary() {
               className="flex flex-col items-center gap-1 group"
             >
               <span className="text-[9px] font-medium uppercase text-ink-400">{format(day, 'EEE')}</span>
-              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
+              <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-semibold transition-all duration-150 group-hover:ring-2 group-hover:ring-accent-300 group-hover:scale-105 ${
                 isT  ? 'bg-accent-500 text-white' :
                 past ? 'bg-ink-100 text-ink-400'  :
-                       'text-ink-700 group-hover:bg-ink-100'
+                       'text-ink-700 group-hover:bg-ink-50'
               }`}>{format(day, 'd')}</span>
             </Link>
           )

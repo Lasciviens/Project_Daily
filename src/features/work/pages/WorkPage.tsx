@@ -9,11 +9,9 @@ import QuickNotesWidget from '../components/QuickNotesWidget'
 import WeeklyGoalsWidget from '../components/WeeklyGoalsWidget'
 import PinnedLinksWidget from '../components/PinnedLinksWidget'
 import EODSummaryWidget from '../components/EODSummaryWidget'
-import { DeveloperPage } from '../../developer/pages/DeveloperPage'
 import { toast } from '../../../app/store'
 import type { Task, TaskStatus } from '../../todo/types'
 
-type WorkTab    = 'board' | 'developer'
 type SidebarTab = 'notes' | 'goals' | 'links' | 'summary'
 
 const SIDEBAR_TABS: { id: SidebarTab; label: string }[] = [
@@ -21,11 +19,6 @@ const SIDEBAR_TABS: { id: SidebarTab; label: string }[] = [
   { id: 'goals',   label: '🎯 Goals' },
   { id: 'links',   label: '🔗 Links' },
   { id: 'summary', label: '📊 EOD' },
-]
-
-const WORK_TABS: { id: WorkTab; label: string }[] = [
-  { id: 'board',     label: '📋 Board' },
-  { id: 'developer', label: '👨‍💻 Developer' },
 ]
 
 export function WorkPage() {
@@ -37,7 +30,6 @@ export function WorkPage() {
   const [addOpen,    setAddOpen]   = useState(false)
   const [editTask,   setEditTask]  = useState<Task | null>(null)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('notes')
-  const [workTab,    setWorkTab]   = useState<WorkTab>('board')
 
   // Focused tasks come directly from DB (is_focused column)
   const focusedTasks = tasks.filter(t => t.is_focused)
@@ -112,46 +104,20 @@ export function WorkPage() {
     <div className="flex flex-col h-full">
       {/* ── Header ── */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-ink-100 bg-white sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-ink-900">Work</h1>
-            <p className="text-xs text-ink-400 mt-0.5">{today}</p>
-          </div>
-          {/* Work tab switcher */}
-          <div className="flex items-center gap-0.5 bg-cream-100 rounded-xl p-1">
-            {WORK_TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setWorkTab(tab.id)}
-                className={[
-                  'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors min-h-[44px] whitespace-nowrap',
-                  workTab === tab.id
-                    ? 'bg-white text-ink-900 shadow-sm'
-                    : 'text-ink-500 hover:text-ink-700',
-                ].join(' ')}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-ink-900">Work</h1>
+          <p className="text-xs text-ink-400 mt-0.5">{today}</p>
         </div>
-        {workTab === 'board' && (
-          <button
-            onClick={() => setAddOpen(true)}
-            className="flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-white px-4 rounded-xl text-sm font-semibold transition-colors duration-150 min-h-[44px]"
-          >
-            <span className="text-lg leading-none">+</span>
-            <span>New task</span>
-          </button>
-        )}
+        <button
+          onClick={() => setAddOpen(true)}
+          className="flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-white px-4 rounded-xl text-sm font-semibold transition-colors duration-150 min-h-[44px]"
+        >
+          <span className="text-lg leading-none">+</span>
+          <span>New task</span>
+        </button>
       </div>
 
-      {/* ── Developer tab ── */}
-      {workTab === 'developer' && <DeveloperPage />}
-
-      {/* ── Board tab ── */}
-      {workTab === 'board' && (
-        <div className="flex-1 overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="flex-1 overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_380px]">
 
           {/* Main: timeline + hero + kanban */}
           <div className="flex flex-col overflow-hidden">
@@ -212,10 +178,8 @@ export function WorkPage() {
             </div>
           </aside>
         </div>
-      )}
 
-      {/* Mobile sidebar — only shown on board tab */}
-      {workTab === 'board' && <MobileSidebar tasks={tasks} />}
+      <MobileSidebar tasks={tasks} />
 
       {/* Modals */}
       <UnifiedPlanModal

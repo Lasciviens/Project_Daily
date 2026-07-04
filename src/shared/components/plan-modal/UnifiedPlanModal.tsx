@@ -16,6 +16,12 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-07-04 · v5 · New `timeBlock` prop: Schedule-tab edit mode for a plain
+//                    time_block with no linked task (e.g. a planned training
+//                    session). saveSchedule updates that row in place instead
+//                    of creating a new one; Delete removes it. Lets callers
+//                    like NextSessionBanner/TrainingCalendar make ANY planned
+//                    session clickable+editable, not just task-linked ones.
 //  2026-06-30 · v4 · Task tab redesign: grouped layout (Section+Priority side
 //                    by side, "When" divider above Due Date/Time, Notes moved
 //                    after), 24h Time24Field for Due Time, explicit "+ Set a
@@ -71,14 +77,14 @@ function useTopZIndex(open: boolean): number {
 const TAB_LABELS: Record<PlanTab, string> = { schedule: 'Schedule', task: 'Task' }
 
 export function UnifiedPlanModal({
-  open, onClose, config, defaults, source, task, scheduleExtra, taskExtra, onSaved,
+  open, onClose, config, defaults, source, task, timeBlock, scheduleExtra, taskExtra, onSaved,
 }: UnifiedPlanModalProps) {
   const tabs       = resolveTabs(config)
-  const editMode   = !!task
+  const editMode   = !!task || !!timeBlock
   const zIndex     = useTopZIndex(open)
 
   const [activeTab, setActiveTab] = useState<PlanTab>(resolveDefaultTab(config, tabs))
-  const [form,      setForm]      = useState<PlanForm>(() => buildInitialForm(defaults, task))
+  const [form,      setForm]      = useState<PlanForm>(() => buildInitialForm(defaults, task, timeBlock))
   const [saving,    setSaving]    = useState(false)
 
   const qc          = useQueryClient()
@@ -92,10 +98,10 @@ export function UnifiedPlanModal({
   // Re-seed whenever the modal (re)opens or its inputs change.
   useEffect(() => {
     if (!open) return
-    setForm(buildInitialForm(defaults, task))
+    setForm(buildInitialForm(defaults, task, timeBlock))
     setActiveTab(resolveDefaultTab(config, tabs))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, task])
+  }, [open, task, timeBlock])
 
   const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
 
@@ -106,6 +112,23 @@ export function UnifiedPlanModal({
   //  source_type ('movie'|'tv_episode'|'training_session'|'project_item'|…).
   async function saveSchedule() {
     const effDuration = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
+
+    // Editing an existing plain time_block (no linked task) — update it in
+    // place instead of creating a new row. No recurrence/task-creation here:
+    // we're editing one specific block, not turning it into a series.
+    if (timeBlock && !task) {
+      await updateTimeBlock(timeBlock.id, {
+        date:             form.date,
+        title:            form.title.trim(),
+        start_time:       `${form.startTime}:00`,
+        duration_minutes: effDuration,
+        category:         form.category,
+      })
+      qc.invalidateQueries({ queryKey: ['schedule'] })
+      onSaved?.({ tab: 'schedule', timeBlockCreated: false })
+      return
+    }
+
     let recurringCreated = false
     let linkedTaskId: string | undefined
 
@@ -260,21 +283,37 @@ export function UnifiedPlanModal({
   }
 
   async function handleDelete() {
-    if (!task) return
-    if (!confirm('Delete this task?')) return
-    const tid = toast.loading('Deleting…')
-    try {
-      await deleteTask.mutateAsync(task)
-      toast.dismiss(tid); toast.success('Deleted ✓')
-      onClose()
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    if (task) {
+      if (!confirm('Delete this task?')) return
+      const tid = toast.loading('Deleting…')
+      try {
+        await deleteTask.mutateAsync(task)
+        toast.dismiss(tid); toast.success('Deleted ✓')
+        onClose()
+      } catch (err) {
+        toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+      }
+      return
+    }
+    if (timeBlock) {
+      if (!confirm('Delete this session?')) return
+      const tid = toast.loading('Deleting…')
+      try {
+        await deleteTimeBlock(timeBlock.id)
+        qc.invalidateQueries({ queryKey: ['schedule'] })
+        toast.dismiss(tid); toast.success('Deleted ✓')
+        onClose()
+      } catch (err) {
+        toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+      }
     }
   }
 
   const primaryLabel = saving
     ? (editMode ? 'Saving…' : 'Planning…')
-    : activeTab === 'task' ? (editMode ? 'Save Changes' : 'Add Task') : 'Plan it'
+    : activeTab === 'task'
+    ? (editMode ? 'Save Changes' : 'Add Task')
+    : (timeBlock && !task ? 'Save Changes' : 'Plan it')
 
   return (
     <Dialog open={open} onClose={onClose} className="relative" style={{ zIndex }}>
@@ -327,12 +366,12 @@ export function UnifiedPlanModal({
             >{primaryLabel}</button>
           </div>
 
-          {activeTab === 'task' && editMode && (
+          {((activeTab === 'task' && !!task) || (activeTab === 'schedule' && !!timeBlock && !task)) && (
             <div className="px-5 pb-5">
               <button
                 type="button" onClick={handleDelete} disabled={saving}
                 className="w-full min-h-[44px] text-sm font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
-              >Delete Task</button>
+              >{task ? 'Delete Task' : 'Delete Session'}</button>
             </div>
           )}
         </DialogPanel>

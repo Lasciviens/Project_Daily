@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../app/store'
@@ -126,6 +127,16 @@ export function SettingsMenu() {
             ))}
           </div>
         </div>
+
+        {/* Developer */}
+        <MenuItem>
+          <Link
+            to="/developer"
+            className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 hover:bg-cream-50 transition-colors duration-150 data-[focus]:bg-cream-50 border-b border-ink-100"
+          >
+            👨‍💻 Developer
+          </Link>
+        </MenuItem>
 
         {/* Sign out */}
         <MenuItem>

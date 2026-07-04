@@ -4,8 +4,10 @@ import { ShopAIBox } from '../components/ShopAIBox'
 import { ShopItemCard } from '../components/ShopItemCard'
 import { AddShopItemModal } from '../components/AddShopItemModal'
 
-// Nav header is h-14 (56px) — the two panes fill exactly what's left so
-// nothing on this page grows taller than the viewport or scrolls as a whole.
+// Rendered inside PersonalLayout's flex-1 Outlet slot — h-full (not a
+// viewport calc) so it exactly fills whatever height that slot has left
+// (nav + Personal tab bar above). The two panes fill it so nothing on this
+// page grows taller than its container or scrolls as a whole.
 export function ShopPage() {
   const { data: categories = [], isLoading: catsLoading } = useShopCategories()
   const { data: items = [],      isLoading: itemsLoading } = useShopItems()
@@ -29,7 +31,7 @@ export function ShopPage() {
   const isLoading = catsLoading || itemsLoading
 
   return (
-    <div className="w-full h-[calc(100vh-56px)] flex flex-col sm:flex-row overflow-hidden">
+    <div className="w-full h-full flex flex-col sm:flex-row overflow-hidden">
       {/* Left pane — AI chat, fixed width on desktop, fixed height on mobile */}
       <div className="h-[42vh] sm:h-full w-full sm:w-[380px] sm:flex-shrink-0 border-b sm:border-b-0 sm:border-r border-ink-200 bg-white">
         <ShopAIBox />

@@ -3,6 +3,7 @@ import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useTrainingBlocks } from '../../daily/hooks/useSchedule'
 import { HevyWorkoutDetail } from './HevyWorkoutDetail'
+import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import type { HevyWorkout, StravaActivity } from '../types.hevy'
 import type { TimeBlock } from '../../daily/types'
 
@@ -99,9 +100,10 @@ interface DayCellProps {
   todayStr: string
   onSelect: (d: string) => void
   onOpenWorkout: (id: string) => void
+  onOpenPlan: (b: TimeBlock) => void
 }
 
-function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWorkout }: DayCellProps) {
+function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWorkout, onOpenPlan }: DayCellProps) {
   const dateStr = ymd(day.date)
   const isSelected = selectedDate === dateStr
 
@@ -128,14 +130,16 @@ function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWor
       <div className="flex flex-col gap-1">
         {/* Planned training sessions (future blue / today green / past red) */}
         {day.plans.map(p => (
-          <div
+          <button
             key={p.id}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 bg-cream-100 text-ink-600 text-[10px] font-medium leading-tight truncate"
-            title={`Planned: ${p.title}`}
+            type="button"
+            onClick={e => { e.stopPropagation(); onOpenPlan(p) }}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 bg-cream-100 text-ink-600 text-[10px] font-medium leading-tight truncate hover:bg-cream-200 transition-colors text-left"
+            title={`Planned: ${p.title} — click to edit`}
           >
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${planDotClass(dateStr, todayStr)}`} />
             <span className="truncate">{p.title}</span>
-          </div>
+          </button>
         ))}
 
         {day.workouts.map(w => {
@@ -179,10 +183,13 @@ interface WeekViewProps {
   onToday: () => void
   onSwitchToMonth: () => void
   onOpenWorkout: (id: string) => void
+  onOpenPlan: (b: TimeBlock) => void
 }
 
-function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, today, onPrev, onNext, onToday, onSwitchToMonth, onOpenWorkout }: WeekViewProps) {
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, today, onPrev, onNext, onToday, onSwitchToMonth, onOpenWorkout, onOpenPlan }: WeekViewProps) {
+  // Today's detail panel is expanded by default (no click needed) so the
+  // day's plan/workouts/activities flow visibly below the grid on load.
+  const [selectedDate, setSelectedDate] = useState<string | null>(todayStr)
 
   const days: DayData[] = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -253,6 +260,7 @@ function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, toda
             todayStr={todayStr}
             onSelect={setSelectedDate}
             onOpenWorkout={onOpenWorkout}
+            onOpenPlan={onOpenPlan}
           />
         ))}
       </div>
@@ -269,10 +277,15 @@ function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, toda
               <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5">Planned</p>
               <div className="flex flex-col gap-2">
                 {selectedDay.plans.map(p => (
-                  <div key={p.id} className="flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg">
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onOpenPlan(p)}
+                    className="w-full text-left flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg hover:bg-cream-200 transition-colors min-h-[44px]"
+                  >
                     <span className={`w-2 h-2 rounded-full shrink-0 ${planDotClass(ymd(selectedDay.date), todayStr)}`} />
                     <span className="text-sm font-medium text-ink-900">{p.title}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -336,9 +349,10 @@ interface MonthViewProps {
   onToday: () => void
   onSwitchToWeek: () => void
   onOpenWorkout: (id: string) => void
+  onOpenPlan: (b: TimeBlock) => void
 }
 
-function MonthView({ year, month, workouts, activities, plansByDate, todayStr, today, onPrevMonth, onNextMonth, onToday, onSwitchToWeek, onOpenWorkout }: MonthViewProps) {
+function MonthView({ year, month, workouts, activities, plansByDate, todayStr, today, onPrevMonth, onNextMonth, onToday, onSwitchToWeek, onOpenWorkout, onOpenPlan }: MonthViewProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const { cells, monthLabel } = useMemo(() => {
@@ -482,10 +496,15 @@ function MonthView({ year, month, workouts, activities, plansByDate, todayStr, t
               <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5">Planned</p>
               <div className="flex flex-col gap-2">
                 {selectedDay.plans.map(p => (
-                  <div key={p.id} className="flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg">
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onOpenPlan(p)}
+                    className="w-full text-left flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg hover:bg-cream-200 transition-colors min-h-[44px]"
+                  >
                     <span className={`w-2 h-2 rounded-full shrink-0 ${planDotClass(selectedDate!, todayStr)}`} />
                     <span className="text-sm font-medium text-ink-900">{p.title}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -548,6 +567,7 @@ export function TrainingCalendar() {
   }))
 
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
+  const [selectedPlanBlock, setSelectedPlanBlock] = useState<TimeBlock | null>(null)
 
   const { data: workouts = [] } = useHevyWorkouts({ limit: 200 })
   const { data: activities = [] } = useStravaActivities({ limit: 200 })
@@ -611,6 +631,7 @@ export function TrainingCalendar() {
           onToday={handleTodayWeek}
           onSwitchToMonth={() => setView('month')}
           onOpenWorkout={setSelectedWorkoutId}
+          onOpenPlan={setSelectedPlanBlock}
         />
       ) : (
         <MonthView
@@ -626,12 +647,20 @@ export function TrainingCalendar() {
           onToday={handleTodayMonth}
           onSwitchToWeek={() => setView('week')}
           onOpenWorkout={setSelectedWorkoutId}
+          onOpenPlan={setSelectedPlanBlock}
         />
       )}
 
       <HevyWorkoutDetail
         workoutId={selectedWorkoutId}
         onClose={() => setSelectedWorkoutId(null)}
+      />
+
+      <UnifiedPlanModal
+        open={!!selectedPlanBlock}
+        onClose={() => setSelectedPlanBlock(null)}
+        config={{ tabs: ['schedule'], heading: 'Edit Session' }}
+        timeBlock={selectedPlanBlock ?? undefined}
       />
     </div>
   )
