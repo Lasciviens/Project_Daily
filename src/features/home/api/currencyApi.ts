@@ -68,6 +68,39 @@ async function fetchHistorical(date: string): Promise<OXRResponse> {
 
 // ─── Exported function ────────────────────────────────────────────────────────
 
+export interface CurrencyTrendPoint {
+  pair:      string
+  now:       number
+  weekAgo:   number
+  changePct: number   // % change of the cross-rate over the past 7 days
+}
+
+function daysAgoISO(n: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d.toISOString().slice(0, 10)
+}
+
+// Weekly trend for the display pairs — today's cross-rate vs 7 days ago.
+// Used by the daily AI briefing (a once-a-day call, so the extra historical
+// fetch is negligible against the OXR free-tier quota).
+export async function fetchCurrencyWeekTrend(): Promise<CurrencyTrendPoint[]> {
+  const [today, weekAgo] = await Promise.all([
+    fetchLatest(),
+    fetchHistorical(daysAgoISO(7)),
+  ])
+
+  const rNow:  Record<string, number> = { ...today.rates,   USD: 1 }
+  const rPrev: Record<string, number> = { ...weekAgo.rates, USD: 1 }
+
+  return PAIRS.map(([base, quote]) => {
+    const now     = (rNow[quote]  ?? 1) / (rNow[base]  ?? 1)
+    const prev    = (rPrev[quote] ?? 1) / (rPrev[base] ?? 1)
+    const changePct = prev !== 0 ? ((now - prev) / prev) * 100 : 0
+    return { pair: `${base}/${quote}`, now, weekAgo: prev, changePct }
+  })
+}
+
 export async function fetchCurrencyData(): Promise<CurrencyData> {
   const [today, yesterday] = await Promise.all([
     fetchLatest(),

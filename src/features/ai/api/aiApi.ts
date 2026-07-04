@@ -192,7 +192,7 @@ export interface AIResponse {
   steps?:        string[]   // activity trace of tool calls the AI ran
 }
 
-async function invokeAI(messages: Message[], systemPrompt: string): Promise<AIResponse> {
+export async function invokeAI(messages: Message[], systemPrompt: string): Promise<AIResponse> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
     body: { messages, systemPrompt },
   })
