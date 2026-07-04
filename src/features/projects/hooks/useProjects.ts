@@ -121,7 +121,7 @@ export function useCreateItem(projectId: string) {
 export function useUpdateItem(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority'>> }) =>
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority' | 'phase_id'>> }) =>
       updateItem(id, patch),
     onSuccess: () => { qc.invalidateQueries({ queryKey: QK.items(projectId) }); qc.invalidateQueries({ queryKey: QK.stats }) },
     onError:   errToast('Failed to save item'),

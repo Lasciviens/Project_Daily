@@ -1,6 +1,4 @@
 import { useState } from 'react'
-import { InlineText } from './InlineText'
-import { InlineTextArea } from './InlineTextArea'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import type { ProjectItem, ItemType, ItemPriority, ItemStatus } from '../types'
 
@@ -34,10 +32,11 @@ interface Props {
   item:       ProjectItem
   onUpdate:   (patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority'>>) => void
   onDelete:   () => void
+  onEdit:     () => void
   isPending?: boolean
 }
 
-export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
+export function ItemRow({ item, onUpdate, onDelete, onEdit, isPending }: Props) {
   const [showNotes, setShowNotes] = useState(() => !!item.notes)
   const [hovered,   setHovered]   = useState(false)
   const [planOpen,  setPlanOpen]  = useState(false)
@@ -107,17 +106,17 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
           <span className={`w-2 h-2 rounded-full block ${PRIORITY_DOT[item.priority]}`} />
         </button>
 
-        {/* Title */}
-        <div className="flex-1 min-w-0">
-          <InlineText
-            value={item.title}
-            onSave={title => onUpdate({ title })}
-            className={`text-sm w-full block ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}
-            inputClass="text-sm w-full text-ink-800"
-          />
-        </div>
+        {/* Title — click opens full edit modal */}
+        <button
+          type="button"
+          onClick={onEdit}
+          className={`flex-1 min-w-0 text-left text-sm truncate rounded px-0.5 hover:bg-ink-100 transition-colors duration-100 ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}
+          title="Click to edit"
+        >
+          {item.title}
+        </button>
 
-        {/* Plan, notes, delete — always visible on mobile; hover-only on desktop */}
+        {/* Plan, notes, edit, delete — always visible on mobile; hover-only on desktop */}
         <div className="flex items-center gap-0.5 flex-shrink-0 lg:hidden">
           {!isDone && (
             <button
@@ -126,13 +125,18 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
               title="Schedule this item"
             >📅</button>
           )}
+          {hasNotes && (
+            <button
+              onClick={() => setShowNotes(n => !n)}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-sm text-accent-500"
+              title={showNotes ? 'Hide notes' : 'Show notes'}
+            >≡</button>
+          )}
           <button
-            onClick={() => setShowNotes(n => !n)}
-            className={`min-w-[44px] min-h-[44px] flex items-center justify-center text-sm transition-colors ${
-              hasNotes ? 'text-accent-500' : 'text-ink-300'
-            }`}
-            title={showNotes ? 'Hide notes' : 'Show notes'}
-          >≡</button>
+            onClick={onEdit}
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 active:text-accent-600 text-sm"
+            title="Edit item"
+          >✎</button>
           <button
             onClick={onDelete}
             className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 active:text-red-400 text-sm"
@@ -150,15 +154,18 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
                 title="Schedule this item"
               >📅</button>
             )}
-            {(hasNotes || hovered) && (
+            {hasNotes && (
               <button
                 onClick={() => setShowNotes(n => !n)}
-                className={`text-[10px] px-1 transition-colors ${
-                  hasNotes ? 'text-amber-500 hover:text-amber-700' : 'text-ink-400 hover:text-ink-700'
-                }`}
+                className="text-[10px] px-1 text-accent-500 hover:text-accent-700"
                 title={showNotes ? 'Hide notes' : 'Show notes'}
               >≡</button>
             )}
+            <button
+              onClick={onEdit}
+              className="text-[10px] px-1 text-ink-400 hover:text-accent-600"
+              title="Edit item"
+            >✎</button>
             <button
               onClick={onDelete}
               className="text-[10px] text-ink-300 hover:text-red-400"
@@ -168,14 +175,10 @@ export function ItemRow({ item, onUpdate, onDelete, isPending }: Props) {
         )}
       </div>
 
-      {/* Notes */}
-      {showNotes && (
+      {/* Notes preview — read only, edit via modal */}
+      {showNotes && hasNotes && (
         <div className="px-11 pb-1.5">
-          <InlineTextArea
-            value={item.notes}
-            onSave={notes => onUpdate({ notes })}
-            placeholder="Add notes…"
-          />
+          <p className="text-xs text-ink-500 whitespace-pre-wrap">{item.notes}</p>
         </div>
       )}
 

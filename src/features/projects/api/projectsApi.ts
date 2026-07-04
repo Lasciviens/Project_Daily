@@ -115,7 +115,7 @@ export async function createItem(input: CreateItemInput): Promise<ProjectItem> {
   return data
 }
 
-export async function updateItem(id: string, patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority'>>): Promise<void> {
+export async function updateItem(id: string, patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority' | 'phase_id'>>): Promise<void> {
   const { error } = await supabase
     .from('project_items')
     .update({ ...patch, updated_at: new Date().toISOString() })
