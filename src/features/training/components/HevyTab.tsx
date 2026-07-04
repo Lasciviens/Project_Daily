@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { startOfWeek, startOfMonth } from 'date-fns'
+import { startOfWeek, startOfMonth, format } from 'date-fns'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useHevyPRs } from '../hooks/useHevyPRs'
 import { HevyWorkoutCard } from './HevyWorkoutCard'
@@ -72,7 +72,7 @@ function WorkoutsSubTab() {
   // Fetch a larger set to compute summary counts
   const { data: allRecent = [] } = useHevyWorkouts({ limit: 200 })
 
-  const { weekCount, monthCount } = useMemo(() => {
+  const { weekCount, monthCount, monthLabel } = useMemo(() => {
     const now = new Date()
     // Compare as Date objects (not ISO strings) so the boundary isn't skewed by
     // a UTC conversion, and use the actual workout date (start_time) rather
@@ -83,7 +83,10 @@ function WorkoutsSubTab() {
     const workoutDate = (w: (typeof allRecent)[number]) => new Date(w.start_time ?? w.hevy_created_at)
     const weekCount  = allRecent.filter(w => { const d = workoutDate(w); return d >= weekStart  && d <= now }).length
     const monthCount = allRecent.filter(w => { const d = workoutDate(w); return d >= monthStart && d <= now }).length
-    return { weekCount, monthCount }
+    // "This month" means the calendar month, not a rolling 30 days — name it
+    // explicitly (e.g. "in July") so that's never ambiguous.
+    const monthLabel = format(now, 'MMMM')
+    return { weekCount, monthCount, monthLabel }
   }, [allRecent])
 
   return (
@@ -95,7 +98,7 @@ function WorkoutsSubTab() {
             <>
               <span><strong className="text-ink-800">{weekCount}</strong> this week</span>
               <span className="text-ink-200">·</span>
-              <span><strong className="text-ink-800">{monthCount}</strong> this month</span>
+              <span><strong className="text-ink-800">{monthCount}</strong> in {monthLabel}</span>
             </>
           )}
         </div>
