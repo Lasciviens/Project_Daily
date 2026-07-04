@@ -25,7 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      # coalesce: whichever deploy attempt succeeded provides the url
+      url: ${{ steps.deploy1.outputs.page_url || steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +58,20 @@ jobs:
         with:
           path: dist
 
-      - name: Deploy to GitHub Pages
+      # GitHub Pages' deploy step is intermittently flaky ("Deployment failed,
+      # try again later."). Try once; if it fails, wait and retry. Attempt 1 is
+      # non-fatal (continue-on-error); the retry is the gate — if it also fails,
+      # the job fails for real.
+      - name: Deploy to GitHub Pages (attempt 1)
+        id: deploy1
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait before retry
+        if: steps.deploy1.outcome == 'failure'
+        run: sleep 20
+
+      - name: Deploy to GitHub Pages (retry)
         id: deployment
+        if: steps.deploy1.outcome == 'failure'
         uses: actions/deploy-pages@v4
