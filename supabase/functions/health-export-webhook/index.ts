@@ -89,19 +89,25 @@ Deno.serve(async (req) => {
   // Upsert workouts — comparable shape to hevy_workouts (id is the export's
   // own workout UUID, a stable natural key for idempotent re-delivery).
   // Health Auto Export's legacy "Export Version 1" workout format has no `id`
-  // field at all (only v2, which this integration expects, does) — a upsert
-  // is one SQL statement, so a single row with a null PK would fail the
-  // WHOLE batch. Skip rows missing an id instead of letting them do that.
+  // field at all (only v2, which this integration expects, does). Rather than
+  // dropping those rows, fall back to a deterministic key built from
+  // name+start+end — still idempotent across re-deliveries, just not a real
+  // UUID. Only truly skip a workout that has neither an id nor enough fields
+  // to build that fallback (nothing to key it on).
   let skippedWorkouts = 0
   if (workouts.length > 0) {
     const rows = workouts
-      .filter((w: HealthWorkout) => {
-        const ok = !!w.id
+      .map((w: HealthWorkout) => ({
+        ...w,
+        __id: w.id || (w.name && (w.start || w.end) ? `synthetic:${w.name}:${w.start ?? ''}:${w.end ?? ''}` : null),
+      }))
+      .filter((w) => {
+        const ok = !!w.__id
         if (!ok) skippedWorkouts++
         return ok
       })
-      .map((w: HealthWorkout) => ({
-        id: w.id,
+      .map(({ __id, ...w }: HealthWorkout & { __id: string }) => ({
+        id: __id,
         user_id: userId,
         name: w.name,
         start_time: safeIso(w.start),
