@@ -116,12 +116,12 @@ const TOOLS = [
       },
       {
         name: 'db_insert',
-        description: 'Insert a new row into a writable table. user_id is set automatically; do not include it. Returns the created row (with its id). Use describe_database to learn required columns, enums, and business rules first.',
+        description: 'Insert row(s) into a writable table. user_id is set automatically; do not include it. Returns the created row(s) with their id(s). For bulk loads (multiple rows), pass an ARRAY in values and insert them all in ONE call — do not call db_insert once per row. Use describe_database to learn required columns, enums, and business rules first.',
         parameters: {
           type: 'OBJECT',
           properties: {
             table:  { type: 'STRING', description: 'Table name (must be writable in the catalog).' },
-            values: { type: 'STRING', description: 'JSON object of column→value for the new row. E.g. {"title":"...","date":"2026-07-05","category":"training"}.' },
+            values: { type: 'STRING', description: 'JSON for the row(s): a single object {"title":"..."} OR an array of objects [{"title":"a"},{"title":"b"}] to insert many at once.' },
           },
           required: ['table', 'values'],
         },
@@ -386,7 +386,7 @@ async function callGemini(
   }
 
   // Multi-turn function calling loop
-  for (let turn = 0; turn < 12; turn++) {
+  for (let turn = 0; turn < 16; turn++) {
     const res = await fetch(url, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -447,9 +447,14 @@ async function callGemini(
     contents = [...contents, { role: 'tool', parts: toolResponseParts }]
   }
 
-  // Ran out of tool-loop turns — make one final, tool-free call so the model
-  // actually answers (or honestly says it couldn't) instead of a canned line.
-  const finalBody: AnyRecord = { ...baseBody, contents }
+  // Ran out of tool-loop turns. Rather than dead-ending, ask the model (with no
+  // tools) to summarize what it did and offer to continue — so the user sees
+  // progress and can say "devam et" to resume (chat history is persisted).
+  const resumeContents = [...contents, {
+    role: 'user',
+    parts: [{ text: 'You have reached the step limit for this turn. Do NOT call any tools now. In my language, briefly summarize what you already completed and what still remains, then ask if I want you to continue with the rest.' }],
+  }]
+  const finalBody: AnyRecord = { ...baseBody, contents: resumeContents }
   delete finalBody.tools
   const finalRes = await fetch(url, {
     method:  'POST',
@@ -461,7 +466,12 @@ async function callGemini(
     const finalText = finalData.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text
     if (finalText) return { text: finalText, steps: steps.length ? steps : undefined }
   }
-  return { text: 'Bir sonuca varamadım — tekrar sorar mısın?', steps: steps.length ? steps : undefined }
+  // Deterministic fallback that still shows exactly what was done + offers to resume.
+  const doneList = steps.length ? '\n\nŞu ana kadar yaptıklarım:\n' + steps.map(s => '• ' + s).join('\n') : ''
+  return {
+    text: `Bu turda çok fazla adım gerektiği için işlemi tek seferde bitiremedim.${doneList}\n\nKaldığım yerden devam etmemi ister misin? "devam et" yaz, sürdüreyim.`,
+    steps: steps.length ? steps : undefined,
+  }
 }
 
 // One-line description of a tool call for the client-side activity trace.
@@ -470,6 +480,7 @@ function describeStep(name: string, args: AnyRecord, result: AnyRecord): string 
   if (result?.success === false) return `✗ ${name}${tbl} — ${result.error ?? 'error'}`
   let detail = ''
   if (result?.count !== undefined) detail = ` → ${result.count} rows`
+  else if (result?.inserted_count !== undefined) detail = ` → ${result.inserted_count} inserted`
   else if (result?.updated_count !== undefined) detail = ` → ${result.updated_count} updated`
   else if (result?.deleted_count !== undefined) detail = ` → ${result.deleted_count} deleted`
   else if (result?.id) detail = ` → id ${result.id}`
@@ -1101,13 +1112,23 @@ async function dbQuery(supabase: AnyRecord, userId: string, args: AnyRecord): Pr
 async function dbInsert(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   try {
     const entry = assertAccess(args.table, true)
-    const values = parseJsonArg(args.values, 'values')
-    delete values.user_id
-    values.user_id = userId
-    if (entry.columns.includes('updated_at')) values.updated_at = new Date().toISOString()
-    const { data, error } = await supabase.from(args.table).insert(values).select().single()
+    const parsed = parseJsonArg(args.values, 'values')
+    // values may be a single object OR an array of rows — insert many in ONE
+    // call (avoids burning a tool-loop turn per row on bulk loads).
+    const now = new Date().toISOString()
+    const hasUpdatedAt = entry.columns.includes('updated_at')
+    const rows = (Array.isArray(parsed) ? parsed : [parsed]).map((r: AnyRecord) => {
+      const row = { ...r }
+      delete row.user_id
+      row.user_id = userId
+      if (hasUpdatedAt) row.updated_at = now
+      return row
+    })
+    const { data, error } = await supabase.from(args.table).insert(rows).select()
     if (error) return { success: false, error: error.message }
-    return { success: true, id: data.id, row: data }
+    const ids = (data ?? []).map((d: AnyRecord) => d.id)
+    // Keep single-insert shape (id/row) for back-compat; add bulk fields too.
+    return { success: true, inserted_count: ids.length, ids, id: ids[0], rows: data }
   } catch (e) { return { success: false, error: (e as Error).message } }
 }
 
