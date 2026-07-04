@@ -36,6 +36,14 @@ interface HealthMetricGroup {
   data: HealthMetricPoint[]
 }
 
+// Parses a Health Auto Export date string ("yyyy-MM-dd HH:mm:ss Z") without
+// throwing on malformed input — one bad date shouldn't crash the whole batch.
+function safeIso(s: string | undefined): string | null {
+  if (!s) return null
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? null : d.toISOString()
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204 })
@@ -80,33 +88,46 @@ Deno.serve(async (req) => {
 
   // Upsert workouts — comparable shape to hevy_workouts (id is the export's
   // own workout UUID, a stable natural key for idempotent re-delivery).
+  // Health Auto Export's legacy "Export Version 1" workout format has no `id`
+  // field at all (only v2, which this integration expects, does) — a upsert
+  // is one SQL statement, so a single row with a null PK would fail the
+  // WHOLE batch. Skip rows missing an id instead of letting them do that.
+  let skippedWorkouts = 0
   if (workouts.length > 0) {
-    const rows = workouts.map((w: HealthWorkout) => ({
-      id: w.id,
-      user_id: userId,
-      name: w.name,
-      start_time: w.start ? new Date(w.start).toISOString() : null,
-      end_time: w.end ? new Date(w.end).toISOString() : null,
-      duration_seconds: w.duration ?? null,
-      active_energy_kj: w.activeEnergyBurned?.qty ?? null,
-      total_energy_kj: w.totalEnergy?.qty ?? null,
-      avg_heart_rate: w.heartRate?.avg ?? null,
-      min_heart_rate: w.heartRate?.min ?? null,
-      max_heart_rate: w.heartRate?.max ?? null,
-      raw: w,
-      updated_at: now,
-      synced_at: now,
-    }))
+    const rows = workouts
+      .filter((w: HealthWorkout) => {
+        const ok = !!w.id
+        if (!ok) skippedWorkouts++
+        return ok
+      })
+      .map((w: HealthWorkout) => ({
+        id: w.id,
+        user_id: userId,
+        name: w.name,
+        start_time: safeIso(w.start),
+        end_time: safeIso(w.end),
+        duration_seconds: w.duration ?? null,
+        active_energy_kj: w.activeEnergyBurned?.qty ?? null,
+        total_energy_kj: w.totalEnergy?.qty ?? null,
+        avg_heart_rate: w.heartRate?.avg ?? null,
+        min_heart_rate: w.heartRate?.min ?? null,
+        max_heart_rate: w.heartRate?.max ?? null,
+        raw: w,
+        updated_at: now,
+        synced_at: now,
+      }))
 
-    const { error } = await supabase
-      .from('health_workouts')
-      .upsert(rows, { onConflict: 'id' })
+    if (rows.length > 0) {
+      const { error } = await supabase
+        .from('health_workouts')
+        .upsert(rows, { onConflict: 'id' })
 
-    if (error) {
-      return new Response(
-        JSON.stringify({ error: `upsert health_workouts: ${error.message}` }),
-        { status: 500, headers: jsonHeaders }
-      )
+      if (error) {
+        return new Response(
+          JSON.stringify({ error: `upsert health_workouts: ${error.message}` }),
+          { status: 500, headers: jsonHeaders }
+        )
+      }
     }
   }
 
@@ -114,11 +135,19 @@ Deno.serve(async (req) => {
   // metric (qty vs Min/Avg/Max vs multi-field sleep object), so the whole
   // data point is stored as-is in a jsonb column rather than normalized.
   let metricRowCount = 0
+  let skippedMetricPoints = 0
   if (metrics.length > 0) {
     const rows: AnyRecord[] = []
     for (const group of metrics) {
+      if (!group.name) continue
       for (const point of group.data ?? []) {
-        if (!point.date) continue
+        // A malformed date would fail the `date` column cast for this ONE
+        // row, but upsert is a single SQL statement — that failure would
+        // take the whole batch down with it. Skip instead.
+        if (typeof point.date !== 'string' || point.date.length < 10) {
+          skippedMetricPoints++
+          continue
+        }
         rows.push({
           user_id: userId,
           metric_name: group.name,
@@ -148,7 +177,13 @@ Deno.serve(async (req) => {
   }
 
   return new Response(
-    JSON.stringify({ ok: true, workouts: workouts.length, metrics: metricRowCount }),
+    JSON.stringify({
+      ok: true,
+      workouts: workouts.length - skippedWorkouts,
+      metrics: metricRowCount,
+      skipped_workouts: skippedWorkouts,
+      skipped_metric_points: skippedMetricPoints,
+    }),
     { status: 200, headers: jsonHeaders }
   )
 })
