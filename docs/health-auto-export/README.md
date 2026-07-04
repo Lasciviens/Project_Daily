@@ -35,6 +35,13 @@ Workouts don't have this problem (each workout is its own row keyed by id),
 so the workouts automation can safely stay on a shorter `Since Last Sync`
 cadence.
 
+**Confirmed against the real app**: `aggregateData`/`aggregateSleep`
+(the "Summarize Data" toggle) only applies to Health Metrics — turning it on
+for a Workouts export made the app fail per-day with "Data caching did not
+complete successfully" for 6 of 7 days in a real one-time backfill run (only
+1 day actually made it through). Both workouts configs (`03`, `05`) now set
+these to `false`.
+
 ## Import steps (per file)
 
 1. AirDrop / iCloud / email the `.json` file to the iPhone running Health Auto Export.

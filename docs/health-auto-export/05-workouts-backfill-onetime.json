@@ -1,6 +1,6 @@
 {
-  "aggregateData": true,
-  "aggregateSleep": true,
+  "aggregateData": false,
+  "aggregateSleep": false,
   "automationExportBaseName": "",
   "batchRequests": true,
   "configSchemaVersion": "1.0",
