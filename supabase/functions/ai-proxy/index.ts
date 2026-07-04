@@ -264,15 +264,76 @@ const TOOLS = [
         },
       },
       {
-        name: 'get_next_transit',
-        description: 'Get the next departures from a saved transit stop. Use to answer "when is the next bus/tram?"',
+        name: 'get_saved_transit',
+        description: 'List the user\'s OWN saved transit stops (with labels, e.g. which one is "Home") and saved point-to-point routes (with labels, e.g. a route literally labeled "Work"). Call this FIRST whenever it\'s unclear what "home"/"ev"/"work"/"iş" or an ambiguous saved-sounding place refers to, or when you want to confirm exact resolution before calling plan_trip/get_next_transit — inspecting this is always safer than guessing.',
+        parameters: { type: 'OBJECT', properties: {}, required: [] },
+      },
+      {
+        name: 'search_transit_stops',
+        description: 'Search for ANY transit stop or address by free text (not limited to the user\'s saved ones) — e.g. to find a stop the user mentions that isn\'t saved, to disambiguate between similarly-named places, or to get the exact stop id before calling plan_trip/get_next_transit with precision. Returns up to 8 candidates with their exact ids and names.',
         parameters: {
           type: 'OBJECT',
           properties: {
-            stop_name: { type: 'STRING', description: 'Partial name of saved stop (optional — uses default stop if omitted)' },
+            query: { type: 'STRING', description: 'Place name or address to search for, in Norwegian if possible (e.g. "Sinsen", "Karl Johans gate")' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'save_transit_stop',
+        description: 'Save a transit stop as a favorite with a label (e.g. "Home", "Work"), so it resolves by that label in plan_trip/get_next_transit afterwards. Get the exact stop_id/stop_name from search_transit_stops or get_saved_transit first — never invent them. Use when the user asks to save/remember a stop.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            stop_id:    { type: 'STRING', description: 'Exact NSR:StopPlace:NNNNN id, from search_transit_stops' },
+            stop_name:  { type: 'STRING', description: 'The stop\'s real name, from search_transit_stops' },
+            label:      { type: 'STRING', description: 'User-facing label, e.g. "Home", "Work" (optional)' },
+            is_default: { type: 'BOOLEAN', description: 'Make this the default stop used when no place is specified (optional)' },
+          },
+          required: ['stop_id', 'stop_name'],
+        },
+      },
+      {
+        name: 'save_transit_route',
+        description: 'Save a point-to-point route as a labeled preset (e.g. label "Home" = the route to get home), so "home"/"ev" resolves to this exact route in plan_trip afterwards. Get exact stop ids/names from search_transit_stops or get_saved_transit first — never invent them. Use when the user asks to save/remember a route.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            label:          { type: 'STRING', description: 'e.g. "Home", "Work"' },
+            from_stop_id:   { type: 'STRING' },
+            from_stop_name: { type: 'STRING' },
+            to_stop_id:     { type: 'STRING' },
+            to_stop_name:   { type: 'STRING' },
+          },
+          required: ['label', 'from_stop_id', 'from_stop_name', 'to_stop_id', 'to_stop_name'],
+        },
+      },
+      {
+        name: 'get_next_transit',
+        description: 'Get the next departures from a transit stop — either a saved one by name, or ANY stop by its exact id (from search_transit_stops or plan_trip). Use to answer "when is the next bus/tram?"',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            stop_name: { type: 'STRING', description: 'Partial name of a SAVED stop (optional — uses default stop if both this and stop_id are omitted)' },
+            stop_id:   { type: 'STRING', description: 'Exact NSR:StopPlace:NNNNN id — use this for a stop that isn\'t saved (get it from search_transit_stops first). Takes precedence over stop_name if both given.' },
             count:     { type: 'NUMBER', description: 'Number of departures to return (default 5)' },
           },
           required: [],
+        },
+      },
+      {
+        name: 'plan_trip',
+        description: 'Plan a point-to-point public-transit journey, including transfers between lines (e.g. "eve nasıl giderim", "110 sonra 23\'e aktarma var mı", "18:00\'de X\'te olmam gerekiyor, ne zaman çıkmalıyım"). Resolution: "home"/"ev"/"eve" and "work"/"iş"/"işe" match the user\'s saved transit stop/route labels; other place names match saved stops first, then a free-text address/venue search; an exact "NSR:StopPlace:NNNNN" id (e.g. from search_transit_stops) is used directly, skipping fuzzy matching entirely — prefer this when precision matters or fuzzy resolution seems risky. ALWAYS call this for any routing/transfer/how-do-I-get-there question — never invent stop names, line numbers, or transfer points yourself, only report exactly what this tool returns. If you\'re unsure how "home"/"work"/an ambiguous place will resolve, call get_saved_transit and/or search_transit_stops first and pass the exact id you find instead of guessing.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            from:       { type: 'STRING', description: 'Starting point — a saved stop/route label ("home"/"ev", "work"/"iş"), a saved stop name, a free-text address/place, or an exact NSR:StopPlace: id. Omit to use the default saved stop.' },
+            to:         { type: 'STRING', description: 'Destination — same resolution as "from". Required.' },
+            depart_at:  { type: 'STRING', description: 'ISO 8601 datetime to depart at. Omit for "leave now".' },
+            arrive_by:  { type: 'BOOLEAN', description: 'If true, depart_at is the desired ARRIVAL time instead of departure time.' },
+            count:      { type: 'NUMBER', description: 'Number of trip alternatives to return (default 3, max 5).' },
+          },
+          required: ['to'],
         },
       },
     ],
@@ -563,6 +624,11 @@ async function dispatch(
     case 'create_shop_category': return createShopCategoryFn(supabase, userId, args)
     case 'create_shop_item':     return createShopItemFn(supabase, userId, args)
     case 'get_next_transit':     return getNextTransit(supabase, userId, args)
+    case 'plan_trip':            return planTrip(supabase, userId, args)
+    case 'get_saved_transit':    return getSavedTransit(supabase, userId)
+    case 'search_transit_stops': return searchTransitStops(args)
+    case 'save_transit_stop':    return saveTransitStop(supabase, userId, args)
+    case 'save_transit_route':   return saveTransitRoute(supabase, userId, args)
     default:                     return { success: false, error: `Unknown function: ${name}` }
   }
 }
@@ -849,34 +915,46 @@ async function createShopItemFn(supabase: AnyRecord, userId: string, args: AnyRe
 }
 
 async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  // Fetch user's saved stops
-  const { data: stops, error: stopsErr } = await supabase
-    .from('user_transit_stops')
-    .select('stop_id, stop_name, label, is_default')
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true })
-
-  if (stopsErr || !stops?.length) {
-    return { success: false, error: 'No saved transit stops. Add stops in the Transit widget first.' }
-  }
-
-  // Pick stop: match by name fragment, or fall back to default / first
-  const stop = args.stop_name
-    ? stops.find((s: AnyRecord) =>
-        s.stop_name.toLowerCase().includes(args.stop_name.toLowerCase()) ||
-        (s.label ?? '').toLowerCase().includes(args.stop_name.toLowerCase())
-      ) ?? stops.find((s: AnyRecord) => s.is_default) ?? stops[0]
-    : stops.find((s: AnyRecord) => s.is_default) ?? stops[0]
-
   const count = Math.min(args.count ?? 5, 10)
+  let stopId: string
+  let fallbackName: string
 
-  // Validate NSR stop_id format to prevent GraphQL injection
-  if (!/^NSR:StopPlace:\d+$/.test(stop.stop_id)) {
-    return { error: 'Invalid stop ID format' }
+  if (args.stop_id) {
+    // Explicit id (e.g. from search_transit_stops) — bypass saved stops entirely.
+    if (!/^NSR:StopPlace:\d+$/.test(args.stop_id)) {
+      return { success: false, error: 'Invalid stop_id format — use an exact id from search_transit_stops.' }
+    }
+    stopId = args.stop_id
+    fallbackName = args.stop_id
+  } else {
+    const { data: stops, error: stopsErr } = await supabase
+      .from('user_transit_stops')
+      .select('stop_id, stop_name, label, is_default')
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true })
+
+    if (stopsErr || !stops?.length) {
+      return { success: false, error: 'No saved transit stops. Add stops in the Transit widget first, or pass an exact stop_id from search_transit_stops.' }
+    }
+
+    // Pick stop: match by name fragment, or fall back to default / first
+    const stop = args.stop_name
+      ? stops.find((s: AnyRecord) =>
+          s.stop_name.toLowerCase().includes(args.stop_name.toLowerCase()) ||
+          (s.label ?? '').toLowerCase().includes(args.stop_name.toLowerCase())
+        ) ?? stops.find((s: AnyRecord) => s.is_default) ?? stops[0]
+      : stops.find((s: AnyRecord) => s.is_default) ?? stops[0]
+
+    // Validate NSR stop_id format to prevent GraphQL injection
+    if (!/^NSR:StopPlace:\d+$/.test(stop.stop_id)) {
+      return { success: false, error: 'Invalid stop ID format' }
+    }
+    stopId = stop.stop_id
+    fallbackName = stop.label ?? stop.stop_name
   }
 
   const query = `{
-    stopPlace(id: "${stop.stop_id}") {
+    stopPlace(id: "${stopId}") {
       name
       estimatedCalls(numberOfDepartures: ${count}, timeRange: 7200) {
         realtime
@@ -896,7 +974,12 @@ async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyReco
   if (!res.ok) return { success: false, error: `Transit API error: ${res.status}` }
 
   const json = await res.json()
-  const calls = json.data?.stopPlace?.estimatedCalls ?? []
+  if (json.errors?.length) {
+    return { success: false, error: json.errors.map((e: AnyRecord) => e.message).join(' | ') }
+  }
+  if (!json.data?.stopPlace) return { success: false, error: `Stop not found: ${stopId}` }
+
+  const calls = json.data.stopPlace.estimatedCalls ?? []
 
   const now = Date.now()
   const departures = calls.map((c: AnyRecord) => {
@@ -912,7 +995,344 @@ async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyReco
     }
   })
 
-  return { success: true, stop: stop.stop_name, departures }
+  return { success: true, stop: json.data?.stopPlace?.name ?? fallbackName, departures }
+}
+
+// ─── Trip planner (plan_trip) ───────────────────────────────────────────────
+
+const ENTUR_CLIENT  = 'lasciviens-project-daily'
+const JOURNEY_URL   = 'https://api.entur.io/journey-planner/v3/graphql'
+const GEOCODER_URL  = 'https://api.entur.io/geocoder/v1/autocomplete'
+
+type ResolvedPlace =
+  | { kind: 'stop';   id: string; name: string }
+  | { kind: 'coords'; lat: number; lon: number; name: string }
+
+// "home"/"work" resolution is bounded to this fixed synonym set (Turkish +
+// English) — deterministic string matching against the user's OWN saved
+// stop/route labels, not something the AI is left to guess or invent.
+function placeSynonyms(q: string): string[] {
+  const s = q.toLowerCase().trim()
+  if (['ev', 'eve', 'evim', 'home'].includes(s)) return ['home', 'ev']
+  if (['iş', 'is', 'ise', 'işe', 'work', 'ofis', 'office'].includes(s)) return ['work', 'iş', 'is', 'ofis', 'office']
+  return [s]
+}
+
+async function searchAddress(query: string): Promise<ResolvedPlace | null> {
+  const params = new URLSearchParams({
+    text: query, lang: 'no', size: '1', layers: 'venue,address', 'boundary.country': 'NOR',
+  })
+  const res = await fetch(`${GEOCODER_URL}?${params.toString()}`, {
+    headers: { 'ET-Client-Name': ENTUR_CLIENT },
+  })
+  if (!res.ok) return null
+
+  const json = await res.json()
+  const f = json.features?.[0]
+  if (!f) return null
+
+  const [lon, lat] = f.geometry?.coordinates ?? []
+  const id   = f.properties?.id
+  const name = f.properties?.name ?? f.properties?.label ?? query
+
+  if (typeof id === 'string' && /^NSR:StopPlace:\d+$/.test(id)) return { kind: 'stop', id, name }
+  if (typeof lat === 'number' && typeof lon === 'number')       return { kind: 'coords', lat, lon, name }
+  return null
+}
+
+// Looks up a stop's real name for a bare id (e.g. one the AI passed in
+// directly) so trip narration says "Sinsen" instead of "NSR:StopPlace:12345".
+async function fetchStopName(id: string): Promise<string> {
+  const res = await fetch(JOURNEY_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': ENTUR_CLIENT },
+    body:    JSON.stringify({ query: `{ stopPlace(id: "${id}") { name } }` }),
+  })
+  if (!res.ok) return id
+  const json = await res.json()
+  return json.data?.stopPlace?.name ?? id
+}
+
+// Resolves a free-text place reference, in this order:
+// 1. empty → the user's default saved stop
+// 2. a saved stop whose label/name matches (with home/work synonym expansion)
+// 3. a saved route whose label matches — uses that route's `endpoint` side
+// 4. a free-text address/venue search (EnTur geocoder)
+// Never falls through to letting the AI invent a place — an unresolved query
+// returns null and the caller reports that plainly instead of guessing.
+async function resolveTransitPlace(
+  supabase: AnyRecord,
+  userId: string,
+  query: string | undefined,
+  endpoint: 'from' | 'to',
+): Promise<ResolvedPlace | null> {
+  const { data: stops } = await supabase
+    .from('user_transit_stops')
+    .select('stop_id, stop_name, label, is_default')
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true })
+
+  if (!query) {
+    const def = (stops ?? []).find((s: AnyRecord) => s.is_default) ?? stops?.[0]
+    return def ? { kind: 'stop', id: def.stop_id, name: def.label ?? def.stop_name } : null
+  }
+
+  // An exact id (e.g. picked from search_transit_stops) skips fuzzy matching
+  // entirely — the AI can be precise instead of relying on synonym guessing.
+  if (/^NSR:StopPlace:\d+$/.test(query.trim())) {
+    const id = query.trim()
+    return { kind: 'stop', id, name: await fetchStopName(id) }
+  }
+
+  const synonyms  = placeSynonyms(query)
+  const stopMatch = (stops ?? []).find((s: AnyRecord) =>
+    synonyms.some(syn => (s.label ?? s.stop_name).toLowerCase().includes(syn) || s.stop_name.toLowerCase().includes(syn))
+  )
+  if (stopMatch) return { kind: 'stop', id: stopMatch.stop_id, name: stopMatch.label ?? stopMatch.stop_name }
+
+  const { data: routes } = await supabase
+    .from('user_transit_routes')
+    .select('label, from_stop_id, from_stop_name, to_stop_id, to_stop_name')
+    .eq('user_id', userId)
+
+  const routeMatch = (routes ?? []).find((r: AnyRecord) => synonyms.some(syn => r.label.toLowerCase().includes(syn)))
+  if (routeMatch) {
+    return endpoint === 'to'
+      ? { kind: 'stop', id: routeMatch.to_stop_id,   name: routeMatch.to_stop_name   }
+      : { kind: 'stop', id: routeMatch.from_stop_id, name: routeMatch.from_stop_name }
+  }
+
+  return await searchAddress(query)
+}
+
+// Only ever injects a regex-validated NSR id or finite numeric coordinates
+// into the GraphQL string — never the raw AI-provided query text.
+function gqlPlace(p: ResolvedPlace): string {
+  if (p.kind === 'stop') return `{ place: "${p.id}" }`
+  return `{ coordinates: { latitude: ${p.lat}, longitude: ${p.lon} } }`
+}
+
+async function planTrip(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const from = await resolveTransitPlace(supabase, userId, args.from, 'from')
+  const to   = await resolveTransitPlace(supabase, userId, args.to,   'to')
+
+  if (!from) {
+    return { success: false, error: 'Could not resolve the starting point. Ask the user to save a default transit stop first (Transit widget), or give a more specific place name.' }
+  }
+  if (!to) {
+    return { success: false, error: `Could not resolve destination "${args.to}". Ask the user for a saved stop name, a saved "home"/"work" style label, or a more specific address.` }
+  }
+  if (from.kind === 'stop' && to.kind === 'stop' && from.id === to.id) {
+    return { success: false, error: 'Start and destination resolved to the same stop — ask the user to clarify.' }
+  }
+
+  const count = Math.min(Math.max(args.count ?? 3, 1), 5)
+
+  let dateTimeIso: string | null = null
+  if (args.depart_at) {
+    const parsed = new Date(args.depart_at)
+    if (isNaN(parsed.getTime())) return { success: false, error: 'depart_at is not a valid date/time' }
+    dateTimeIso = parsed.toISOString()
+  }
+  const dtArg = dateTimeIso ? `\n      dateTime: "${dateTimeIso}"` : ''
+  const abArg = args.arrive_by ? `\n      arriveBy: true` : ''
+
+  const query = `{
+    trip(
+      from: ${gqlPlace(from)}
+      to:   ${gqlPlace(to)}
+      numTripPatterns: ${count}${dtArg}${abArg}
+    ) {
+      tripPatterns {
+        duration
+        expectedStartTime
+        expectedEndTime
+        legs {
+          mode
+          fromPlace { name }
+          toPlace   { name }
+          line { publicCode transportMode }
+          fromEstimatedCall {
+            expectedDepartureTime
+            destinationDisplay { frontText }
+          }
+          toEstimatedCall { expectedArrivalTime }
+        }
+      }
+    }
+  }`
+
+  const res = await fetch(JOURNEY_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': ENTUR_CLIENT },
+    body:    JSON.stringify({ query }),
+  })
+
+  if (!res.ok) return { success: false, error: `Transit API error: ${res.status}` }
+
+  const json = await res.json()
+  if (json.errors?.length) {
+    return { success: false, error: json.errors.map((e: AnyRecord) => e.message).join(' | ') }
+  }
+
+  const patterns = json.data?.trip?.tripPatterns ?? []
+  if (patterns.length === 0) return { success: false, error: 'No trips found between these two places.' }
+
+  const trips = patterns.map((p: AnyRecord) => ({
+    duration_minutes: p.duration ? Math.round(p.duration / 60) : null,
+    departure:         p.expectedStartTime,
+    arrival:           p.expectedEndTime,
+    legs: (p.legs ?? [])
+      .filter((l: AnyRecord) => l.mode && l.fromPlace && l.toPlace)
+      .map((l: AnyRecord) => ({
+        mode:        l.mode,
+        line:        l.line?.publicCode ?? null,
+        from:        l.fromPlace.name,
+        to:          l.toPlace.name,
+        destination: l.fromEstimatedCall?.destinationDisplay?.frontText ?? null,
+        departure:   l.fromEstimatedCall?.expectedDepartureTime ?? null,
+        arrival:     l.toEstimatedCall?.expectedArrivalTime ?? null,
+      })),
+  }))
+
+  return { success: true, from: from.name, to: to.name, trips }
+}
+
+// Lets the AI inspect exactly what the user has saved before guessing at
+// "home"/"work"/an ambiguous label — always safer than relying on the
+// synonym-matching inside resolveTransitPlace alone.
+async function getSavedTransit(supabase: AnyRecord, userId: string): Promise<AnyRecord> {
+  const [{ data: stops }, { data: routes }] = await Promise.all([
+    supabase
+      .from('user_transit_stops')
+      .select('stop_id, stop_name, label, is_default')
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true }),
+    supabase
+      .from('user_transit_routes')
+      .select('label, from_stop_id, from_stop_name, to_stop_id, to_stop_name')
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true }),
+  ])
+
+  return {
+    success: true,
+    stops: (stops ?? []).map((s: AnyRecord) => ({
+      id: s.stop_id, name: s.stop_name, label: s.label, is_default: s.is_default,
+    })),
+    routes: (routes ?? []).map((r: AnyRecord) => ({
+      label: r.label,
+      from: { id: r.from_stop_id, name: r.from_stop_name },
+      to:   { id: r.to_stop_id,   name: r.to_stop_name },
+    })),
+  }
+}
+
+// Free-text search over ANY stop/address (not just saved ones) — lets the AI
+// disambiguate or find a precise id to pass into plan_trip/get_next_transit
+// instead of relying on fuzzy resolution.
+async function searchTransitStops(args: AnyRecord): Promise<AnyRecord> {
+  const query = (args.query ?? '').trim()
+  if (!query) return { success: false, error: 'query is required' }
+
+  const params = new URLSearchParams({
+    text: query, lang: 'no', size: '8', layers: 'venue,address', 'boundary.country': 'NOR',
+  })
+  const res = await fetch(`${GEOCODER_URL}?${params.toString()}`, {
+    headers: { 'ET-Client-Name': ENTUR_CLIENT },
+  })
+  if (!res.ok) return { success: false, error: `Geocoder error: ${res.status}` }
+
+  const json = await res.json()
+  const results = (json.features ?? []).map((f: AnyRecord) => ({
+    id:       f.properties?.id ?? null,
+    name:     f.properties?.name ?? f.properties?.label ?? null,
+    locality: f.properties?.locality ?? f.properties?.county ?? null,
+    layer:    f.properties?.layer ?? null,
+  })).filter((r: AnyRecord) => r.id && r.name)
+
+  if (results.length === 0) return { success: false, error: `No matches for "${query}"` }
+  return { success: true, results }
+}
+
+// Mirrors the client's useTransitStops().addStop — first saved stop becomes
+// the default automatically; explicitly requesting is_default demotes any
+// other current default via the same two-step clear-then-set as the client.
+async function saveTransitStop(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const stopId   = (args.stop_id ?? '').trim()
+  const stopName = (args.stop_name ?? '').trim()
+
+  if (!/^NSR:StopPlace:\d+$/.test(stopId)) {
+    return { success: false, error: 'stop_id must be an exact NSR:StopPlace: id — get one from search_transit_stops first.' }
+  }
+  if (!stopName) return { success: false, error: 'stop_name is required' }
+
+  const { data: existing } = await supabase
+    .from('user_transit_stops')
+    .select('id')
+    .eq('user_id', userId)
+
+  const isFirst = !existing?.length
+
+  const { data, error } = await supabase
+    .from('user_transit_stops')
+    .insert({
+      user_id:    userId,
+      stop_id:    stopId,
+      stop_name:  stopName,
+      label:      args.label ?? null,
+      is_default: args.is_default ?? isFirst,
+      sort_order: existing?.length ?? 0,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    if (error.code === '23505') return { success: false, error: 'This stop is already saved.' }
+    return { success: false, error: error.message }
+  }
+
+  if (args.is_default && !isFirst) {
+    await supabase.from('user_transit_stops').update({ is_default: false }).neq('id', data.id).eq('user_id', userId)
+  }
+
+  return { success: true, id: data.id, stop_id: stopId, label: args.label ?? stopName }
+}
+
+async function saveTransitRoute(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  const label    = (args.label ?? '').trim()
+  const fromId   = (args.from_stop_id ?? '').trim()
+  const fromName = (args.from_stop_name ?? '').trim()
+  const toId     = (args.to_stop_id ?? '').trim()
+  const toName   = (args.to_stop_name ?? '').trim()
+
+  if (!label) return { success: false, error: 'label is required (e.g. "Home", "Work")' }
+  if (!/^NSR:StopPlace:\d+$/.test(fromId) || !/^NSR:StopPlace:\d+$/.test(toId)) {
+    return { success: false, error: 'from_stop_id/to_stop_id must be exact NSR:StopPlace: ids — get them from search_transit_stops or get_saved_transit first.' }
+  }
+  if (!fromName || !toName) return { success: false, error: 'from_stop_name/to_stop_name are required' }
+
+  const { count } = await supabase
+    .from('user_transit_routes')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+
+  const { data, error } = await supabase
+    .from('user_transit_routes')
+    .insert({
+      user_id:        userId,
+      label,
+      from_stop_id:   fromId,
+      from_stop_name: fromName,
+      to_stop_id:     toId,
+      to_stop_name:   toName,
+      sort_order:     count ?? 0,
+    })
+    .select('id')
+    .single()
+
+  if (error) return { success: false, error: error.message }
+  return { success: true, id: data.id, label }
 }
 
 // ─── Generic DB access layer ────────────────────────────────────────────────

@@ -3,11 +3,12 @@ import { InlineText } from './InlineText'
 import { InlineTextArea } from './InlineTextArea'
 import { StatusCycleChip, PROJECT_STATUS_COLORS } from './StatusCycleChip'
 import { PhaseCard } from './PhaseCard'
+import { ProjectItemModal } from './ProjectItemModal'
 import {
   usePhases, useItems,
   useUpdateProject, useDeleteProject,
   useCreatePhase, useUpdatePhase, useDeletePhase,
-  useCreateItem, useUpdateItem, useDeleteItem,
+  useUpdateItem, useDeleteItem,
 } from '../hooks/useProjects'
 import type { Project, ProjectStatus, ItemType, ItemStatus, ProjectItem } from '../types'
 
@@ -54,6 +55,7 @@ interface Props {
 export function ProjectDetail({ project, onBack, onDelete }: Props) {
   const [typeFilter, setTypeFilter] = useState<ItemType | null>(null)
   const [view, setView] = useState<'phases' | 'board'>('phases')
+  const [itemModal, setItemModal] = useState<{ phaseId?: string; item?: ProjectItem } | null>(null)
 
   const { data: phases = [], isLoading: phasesLoading } = usePhases(project.id)
   const { data: allItems = [] }                          = useItems(project.id)
@@ -63,7 +65,6 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
   const createPhase   = useCreatePhase(project.id)
   const updatePhase   = useUpdatePhase(project.id)
   const deletePhase   = useDeletePhase(project.id)
-  const createItem    = useCreateItem(project.id)
   const updateItem    = useUpdateItem(project.id)
   const deleteItem    = useDeleteItem(project.id)
 
@@ -80,8 +81,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
     onDelete()
   }
 
-  function handleAddPhase()           { createPhase.mutate({ project_id: project.id, name: 'New phase' }) }
-  function handleAddItem(phaseId: string) { createItem.mutate({ phase_id: phaseId, project_id: project.id, title: 'New item' }) }
+  function handleAddPhase() { createPhase.mutate({ project_id: project.id, name: 'New phase' }) }
 
   function moveItem(item: ProjectItem, dir: -1 | 1) {
     const order: ItemStatus[] = ['open', 'in_progress', 'done']
@@ -224,9 +224,10 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                   typeFilter={typeFilter}
                   onUpdatePhase={patch => updatePhase.mutate({ id: phase.id, patch })}
                   onDeletePhase={() => deletePhase.mutate(phase.id)}
-                  onAddItem={() => handleAddItem(phase.id)}
+                  onAddItem={() => setItemModal({ phaseId: phase.id })}
                   onUpdateItem={(itemId, patch) => updateItem.mutate({ id: itemId, patch })}
                   onDeleteItem={itemId => deleteItem.mutate(itemId)}
+                  onEditItem={item => setItemModal({ item })}
                 />
               ))}
               <button
@@ -255,7 +256,13 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                 {items.length === 0 && <p className="text-[11px] text-ink-300 px-1 py-2">Empty</p>}
                 {items.map(item => (
                   <div key={item.id} className="bg-white border border-ink-100 rounded-xl p-2.5 flex flex-col gap-1.5 shadow-card">
-                    <p className={`text-sm leading-snug ${item.status === 'done' ? 'line-through text-ink-400' : 'text-ink-800'}`}>{item.title}</p>
+                    <button
+                      type="button"
+                      onClick={() => setItemModal({ item })}
+                      className={`text-sm leading-snug text-left hover:bg-ink-50 rounded px-0.5 -mx-0.5 transition-colors ${item.status === 'done' ? 'line-through text-ink-400' : 'text-ink-800'}`}
+                    >
+                      {item.title}
+                    </button>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${TYPE_BADGE[item.type]}`}>{TYPE_LABEL[item.type]}</span>
                       <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[item.priority]}`} title={`priority: ${item.priority}`} />
@@ -275,6 +282,18 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
             )
           })}
         </div>
+      )}
+
+      {/* Add / edit item modal */}
+      {itemModal && (
+        <ProjectItemModal
+          open
+          onClose={() => setItemModal(null)}
+          projectId={project.id}
+          phases={phases}
+          defaultPhaseId={itemModal.phaseId}
+          item={itemModal.item}
+        />
       )}
     </div>
   )

@@ -15,13 +15,14 @@ interface Props {
   onAddItem:      () => void
   onUpdateItem:   (itemId: string, patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority'>>) => void
   onDeleteItem:   (itemId: string) => void
+  onEditItem:     (item: ProjectItem) => void
   pendingItemId?: string
 }
 
 export function PhaseCard({
   phase, items, typeFilter,
   onUpdatePhase, onDeletePhase, onAddItem,
-  onUpdateItem, onDeleteItem, pendingItemId,
+  onUpdateItem, onDeleteItem, onEditItem, pendingItemId,
 }: Props) {
   const [open,    setOpen]    = useState(true)
   const [hovered, setHovered] = useState(false)
@@ -127,6 +128,7 @@ export function PhaseCard({
               item={item}
               onUpdate={patch => onUpdateItem(item.id, patch)}
               onDelete={() => onDeleteItem(item.id)}
+              onEdit={() => onEditItem(item)}
               isPending={pendingItemId === item.id}
             />
           ))}
@@ -138,6 +140,7 @@ export function PhaseCard({
                   item={item}
                   onUpdate={patch => onUpdateItem(item.id, patch)}
                   onDelete={() => onDeleteItem(item.id)}
+                  onEdit={() => onEditItem(item)}
                 />
               ))}
             </div>
