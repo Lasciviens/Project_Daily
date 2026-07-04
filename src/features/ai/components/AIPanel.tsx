@@ -6,6 +6,18 @@ import type { Message } from '../api/aiApi'
 
 const STORAGE_KEY = 'lasci-ai-chat'
 
+// Minimal markdown → JSX: the model wraps emphasis in **bold**, which was
+// rendering as literal asterisks since message content went straight to
+// text. No markdown library needed for just this.
+function renderMarkdown(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*.+?\*\*)/g)
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**') && part.length > 4
+      ? <strong key={i}>{part.slice(2, -2)}</strong>
+      : <span key={i}>{part}</span>
+  )
+}
+
 // Chat messages carry an optional activity trace (tool calls the AI ran),
 // shown behind a "Show detail" link. The extra field is ignored by the backend.
 interface ChatMessage extends Message { steps?: string[] }
@@ -142,7 +154,7 @@ export function AIPanel() {
                       : 'bg-cream-100 text-ink-800 rounded-bl-sm'
                   }`}
                 >
-                  {msg.content}
+                  {renderMarkdown(msg.content)}
                 </div>
                 {msg.role === 'assistant' && msg.steps && msg.steps.length > 0 && (
                   <button
