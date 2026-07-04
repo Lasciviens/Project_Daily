@@ -7,6 +7,7 @@ import type { Task } from '../../todo/types'
 import { DOMAIN_TAG_CLASS, DOMAIN_LABEL } from '../../todo/domainColors'
 import { completedWithinLast24h } from '../../todo/taskRules'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { DailyBriefing } from '../components/DailyBriefing'
 import { TodaySummary } from '../components/TodaySummary'
 import { WeatherWidget } from '../components/WeatherWidget'
 import { RuterWidget } from '../components/RuterWidget'
@@ -71,7 +72,10 @@ export function HomePage() {
 
       {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 space-y-4">
-        {/* Overview summary — leads the page */}
+        {/* AI morning briefing — leads the page, auto-generated once per day */}
+        <DailyBriefing />
+
+        {/* Overview summary */}
         <TodaySummary />
 
         {/* Quick nav — compact pills, all six fit on one row from sm+ */}

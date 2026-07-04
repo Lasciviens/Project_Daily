@@ -78,7 +78,7 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 | Training | ✅ | See Training section below. Hevy (workouts, PRs, routines, body) + Strava OAuth. Page-level calendar pinned right. |
 | Projects | ✅ | Phases, items, status tracking. Add/edit item share one modal (`ProjectItemModal`) — title/notes/phase/type/status/priority. |
 | Developer | ✅ | Standalone `/developer` page, reached from the Settings (⚙) menu (`SettingsMenu.tsx`) |
-| Home | ✅ | WidgetShell, Weather, Ruter transit, Currency, News, Recent Media, Games, Training |
+| Home | ✅ | WidgetShell, Weather, Ruter transit, Currency, News, Recent Media, Games, Training. **DailyBriefing** — AI morning digest at the top, auto-generated once/day (see below). |
 | Command Bar | ✅ | `CommandBar` (⌘K) via `useUIStore.openCommandBar` |
 | Football | ⛔ | Deferred — no route wired. API-Football free tier stops at 2024. Future: fixtures from Google Calendar. |
 
@@ -221,6 +221,8 @@ Never stretch content edge-to-edge. Widgets are sized to their content, not the 
 **RP5 Games:** Separate Supabase instance (`VITE_RP5_SUPABASE_URL`). Read from `v_games_summary` / `v_games_full` views. Write to raw `games` table. `series_name` only exists in the view — never select from raw `games`.
 
 **Home widgets:** All use `WidgetShell` + `useWidgetState`. Disable queries when collapsed.
+
+**Daily briefing (Home):** `DailyBriefing.tsx` (top of HomePage) — an AI-written Turkish morning digest. `briefingApi.ts::generateDailyBriefing()` gathers real data (today's tasks/schedule, upcoming+last training, weekly currency trend via `fetchCurrencyWeekTrend`, weather, TR/NO/world news headlines, media-in-progress, in-progress project items) into a context string and calls the shared `invokeAI` (exported from `aiApi.ts`) with a briefing-specific prompt (plain text, emoji section headers, NO markdown — rendered with `whitespace-pre-wrap`, no markdown lib). **Once-per-day** is enforced in `useDailyBriefing.ts`: React Query keyed by the date + `staleTime: Infinity` + `initialData` seeded from a `localStorage` cache (`lasci.dailyBriefing`, `{date,text}`) when the cached entry is for today — so it auto-generates exactly once per calendar day per browser; the ↻ button is the explicit manual regenerate (costs one AI request). localStorage (not a DB table) chosen deliberately: zero migration, single-user, per-browser is fine.
 
 **TMDB images:** `https://image.tmdb.org/t/p/{size}{path}` (e.g. `w342`)
 
