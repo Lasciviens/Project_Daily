@@ -9,8 +9,9 @@ import { RoutinesTab } from './RoutinesTab'
 import { BodyMeasurementsTab } from './BodyMeasurementsTab'
 import { ExerciseTemplatesTab } from './ExerciseTemplatesTab'
 import { LogHevyWorkoutModal } from './LogHevyWorkoutModal'
+import { HealthTab } from './HealthTab'
 
-type SubTab = 'workouts' | 'routines' | 'prs' | 'body' | 'exercises'
+type SubTab = 'workouts' | 'routines' | 'prs' | 'body' | 'exercises' | 'health'
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'workouts',  label: 'Workouts'         },
@@ -18,6 +19,7 @@ const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'prs',       label: 'Personal Records'  },
   { id: 'body',      label: 'Body'              },
   { id: 'exercises', label: 'Exercises'         },
+  { id: 'health',    label: 'Health'            },
 ]
 
 const PAGE_SIZE = 20
@@ -215,6 +217,7 @@ export function HevyTab() {
         {activeTab === 'prs'       && <PRsSubTab />}
         {activeTab === 'body'      && <BodyMeasurementsTab />}
         {activeTab === 'exercises' && <ExerciseTemplatesTab />}
+        {activeTab === 'health'    && <HealthTab />}
       </div>
     </div>
   )

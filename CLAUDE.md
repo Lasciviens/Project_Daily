@@ -135,6 +135,8 @@ Page layout (`TrainingPage`): faint training-photo header banner; Hevy/Strava pi
 
 DB (Hevy): `hevy_workouts`/`_exercises`/`hevy_sets`, `hevy_routines`/`_exercises`/`hevy_routine_sets` (routine sets also have `rep_range_start/end`), `hevy_exercise_templates`(+`_muscles`), `hevy_routine_folders`, `hevy_body_measurements`, `hevy_workout_events_cursor`.
 
+**Health Auto Export (v1, migration `036_health_export.sql`)**: Huawei's own Health Kit API is closed to individual developers (requires AppGallery-published app), so instead: Huawei Health on iOS already syncs into Apple HealthKit; the **Health Auto Export** app (App Store) reads HealthKit and POSTs to `health-export-webhook` on a schedule. `health_workouts` (comparable shape to `hevy_workouts` — id/name/start/end/duration/heart rate/energy, plus a `raw` jsonb with the full payload incl. per-minute arrays) and `health_metrics` (generic per-metric-per-day rows — `value` jsonb since shape varies: `qty` vs `Min/Avg/Max` vs multi-field sleep) are separate from Hevy's tables (shared `HEVY_USER_ID`, different source). Shown in `HevyTab`'s new **Health** sub-tab (`HealthTab.tsx`) as a plain verification list — not yet merged into `TrainingCalendar`'s calendar view or charted; that's a deliberate follow-up once the pipeline is confirmed reliable. Reminder from Apple's own platform docs: HealthKit is unreadable while the phone is locked and background task scheduling is opportunistic — so delivery is best-effort, not guaranteed-real-time, by OS design (not a bug in either app).
+
 **Not done yet:**
 - ⭐ **HIGH PRIORITY — AI transit trip planning**: add an `ai-proxy` tool that calls EnTur's `trip` journey-planner (from→to, `numTripPatterns`, legs with transfers) so the AI can answer "eve gideceğim, 110 sonra 23 ile aktarma" style routing. Current `get_next_transit` only reads next departures from one saved stop — no routing/transfers. Runs server-side (edge function) so no browser CORS issue.
 - 🔶 **MEDIUM PRIORITY — exercise demo media in Training**: Hevy's public API returns no gif/image/video for exercises (verified: our `hevy_exercise_templates` sync only gets id/title/type/muscle/is_custom). Pull demo visuals from a third-party API — ExerciseDB (11k+ exercises, gifs, open-source), WorkoutX (gifs, 500 req/mo free), or self-host wger — matching Hevy exercises by **name** (fuzzy; graceful no-image fallback). Show next to each exercise in the Training UI.
@@ -248,6 +250,7 @@ Reference files: `src/shared/components/plan-modal/UnifiedPlanModal.tsx` (Dialog
 | `VITE_RP5_SUPABASE_URL` / `VITE_RP5_SUPABASE_ANON_KEY` | RP5 games Supabase |
 | `CLAUDE_API_KEY` / `OPENAI_API_KEY` | Supabase Vault only — never in client |
 | `HEVY_API_KEY` / `HEVY_WEBHOOK_SECRET` / `HEVY_USER_ID` | Supabase Vault only — never in client |
+| `HEALTH_EXPORT_WEBHOOK_SECRET` | Supabase Vault only — Health Auto Export's REST API automation sends this as `Authorization: Bearer <secret>`; reuses `HEVY_USER_ID` for the single-user id |
 
 ---
 
@@ -266,5 +269,6 @@ Reference files: `src/shared/components/plan-modal/UnifiedPlanModal.tsx` (Dialog
 | `hevy-sync` | Webhook receiver — new workout from Hevy → upsert to Supabase |
 | `hevy-incremental-sync` | Events-based incremental sync (workout edits/deletes since last cursor) + full re-fetch/upsert of routines, routine folders & body measurements (event-less collections) so Sync surfaces new Hevy-app routines without a full re-import |
 | `hevy-api` | Write proxy — web → Hevy (create/update workouts, routines, body measurements) |
+| `health-export-webhook` | Webhook receiver — Health Auto Export (iOS app, reads Apple HealthKit incl. Huawei Health data synced into HealthKit) POSTs `{data:{workouts,metrics}}` → upsert into `health_workouts`/`health_metrics`. Same auth pattern as `hevy-sync` (Bearer secret, no Supabase JWT — disable "Enforce JWT Verification" for this function). Idempotent on `(user_id,metric_name,date,source)` / workout `id`, safe against Health Auto Export's "Batch Requests" splitting one export into multiple calls. |
 
 **DB Migrations:** Manuel olarak uygulanır — Supabase Dashboard > SQL Editor veya `supabase db push` (local CLI ile). GitHub Actions'ta otomatik çalışmıyor.
