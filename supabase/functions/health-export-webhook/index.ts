@@ -95,33 +95,36 @@ Deno.serve(async (req) => {
   // UUID. Only truly skip a workout that has neither an id nor enough fields
   // to build that fallback (nothing to key it on).
   let skippedWorkouts = 0
+  let workoutRowCount = 0
   if (workouts.length > 0) {
-    const rows = workouts
-      .map((w: HealthWorkout) => ({
-        ...w,
-        __id: w.id || (w.name && (w.start || w.end) ? `synthetic:${w.name}:${w.start ?? ''}:${w.end ?? ''}` : null),
-      }))
-      .filter((w) => {
-        const ok = !!w.__id
-        if (!ok) skippedWorkouts++
-        return ok
-      })
-      .map(({ __id, ...w }: HealthWorkout & { __id: string }) => ({
-        id: __id,
+    // Keyed by id (real or synthetic) — same "cannot affect row a second
+    // time" risk as metrics below if two workouts in one request share a
+    // key (e.g. two id-less workouts with identical name+start+end).
+    const rowsById = new Map<string, AnyRecord>()
+    for (const raw of workouts) {
+      const id = raw.id || (raw.name && (raw.start || raw.end) ? `synthetic:${raw.name}:${raw.start ?? ''}:${raw.end ?? ''}` : null)
+      if (!id) {
+        skippedWorkouts++
+        continue
+      }
+      rowsById.set(id, {
+        id,
         user_id: userId,
-        name: w.name,
-        start_time: safeIso(w.start),
-        end_time: safeIso(w.end),
-        duration_seconds: w.duration ?? null,
-        active_energy_kj: w.activeEnergyBurned?.qty ?? null,
-        total_energy_kj: w.totalEnergy?.qty ?? null,
-        avg_heart_rate: w.heartRate?.avg ?? null,
-        min_heart_rate: w.heartRate?.min ?? null,
-        max_heart_rate: w.heartRate?.max ?? null,
-        raw: w,
+        name: raw.name,
+        start_time: safeIso(raw.start),
+        end_time: safeIso(raw.end),
+        duration_seconds: raw.duration ?? null,
+        active_energy_kj: raw.activeEnergyBurned?.qty ?? null,
+        total_energy_kj: raw.totalEnergy?.qty ?? null,
+        avg_heart_rate: raw.heartRate?.avg ?? null,
+        min_heart_rate: raw.heartRate?.min ?? null,
+        max_heart_rate: raw.heartRate?.max ?? null,
+        raw,
         updated_at: now,
         synced_at: now,
-      }))
+      })
+    }
+    const rows = [...rowsById.values()]
 
     if (rows.length > 0) {
       const { error } = await supabase
@@ -134,6 +137,7 @@ Deno.serve(async (req) => {
           { status: 500, headers: jsonHeaders }
         )
       }
+      workoutRowCount = rows.length
     }
   }
 
@@ -143,7 +147,13 @@ Deno.serve(async (req) => {
   let metricRowCount = 0
   let skippedMetricPoints = 0
   if (metrics.length > 0) {
-    const rows: AnyRecord[] = []
+    // Keyed by the same columns as the upsert's onConflict target — a single
+    // INSERT..ON CONFLICT DO UPDATE statement errors ("cannot affect row a
+    // second time") if two rows in the same call share a conflict key. A
+    // day can genuinely have multiple raw/disaggregated points for the same
+    // metric+source (e.g. multiple sleep sessions) — last one wins, matching
+    // what a second, later-arriving request would do anyway.
+    const rowsByKey = new Map<string, AnyRecord>()
     for (const group of metrics) {
       if (!group.name) continue
       for (const point of group.data ?? []) {
@@ -154,18 +164,21 @@ Deno.serve(async (req) => {
           skippedMetricPoints++
           continue
         }
-        rows.push({
+        const date = point.date.slice(0, 10)
+        const source = point.source ?? ''
+        rowsByKey.set(`${group.name}|${date}|${source}`, {
           user_id: userId,
           metric_name: group.name,
-          date: point.date.slice(0, 10),
+          date,
           unit: group.units ?? null,
-          source: point.source ?? '',
+          source,
           value: point,
           updated_at: now,
           synced_at: now,
         })
       }
     }
+    const rows = [...rowsByKey.values()]
 
     if (rows.length > 0) {
       const { error } = await supabase
@@ -185,7 +198,7 @@ Deno.serve(async (req) => {
   return new Response(
     JSON.stringify({
       ok: true,
-      workouts: workouts.length - skippedWorkouts,
+      workouts: workoutRowCount,
       metrics: metricRowCount,
       skipped_workouts: skippedWorkouts,
       skipped_metric_points: skippedMetricPoints,
