@@ -1,10 +1,11 @@
+import { useMemo, useState } from 'react'
 import { format, subDays } from 'date-fns'
-import { useHealthWorkouts, useHealthMetric } from '../hooks/useHealthExport'
-import type { HealthWorkout, HealthMetric } from '../api/healthApi'
+import { useHealthWorkouts, useHealthMetrics } from '../hooks/useHealthExport'
+import type { HealthWorkout } from '../api/healthApi'
 
-// v1: a minimal "is data flowing?" view — a plain list of synced workouts and
-// a handful of key daily metrics. Calendar-merge with Hevy/Strava and richer
-// charts are a deliberate follow-up once the pipeline itself is confirmed working.
+// Verification/browse view — a plain table over whatever Health Auto Export
+// has sent so far. No per-metric chart/visualization pass yet (deliberate:
+// confirm the pipeline + full data shape first, polish later).
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
@@ -47,48 +48,51 @@ function HealthWorkoutRow({ workout }: { workout: HealthWorkout }) {
   )
 }
 
-// Each metric's `value` jsonb shape differs — these extract a single display
-// number/string per metric_name. Add a case here when showing a new metric.
-function metricDisplayValue(m: HealthMetric): string {
-  switch (m.metric_name) {
-    case 'sleep_analysis':
-      return m.value.totalSleep != null ? `${m.value.totalSleep.toFixed(1)} hr` : '—'
-    case 'heart_rate':
-      return m.value.Avg != null ? `${Math.round(m.value.Avg)} bpm` : '—'
-    default:
-      return m.value.qty != null ? `${Math.round(m.value.qty * 10) / 10}${m.unit ? ` ${m.unit}` : ''}` : '—'
-  }
+// Metric value shape varies wildly (qty vs Min/Avg/Max vs multi-field sleep
+// vs systolic/diastolic, etc.) — rather than a per-metric switch, show every
+// field the point actually has (minus the columns already shown separately).
+function formatMetricValue(value: Record<string, unknown>): string {
+  const { date: _date, source: _source, ...rest } = value
+  const entries = Object.entries(rest)
+  if (entries.length === 0) return '—'
+  return entries
+    .map(([k, v]) => `${k}: ${typeof v === 'number' ? Math.round(v * 100) / 100 : v}`)
+    .join(' · ')
 }
 
-function MetricCard({ title, metricName }: { title: string; metricName: string }) {
-  const weekAgo = format(subDays(new Date(), 7), 'yyyy-MM-dd')
-  const { data: points = [], isLoading } = useHealthMetric(metricName, { from: weekAgo, limit: 7 })
-
-  return (
-    <div className="rounded-xl border border-ink-200 bg-white overflow-hidden">
-      <div className="px-3 py-2 bg-cream-50 border-b border-ink-100">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">{title}</p>
-      </div>
-      {isLoading ? (
-        <div className="h-16 bg-cream-100 animate-pulse" />
-      ) : points.length === 0 ? (
-        <p className="text-xs text-ink-400 px-3 py-3">No data yet</p>
-      ) : (
-        <div className="divide-y divide-ink-50">
-          {points.map(p => (
-            <div key={p.id} className="flex items-center justify-between px-3 py-1.5">
-              <span className="text-xs text-ink-500">{format(new Date(p.date), 'd MMM')}</span>
-              <span className="text-sm font-semibold text-ink-800">{metricDisplayValue(p)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+const DAY_FILTERS: { label: string; days: number | null }[] = [
+  { label: 'Last 7 days',  days: 7    },
+  { label: 'Last 30 days', days: 30   },
+  { label: 'Last 90 days', days: 90   },
+  { label: 'All time',     days: null },
+]
 
 export function HealthTab() {
-  const { data: workouts = [], isLoading: workoutsLoading } = useHealthWorkouts({ limit: 10 })
+  const { data: workouts = [], isLoading: workoutsLoading } = useHealthWorkouts({ limit: 20 })
+  const { data: metrics = [], isLoading: metricsLoading } = useHealthMetrics()
+
+  const [metricFilter, setMetricFilter] = useState('all')
+  const [sourceFilter, setSourceFilter] = useState('all')
+  const [dayFilter, setDayFilter] = useState<number | null>(30)
+
+  const metricNames = useMemo(
+    () => [...new Set(metrics.map(m => m.metric_name))].sort(),
+    [metrics]
+  )
+  const sources = useMemo(
+    () => [...new Set(metrics.map(m => m.source).filter(Boolean))].sort(),
+    [metrics]
+  )
+
+  const filteredMetrics = useMemo(() => {
+    const cutoff = dayFilter != null ? subDays(new Date(), dayFilter) : null
+    return metrics.filter(m => {
+      if (metricFilter !== 'all' && m.metric_name !== metricFilter) return false
+      if (sourceFilter !== 'all' && m.source !== sourceFilter) return false
+      if (cutoff && new Date(m.date) < cutoff) return false
+      return true
+    })
+  }, [metrics, metricFilter, sourceFilter, dayFilter])
 
   return (
     <div className="flex flex-col gap-4">
@@ -118,12 +122,73 @@ export function HealthTab() {
       </div>
 
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 mb-2">Last 7 days</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <MetricCard title="Steps" metricName="step_count" />
-          <MetricCard title="Sleep" metricName="sleep_analysis" />
-          <MetricCard title="Resting Heart Rate" metricName="resting_heart_rate" />
+        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Health Metrics</p>
+          <div className="flex gap-2 flex-wrap">
+            <select
+              value={metricFilter}
+              onChange={e => setMetricFilter(e.target.value)}
+              className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
+            >
+              <option value="all">All metrics</option>
+              {metricNames.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <select
+              value={sourceFilter}
+              onChange={e => setSourceFilter(e.target.value)}
+              className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
+            >
+              <option value="all">All sources</option>
+              {sources.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select
+              value={dayFilter ?? 'all'}
+              onChange={e => setDayFilter(e.target.value === 'all' ? null : Number(e.target.value))}
+              className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
+            >
+              {DAY_FILTERS.map(f => (
+                <option key={f.label} value={f.days ?? 'all'}>{f.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {metricsLoading ? (
+          <div className="space-y-1.5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-10 rounded-lg bg-cream-200 animate-pulse" />
+            ))}
+          </div>
+        ) : filteredMetrics.length === 0 ? (
+          <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
+            <p className="text-2xl mb-2">📊</p>
+            <p className="text-ink-600 font-medium text-sm">No metrics match this filter</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-ink-200 bg-white overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-cream-50 border-b border-ink-100">
+                <tr>
+                  <th className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider whitespace-nowrap">Date</th>
+                  <th className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider whitespace-nowrap">Metric</th>
+                  <th className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider whitespace-nowrap">Source</th>
+                  <th className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider">Value</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-50">
+                {filteredMetrics.map(m => (
+                  <tr key={m.id}>
+                    <td className="px-3 py-2 text-ink-500 whitespace-nowrap">{format(new Date(m.date), 'd MMM yyyy')}</td>
+                    <td className="px-3 py-2 text-ink-800 font-medium whitespace-nowrap">{m.metric_name}</td>
+                    <td className="px-3 py-2 text-ink-500 whitespace-nowrap max-w-[160px] truncate">{m.source || '—'}</td>
+                    <td className="px-3 py-2 text-ink-700">{formatMetricValue(m.value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[11px] text-ink-400 mt-1">{filteredMetrics.length} / {metrics.length} rows</p>
       </div>
     </div>
   )

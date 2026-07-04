@@ -45,23 +45,18 @@ export async function fetchHealthWorkouts(opts: {
   return data ?? []
 }
 
-export async function fetchHealthMetrics(
-  metricName: string,
-  opts: { from?: string; to?: string; limit?: number } = {},
-): Promise<HealthMetric[]> {
-  const { from, to, limit = 30 } = opts
+// No server-side metric/source/date filtering — this is a personal, single-user
+// dataset (low thousands of rows at most), so a bounded fetch + client-side
+// filtering in the table UI is simpler than adding query params for every facet.
+export async function fetchHealthMetrics(opts: { limit?: number } = {}): Promise<HealthMetric[]> {
+  const { limit = 3000 } = opts
 
-  let query = supabase
+  const { data, error } = await supabase
     .from('health_metrics')
     .select('*')
-    .eq('metric_name', metricName)
     .order('date', { ascending: false })
     .limit(limit)
 
-  if (from) query = query.gte('date', from)
-  if (to)   query = query.lte('date', to)
-
-  const { data, error } = await query
   if (error) throw error
   return data ?? []
 }
