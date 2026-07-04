@@ -18,6 +18,7 @@ Runs on **Claude Code on the web** (claude.ai/code). Container clones repo fresh
 
 - Never push directly to `main`
 - Update this file when features complete or architecture changes
+- **Small data migrations/inputs**: the in-app AI (Ask AI panel) now has a generic DB layer (`db_query/insert/update/delete`, see AI section). For small one-off data loads (seed rows, backlog items, bulk inserts) just hand it a JSON or SQL-ish spec in chat — it inserts the rows — instead of writing a migration. Reserve SQL migrations for schema changes.
 
 **Live URLs:** App: `https://lasciviens.github.io/Project_Daily/#/login` · Repo: `https://github.com/Lasciviens/Project_Daily`
 
@@ -136,6 +137,7 @@ DB (Hevy): `hevy_workouts`/`_exercises`/`hevy_sets`, `hevy_routines`/`_exercises
 
 **Not done yet:**
 - ⭐ **HIGH PRIORITY — AI transit trip planning**: add an `ai-proxy` tool that calls EnTur's `trip` journey-planner (from→to, `numTripPatterns`, legs with transfers) so the AI can answer "eve gideceğim, 110 sonra 23 ile aktarma" style routing. Current `get_next_transit` only reads next departures from one saved stop — no routing/transfers. Runs server-side (edge function) so no browser CORS issue.
+- 🔶 **MEDIUM PRIORITY — exercise demo media in Training**: Hevy's public API returns no gif/image/video for exercises (verified: our `hevy_exercise_templates` sync only gets id/title/type/muscle/is_custom). Pull demo visuals from a third-party API — ExerciseDB (11k+ exercises, gifs, open-source), WorkoutX (gifs, 500 req/mo free), or self-host wger — matching Hevy exercises by **name** (fuzzy; graceful no-image fallback). Show next to each exercise in the Training UI.
 - Football data source (Calendar integration planned; no route wired)
 - Activity Log / stats widget
 - Routes widget (Home): visual improvement pass + refresh button
