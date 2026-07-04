@@ -23,8 +23,9 @@ function relativeDay(dateStr: string): string {
 /**
  * Compact banner showing the next planned training session — the soonest
  * future `time_blocks` row with category='training'. Hidden when none planned.
- * Clicking it opens the linked task for editing (sessions planned via
- * UnifiedPlanModal with "also add to To-Do" get a source_type='task' block).
+ * Always clickable: opens the linked task (source_type='task' blocks) or, for
+ * a plain time-block-only session, edits that block directly via
+ * UnifiedPlanModal's timeBlock prop.
  */
 export function NextSessionBanner() {
   const [editOpen, setEditOpen] = useState(false)
@@ -59,12 +60,9 @@ export function NextSessionBanner() {
     <>
       <button
         type="button"
-        onClick={() => isTaskLinked && setEditOpen(true)}
-        disabled={!isTaskLinked}
-        title={isTaskLinked ? 'Edit this session' : undefined}
-        className={`w-full flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 mb-4 text-left transition-colors duration-150 ${
-          isTaskLinked ? 'hover:bg-blue-100 cursor-pointer' : 'cursor-default'
-        }`}
+        onClick={() => setEditOpen(true)}
+        title="Edit this session"
+        className="w-full flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 mb-4 text-left transition-colors duration-150 hover:bg-blue-100 cursor-pointer"
       >
         <span className="text-xl flex-shrink-0">🏋️</span>
         <div className="flex-1 min-w-0">
@@ -78,10 +76,11 @@ export function NextSessionBanner() {
       </button>
 
       <UnifiedPlanModal
-        open={editOpen && !!task}
+        open={editOpen && (isTaskLinked ? !!task : true)}
         onClose={() => setEditOpen(false)}
         config={{ tabs: ['task', 'schedule'], heading: 'Edit Session' }}
-        task={task}
+        task={isTaskLinked ? task : undefined}
+        timeBlock={!isTaskLinked ? next : undefined}
       />
     </>
   )

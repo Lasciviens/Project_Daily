@@ -45,9 +45,9 @@ UI primitives: `@headlessui/react` v2 (Dialog, Combobox, Popover, Menu). No anim
 ```
 /#/login      → LoginPage (public)
 /#/home       → HomePage
-/#/daily      → DailyPage   (nav: grouped under "Personal" dropdown with Shop)
-/#/shop       → ShopPage    (nav: grouped under "Personal" dropdown with Daily)
-/#/recipes    → RecipesPage (nav: grouped under "Personal" dropdown)
+/#/daily      → DailyPage   (nav: "Personal" — Work-style tab bar via PersonalLayout, default tab)
+/#/shop       → ShopPage    (nav: "Personal" tab bar, same routes as before)
+/#/recipes    → RecipesPage (nav: "Personal" tab bar, same routes as before)
 /#/media      → MediaPage
 /#/work       → WorkPage
 /#/projects   → ProjectsPage
@@ -68,16 +68,16 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 |---|---|---|
 | Auth | ✅ | LoginPage |
 | Daily + To-Do | ✅ | DayView, DayTimeline, WeekWidget, MonthWidget, AddTimeBlockModal, ToDoDrawer |
-| Shop | ✅ | See Shop section below. Nav: "Personal" dropdown (Daily, Shop, Recipes) in `src/app/layout.tsx` |
+| Shop | ✅ | See Shop section below. Nav: "Personal" group (Daily, Shop, Recipes) — single nav link to `/daily`, in-page tab bar via `PersonalLayout` (`src/features/personal/components/PersonalLayout.tsx`), Work-style segmented control. Routes unchanged (`/daily`/`/shop`/`/recipes`), so deep links keep working. |
 | Recipes | ✅ | Phase 1+2+3+4 done (CRUD + serving scaling + macros + weekly meal plan + pantry checkbox → Shop + AI paste-parse/macro-estimate). See Recipes section. UX: cover-image backdrop/cards, MacroBar, Cook Mode, search, seeded Turkish classics |
 | Media | ✅ | See Media section below |
-| Work | ✅ | Vertical kanban (Overdue/To-do/In Progress/Waiting/Done), Developer tab inside Work, drag-and-drop, HeroTaskWidget (2 focus cards), WorkDayTimeline (work tasks only) |
+| Work | ✅ | Vertical kanban (Overdue/To-do/In Progress/Waiting/Done), drag-and-drop, HeroTaskWidget (2 focus cards), WorkDayTimeline (work tasks only). Developer moved out (unrelated to Work) — reach it via the Settings (⚙) menu → `/developer`. |
 | AI | ✅ | Gemini 3.5 Flash via Edge Function. Generic DB tool layer (describe_database + db_query/insert/update/delete) — reads/writes any allow-listed user table; + special-purpose tools (calendar/transit/media/shop). See AI section below. |
 | Calendar | ✅ | Google OAuth, read + write events, sync/refresh button in DayTimeline header |
 | Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
 | Training | ✅ | See Training section below. Hevy (workouts, PRs, routines, body) + Strava OAuth. Page-level calendar pinned right. |
 | Projects | ✅ | Phases, items, status tracking |
-| Developer | ✅ | Standalone `/developer` page (also a tab inside Work) |
+| Developer | ✅ | Standalone `/developer` page, reached from the Settings (⚙) menu (`SettingsMenu.tsx`) |
 | Home | ✅ | WidgetShell, Weather, Ruter transit, Currency, News, Recent Media, Games, Training |
 | Command Bar | ✅ | `CommandBar` (⌘K) via `useUIStore.openCommandBar` |
 | Football | ⛔ | Deferred — no route wired. API-Football free tier stops at 2024. Future: fixtures from Google Calendar. |
@@ -99,7 +99,7 @@ Both movie and TV entries have: `rating int (1-10)`, `genres jsonb`, `personal_n
 TMDB images: `posterUrl(path, size)` from `src/integrations/tmdb/client.ts`
 
 ### Shop Feature Detail
-Wishlist/shopping-planner under `src/features/shop/`. Strict **2-level** category tree — `shop_categories.parent_id` null = top category, set = subcategory; items always attach to a subcategory (`shop_items.category_id`), never to a top category. Page is a fixed two-pane layout (`ShopPage`, `h-[calc(100vh-56px)]`): left = `ShopAIBox` chat panel (fixed width on desktop, fixed height on mobile, internal scroll + pinned input — never grows the page), right = category pills + wishlist grid (its own scroll).
+Wishlist/shopping-planner under `src/features/shop/`. Strict **2-level** category tree — `shop_categories.parent_id` null = top category, set = subcategory; items always attach to a subcategory (`shop_items.category_id`), never to a top category. Page is a fixed two-pane layout (`ShopPage`, `h-full` — sized by `PersonalLayout`'s flex-1 Outlet slot, not a viewport calc): left = `ShopAIBox` chat panel (fixed width on desktop, fixed height on mobile, internal scroll + pinned input — never grows the page), right = category pills + wishlist grid (its own scroll).
 - `ShopAIBox` — chat panel (separate from the app-wide ✦ Ask AI panel) using `sendShopMessage` (aiApi.ts) with a shopping-companion system prompt: converses naturally about plans (not just add-item commands), handles a pasted multi-item basket, and never guesses a new category silently.
 - Clarifying questions use a real Gemini function call — `ask_clarifying_question(question, options[])` — not text-parsed conventions. `ai-proxy`'s loop short-circuits on this call (the "answer" must come from the human as a real next turn, not a synthesized tool response) and returns `{ text, quickReplies }`; `ShopAIBox` renders `quickReplies` as tappable buttons.
 - `AddShopItemModal` — manual add: top category / subcategory cascading selects, each with "+ New…" to create on the fly.

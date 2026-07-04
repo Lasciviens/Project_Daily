@@ -3,6 +3,7 @@ import { SessionGuard } from '../security/sessionGuard'
 import { Layout } from './layout'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { HomePage } from '../features/home/pages/HomePage'
+import { PersonalLayout } from '../features/personal/components/PersonalLayout'
 import { DailyPage } from '../features/daily/pages/DailyPage'
 import { ShopPage } from '../features/shop/pages/ShopPage'
 import { RecipesPage } from '../features/recipes/pages/RecipesPage'
@@ -28,9 +29,14 @@ export function Router() {
         >
           <Route index element={<Navigate to="/home" replace />} />
           <Route path="/home"  element={<HomePage />} />
-          <Route path="/daily" element={<DailyPage />} />
-          <Route path="/shop"    element={<ShopPage />} />
-          <Route path="/recipes" element={<RecipesPage />} />
+
+          {/* Personal nav group — shared tab bar (Daily/Shop/Recipes) via PersonalLayout */}
+          <Route element={<PersonalLayout />}>
+            <Route path="/daily"    element={<DailyPage />} />
+            <Route path="/shop"     element={<ShopPage />} />
+            <Route path="/recipes"  element={<RecipesPage />} />
+          </Route>
+
           <Route path="/media" element={<MediaPage />} />
           <Route path="/work"     element={<WorkPage />} />
           <Route path="/training"  element={<TrainingPage />} />

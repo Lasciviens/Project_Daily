@@ -90,14 +90,14 @@ export function HomePage() {
           ))}
         </div>
 
+        {/* Today's schedule */}
+        <TodayScheduleWidget />
+
         {/* Weather + transit side-by-side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
           <WeatherWidget />
           <RuterWidget />
         </div>
-
-        {/* Today's schedule */}
-        <TodayScheduleWidget />
 
         {/* Today's tasks */}
         <TodayTasksWidget tasks={tasks} done={done} open={open} progress={progress} isLoading={today.isLoading} onEdit={setEditingTask} />

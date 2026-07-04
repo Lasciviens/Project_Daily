@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { startOfWeek, startOfMonth } from 'date-fns'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useHevyPRs } from '../hooks/useHevyPRs'
 import { HevyWorkoutCard } from './HevyWorkoutCard'
@@ -20,21 +21,6 @@ const SUB_TABS: { id: SubTab; label: string }[] = [
 ]
 
 const PAGE_SIZE = 20
-
-// ─── Weekly/Monthly summary helpers ──────────────────────────────────────────
-
-function startOfWeek(d: Date): Date {
-  const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  const monday = new Date(d)
-  monday.setDate(d.getDate() + diff)
-  monday.setHours(0, 0, 0, 0)
-  return monday
-}
-
-function startOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1)
-}
 
 // ─── Best Lifts Card (top 5 by weight) ───────────────────────────────────────
 
@@ -88,10 +74,15 @@ function WorkoutsSubTab() {
 
   const { weekCount, monthCount } = useMemo(() => {
     const now = new Date()
-    const weekStart  = startOfWeek(now).toISOString()
-    const monthStart = startOfMonth(now).toISOString()
-    const weekCount  = allRecent.filter(w => w.hevy_created_at >= weekStart).length
-    const monthCount = allRecent.filter(w => w.hevy_created_at >= monthStart).length
+    // Compare as Date objects (not ISO strings) so the boundary isn't skewed by
+    // a UTC conversion, and use the actual workout date (start_time) rather
+    // than the Hevy sync/creation timestamp — matches TrainingCalendar's
+    // workoutDay() logic.
+    const weekStart  = startOfWeek(now, { weekStartsOn: 1 })
+    const monthStart = startOfMonth(now)
+    const workoutDate = (w: (typeof allRecent)[number]) => new Date(w.start_time ?? w.hevy_created_at)
+    const weekCount  = allRecent.filter(w => { const d = workoutDate(w); return d >= weekStart  && d <= now }).length
+    const monthCount = allRecent.filter(w => { const d = workoutDate(w); return d >= monthStart && d <= now }).length
     return { weekCount, monthCount }
   }, [allRecent])
 

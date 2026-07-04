@@ -4,7 +4,7 @@
 //  public contract: anything a caller needs to drive the modal lives here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { TimeBlockCategory } from '../../../features/daily/types'
+import type { TimeBlock, TimeBlockCategory } from '../../../features/daily/types'
 import type { Task, TaskSection, TaskPriority, TaskDomain, TaskSourceType } from '../../../features/todo/types'
 
 // ── Tabs ────────────────────────────────────────────────────────────────────
@@ -116,6 +116,14 @@ export interface UnifiedPlanModalProps {
 
   /** Edit mode for the Task tab. When set, Task tab opens populated + shows Delete. */
   task?: Task
+
+  /**
+   * Edit mode for the Schedule tab, for a plain time_block with no linked task
+   * (e.g. a planned training session). When set, saveSchedule updates this row
+   * in place instead of creating a new one, and Delete removes it. Ignored if
+   * `task` is also set (task-edit takes precedence for the Task tab's own block sync).
+   */
+  timeBlock?: TimeBlock
 
   /** Extra caller-owned UI injected at the bottom of the Schedule tab (Yol 1). */
   scheduleExtra?: React.ReactNode
