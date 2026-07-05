@@ -97,7 +97,10 @@ async function buildContext(): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const todayTasks = Array.from(new Map(todayRaw.map((t: any) => [t.id, t])).values()) as any[]
 
-  const lines: string[] = [`DATE: ${format(new Date(), 'EEEE, MMMM d yyyy')}`]
+  const lines: string[] = [
+    `DATE: ${format(new Date(), 'EEEE, MMMM d yyyy')}`,
+    `TIME: ${format(new Date(), 'HH:mm')} (local time, timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone})`,
+  ]
 
   if (todayTasks.length) {
     lines.push(`\nTODAY'S TASKS (${todayTasks.length}):`)
@@ -266,7 +269,8 @@ When the user DOES want item(s) added:
 Respond in the same language the user writes in (Turkish or English).`
 
 export async function sendShopMessage(messages: Message[]): Promise<AIResponse> {
-  return invokeAI(messages, SHOP_SYSTEM_PROMPT)
+  const nowLine = `Current date/time: ${format(new Date(), 'EEEE, MMMM d yyyy HH:mm')} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`
+  return invokeAI(messages, `${SHOP_SYSTEM_PROMPT}\n\n${nowLine}`)
 }
 
 // ─── Structured extraction (recipes) ──────────────────────────────────────

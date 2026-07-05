@@ -3,7 +3,8 @@ import { useWorkNote, useUpsertWorkNote } from '../hooks/useWork'
 
 type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved'
 
-export default function QuickNotesWidget() {
+// bare = no own header label — rendered inside WorkSidebar's RailSection
+export default function QuickNotesWidget({ bare }: { bare?: boolean } = {}) {
   const { data: note } = useWorkNote()
   const upsert = useUpsertWorkNote()
 
@@ -72,10 +73,12 @@ export default function QuickNotesWidget() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold tracking-widest uppercase text-ink-400">
-          Notes
-        </span>
-        <span className="text-xs text-ink-300 transition-opacity duration-300" aria-live="polite">
+        {!bare && (
+          <span className="text-[10px] font-semibold tracking-widest uppercase text-ink-400">
+            Notes
+          </span>
+        )}
+        <span className="text-xs text-ink-300 transition-opacity duration-300 ml-auto" aria-live="polite">
           {statusLabel}
         </span>
       </div>

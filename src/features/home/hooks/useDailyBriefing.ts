@@ -36,13 +36,16 @@ function writeCache(entry: CachedBriefing): void {
  * day the key changes, initialData is undefined → it generates exactly once,
  * then persists. `regenerate` (refetch) is the explicit manual override.
  */
-export function useDailyBriefing() {
+export function useDailyBriefing(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true
   const today  = format(new Date(), 'yyyy-MM-dd')
   const cached = readCache()
 
   const query = useQuery({
     queryKey:  ['dailyBriefing', today],
     queryFn:   generateDailyBriefing,
+    // Collapsed card → don't spend an AI request; cached text still shows.
+    enabled,
     initialData: cached?.date === today ? cached.text : undefined,
     staleTime: Infinity,
     gcTime:    Infinity,

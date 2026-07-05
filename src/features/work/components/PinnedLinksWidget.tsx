@@ -8,7 +8,8 @@ function isValidUrl(url: string): boolean {
   return url.startsWith('http://') || url.startsWith('https://')
 }
 
-export default function PinnedLinksWidget() {
+// bare = no own header label — rendered inside WorkSidebar's RailSection
+export default function PinnedLinksWidget({ bare }: { bare?: boolean } = {}) {
   const { data: links = [] } = usePinnedLinks()
   const createLink = useCreatePinnedLink()
   const deleteLink = useDeletePinnedLink()
@@ -59,9 +60,11 @@ export default function PinnedLinksWidget() {
   return (
     <div className="flex flex-col gap-2">
       {/* Header */}
-      <span className="text-[10px] font-semibold tracking-widest uppercase text-ink-400">
-        Pinned Links
-      </span>
+      {!bare && (
+        <span className="text-[10px] font-semibold tracking-widest uppercase text-ink-400">
+          Pinned Links
+        </span>
+      )}
 
       {/* Link chips */}
       {links.length > 0 && (
