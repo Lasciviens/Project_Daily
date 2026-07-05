@@ -23,6 +23,7 @@ export interface TimeBlock {
   source_type?:     string | null
   source_id?:       string | null
   notes:            string | null
+  google_calendar_event_id?: string | null
   created_at:       string
   updated_at:       string
 }

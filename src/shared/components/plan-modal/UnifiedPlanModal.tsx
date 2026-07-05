@@ -105,6 +105,26 @@ export function UnifiedPlanModal({
 
   const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
 
+  // Create a Google Calendar event for a freshly-made block and store the event
+  // id back on the block, so it can be updated/deleted with the block later
+  // (prevents orphaned/duplicate events). Best-effort — never blocks the save.
+  async function linkCalendarEvent(blockId: string, dateStr: string, timeHHMM: string, durationMin: number, title: string) {
+    if (!calToken) return
+    try {
+      const start = new Date(`${dateStr}T${timeHHMM}:00`)
+      const end   = new Date(start.getTime() + durationMin * 60_000)
+      const created = await createCalendarEvent(calToken, 'primary', {
+        summary: title,
+        start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
+        end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
+      })
+      await updateTimeBlock(blockId, { google_calendar_event_id: created.id })
+      qc.invalidateQueries({ queryKey: ['calendar'] })
+    } catch {
+      toast.error('Planned locally, Google Calendar sync failed')
+    }
+  }
+
   // ── Save: Schedule tab ──────────────────────────────────────────────────────
   //  Order matters for cross-table consistency: create the task FIRST so the
   //  time block can link to it (source_type='task'). Only when no task is created does the block link to the
@@ -124,13 +144,20 @@ export function UnifiedPlanModal({
         duration_minutes: effDuration,
         category:         form.category,
       })
+      // updateTimeBlock auto-syncs an existing linked calendar event; if the
+      // block has none yet and the user just turned gcal on, create+link one.
+      if (form.gcal && calToken && !timeBlock.google_calendar_event_id) {
+        await linkCalendarEvent(timeBlock.id, form.date, form.startTime, effDuration, form.title.trim())
+      }
       qc.invalidateQueries({ queryKey: ['schedule'] })
+      qc.invalidateQueries({ queryKey: ['calendar'] })
       onSaved?.({ tab: 'schedule', timeBlockCreated: false })
       return
     }
 
     let recurringCreated = false
     let linkedTaskId: string | undefined
+    let createdBlockId: string | undefined
 
     if (form.alsoCreateTask) {
       // Caller can pin the domain/priority; otherwise derive domain from category.
@@ -153,7 +180,7 @@ export function UnifiedPlanModal({
       const link = linkedTaskId
         ? { source_type: 'task', source_id: linkedTaskId }
         : { source_type: source?.sourceType, source_id: source?.sourceId }
-      await createBlock.mutateAsync({
+      const block = await createBlock.mutateAsync({
         date:             form.date,
         title:            form.title.trim(),
         start_time:       `${form.startTime}:00`,
@@ -162,6 +189,7 @@ export function UnifiedPlanModal({
         category:         form.category,
         ...link,
       })
+      createdBlockId = block.id
     } else {
       await createRecur.mutateAsync({
         title:        form.title.trim(),
@@ -173,18 +201,8 @@ export function UnifiedPlanModal({
       recurringCreated = true
     }
 
-    if (form.gcal && calToken && form.recurrence === 'none') {
-      try {
-        const startISO = new Date(`${form.date}T${form.startTime}:00`).toISOString()
-        const endISO   = new Date(new Date(`${form.date}T${form.startTime}:00`).getTime() + effDuration * 60_000).toISOString()
-        await createCalendarEvent(calToken, 'primary', {
-          summary: form.title.trim(),
-          start:   { dateTime: startISO, timeZone: LOCAL_TZ },
-          end:     { dateTime: endISO,   timeZone: LOCAL_TZ },
-        })
-      } catch {
-        toast.error('Planned locally, Google Calendar sync failed')
-      }
+    if (form.gcal && calToken && form.recurrence === 'none' && createdBlockId) {
+      await linkCalendarEvent(createdBlockId, form.date, form.startTime, effDuration, form.title.trim())
     }
 
     onSaved?.({ tab: 'schedule', taskId: linkedTaskId, timeBlockCreated: !recurringCreated, recurringCreated })
@@ -201,34 +219,36 @@ export function UnifiedPlanModal({
     const wantBlock = form.domain === 'personal' && !!form.dueDate && !!startTime
 
     const { data: existing } = await supabase
-      .from('time_blocks').select('id')
+      .from('time_blocks').select('id, google_calendar_event_id')
       .eq('source_type', 'task').eq('source_id', taskId)
     const blocks = existing ?? []
 
     if (wantBlock) {
+      let blockId: string
+      let existingEventId: string | null = null
       if (blocks.length) {
+        // updateTimeBlock auto-syncs the calendar event when time/date changed.
         await updateTimeBlock(blocks[0].id, { date: form.dueDate, start_time: startTime!, title })
         for (const b of blocks.slice(1)) await deleteTimeBlock(b.id)   // drop dupes
+        blockId = blocks[0].id
+        existingEventId = blocks[0].google_calendar_event_id ?? null
       } else {
-        await createBlock.mutateAsync({
+        const block = await createBlock.mutateAsync({
           date: form.dueDate, title, start_time: startTime!, duration_minutes: 60,
           color: 'accent', category: 'daily', source_type: 'task', source_id: taskId,
         })
+        blockId = block.id
       }
-      if (form.gcal && calToken) {
-        try {
-          const base   = new Date(`${form.dueDate}T${form.dueTime}:00`)
-          await createCalendarEvent(calToken, 'primary', {
-            summary: title,
-            start:   { dateTime: base.toISOString(), timeZone: LOCAL_TZ },
-            end:     { dateTime: new Date(base.getTime() + 60 * 60_000).toISOString(), timeZone: LOCAL_TZ },
-          })
-        } catch { toast.error('Saved locally, Google Calendar sync failed') }
+      // Only create a NEW calendar event when the block doesn't already have one
+      // (avoids duplicates on re-save; an existing event was already updated above).
+      if (form.gcal && calToken && !existingEventId) {
+        await linkCalendarEvent(blockId, form.dueDate, form.dueTime, 60, title)
       }
     } else {
-      for (const b of blocks) await deleteTimeBlock(b.id)
+      for (const b of blocks) await deleteTimeBlock(b.id)   // also removes their calendar events
     }
     qc.invalidateQueries({ queryKey: ['schedule'] })
+    qc.invalidateQueries({ queryKey: ['calendar'] })
   }
 
   async function saveTask() {
@@ -301,6 +321,7 @@ export function UnifiedPlanModal({
       try {
         await deleteTimeBlock(timeBlock.id)
         qc.invalidateQueries({ queryKey: ['schedule'] })
+        qc.invalidateQueries({ queryKey: ['calendar'] })
         toast.dismiss(tid); toast.success('Deleted ✓')
         onClose()
       } catch (err) {

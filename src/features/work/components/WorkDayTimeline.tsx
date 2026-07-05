@@ -1,5 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
-import { fetchTimeBlocks } from '../../daily/api/scheduleApi'
+import { useTimeBlocks } from '../../daily/hooks/useSchedule'
 import { format } from 'date-fns'
 import type { Task } from '../../todo/types'
 
@@ -45,11 +44,10 @@ export default function WorkDayTimeline({ workTasks }: Props) {
 
   const workTaskIds = new Set(workTasks.map(t => t.id))
 
-  const { data: allBlocks = [] } = useQuery({
-    queryKey: ['time-blocks', today],
-    queryFn:  () => fetchTimeBlocks(today),
-    staleTime: 5 * 60_000,
-  })
+  // Shared hook (key ['schedule','day',today]) so schedule mutations elsewhere
+  // refresh this timeline too — previously it used its own ['time-blocks',today]
+  // key that nothing invalidated, leaving it stale until reload.
+  const { data: allBlocks = [] } = useTimeBlocks(today)
 
   // Only show blocks linked to work tasks or manual/calendar
   const blocks = allBlocks.filter(b =>

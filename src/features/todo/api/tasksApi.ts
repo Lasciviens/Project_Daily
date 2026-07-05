@@ -1,4 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { useCalendarStore } from '../../../app/store'
+import { deleteCalendarEvent } from '../../calendar/api/calendarApi'
+import { logError } from '../../../shared/utils/logError'
 import type { Task, CreateTaskInput, UpdateTaskInput } from '../types'
 
 export async function fetchTasksBySection(section: string): Promise<Task[]> {
@@ -140,7 +143,23 @@ export async function toggleTaskDone(id: string, isDone: boolean): Promise<Task>
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  // Keep the schedule consistent — remove any auto-created blocks linked to this task.
+  // Keep the schedule consistent — remove any auto-created blocks linked to this
+  // task, and their Google Calendar events too (best-effort) so nothing is left
+  // orphaned on the calendar.
+  const { data: blocks } = await supabase
+    .from('time_blocks')
+    .select('google_calendar_event_id')
+    .eq('source_type', 'task')
+    .eq('source_id', id)
+  const token = useCalendarStore.getState().accessToken
+  if (token && blocks?.length) {
+    for (const b of blocks) {
+      if (b.google_calendar_event_id) {
+        try { await deleteCalendarEvent(token, 'primary', b.google_calendar_event_id) }
+        catch (err) { logError(`Calendar event delete failed: ${(err as Error).message}`, { taskId: id }) }
+      }
+    }
+  }
   await supabase.from('time_blocks').delete().eq('source_type', 'task').eq('source_id', id)
   const { error } = await supabase.from('tasks').delete().eq('id', id)
   if (error) throw error

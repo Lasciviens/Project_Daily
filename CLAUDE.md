@@ -226,7 +226,9 @@ Never stretch content edge-to-edge. Widgets are sized to their content, not the 
 
 **TMDB images:** `https://image.tmdb.org/t/p/{size}{path}` (e.g. `w342`)
 
-**Google Calendar:** OAuth scope `calendar.events` covers read + write. Token stored in `useCalendarStore`. Reconnect required if previously connected with read-only scope.
+**Google Calendar:** OAuth scope `calendar.events` covers read + write. Token stored in `useCalendarStore`. Reconnect required if previously connected with read-only scope. **Two-way block↔event link (migration 038):** `time_blocks.google_calendar_event_id` stores the created event id; `scheduleApi.updateTimeBlock`/`deleteTimeBlock` (API layer, so ALL paths — modal, DayTimeline drag, task delete — are covered) sync/remove the calendar event when a block moves/deletes; `UnifiedPlanModal.linkCalendarEvent` stores the id on create and never re-creates when one exists (no more orphaned/duplicate events). All calendar calls are best-effort (try/catch + logError) — a sync failure never blocks the local write.
+
+**Schedule cache invalidation:** time-block mutations (`useCreateTimeBlock`/`useUpdateTimeBlock`/`useDeleteTimeBlock`) invalidate the WHOLE `['schedule']` namespace + `['calendar']`, not a single day key — every consumer reads schedule under different sub-keys (`['schedule','day',date]` for Daily/Home/Work timelines via the shared `useTimeBlocks` hook, `['schedule','training-range',…]` for Training calendar/Home next-session). Never give a schedule view its own private query key (Work's old `['time-blocks']` key went stale because nothing invalidated it).
 
 **@headlessui/react v2 — UI primitives (never use manual open/close state for these):**
 
