@@ -265,12 +265,12 @@ const TOOLS = [
       },
       {
         name: 'get_saved_transit',
-        description: 'List the user\'s OWN saved transit stops (with labels, e.g. which one is "Home") and saved point-to-point routes (with labels, e.g. a route literally labeled "Work"). Call this FIRST whenever it\'s unclear what "home"/"ev"/"work"/"iş" or an ambiguous saved-sounding place refers to, or when you want to confirm exact resolution before calling plan_trip/get_next_transit — inspecting this is always safer than guessing.',
+        description: 'List the user\'s OWN saved transit stops and routes with their labels. You usually do NOT need this — plan_trip and get_next_transit resolve "home"/"ev"/"work"/"iş" and saved names by themselves. Only call it if the user explicitly asks what they have saved, or to help them manage saved stops/routes.',
         parameters: { type: 'OBJECT', properties: {}, required: [] },
       },
       {
         name: 'search_transit_stops',
-        description: 'Search for ANY transit stop or address by free text (not limited to the user\'s saved ones) — e.g. to find a stop the user mentions that isn\'t saved, to disambiguate between similarly-named places, or to get the exact stop id before calling plan_trip/get_next_transit with precision. Returns up to 8 candidates with their exact ids and names.',
+        description: 'Search for ANY transit stop or address by free text, returning candidates with exact ids. You usually do NOT need this for routing — plan_trip does its own place resolution and, when a place is ambiguous, returns candidates for you to ask about. Use search only when the user asks to save a new stop/route (to get its id first), or when they explicitly want to look a place up.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -323,7 +323,7 @@ const TOOLS = [
       },
       {
         name: 'plan_trip',
-        description: 'Plan a point-to-point public-transit journey, including transfers between lines (e.g. "eve nasıl giderim", "110 sonra 23\'e aktarma var mı", "18:00\'de X\'te olmam gerekiyor, ne zaman çıkmalıyım"). Resolution: "home"/"ev"/"eve" and "work"/"iş"/"işe" match the user\'s saved transit stop/route labels; other place names match saved stops first, then a free-text address/venue search; an exact "NSR:StopPlace:NNNNN" id (e.g. from search_transit_stops) is used directly, skipping fuzzy matching entirely — prefer this when precision matters or fuzzy resolution seems risky. ALWAYS call this for any routing/transfer/how-do-I-get-there question — never invent stop names, line numbers, or transfer points yourself, only report exactly what this tool returns. If you\'re unsure how "home"/"work"/an ambiguous place will resolve, call get_saved_transit and/or search_transit_stops first and pass the exact id you find instead of guessing.',
+        description: 'Plan a point-to-point public-transit journey with transfers (e.g. "eve nasıl giderim", "110 sonra 23\'e aktarma var mı", "18:00\'de X\'te olmam gerekiyor"). CALL THIS DIRECTLY IN ONE SHOT for any routing question — do NOT look things up first. It resolves places itself: "home"/"ev"/"work"/"iş" and saved stop/route names match the user\'s saved data; other names hit an address/venue search; an exact "NSR:StopPlace:NNNNN" id is used as-is. Just pass the user\'s own words as from/to. If a place can\'t be resolved it returns success:false with needs_clarification:true and a candidates list — then (and only then) ask the user with ask_clarifying_question using those candidates. Report only stops/lines/times present in the result; never invent them.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -1018,91 +1018,69 @@ function placeSynonyms(q: string): string[] {
   return [s]
 }
 
-async function searchAddress(query: string): Promise<ResolvedPlace | null> {
+// Geocoder search returning up to `size` candidates — used both to auto-pick
+// the top match (fast path) and, when nothing confidently resolves, to hand the
+// AI a short list to ask the user about (so it clarifies in ONE follow-up turn
+// instead of firing more search tool calls).
+async function geocodeCandidates(query: string, size: number): Promise<ResolvedPlace[]> {
   const params = new URLSearchParams({
-    text: query, lang: 'no', size: '1', layers: 'venue,address', 'boundary.country': 'NOR',
+    text: query, lang: 'no', size: String(size), layers: 'venue,address', 'boundary.country': 'NOR',
   })
   const res = await fetch(`${GEOCODER_URL}?${params.toString()}`, {
     headers: { 'ET-Client-Name': ENTUR_CLIENT },
   })
-  if (!res.ok) return null
-
+  if (!res.ok) return []
   const json = await res.json()
-  const f = json.features?.[0]
-  if (!f) return null
-
-  const [lon, lat] = f.geometry?.coordinates ?? []
-  const id   = f.properties?.id
-  const name = f.properties?.name ?? f.properties?.label ?? query
-
-  if (typeof id === 'string' && /^NSR:StopPlace:\d+$/.test(id)) return { kind: 'stop', id, name }
-  if (typeof lat === 'number' && typeof lon === 'number')       return { kind: 'coords', lat, lon, name }
-  return null
+  const out: ResolvedPlace[] = []
+  for (const f of json.features ?? []) {
+    const [lon, lat] = f.geometry?.coordinates ?? []
+    const id   = f.properties?.id
+    const name = [f.properties?.name ?? f.properties?.label, f.properties?.locality].filter(Boolean).join(', ') || query
+    if (typeof id === 'string' && /^NSR:StopPlace:\d+$/.test(id)) out.push({ kind: 'stop', id, name })
+    else if (typeof lat === 'number' && typeof lon === 'number')  out.push({ kind: 'coords', lat, lon, name })
+  }
+  return out
 }
 
-// Looks up a stop's real name for a bare id (e.g. one the AI passed in
-// directly) so trip narration says "Sinsen" instead of "NSR:StopPlace:12345".
-async function fetchStopName(id: string): Promise<string> {
-  const res = await fetch(JOURNEY_URL, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', 'ET-Client-Name': ENTUR_CLIENT },
-    body:    JSON.stringify({ query: `{ stopPlace(id: "${id}") { name } }` }),
-  })
-  if (!res.ok) return id
-  const json = await res.json()
-  return json.data?.stopPlace?.name ?? id
-}
-
-// Resolves a free-text place reference, in this order:
+// Resolves a free-text place reference against ALREADY-FETCHED saved stops/routes
+// (caller loads them once and resolves both endpoints), in this order:
 // 1. empty → the user's default saved stop
-// 2. a saved stop whose label/name matches (with home/work synonym expansion)
-// 3. a saved route whose label matches — uses that route's `endpoint` side
-// 4. a free-text address/venue search (EnTur geocoder)
-// Never falls through to letting the AI invent a place — an unresolved query
-// returns null and the caller reports that plainly instead of guessing.
+// 2. exact NSR:StopPlace: id → used directly
+// 3. a saved stop whose label/name matches (home/work synonym expansion)
+// 4. a saved route whose label matches — uses that route's `endpoint` side
+// 5. a free-text address/venue geocoder search (top match)
+// Returns null when nothing resolves — the caller then offers candidates to
+// the AI so it asks the user, never inventing a place.
 async function resolveTransitPlace(
-  supabase: AnyRecord,
-  userId: string,
   query: string | undefined,
   endpoint: 'from' | 'to',
+  stops: AnyRecord[],
+  routes: AnyRecord[],
 ): Promise<ResolvedPlace | null> {
-  const { data: stops } = await supabase
-    .from('user_transit_stops')
-    .select('stop_id, stop_name, label, is_default')
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true })
-
   if (!query) {
-    const def = (stops ?? []).find((s: AnyRecord) => s.is_default) ?? stops?.[0]
+    const def = stops.find(s => s.is_default) ?? stops[0]
     return def ? { kind: 'stop', id: def.stop_id, name: def.label ?? def.stop_name } : null
   }
 
-  // An exact id (e.g. picked from search_transit_stops) skips fuzzy matching
-  // entirely — the AI can be precise instead of relying on synonym guessing.
   if (/^NSR:StopPlace:\d+$/.test(query.trim())) {
-    const id = query.trim()
-    return { kind: 'stop', id, name: await fetchStopName(id) }
+    // Name is filled in later from the trip legs — no extra lookup call.
+    return { kind: 'stop', id: query.trim(), name: query.trim() }
   }
 
   const synonyms  = placeSynonyms(query)
-  const stopMatch = (stops ?? []).find((s: AnyRecord) =>
+  const stopMatch = stops.find(s =>
     synonyms.some(syn => (s.label ?? s.stop_name).toLowerCase().includes(syn) || s.stop_name.toLowerCase().includes(syn))
   )
   if (stopMatch) return { kind: 'stop', id: stopMatch.stop_id, name: stopMatch.label ?? stopMatch.stop_name }
 
-  const { data: routes } = await supabase
-    .from('user_transit_routes')
-    .select('label, from_stop_id, from_stop_name, to_stop_id, to_stop_name')
-    .eq('user_id', userId)
-
-  const routeMatch = (routes ?? []).find((r: AnyRecord) => synonyms.some(syn => r.label.toLowerCase().includes(syn)))
+  const routeMatch = routes.find(r => synonyms.some(syn => r.label.toLowerCase().includes(syn)))
   if (routeMatch) {
     return endpoint === 'to'
       ? { kind: 'stop', id: routeMatch.to_stop_id,   name: routeMatch.to_stop_name   }
       : { kind: 'stop', id: routeMatch.from_stop_id, name: routeMatch.from_stop_name }
   }
 
-  return await searchAddress(query)
+  return (await geocodeCandidates(query, 1))[0] ?? null
 }
 
 // Only ever injects a regex-validated NSR id or finite numeric coordinates
@@ -1113,14 +1091,40 @@ function gqlPlace(p: ResolvedPlace): string {
 }
 
 async function planTrip(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
-  const from = await resolveTransitPlace(supabase, userId, args.from, 'from')
-  const to   = await resolveTransitPlace(supabase, userId, args.to,   'to')
+  // Load saved stops + routes ONCE, then resolve both endpoints against them
+  // (previously each endpoint re-queried both tables — up to 4 queries).
+  const [stopsRes, routesRes] = await Promise.all([
+    supabase.from('user_transit_stops')
+      .select('stop_id, stop_name, label, is_default').eq('user_id', userId)
+      .order('sort_order', { ascending: true }),
+    supabase.from('user_transit_routes')
+      .select('label, from_stop_id, from_stop_name, to_stop_id, to_stop_name').eq('user_id', userId),
+  ])
+  const stops  = stopsRes.data ?? []
+  const routes = routesRes.data ?? []
 
-  if (!from) {
-    return { success: false, error: 'Could not resolve the starting point. Ask the user to save a default transit stop first (Transit widget), or give a more specific place name.' }
-  }
-  if (!to) {
-    return { success: false, error: `Could not resolve destination "${args.to}". Ask the user for a saved stop name, a saved "home"/"work" style label, or a more specific address.` }
+  const [from, to] = await Promise.all([
+    resolveTransitPlace(args.from, 'from', stops, routes),
+    resolveTransitPlace(args.to,   'to',   stops, routes),
+  ])
+
+  // When a side won't resolve, hand back a few candidates for THAT side so the
+  // AI can ask the user one focused clarifying question (with tappable options)
+  // in a single turn — instead of firing more search tool calls or guessing.
+  if (!from || !to) {
+    const which   = !from ? 'from' : 'to'
+    const rawText = (!from ? args.from : args.to) as string | undefined
+    const candidates = rawText ? await geocodeCandidates(rawText, 4) : []
+    return {
+      success: false,
+      needs_clarification: true,
+      unresolved: which,
+      unresolved_query: rawText ?? '(default stop, none saved)',
+      candidates: candidates.map(c => c.name),
+      hint: rawText
+        ? `Could not confidently resolve the ${which} place "${rawText}". Ask the user which of "candidates" they mean (use ask_clarifying_question with those as options), or ask for a clearer place name. Do NOT guess.`
+        : `No ${which} place given and the user has no saved default stop. Ask the user where they are starting from.`,
+    }
   }
   if (from.kind === 'stop' && to.kind === 'stop' && from.id === to.id) {
     return { success: false, error: 'Start and destination resolved to the same stop — ask the user to clarify.' }
@@ -1195,7 +1199,14 @@ async function planTrip(supabase: AnyRecord, userId: string, args: AnyRecord): P
       })),
   }))
 
-  return { success: true, from: from.name, to: to.name, trips }
+  // Prefer real stop names from the trip itself (first leg's origin / last
+  // leg's destination) over the resolved label — this is how a bare id passed
+  // in as from/to gets a human name without any extra lookup call.
+  const firstTripLegs = trips[0]?.legs ?? []
+  const fromName = firstTripLegs[0]?.from ?? from.name
+  const toName   = firstTripLegs[firstTripLegs.length - 1]?.to ?? to.name
+
+  return { success: true, from: fromName, to: toName, trips }
 }
 
 // Lets the AI inspect exactly what the user has saved before guessing at
