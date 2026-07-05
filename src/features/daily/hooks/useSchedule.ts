@@ -51,11 +51,20 @@ export function useTrainingBlocks(from: string, to: string) {
   })
 }
 
+// All three invalidate the WHOLE 'schedule' namespace (day + training-range +
+// blocks) so every consumer refreshes — the Work timeline, Training calendar,
+// Home's next-session card all read schedule under different sub-keys. Also
+// refresh 'calendar' since a block change may have synced a Google event.
+function invalidateSchedule(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['schedule'] })
+  qc.invalidateQueries({ queryKey: ['calendar'] })
+}
+
 export function useCreateTimeBlock() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateTimeBlockInput) => createTimeBlock(input),
-    onSuccess:  (_, vars) => qc.invalidateQueries({ queryKey: ['schedule', 'day', vars.date] }),
+    onSuccess:  () => invalidateSchedule(qc),
   })
 }
 
@@ -64,10 +73,7 @@ export function useUpdateTimeBlock() {
   return useMutation({
     mutationFn: ({ id, start_time, date, title }: { id: string; start_time?: string; date?: string; title?: string; dateStr: string; newDateStr?: string }) =>
       updateTimeBlock(id, { start_time, date, title }),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ['schedule', 'day', vars.dateStr] })
-      if (vars.newDateStr) qc.invalidateQueries({ queryKey: ['schedule', 'day', vars.newDateStr] })
-    },
+    onSuccess: () => invalidateSchedule(qc),
   })
 }
 
@@ -75,6 +81,6 @@ export function useDeleteTimeBlock() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, dateStr: _dateStr }: { id: string; dateStr: string }) => deleteTimeBlock(id),
-    onSuccess:  (_, vars) => qc.invalidateQueries({ queryKey: ['schedule', 'day', vars.dateStr] }),
+    onSuccess:  () => invalidateSchedule(qc),
   })
 }

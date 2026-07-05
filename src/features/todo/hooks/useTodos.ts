@@ -92,7 +92,12 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: UpdateTaskInput }) =>
       updateTask(id, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      // A task edit can move/retitle a linked schedule block — keep schedule
+      // views in sync (the plan modal syncs the block itself).
+      qc.invalidateQueries({ queryKey: ['schedule'] })
+    },
   })
 }
 
@@ -151,6 +156,7 @@ export function useDeleteTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       qc.invalidateQueries({ queryKey: ['schedule'] })
+      qc.invalidateQueries({ queryKey: ['calendar'] })
     },
   })
 }
