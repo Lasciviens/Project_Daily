@@ -62,11 +62,41 @@ export default function WorkDayTimeline({ workTasks }: Props) {
   const timedBlocks = blocks.filter(b => b.start_time)
   const displayLabels = HOUR_LABELS.filter((h, i) => i % 2 === 0 || h === HOUR_END)
 
+  // Now / Next — the current block (if any) and the next upcoming one.
+  const current = timedBlocks.find(b => {
+    const start = timeToMins(b.start_time!)
+    return nowMins >= start && nowMins < start + (b.duration_minutes || 30)
+  })
+  const next = timedBlocks
+    .filter(b => timeToMins(b.start_time!) > nowMins)
+    .sort((a, b) => timeToMins(a.start_time!) - timeToMins(b.start_time!))[0]
+
+  function endTime(b: { start_time: string | null; duration_minutes: number }): string {
+    const end = timeToMins(b.start_time!) + (b.duration_minutes || 30)
+    return `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`
+  }
+
   return (
     <div className="rounded-xl border border-ink-200 bg-white px-4 py-3 w-full">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-ink-400 mb-3">
-        Today's Schedule
-      </p>
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-ink-400">
+          Today's Schedule
+        </p>
+        <div className="flex items-center gap-3 text-[11px] min-w-0">
+          {current && (
+            <span className="text-ink-700 truncate">
+              <span className="font-semibold text-emerald-600">Now:</span> {current.title}
+              <span className="text-ink-400"> · until {endTime(current)}</span>
+            </span>
+          )}
+          {next && (
+            <span className="text-ink-500 truncate">
+              <span className="font-semibold text-ink-400">Next:</span> {next.title}
+              <span className="text-ink-400"> @ {next.start_time!.slice(0, 5)}</span>
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Timeline bar — overflow visible so now-marker dot isn't clipped */}
       <div className="relative h-12 bg-ink-50 rounded-lg w-full" style={{ overflow: 'visible' }}>

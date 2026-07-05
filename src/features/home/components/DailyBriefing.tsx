@@ -1,30 +1,49 @@
 import { useDailyBriefing } from '../hooks/useDailyBriefing'
+import { useWidgetState } from '../hooks/useWidgetState'
 
 // Leads the home page: an AI-written morning digest of the day's tasks,
 // schedule, training, news headlines, currency trend and more. Auto-generated
 // at most once per day (see useDailyBriefing); the ↻ button is a manual redo.
+// Collapsible (persisted via useWidgetState) — while collapsed the query is
+// disabled so no AI request is spent.
 
 export function DailyBriefing() {
-  const { text, isLoading, error, regenerate, isRefreshing } = useDailyBriefing()
+  const { collapsed, toggle } = useWidgetState('dailyBriefing')
+  const { text, isLoading, error, regenerate, isRefreshing } = useDailyBriefing({
+    enabled: !collapsed,
+  })
 
   return (
     <div className="rounded-2xl border border-accent-200 bg-gradient-to-br from-accent-50 to-white shadow-sm p-5">
-      <div className="flex items-center justify-between gap-2 mb-2">
+      <div className={`flex items-center justify-between gap-2 ${collapsed ? '' : 'mb-2'}`}>
         <h2 className="text-xs font-bold text-accent-700 uppercase tracking-wide flex items-center gap-1.5">
-          <span>✦</span> Günün Brifingi
+          <span>✦</span> Daily Brief
         </h2>
-        <button
-          type="button"
-          onClick={() => regenerate()}
-          disabled={isRefreshing}
-          title="Yeniden oluştur (yeni bir AI isteği harcar)"
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-400 hover:text-accent-600 disabled:opacity-40 transition-colors"
-        >
-          <span className={isRefreshing ? 'inline-block animate-spin' : ''}>↻</span>
-        </button>
+        <div className="flex items-center gap-1">
+          {!collapsed && (
+            <button
+              type="button"
+              onClick={() => regenerate()}
+              disabled={isRefreshing}
+              title="Yeniden oluştur (yeni bir AI isteği harcar)"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-400 hover:text-accent-600 disabled:opacity-40 transition-colors"
+            >
+              <span className={isRefreshing ? 'inline-block animate-spin' : ''}>↻</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={toggle}
+            title={collapsed ? 'Genişlet' : 'Daralt'}
+            aria-expanded={!collapsed}
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-400 hover:text-accent-600 transition-colors"
+          >
+            <span className={`inline-block transition-transform ${collapsed ? '' : 'rotate-180'}`}>⌄</span>
+          </button>
+        </div>
       </div>
 
-      {isLoading ? (
+      {collapsed ? null : isLoading ? (
         <div className="space-y-2">
           <div className="h-3 rounded bg-accent-100 animate-pulse w-1/3" />
           <div className="h-3 rounded bg-accent-100 animate-pulse w-full" />

@@ -31,7 +31,8 @@ function formatWeekRange(mondayStr: string): string {
   return `${startDay} ${monthFmt.format(monday)} – ${endDay} ${endMonth}`
 }
 
-export default function WeeklyGoalsWidget() {
+// bare = no own header label — rendered inside WorkSidebar's RailSection
+export default function WeeklyGoalsWidget({ bare }: { bare?: boolean } = {}) {
   const weekStart = getMondayOfWeek(new Date())
   const { data: goals = [] } = useWeeklyGoals(weekStart)
   const createGoal = useCreateWeeklyGoal()
@@ -78,10 +79,12 @@ export default function WeeklyGoalsWidget() {
     <div className="flex flex-col gap-2">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold tracking-widest uppercase text-ink-400">
-          This Week
-        </span>
-        <span className="text-xs text-ink-400">{formatWeekRange(weekStart)}</span>
+        {!bare && (
+          <span className="text-[10px] font-semibold tracking-widest uppercase text-ink-400">
+            This Week
+          </span>
+        )}
+        <span className="text-xs text-ink-400 ml-auto">{formatWeekRange(weekStart)}</span>
       </div>
 
       {/* Goal list */}

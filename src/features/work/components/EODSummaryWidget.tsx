@@ -2,6 +2,8 @@ import type { Task } from '../../todo/types'
 
 interface Props {
   tasks: Task[]
+  // bare = no card chrome/header — rendered inside WorkSidebar's RailSection
+  bare?: boolean
 }
 
 function todayStr(): string {
@@ -34,7 +36,7 @@ function StatRow({ icon, label, count, colorClass }: StatRowProps) {
   )
 }
 
-export default function EODSummaryWidget({ tasks }: Props) {
+export default function EODSummaryWidget({ tasks, bare }: Props) {
   const done       = tasks.filter(t => t.status === 'done' && t.updated_at?.slice(0, 10) === todayStr()).length
   const inProgress = tasks.filter(t => t.status === 'in_progress').length
   const open       = tasks.filter(t => t.status === 'open').length
@@ -43,25 +45,28 @@ export default function EODSummaryWidget({ tasks }: Props) {
 
   const allClear = done > 0 && inProgress === 0 && open === 0 && waiting === 0 && overdue === 0
 
+  const body = allClear ? (
+    <div className="py-3 text-center text-sm text-green-600 font-medium">
+      All clear! 🎉
+    </div>
+  ) : (
+    <div className="divide-y divide-ink-100">
+      <StatRow icon="✓"  label="Done today"  count={done}       colorClass="text-green-600" />
+      <StatRow icon="⚡" label="In progress"  count={inProgress} colorClass="text-accent-500" />
+      <StatRow icon="○"  label="Open"         count={open}       colorClass="text-ink-600" />
+      <StatRow icon="⏳" label="Waiting"      count={waiting}    colorClass="text-sky-600" />
+      <StatRow icon="⚠" label="Overdue"      count={overdue}    colorClass="text-red-500" />
+    </div>
+  )
+
+  if (bare) return body
+
   return (
     <div className="rounded-xl border border-ink-200 bg-white px-4 py-4">
       <h3 className="text-[10px] font-bold uppercase tracking-widest text-ink-400 mb-3">
         Today's Summary
       </h3>
-
-      {allClear ? (
-        <div className="py-3 text-center text-sm text-green-600 font-medium">
-          All clear! 🎉
-        </div>
-      ) : (
-        <div className="divide-y divide-ink-100">
-          <StatRow icon="✓"  label="Done today"  count={done}       colorClass="text-green-600" />
-          <StatRow icon="⚡" label="In progress"  count={inProgress} colorClass="text-accent-500" />
-          <StatRow icon="○"  label="Open"         count={open}       colorClass="text-ink-600" />
-          <StatRow icon="⏳" label="Waiting"      count={waiting}    colorClass="text-sky-600" />
-          <StatRow icon="⚠" label="Overdue"      count={overdue}    colorClass="text-red-500" />
-        </div>
-      )}
+      {body}
     </div>
   )
 }
