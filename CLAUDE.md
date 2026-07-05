@@ -77,7 +77,7 @@ Protected by `SessionGuard` in `src/app/router.tsx`.
 | Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
 | Training | ✅ | See Training section below. Hevy (workouts, PRs, routines, body) + Strava OAuth. Page-level calendar pinned right. |
 | Projects | ✅ | Phases, items, status tracking. Add/edit item share one modal (`ProjectItemModal`) — title/notes/phase/type/status/priority. |
-| Developer | ✅ | Standalone `/developer` page, reached from the Settings (⚙) menu (`SettingsMenu.tsx`) |
+| Developer | ✅ | Standalone `/developer` page, reached from the Settings (⚙) menu (`SettingsMenu.tsx`). Two tabs: **Activity** (CRUD audit trail — `audit_logs` table written by DB triggers, migration `037`; filters by table/op/actor/days, tx_id-grouped cascades, expandable before/after diff, 30-day retention swept probabilistically in the trigger) and **Errors** (`app_error_logs`). Audit triggers cover user-authored tables only — bulk-synced tables (hevy_*/health_*/strava) deliberately excluded to avoid sync-spam; `actor` distinguishes 'web' (browser session) from 'service' (AI/webhooks, service-role writes). |
 | Home | ✅ | WidgetShell, Weather, Ruter transit, Currency, News, Recent Media, Games, Training. **DailyBriefing** — AI morning digest at the top, auto-generated once/day (see below). |
 | Command Bar | ✅ | `CommandBar` (⌘K) via `useUIStore.openCommandBar` |
 | Football | ⛔ | Deferred — no route wired. API-Football free tier stops at 2024. Future: fixtures from Google Calendar. |
