@@ -4,6 +4,7 @@ import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useTrainingBlocks } from '../../daily/hooks/useSchedule'
 import { HevyWorkoutDetail } from './HevyWorkoutDetail'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import type { HevyWorkout, StravaActivity } from '../types.hevy'
 import type { TimeBlock } from '../../daily/types'
 
@@ -14,11 +15,7 @@ function toDateStr(iso: string): string {
 }
 
 // Local YYYY-MM-DD (avoids the UTC shift that toISOString would introduce)
-function ymd(d: Date): string {
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${d.getFullYear()}-${m}-${day}`
-}
+const ymd = formatLocalDate
 
 // Dot colour for a planned training day, relative to today.
 function planDotClass(dateStr: string, todayStr: string): string {

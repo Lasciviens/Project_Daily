@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import type { IngredientLibraryItem, CreateIngredientLibraryItemInput } from '../types'
 
 export async function fetchIngredientLibrary(): Promise<IngredientLibraryItem[]> {
@@ -11,8 +12,7 @@ export async function fetchIngredientLibrary(): Promise<IngredientLibraryItem[]>
 }
 
 export async function createIngredientLibraryItem(input: CreateIngredientLibraryItemInput): Promise<IngredientLibraryItem> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('recipe_ingredient_library')
     .insert({

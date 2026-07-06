@@ -8,6 +8,7 @@ import { useTasksForDay } from '../../todo/hooks/useTodos'
 import { useTimeBlocks, useTrainingBlocks } from '../../daily/hooks/useSchedule'
 import { fetchWeather, weatherIcon } from '../api/weatherApi'
 import { completedWithinLast24h } from '../../todo/taskRules'
+import { todayStr as sharedTodayStr } from '../../../shared/utils/dateUtils'
 
 const OSLO = { lat: 59.9139, lon: 10.7522 }
 
@@ -32,7 +33,7 @@ function relativeDay(dateStr: string): string {
  * next training session). Self-contained; shares query caches with the widgets.
  */
 export function TodaySummary() {
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const todayStr = sharedTodayStr()
 
   const { data: allTasks = [] } = useTasksForDay(new Date(), 'today')
   const { data: blocks = [] } = useTimeBlocks(todayStr)

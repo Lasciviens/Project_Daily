@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import type { RecipeWithIngredients, RecipeInput, RecipeIngredient, IngredientLibraryItem } from '../types'
 
 const WEIGHT_UNITS = new Set(['g', 'gram', 'grams', 'ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'])
@@ -114,8 +115,7 @@ async function resolveMacros(input: RecipeInput) {
 }
 
 export async function createRecipe(input: RecipeInput): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
 
   const macros = await resolveMacros(input)
   const { data, error } = await supabase
@@ -140,8 +140,7 @@ export async function createRecipe(input: RecipeInput): Promise<string> {
 }
 
 export async function updateRecipe(id: string, input: RecipeInput): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
 
   const macros = await resolveMacros(input)
   const { error } = await supabase

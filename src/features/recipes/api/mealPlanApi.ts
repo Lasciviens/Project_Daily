@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import type { MealPlanEntry, CreateMealPlanEntryInput } from '../types'
 
 export async function fetchMealPlan(weekStart: string, weekEnd: string): Promise<MealPlanEntry[]> {
@@ -13,8 +14,7 @@ export async function fetchMealPlan(weekStart: string, weekEnd: string): Promise
 
 // Upserts on (user_id, date, meal_slot) — one entry per slot per day.
 export async function setMealPlanEntry(input: CreateMealPlanEntryInput): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { error } = await supabase
     .from('recipe_meal_plans')
     .upsert({

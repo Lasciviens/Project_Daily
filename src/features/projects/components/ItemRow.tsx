@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { PRIORITY_DOT_CLASS as PRIORITY_DOT } from '../../../shared/utils/priorityColors'
 import type { ProjectItem, ItemType, ItemPriority, ItemStatus } from '../types'
 
 const TYPE_BADGE: Record<ItemType, string> = {
@@ -21,12 +22,6 @@ const TYPE_LABEL: Record<ItemType, string> = {
 const TYPE_ORDER: ItemType[]    = ['update', 'improvement', 'ui_request', 'bug', 'wishlist']
 const PRI_ORDER: ItemPriority[] = ['low', 'medium', 'high']
 const STATUS_ORDER: ItemStatus[] = ['open', 'in_progress', 'done']
-
-const PRIORITY_DOT: Record<ItemPriority, string> = {
-  low:    'bg-ink-300',
-  medium: 'bg-accent-400',
-  high:   'bg-red-400',
-}
 
 interface Props {
   item:       ProjectItem

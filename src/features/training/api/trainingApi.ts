@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import type {
   TrainingSession, CreateSessionInput, StravaStatus,
   SessionExerciseRow, Exercise,
@@ -18,8 +19,7 @@ export async function fetchSessions(): Promise<TrainingSession[]> {
 }
 
 export async function createSession(input: CreateSessionInput): Promise<TrainingSession> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('train_sessions')
     .insert({ ...input, user_id: user.id })
@@ -114,8 +114,7 @@ export async function fetchLastStrengthExercises(excludeSessionId?: string): Pro
 }
 
 export async function saveSessionExercises(sessionId: string, exercises: Exercise[]): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { error: delErr } = await supabase
     .from('train_session_exercises')
     .delete()
@@ -178,8 +177,7 @@ export async function fetchPrograms(): Promise<TrainingProgram[]> {
 }
 
 export async function createProgram(name: string, description?: string): Promise<TrainingProgram> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('train_programs')
     .insert({ name: name.trim(), description: description?.trim() || null, user_id: user.id })
@@ -216,8 +214,7 @@ export async function fetchProgramWorkouts(programId: string): Promise<ProgramWo
 }
 
 export async function createProgramWorkout(programId: string, name: string): Promise<ProgramWorkout> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('train_program_workouts')
     .insert({ program_id: programId, name: name.trim(), user_id: user.id })
@@ -256,8 +253,7 @@ export async function saveProgramExercises(
   workoutId: string,
   exercises: Omit<ProgramWorkoutExercise, 'id' | 'workout_id'>[]
 ): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { error: delErr } = await supabase
     .from('train_program_exercises')
     .delete()

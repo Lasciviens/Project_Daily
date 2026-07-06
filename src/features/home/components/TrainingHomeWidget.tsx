@@ -2,11 +2,7 @@ import { Link } from 'react-router-dom'
 import { startOfWeek, isAfter, parseISO } from 'date-fns'
 import { useHevyWorkouts } from '../../training/hooks/useHevyWorkouts'
 import { useStravaActivities } from '../../training/hooks/useStravaActivities'
-
-function formatDuration(sec: number): string {
-  const m = Math.round(sec / 60)
-  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`
-}
+import { formatDurationSeconds as formatDuration } from '../../../shared/utils/formatDuration'
 
 export function TrainingHomeWidget() {
   const { data: workouts = [], isLoading: loadingWorkouts } = useHevyWorkouts({ limit: 50 })

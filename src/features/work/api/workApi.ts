@@ -1,9 +1,9 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import type { WorkNote, WorkPinnedLink, WorkWeeklyGoal } from '../types'
 
 export async function fetchWorkNote(): Promise<WorkNote | null> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('work_notes')
     .select('*')
@@ -14,8 +14,7 @@ export async function fetchWorkNote(): Promise<WorkNote | null> {
 }
 
 export async function upsertWorkNote(content: string): Promise<WorkNote> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('work_notes')
     .upsert(
@@ -29,8 +28,7 @@ export async function upsertWorkNote(content: string): Promise<WorkNote> {
 }
 
 export async function fetchPinnedLinks(): Promise<WorkPinnedLink[]> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('work_pinned_links')
     .select('*')
@@ -42,8 +40,7 @@ export async function fetchPinnedLinks(): Promise<WorkPinnedLink[]> {
 }
 
 export async function createPinnedLink(title: string, url: string): Promise<WorkPinnedLink> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('work_pinned_links')
     .insert({ user_id: user.id, title, url })
@@ -59,8 +56,7 @@ export async function deletePinnedLink(id: string): Promise<void> {
 }
 
 export async function fetchWeeklyGoals(weekStart: string): Promise<WorkWeeklyGoal[]> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('work_weekly_goals')
     .select('*')
@@ -73,8 +69,7 @@ export async function fetchWeeklyGoals(weekStart: string): Promise<WorkWeeklyGoa
 }
 
 export async function createWeeklyGoal(weekStart: string, title: string): Promise<WorkWeeklyGoal> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('work_weekly_goals')
     .insert({ user_id: user.id, week_start: weekStart, title, done: false })

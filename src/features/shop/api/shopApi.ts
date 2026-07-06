@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import type {
   ShopCategory, ShopItem, CreateShopCategoryInput, CreateShopItemInput, UpdateShopItemInput,
 } from '../types'
@@ -15,8 +16,7 @@ export async function fetchShopCategories(): Promise<ShopCategory[]> {
 }
 
 export async function createShopCategory(input: CreateShopCategoryInput): Promise<ShopCategory> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('shop_categories')
     .insert({ user_id: user.id, name: input.name, parent_id: input.parent_id ?? null })
@@ -43,8 +43,7 @@ export async function fetchShopItems(): Promise<ShopItem[]> {
 }
 
 export async function createShopItem(input: CreateShopItemInput): Promise<ShopItem> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('shop_items')
     .insert({

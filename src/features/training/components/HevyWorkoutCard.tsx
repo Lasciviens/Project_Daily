@@ -1,15 +1,9 @@
+import { formatDurationBetween as fmtDuration } from '../../../shared/utils/formatDuration'
 import type { HevyWorkout } from '../types.hevy'
 
 interface Props {
   workout: HevyWorkout
   onClick: () => void
-}
-
-function fmtDuration(start: string | null, end: string | null): string {
-  if (!start || !end) return '—'
-  const mins = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000)
-  if (mins < 60) return `${mins}m`
-  return `${Math.floor(mins / 60)}h ${mins % 60}m`
 }
 
 function fmtDate(iso: string | null): string {

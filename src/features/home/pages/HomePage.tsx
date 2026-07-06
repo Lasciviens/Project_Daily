@@ -1,8 +1,8 @@
 import { useState, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { format } from 'date-fns'
 import { useTasksForDay, useCreateTask } from '../../todo/hooks/useTodos'
 import { useTimeBlocks } from '../../daily/hooks/useSchedule'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { Task } from '../../todo/types'
 import { DOMAIN_TAG_CLASS, DOMAIN_LABEL } from '../../todo/domainColors'
 import { completedWithinLast24h } from '../../todo/taskRules'
@@ -130,8 +130,7 @@ export function HomePage() {
 // ─── Today's Schedule sub-widget ─────────────────────────────────────────────
 
 function TodayScheduleWidget() {
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
-  const { data: blocks = [], isLoading } = useTimeBlocks(todayStr)
+  const { data: blocks = [], isLoading } = useTimeBlocks(todayStr())
   const visible = blocks.filter(b => b.start_time)
 
   if (isLoading || visible.length === 0) return null

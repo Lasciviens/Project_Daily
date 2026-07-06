@@ -7,9 +7,12 @@
 import { format, addDays, parseISO, isToday, isTomorrow } from 'date-fns'
 import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { TaskSection } from '../../../features/todo/types'
+import { todayStr, tomorrowStr } from '../../utils/dateUtils'
 import type {
   PlanModalConfig, PlanTab, ScheduleField, TaskField, RecurrenceMode,
 } from './planModal.types'
+
+export { todayStr, tomorrowStr }
 
 // ── Static presets ────────────────────────────────────────────────────────────
 
@@ -38,15 +41,6 @@ export const EVERY_DAY  = [0, 1, 2, 3, 4, 5, 6]
 
 export const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
-// ── Date / time string helpers ────────────────────────────────────────────────
-
-export function todayStr(): string {
-  return format(new Date(), 'yyyy-MM-dd')
-}
-
-export function tomorrowStr(): string {
-  return format(addDays(new Date(), 1), 'yyyy-MM-dd')
-}
 
 /** "26.06.2026 Fri" — the app-wide compact date format for this modal. */
 export function displayDate(iso: string): string {

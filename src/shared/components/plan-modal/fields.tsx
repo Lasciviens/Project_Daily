@@ -8,6 +8,7 @@ import {
   DURATION_PRESETS, CATEGORY_LABELS, RECURRENCE_OPTIONS, DAY_LABELS,
   displayDate, todayStr, tomorrowStr,
 } from './planModal.config'
+import { formatDurationMinutes } from '../../utils/formatDuration'
 import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { RecurrenceMode } from './planModal.types'
 
@@ -146,7 +147,6 @@ export function DurationField({
   onCustom: (v: string) => void
   locked?: boolean
 }) {
-  const fmt = (d: number) => d < 60 ? `${d}m` : d % 60 === 0 ? `${d / 60}h` : `${Math.floor(d / 60)}h${d % 60}m`
   return (
     <div className="flex flex-wrap gap-2">
       {DURATION_PRESETS.map(d => (
@@ -155,7 +155,7 @@ export function DurationField({
           className={`min-h-[44px] px-3 text-xs font-medium rounded-lg border transition-colors disabled:opacity-40 ${
             duration === d && customMin === '' ? 'bg-accent-500 text-white border-accent-500' : 'border-ink-200 text-ink-600 hover:bg-cream-50'
           }`}
-        >{fmt(d)}</button>
+        >{formatDurationMinutes(d)}</button>
       ))}
       <input
         type="number" min={1} value={customMin} disabled={locked}

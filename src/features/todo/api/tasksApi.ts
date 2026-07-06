@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import { useCalendarStore } from '../../../app/store'
 import { deleteCalendarEvent } from '../../calendar/api/calendarApi'
 import { logError } from '../../../shared/utils/logError'
@@ -88,8 +89,7 @@ export async function fetchTasksByMonth(monthStart: string, monthEnd: string): P
 }
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const section = input.section ?? 'inbox'
 
   // Every new task previously got sort_order: 0, so swapTaskOrder (which

@@ -9,6 +9,7 @@ import { TripCard } from './TripCard'
 import { fmtLastUpdated, fmtTime } from './transitUtils'
 import { toast } from '../../../../app/store'
 import { DateInput } from '../../../../shared/components/DateInput'
+import { todayStr as todayString } from '../../../../shared/utils/dateUtils'
 
 interface RoutesTabProps {
   ws:  WidgetStateResult
@@ -40,10 +41,6 @@ function getCurrentLocation(): Promise<TransitPlace> {
   })
 }
 
-function todayString(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 function nowTimeString(): string {
   const d = new Date()
