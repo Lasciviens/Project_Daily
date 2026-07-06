@@ -87,6 +87,7 @@ export function ProjectItemModal({ open, onClose, projectId, phases, defaultPhas
           project_id: projectId,
           title: trimmed,
           type,
+          status,
           priority,
           notes: notes.trim() || null,
         })

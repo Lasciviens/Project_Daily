@@ -149,7 +149,8 @@ interface HevyRoutineExercise {
   notes: string | null
   rest_seconds: number | null
   exercise_template_id: string
-  supersets_id: number | null
+  superset_id?: number | null
+  supersets_id?: number | null
   sets: HevyRoutineSet[]
 }
 
@@ -221,7 +222,7 @@ async function syncRoutines(
             title: exercise.title,
             notes: exercise.notes,
             rest_seconds: exercise.rest_seconds,
-            supersets_id: exercise.supersets_id,
+            supersets_id: exercise.superset_id ?? exercise.supersets_id ?? null,
           })
           .select('id')
           .single()
@@ -280,7 +281,8 @@ interface HevyWorkoutExercise {
   title: string
   notes: string | null
   exercise_template_id: string
-  supersets_id: number | null
+  superset_id?: number | null
+  supersets_id?: number | null
   sets: HevyWorkoutSet[]
 }
 
@@ -355,7 +357,7 @@ async function syncWorkouts(
             index: exercise.index,
             title: exercise.title,
             notes: exercise.notes,
-            supersets_id: exercise.supersets_id,
+            supersets_id: exercise.superset_id ?? exercise.supersets_id ?? null,
           })
           .select('id')
           .single()

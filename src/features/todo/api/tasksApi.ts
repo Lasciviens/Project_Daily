@@ -90,18 +90,32 @@ export async function fetchTasksByMonth(monthStart: string, monthEnd: string): P
 export async function createTask(input: CreateTaskInput): Promise<Task> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
+  const section = input.section ?? 'inbox'
+
+  // Every new task previously got sort_order: 0, so swapTaskOrder (which
+  // swaps two rows' values) was a no-op between any two freshly-created
+  // tasks (0 <-> 0). Give it the next slot in its section instead.
+  const { data: maxRow } = await supabase
+    .from('tasks')
+    .select('sort_order')
+    .eq('section', section)
+    .order('sort_order', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+  const nextSortOrder = (maxRow?.sort_order ?? -1) + 1
+
   const { data, error } = await supabase
     .from('tasks')
     .insert({
       user_id:     user.id,
       title:       input.title,
       domain:      input.domain      ?? 'personal',
-      section:     input.section     ?? 'inbox',
+      section,
       priority:    input.priority    ?? 'medium',
       due_date:    input.due_date    ?? null,
       due_time:    input.due_time    ?? null,
       status:      'open',
-      sort_order:  0,
+      sort_order:  nextSortOrder,
       source_type: input.source_type ?? 'manual',
       source_id:   input.source_id   ?? null,
     })

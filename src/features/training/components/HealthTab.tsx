@@ -124,7 +124,9 @@ function matchesDayFilter(dateStr: string, filter: DayFilter): boolean {
   const today = startOfDay(new Date())
   if (filter === 'today') return isSameDay(d, today)
   if (filter === 'yesterday') return isSameDay(d, subDays(today, 1))
-  return d >= subDays(today, Number(filter))
+  // "Last N days" means today + the previous (N-1) days = N days total.
+  // subDays(today, N) would include one extra day (N+1 total).
+  return d >= subDays(today, Number(filter) - 1)
 }
 
 type SortCol = 'date' | 'category' | 'metric' | 'source'

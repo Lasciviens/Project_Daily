@@ -74,7 +74,7 @@ function toTransitPlace(s: StopResult): TransitPlace | null {
 }
 
 function planningLabel(preset: WhenPreset, mode: TripMode, dateTime: string | undefined): string {
-  const modeLabel = (preset === 'arriveBy' || mode === 'arriveBy') ? 'Arrive by' : 'Leave'
+  const modeLabel = (preset === 'arriveBy' || (preset === 'custom' && mode === 'arriveBy')) ? 'Arrive by' : 'Leave'
   if (preset === 'now') return 'Leave now'
   if (dateTime) {
     const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -240,7 +240,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
     else if (draftWhen === 'custom')   dateTime = new Date(`${draftDate}T${draftTime}`).toISOString()
     setSearch({
       from: draftFrom, to: draftTo, dateTime,
-      arriveBy: draftWhen === 'arriveBy' || draftMode === 'arriveBy',
+      arriveBy: draftWhen === 'arriveBy' || (draftWhen === 'custom' && draftMode === 'arriveBy'),
       label: planningLabel(draftWhen, draftMode, dateTime),
       preferredLine: draftLine.trim() || undefined,
       version: (search?.version ?? 0) + 1,

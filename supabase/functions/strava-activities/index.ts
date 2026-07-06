@@ -106,32 +106,40 @@ Deno.serve(async (req) => {
 
     const activities = await activitiesRes.json()
 
-    // Upsert each activity into training_sessions (source=strava, skip if already manual)
-    for (const a of activities) {
-      const paceSecPerKm = a.distance > 0
-        ? Math.round((a.moving_time / (a.distance / 1000)))
+    // Upsert each activity into strava_activities (dedicated table, migration 025).
+    const rows = activities.map((a: Record<string, unknown>) => {
+      const distance   = typeof a.distance === 'number' ? a.distance : 0
+      const movingTime = typeof a.moving_time === 'number' ? a.moving_time : null
+      const paceSecPerKm = distance > 0 && movingTime
+        ? Math.round(movingTime / (distance / 1000))
         : null
 
-      const type = mapStravaType(a.type)
+      return {
+        user_id:              user.id,
+        strava_activity_id:   a.id,
+        type:                 mapStravaType(a.type as string),
+        title:                a.name,
+        start_date:           a.start_date,
+        distance_meters:      distance ? Math.round(distance) : null,
+        duration_seconds:     movingTime,
+        elevation_gain_m:     typeof a.total_elevation_gain === 'number' ? Math.round(a.total_elevation_gain) : null,
+        avg_heart_rate:       typeof a.average_heartrate === 'number' ? Math.round(a.average_heartrate) : null,
+        avg_pace_sec_per_km:  paceSecPerKm,
+        updated_at:           new Date().toISOString(),
+      }
+    })
 
-      await supabase.from('training_sessions').upsert(
-        {
-          user_id:              user.id,
-          strava_activity_id:   a.id,
-          source:               'strava',
-          type,
-          title:                a.name,
-          completed_at:         a.start_date,
-          planned_date:         a.start_date?.slice(0, 10),
-          distance_meters:      a.distance ? Math.round(a.distance) : null,
-          duration_seconds:     a.moving_time ?? null,
-          elevation_gain_m:     a.total_elevation_gain ? Math.round(a.total_elevation_gain) : null,
-          avg_heart_rate:       a.average_heartrate ? Math.round(a.average_heartrate) : null,
-          avg_pace_sec_per_km:  paceSecPerKm,
-          updated_at:           new Date().toISOString(),
-        },
-        { onConflict: 'strava_activity_id', ignoreDuplicates: false }
-      )
+    if (rows.length > 0) {
+      const { error: upsertError } = await supabase
+        .from('strava_activities')
+        .upsert(rows, { onConflict: 'strava_activity_id', ignoreDuplicates: false })
+
+      if (upsertError) {
+        return new Response(JSON.stringify({ error: `Sync failed: ${upsertError.message}` }), {
+          status: 500,
+          headers: { ...headers, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     return new Response(JSON.stringify({ synced: activities.length }), {
@@ -146,15 +154,16 @@ Deno.serve(async (req) => {
   }
 })
 
+// Must match strava_activities' CHECK constraint (migration 025): only
+// 'run'|'cycling'|'walk'|'swim'|'yoga'|'other' are allowed — no 'strength'
+// (strength tracking moved to Hevy), so WeightTraining/Workout map to 'other'.
 function mapStravaType(stravaType: string): string {
   const map: Record<string, string> = {
-    Run:           'run',
-    Ride:          'cycling',
-    Walk:          'walk',
-    Swim:          'swim',
-    WeightTraining:'strength',
-    Workout:       'strength',
-    Yoga:          'yoga',
+    Run:  'run',
+    Ride: 'cycling',
+    Walk: 'walk',
+    Swim: 'swim',
+    Yoga: 'yoga',
   }
   return map[stravaType] ?? 'other'
 }

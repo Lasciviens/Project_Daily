@@ -169,10 +169,13 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
     if (!tvEntry) return
     const maxEp = (tv?.number_of_episodes ?? 999)
     const ep    = tvEntry.current_episode + 1
+    // Compute once — the toast previously reported the un-wrapped `ep` (e.g.
+    // "S1 E11") even when the stored value was reset to 0 on wrap.
+    const nextEp = ep > maxEp ? 0 : ep
     const tid   = toast.loading('Updating episode…')
     try {
-      await updateTV.mutateAsync({ id: tvEntry.id, patch: { current_episode: ep > maxEp ? 0 : ep } })
-      toast.dismiss(tid); toast.success(`S${tvEntry.current_season} E${ep} ✓`)
+      await updateTV.mutateAsync({ id: tvEntry.id, patch: { current_episode: nextEp } })
+      toast.dismiss(tid); toast.success(`S${tvEntry.current_season} E${nextEp} ✓`)
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
     }

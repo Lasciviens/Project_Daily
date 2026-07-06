@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
   }
 
   // Insert exercises and their sets
-  for (const ex of workout.exercises) {
+  for (const ex of workout.exercises ?? []) {
     // Insert exercise row, get back the generated uuid
     const { data: exerciseRow, error: exInsertError } = await supabase
       .from('hevy_workout_exercises')
