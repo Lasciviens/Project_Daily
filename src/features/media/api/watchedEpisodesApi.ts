@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import type { WatchedEpisode } from '../types'
 
 // The table stores `tv_series_id` denormalized (NOT NULL) alongside
@@ -31,8 +32,7 @@ export async function markEpisodeWatched(
   episode: number,
   watchedOn: string,
 ): Promise<WatchedEpisode> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const tvSeriesId = await resolveTvSeriesId(tvEntryId)
   const { data, error } = await supabase
     .from('user_tv_episodes')
@@ -55,8 +55,7 @@ export async function unmarkEpisodeWatched(
   season: number,
   episode: number,
 ): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { error } = await supabase
     .from('user_tv_episodes')
     .delete()

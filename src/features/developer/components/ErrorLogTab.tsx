@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import { toast } from '../../../app/store'
 
 interface ErrorLog {
@@ -37,8 +38,7 @@ function useClearLogs() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
+      const user = await requireUser()
       const { error } = await supabase.from('app_error_logs').delete().eq('user_id', user.id)
       if (error) throw error
     },

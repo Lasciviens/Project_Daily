@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import type { CalendarEvent, CalendarListEntry } from '../types'
 
 const BASE = 'https://www.googleapis.com/calendar/v3'
@@ -42,14 +43,8 @@ export async function exchangeCalendarCode(
     body: { code },
   })
   if (error) {
-    let detail = error.message
-    try {
-      // FunctionsHttpError carries the raw Response in .context
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body = await (error as any).context?.json?.()
-      if (body?.error) detail = body.error
-    } catch { /* ignore parse errors */ }
-    throw new Error(detail)
+    const body = await parseFunctionErrorBody(error)
+    throw new Error((body?.error as string | undefined) ?? error.message)
   }
   if (data?.error) throw new Error(data.error)
   return data as { access_token: string; expires_in: number }

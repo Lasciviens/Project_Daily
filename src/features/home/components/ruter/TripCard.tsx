@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { TRANSPORT_ICON, type TripPattern, type TripLeg } from '../../api/ruterApi'
-import { fmtTime, fmtDuration, fmtDistance, lineStyle } from './transitUtils'
+import { fmtTime, fmtDuration, fmtDistance, lineStyle, MODE_FALLBACK_BG } from './transitUtils'
 
 interface TripCardProps {
   trip:    TripPattern
@@ -22,14 +22,6 @@ function transferWaitMins(prev: TripLeg, next: TripLeg): number | null {
 }
 
 // Fallback solid colors when no presentation data
-const MODE_FALLBACK_BG: Record<string, string> = {
-  bus:   '#E8112D',   // Ruter red
-  tram:  '#E8112D',
-  metro: '#E8112D',
-  rail:  '#4A4A4A',
-  ferry: '#0066CC',
-}
-
 function LineBadge({ leg }: { leg: TripLeg }) {
   if (!leg.line) return null
   const style = lineStyle(leg.lineColour, leg.lineTextColour)

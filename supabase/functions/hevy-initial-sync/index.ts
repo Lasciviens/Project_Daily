@@ -1,4 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { upsertRoutineToDb, upsertWorkoutToDb } from '../_shared/hevySync.ts'
+import type { HevyRoutine, HevyWorkout } from '../_shared/hevySync.ts'
 
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
 
@@ -131,39 +133,6 @@ async function syncRoutineFolders(
 // ---------------------------------------------------------------------------
 // Step 3: Routines
 // ---------------------------------------------------------------------------
-interface HevyRoutineSet {
-  index: number
-  type: string
-  weight_kg: number | null
-  reps: number | null
-  rep_range: { start: number; end: number } | null
-  distance_meters: number | null
-  duration_seconds: number | null
-  rpe: number | null
-  custom_metric: number | null
-}
-
-interface HevyRoutineExercise {
-  index: number
-  title: string
-  notes: string | null
-  rest_seconds: number | null
-  exercise_template_id: string
-  superset_id?: number | null
-  supersets_id?: number | null
-  sets: HevyRoutineSet[]
-}
-
-interface HevyRoutine {
-  id: string
-  title: string
-  folder_id: string | null
-  notes: string | null
-  updated_at: string
-  created_at: string
-  exercises: HevyRoutineExercise[]
-}
-
 async function syncRoutines(
   supabase: ReturnType<typeof createClient>,
   userId: string,
@@ -181,76 +150,8 @@ async function syncRoutines(
 
     if (routines.length === 0) break
 
-    const now = new Date().toISOString()
-
     for (const routine of routines) {
-      // 1. Upsert routine
-      const { error: routineErr } = await supabase
-        .from('hevy_routines')
-        .upsert(
-          {
-            id: routine.id,
-            user_id: userId,
-            folder_id: routine.folder_id,
-            title: routine.title,
-            notes: routine.notes,
-            hevy_updated_at: routine.updated_at,
-            hevy_created_at: routine.created_at,
-            synced_at: now,
-          },
-          { onConflict: 'id' },
-        )
-      if (routineErr) throw routineErr
-
-      // 2. Delete existing exercises for this routine
-      const { error: delErr } = await supabase
-        .from('hevy_routine_exercises')
-        .delete()
-        .eq('hevy_routine_id', routine.id)
-        .eq('user_id', userId)
-      if (delErr) throw delErr
-
-      // 3. Insert exercises and their sets
-      for (const exercise of routine.exercises ?? []) {
-        const { data: insertedExercise, error: exErr } = await supabase
-          .from('hevy_routine_exercises')
-          .insert({
-            user_id: userId,
-            hevy_routine_id: routine.id,
-            exercise_template_id: exercise.exercise_template_id,
-            index: exercise.index,
-            title: exercise.title,
-            notes: exercise.notes,
-            rest_seconds: exercise.rest_seconds,
-            supersets_id: exercise.superset_id ?? exercise.supersets_id ?? null,
-          })
-          .select('id')
-          .single()
-        if (exErr) throw exErr
-
-        // 4. Insert sets for this exercise
-        if ((exercise.sets ?? []).length > 0) {
-          const { error: setsErr } = await supabase
-            .from('hevy_routine_sets')
-            .insert(
-              exercise.sets.map((s) => ({
-                user_id: userId,
-                hevy_routine_exercise_id: insertedExercise.id,
-                index: s.index,
-                type: s.type,
-                weight_kg: s.weight_kg,
-                reps: s.reps,
-                rep_range_start: s.rep_range?.start ?? null,
-                rep_range_end: s.rep_range?.end ?? null,
-                distance_meters: s.distance_meters,
-                duration_seconds: s.duration_seconds,
-                rpe: s.rpe,
-                custom_metric: s.custom_metric,
-              })),
-            )
-          if (setsErr) throw setsErr
-        }
-      }
+      await upsertRoutineToDb(supabase, userId, routine)
     }
 
     totalSynced += routines.length
@@ -265,39 +166,6 @@ async function syncRoutines(
 // ---------------------------------------------------------------------------
 // Step 4: Workouts
 // ---------------------------------------------------------------------------
-interface HevyWorkoutSet {
-  index: number
-  type: string
-  weight_kg: number | null
-  reps: number | null
-  distance_meters: number | null
-  duration_seconds: number | null
-  rpe: number | null
-  custom_metric: number | null
-}
-
-interface HevyWorkoutExercise {
-  index: number
-  title: string
-  notes: string | null
-  exercise_template_id: string
-  superset_id?: number | null
-  supersets_id?: number | null
-  sets: HevyWorkoutSet[]
-}
-
-interface HevyWorkout {
-  id: string
-  title: string
-  routine_id: string | null
-  description: string | null
-  start_time: string
-  end_time: string
-  updated_at: string
-  created_at: string
-  exercises: HevyWorkoutExercise[]
-}
-
 async function syncWorkouts(
   supabase: ReturnType<typeof createClient>,
   userId: string,
@@ -315,76 +183,8 @@ async function syncWorkouts(
 
     if (workouts.length === 0) break
 
-    const now = new Date().toISOString()
-
     for (const workout of workouts) {
-      // 1. Upsert workout
-      const { error: workoutErr } = await supabase
-        .from('hevy_workouts')
-        .upsert(
-          {
-            id: workout.id,
-            user_id: userId,
-            title: workout.title,
-            routine_id: workout.routine_id,
-            description: workout.description,
-            start_time: workout.start_time,
-            end_time: workout.end_time,
-            hevy_updated_at: workout.updated_at,
-            hevy_created_at: workout.created_at,
-            synced_at: now,
-          },
-          { onConflict: 'id' },
-        )
-      if (workoutErr) throw workoutErr
-
-      // 2. Delete existing exercises for this workout
-      const { error: delErr } = await supabase
-        .from('hevy_workout_exercises')
-        .delete()
-        .eq('hevy_workout_id', workout.id)
-        .eq('user_id', userId)
-      if (delErr) throw delErr
-
-      // 3. Insert exercises and their sets
-      for (const exercise of workout.exercises ?? []) {
-        const { data: insertedExercise, error: exErr } = await supabase
-          .from('hevy_workout_exercises')
-          .insert({
-            user_id: userId,
-            hevy_workout_id: workout.id,
-            exercise_template_id: exercise.exercise_template_id,
-            index: exercise.index,
-            title: exercise.title,
-            notes: exercise.notes,
-            supersets_id: exercise.superset_id ?? exercise.supersets_id ?? null,
-          })
-          .select('id')
-          .single()
-        if (exErr) throw exErr
-
-        // 4. Insert sets for this exercise
-        if ((exercise.sets ?? []).length > 0) {
-          const { error: setsErr } = await supabase
-            .from('hevy_sets')
-            .insert(
-              exercise.sets.map((s) => ({
-                user_id: userId,
-                hevy_exercise_id: insertedExercise.id,
-                exercise_template_id: exercise.exercise_template_id,
-                index: s.index,
-                type: s.type,
-                weight_kg: s.weight_kg,
-                reps: s.reps,
-                distance_meters: s.distance_meters,
-                duration_seconds: s.duration_seconds,
-                rpe: s.rpe,
-                custom_metric: s.custom_metric,
-              })),
-            )
-          if (setsErr) throw setsErr
-        }
-      }
+      await upsertWorkoutToDb(supabase, userId, workout)
     }
 
     totalSynced += workouts.length

@@ -1,20 +1,10 @@
 import type { Task } from '../../todo/types'
+import { isOverdue, isCompletedToday } from './workMeta'
 
 interface Props {
   tasks: Task[]
   // bare = no card chrome/header — rendered inside WorkSidebar's RailSection
   bare?: boolean
-}
-
-function todayStr(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function isOverdue(task: Task): boolean {
-  if (!task.due_date) return false
-  if (task.status === 'done' || task.status === 'cancelled') return false
-  return task.due_date < todayStr()
 }
 
 interface StatRowProps {
@@ -37,7 +27,7 @@ function StatRow({ icon, label, count, colorClass }: StatRowProps) {
 }
 
 export default function EODSummaryWidget({ tasks, bare }: Props) {
-  const done       = tasks.filter(t => t.status === 'done' && t.updated_at?.slice(0, 10) === todayStr()).length
+  const done       = tasks.filter(t => t.status === 'done' && isCompletedToday(t)).length
   const inProgress = tasks.filter(t => t.status === 'in_progress').length
   const open       = tasks.filter(t => t.status === 'open').length
   const waiting    = tasks.filter(t => t.status === 'waiting').length

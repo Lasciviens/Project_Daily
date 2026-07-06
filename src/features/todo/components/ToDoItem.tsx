@@ -4,12 +4,7 @@ import type { Task } from '../types'
 import { useToggleTask, useDeleteTask } from '../hooks/useTodos'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
-
-const PRIORITY_DOT: Record<Task['priority'], string> = {
-  low:    'bg-ink-300',
-  medium: 'bg-accent-400',
-  high:   'bg-red-400 ring-1 ring-red-300',
-}
+import { PRIORITY_DOT_CLASS as PRIORITY_DOT } from '../../../shared/utils/priorityColors'
 
 function dueDateLabel(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')

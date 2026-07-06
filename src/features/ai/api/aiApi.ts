@@ -1,5 +1,6 @@
 import { format } from 'date-fns'
 import { supabase } from '../../../integrations/supabase/client'
+import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 
 export interface Message {
   role:    'user' | 'assistant'
@@ -193,17 +194,8 @@ export interface AIResponse {
 // A Supabase FunctionsError's body isn't always valid JSON (e.g. an upstream
 // gateway error page) — swallow that parse failure here so callers always get
 // a friendly fallback message instead of a raw "Unexpected token < in JSON".
-async function parseFunctionErrorBody(error: unknown): Promise<{ error?: string; daily_limit?: number; retry_after?: number } | null> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return await (error as any).context?.json?.() ?? null
-  } catch {
-    return null
-  }
-}
-
 async function throwFunctionError(error: { message: string }): Promise<never> {
-  const body = await parseFunctionErrorBody(error)
+  const body = await parseFunctionErrorBody(error) as { error?: string; daily_limit?: number; retry_after?: number } | null
   throw new Error(friendlyError(body, error.message))
 }
 

@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import type { Movie, UserMovieEntry, TMDBMovie } from '../types'
 
 export async function fetchUserMovieEntries(): Promise<UserMovieEntry[]> {
@@ -42,8 +43,7 @@ export async function addMovieEntry(
   status: UserMovieEntry['status'],
   priority: UserMovieEntry['priority'] = 'medium'
 ): Promise<UserMovieEntry> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
 
   const { data, error } = await supabase
     .from('user_movie_entries')

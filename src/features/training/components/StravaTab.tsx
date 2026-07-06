@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useStravaStatus } from '../hooks/useTrainingSessions'
 import { StravaWidget } from './StravaWidget'
+import { formatDurationSeconds as formatDuration } from '../../../shared/utils/formatDuration'
 import type { StravaActivity } from '../types.hevy'
 
 type ActivityType = 'all' | 'run' | 'cycling' | 'walk' | 'swim' | 'other'
@@ -33,12 +34,6 @@ const TYPE_COLOR: Record<string, string> = {
   other:   'bg-ink-50 text-ink-600 border-ink-100',
 }
 
-function formatDuration(secs: number): string {
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
 
 function formatPace(secPerKm: number): string {
   const m = Math.floor(secPerKm / 60)

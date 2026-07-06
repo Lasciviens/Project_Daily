@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import type { StopResult } from '../api/ruterApi'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -38,8 +39,7 @@ export function useTransitRoutes(): {
   })
 
   async function addRoute(label: string, from: StopResult, to: StopResult): Promise<void> {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Not authenticated')
+    const user = await requireUser()
 
     const { error } = await supabase.from('user_transit_routes').insert({
       user_id:        user.id,

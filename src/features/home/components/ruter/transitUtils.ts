@@ -1,6 +1,7 @@
 // Shared display helpers for transit widgets.
 // Keep pure — no React, no API calls, no side effects.
 import type React from 'react'
+import { formatDurationSeconds } from '../../../../shared/utils/formatDuration'
 
 // Converts EnTur presentation colour (hex without #) to inline CSS style object.
 // Falls back to null when no presentation data is available.
@@ -21,9 +22,14 @@ export function fmtTime(iso: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-export function fmtDuration(seconds: number): string {
-  const m = Math.round(seconds / 60)
-  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`
+export const fmtDuration = formatDurationSeconds
+
+export const MODE_FALLBACK_BG: Record<string, string> = {
+  bus:   '#E8112D',   // Ruter red
+  tram:  '#E8112D',
+  metro: '#E8112D',
+  rail:  '#4A4A4A',
+  ferry: '#0066CC',
 }
 
 export function fmtDistance(meters: number): string {

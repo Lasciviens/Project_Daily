@@ -1,4 +1,8 @@
-import type { Task, TaskStatus, TaskPriority } from '../../todo/types'
+import type { Task, TaskStatus } from '../../todo/types'
+import { todayStr, tomorrowStr } from '../../../shared/utils/dateUtils'
+import { PRIORITY_META } from '../../../shared/utils/priorityColors'
+
+export { todayStr, PRIORITY_META }
 
 // Shared status/priority metadata + task helpers for the Work views
 // (board, list, focus strip, header stats all read from here).
@@ -20,20 +24,7 @@ export const BOARD_COLUMNS: StatusMeta[] = [
 
 export const OVERDUE_COLOR = '#DC2626'
 
-export const PRIORITY_META: Record<TaskPriority, { icon: string; cls: string; label: string }> = {
-  high:   { icon: '▲', cls: 'text-red-500',    label: 'High'   },
-  medium: { icon: '●', cls: 'text-accent-500', label: 'Medium' },
-  low:    { icon: '▼', cls: 'text-ink-300',    label: 'Low'    },
-}
-
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
-
-// Local calendar date (not UTC), computed at call time so it stays correct
-// across midnight and timezones.
-export function todayStr(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 export function isOverdue(task: Task): boolean {
   if (!task.due_date) return false
@@ -63,9 +54,7 @@ export function dueLabel(task: Task): { text: string; urgent: boolean } | null {
     return { text: days === 1 ? '1d overdue' : `${days}d overdue`, urgent: true }
   }
   if (task.due_date === today) return { text: 'Today', urgent: true }
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
-  const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
-  if (task.due_date === tomorrowStr) return { text: 'Tomorrow', urgent: false }
+  if (task.due_date === tomorrowStr()) return { text: 'Tomorrow', urgent: false }
   return {
     text: new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
     urgent: false,

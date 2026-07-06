@@ -8,6 +8,7 @@ import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
 import { supabase } from '../../../integrations/supabase/client'
 import { useCalendarStore, toast } from '../../../app/store'
+import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import type { CalendarEvent } from '../../calendar/types'
 
 const HOUR_START = 0
@@ -28,11 +29,6 @@ function timeStrToHour(t: string): number {
   return h + m / 60
 }
 
-function formatDuration(mins: number): string {
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`
-}
 
 function hourToTimeStr(h: number): string {
   const hh = Math.floor(h)
@@ -459,7 +455,7 @@ export function DayTimeline({ date }: Props) {
                 {heightPx >= 28 && !isEditing && (
                   <p className="text-[10px] opacity-60 pl-3">
                     {isDraggingThis && dragHour !== null ? hourToTimeStr(dragHour) : hourToTimeStr(block.startHour)} – {hourToTimeStr(block.endHour)}
-                    {durationMins >= 30 ? ` · ${formatDuration(durationMins)}` : ''}
+                    {durationMins >= 30 ? ` · ${formatDurationMinutes(durationMins)}` : ''}
                     {isOverlap && <span className="ml-1 text-red-500">⚠</span>}
                   </p>
                 )}

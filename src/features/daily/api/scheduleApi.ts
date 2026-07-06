@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import { useCalendarStore } from '../../../app/store'
 import { updateCalendarEvent, deleteCalendarEvent } from '../../calendar/api/calendarApi'
 import { logError } from '../../../shared/utils/logError'
@@ -21,8 +22,7 @@ export async function fetchScheduleBlocks(): Promise<ScheduleBlock[]> {
 }
 
 export async function createScheduleBlock(input: CreateScheduleBlockInput): Promise<ScheduleBlock> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('schedule_blocks')
     .insert({ ...input, user_id: user.id })
@@ -62,8 +62,7 @@ export async function fetchTrainingBlocksRange(from: string, to: string): Promis
 }
 
 export async function createTimeBlock(input: CreateTimeBlockInput): Promise<TimeBlock> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   const { data, error } = await supabase
     .from('time_blocks')
     .insert({ ...input, user_id: user.id, color: input.color ?? 'accent' })

@@ -4,7 +4,7 @@ import { fetchDepartures, fetchStopDirections, type Departure, type StopResult, 
 import { useTransitStops } from '../../hooks/useTransitStops'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
-import { minsUntil, fmtTime, fmtLastUpdated, lineStyle } from './transitUtils'
+import { minsUntil, fmtTime, fmtLastUpdated, lineStyle, MODE_FALLBACK_BG } from './transitUtils'
 import { toast } from '../../../../app/store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -12,14 +12,6 @@ import { toast } from '../../../../app/store'
 interface DeparturesTabProps {
   ws:  WidgetStateResult
   now: number
-}
-
-const MODE_FALLBACK_BG: Record<string, string> = {
-  bus:   '#E8112D',
-  tram:  '#E8112D',
-  metro: '#E8112D',
-  rail:  '#4A4A4A',
-  ferry: '#0066CC',
 }
 
 interface LineGroup {

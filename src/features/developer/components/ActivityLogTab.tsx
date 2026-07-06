@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../../integrations/supabase/client'
+import { requireUser } from '../../../shared/utils/requireUser'
 import { toast } from '../../../app/store'
 
 // CRUD audit trail (audit_logs table, written by DB triggers — see migration
@@ -76,8 +77,7 @@ function useClearAuditLogs() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
+      const user = await requireUser()
       const { error } = await supabase.from('audit_logs').delete().eq('user_id', user.id)
       if (error) throw error
     },
