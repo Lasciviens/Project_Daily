@@ -48,7 +48,11 @@ export function HomePage() {
   const tasks         = allTasks.filter(t => t.status !== 'done' || completedWithinLast24h(t.updated_at))
   const done          = doneTasks.length
   const open          = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
-  const progress      = tasks.length > 0 ? (done / tasks.length) * 100 : 0
+  // Progress denominator excludes cancelled tasks (they're not rendered in the
+  // visible list either) — including them understated progress and made the
+  // done/total label inconsistent with what's actually shown.
+  const countable     = tasks.filter(t => t.status !== 'cancelled')
+  const progress      = countable.length > 0 ? (done / countable.length) * 100 : 0
   const [editingTask, setEditingTask] = useState<Task | null>(null)
 
   return (
@@ -104,7 +108,7 @@ export function HomePage() {
         </div>
 
         {/* Today's tasks */}
-        <TodayTasksWidget tasks={tasks} done={done} open={open} progress={progress} isLoading={today.isLoading} onEdit={setEditingTask} />
+        <TodayTasksWidget tasks={tasks} done={done} total={countable.length} open={open} progress={progress} isLoading={today.isLoading} onEdit={setEditingTask} />
       </div>
 
       {/* ── RIGHT COLUMN ────────────────────────────────────────────────── */}
@@ -167,13 +171,14 @@ function TodayScheduleWidget() {
 interface TodayTasksProps {
   tasks:     Task[]
   done:      number
+  total:     number   // done/total denominator — excludes cancelled tasks
   open:      number
   progress:  number
   isLoading: boolean
   onEdit:    (task: Task) => void
 }
 
-function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: TodayTasksProps) {
+function TodayTasksWidget({ tasks, done, total, open, progress, isLoading, onEdit }: TodayTasksProps) {
   const [quickTitle, setQuickTitle] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const create = useCreateTask()
@@ -212,7 +217,7 @@ function TodayTasksWidget({ tasks, done, open, progress, isLoading, onEdit }: To
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <span className="text-xs text-ink-500 flex-shrink-0">{done}/{tasks.length}</span>
+            <span className="text-xs text-ink-500 flex-shrink-0">{done}/{total}</span>
           </div>
 
           <ul className="space-y-1 mb-3">

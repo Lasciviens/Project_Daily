@@ -17,11 +17,16 @@ export function RecipeBackdrop({ recipes }: { recipes: RecipeWithIngredients[] }
   const [nextIdx,    setNextIdx]    = useState<number | null>(null)
   const [fading,     setFading]     = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The interval effect only re-runs on [images.length], so it closes over
+  // currentIdx's value at mount time (0) forever. A ref always has the live
+  // value, so rotation doesn't get stuck re-fading image 1 onto itself.
+  const currentIdxRef = useRef(currentIdx)
+  useEffect(() => { currentIdxRef.current = currentIdx }, [currentIdx])
 
   useEffect(() => {
     if (images.length < 2) return
     timerRef.current = setInterval(() => {
-      setNextIdx(prev => ((prev ?? currentIdx) + 1) % images.length)
+      setNextIdx(prev => ((prev ?? currentIdxRef.current) + 1) % images.length)
       setFading(true)
     }, ROTATE_MS)
     return () => { if (timerRef.current) clearInterval(timerRef.current) }

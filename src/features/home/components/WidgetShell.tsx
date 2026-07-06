@@ -25,12 +25,10 @@ interface WidgetShellProps {
  * based on ws.collapsed and ws.syncActive — this shell only renders the controls.
  */
 export function WidgetShell({ title, ws, onManualSync, headerRight, children }: WidgetShellProps) {
-  function handleManualSync() {
-    if (onManualSync) {
-      onManualSync()
-      ws.markSynced()
-    }
-  }
+  // Each widget's onManualSync owns calling ws.markSynced() itself (some gate
+  // it on success, e.g. CurrencyWidget) — calling it here too always marked
+  // "synced" even on a failed fetch and double-fired it for widgets that also
+  // call it internally.
 
   return (
     <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden">
@@ -81,7 +79,7 @@ export function WidgetShell({ title, ws, onManualSync, headerRight, children }: 
             {/* Manual sync — min 44px tap target on mobile */}
             {onManualSync && (
               <button
-                onClick={handleManualSync}
+                onClick={onManualSync}
                 title="Sync now"
                 className="text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center lg:min-w-0 lg:min-h-0"
               >

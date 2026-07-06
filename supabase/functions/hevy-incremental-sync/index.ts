@@ -64,7 +64,7 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
         const { data: exRow, error: exErr } = await supabase.from('hevy_routine_exercises').insert({
           user_id: userId, hevy_routine_id: routine.id,
           exercise_template_id: ex.exercise_template_id, index: ex.index, title: ex.title,
-          notes: ex.notes ?? null, rest_seconds: ex.rest_seconds ?? null, supersets_id: ex.supersets_id ?? null,
+          notes: ex.notes ?? null, rest_seconds: ex.rest_seconds ?? null, supersets_id: ex.superset_id ?? ex.supersets_id ?? null,
         }).select('id').single()
         if (exErr) throw exErr
         if ((ex.sets ?? []).length > 0) {
@@ -307,7 +307,7 @@ Deno.serve(async (req) => {
       }
 
       // Insert exercises and their sets
-      for (const ex of workout.exercises) {
+      for (const ex of workout.exercises ?? []) {
         const { data: exerciseRow, error: exInsertError } = await supabase
           .from('hevy_workout_exercises')
           .insert({

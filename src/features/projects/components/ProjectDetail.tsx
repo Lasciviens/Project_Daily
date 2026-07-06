@@ -283,6 +283,15 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
           })}
         </div>
       )}
+      {view === 'board' && (() => {
+        const cancelledCount = allItems.filter(i => i.status === 'cancelled').length
+        // Board columns are open/in_progress/done only (arrow nav cycles through
+        // just those three) — cancelled items are real but intentionally hidden
+        // here rather than silently missing; they're still visible in Phases view.
+        return cancelledCount > 0 ? (
+          <p className="text-[11px] text-ink-400 mt-2">{cancelledCount} cancelled item{cancelledCount === 1 ? '' : 's'} hidden from board — see Phases view</p>
+        ) : null
+      })()}
 
       {/* Add / edit item modal */}
       {itemModal && (

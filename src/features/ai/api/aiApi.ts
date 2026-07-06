@@ -190,21 +190,29 @@ export interface AIResponse {
   steps?:        string[]   // activity trace of tool calls the AI ran
 }
 
+// A Supabase FunctionsError's body isn't always valid JSON (e.g. an upstream
+// gateway error page) — swallow that parse failure here so callers always get
+// a friendly fallback message instead of a raw "Unexpected token < in JSON".
+async function parseFunctionErrorBody(error: unknown): Promise<{ error?: string; daily_limit?: number; retry_after?: number } | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (error as any).context?.json?.() ?? null
+  } catch {
+    return null
+  }
+}
+
+async function throwFunctionError(error: { message: string }): Promise<never> {
+  const body = await parseFunctionErrorBody(error)
+  throw new Error(friendlyError(body, error.message))
+}
+
 export async function invokeAI(messages: Message[], systemPrompt: string): Promise<AIResponse> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
     body: { messages, systemPrompt },
   })
 
-  if (error) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body = await (error as any).context?.json?.()
-      throw new Error(friendlyError(body, error.message))
-    } catch (inner) {
-      if (inner instanceof Error && inner !== error) throw inner
-    }
-    throw new Error(error.message)
-  }
+  if (error) await throwFunctionError(error)
 
   if (data?.error) throw new Error(friendlyError(data, data.error))
   return data as AIResponse
@@ -284,16 +292,7 @@ async function invokeStructured<T>(prompt: string, responseSchema: any): Promise
     body: { messages: [{ role: 'user', content: prompt }], responseSchema },
   })
 
-  if (error) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body = await (error as any).context?.json?.()
-      throw new Error(friendlyError(body, error.message))
-    } catch (inner) {
-      if (inner instanceof Error && inner !== error) throw inner
-    }
-    throw new Error(error.message)
-  }
+  if (error) await throwFunctionError(error)
   if (data?.error) throw new Error(friendlyError(data, data.error))
   return data.data as T
 }
@@ -369,16 +368,7 @@ export async function fetchUrlText(url: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
     body: { fetchUrl: url },
   })
-  if (error) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body = await (error as any).context?.json?.()
-      throw new Error(friendlyError(body, error.message))
-    } catch (inner) {
-      if (inner instanceof Error && inner !== error) throw inner
-    }
-    throw new Error(error.message)
-  }
+  if (error) await throwFunctionError(error)
   if (data?.error) throw new Error(friendlyError(data, data.error))
   return data.text as string
 }

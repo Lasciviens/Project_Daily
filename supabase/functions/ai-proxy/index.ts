@@ -473,7 +473,7 @@ async function callGemini(
 
     const data      = await res.json()
     const candidate = data.candidates?.[0]
-    if (!candidate) return ''
+    if (!candidate) return { text: '' }
 
     const parts: AnyRecord[] = candidate.content?.parts ?? []
     const fnCallParts = parts.filter((p: AnyRecord) => p.functionCall)

@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
     const data = await tokenRes.json()
     const { access_token, refresh_token, expires_at, athlete } = data
 
-    await supabase.from('strava_tokens').upsert(
+    const { error: tokenSaveError } = await supabase.from('strava_tokens').upsert(
       {
         user_id:        user.id,
         access_token,
@@ -87,6 +87,13 @@ Deno.serve(async (req) => {
       },
       { onConflict: 'user_id' }
     )
+
+    if (tokenSaveError) {
+      return new Response(JSON.stringify({ error: `Failed to save Strava token: ${tokenSaveError.message}` }), {
+        status: 500,
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
 
     // Return athlete info so client knows connection succeeded — never return tokens
     return new Response(JSON.stringify({

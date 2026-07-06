@@ -35,9 +35,18 @@ export function computeMediaStats(movies: UserMovieEntry[], tv: UserTVEntry[]): 
     }
   }
 
-  const rated    = completed.filter(e => e.rating !== null)
-  const avgMyRating   = rated.length ? rated.reduce((s, e) => s + e.rating!, 0) / rated.length : null
-  const avgTMDBRating = rated.length ? rated.reduce((s, e) => s + (e.movie.tmdb_rating ?? 0), 0) / rated.length : null
+  // Ratings across BOTH movies and TV (previously movie-only, so a TV-only
+  // library always showed avgMyRating: null even with ratings set).
+  const ratedMovies = completed.filter(e => e.rating !== null)
+    .map(e => ({ myRating: e.rating!, tmdbRating: e.movie.tmdb_rating }))
+  const ratedTV = tv.filter(e => e.status === 'completed' && e.rating !== null)
+    .map(e => ({ myRating: e.rating!, tmdbRating: e.tv_series.tmdb_rating }))
+  const rated = [...ratedMovies, ...ratedTV]
+  const tmdbRated = rated.filter(r => r.tmdbRating !== null)
+
+  const avgMyRating   = rated.length     ? rated.reduce((s, r) => s + r.myRating, 0) / rated.length : null
+  // Exclude null tmdb_rating entries instead of coalescing to 0, which pulled the average down.
+  const avgTMDBRating = tmdbRated.length ? tmdbRated.reduce((s, r) => s + r.tmdbRating!, 0) / tmdbRated.length : null
 
   // Genre counts across all library entries
   const genreMap: Record<string, number> = {}

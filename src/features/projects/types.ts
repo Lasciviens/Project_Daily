@@ -62,6 +62,7 @@ export interface CreateItemInput {
   project_id: string
   title:      string
   type?:      ItemType
+  status?:    ItemStatus
   priority?:  ItemPriority
   notes?:     string | null
 }

@@ -36,6 +36,9 @@ export function useToggleEpisodeWatched(tvEntryId: string) {
         if (watched) {
           return old.filter(w => !(w.season_number === season && w.episode_number === episode))
         }
+        // Guard against adding a duplicate row if one is already present
+        // (e.g. a rapid double-tap firing before the previous mutation settled).
+        if (old.some(w => w.season_number === season && w.episode_number === episode)) return old
         return [...old, {
           id:             'optimistic',
           user_id:        '',

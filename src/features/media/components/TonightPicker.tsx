@@ -22,8 +22,11 @@ interface Props {
   onOpenDetail: (id: number, type: 'movie' | 'tv') => void
 }
 
-function pickRandom<T>(arr: T[], exclude?: T): T {
-  const pool = arr.length > 1 ? arr.filter(x => x !== exclude) : arr
+// buildPool() creates fresh Candidate objects every call, so comparing by
+// reference (x !== exclude) never actually excludes anything — compare by id
+// instead so re-rolling doesn't keep landing on the same title.
+function pickRandom(arr: Candidate[], exclude?: Candidate): Candidate {
+  const pool = arr.length > 1 && exclude ? arr.filter(x => x.id !== exclude.id) : arr
   return pool[Math.floor(Math.random() * pool.length)]
 }
 

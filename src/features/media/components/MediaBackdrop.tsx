@@ -19,13 +19,18 @@ export function MediaBackdrop() {
   // fading = true while the next image is transitioning in
   const [fading, setFading] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The interval effect only re-runs on [backdrops.length], so it closes over
+  // currentIdx's value at mount time (0) forever. A ref always has the live
+  // value, so rotation doesn't get stuck re-fading image 1 onto itself.
+  const currentIdxRef = useRef(currentIdx)
+  useEffect(() => { currentIdxRef.current = currentIdx }, [currentIdx])
 
   useEffect(() => {
     if (backdrops.length < 2) return
 
     timerRef.current = setInterval(() => {
       setNextIdx(prev => {
-        const next = (((prev ?? currentIdx) + 1) % backdrops.length)
+        const next = (((prev ?? currentIdxRef.current) + 1) % backdrops.length)
         return next
       })
       setFading(true)

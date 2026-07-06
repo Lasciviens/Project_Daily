@@ -35,6 +35,9 @@ export async function fetchProjectStats(): Promise<Record<string, ProjectStat>> 
   if (error) throw error
   const map: Record<string, ProjectStat> = {}
   for (const row of (data ?? []) as { project_id: string; status: string }[]) {
+    // Cancelled items are excluded from `total` (the done/total denominator) —
+    // otherwise a project with any cancelled item could never show 100%.
+    if (row.status === 'cancelled') continue
     const s = map[row.project_id] ?? { total: 0, done: 0, in_progress: 0, open: 0 }
     s.total++
     if (row.status === 'done') s.done++

@@ -7,12 +7,15 @@ import {
   useDeleteWeeklyGoal,
 } from '../hooks/useWork'
 
+// Local calendar date, not UTC — toISOString() shifts to UTC and can land on
+// the wrong day near midnight (e.g. Norway UTC+1/+2), making "this week"
+// resolve to the wrong Monday for an hour or two after midnight.
 function getMondayOfWeek(date: Date): string {
   const d = new Date(date)
   const day = d.getDay()
   const diff = d.getDate() - day + (day === 0 ? -6 : 1)
   d.setDate(diff)
-  return d.toISOString().split('T')[0]
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function formatWeekRange(mondayStr: string): string {
