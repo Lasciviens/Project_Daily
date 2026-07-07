@@ -6,17 +6,8 @@ import { useCalendarStore } from '../../app/store'
 import { supabase } from '../../integrations/supabase/client'
 import { exchangeCalendarCode, disconnectCalendar } from '../../features/calendar/api/calendarApi'
 import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCalendar'
-import { applyTheme } from './ThemeSwitcher'
+import { applyTheme, THEMES } from './ThemeSwitcher'
 import { signOut } from '../../security/supabaseClient'
-
-const THEMES: Record<string, { label: string; hex: string }> = {
-  orange: { label: 'Orange', hex: '#f59e0b' },
-  red:    { label: 'Red',    hex: '#ef4444' },
-  blue:   { label: 'Blue',   hex: '#3b82f6' },
-  purple: { label: 'Purple', hex: '#8b5cf6' },
-  yellow: { label: 'Yellow', hex: '#eab308' },
-  black:  { label: 'Black',  hex: '#1f2937' },
-}
 
 export function SettingsMenu() {
   const [calLoading, setCalLoading] = useState(false)

@@ -88,15 +88,15 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
   const [tab,        setTab]       = useState<DiscoveryTab>('today')
   const [lastSynced, setLastSynced] = useState<Date | null>(null)
 
-  const trendDay  = useTrendingMovies('day',  tab === 'today'    && mediaType === 'movie' ? false as const : false)
-  const trendWeek = useTrendingMovies('week', tab === 'week'     && mediaType === 'movie' ? false as const : false)
-  const popular   = usePopularMovies(         tab === 'popular'  && mediaType === 'movie' ? false as const : false)
-  const upcoming  = useUpcomingMovies(        tab === 'upcoming' && mediaType === 'movie' ? false as const : false)
+  const trendDay  = useTrendingMovies('day',  false)
+  const trendWeek = useTrendingMovies('week', false)
+  const popular   = usePopularMovies(false)
+  const upcoming  = useUpcomingMovies(false)
 
-  const tvTrendDay  = useTrendingTV('day',  tab === 'today'    && mediaType === 'tv' ? false as const : false)
-  const tvTrendWeek = useTrendingTV('week', tab === 'week'     && mediaType === 'tv' ? false as const : false)
-  const tvPopular   = usePopularTV(         tab === 'popular'  && mediaType === 'tv' ? false as const : false)
-  const tvUpcoming  = useUpcomingTV(        tab === 'upcoming' && mediaType === 'tv' ? false as const : false)
+  const tvTrendDay  = useTrendingTV('day',  false)
+  const tvTrendWeek = useTrendingTV('week', false)
+  const tvPopular   = usePopularTV(false)
+  const tvUpcoming  = useUpcomingTV(false)
 
   const activeQuery = tab === 'norway' ? null
     : mediaType === 'movie'

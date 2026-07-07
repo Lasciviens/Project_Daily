@@ -1,4 +1,4 @@
-const THEMES: Record<string, { label: string; hex: string; vars: Record<string, string> }> = {
+export const THEMES: Record<string, { label: string; hex: string; vars: Record<string, string> }> = {
   orange: {
     label: 'Orange',
     hex: '#f59e0b',

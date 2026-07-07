@@ -29,11 +29,12 @@ import { useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
 
-export function useTasksBySection(section: string) {
+export function useTasksBySection(section: string, enabled = true) {
   return useQuery({
     queryKey: ['tasks', 'section', section],
     queryFn: () => fetchTasksBySection(section),
     staleTime: 30_000,
+    enabled,
   })
 }
 

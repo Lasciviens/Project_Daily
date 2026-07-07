@@ -1,25 +1,12 @@
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useHevyWorkoutDetail } from '../hooks/useHevyWorkouts'
+import { formatDurationBetween as fmtDuration } from '../../../shared/utils/formatDuration'
+import { fmtTrainingDateTime as fmtDateTime } from '../dateFormat'
 import type { HevySet } from '../types.hevy'
 
 interface Props {
   workoutId: string | null
   onClose: () => void
-}
-
-function fmtDuration(start: string | null, end: string | null): string {
-  if (!start || !end) return '—'
-  const mins = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000)
-  if (mins < 60) return `${mins}m`
-  return `${Math.floor(mins / 60)}h ${mins % 60}m`
-}
-
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) +
-    ' · ' +
-    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
 const SET_TYPE_CONFIG: Record<HevySet['type'], { label: string; className: string }> = {

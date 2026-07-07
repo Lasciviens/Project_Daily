@@ -168,6 +168,93 @@ function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWor
   )
 }
 
+interface SelectedDay {
+  date:       Date
+  workouts:   HevyWorkout[]
+  activities: StravaActivity[]
+  plans:      TimeBlock[]
+}
+
+// Shared by WeekView and MonthView — was pixel-for-pixel duplicated in both.
+function DayDetailPanel({
+  selectedDay, dateKey, todayStr, onOpenWorkout, onOpenPlan,
+}: {
+  selectedDay:   SelectedDay | null | undefined
+  dateKey:       string
+  todayStr:      string
+  onOpenWorkout: (id: string) => void
+  onOpenPlan:    (b: TimeBlock) => void
+}) {
+  if (!selectedDay || (selectedDay.workouts.length === 0 && selectedDay.activities.length === 0 && selectedDay.plans.length === 0)) {
+    return null
+  }
+
+  return (
+    <div className="border border-ink-200 rounded-xl p-3 flex flex-col gap-2">
+      <p className="text-sm font-bold text-ink-800">
+        {selectedDay.date.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}
+      </p>
+
+      {selectedDay.plans.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5">Planned</p>
+          <div className="flex flex-col gap-2">
+            {selectedDay.plans.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onOpenPlan(p)}
+                className="w-full text-left flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg hover:bg-cream-200 transition-colors min-h-[44px]"
+              >
+                <span className={`w-2 h-2 rounded-full shrink-0 ${planDotClass(dateKey, todayStr)}`} />
+                <span className="text-sm font-medium text-ink-900">{p.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedDay.workouts.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-600 mb-1.5">Hevy Workouts</p>
+          <div className="flex flex-col gap-2">
+            {selectedDay.workouts.map(w => {
+              const dur = getWorkoutDuration(w)
+              return (
+                <button
+                  key={w.id}
+                  type="button"
+                  onClick={() => onOpenWorkout(w.id)}
+                  className="w-full text-left flex items-center justify-between gap-2 p-2.5 bg-accent-50 border border-accent-100 rounded-lg hover:bg-accent-100 transition-colors min-h-[44px]"
+                >
+                  <span className="text-sm font-medium text-ink-900">{w.title}</span>
+                  {dur && <span className="text-xs text-accent-600 shrink-0">{dur} min</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {selectedDay.activities.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 mb-1.5">Strava</p>
+          <div className="flex flex-col gap-2">
+            {selectedDay.activities.map(a => (
+              <div key={a.id} className="flex items-center justify-between gap-2 p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
+                <span className="text-sm font-medium text-ink-900">{stravaIcon(a.type)} {a.title}</span>
+                {a.distance_meters && (
+                  <span className="text-xs text-blue-600 shrink-0">{(a.distance_meters / 1000).toFixed(2)} km</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface WeekViewProps {
   weekStart: Date
   workouts: HevyWorkout[]
@@ -263,70 +350,13 @@ function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, toda
       </div>
 
       {/* Detail panel */}
-      {selectedDay && (selectedDay.workouts.length > 0 || selectedDay.activities.length > 0 || selectedDay.plans.length > 0) && (
-        <div className="border border-ink-200 rounded-xl p-3 flex flex-col gap-2">
-          <p className="text-sm font-bold text-ink-800">
-            {selectedDay.date.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}
-          </p>
-
-          {selectedDay.plans.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5">Planned</p>
-              <div className="flex flex-col gap-2">
-                {selectedDay.plans.map(p => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => onOpenPlan(p)}
-                    className="w-full text-left flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg hover:bg-cream-200 transition-colors min-h-[44px]"
-                  >
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${planDotClass(ymd(selectedDay.date), todayStr)}`} />
-                    <span className="text-sm font-medium text-ink-900">{p.title}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {selectedDay.workouts.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-600 mb-1.5">Hevy Workouts</p>
-              <div className="flex flex-col gap-2">
-                {selectedDay.workouts.map(w => {
-                  const dur = getWorkoutDuration(w)
-                  return (
-                    <button
-                      key={w.id}
-                      type="button"
-                      onClick={() => onOpenWorkout(w.id)}
-                      className="w-full text-left flex items-center justify-between gap-2 p-2.5 bg-accent-50 border border-accent-100 rounded-lg hover:bg-accent-100 transition-colors min-h-[44px]"
-                    >
-                      <span className="text-sm font-medium text-ink-900">{w.title}</span>
-                      {dur && <span className="text-xs text-accent-600 shrink-0">{dur} min</span>}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {selectedDay.activities.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 mb-1.5">Strava</p>
-              <div className="flex flex-col gap-2">
-                {selectedDay.activities.map(a => (
-                  <div key={a.id} className="flex items-center justify-between gap-2 p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
-                    <span className="text-sm font-medium text-ink-900">{stravaIcon(a.type)} {a.title}</span>
-                    {a.distance_meters && (
-                      <span className="text-xs text-blue-600 shrink-0">{(a.distance_meters / 1000).toFixed(2)} km</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <DayDetailPanel
+        selectedDay={selectedDay}
+        dateKey={selectedDay ? ymd(selectedDay.date) : ''}
+        todayStr={todayStr}
+        onOpenWorkout={onOpenWorkout}
+        onOpenPlan={onOpenPlan}
+      />
     </div>
   )
 }
@@ -482,70 +512,13 @@ function MonthView({ year, month, workouts, activities, plansByDate, todayStr, t
       </div>
 
       {/* Day detail */}
-      {selectedDay && (selectedDay.workouts.length > 0 || selectedDay.activities.length > 0 || selectedDay.plans.length > 0) && (
-        <div className="border border-ink-200 rounded-xl p-3 flex flex-col gap-2">
-          <p className="text-sm font-bold text-ink-800">
-            {selectedDay.date.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}
-          </p>
-
-          {selectedDay.plans.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5">Planned</p>
-              <div className="flex flex-col gap-2">
-                {selectedDay.plans.map(p => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => onOpenPlan(p)}
-                    className="w-full text-left flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg hover:bg-cream-200 transition-colors min-h-[44px]"
-                  >
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${planDotClass(selectedDate!, todayStr)}`} />
-                    <span className="text-sm font-medium text-ink-900">{p.title}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {selectedDay.workouts.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-600 mb-1.5">Hevy Workouts</p>
-              <div className="flex flex-col gap-2">
-                {selectedDay.workouts.map(w => {
-                  const dur = getWorkoutDuration(w)
-                  return (
-                    <button
-                      key={w.id}
-                      type="button"
-                      onClick={() => onOpenWorkout(w.id)}
-                      className="w-full text-left flex items-center justify-between gap-2 p-2.5 bg-accent-50 border border-accent-100 rounded-lg hover:bg-accent-100 transition-colors min-h-[44px]"
-                    >
-                      <span className="text-sm font-medium text-ink-900">{w.title}</span>
-                      {dur && <span className="text-xs text-accent-600 shrink-0">{dur} min</span>}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {selectedDay.activities.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 mb-1.5">Strava</p>
-              <div className="flex flex-col gap-2">
-                {selectedDay.activities.map(a => (
-                  <div key={a.id} className="flex items-center justify-between gap-2 p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
-                    <span className="text-sm font-medium text-ink-900">{stravaIcon(a.type)} {a.title}</span>
-                    {a.distance_meters && (
-                      <span className="text-xs text-blue-600 shrink-0">{(a.distance_meters / 1000).toFixed(2)} km</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <DayDetailPanel
+        selectedDay={selectedDay}
+        dateKey={selectedDate ?? ''}
+        todayStr={todayStr}
+        onOpenWorkout={onOpenWorkout}
+        onOpenPlan={onOpenPlan}
+      />
     </div>
   )
 }

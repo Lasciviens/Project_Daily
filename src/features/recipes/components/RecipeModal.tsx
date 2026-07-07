@@ -4,6 +4,7 @@ import { toast } from '../../../app/store'
 import { useCreateRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
+import { sumMacros } from '../api/recipesApi'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
 
 interface Props {
@@ -14,7 +15,6 @@ interface Props {
 
 const EMPTY_ROW: IngredientDraft = { name: '', quantity: null, unit: null, note: null, library_ingredient_id: null }
 const NEW_INGREDIENT = '__new__'
-const WEIGHT_UNITS = new Set(['g', 'gram', 'grams', 'ml', 'milliliter', 'milliliters'])
 
 function numOrNull(v: string): number | null {
   if (v.trim() === '') return null
@@ -22,29 +22,14 @@ function numOrNull(v: string): number | null {
   return isNaN(n) ? null : n
 }
 
-// Mirrors recipesApi.computeMacrosFromIngredients but synchronous over an
-// already-loaded library array — used for the live preview while editing.
-// The authoritative save-time computation still happens server-side.
+// Live preview while editing, over an already-loaded library array (no DB
+// round-trip) — uses the same summation as the authoritative save-time
+// computation in recipesApi.computeMacrosFromIngredients.
 function previewMacros(ingredients: IngredientDraft[], servings: number, library: IngredientLibraryItem[]) {
   const byId = new Map(library.map(l => [l.id, l]))
-  const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sugar_g: 0 }
-  let contributed = false
-  let skipped = 0
-  for (const ing of ingredients) {
-    if (!ing.library_ingredient_id) continue
-    const lib = byId.get(ing.library_ingredient_id)
-    const unitOk = ing.unit && WEIGHT_UNITS.has(ing.unit.trim().toLowerCase())
-    if (!lib || !unitOk || ing.quantity == null) { skipped++; continue }
-    const factor = ing.quantity / 100
-    totals.calories  += (lib.calories  ?? 0) * factor
-    totals.protein_g += (lib.protein_g ?? 0) * factor
-    totals.carbs_g   += (lib.carbs_g   ?? 0) * factor
-    totals.fat_g     += (lib.fat_g     ?? 0) * factor
-    totals.sugar_g   += (lib.sugar_g   ?? 0) * factor
-    contributed = true
-  }
+  const { contributed, skippedCount, totals } = sumMacros(ingredients, byId)
   const per = (v: number) => Math.round((v / Math.max(1, servings)) * 10) / 10
-  return { contributed, skipped, ...Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, per(v)])) } as
+  return { contributed, skipped: skippedCount, ...Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, per(v)])) } as
     { contributed: boolean; skipped: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; sugar_g: number }
 }
 

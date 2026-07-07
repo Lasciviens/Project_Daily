@@ -86,6 +86,19 @@ function useGreeting() {
   return { greeting, timeStr: format(now, 'HH:mm') }
 }
 
+// The 3-column Day/Timeline/right-rail grid — was duplicated identically
+// across Yesterday/Today/Tomorrow views (Today's right rail additionally
+// stacks MonthWidget below WeekWidget, passed in via rightRail).
+function DayLayout({ date, rightRail }: { date: Date; rightRail: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] xl:grid-cols-[340px_1fr_320px] gap-5">
+      <div className="lg:pl-1"><DayView date={date} /></div>
+      <DayTimeline date={date} />
+      <div className="flex flex-col gap-4">{rightRail}</div>
+    </div>
+  )
+}
+
 function YesterdayView({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
   return (
     <div>
@@ -93,11 +106,7 @@ function YesterdayView({ date, onDayClick }: { date: Date; onDayClick: (d: Date)
         <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
         <p className="text-sm text-ink-400 mt-0.5">Yesterday</p>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-5">
-        <div className="lg:pl-1"><DayView date={date} /></div>
-        <DayTimeline date={date} />
-        <WeekWidget onDayClick={onDayClick} highlightDate={date} />
-      </div>
+      <DayLayout date={date} rightRail={<WeekWidget onDayClick={onDayClick} highlightDate={date} />} />
     </div>
   )
 }
@@ -162,14 +171,13 @@ function TodayView({
       {/* Left: Tasks (indented, narrower) · Middle: Schedule · Right: date
           widgets — structurally independent column, kept in sync with the
           viewed date via highlightDate (see WeekWidget/MonthWidget). */}
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] xl:grid-cols-[340px_1fr_320px] gap-5">
-        <div className="lg:pl-1"><DayView date={date} /></div>
-        <DayTimeline date={date} />
-        <div className="flex flex-col gap-4">
+      <DayLayout
+        date={date}
+        rightRail={<>
           <WeekWidget onDayClick={onDayClick} highlightDate={date} />
           <MonthWidget onDayClick={onDayClick} highlightDate={date} />
-        </div>
-      </div>
+        </>}
+      />
     </div>
   )
 }
@@ -181,11 +189,7 @@ function TomorrowView({ date, onDayClick }: { date: Date; onDayClick: (d: Date) 
         <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
         <p className="text-sm text-ink-400 mt-0.5">Tomorrow</p>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-5">
-        <div className="lg:pl-1"><DayView date={date} /></div>
-        <DayTimeline date={date} />
-        <WeekWidget onDayClick={onDayClick} highlightDate={date} />
-      </div>
+      <DayLayout date={date} rightRail={<WeekWidget onDayClick={onDayClick} highlightDate={date} />} />
     </div>
   )
 }

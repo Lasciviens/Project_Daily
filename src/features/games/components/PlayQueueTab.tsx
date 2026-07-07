@@ -2,23 +2,17 @@ import { useState, useRef } from 'react'
 import { usePlayQueue, useUpdateGame, useReorderQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast } from '../../../app/store'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { STATUS_LABEL, TIER_COLOR as TIER_BADGE } from '../gamesMeta'
 import type { QueueGame } from '../../home/api/gamesApi'
 
+// Adds a border class on top of the shared STATUS_COLOR bg/text pair (used
+// for this tab's outlined chips) — not a plain duplicate of gamesMeta's map.
 const STATUS_COLOR: Record<string, string> = {
   playing:   'bg-orange-100 text-orange-700 border-orange-200',
   completed: 'bg-green-100 text-green-700 border-green-200',
   wishlist:  'bg-purple-100 text-purple-700 border-purple-200',
   backlog:   'bg-ink-100 text-ink-500 border-ink-200',
   dropped:   'bg-red-100 text-red-600 border-red-200',
-}
-const STATUS_LABEL: Record<string, string> = {
-  playing: 'Playing', completed: 'Completed', wishlist: 'Wishlist',
-  backlog: 'Backlog', dropped: 'Dropped',
-}
-const TIER_BADGE: Record<string, string> = {
-  S: 'bg-yellow-400 text-yellow-900', A: 'bg-orange-400 text-white',
-  B: 'bg-green-500 text-white',       C: 'bg-blue-400 text-white',
-  D: 'bg-ink-400 text-white',         F: 'bg-red-500 text-white',
 }
 
 function CoverImg({ url, title }: { url?: string | null; title: string }) {

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useHevyBodyMeasurements, useUpsertBodyMeasurement } from '../hooks/useHevyBodyMeasurements'
 import { todayStr } from '../../../shared/utils/dateUtils'
+import { formatTrainingDate } from '../dateFormat'
 import type { HevyBodyMeasurement } from '../types.hevy'
 
 // ─── Field definitions ────────────────────────────────────────────────────────
@@ -44,9 +45,7 @@ const ALL_FIELDS: FieldDef[] = [
 const DETAIL_FIELDS = ALL_FIELDS.slice(3)
 
 function fmtDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  })
+  return formatTrainingDate(new Date(dateStr + 'T00:00:00'))
 }
 
 // ─── Log/Edit Measurement Modal ───────────────────────────────────────────────
@@ -294,14 +293,14 @@ function WeightChart({ measurements }: { measurements: HevyBodyMeasurement[] }) 
         )}
 
         {/* Weight line */}
-        <path d={weightPath} fill="none" stroke="#f59e0b" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        <path d={weightPath} fill="none" stroke="rgb(var(--accent-500))" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
 
         {/* Dots */}
         {chartData.map((m, i) => {
           const x = toX(xFrac(i, chartData.length))
           const y = toY(m.weight_kg as number, paddedMin, paddedRange)
           return (
-            <circle key={m.id} cx={x} cy={y} r={2.5} fill="#f59e0b" />
+            <circle key={m.id} cx={x} cy={y} r={2.5} fill="rgb(var(--accent-500))" />
           )
         })}
 

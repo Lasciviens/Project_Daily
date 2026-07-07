@@ -1,18 +1,11 @@
 import { useState } from 'react'
-import { format, isToday, isTomorrow, isPast } from 'date-fns'
+import { isToday, isTomorrow, isPast } from 'date-fns'
 import type { Task } from '../types'
 import { useToggleTask, useDeleteTask } from '../hooks/useTodos'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
 import { PRIORITY_DOT_CLASS as PRIORITY_DOT } from '../../../shared/utils/priorityColors'
-import { isOverdue } from '../taskRules'
-
-function dueDateLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  if (isToday(d))    return 'Today'
-  if (isTomorrow(d)) return 'Tomorrow'
-  return format(d, 'd MMM')
-}
+import { isOverdue, dueLabel } from '../taskRules'
 
 function dueDateCls(dateStr: string, isDone: boolean): string {
   if (isDone) return 'bg-ink-100 text-ink-400'
@@ -89,7 +82,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             {task.due_date && (
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${dueDateCls(task.due_date, isDone)}`}>
                 {isOverdue(task) && <span title="Overdue">⚠ </span>}
-                {dueDateLabel(task.due_date)}
+                {dueLabel(task)?.text}
               </span>
             )}
             {task.description && (

@@ -195,7 +195,7 @@ export function LogHevyWorkoutModal({ isOpen, onClose }: Props) {
   const [title, setTitle]         = useState('')
   const [dateTime, setDateTime]   = useState(localDateTimeString)
   const [routineId, setRoutineId] = useState('')
-  const [exercises, setExercises] = useState<ExerciseRow[]>([blankExercise()])
+  const [exercises, setExercises] = useState<ExerciseRow[]>(() => [blankExercise()])
   const [saving, setSaving]       = useState(false)
 
   // When a routine is picked, pre-populate exercises

@@ -76,6 +76,21 @@ class RateLimitError extends Error {
   }
 }
 
+// Parses Gemini's 429 error body for the quota/retry-delay hints and throws
+// RateLimitError — was duplicated identically in callGemini and callGeminiStructured.
+function throwRateLimit(errText: string): never {
+  let dailyLimit = 20
+  let retryAfterSec = 60
+  try {
+    const errJson = JSON.parse(errText)
+    const violations = errJson.error?.details?.find((d: AnyRecord) => d.violations)?.violations ?? []
+    if (violations[0]?.quotaValue) dailyLimit = parseInt(violations[0].quotaValue) || 20
+    const retryStr = errJson.error?.details?.find((d: AnyRecord) => d.retryDelay)?.retryDelay ?? ''
+    if (retryStr) retryAfterSec = parseInt(retryStr) || 60
+  } catch { /* ignore */ }
+  throw new RateLimitError(dailyLimit, retryAfterSec)
+}
+
 const TOOLS = [
   {
     functionDeclarations: [
@@ -456,18 +471,7 @@ async function callGemini(
 
     if (!res.ok) {
       const errText = await res.text()
-      if (res.status === 429) {
-        let dailyLimit = 20
-        let retryAfterSec = 60
-        try {
-          const errJson = JSON.parse(errText)
-          const violations = errJson.error?.details?.find((d: AnyRecord) => d.violations)?.violations ?? []
-          if (violations[0]?.quotaValue) dailyLimit = parseInt(violations[0].quotaValue) || 20
-          const retryStr = errJson.error?.details?.find((d: AnyRecord) => d.retryDelay)?.retryDelay ?? ''
-          if (retryStr) retryAfterSec = parseInt(retryStr) || 60
-        } catch { /* ignore */ }
-        throw new RateLimitError(dailyLimit, retryAfterSec)
-      }
+      if (res.status === 429) throwRateLimit(errText)
       throw new Error(`Gemini ${res.status}: ${errText}`)
     }
 
@@ -582,18 +586,7 @@ async function callGeminiStructured(
 
   if (!res.ok) {
     const errText = await res.text()
-    if (res.status === 429) {
-      let dailyLimit = 20
-      let retryAfterSec = 60
-      try {
-        const errJson = JSON.parse(errText)
-        const violations = errJson.error?.details?.find((d: AnyRecord) => d.violations)?.violations ?? []
-        if (violations[0]?.quotaValue) dailyLimit = parseInt(violations[0].quotaValue) || 20
-        const retryStr = errJson.error?.details?.find((d: AnyRecord) => d.retryDelay)?.retryDelay ?? ''
-        if (retryStr) retryAfterSec = parseInt(retryStr) || 60
-      } catch { /* ignore */ }
-      throw new RateLimitError(dailyLimit, retryAfterSec)
-    }
+    if (res.status === 429) throwRateLimit(errText)
     throw new Error(`Gemini ${res.status}: ${errText}`)
   }
 
