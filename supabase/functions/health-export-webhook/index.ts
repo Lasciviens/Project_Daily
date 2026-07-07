@@ -152,35 +152,54 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Upsert metrics — one row per (metric, day, source). Value shape varies by
-  // metric (qty vs Min/Avg/Max vs multi-field sleep object), so the whole
-  // data point is stored as-is in a jsonb column rather than normalized.
+  // Upsert metrics — one row PER INCOMING POINT (point-in-time grain, keyed by
+  // its exact timestamp), not one row per day. Health Auto Export sends
+  // per-second/per-hour samples regardless of its "Summarize"/"Time Grouping"
+  // settings — collapsing them by day at ingest time (the old behavior) meant
+  // every new point silently overwrote the previous one, so only the LAST
+  // point of the day ever survived (confirmed against real exports: this
+  // made cumulative metrics like steps/energy show tiny fragments instead of
+  // real daily totals). Storing every point as its own row discards nothing;
+  // all summing/averaging/min-max happens at query time in the app (see
+  // src/features/training/api/healthApi.ts), which also makes hourly-
+  // resolution charts possible. Value shape varies by metric (qty vs
+  // Min/Avg/Max vs multi-field sleep object), so the whole point is stored
+  // as-is in a jsonb column rather than normalized.
   let metricRowCount = 0
   let skippedMetricPoints = 0
   if (metrics.length > 0) {
     // Keyed by the same columns as the upsert's onConflict target — a single
     // INSERT..ON CONFLICT DO UPDATE statement errors ("cannot affect row a
-    // second time") if two rows in the same call share a conflict key. A
-    // day can genuinely have multiple raw/disaggregated points for the same
-    // metric+source (e.g. multiple sleep sessions) — last one wins, matching
+    // second time") if two rows in the same call share a conflict key. Two
+    // points can only collide here if they share the exact same timestamp
+    // (to-the-second) for the same metric+source — last one wins, matching
     // what a second, later-arriving request would do anyway.
     const rowsByKey = new Map<string, AnyRecord>()
     for (const group of metrics) {
       if (!group.name) continue
       for (const point of group.data ?? []) {
-        // A malformed date would fail the `date` column cast for this ONE
-        // row, but upsert is a single SQL statement — that failure would
-        // take the whole batch down with it. Skip instead.
+        // A malformed date would fail the `date`/`recorded_at` column cast
+        // for this ONE row, but upsert is a single SQL statement — that
+        // failure would take the whole batch down with it. Skip instead.
         if (typeof point.date !== 'string' || point.date.length < 10) {
           skippedMetricPoints++
           continue
         }
+        const recordedAt = safeIso(point.date)
+        if (!recordedAt) {
+          skippedMetricPoints++
+          continue
+        }
+        // Local calendar day from the export's own local-time string (before
+        // UTC conversion) — safe against timezone-shift bugs near midnight,
+        // unlike deriving it from the UTC `recorded_at` afterward.
         const date = point.date.slice(0, 10)
         const source = point.source ?? ''
-        rowsByKey.set(`${group.name}|${date}|${source}`, {
+        rowsByKey.set(`${group.name}|${recordedAt}|${source}`, {
           user_id: userId,
           metric_name: group.name,
           date,
+          recorded_at: recordedAt,
           unit: group.units ?? null,
           source,
           value: point,
@@ -191,10 +210,14 @@ Deno.serve(async (req) => {
     }
     const rows = [...rowsByKey.values()]
 
-    if (rows.length > 0) {
+    // Chunked so a large backfill (many days × many hourly points) can't hit
+    // a single request's statement/parameter limits.
+    const CHUNK_SIZE = 2000
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + CHUNK_SIZE)
       const { error } = await supabase
         .from('health_metrics')
-        .upsert(rows, { onConflict: 'user_id,metric_name,date,source' })
+        .upsert(chunk, { onConflict: 'user_id,metric_name,recorded_at,source' })
 
       if (error) {
         return new Response(
@@ -202,8 +225,8 @@ Deno.serve(async (req) => {
           { status: 500, headers: jsonHeaders }
         )
       }
-      metricRowCount = rows.length
     }
+    metricRowCount = rows.length
   }
 
   return new Response(

@@ -16,3 +16,7 @@ export function todayStr(): string {
 export function tomorrowStr(): string {
   return formatLocalDate(addDays(new Date(), 1))
 }
+
+export function daysAgoStr(n: number): string {
+  return formatLocalDate(addDays(new Date(), -n))
+}
