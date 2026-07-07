@@ -24,10 +24,14 @@ export function BarLineChart({
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
           <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
           <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
-          <Tooltip formatter={(v) => [`${v} ${unit}`, tooltipLabel]} />
+          <Tooltip
+            formatter={(v, name) => Array.isArray(v)
+              ? [`${v[0]}–${v[1]} ${unit}`, name]
+              : [`${v} ${unit}`, name]}
+          />
           {rangeKey && <Area dataKey={rangeKey} name="Range" stroke="none" fill={color} fillOpacity={0.12} />}
-          <Bar dataKey={dataKey} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={9} />
-          <Line dataKey={dataKey} stroke={color} strokeWidth={2} dot={{ r: 3 }} />
+          <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={9} />
+          <Line dataKey={dataKey} name={tooltipLabel} stroke={color} strokeWidth={2} dot={{ r: 3 }} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
