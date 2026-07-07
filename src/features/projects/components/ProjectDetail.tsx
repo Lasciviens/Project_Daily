@@ -4,6 +4,8 @@ import { InlineTextArea } from './InlineTextArea'
 import { StatusCycleChip, PROJECT_STATUS_COLORS } from './StatusCycleChip'
 import { PhaseCard } from './PhaseCard'
 import { ProjectItemModal } from './ProjectItemModal'
+import { ProjectNotesCard } from './ProjectNotesCard'
+import { ProjectActivityFeed } from './ProjectActivityFeed'
 import {
   usePhases, useItems,
   useUpdateProject, useDeleteProject,
@@ -101,7 +103,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-4 max-w-4xl">
+    <div className="flex flex-col gap-4 max-w-6xl">
       {/* Back */}
       <button
         type="button"
@@ -174,151 +176,170 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
         </div>
       </div>
 
-      {/* View toggle + type filter */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex gap-0.5 p-0.5 bg-white border border-ink-200 rounded-lg">
-          {(['phases', 'board'] as const).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-3 min-h-[44px] rounded-md text-xs font-semibold transition-colors ${
-                view === v ? 'bg-ink-900 text-white' : 'text-ink-600 hover:text-ink-900'
-              }`}
-            >
-              {v === 'phases' ? 'Phases' : 'Board'}
-            </button>
-          ))}
-        </div>
-
-        {view === 'phases' && total > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              onClick={() => setTypeFilter(null)}
-              className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
-                typeFilter === null ? 'bg-ink-800 text-white border-ink-800' : 'bg-white text-ink-500 border-ink-200 hover:border-ink-400'
-              }`}
-            >
-              all
-            </button>
-            {TYPE_FILTERS.map(f => {
-              const count = allItems.filter(i => i.type === f.type).length
-              if (count === 0) return null
-              return (
+      {/* Main content: item list/board (left) + notes/activity sidebar (right) —
+          equal-width columns on large screens, stacked on mobile/narrow. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+        <div className="flex flex-col gap-4">
+          {/* View toggle + type filter */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-0.5 p-0.5 bg-white border border-ink-200 rounded-lg">
+              {(['phases', 'board'] as const).map(v => (
                 <button
-                  key={f.type}
-                  onClick={() => setTypeFilter(t => t === f.type ? null : f.type)}
-                  className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
-                    typeFilter === f.type ? f.cls + ' font-semibold' : 'bg-white text-ink-500 border-ink-200 hover:border-ink-400'
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={`px-3 min-h-[44px] rounded-md text-xs font-semibold transition-colors ${
+                    view === v ? 'bg-ink-900 text-white' : 'text-ink-600 hover:text-ink-900'
                   }`}
                 >
-                  {f.label} {count}
+                  {v === 'phases' ? 'Phases' : 'Board'}
                 </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ─── Phases view ─── */}
-      {view === 'phases' && (
-        <div className="space-y-3">
-          {phasesLoading ? (
-            [1, 2].map(i => <div key={i} className="h-12 bg-white/50 rounded-xl animate-pulse" />)
-          ) : (
-            <>
-              {phases.map(phase => (
-                <PhaseCard
-                  key={phase.id}
-                  phase={phase}
-                  items={allItems.filter(i => i.phase_id === phase.id)}
-                  typeFilter={typeFilter}
-                  onUpdatePhase={patch => updatePhase.mutate({ id: phase.id, patch })}
-                  onDeletePhase={() => deletePhase.mutate(phase.id)}
-                  onAddItem={() => setItemModal({ phaseId: phase.id })}
-                  onUpdateItem={(itemId, patch) => updateItem.mutate({ id: itemId, patch })}
-                  onDeleteItem={itemId => deleteItem.mutate(itemId)}
-                  onEditItem={item => setItemModal({ item })}
-                />
               ))}
-              <button
-                onClick={handleAddPhase}
-                disabled={createPhase.isPending}
-                className="w-full text-xs text-ink-500 hover:text-accent-600 min-h-[44px] py-2 rounded-xl border border-dashed border-ink-300 hover:border-accent-300 bg-white/40 transition-colors"
-              >
-                + Add phase
-              </button>
-            </>
-          )}
-        </div>
-      )}
+            </div>
 
-      {/* ─── Board view ─── */}
-      {view === 'board' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
-          {BOARD_COLUMNS.map((col, colIdx) => {
-            const items = allItems.filter(i => i.status === col.key)
-            const isDropTarget = dragOverCol === col.key
-            return (
-              <div
-                key={col.key}
-                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverCol(col.key) }}
-                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null) }}
-                onDrop={e => handleDrop(e, col.key)}
-                className={`border rounded-2xl p-2.5 flex flex-col gap-2 min-h-[80px] transition-colors ${
-                  isDropTarget ? 'border-accent-400 border-dashed bg-accent-50/60' : 'bg-white/60 border-ink-200'
-                }`}
-              >
-                <div className="flex items-center justify-between px-1">
-                  <span className={`text-[11px] font-bold uppercase tracking-wide ${col.accent}`}>{col.label}</span>
-                  <span className="text-[11px] text-ink-400">{items.length}</span>
-                </div>
-                {items.length === 0 && <p className="text-[11px] text-ink-300 px-1 py-2">{isDropTarget ? 'Drop here' : 'Empty'}</p>}
-                {items.map(item => (
+            {view === 'phases' && total > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setTypeFilter(null)}
+                  className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
+                    typeFilter === null ? 'bg-ink-800 text-white border-ink-800' : 'bg-white text-ink-500 border-ink-200 hover:border-ink-400'
+                  }`}
+                >
+                  all
+                </button>
+                {TYPE_FILTERS.map(f => {
+                  const count = allItems.filter(i => i.type === f.type).length
+                  if (count === 0) return null
+                  return (
+                    <button
+                      key={f.type}
+                      onClick={() => setTypeFilter(t => t === f.type ? null : f.type)}
+                      className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
+                        typeFilter === f.type ? f.cls + ' font-semibold' : 'bg-white text-ink-500 border-ink-200 hover:border-ink-400'
+                      }`}
+                    >
+                      {f.label} {count}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ─── Phases view ─── */}
+          {view === 'phases' && (
+            <div className="space-y-3">
+              {phasesLoading ? (
+                [1, 2].map(i => <div key={i} className="h-12 bg-white/50 rounded-xl animate-pulse" />)
+              ) : (
+                <>
+                  {phases.map(phase => (
+                    <PhaseCard
+                      key={phase.id}
+                      phase={phase}
+                      items={allItems.filter(i => i.phase_id === phase.id)}
+                      typeFilter={typeFilter}
+                      onUpdatePhase={patch => updatePhase.mutate({ id: phase.id, patch })}
+                      onDeletePhase={() => deletePhase.mutate(phase.id)}
+                      onAddItem={() => setItemModal({ phaseId: phase.id })}
+                      onUpdateItem={(itemId, patch) => updateItem.mutate({ id: itemId, patch })}
+                      onDeleteItem={itemId => deleteItem.mutate(itemId)}
+                      onEditItem={item => setItemModal({ item })}
+                    />
+                  ))}
+                  <button
+                    onClick={handleAddPhase}
+                    disabled={createPhase.isPending}
+                    className="w-full text-xs text-ink-500 hover:text-accent-600 min-h-[44px] py-2 rounded-xl border border-dashed border-ink-300 hover:border-accent-300 bg-white/40 transition-colors"
+                  >
+                    + Add phase
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ─── Board view ─── */}
+          {view === 'board' && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+              {BOARD_COLUMNS.map((col, colIdx) => {
+                const items = allItems.filter(i => i.status === col.key)
+                const isDropTarget = dragOverCol === col.key
+                return (
                   <div
-                    key={item.id}
-                    draggable
-                    onDragStart={e => { e.dataTransfer.setData('itemId', item.id); e.dataTransfer.effectAllowed = 'move'; setDraggingId(item.id) }}
-                    onDragEnd={() => setDraggingId(null)}
-                    className={`bg-white border border-ink-100 rounded-xl p-2.5 flex flex-col gap-1.5 shadow-card cursor-grab select-none transition-opacity ${
-                      draggingId === item.id ? 'opacity-30' : ''
+                    key={col.key}
+                    onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverCol(col.key) }}
+                    onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null) }}
+                    onDrop={e => handleDrop(e, col.key)}
+                    className={`border rounded-2xl p-2.5 flex flex-col gap-2 min-h-[80px] transition-colors ${
+                      isDropTarget ? 'border-accent-400 border-dashed bg-accent-50/60' : 'bg-white/60 border-ink-200'
                     }`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => setItemModal({ item })}
-                      className={`text-sm leading-snug text-left hover:bg-ink-50 rounded px-0.5 -mx-0.5 transition-colors ${item.status === 'done' ? 'line-through text-ink-400' : 'text-ink-800'}`}
-                    >
-                      {item.title}
-                    </button>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${TYPE_BADGE[item.type]}`}>{TYPE_LABEL[item.type]}</span>
-                      <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[item.priority]}`} title={`priority: ${item.priority}`} />
-                      <span className="text-[10px] text-ink-400 truncate">{phaseName(item.phase_id)}</span>
-                      <div className="ml-auto flex items-center gap-0.5">
-                        {colIdx > 0 && (
-                          <button onClick={() => moveItem(item, -1)} className="min-h-[44px] min-w-[28px] lg:min-h-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 rounded" title="Move left">←</button>
-                        )}
-                        {colIdx < BOARD_COLUMNS.length - 1 && (
-                          <button onClick={() => moveItem(item, 1)} className="min-h-[44px] min-w-[28px] lg:min-h-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-accent-600 rounded" title="Move right">→</button>
-                        )}
-                      </div>
+                    <div className="flex items-center justify-between px-1">
+                      <span className={`text-[11px] font-bold uppercase tracking-wide ${col.accent}`}>{col.label}</span>
+                      <span className="text-[11px] text-ink-400">{items.length}</span>
                     </div>
+                    {items.length === 0 && <p className="text-[11px] text-ink-300 px-1 py-2">{isDropTarget ? 'Drop here' : 'Empty'}</p>}
+                    {items.map(item => (
+                      <div
+                        key={item.id}
+                        draggable
+                        onDragStart={e => { e.dataTransfer.setData('itemId', item.id); e.dataTransfer.effectAllowed = 'move'; setDraggingId(item.id) }}
+                        onDragEnd={() => setDraggingId(null)}
+                        className={`bg-white border border-ink-100 rounded-xl p-2.5 flex flex-col gap-1.5 shadow-card cursor-grab select-none transition-opacity ${
+                          draggingId === item.id ? 'opacity-30' : ''
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setItemModal({ item })}
+                          className={`text-sm leading-snug text-left hover:bg-ink-50 rounded px-0.5 -mx-0.5 transition-colors ${item.status === 'done' ? 'line-through text-ink-400' : 'text-ink-800'}`}
+                        >
+                          {item.title}
+                        </button>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${TYPE_BADGE[item.type]}`}>{TYPE_LABEL[item.type]}</span>
+                          <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[item.priority]}`} title={`priority: ${item.priority}`} />
+                          <span className="text-[10px] text-ink-400 truncate">{phaseName(item.phase_id)}</span>
+                          <div className="ml-auto flex items-center gap-0.5">
+                            {colIdx > 0 && (
+                              <button onClick={() => moveItem(item, -1)} className="min-h-[44px] min-w-[28px] lg:min-h-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 rounded" title="Move left">←</button>
+                            )}
+                            {colIdx < BOARD_COLUMNS.length - 1 && (
+                              <button onClick={() => moveItem(item, 1)} className="min-h-[44px] min-w-[28px] lg:min-h-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-accent-600 rounded" title="Move right">→</button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          )}
+          {view === 'board' && (() => {
+            const cancelledCount = allItems.filter(i => i.status === 'cancelled').length
+            // Board columns are open/in_progress/done only (arrow nav cycles through
+            // just those three) — cancelled items are real but intentionally hidden
+            // here rather than silently missing; they're still visible in Phases view.
+            return cancelledCount > 0 ? (
+              <p className="text-[11px] text-ink-400 mt-2">{cancelledCount} cancelled item{cancelledCount === 1 ? '' : 's'} hidden from board — see Phases view</p>
+            ) : null
+          })()}
         </div>
-      )}
-      {view === 'board' && (() => {
-        const cancelledCount = allItems.filter(i => i.status === 'cancelled').length
-        // Board columns are open/in_progress/done only (arrow nav cycles through
-        // just those three) — cancelled items are real but intentionally hidden
-        // here rather than silently missing; they're still visible in Phases view.
-        return cancelledCount > 0 ? (
-          <p className="text-[11px] text-ink-400 mt-2">{cancelledCount} cancelled item{cancelledCount === 1 ? '' : 's'} hidden from board — see Phases view</p>
-        ) : null
-      })()}
+
+        {/* Right rail: per-project notes + recent activity */}
+        <div className="flex flex-col gap-4">
+          <ProjectNotesCard
+            notes={project.notes}
+            onSave={notes => updateProject.mutateAsync({ id: project.id, patch: { notes } })}
+          />
+          <ProjectActivityFeed
+            projectId={project.id}
+            itemIds={allItems.map(i => i.id)}
+            phaseIds={phases.map(p => p.id)}
+          />
+        </div>
+      </div>
 
       {/* Add / edit item modal */}
       {itemModal && (
