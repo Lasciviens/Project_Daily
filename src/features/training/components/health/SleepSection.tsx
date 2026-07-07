@@ -1,10 +1,11 @@
+import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeSleepSummary } from '../../healthAggregate'
 import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
 
 function fmtDay(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
 }
 
 function fmtHrs(h: number): string {
@@ -20,8 +21,11 @@ const STAGES = [
   { key: 'awake' as const, label: 'Awake', color: '#f87171' },
 ]
 
+type TrendPeriod = 'week' | 'month'
+
 export function SleepSection() {
-  const from = daysAgoStr(13)
+  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('week')
+  const from = daysAgoStr(trendPeriod === 'week' ? 6 : 29)
   const to = todayStr()
   const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', from, to)
   const summary = computeSleepSummary(points)
@@ -61,11 +65,31 @@ export function SleepSection() {
         </>
       )}
 
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide">
+          {trendPeriod === 'week' ? 'Last 7 nights' : 'Last 30 nights'}
+        </p>
+        <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg">
+          {(['week', 'month'] as TrendPeriod[]).map(p => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setTrendPeriod(p)}
+              className={`px-2.5 min-h-[28px] rounded-md text-[11px] font-semibold transition-colors ${
+                trendPeriod === p ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
+              }`}
+            >
+              {p === 'week' ? 'Week' : 'Month'}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="h-28">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={trendPeriod === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
             <Tooltip formatter={(v) => [`${v} hr`, 'Total sleep']} />
             <Bar dataKey="total" fill="#6366f1" radius={[3, 3, 0, 0]} />

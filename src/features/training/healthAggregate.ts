@@ -79,24 +79,46 @@ export function computeHourlyBuckets(metricName: string, points: HealthMetric[])
 
 export interface DailyRange { date: string; min: number; max: number; avg: number }
 
+function rangeFromPoints(pts: HealthMetric[]): { min: number; max: number; avg: number } | null {
+  const mins = pts.map(p => p.value?.Min).filter((v): v is number => typeof v === 'number')
+  const maxs = pts.map(p => p.value?.Max).filter((v): v is number => typeof v === 'number')
+  const avgs = pts.map(p => p.value?.Avg).filter((v): v is number => typeof v === 'number')
+  if (!mins.length && !maxs.length && !avgs.length) return null
+  return {
+    min: mins.length ? Math.min(...mins) : 0,
+    max: maxs.length ? Math.max(...maxs) : 0,
+    avg: avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : 0,
+  }
+}
+
 // heart_rate-shaped points ({Min,Avg,Max} per point) — a real day range needs
 // the min of all mins / max of all maxes, not just the last window's numbers.
 export function computeHeartRateDailySeries(points: HealthMetric[]): DailyRange[] {
   const byDate = groupByDate(points)
   const result: DailyRange[] = []
   for (const [date, pts] of byDate) {
-    const mins = pts.map(p => p.value?.Min).filter((v): v is number => typeof v === 'number')
-    const maxs = pts.map(p => p.value?.Max).filter((v): v is number => typeof v === 'number')
-    const avgs = pts.map(p => p.value?.Avg).filter((v): v is number => typeof v === 'number')
-    if (!mins.length && !maxs.length && !avgs.length) continue
-    result.push({
-      date,
-      min: mins.length ? Math.min(...mins) : 0,
-      max: maxs.length ? Math.max(...maxs) : 0,
-      avg: avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : 0,
-    })
+    const range = rangeFromPoints(pts)
+    if (range) result.push({ date, ...range })
   }
   return result.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export interface HourlyRange { hour: number; label: string; min: number; max: number; avg: number }
+
+// Same as computeHeartRateDailySeries but bucketed by hour-of-day, for a
+// single day's "Day" view.
+export function computeHeartRateHourlySeries(points: HealthMetric[]): HourlyRange[] {
+  const byHour = new Map<number, HealthMetric[]>()
+  for (const p of points) {
+    const h = new Date(p.recorded_at).getHours()
+    const arr = byHour.get(h)
+    if (arr) arr.push(p)
+    else byHour.set(h, [p])
+  }
+  return Array.from({ length: 24 }, (_, h) => {
+    const range = rangeFromPoints(byHour.get(h) ?? []) ?? { min: 0, max: 0, avg: 0 }
+    return { hour: h, label: `${String(h).padStart(2, '0')}:00`, ...range }
+  })
 }
 
 export interface SleepSummary { date: string; core: number; rem: number; deep: number; awake: number; total: number }
