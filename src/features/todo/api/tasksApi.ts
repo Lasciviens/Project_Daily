@@ -17,14 +17,35 @@ export async function fetchTasksBySection(section: string): Promise<Task[]> {
   return data ?? []
 }
 
+// Open planned-training-session tasks (RoutinesTab "Plan routine") — used by
+// the Workouts tab to offer a manual "close this" fallback when a logged
+// Hevy workout can't be auto-matched to one by routine_id (freeform workouts).
+export async function fetchOpenTrainingSessionTasks(): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('source_type', 'training_session')
+    .neq('status', 'done')
+    .neq('status', 'cancelled')
+  if (error) throw error
+  return data ?? []
+}
+
 export async function fetchTasksForDay(dateStr: string, section: string): Promise<Task[]> {
+  // For 'today' specifically, an open task with a due_date in the past must
+  // still surface (as overdue) rather than silently vanish — only future day
+  // views (tomorrow/this_week/backlog) keep the strict same-day match so
+  // overdue tasks don't bleed into them.
+  const dueFilter = section === 'today'
+    ? `due_date.is.null,due_date.lte.${dateStr}`
+    : `due_date.is.null,due_date.eq.${dateStr}`
+
   const [sectionRes, dateRes] = await Promise.all([
     supabase
       .from('tasks')
       .select('*')
       .eq('section', section)
-      // tasks with a past due_date should not bleed into other day views
-      .or(`due_date.is.null,due_date.eq.${dateStr}`)
+      .or(dueFilter)
       .neq('status', 'cancelled')
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false }),

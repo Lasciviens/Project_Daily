@@ -111,6 +111,49 @@ export async function upsertWorkoutToDb(
       if (setsErr) throw setsErr
     }
   }
+
+  // If this workout was logged from a routine, and that routine had a planned
+  // session task open (created via RoutinesTab "Plan routine" →
+  // source_type='training_session'), the real workout fulfills it — close it.
+  // Freeform workouts (no routine_id) are left alone; the client surfaces a
+  // manual-confirm suggestion for those instead (see WorkoutsSubTab).
+  if (workout.routine_id) {
+    await closeMatchingTrainingTask(supabase, userId, workout.routine_id)
+  }
+}
+
+async function closeMatchingTrainingTask(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  routineId: string,
+) {
+  const { data: tasks, error: taskErr } = await supabase
+    .from('tasks')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('source_type', 'training_session')
+    .eq('source_id', routineId)
+    .neq('status', 'done')
+    .neq('status', 'cancelled')
+  if (taskErr) throw taskErr
+
+  const taskIds = (tasks ?? []).map((t: any) => t.id)
+  if (taskIds.length === 0) return
+
+  // Mirrors the client's deleteTask (tasksApi.ts) minus Google Calendar
+  // cleanup — no user OAuth token is available from this server context.
+  const { error: blockErr } = await supabase
+    .from('time_blocks')
+    .delete()
+    .eq('source_type', 'task')
+    .in('source_id', taskIds)
+  if (blockErr) throw blockErr
+
+  const { error: delTaskErr } = await supabase
+    .from('tasks')
+    .delete()
+    .in('id', taskIds)
+  if (delTaskErr) throw delTaskErr
 }
 
 export interface HevyRoutineSet {

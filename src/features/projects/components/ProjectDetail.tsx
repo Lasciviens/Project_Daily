@@ -56,6 +56,8 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
   const [typeFilter, setTypeFilter] = useState<ItemType | null>(null)
   const [view, setView] = useState<'phases' | 'board'>('phases')
   const [itemModal, setItemModal] = useState<{ phaseId?: string; item?: ProjectItem } | null>(null)
+  const [draggingId,  setDraggingId]  = useState<string | null>(null)
+  const [dragOverCol, setDragOverCol] = useState<ItemStatus | null>(null)
 
   const { data: phases = [], isLoading: phasesLoading } = usePhases(project.id)
   const { data: allItems = [] }                          = useItems(project.id)
@@ -88,6 +90,14 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
     const idx = order.indexOf(item.status as ItemStatus)
     const next = order[Math.min(order.length - 1, Math.max(0, (idx === -1 ? 0 : idx) + dir))]
     if (next !== item.status) updateItem.mutate({ id: item.id, patch: { status: next } })
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>, status: ItemStatus) {
+    e.preventDefault()
+    const itemId = e.dataTransfer.getData('itemId')
+    setDragOverCol(null)
+    setDraggingId(null)
+    if (itemId) updateItem.mutate({ id: itemId, patch: { status } })
   }
 
   return (
@@ -247,15 +257,32 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
           {BOARD_COLUMNS.map((col, colIdx) => {
             const items = allItems.filter(i => i.status === col.key)
+            const isDropTarget = dragOverCol === col.key
             return (
-              <div key={col.key} className="bg-white/60 border border-ink-200 rounded-2xl p-2.5 flex flex-col gap-2 min-h-[80px]">
+              <div
+                key={col.key}
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverCol(col.key) }}
+                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null) }}
+                onDrop={e => handleDrop(e, col.key)}
+                className={`border rounded-2xl p-2.5 flex flex-col gap-2 min-h-[80px] transition-colors ${
+                  isDropTarget ? 'border-accent-400 border-dashed bg-accent-50/60' : 'bg-white/60 border-ink-200'
+                }`}
+              >
                 <div className="flex items-center justify-between px-1">
                   <span className={`text-[11px] font-bold uppercase tracking-wide ${col.accent}`}>{col.label}</span>
                   <span className="text-[11px] text-ink-400">{items.length}</span>
                 </div>
-                {items.length === 0 && <p className="text-[11px] text-ink-300 px-1 py-2">Empty</p>}
+                {items.length === 0 && <p className="text-[11px] text-ink-300 px-1 py-2">{isDropTarget ? 'Drop here' : 'Empty'}</p>}
                 {items.map(item => (
-                  <div key={item.id} className="bg-white border border-ink-100 rounded-xl p-2.5 flex flex-col gap-1.5 shadow-card">
+                  <div
+                    key={item.id}
+                    draggable
+                    onDragStart={e => { e.dataTransfer.setData('itemId', item.id); e.dataTransfer.effectAllowed = 'move'; setDraggingId(item.id) }}
+                    onDragEnd={() => setDraggingId(null)}
+                    className={`bg-white border border-ink-100 rounded-xl p-2.5 flex flex-col gap-1.5 shadow-card cursor-grab select-none transition-opacity ${
+                      draggingId === item.id ? 'opacity-30' : ''
+                    }`}
+                  >
                     <button
                       type="button"
                       onClick={() => setItemModal({ item })}
