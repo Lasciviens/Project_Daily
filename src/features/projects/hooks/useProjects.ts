@@ -5,6 +5,7 @@ import {
   fetchItems, createItem, updateItem, deleteItem,
 } from '../api/projectsApi'
 import { toast } from '../../../app/store'
+import { logError } from '../../../shared/utils/logError'
 import type { CreateProjectInput, CreatePhaseInput, CreateItemInput, ProjectPhase, ProjectItem } from '../types'
 
 const QK = {
@@ -14,8 +15,14 @@ const QK = {
   items:  (pid: string) => ['projects', 'items',  pid] as const,
 }
 
-const errToast = (fallback: string) => (err: unknown) =>
-  toast.error((err as Error)?.message ?? fallback)
+// Toasts the failure AND persists it to app_error_logs (Developer > Errors) —
+// these mutations previously only toasted, so a failure was invisible in the
+// error log even though the user saw it happen.
+const errToast = (fallback: string, action: string) => (err: unknown, vars?: unknown) => {
+  const msg = (err as Error)?.message ?? fallback
+  toast.error(msg)
+  logError(`${fallback}: ${msg}`, { action, payload: vars })
+}
 
 export function useProjects() {
   return useQuery({ queryKey: QK.projects, queryFn: fetchProjects, staleTime: 60_000 })
@@ -50,7 +57,7 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: (input: CreateProjectInput) => createProject(input),
     onSuccess:  () => { qc.invalidateQueries({ queryKey: QK.projects }); toast.success('Project created ✓') },
-    onError:    errToast('Failed to create project'),
+    onError:    errToast('Failed to create project', 'create_project'),
   })
 }
 
@@ -60,7 +67,7 @@ export function useUpdateProject() {
     mutationFn: ({ id, patch }: { id: string; patch: Partial<CreateProjectInput> }) =>
       updateProject(id, patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK.projects }),
-    onError:   errToast('Failed to save project'),
+    onError:   errToast('Failed to save project', 'update_project'),
   })
 }
 
@@ -69,7 +76,7 @@ export function useDeleteProject() {
   return useMutation({
     mutationFn: (id: string) => deleteProject(id),
     onSuccess:  () => { qc.invalidateQueries({ queryKey: QK.projects }); qc.invalidateQueries({ queryKey: QK.stats }); toast.success('Project deleted') },
-    onError:    errToast('Failed to delete project'),
+    onError:    errToast('Failed to delete project', 'delete_project'),
   })
 }
 
@@ -80,7 +87,7 @@ export function useCreatePhase(projectId: string) {
   return useMutation({
     mutationFn: (input: CreatePhaseInput) => createPhase(input),
     onSuccess:  () => qc.invalidateQueries({ queryKey: QK.phases(projectId) }),
-    onError:    errToast('Failed to add phase'),
+    onError:    errToast('Failed to add phase', 'create_phase'),
   })
 }
 
@@ -90,7 +97,7 @@ export function useUpdatePhase(projectId: string) {
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Pick<ProjectPhase, 'name' | 'description' | 'status'>> }) =>
       updatePhase(id, patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK.phases(projectId) }),
-    onError:   errToast('Failed to save phase'),
+    onError:   errToast('Failed to save phase', 'update_phase'),
   })
 }
 
@@ -103,7 +110,7 @@ export function useDeletePhase(projectId: string) {
       qc.invalidateQueries({ queryKey: QK.items(projectId) })
       qc.invalidateQueries({ queryKey: QK.stats })
     },
-    onError: errToast('Failed to delete phase'),
+    onError: errToast('Failed to delete phase', 'delete_phase'),
   })
 }
 
@@ -114,7 +121,7 @@ export function useCreateItem(projectId: string) {
   return useMutation({
     mutationFn: (input: CreateItemInput) => createItem(input),
     onSuccess:  () => { qc.invalidateQueries({ queryKey: QK.items(projectId) }); qc.invalidateQueries({ queryKey: QK.stats }) },
-    onError:    errToast('Failed to add item'),
+    onError:    errToast('Failed to add item', 'create_item'),
   })
 }
 
@@ -124,7 +131,7 @@ export function useUpdateItem(projectId: string) {
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Pick<ProjectItem, 'title' | 'notes' | 'type' | 'status' | 'priority' | 'phase_id'>> }) =>
       updateItem(id, patch),
     onSuccess: () => { qc.invalidateQueries({ queryKey: QK.items(projectId) }); qc.invalidateQueries({ queryKey: QK.stats }) },
-    onError:   errToast('Failed to save item'),
+    onError:   errToast('Failed to save item', 'update_item'),
   })
 }
 
@@ -133,6 +140,6 @@ export function useDeleteItem(projectId: string) {
   return useMutation({
     mutationFn: (id: string) => deleteItem(id),
     onSuccess:  () => { qc.invalidateQueries({ queryKey: QK.items(projectId) }); qc.invalidateQueries({ queryKey: QK.stats }) },
-    onError:    errToast('Failed to delete item'),
+    onError:    errToast('Failed to delete item', 'delete_item'),
   })
 }
