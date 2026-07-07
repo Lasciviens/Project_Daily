@@ -5,6 +5,7 @@ import { useToggleTask, useDeleteTask } from '../hooks/useTodos'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
 import { PRIORITY_DOT_CLASS as PRIORITY_DOT } from '../../../shared/utils/priorityColors'
+import { isOverdue } from '../taskRules'
 
 function dueDateLabel(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')
@@ -87,6 +88,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             </span>
             {task.due_date && (
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${dueDateCls(task.due_date, isDone)}`}>
+                {isOverdue(task) && <span title="Overdue">⚠ </span>}
                 {dueDateLabel(task.due_date)}
               </span>
             )}

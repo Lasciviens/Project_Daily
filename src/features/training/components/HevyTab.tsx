@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { startOfWeek, startOfMonth, format } from 'date-fns'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useHevyPRs } from '../hooks/useHevyPRs'
+import { useOpenTrainingSessionTasks } from '../../todo/hooks/useTodos'
+import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { HevyWorkoutCard } from './HevyWorkoutCard'
 import { HevyWorkoutDetail } from './HevyWorkoutDetail'
 import { HevyPRList } from './HevyPRList'
@@ -72,6 +74,17 @@ function WorkoutsSubTab() {
   // Fetch a larger set to compute summary counts
   const { data: allRecent = [] } = useHevyWorkouts({ limit: 200 })
 
+  const { data: openTrainingTasks = [] } = useOpenTrainingSessionTasks()
+  // One open task per calendar day is the common case (RoutinesTab plans a
+  // single session at a time) — first match is good enough for a suggestion.
+  const taskByDueDate = useMemo(() => {
+    const map = new Map<string, (typeof openTrainingTasks)[number]>()
+    for (const t of openTrainingTasks) {
+      if (t.due_date && !map.has(t.due_date)) map.set(t.due_date, t)
+    }
+    return map
+  }, [openTrainingTasks])
+
   const { weekCount, monthCount, monthLabel } = useMemo(() => {
     const now = new Date()
     // Compare as Date objects (not ISO strings) so the boundary isn't skewed by
@@ -131,6 +144,7 @@ function WorkoutsSubTab() {
               key={workout.id}
               workout={workout}
               onClick={() => setSelectedWorkoutId(workout.id)}
+              matchedTask={workout.start_time ? taskByDueDate.get(formatLocalDate(new Date(workout.start_time))) : undefined}
             />
           ))}
         </div>

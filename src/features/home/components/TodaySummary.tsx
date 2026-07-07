@@ -7,7 +7,7 @@ import {
 import { useTasksForDay } from '../../todo/hooks/useTodos'
 import { useTimeBlocks, useTrainingBlocks } from '../../daily/hooks/useSchedule'
 import { fetchWeather, weatherIcon } from '../api/weatherApi'
-import { completedWithinLast24h } from '../../todo/taskRules'
+import { completedWithinLast24h, isOverdue } from '../../todo/taskRules'
 import { todayStr as sharedTodayStr } from '../../../shared/utils/dateUtils'
 
 const OSLO = { lat: 59.9139, lon: 10.7522 }
@@ -46,8 +46,9 @@ export function TodaySummary() {
 
   // Same 24h done-visibility rule as Daily/Home — stale completions drop out.
   const tasks = allTasks.filter(t => t.status !== 'done' || completedWithinLast24h(t.updated_at))
-  const open  = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
-  const done  = tasks.filter(t => t.status === 'done').length
+  const open    = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
+  const done    = tasks.filter(t => t.status === 'done').length
+  const overdue = tasks.filter(isOverdue).length
 
   const nowHHMM = format(new Date(), 'HH:mm')
   const nextBlock = blocks
@@ -106,12 +107,21 @@ export function TodaySummary() {
 
       {/* At-a-glance chips */}
       <div className="grid grid-cols-3 gap-2 mt-4">
-        <Link to="/daily" className="rounded-xl bg-ink-50 hover:bg-ink-100 transition-colors p-2.5 min-w-0">
+        <Link to="/daily" className={`relative rounded-xl transition-colors p-2.5 min-w-0 ${
+          overdue > 0 ? 'bg-red-50 hover:bg-red-100 ring-1 ring-red-200' : 'bg-ink-50 hover:bg-ink-100'
+        }`}>
+          {overdue > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+              {overdue}
+            </span>
+          )}
           <p className="text-[10px] uppercase tracking-wide text-ink-400 font-semibold">Tasks</p>
           <p className="text-sm font-bold text-ink-900 mt-0.5">
             {open} <span className="font-normal text-ink-400">open</span>
           </p>
-          <p className="text-[10px] text-ink-400">{done}/{tasks.length} done</p>
+          <p className={`text-[10px] ${overdue > 0 ? 'text-red-500 font-semibold' : 'text-ink-400'}`}>
+            {overdue > 0 ? `⚠ ${overdue} overdue` : `${done}/${tasks.length} done`}
+          </p>
         </Link>
 
         <Link to="/daily" className="rounded-xl bg-ink-50 hover:bg-ink-100 transition-colors p-2.5 min-w-0">

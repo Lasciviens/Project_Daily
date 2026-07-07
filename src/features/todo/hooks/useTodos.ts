@@ -6,6 +6,7 @@ import {
   fetchTasksByWeek,
   fetchTasksByMonth,
   fetchWorkTasks,
+  fetchOpenTrainingSessionTasks,
   createTask,
   updateTask,
   toggleTaskDone,
@@ -32,6 +33,14 @@ export function useTasksBySection(section: string) {
   return useQuery({
     queryKey: ['tasks', 'section', section],
     queryFn: () => fetchTasksBySection(section),
+    staleTime: 30_000,
+  })
+}
+
+export function useOpenTrainingSessionTasks() {
+  return useQuery({
+    queryKey: ['tasks', 'training-session-open'],
+    queryFn: fetchOpenTrainingSessionTasks,
     staleTime: 30_000,
   })
 }
