@@ -72,10 +72,20 @@ const CATEGORY_KEYWORDS: [string, string[]][] = [
   ['Vitals',           ['temperature']],
 ]
 
+// Health Auto Export sends Title Case, space-separated names (e.g. "Physical
+// Effort", "UV Exposure") but the keyword lists above were written with
+// underscores — a plain substring check against a space-separated name never
+// matched an underscored keyword, so most non-trivial metrics fell through to
+// "Other". Stripping every non-alphanumeric character from both sides before
+// comparing makes the match separator-agnostic.
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
 function categorize(metricName: string): string {
-  const n = metricName.toLowerCase()
+  const n = normalize(metricName)
   for (const [category, keywords] of CATEGORY_KEYWORDS) {
-    if (keywords.some(k => n.includes(k))) return category
+    if (keywords.some(k => n.includes(normalize(k)))) return category
   }
   return 'Other'
 }
@@ -98,13 +108,18 @@ const CATEGORY_COLORS: Record<string, string> = {
 // Metric value shape varies wildly (qty vs Min/Avg/Max vs multi-field sleep
 // vs systolic/diastolic, etc.) — rather than a per-metric switch, show every
 // field the point actually has (minus the columns already shown separately).
+function formatScalar(v: unknown): string {
+  if (v === null || v === undefined) return '—'
+  if (typeof v === 'number') return String(Math.round(v * 100) / 100)
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+
 function formatMetricValue(value: Record<string, unknown>): string {
   const { date: _date, source: _source, ...rest } = value
   const entries = Object.entries(rest)
   if (entries.length === 0) return '—'
-  return entries
-    .map(([k, v]) => `${k}: ${typeof v === 'number' ? Math.round(v * 100) / 100 : v}`)
-    .join(' · ')
+  return entries.map(([k, v]) => `${k}: ${formatScalar(v)}`).join(' · ')
 }
 
 type DayFilter = 'today' | 'yesterday' | '7' | '30' | '90' | 'all'
@@ -322,7 +337,9 @@ export function HealthTab() {
                     </td>
                     <td className="px-3 py-2 text-ink-800 font-medium whitespace-nowrap">{m.metric_name}</td>
                     <td className="px-3 py-2 text-ink-500 whitespace-nowrap max-w-[160px] truncate">{m.source || '—'}</td>
-                    <td className="px-3 py-2 text-ink-700">{formatMetricValue(m.value)}</td>
+                    <td className="px-3 py-2 text-ink-700">
+                      {formatMetricValue(m.value)}{m.unit ? <span className="text-ink-400"> {m.unit}</span> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>

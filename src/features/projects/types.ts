@@ -10,6 +10,7 @@ export interface Project {
   user_id:     string
   name:        string
   description: string | null
+  notes:       string | null
   status:      ProjectStatus
   color:       ProjectColor
   sort_order:  number
@@ -47,6 +48,7 @@ export interface ProjectItem {
 export interface CreateProjectInput {
   name:         string
   description?: string | null
+  notes?:       string | null
   color?:       ProjectColor
   status?:      ProjectStatus
 }
