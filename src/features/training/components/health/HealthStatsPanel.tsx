@@ -106,14 +106,27 @@ function HeartStats() {
   const { data: restingPoints = [] } = useHealthMetricSeries('resting_heart_rate', daysAgoStr(13), todayStr())
   const ranges = computeHeartRateDailySeries(hrPoints)
   const restingSeries = computeDailySeries('resting_heart_rate', restingPoints)
-  const restingCurrent = splitWeeks(restingSeries).current
-  const restingPrevious = splitWeeks(restingSeries).previous
+  const { current: restingCurrent, previous: restingPrevious } = splitWeeks(restingSeries)
   const curAvgResting = avg(restingCurrent), prevAvgResting = avg(restingPrevious)
   const overallMin = ranges.length ? Math.min(...ranges.map(r => r.min)) : null
   const overallMax = ranges.length ? Math.max(...ranges.map(r => r.max)) : null
 
+  // "Today's average" — today's own avg-of-avgs across the day's windows.
+  const todayAvg = ranges.find(r => r.date === todayStr())?.avg ?? null
+
+  // "This week's intraday average" — mean of each of the last 7 days' own
+  // daily average (not a single flat number across all raw points, so a
+  // handful of very active/very quiet windows on one day don't skew it).
+  const avgSeries = ranges.map(r => ({ date: r.date, value: r.avg }))
+  const { current: weekAvgs, previous: prevWeekAvgs } = splitWeeks(avgSeries)
+  const weekAvg = avg(weekAvgs)
+  const prevWeekAvg = avg(prevWeekAvgs)
+
   return (
     <Panel title="Heart analysis">
+      <StatRow label="Today's average" value={todayAvg != null ? `${Math.round(todayAvg)} bpm` : '—'} />
+      <StatRow label="Week avg (intraday)" value={weekAvg != null ? `${Math.round(weekAvg)} bpm` : '—'}
+        trend={<TrendBadge pct={trendPct(weekAvg, prevWeekAvg)} goodDirection="down" />} />
       <StatRow label="Avg resting HR" value={curAvgResting != null ? `${Math.round(curAvgResting)} bpm` : '—'}
         trend={<TrendBadge pct={trendPct(curAvgResting, prevAvgResting)} goodDirection="down" />} />
       {overallMin != null && overallMax != null && (
