@@ -1,13 +1,6 @@
 import { useState } from 'react'
 import { useHevyPRs } from '../hooks/useHevyPRs'
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
-}
+import { fmtTrainingDate as formatDate } from '../dateFormat'
 
 export function HevyPRList() {
   const { data: prs, isLoading } = useHevyPRs()

@@ -105,8 +105,8 @@ export function CommandBar() {
   }, [isOpen, openBar, closeBar])
 
   // Task queries — enabled only when bar is open
-  const todayTasks = useTasksBySection('today')
-  const inboxTasks = useTasksBySection('inbox')
+  const todayTasks = useTasksBySection('today', isOpen)
+  const inboxTasks = useTasksBySection('inbox', isOpen)
 
   const allTasks: Task[] = useMemo(() => {
     const today = todayTasks.data ?? []

@@ -1,29 +1,14 @@
-import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { supabase } from './supabaseClient'
+import { useAuth } from '../shared/hooks/useAuth'
 
 interface Props {
   children: React.ReactNode
 }
 
 export function SessionGuard({ children }: Props) {
-  const [checking, setChecking] = useState(true)
-  const [authenticated, setAuthenticated] = useState(false)
+  const { session, loading } = useAuth()
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthenticated(!!session)
-      setChecking(false)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthenticated(!!session)
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  if (checking) {
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-cream-100">
         <div className="w-8 h-8 border-2 border-accent-500 border-t-transparent rounded-full animate-spin" />
@@ -31,7 +16,7 @@ export function SessionGuard({ children }: Props) {
     )
   }
 
-  if (!authenticated) return <Navigate to="/login" replace />
+  if (!session) return <Navigate to="/login" replace />
 
   return <>{children}</>
 }

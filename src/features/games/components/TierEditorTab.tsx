@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useAllGames, useUpdateGame } from '../../home/hooks/useGames'
 import { toast } from '../../../app/store'
+import { TIER_COLOR as TIER_BADGE } from '../gamesMeta'
 import type { Game } from '../../home/api/gamesApi'
 
 const TIER_ROWS: { tier: string | null; label: string; bg: string; text: string; bar: string }[] = [
@@ -13,12 +14,6 @@ const TIER_ROWS: { tier: string | null; label: string; bg: string; text: string;
   { tier: 'F', label: 'F', bg: 'bg-red-50',     text: 'text-red-900',    bar: 'bg-red-400'    },
   { tier: null, label: '—', bg: 'bg-white',     text: 'text-ink-400',    bar: 'bg-ink-200'    },
 ]
-
-const TIER_BADGE: Record<string, string> = {
-  S: 'bg-yellow-400 text-yellow-900', A: 'bg-orange-400 text-white',
-  B: 'bg-green-500 text-white',       C: 'bg-blue-400 text-white',
-  D: 'bg-ink-400 text-white',         F: 'bg-red-500 text-white',
-}
 
 // Small game cover with click-to-edit
 function TierCard({ game, onPickTier }: { game: Game; onPickTier: (game: Game) => void }) {

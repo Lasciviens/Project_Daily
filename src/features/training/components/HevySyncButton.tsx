@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../../integrations/supabase/client'
 import { useInitialHevySync } from '../hooks/useHevyPRs'
 import { useIncrementalHevySync } from '../hooks/useHevyWorkouts'
+import { formatTrainingTime } from '../dateFormat'
 
 function useLastSyncTime() {
   return useQuery({
@@ -21,11 +22,12 @@ function useLastSyncTime() {
   })
 }
 
+// Deliberately numeric DD/MM/YYYY (not the "12 Aug 2024" style used
+// elsewhere in Training) — this is a compact "last synced" timestamp.
 function formatSyncTime(iso: string): string {
   const d = new Date(iso)
   const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-  return `${date} at ${time}`
+  return `${date} at ${formatTrainingTime(d)}`
 }
 
 interface HevySyncButtonProps {

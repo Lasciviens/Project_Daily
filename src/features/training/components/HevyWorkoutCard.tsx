@@ -1,4 +1,5 @@
 import { formatDurationBetween as fmtDuration } from '../../../shared/utils/formatDuration'
+import { fmtTrainingDate as fmtDate, fmtTrainingTime as fmtTime } from '../dateFormat'
 import { useDeleteTask } from '../../todo/hooks/useTodos'
 import type { HevyWorkout } from '../types.hevy'
 import type { Task } from '../../todo/types'
@@ -10,16 +11,6 @@ interface Props {
    *  routine-id match couldn't auto-close one (freeform workout, or routine
    *  mismatch) — offers a manual "close it" fallback instead. */
   matchedTask?: Task
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function fmtTime(iso: string | null): string {
-  if (!iso) return ''
-  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
 function getDayAccent(iso: string | null): string {

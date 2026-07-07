@@ -3,24 +3,8 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useGameDetail, useAddToQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast }         from '../../../app/store'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { STATUS_COLOR, STATUS_LABEL, TIER_COLOR } from '../gamesMeta'
 import type { PlatformDetail, GamePatch } from '../../home/api/gamesApi'
-
-const STATUS_COLOR: Record<string, string> = {
-  playing:   'bg-orange-100 text-orange-700',
-  completed: 'bg-green-100 text-green-700',
-  wishlist:  'bg-purple-100 text-purple-700',
-  backlog:   'bg-ink-100 text-ink-500',
-  dropped:   'bg-red-100 text-red-600',
-}
-const STATUS_LABEL: Record<string, string> = {
-  playing: 'Playing', completed: 'Completed', wishlist: 'Wishlist',
-  backlog: 'Backlog', dropped: 'Dropped',
-}
-const TIER_COLOR: Record<string, string> = {
-  S: 'bg-yellow-400 text-yellow-900', A: 'bg-orange-400 text-white',
-  B: 'bg-green-500 text-white',       C: 'bg-blue-400 text-white',
-  D: 'bg-ink-400 text-white',         F: 'bg-red-500 text-white',
-}
 const PERF_COLOR: Record<string, string> = {
   great:      'bg-green-100 text-green-700 border-green-200',
   perfect:    'bg-green-100 text-green-700 border-green-200',

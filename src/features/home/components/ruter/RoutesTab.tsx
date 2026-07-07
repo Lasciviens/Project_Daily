@@ -16,6 +16,40 @@ interface RoutesTabProps {
   now: number
 }
 
+// Inline "name this route" form — appears both under the draft planner and
+// under a search result; was duplicated identically in both spots.
+function SaveRouteForm({
+  label, onLabelChange, onSave, onCancel, saving, placeholder, heading,
+}: {
+  label:         string
+  onLabelChange: (v: string) => void
+  onSave:        () => void
+  onCancel:      () => void
+  saving:        boolean
+  placeholder:   string
+  heading?:      string
+}) {
+  return (
+    <div className="space-y-2">
+      {heading && <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">{heading}</p>}
+      <div className="flex items-center gap-2">
+        <input
+          value={label} onChange={e => onLabelChange(e.target.value)}
+          placeholder={placeholder} autoFocus
+          onKeyDown={e => e.key === 'Enter' && onSave()}
+          className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+        />
+        <button onClick={onSave} disabled={!label.trim() || saving}
+          className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]">
+          {saving ? '…' : 'Save'}
+        </button>
+        <button onClick={onCancel}
+          className="text-ink-400 hover:text-ink-600 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
+      </div>
+    </div>
+  )
+}
+
 type LocationState = 'idle' | 'loading' | 'granted' | 'denied' | 'error'
 type WhenPreset    = 'now' | '+15' | '+30' | '+1h' | 'arriveBy' | 'custom'
 type TripMode      = 'departAt' | 'arriveBy'
@@ -559,23 +593,11 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             </button>
           )}
           {draftCanSave && !draftAlreadySaved && showSaveForm && (
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Name this route</p>
-              <div className="flex items-center gap-2">
-                <input
-                  value={saveLabel} onChange={e => setSaveLabel(e.target.value)}
-                  placeholder="e.g. İşten eve" autoFocus
-                  onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
-                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
-                />
-                <button onClick={handleSaveRoute} disabled={!saveLabel.trim() || saving}
-                  className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]">
-                  {saving ? '…' : 'Save'}
-                </button>
-                <button onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
-                  className="text-ink-400 hover:text-ink-600 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
-              </div>
-            </div>
+            <SaveRouteForm
+              label={saveLabel} onLabelChange={setSaveLabel}
+              onSave={handleSaveRoute} onCancel={() => { setShowSaveForm(false); setSaveLabel('') }}
+              saving={saving} placeholder="e.g. İşten eve" heading="Name this route"
+            />
           )}
           {saveMsg && !showSaveForm && (
             <p className={`text-xs ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>{saveMsg}</p>
@@ -613,17 +635,11 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
           )}
 
           {canSave && !alreadySaved && showSaveForm && (
-            <div className="flex items-center gap-2">
-              <input value={saveLabel} onChange={e => setSaveLabel(e.target.value)}
-                placeholder="Name this route…" autoFocus onKeyDown={e => e.key === 'Enter' && handleSaveRoute()}
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]" />
-              <button onClick={handleSaveRoute} disabled={!saveLabel.trim() || saving}
-                className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]">
-                {saving ? '…' : 'Save'}
-              </button>
-              <button onClick={() => { setShowSaveForm(false); setSaveLabel('') }}
-                className="text-ink-400 hover:text-ink-600 min-w-[44px] min-h-[44px] flex items-center justify-center">✕</button>
-            </div>
+            <SaveRouteForm
+              label={saveLabel} onLabelChange={setSaveLabel}
+              onSave={handleSaveRoute} onCancel={() => { setShowSaveForm(false); setSaveLabel('') }}
+              saving={saving} placeholder="Name this route…"
+            />
           )}
           {saveMsg && <p className={`text-xs ${saveMsg.startsWith('Failed') ? 'text-red-500' : 'text-green-600'}`}>{saveMsg}</p>}
 

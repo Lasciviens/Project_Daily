@@ -24,6 +24,16 @@ function useValidToken(): string | null {
   return accessToken
 }
 
+// Query-time fallback: if the token expired between render and the query
+// actually firing, refresh it inline and persist the fresh one to the store.
+// Was duplicated identically across 3 query hooks below.
+async function ensureToken(token: string | null, setAccessToken: (t: string, e: number) => void): Promise<string> {
+  if (token) return token
+  const fresh = await refreshCalendarToken(supabase)
+  setAccessToken(fresh.access_token, fresh.expires_in)
+  return fresh.access_token
+}
+
 // Silently restore or refresh the calendar access token.
 // • On mount with no token: calls calendar-token edge function to get a fresh
 //   access_token using the stored refresh_token (if the user has ever connected).
@@ -75,16 +85,7 @@ export function useCalendarEventsForDay(dateStr: string) {
 
   return useQuery({
     queryKey: ['calendar', 'day', dateStr],
-    queryFn:  async () => {
-      // Inline refresh if token expired by the time the query fires
-      let activeToken = token
-      if (!activeToken) {
-        const fresh = await refreshCalendarToken(supabase)
-        setAccessToken(fresh.access_token, fresh.expires_in)
-        activeToken = fresh.access_token
-      }
-      return fetchEventsForDay(activeToken, dateStr)
-    },
+    queryFn:  async () => fetchEventsForDay(await ensureToken(token, setAccessToken), dateStr),
     enabled:   !!token,
     staleTime: 5 * 60_000,
     retry:     false,
@@ -97,15 +98,7 @@ export function useCalendarEventsForRange(timeMin: string, timeMax: string) {
 
   return useQuery({
     queryKey: ['calendar', 'range', timeMin, timeMax],
-    queryFn:  async () => {
-      let activeToken = token
-      if (!activeToken) {
-        const fresh = await refreshCalendarToken(supabase)
-        setAccessToken(fresh.access_token, fresh.expires_in)
-        activeToken = fresh.access_token
-      }
-      return fetchEventsForRange(activeToken, timeMin, timeMax)
-    },
+    queryFn:  async () => fetchEventsForRange(await ensureToken(token, setAccessToken), timeMin, timeMax),
     enabled:   !!token,
     staleTime: 5 * 60_000,
     retry:     false,
@@ -175,12 +168,7 @@ export function useCalendarEventDatesForRange(startDate: Date, endDate: Date) {
   return useQuery({
     queryKey: ['calendar', 'dates', startStr, endStr, calIds.join(',')],
     queryFn:  async () => {
-      let activeToken = token
-      if (!activeToken) {
-        const fresh = await refreshCalendarToken(supabase)
-        setAccessToken(fresh.access_token, fresh.expires_in)
-        activeToken = fresh.access_token
-      }
+      const activeToken = await ensureToken(token, setAccessToken)
       const timeMin = new Date(startStr + 'T00:00:00').toISOString()
       const timeMax = new Date(endStr   + 'T23:59:59').toISOString()
 

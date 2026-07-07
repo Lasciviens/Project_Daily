@@ -2,7 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type { RecipeWithIngredients, RecipeInput, RecipeIngredient, IngredientLibraryItem } from '../types'
 
-const WEIGHT_UNITS = new Set(['g', 'gram', 'grams', 'ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'])
+export const WEIGHT_UNITS = new Set(['g', 'gram', 'grams', 'ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'])
 
 export interface ComputedMacros {
   calories:  number | null
@@ -15,22 +15,19 @@ export interface ComputedMacros {
   skippedCount: number
 }
 
-// Sums each linked ingredient's per-100g macros × quantity/100, divided by
-// servings. Library macros are always "per 100g" — see migration 033 — so an
-// ingredient only contributes when its unit is a weight/volume unit we treat
-// as equivalent to grams (ml ≈ g for this purpose); anything else is skipped.
-export async function computeMacrosFromIngredients(
-  ingredients: RecipeInput['ingredients'],
-  servings: number,
-): Promise<ComputedMacros> {
-  const linkedIds = [...new Set(ingredients.map(i => i.library_ingredient_id).filter((id): id is string => !!id))]
-  const libraryMap = new Map<string, IngredientLibraryItem>()
-  if (linkedIds.length) {
-    const { data, error } = await supabase.from('recipe_ingredient_library').select('*').in('id', linkedIds)
-    if (error) throw error
-    for (const row of data ?? []) libraryMap.set(row.id, row)
-  }
+interface MacroTotals { calories: number; protein_g: number; carbs_g: number; fat_g: number; sugar_g: number }
+interface MacroSource { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null }
 
+// Sums each linked ingredient's per-100g macros × quantity/100. Library
+// macros are always "per 100g" — see migration 033 — so an ingredient only
+// contributes when its unit is a weight/volume unit we treat as equivalent to
+// grams (ml ≈ g for this purpose); anything else is skipped. Shared by the
+// authoritative save-time computation below and RecipeModal's live preview
+// (which passes an already-loaded library map instead of fetching one).
+export function sumMacros(
+  ingredients: Array<{ library_ingredient_id: string | null; unit: string | null; quantity: number | null }>,
+  libraryMap: Map<string, MacroSource>,
+): { contributed: boolean; skippedCount: number; totals: MacroTotals } {
   const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sugar_g: 0 }
   let contributed = false
   let skippedCount = 0
@@ -49,6 +46,22 @@ export async function computeMacrosFromIngredients(
     contributed = true
   }
 
+  return { contributed, skippedCount, totals }
+}
+
+export async function computeMacrosFromIngredients(
+  ingredients: RecipeInput['ingredients'],
+  servings: number,
+): Promise<ComputedMacros> {
+  const linkedIds = [...new Set(ingredients.map(i => i.library_ingredient_id).filter((id): id is string => !!id))]
+  const libraryMap = new Map<string, IngredientLibraryItem>()
+  if (linkedIds.length) {
+    const { data, error } = await supabase.from('recipe_ingredient_library').select('*').in('id', linkedIds)
+    if (error) throw error
+    for (const row of data ?? []) libraryMap.set(row.id, row)
+  }
+
+  const { contributed, skippedCount, totals } = sumMacros(ingredients, libraryMap)
   const perServing = (v: number) => Math.round((v / Math.max(1, servings)) * 10) / 10
   return contributed
     ? {
