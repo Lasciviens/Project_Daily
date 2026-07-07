@@ -8,6 +8,7 @@ import { EnergySection } from './health/EnergySection'
 import { HeartSection } from './health/HeartSection'
 import { SleepSection } from './health/SleepSection'
 import { BodySection } from './health/BodySection'
+import { SECTIONS, type SectionId } from './health/sectionTypes'
 import type { HealthWorkout } from '../api/healthApi'
 
 // Apple Health-inspired browse view: activity rings + dedicated sections per
@@ -56,26 +57,38 @@ function HealthWorkoutRow({ workout }: { workout: HealthWorkout }) {
 }
 
 function WorkoutsList() {
+  const [expanded, setExpanded] = useState(false)
   const { data: workouts = [], isLoading } = useHealthWorkouts({ limit: 20 })
   return (
-    <div>
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 mb-2">
-        🏃 Health Workouts (Apple Health / Huawei)
-      </p>
-      {isLoading ? (
-        <div className="space-y-1.5">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-[60px] rounded-xl bg-cream-200 animate-pulse" />
-          ))}
-        </div>
-      ) : workouts.length === 0 ? (
-        <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
-          <p className="text-2xl mb-2">📱</p>
-          <p className="text-ink-600 font-medium text-sm">No workouts synced yet</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {workouts.map(w => <HealthWorkoutRow key={w.id} workout={w} />)}
+    <div className="bg-white border border-ink-200 rounded-2xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-4 min-h-[44px] py-2"
+      >
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">
+          🏃 Health Workouts (Apple Health / Huawei) {workouts.length > 0 && `· ${workouts.length}`}
+        </p>
+        <span className="text-ink-400 text-xs">{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded && (
+        <div className="px-4 pb-4">
+          {isLoading ? (
+            <div className="space-y-1.5">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-[60px] rounded-xl bg-cream-200 animate-pulse" />
+              ))}
+            </div>
+          ) : workouts.length === 0 ? (
+            <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
+              <p className="text-2xl mb-2">📱</p>
+              <p className="text-ink-600 font-medium text-sm">No workouts synced yet</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {workouts.map(w => <HealthWorkoutRow key={w.id} workout={w} />)}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -84,18 +97,48 @@ function WorkoutsList() {
 
 // ─── Generic "All Data" table ───────────────────────────────────────────────
 
-function formatScalar(v: unknown): string {
-  if (v === null || v === undefined) return '—'
-  if (typeof v === 'number') return String(Math.round(v * 100) / 100)
-  if (typeof v === 'object') return JSON.stringify(v)
-  return String(v)
+// Metric value shape varies wildly (qty vs Min/Avg/Max vs multi-field sleep
+// vs raw sleep-segment). Dumping every raw field (including timestamps like
+// start/end/context) reads as noise to a human — pick the 1-2 numbers that
+// actually answer "what was the value" and format them plainly, with the
+// metric's own unit appended once at the end.
+function fmtNum(n: number): string {
+  return String(Math.round(n * 100) / 100)
 }
 
-function formatMetricValue(value: Record<string, unknown>): string {
-  const { date: _date, source: _source, ...rest } = value
-  const entries = Object.entries(rest)
+function formatMetricValue(value: Record<string, unknown>, unit: string | null): string {
+  const u = unit ? ` ${unit}` : ''
+
+  // Pre-aggregated sleep (Summarize on): one point/day with stage breakdown.
+  if (typeof value.totalSleep === 'number') {
+    const core = typeof value.core === 'number' ? value.core : 0
+    const rem  = typeof value.rem  === 'number' ? value.rem  : 0
+    const deep = typeof value.deep === 'number' ? value.deep : 0
+    return `total ${fmtNum(value.totalSleep)}${u} · core ${fmtNum(core)}${u} · rem ${fmtNum(rem)}${u} · deep ${fmtNum(deep)}${u}`
+  }
+
+  // Raw sleep segment (Summarize off): a stage label + its duration.
+  if (typeof value.value === 'string' && typeof value.qty === 'number') {
+    return `${value.value}: ${fmtNum(value.qty)}${u}`
+  }
+
+  // Min/Avg/Max-shaped points (heart_rate).
+  if (typeof value.Avg === 'number' || typeof value.Min === 'number' || typeof value.Max === 'number') {
+    const avg = typeof value.Avg === 'number' ? `avg ${fmtNum(value.Avg)}${u}` : null
+    const range = typeof value.Min === 'number' && typeof value.Max === 'number'
+      ? ` (${fmtNum(value.Min)}–${fmtNum(value.Max)}${u})` : ''
+    return (avg ?? '—') + range
+  }
+
+  // Plain quantity — the common case (steps, energy, distance, weight, etc.).
+  if (typeof value.qty === 'number') return `${fmtNum(value.qty)}${u}`
+
+  // Unrecognized shape — fall back to showing whatever fields aren't pure
+  // metadata (timestamps/context), rather than silently showing nothing.
+  const METADATA_KEYS = new Set(['date', 'source', 'start', 'end', 'startDate', 'endDate', 'inBedStart', 'inBedEnd', 'context'])
+  const entries = Object.entries(value).filter(([k]) => !METADATA_KEYS.has(k))
   if (entries.length === 0) return '—'
-  return entries.map(([k, v]) => `${k}: ${formatScalar(v)}`).join(' · ')
+  return entries.map(([k, v]) => `${k}: ${typeof v === 'number' ? fmtNum(v) : typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ')
 }
 
 type DayFilter = 'today' | 'yesterday' | '7' | '30' | '90' | 'all'
@@ -285,9 +328,7 @@ function AllDataTable() {
                   </td>
                   <td className="px-3 py-2 text-ink-800 font-medium whitespace-nowrap">{m.metric_name}</td>
                   <td className="px-3 py-2 text-ink-500 whitespace-nowrap max-w-[160px] truncate">{m.source || '—'}</td>
-                  <td className="px-3 py-2 text-ink-700">
-                    {formatMetricValue(m.value)}{m.unit ? <span className="text-ink-400"> {m.unit}</span> : null}
-                  </td>
+                  <td className="px-3 py-2 text-ink-700">{formatMetricValue(m.value, m.unit)}</td>
                 </tr>
               ))}
             </tbody>
@@ -301,20 +342,18 @@ function AllDataTable() {
 
 // ─── Section navigation ─────────────────────────────────────────────────────
 
-type SectionId = 'overview' | 'steps' | 'energy' | 'heart' | 'sleep' | 'body' | 'all'
+interface Props {
+  // Controlled by TrainingPage so the right-rail stats panel can show
+  // analysis for whichever Health section is active — the training calendar
+  // isn't relevant here, so that space is reclaimed for per-section stats.
+  section?: SectionId
+  onSectionChange?: (s: SectionId) => void
+}
 
-const SECTIONS: { id: SectionId; label: string; icon: string }[] = [
-  { id: 'overview', label: 'Overview', icon: '⭕' },
-  { id: 'steps',    label: 'Steps',    icon: '🚶' },
-  { id: 'energy',   label: 'Energy',   icon: '🔥' },
-  { id: 'heart',    label: 'Heart',    icon: '❤️' },
-  { id: 'sleep',    label: 'Sleep',    icon: '😴' },
-  { id: 'body',     label: 'Body',     icon: '⚖️' },
-  { id: 'all',      label: 'All Data', icon: '📊' },
-]
-
-export function HealthTab() {
-  const [section, setSection] = useState<SectionId>('overview')
+export function HealthTab({ section: controlledSection, onSectionChange }: Props = {}) {
+  const [localSection, setLocalSection] = useState<SectionId>('overview')
+  const section = controlledSection ?? localSection
+  const setSection = onSectionChange ?? setLocalSection
 
   return (
     <div className="flex flex-col gap-4">

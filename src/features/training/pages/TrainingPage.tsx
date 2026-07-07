@@ -5,6 +5,8 @@ import { HealthTab } from '../components/HealthTab'
 import { HevySyncButton } from '../components/HevySyncButton'
 import { TrainingCalendar } from '../components/TrainingCalendar'
 import { NextSessionBanner } from '../components/NextSessionBanner'
+import { HealthStatsPanel } from '../components/health/HealthStatsPanel'
+import type { SectionId } from '../components/health/sectionTypes'
 
 type Tab = 'hevy' | 'strava' | 'health'
 
@@ -16,6 +18,7 @@ const HEADER_BG =
 
 export function TrainingPage() {
   const [tab, setTab] = useState<Tab>('hevy')
+  const [healthSection, setHealthSection] = useState<SectionId>('overview')
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
@@ -59,12 +62,15 @@ export function TrainingPage() {
           <NextSessionBanner />
           {tab === 'hevy'   && <HevyTab />}
           {tab === 'strava' && <StravaTab />}
-          {tab === 'health' && <HealthTab />}
+          {tab === 'health' && <HealthTab section={healthSection} onSectionChange={setHealthSection} />}
         </div>
 
-        {/* Calendar — independent of the active tab, always present on the right */}
+        {/* Hevy/Strava: training calendar, always relevant. Health: the
+            calendar isn't useful here, so this space becomes a short
+            (non-AI, plain computed) stats/analysis panel for whichever
+            Health section is active instead. */}
         <div className="w-full lg:w-[440px] lg:flex-shrink-0">
-          <TrainingCalendar />
+          {tab === 'health' ? <HealthStatsPanel section={healthSection} /> : <TrainingCalendar />}
         </div>
       </div>
     </div>
