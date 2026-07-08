@@ -49,7 +49,8 @@ UI primitives: `@headlessui/react` v2 (Dialog, Combobox, Popover, Menu). No anim
 ## Routes
 
 ```
-/#/login      → LoginPage (public)
+/#/login          → LoginPage (public)
+/#/reset-password → ResetPasswordPage (public — only reachable via Supabase's password-recovery email link, or the "Forgot password?" link on LoginPage)
 /#/home       → HomePage
 /#/daily      → DailyPage   (nav: "Personal" — Work-style tab bar via PersonalLayout, default tab)
 /#/shop       → ShopPage    (nav: "Personal" tab bar, same routes as before)
@@ -64,7 +65,19 @@ UI primitives: `@headlessui/react` v2 (Dialog, Combobox, Popover, Menu). No anim
 
 (No `/football` route — Football is deferred; see Features.)
 
-Protected by `SessionGuard` in `src/app/router.tsx`.
+Everything except `/login` and `/reset-password` is protected by `SessionGuard` in `src/app/router.tsx`.
+
+**Password reset (real bug, fixed):** the app had no recovery flow at all — Supabase's reset email
+redirected back to the app with a recovery token, but nothing read it or showed an "set new
+password" form, so the link silently did nothing (a very common gap — see the GitHub issues on
+`gotrue-js`/`auth-js` about apps not handling the `PASSWORD_RECOVERY` event). Fixed: `LoginPage`
+has a "Forgot password?" link → `requestPasswordReset()` (`security/supabaseClient.ts`) calls
+`supabase.auth.resetPasswordForEmail(email, { redirectTo })` with `redirectTo` pointing at
+`#/reset-password`; `ResetPasswordPage` listens for the `PASSWORD_RECOVERY` auth event (plus a
+session-check fallback in case the event fires before the listener attaches) and shows a new-password
+form on success. **Requires a one-time manual step**: the redirect URL (both the GitHub Pages URL and
+`http://localhost:5173/#/reset-password` for local dev) must be added to Supabase Dashboard →
+Authentication → URL Configuration → Redirect URLs, or Supabase silently refuses to send the token.
 
 ---
 
