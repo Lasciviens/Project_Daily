@@ -34,6 +34,7 @@ export function BarLineChart({
           <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
           <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
           <Tooltip
+            cursor={false}
             formatter={(v, name) => Array.isArray(v)
               ? [`${v[0]}–${v[1]} ${unit}`, name]
               : [`${v} ${unit}`, name]}

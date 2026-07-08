@@ -1,4 +1,4 @@
-export type SectionId = 'overview' | 'steps' | 'energy' | 'heart' | 'sleep' | 'body' | 'all'
+export type SectionId = 'overview' | 'steps' | 'energy' | 'heart' | 'sleep' | 'body'
 
 export const SECTIONS: { id: SectionId; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: '⭕' },
@@ -7,5 +7,4 @@ export const SECTIONS: { id: SectionId; label: string; icon: string }[] = [
   { id: 'heart',    label: 'Heart',    icon: '❤️' },
   { id: 'sleep',    label: 'Sleep',    icon: '😴' },
   { id: 'body',     label: 'Body',     icon: '⚖️' },
-  { id: 'all',      label: 'All Data', icon: '📊' },
 ]
