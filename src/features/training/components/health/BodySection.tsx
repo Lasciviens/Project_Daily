@@ -2,6 +2,8 @@ import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries } from '../../healthAggregate'
 import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
 import { BarLineChart } from './BarLineChart'
+import { MetricMiniGrid } from './MetricMiniGrid'
+import { BODY_EXTRA_METRICS } from './miniMetrics'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -58,6 +60,8 @@ export function BodySection() {
         <BodyMiniChart title="Body Fat" icon="📏" unit="%" color="#f59e0b" series={fat} decimals={1} />
         <BodyMiniChart title="BMI" icon="📐" unit="" color="#0ea5e9" series={bmi} decimals={1} />
       </div>
+
+      <MetricMiniGrid title="Lifestyle & Environment" metrics={BODY_EXTRA_METRICS} />
     </div>
   )
 }

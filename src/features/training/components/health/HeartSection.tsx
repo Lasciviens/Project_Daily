@@ -6,6 +6,8 @@ import { PeriodToggle, type Period } from './PeriodToggle'
 import { BarLineChart } from './BarLineChart'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
+import { MetricMiniGrid } from './MetricMiniGrid'
+import { HEART_EXTRA_METRICS } from './miniMetrics'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -81,6 +83,8 @@ export function HeartSection() {
         height={160}
         xInterval={period === 'day' ? 3 : period === 'month' ? 3 : 0}
       />
+
+      <MetricMiniGrid title="Cardio Extras" metrics={HEART_EXTRA_METRICS} />
     </div>
   )
 }

@@ -5,6 +5,8 @@ import { computeSleepSummary } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
+import { MetricMiniGrid } from './MetricMiniGrid'
+import { SLEEP_EXTRA_METRICS } from './miniMetrics'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -104,6 +106,8 @@ export function SleepSection() {
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      <MetricMiniGrid title="Sleep Extras" metrics={SLEEP_EXTRA_METRICS} />
     </div>
   )
 }
