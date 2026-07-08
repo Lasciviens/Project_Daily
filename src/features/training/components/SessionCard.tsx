@@ -78,7 +78,7 @@ export function SessionCard({ session, compact }: Props) {
               ✎
             </button>
             <button
-              onClick={() => del.mutate(session.id)}
+              onClick={() => { if (confirm('Delete this session?')) del.mutate(session.id) }}
               disabled={del.isPending}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
             >

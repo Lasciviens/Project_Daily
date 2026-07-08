@@ -1,5 +1,16 @@
 # Data Model
 
+> ⚠️ **Stale / partial.** This file only documents a handful of early tables and
+> has not been kept in sync with `supabase/migrations/` (currently 40+
+> migrations covering dozens of tables — recipes, shop, projects, hevy_*,
+> health_*, and more). Do not treat this as a complete schema reference.
+> For the current, actively-maintained schema:
+> - `supabase/migrations/*.sql` — the actual source of truth, one file per change.
+> - `supabase/functions/ai-proxy/index.ts`'s `DB_CATALOG` — a curated table-by-table
+>   reference (columns, enums, access rules) kept up to date because the AI
+>   assistant depends on it being correct.
+> - `CLAUDE.md`'s per-feature "DB:" bullets — high-level table names and purpose per feature.
+
 All tables require RLS enabled and a `user_id` column. See `supabase/migrations/` for SQL.
 
 ---
