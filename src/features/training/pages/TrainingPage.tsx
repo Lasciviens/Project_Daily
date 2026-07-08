@@ -58,7 +58,7 @@ export function TrainingPage() {
 
       {/* Content (left, sized) + calendar pinned to the right edge */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-        <div className="w-full lg:max-w-4xl min-w-0">
+        <div className={`w-full lg:max-w-4xl min-w-0 ${tab === 'health' ? '2xl:max-w-none 2xl:flex-1' : ''}`}>
           <NextSessionBanner />
           {tab === 'hevy'   && <HevyTab />}
           {tab === 'strava' && <StravaTab />}
