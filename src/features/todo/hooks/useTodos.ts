@@ -27,6 +27,7 @@ import {
 } from '../api/googleTasksApi'
 import { useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
 
 export function useTasksBySection(section: string, enabled = true) {
@@ -137,7 +138,8 @@ export function useToggleTask() {
 
 export function useSwapTaskOrder() {
   const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action:     'swap_task_order',
     mutationFn: ({ id1, id2 }: { id1: string; id2: string }) => swapTaskOrder(id1, id2),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['tasks'] }),
     onError:    () => qc.invalidateQueries({ queryKey: ['tasks'] }),

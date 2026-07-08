@@ -1,7 +1,13 @@
 # Lasci's Board — Master Project Guide
 
-> Read this before touching any code. Single source of truth.
+> Read this before touching any code. Single source of truth for product/feature state and coding rules.
 > Keep this file lean — no clutter, no outdated info, no verbose explanations. Every line must earn its place.
+
+**Doc map** — read in this order depending on what you're doing:
+- `README.md` (repo root) — human/AI-agnostic orientation: what this app is, tech overview, quick start. Start here if you've never seen this repo.
+- **`CLAUDE.md` (this file)** — the definitive guide for any coding agent (Claude or otherwise) before making a change: routes, features, coding rules, edge functions, key patterns.
+- `AGENTS.md` (repo root) — supplementary rules specific to database/schema/Supabase work (migrations, RLS, edge function conventions).
+- `docs/` — deep-dive reference docs (data model, architecture notes) linked from `docs/README.md`. Treat anything there as secondary to this file if the two ever disagree — this file is updated every session, `docs/` is not.
 
 ---
 
@@ -160,6 +166,7 @@ Verified against the app's own docs (`help.healthyapps.dev` + the Lybron/health-
 - Routes widget (Home): visual improvement pass + refresh button
 - Dark Mode: full dark/light toggle; apply `dark` class on `<html>`, define dark variants
 - AI update: `ai-proxy` system prompt needs updating to include Media features (episodes, rating, genres, upcoming)
+- 🔶 **Finish migrating mutations to `useMutationWithFeedback`**: see the "Known gap" note under Toast feedback above — `useTodos.ts`'s create/update/toggle/delete, `useSchedule.ts`'s create-time-block/create-schedule-block, and most of media/calendar/shop/work/recipes/training-programs' `useMutation` hooks still rely on call-site-level toasting (works today, but inconsistent and easy to regress). `useTransitRoutes`/`useTransitStops` are plain async functions, not mutations at all.
 
 ---
 
@@ -192,7 +199,44 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 ```
 
 ### Toast feedback — MANDATORY
-Every async action must show feedback. Pattern:
+Every async action must show feedback on completion. Toasts appear bottom-left.
+🟢 success · 🔴 error · 🟡 warning · ⚫ loading.
+
+**For any new TanStack Query mutation, use `useMutationWithFeedback`**
+(`src/shared/hooks/useMutationWithFeedback.ts`) instead of bare `useMutation`:
+```ts
+return useMutationWithFeedback({
+  action:         'delete_time_block',   // logError context — the only required extra field
+  successMessage: 'Deleted',             // optional — omit for silent-success on in-place edits
+  mutationFn:     (id: string) => deleteTimeBlock(id),
+  onSuccess:      () => qc.invalidateQueries({ queryKey: ['schedule'] }), // your own logic still runs
+})
+```
+This exists because "every async action must show feedback" was, in practice, hand-copied
+per call site — inconsistently applied and easy to forget (real bugs: the daily timeline's
+drag/postpone/rename/delete and the to-do list's toggle/delete/reorder had **zero** feedback
+on failure; two Developer-tab "clear logs" mutations toasted but never called `logError`,
+so a failure to clear the error log was invisible in the error log itself). `useMutationWithFeedback`
+bakes the guarantee into the mutation primitive itself — like a return-code check that can't
+be skipped — instead of relying on every call site to remember its own try/catch/toast:
+error is **always** toasted and logged to `app_error_logs`; success is silent by default
+(matching the existing "edits feel live" convention) unless `successMessage` is given.
+
+**Known gap (not fully migrated — do this incrementally when touching these files):**
+several mutation hooks are called from multiple components, some of which already wrap
+`mutateAsync` in their own complete `toast.loading/success/error` block (e.g. `useCreateTask`/
+`useUpdateTask`/`useToggleTask`/`useDeleteTask` in `useTodos.ts`, `useCreateTimeBlock`/
+`useCreateScheduleBlock` in `useSchedule.ts`) and some of which call `.mutate()` with no
+feedback at all. These were deliberately NOT switched to `useMutationWithFeedback` yet —
+doing so would double-toast the call sites that already handle it correctly. The real fix is
+to migrate the hook **and** simplify every call site to drop its local toast duplication in
+favor of the hook's guarantee — do this the next time one of these files is touched for
+another reason, rather than as a big-bang rewrite. `useTransitRoutes`/`useTransitStops`
+(`src/features/home/hooks/`) are plain async functions, not `useMutation` — same principle
+applies if they're ever converted.
+
+For genuinely one-off async actions that aren't a TanStack mutation at all (a button
+handler calling an API directly), the manual pattern is still fine:
 ```ts
 const tid = toast.loading('Saving…')
 try {
@@ -202,7 +246,6 @@ try {
   toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
 }
 ```
-Toasts appear bottom-left. 🟢 success · 🔴 error · 🟡 warning · ⚫ loading.
 
 ### Reference viewport sizes (design/testing baseline)
 Use these three when checking responsive behavior — get the current size in the browser console with `window.innerWidth + 'x' + window.innerHeight`:
@@ -299,4 +342,4 @@ Reference files: `src/shared/components/plan-modal/UnifiedPlanModal.tsx` (Dialog
 
 **`_shared/hevySync.ts`** — not a deployable function; a shared Deno module imported by all 4 Hevy functions above (`hevy-sync`/`hevy-initial-sync`/`hevy-incremental-sync`/`hevy-api`). Holds `upsertWorkoutToDb`/`upsertRoutineToDb` — the upsert-row→delete-exercises→re-insert-exercises+sets logic that used to be copy-pasted 4×. Also where a logged Hevy workout auto-closes its planned-session task: if `workout.routine_id` matches an open `tasks` row with `source_type='training_session'` (created by RoutinesTab's "Plan routine"), that task + its linked `time_blocks` row get deleted. **Deploy gotcha:** Supabase bundles each function's imports at deploy time — editing `_shared/hevySync.ts` alone changes nothing live; all 4 functions that import it must be redeployed for the change to take effect, even if their own `index.ts` is untouched.
 
-**DB Migrations:** Manuel olarak uygulanır — Supabase Dashboard > SQL Editor veya `supabase db push` (local CLI ile). GitHub Actions'ta otomatik çalışmıyor.
+**DB Migrations:** Applied manually — Supabase Dashboard > SQL Editor or `supabase db push` (local CLI). Does not run automatically in GitHub Actions.

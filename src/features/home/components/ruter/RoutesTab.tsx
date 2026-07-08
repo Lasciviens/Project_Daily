@@ -368,7 +368,8 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                              draftTo?.kind   === 'stop' && draftTo.id   === r.to_stop_id
               return (
                 <SavedRouteChip key={r.id} route={r} active={active}
-                  onSelect={() => applyPreset(r)} onDelete={() => removeRoute(r.id)} />
+                  onSelect={() => applyPreset(r)}
+                  onDelete={() => removeRoute(r.id).catch(e => toast.error((e as Error).message ?? 'Failed to delete route'))} />
               )
             })}
           </div>

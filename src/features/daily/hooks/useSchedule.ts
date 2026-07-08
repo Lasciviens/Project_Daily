@@ -9,6 +9,7 @@ import {
   updateTimeBlock,
   deleteTimeBlock,
 } from '../api/scheduleApi'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import type { CreateTimeBlockInput, CreateScheduleBlockInput } from '../types'
 
 export function useScheduleBlocks() {
@@ -19,6 +20,10 @@ export function useScheduleBlocks() {
   })
 }
 
+// NOT using useMutationWithFeedback here — its only consumer
+// (UnifiedPlanModal) already wraps this in its own complete
+// toast.loading/success/error flow around mutateAsync; adding the wrapper's
+// automatic error toast on top would double-toast the same failure.
 export function useCreateScheduleBlock() {
   const qc = useQueryClient()
   return useMutation({
@@ -29,7 +34,8 @@ export function useCreateScheduleBlock() {
 
 export function useDeleteScheduleBlock() {
   const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action:     'delete_schedule_block',
     mutationFn: (id: string) => deleteScheduleBlock(id),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['schedule', 'blocks'] }),
   })
@@ -60,6 +66,9 @@ function invalidateSchedule(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['calendar'] })
 }
 
+// NOT using useMutationWithFeedback here — both consumers (UnifiedPlanModal,
+// LogWorkoutModal) already wrap this in their own complete toast flow around
+// mutateAsync; the wrapper's automatic error toast would double-fire.
 export function useCreateTimeBlock() {
   const qc = useQueryClient()
   return useMutation({
@@ -68,9 +77,13 @@ export function useCreateTimeBlock() {
   })
 }
 
+// Covers drag-reposition, postpone, and inline rename — all frequent,
+// autosave-like edits, so success stays silent (matches the rest of the
+// app's "edits feel live" convention) while failures always toast + log.
 export function useUpdateTimeBlock() {
   const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action:     'update_time_block',
     mutationFn: ({ id, start_time, date, title }: { id: string; start_time?: string; date?: string; title?: string; dateStr: string; newDateStr?: string }) =>
       updateTimeBlock(id, { start_time, date, title }),
     onSuccess: () => invalidateSchedule(qc),
@@ -79,8 +92,10 @@ export function useUpdateTimeBlock() {
 
 export function useDeleteTimeBlock() {
   const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, dateStr: _dateStr }: { id: string; dateStr: string }) => deleteTimeBlock(id),
-    onSuccess:  () => invalidateSchedule(qc),
+  return useMutationWithFeedback({
+    action:         'delete_time_block',
+    successMessage: 'Deleted',
+    mutationFn:     ({ id, dateStr: _dateStr }: { id: string; dateStr: string }) => deleteTimeBlock(id),
+    onSuccess:      () => invalidateSchedule(qc),
   })
 }

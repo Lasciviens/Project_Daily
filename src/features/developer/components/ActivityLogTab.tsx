@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { toast } from '../../../app/store'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 
 // CRUD audit trail (audit_logs table, written by DB triggers — see migration
 // 037). Shows every insert/update/delete on user-authored tables, whoever
@@ -75,17 +75,15 @@ function useAuditLogs(days: number) {
 
 function useClearAuditLogs() {
   const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action:         'clear_audit_logs',
+    successMessage: 'Activity log cleared ✓',
     mutationFn: async () => {
       const user = await requireUser()
       const { error } = await supabase.from('audit_logs').delete().eq('user_id', user.id)
       if (error) throw error
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['audit-logs'] })
-      toast.success('Activity log cleared ✓')
-    },
-    onError: (e) => toast.error((e as Error).message ?? 'Failed to clear'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['audit-logs'] }),
   })
 }
 

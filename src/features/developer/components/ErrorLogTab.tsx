@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { toast } from '../../../app/store'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 
 interface ErrorLog {
   id:         string
@@ -36,17 +37,15 @@ function useErrorLogs() {
 
 function useClearLogs() {
   const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action:         'clear_error_logs',
+    successMessage: 'Logs cleared ✓',
     mutationFn: async () => {
       const user = await requireUser()
       const { error } = await supabase.from('app_error_logs').delete().eq('user_id', user.id)
       if (error) throw error
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['error-logs'] })
-      toast.success('Logs cleared ✓')
-    },
-    onError: (e) => toast.error((e as Error).message ?? 'Failed to clear logs'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['error-logs'] }),
   })
 }
 

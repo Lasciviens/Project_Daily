@@ -22,14 +22,14 @@ flowchart TD
     F --> G[Open draft PR]
     G --> H([User reviews & marks ready])
     H --> I[Merge to main]
-    I --> J[GitHub Actions triggered]
-    J --> K[build-and-deploy job\nVite build → gh-pages branch]
-    J --> L[deploy-functions job\nSupabase Edge Functions]
-    K --> M([GitHub Pages live ~1 min])
-    L --> M
+    I --> J[GitHub Actions: build-and-deploy job]
+    J --> M([GitHub Pages live ~1 min])
 ```
 
 > **Never push directly to `main`.** All changes go through a PR.
+> GitHub Actions only builds and deploys the **frontend**. Database migrations
+> and Supabase Edge Functions are deployed **manually** (see `AGENTS.md` and
+> CLAUDE.md's Edge Functions section) — there is no CI job for either.
 
 ---
 
@@ -83,42 +83,34 @@ flowchart LR
 
 ## Features
 
-| Feature | Status | Notes |
-|---|---|---|
-| Auth | ✅ | Login page, Supabase Auth |
-| Daily + To-Do | ✅ | DayView, DayTimeline, WeekWidget, MonthWidget, AddTimeBlockModal, ToDoDrawer |
-| Media | ✅ | TMDB, Movies + TV, PlanThisButton, TonightPicker, ReleaseCalendar |
-| Work | ✅ | Task board |
-| AI | ✅ | Gemini 2.5 Flash via Edge Function, `create_task` function calling |
-| Calendar | ✅ | Google OAuth, read + write events, sync/refresh button in DayTimeline header |
-| Games | ✅ | RP5 library proxy, 6 view modes, TierEditor, PlayQueue drag-and-drop |
-| Training | ✅ | Strava OAuth, workout logging, week view |
-| Projects | ✅ | Phases, items, status tracking |
-| Home | ✅ | WidgetShell, Weather, Ruter transit, Currency, News, Recent Media, Games, Training |
-| Football | ⚠️ | Page + UI built. API-Football free tier only covers up to 2024. Plan: pull fixtures from Google Calendar instead. |
+Daily planning + to-do, shop/wishlist, recipes, media tracking (movies/TV via
+TMDB), a work task board, Google Calendar sync, a games library, training
+(Hevy + Strava + Apple Health via Health Auto Export), projects, and an
+in-app AI assistant with generic database read/write access.
 
-**Planned / not done yet:**
-- Football data source (Google Calendar integration planned)
-- Command Bar (Cmd+K)
-- Activity Log / stats widget
-- Dark Mode (dark/light toggle)
+**Feature status is tracked in `CLAUDE.md`'s Features table, not here** — that
+file is updated every session and is the current source of truth; duplicating
+per-feature status here would just go stale.
 
 ---
 
 ## Routes
 
 ```
-/#/login      → LoginPage        (public)
+/#/login      → LoginPage      (public)
 /#/home       → HomePage
-/#/daily      → DailyPage
+/#/daily      → DailyPage      (Personal tab bar: Daily / Shop / Recipes)
+/#/shop       → ShopPage       (Personal tab bar)
+/#/recipes    → RecipesPage    (Personal tab bar)
 /#/media      → MediaPage
 /#/work       → WorkPage
 /#/projects   → ProjectsPage
 /#/training   → TrainingPage
 /#/games      → GamesPage
-/#/football   → FootballPage
+/#/developer  → DeveloperPage  (reached via the Settings ⚙ menu)
 ```
 
+Football has no route yet — deferred (see CLAUDE.md's Features table for why).
 All routes except `/#/login` are protected by `SessionGuard` in `src/app/router.tsx`.
 
 ---
@@ -127,18 +119,20 @@ All routes except `/#/login` are protected by `SessionGuard` in `src/app/router.
 
 ```mermaid
 flowchart TD
-    PUSH([Push / merge to main]) --> GHA[GitHub Actions]
+    PUSH([Push / merge to main]) --> GHA[GitHub Actions:\nbuild-and-deploy job]
+    GHA --> VITE[npm run build\nVite → dist/]
+    VITE --> ARTIFACT[Upload dist/ as a\nPages artifact]
+    ARTIFACT --> PAGES([GitHub Pages deploy\nhttps://lasciviens.github.io/Project_Daily])
 
-    GHA --> BD[build-and-deploy job]
-    GHA --> DF[deploy-functions job]
-
-    BD --> VITE[npm run build\nVite → dist/]
-    VITE --> GHP[Push dist/ to\ngh-pages branch]
-    GHP --> PAGES([GitHub Pages\nhttps://lasciviens.github.io/Project_Daily])
-
-    DF --> SB[supabase functions deploy\nai-proxy\ncalendar-oauth / token / disconnect\nfootball-api\nnews-proxy\nstrava-auth / activities / disconnect]
-    SB --> SBCLOUD([Supabase Edge Functions live])
+    MANUAL([Manual: Supabase Dashboard / CLI]) --> MIGRATIONS[DB migrations\nsupabase db push]
+    MANUAL --> FUNCTIONS[Edge Functions\nsupabase functions deploy]
 ```
+
+Only the frontend build is automated (via the official `actions/deploy-pages`
+mechanism, not a `gh-pages` branch). Database migrations and Edge Functions
+are **always deployed manually** — see `AGENTS.md` and CLAUDE.md's Edge
+Functions table for the full list of functions and why this isn't automated
+yet.
 
 ---
 

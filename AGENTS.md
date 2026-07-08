@@ -1,6 +1,8 @@
 # AGENTS.md — Lasci's Board
 
-Agent-specific instructions for this repository. Supplements CLAUDE.md.
+Agent-specific instructions for this repository. Supplements `CLAUDE.md` (the
+master project guide — read that first) with rules specific to database/schema
+work. See `docs/README.md` for deeper reference docs (data model, architecture).
 
 ---
 
@@ -19,14 +21,14 @@ Agent-specific instructions for this repository. Supplements CLAUDE.md.
 | Auth | Supabase Auth — every user row references `auth.users(id)` |
 | ORM | None — raw `supabase-js` client everywhere |
 | Secrets | `CLAUDE_API_KEY`, `OPENAI_API_KEY` — Supabase Vault only, never in client code |
-| Migration numbering | Sequential: `023_app_error_logs.sql` → next is `024_*.sql` |
+| Migration numbering | Sequential, zero-padded three digits (`NNN_description.sql`). Don't hardcode "the next number" — run `ls supabase/migrations \| sort \| tail -1` to find the current highest and increment from that. |
 | Deploy | **Manual** — Dashboard › SQL Editor or `supabase db push`. GitHub Actions does NOT run migrations. |
 
 ---
 
 ### Migration Rules
 
-1. **File naming:** `NNN_short_description.sql` — zero-padded three digits, snake_case description. Next: `024_`.
+1. **File naming:** `NNN_short_description.sql` — zero-padded three digits, snake_case description. Check `ls supabase/migrations` for the current highest number before picking the next one.
 2. **Always idempotent.** Use `CREATE TABLE IF NOT EXISTS`, `DO $$ IF NOT EXISTS` for policies, `CREATE INDEX IF NOT EXISTS`. Never assume a clean slate.
 3. **Always enable RLS** immediately after `CREATE TABLE`:
    ```sql

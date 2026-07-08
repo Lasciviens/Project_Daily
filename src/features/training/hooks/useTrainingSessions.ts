@@ -9,6 +9,7 @@ import { deleteGoogleTask } from '../../todo/api/googleTasksApi'
 import { deleteTask } from '../../todo/api/tasksApi'
 import { getGoogleTaskId, removeGoogleTaskMapping } from '../../todo/api/googleTasksApi'
 import { useCalendarStore } from '../../../app/store'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import type { CreateSessionInput, Exercise } from '../types'
 
 export function useTrainingSessions() {
@@ -46,7 +47,9 @@ export function useUpdateSession() {
 
 export function useDeleteSession() {
   const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action:         'delete_training_session',
+    successMessage: 'Deleted',
     mutationFn: async (id: string) => {
       const { linkedTaskId } = await deleteSession(id)
 
