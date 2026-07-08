@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeHeartRateDailySeries, computeHeartRateHourlySeries, computeDailySeries } from '../../healthAggregate'
 import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
+import { BarLineChart } from './BarLineChart'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -70,18 +70,16 @@ export function HeartSection() {
         <PeriodToggle value={period} onChange={setPeriod} />
       </div>
 
-      <div className="h-40">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
-            <Tooltip />
-            <Area dataKey="range" name="Range" stroke="none" fill="#fb7185" fillOpacity={0.25} />
-            <Line dataKey="avg" name="Avg" stroke="#e11d48" strokeWidth={2} dot={false} />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
+      <BarLineChart
+        data={chartData}
+        dataKey="avg"
+        rangeKey="range"
+        color="#e11d48"
+        unit="bpm"
+        tooltipLabel="Avg heart rate"
+        height={160}
+        xInterval={period === 'day' ? 3 : period === 'month' ? 3 : 0}
+      />
     </div>
   )
 }

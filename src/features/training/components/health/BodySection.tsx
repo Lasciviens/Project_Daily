@@ -1,7 +1,7 @@
-import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries } from '../../healthAggregate'
 import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
+import { BarLineChart } from './BarLineChart'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -31,18 +31,7 @@ function BodyMiniChart({ title, icon, unit, color, series, decimals = 1 }: MiniC
       {chartData.length === 0 ? (
         <p className="text-xs text-ink-300 py-6 text-center">No data yet.</p>
       ) : (
-        <div className="h-28">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
-              <Tooltip formatter={(v) => [`${v} ${unit}`, title]} />
-              <Bar dataKey="value" fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={9} />
-              <Line dataKey="value" stroke={color} strokeWidth={2} dot={{ r: 3 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+        <BarLineChart data={chartData} dataKey="value" color={color} unit={unit} tooltipLabel={title} />
       )}
     </div>
   )
