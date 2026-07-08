@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeSleepSummary } from '../../healthAggregate'
-import { todayStr } from '../../../../shared/utils/dateUtils'
+import { todayStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
@@ -36,7 +36,13 @@ export function SleepSection() {
   const summary = computeSleepSummary(points)
   const last = summary[summary.length - 1]
 
-  const chartData = summary.map(s => ({ label: fmtDay(s.date), total: Math.round(s.total * 10) / 10 }))
+  // Left-join onto every date in range so a night with no synced data still
+  // shows as a gap on the axis instead of silently disappearing.
+  const summaryByDate = new Map(summary.map(s => [s.date, s]))
+  const chartData = datesBetweenStr(from, to).map(date => {
+    const s = summaryByDate.get(date)
+    return { label: fmtDay(date), total: s ? Math.round(s.total * 10) / 10 : null }
+  })
 
   return (
     <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">

@@ -5,10 +5,12 @@ import { ComposedChart, Bar, Line, Area, XAxis, YAxis, Tooltip, ResponsiveContai
 // reused everywhere else in Health (Heart, and future sections) rather than
 // picking a different chart type per section. `rangeKey` optionally adds a
 // faint [min,max] band behind the bar/line (used by Heart for its daily range).
+type ChartPoint = Record<string, unknown>
+
 export function BarLineChart({
-  data, dataKey, color, unit, tooltipLabel, height = 112, xInterval, rangeKey,
+  data, dataKey, color, unit, tooltipLabel, height = 112, xInterval, rangeKey, onPointClick,
 }: {
-  data: Record<string, unknown>[]
+  data: ChartPoint[]
   dataKey: string
   color: string
   unit: string
@@ -16,7 +18,14 @@ export function BarLineChart({
   height?: number
   xInterval?: number
   rangeKey?: string
+  // Fires with the clicked point's raw data (e.g. { date: '2026-07-06', ... })
+  // — used to jump a week/month chart to that day's Day view.
+  onPointClick?: (point: ChartPoint) => void
 }) {
+  const barProps = onPointClick
+    ? { cursor: 'pointer', onClick: (point: { payload?: ChartPoint }) => point.payload && onPointClick(point.payload) }
+    : {}
+
   return (
     <div style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -30,7 +39,7 @@ export function BarLineChart({
               : [`${v} ${unit}`, name]}
           />
           {rangeKey && <Area dataKey={rangeKey} name="Range" stroke="none" fill={color} fillOpacity={0.12} />}
-          <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={9} />
+          <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={9} {...barProps} />
           <Line dataKey={dataKey} name={tooltipLabel} stroke={color} strokeWidth={2} dot={{ r: 3 }} />
         </ComposedChart>
       </ResponsiveContainer>

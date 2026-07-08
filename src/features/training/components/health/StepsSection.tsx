@@ -27,9 +27,14 @@ export function StepsSection() {
 
   const { from, to } = rangeForAnchor(period, anchor)
   const { data: rangePoints = [] } = useHealthMetricSeries('step_count', from, to)
-  const chartData = period === 'day'
-    ? computeHourlyBuckets('step_count', rangePoints)
-    : computeDailySeries('step_count', rangePoints).map(d => ({ label: fmtDay(d.date), value: Math.round(d.value) }))
+  const chartData: { label: string; date?: string; value: number }[] = period === 'day'
+    ? computeHourlyBuckets('step_count', rangePoints).map(h => ({ label: h.label, value: Math.round(h.value) }))
+    : computeDailySeries('step_count', rangePoints).map(d => ({ label: fmtDay(d.date), date: d.date, value: Math.round(d.value) }))
+
+  function handleBarClick(barData: { payload?: { date?: string } }) {
+    const date = barData?.payload?.date
+    if (period !== 'day' && date) { setPeriod('day'); setAnchor(date) }
+  }
 
   return (
     <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
@@ -73,7 +78,11 @@ export function StepsSection() {
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
             <Tooltip formatter={(v) => [`${v} steps`, '']} />
-            <Bar dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]} />
+            <Bar
+              dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]}
+              cursor={period !== 'day' ? 'pointer' : 'default'}
+              onClick={handleBarClick}
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>

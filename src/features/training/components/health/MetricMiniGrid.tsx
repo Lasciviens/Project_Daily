@@ -7,7 +7,7 @@ export function MetricMiniGrid({ title, metrics }: { title: string; metrics: Min
   return (
     <div className="pt-3 border-t border-ink-100 flex flex-col gap-2">
       <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">{title}</p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 2xl:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {metrics.map(m => <MetricMiniCard key={m.metric} config={m} />)}
       </div>
     </div>

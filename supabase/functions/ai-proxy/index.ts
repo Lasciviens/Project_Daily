@@ -207,7 +207,7 @@ const TOOLS = [
       },
       {
         name: 'get_health_stats',
-        description: 'Read recent daily health stats (steps, calories, heart rate, exercise minutes) with weekly averages. Use to answer fitness questions.',
+        description: 'Read daily health stats (steps, active/basal energy in kcal, heart rate min/avg/max, resting heart rate, exercise minutes) computed from health_metrics point-in-time samples, plus period averages. Use to answer fitness/health questions — prefer this over raw db_query for trend/average questions.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -763,39 +763,79 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
   return { success: true, events }
 }
 
+// health_metrics is point-in-time grain (one row per incoming sample, not per
+// day) — this mirrors the frontend's healthAggregate.ts aggregation rules
+// (sum for cumulative quantities, min/max/avg for heart_rate, last-reading
+// for resting HR) so the AI reports the same numbers the Health tab shows.
 async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   const days  = Math.min(args.days ?? 7, 30)
   const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10)
+  const METRICS = ['step_count', 'active_energy', 'basal_energy_burned', 'heart_rate', 'resting_heart_rate', 'apple_exercise_time']
 
   const { data, error } = await supabase
-    .from('health_daily_stats')
-    .select('date, steps, active_calories, exercise_minutes, stand_hours, heart_rate_avg, heart_rate_resting, heart_rate_max')
+    .from('health_metrics')
+    .select('metric_name, date, unit, value')
     .eq('user_id', userId)
+    .in('metric_name', METRICS)
     .gte('date', since)
-    .order('date', { ascending: false })
 
   if (error) return { success: false, error: error.message }
+  const rows: AnyRecord[] = data ?? []
+  if (!rows.length) return { success: true, message: 'No health data found for this period', averages: {}, daily: [] }
 
-  const stats = data ?? []
-  if (!stats.length) return { success: true, message: 'No health data found for this period', stats: [] }
+  // Health Auto Export can export energy in kJ depending on locale — always
+  // normalize to kcal so numbers match what the Health tab displays.
+  const kcal = (qty: number, unit: string | null, metric: string) =>
+    (metric === 'active_energy' || metric === 'basal_energy_burned') && unit?.toLowerCase().includes('kj') ? qty / 4.184 : qty
 
-  // Compute weekly averages for easy AI summarization
-  const avg = (key: string) => {
-    const vals = stats.filter((d: AnyRecord) => d[key] != null).map((d: AnyRecord) => d[key])
-    return vals.length ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : null
+  const byDate = new Map<string, AnyRecord[]>()
+  for (const r of rows) {
+    const arr = byDate.get(r.date)
+    if (arr) arr.push(r); else byDate.set(r.date, [r])
+  }
+
+  const daily = [...byDate.entries()].map(([date, points]) => {
+    const of = (name: string) => points.filter(p => p.metric_name === name)
+    const sumOf = (name: string) => {
+      const qtys = of(name).map(p => typeof p.value?.qty === 'number' ? kcal(p.value.qty, p.unit, name) : null).filter((v): v is number => v != null)
+      return qtys.length ? Math.round(qtys.reduce((a, b) => a + b, 0) * 10) / 10 : null
+    }
+    const hr = of('heart_rate')
+    const avgs = hr.map(p => p.value?.Avg).filter((v): v is number => typeof v === 'number')
+    const mins = hr.map(p => p.value?.Min).filter((v): v is number => typeof v === 'number')
+    const maxs = hr.map(p => p.value?.Max).filter((v): v is number => typeof v === 'number')
+    const restingVals = of('resting_heart_rate').map(p => p.value?.qty).filter((v): v is number => typeof v === 'number')
+
+    return {
+      date,
+      steps:              sumOf('step_count'),
+      active_energy_kcal: sumOf('active_energy'),
+      basal_energy_kcal:  sumOf('basal_energy_burned'),
+      exercise_minutes:   sumOf('apple_exercise_time'),
+      heart_rate_avg:     avgs.length ? Math.round(avgs.reduce((a, b) => a + b, 0) / avgs.length) : null,
+      heart_rate_min:     mins.length ? Math.min(...mins) : null,
+      heart_rate_max:     maxs.length ? Math.max(...maxs) : null,
+      resting_heart_rate: restingVals.length ? restingVals[restingVals.length - 1] : null,
+    }
+  }).sort((a, b) => a.date.localeCompare(b.date))
+
+  const avgKey = (key: string) => {
+    const vals = daily.map(d => d[key]).filter((v): v is number => v != null)
+    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null
   }
 
   return {
     success: true,
     period_days: days,
     averages: {
-      steps:             avg('steps'),
-      active_calories:   avg('active_calories'),
-      exercise_minutes:  avg('exercise_minutes'),
-      heart_rate_avg:    avg('heart_rate_avg'),
-      heart_rate_resting: avg('heart_rate_resting'),
+      steps:               avgKey('steps'),
+      active_energy_kcal:  avgKey('active_energy_kcal'),
+      basal_energy_kcal:   avgKey('basal_energy_kcal'),
+      exercise_minutes:    avgKey('exercise_minutes'),
+      heart_rate_avg:      avgKey('heart_rate_avg'),
+      resting_heart_rate:  avgKey('resting_heart_rate'),
     },
-    daily: stats,
+    daily,
   }
 }
 
@@ -1451,10 +1491,15 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: 'Cardio activities synced from Strava.',
     columns: 'id, strava_activity_id, type(run|cycling|walk|swim|yoga|other), title, start_date, distance_meters, duration_seconds, elevation_gain_m, avg_heart_rate, avg_pace_sec_per_km, notes',
   },
-  health_daily_stats: {
+  health_metrics: {
     access: 'ro',
-    purpose: 'Daily health stats. Prefer the get_health_stats tool for weekly averages.',
-    columns: 'date, steps, active_calories, exercise_minutes, stand_hours, heart_rate_avg, heart_rate_resting, heart_rate_max',
+    purpose: 'Point-in-time HealthKit samples synced via Health Auto Export (steps, energy, heart rate, sleep, body composition, nutrition, etc.) — many rows per day, one per incoming sample, not pre-aggregated. Prefer the get_health_stats tool for daily/weekly averages; query this directly only for a specific metric_name over a date range it doesn\'t cover.',
+    columns: 'id, metric_name, date, recorded_at, unit, source, value(jsonb — {qty} for most metrics, {Min,Avg,Max} for heart_rate, stage fields for sleep_analysis)',
+  },
+  health_workouts: {
+    access: 'ro',
+    purpose: 'Workouts synced via Health Auto Export (Apple Health / Huawei Health) — separate source from hevy_workouts, comparable shape.',
+    columns: 'id, name, start_time, end_time, duration_seconds, active_energy_kj, total_energy_kj, avg_heart_rate, min_heart_rate, max_heart_rate',
   },
   app_error_logs: {
     access: 'ro',

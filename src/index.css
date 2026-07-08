@@ -27,6 +27,13 @@
   ::-webkit-scrollbar       { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-ink-300 rounded-full; }
+
+  /* recharts makes bars/points focusable for a11y, which shows the browser's
+     default focus rectangle on click — not something an end user should see. */
+  .recharts-wrapper *:focus,
+  .recharts-surface:focus {
+    outline: none !important;
+  }
 }
 
 @layer components {
