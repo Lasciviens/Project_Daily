@@ -1,7 +1,7 @@
-// Health Auto Export metric classification — shared by the Health tab's
-// category pills, generic table, and every dedicated section (rings, steps,
-// energy, heart, sleep, body). Metric names arrive from HealthKit as
-// snake_case identifiers (e.g. "step_count", "active_energy").
+// Health Auto Export metric classification — shared by every dedicated
+// Health tab section (rings, steps, energy, heart, sleep, body) and their
+// mini-metric grids. Metric names arrive from HealthKit as snake_case
+// identifiers (e.g. "step_count", "active_energy").
 
 export type AggType = 'sum' | 'average' | 'minmaxavg' | 'latest' | 'sleep'
 
@@ -83,53 +83,4 @@ export const METRIC_AGGREGATION: Record<string, AggType> = {
 // a metric type we haven't seen yet).
 export function getAggregationType(metricName: string): AggType {
   return METRIC_AGGREGATION[metricName] ?? 'latest'
-}
-
-// ─── Category (for pills + generic table) ──────────────────────────────────
-// Health Auto Export's metric identifiers use underscores; matching is
-// separator-agnostic (strips all non-alphanumeric chars from both sides)
-// so it doesn't matter whether a name is "physical_effort" or "Physical Effort".
-
-const CATEGORY_KEYWORDS: [string, string[]][] = [
-  ['Sleep',           ['sleep']],
-  ['Cardiovascular',  ['heart', 'blood_pressure', 'afib', 'atrial', 'cardio']],
-  ['Respiratory',     ['respiratory', 'oxygen_saturation', 'expiratory', 'vital_capacity', 'inhaler', 'perfusion', 'peak_flow']],
-  ['Mobility',        ['walking', 'stair', 'running_', 'six_minute']],
-  ['Body',            ['weight', 'height', 'body_mass', 'body_fat', 'lean_body', 'waist']],
-  ['Nutrition',       ['dietary', 'protein', 'carbohydrate', 'total_fat', 'fiber', 'sodium', 'potassium', 'calcium', 'iron', 'magnesium',
-                        'phosphorus', 'zinc', 'copper', 'manganese', 'selenium', 'iodine', 'chromium', 'molybdenum', 'chloride', 'caffeine',
-                        'biotin', 'folate', 'niacin', 'pantothenic', 'riboflavin', 'thiamin', 'vitamin', 'cholesterol', 'sugar', 'water']],
-  ['Health Records',  ['blood_glucose', 'insulin']],
-  ['Lifestyle',        ['sexual_activity', 'handwashing', 'toothbrushing', 'fallen', 'alcohol', 'mindful']],
-  ['Environmental',   ['audio_exposure', 'uv_exposure', 'daylight', 'underwater']],
-  ['Activity',         ['step', 'energy', 'distance', 'flights', 'stand', 'move_time', 'exercise_time', 'cadence', 'vo2',
-                        'physical_effort', 'push_count', 'swim', 'cycling']],
-  ['Vitals',           ['temperature']],
-]
-
-export const CATEGORY_COLORS: Record<string, string> = {
-  Activity:        'bg-orange-400',
-  Body:            'bg-purple-400',
-  Cardiovascular:  'bg-rose-400',
-  Mobility:        'bg-teal-400',
-  Respiratory:     'bg-sky-400',
-  Sleep:           'bg-indigo-400',
-  Vitals:          'bg-pink-400',
-  Nutrition:       'bg-lime-500',
-  'Health Records': 'bg-red-400',
-  Lifestyle:       'bg-fuchsia-400',
-  Environmental:   'bg-emerald-400',
-  Other:           'bg-ink-300',
-}
-
-function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '')
-}
-
-export function categorize(metricName: string): string {
-  const n = normalize(metricName)
-  for (const [category, keywords] of CATEGORY_KEYWORDS) {
-    if (keywords.some(k => n.includes(normalize(k)))) return category
-  }
-  return 'Other'
 }

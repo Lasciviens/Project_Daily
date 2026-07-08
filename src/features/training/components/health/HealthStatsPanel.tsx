@@ -1,4 +1,4 @@
-import { useHealthMetricSeries, useHealthMetrics } from '../../hooks/useHealthExport'
+import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries, computeHeartRateDailySeries, computeSleepSummary } from '../../healthAggregate'
 import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
 import type { SectionId } from './sectionTypes'
@@ -197,32 +197,11 @@ function OverviewStats() {
   )
 }
 
-function AllDataStats() {
-  const { data: metrics = [] } = useHealthMetrics({ limit: 5000 })
-  const distinctMetrics = new Set(metrics.map(m => m.metric_name)).size
-  const distinctSources = new Set(metrics.map(m => m.source).filter(Boolean)).size
-  const dates = metrics.map(m => m.date).sort()
-  const earliest = dates[0]
-  const latest = dates[dates.length - 1]
-
-  return (
-    <Panel title="Dataset overview">
-      <StatRow label="Rows loaded" value={metrics.length.toLocaleString('en-GB')} />
-      <StatRow label="Distinct metrics" value={String(distinctMetrics)} />
-      <StatRow label="Sources" value={String(distinctSources)} />
-      {earliest && latest && (
-        <StatRow label="Date range" value={`${earliest} → ${latest}`} />
-      )}
-    </Panel>
-  )
-}
-
 export function HealthStatsPanel({ section }: { section: SectionId }) {
   if (section === 'steps') return <StepsStats />
   if (section === 'energy') return <EnergyStats />
   if (section === 'heart') return <HeartStats />
   if (section === 'sleep') return <SleepStats />
   if (section === 'body') return <BodyStats />
-  if (section === 'all') return <AllDataStats />
   return <OverviewStats />
 }

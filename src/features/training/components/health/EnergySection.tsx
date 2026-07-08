@@ -89,7 +89,7 @@ export function EnergySection() {
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            <Tooltip />
+            <Tooltip cursor={false} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar
               dataKey="basal" name="Basal" stackId="e" fill="#94a3b8" radius={[0, 0, 0, 0]}
