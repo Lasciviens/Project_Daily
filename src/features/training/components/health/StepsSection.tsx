@@ -2,23 +2,19 @@ import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
-import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
+import { DateNav } from './DateNav'
+import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
 }
 
-function rangeFor(period: Period): { from: string; to: string } {
-  const to = todayStr()
-  if (period === 'day') return { from: to, to }
-  if (period === 'week') return { from: daysAgoStr(6), to }
-  return { from: daysAgoStr(29), to }
-}
-
 export function StepsSection() {
   const today = todayStr()
   const [period, setPeriod] = useState<Period>('week')
+  const [anchor, setAnchor] = useState(today)
 
   // Today's headline numbers — independent of the chart period below.
   const { data: todayStepPoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', today, today)
@@ -27,7 +23,7 @@ export function StepsSection() {
   const distanceKm = computeDailySeries('walking_running_distance', todayDistPoints)[0]?.value ?? 0
   const pace = steps > 0 && distanceKm > 0 ? (distanceKm * 1000) / steps : null
 
-  const { from, to } = rangeFor(period)
+  const { from, to } = rangeForAnchor(period, anchor)
   const { data: rangePoints = [] } = useHealthMetricSeries('step_count', from, to)
   const chartData = period === 'day'
     ? computeHourlyBuckets('step_count', rangePoints)
@@ -56,11 +52,16 @@ export function StepsSection() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide">
-          {period === 'day' ? 'Today by hour' : period === 'week' ? 'Last 7 days' : 'Last 30 days'}
-        </p>
-        <PeriodToggle value={period} onChange={setPeriod} />
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <DateNav
+          label={labelForAnchor(period, anchor)}
+          onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
+          onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
+          canGoNext={anchor !== today}
+          value={anchor}
+          onPick={setAnchor}
+        />
+        <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
       </div>
 
       <div className="h-32">

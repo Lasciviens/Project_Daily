@@ -1,24 +1,20 @@
 import { useState } from 'react'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeHeartRateDailySeries, computeHeartRateHourlySeries, computeDailySeries } from '../../healthAggregate'
-import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
 import { BarLineChart } from './BarLineChart'
+import { DateNav } from './DateNav'
+import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
 }
 
-function rangeFor(period: Period): { from: string; to: string } {
-  const to = todayStr()
-  if (period === 'day') return { from: to, to }
-  if (period === 'week') return { from: daysAgoStr(6), to }
-  return { from: daysAgoStr(29), to }
-}
-
 export function HeartSection() {
   const today = todayStr()
   const [period, setPeriod] = useState<Period>('week')
+  const [anchor, setAnchor] = useState(today)
 
   const { data: todayHr = [], isLoading } = useHealthMetricSeries('heart_rate', today, today)
   const { data: todayResting = [] } = useHealthMetricSeries('resting_heart_rate', today, today)
@@ -27,7 +23,7 @@ export function HeartSection() {
   const restingToday = computeDailySeries('resting_heart_rate', todayResting)[0]?.value
   const hrvToday = computeDailySeries('heart_rate_variability', todayHrv)[0]?.value
 
-  const { from, to } = rangeFor(period)
+  const { from, to } = rangeForAnchor(period, anchor)
   const { data: rangePoints = [] } = useHealthMetricSeries('heart_rate', from, to)
   const chartData = period === 'day'
     ? computeHeartRateHourlySeries(rangePoints).map(r => ({
@@ -63,11 +59,16 @@ export function HeartSection() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide">
-          {period === 'day' ? 'Today by hour' : period === 'week' ? 'Last 7 days' : 'Last 30 days'}
-        </p>
-        <PeriodToggle value={period} onChange={setPeriod} />
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <DateNav
+          label={labelForAnchor(period, anchor)}
+          onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
+          onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
+          canGoNext={anchor !== today}
+          value={anchor}
+          onPick={setAnchor}
+        />
+        <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
       </div>
 
       <BarLineChart
