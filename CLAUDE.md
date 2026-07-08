@@ -197,12 +197,19 @@ try {
 ```
 Toasts appear bottom-left. 🟢 success · 🔴 error · 🟡 warning · ⚫ loading.
 
+### Reference viewport sizes (design/testing baseline)
+Use these three when checking responsive behavior — get the current size in the browser console with `window.innerWidth + 'x' + window.innerHeight`:
+- **Mobile**: 852×393
+- **Laptop**: 1469×680
+- **Monitor**: 2450×1130
+
 ### Layout width — content-sized, left-aligned (MANDATORY)
 Never stretch content edge-to-edge. Widgets are sized to their content, not the viewport.
 - Page wrapper: `w-full px-4 sm:px-6 lg:px-8` (left indent, NOT `mx-auto` centered).
 - Each content block gets a `max-w-*` capped to what it needs, **left-aligned** — leftover horizontal space stays on the right. Reference: reading/list column caps at `max-w-2xl`; small stat cards much smaller (`max-w-xs` / `~15rem`); a side rail (e.g. calendar) is a fixed `w-[360px]`.
 - Small cards flow side-by-side (grid/flex-wrap), never stack full-width.
 - Page background is `bg-canvas` (#EDE4D5, soft warm cream); cards stay white for contrast.
+- **Exception — data-dense dashboards on large monitors**: a content column capped at `max-w-4xl` next to a fixed-width side rail leaves a large dead zone on 2xl+ (2450px-class) monitors. For these (e.g. Training → Health), drop the cap at `2xl:` (`2xl:max-w-none 2xl:flex-1`) so the column grows to fill the remaining flex space instead of leaving it empty — grids inside can also add a `2xl:grid-cols-*` step. Still left-aligned/content-sized below 2xl; this only kicks in once there's real estate to fill.
 
 ### Other rules
 - Date format: always `en-GB` (DD/MM/YYYY). Never `en-US`.
