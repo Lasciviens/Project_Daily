@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { SessionGuard } from '../security/sessionGuard'
 import { Layout } from './layout'
 import { LoginPage } from '../features/auth/pages/LoginPage'
+import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import { HomePage } from '../features/home/pages/HomePage'
 import { PersonalLayout } from '../features/personal/components/PersonalLayout'
 import { DailyPage } from '../features/daily/pages/DailyPage'
@@ -19,6 +20,7 @@ export function Router() {
     <HashRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         <Route
           element={
