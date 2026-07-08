@@ -5,9 +5,19 @@
 import { getAggregationType } from './healthMetrics'
 import type { HealthMetric } from './api/healthApi'
 
-function qtyOf(point: HealthMetric): number | null {
+// Health Auto Export can export active/basal energy in kJ instead of kcal
+// depending on the device's locale/unit settings, even though every card in
+// the Health tab labels the value "kcal" — convert so the label is honest.
+const KJ_PER_KCAL = 4.184
+const ENERGY_METRICS = new Set(['active_energy', 'basal_energy_burned'])
+
+function qtyOf(point: HealthMetric, metricName?: string): number | null {
   const v = point.value?.qty
-  return typeof v === 'number' ? v : null
+  if (typeof v !== 'number') return null
+  if (metricName && ENERGY_METRICS.has(metricName) && point.unit?.toLowerCase().includes('kj')) {
+    return v / KJ_PER_KCAL
+  }
+  return v
 }
 
 function groupByDate(points: HealthMetric[]): Map<string, HealthMetric[]> {
@@ -27,13 +37,13 @@ function groupByDate(points: HealthMetric[]): Map<string, HealthMetric[]> {
 // partway through the day); the daily total should read as one number.
 function aggregateGroup(points: HealthMetric[], metricName: string): number | null {
   const aggType = getAggregationType(metricName)
-  const qtys = points.map(qtyOf).filter((v): v is number => v != null)
+  const qtys = points.map(p => qtyOf(p, metricName)).filter((v): v is number => v != null)
   if (aggType === 'sum') return qtys.length ? qtys.reduce((a, b) => a + b, 0) : null
   if (aggType === 'average') return qtys.length ? qtys.reduce((a, b) => a + b, 0) / qtys.length : null
   if (aggType === 'latest') {
     const sorted = [...points].sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
     for (let i = sorted.length - 1; i >= 0; i--) {
-      const q = qtyOf(sorted[i])
+      const q = qtyOf(sorted[i], metricName)
       if (q != null) return q
     }
     return null

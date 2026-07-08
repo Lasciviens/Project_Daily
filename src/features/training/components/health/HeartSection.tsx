@@ -28,12 +28,8 @@ export function HeartSection() {
   const { from, to } = rangeForAnchor(period, anchor)
   const { data: rangePoints = [] } = useHealthMetricSeries('heart_rate', from, to)
   const chartData = period === 'day'
-    ? computeHeartRateHourlySeries(rangePoints).map(r => ({
-        label: r.label, range: [Math.round(r.min), Math.round(r.max)] as [number, number], avg: Math.round(r.avg),
-      }))
-    : computeHeartRateDailySeries(rangePoints).map(r => ({
-        label: fmtDay(r.date), range: [Math.round(r.min), Math.round(r.max)] as [number, number], avg: Math.round(r.avg),
-      }))
+    ? computeHeartRateHourlySeries(rangePoints).map(r => ({ label: r.label, avg: Math.round(r.avg) }))
+    : computeHeartRateDailySeries(rangePoints).map(r => ({ label: fmtDay(r.date), date: r.date, avg: Math.round(r.avg) }))
 
   return (
     <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
@@ -76,12 +72,15 @@ export function HeartSection() {
       <BarLineChart
         data={chartData}
         dataKey="avg"
-        rangeKey="range"
         color="#e11d48"
         unit="bpm"
         tooltipLabel="Avg heart rate"
         height={160}
         xInterval={period === 'day' ? 3 : period === 'month' ? 3 : 0}
+        onPointClick={period !== 'day' ? (point) => {
+          const date = point.date
+          if (typeof date === 'string') { setPeriod('day'); setAnchor(date) }
+        } : undefined}
       />
 
       <MetricMiniGrid title="Cardio Extras" metrics={HEART_EXTRA_METRICS} />

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { format, isSameDay, startOfDay, subDays } from 'date-fns'
 import { useHealthWorkouts, useHealthMetrics } from '../hooks/useHealthExport'
-import { categorize, CATEGORY_COLORS } from '../healthMetrics'
+import { categorize, CATEGORY_COLORS, METRIC_AGGREGATION } from '../healthMetrics'
+import { computeDailySeries } from '../healthAggregate'
 import { ActivityRings } from './health/ActivityRings'
 import { StepsSection } from './health/StepsSection'
 import { EnergySection } from './health/EnergySection'
@@ -9,7 +10,7 @@ import { HeartSection } from './health/HeartSection'
 import { SleepSection } from './health/SleepSection'
 import { BodySection } from './health/BodySection'
 import { SECTIONS, type SectionId } from './health/sectionTypes'
-import type { HealthWorkout } from '../api/healthApi'
+import type { HealthWorkout, HealthMetric } from '../api/healthApi'
 
 // Apple Health-inspired browse view: activity rings + dedicated sections per
 // metric group (steps/energy/heart/sleep/body), with a generic filterable
@@ -183,9 +184,42 @@ function SortHeader({
   )
 }
 
+// Every metric with a dedicated chart/card elsewhere in the Health tab
+// (Steps/Energy/Heart/Sleep/Body sections + their mini-metric grids) —
+// keeping this table to genuinely-unclassified metrics we don't know about
+// yet, instead of duplicating everything that already has a home.
+const CHARTED_METRICS = new Set(Object.keys(METRIC_AGGREGATION))
+
+type CategorizedMetric = HealthMetric & { __category: string }
+type AggRow = { date: string; category: string; metric_name: string; value: number; unit: string | null }
+
+function fmtNum2(n: number): string {
+  return String(Math.round(n * 100) / 100)
+}
+
+function buildAggregatedRows(filtered: CategorizedMetric[]): AggRow[] {
+  const byMetric = new Map<string, CategorizedMetric[]>()
+  for (const m of filtered) {
+    const arr = byMetric.get(m.metric_name)
+    if (arr) arr.push(m); else byMetric.set(m.metric_name, [m])
+  }
+  const out: AggRow[] = []
+  for (const [metricName, pts] of byMetric) {
+    const category = pts[0].__category
+    const unit = pts.find(p => p.unit)?.unit ?? null
+    for (const d of computeDailySeries(metricName, pts)) {
+      out.push({ date: d.date, category, metric_name: metricName, value: d.value, unit })
+    }
+  }
+  return out
+}
+
+type ViewMode = 'aggregated' | 'detailed'
+
 function AllDataTable() {
   const { data: metrics = [], isLoading: metricsLoading } = useHealthMetrics()
 
+  const [viewMode, setViewMode] = useState<ViewMode>('aggregated')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [metricFilter, setMetricFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
@@ -193,26 +227,28 @@ function AllDataTable() {
   const [sortBy, setSortBy] = useState<SortCol>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-  const withCategory = useMemo(
-    () => metrics.map(m => ({ ...m, __category: categorize(m.metric_name) })),
+  const remaining = useMemo(
+    () => metrics
+      .filter(m => !CHARTED_METRICS.has(m.metric_name))
+      .map(m => ({ ...m, __category: categorize(m.metric_name) })),
     [metrics]
   )
 
   const categories = useMemo(
-    () => [...new Set(withCategory.map(m => m.__category))].sort(),
-    [withCategory]
+    () => [...new Set(remaining.map(m => m.__category))].sort(),
+    [remaining]
   )
   const metricNames = useMemo(
     () => [...new Set(
-      withCategory
+      remaining
         .filter(m => categoryFilter === 'all' || m.__category === categoryFilter)
         .map(m => m.metric_name)
     )].sort(),
-    [withCategory, categoryFilter]
+    [remaining, categoryFilter]
   )
   const sources = useMemo(
-    () => [...new Set(metrics.map(m => m.source).filter(Boolean))].sort(),
-    [metrics]
+    () => [...new Set(remaining.map(m => m.source).filter(Boolean))].sort(),
+    [remaining]
   )
 
   function toggleSort(col: SortCol) {
@@ -220,26 +256,54 @@ function AllDataTable() {
     else { setSortBy(col); setSortDir('asc') }
   }
 
-  const rows = useMemo(() => {
-    const filtered = withCategory.filter(m => {
-      if (categoryFilter !== 'all' && m.__category !== categoryFilter) return false
-      if (metricFilter !== 'all' && m.metric_name !== metricFilter) return false
-      if (sourceFilter !== 'all' && m.source !== sourceFilter) return false
-      if (!matchesDayFilter(m.date, dayFilter)) return false
-      return true
-    })
-    const cmp = (a: (typeof filtered)[number], b: (typeof filtered)[number]) => {
+  const filtered = useMemo(() => remaining.filter(m => {
+    if (categoryFilter !== 'all' && m.__category !== categoryFilter) return false
+    if (metricFilter !== 'all' && m.metric_name !== metricFilter) return false
+    if (sourceFilter !== 'all' && m.source !== sourceFilter) return false
+    if (!matchesDayFilter(m.date, dayFilter)) return false
+    return true
+  }), [remaining, categoryFilter, metricFilter, sourceFilter, dayFilter])
+
+  const detailRows = useMemo(() => {
+    const cmp = (a: CategorizedMetric, b: CategorizedMetric) => {
       if (sortBy === 'date') return a.date.localeCompare(b.date)
       if (sortBy === 'category') return a.__category.localeCompare(b.__category)
       if (sortBy === 'metric') return a.metric_name.localeCompare(b.metric_name)
       return (a.source || '').localeCompare(b.source || '')
     }
-    filtered.sort((a, b) => (sortDir === 'asc' ? cmp(a, b) : -cmp(a, b)))
-    return filtered
-  }, [withCategory, categoryFilter, metricFilter, sourceFilter, dayFilter, sortBy, sortDir])
+    return [...filtered].sort((a, b) => (sortDir === 'asc' ? cmp(a, b) : -cmp(a, b)))
+  }, [filtered, sortBy, sortDir])
+
+  const aggRows = useMemo(() => {
+    const cmp = (a: AggRow, b: AggRow) => {
+      if (sortBy === 'category') return a.category.localeCompare(b.category)
+      if (sortBy === 'metric') return a.metric_name.localeCompare(b.metric_name)
+      return a.date.localeCompare(b.date)
+    }
+    return buildAggregatedRows(filtered).sort((a, b) => (sortDir === 'asc' ? cmp(a, b) : -cmp(a, b)))
+  }, [filtered, sortBy, sortDir])
+
+  const rowCount = viewMode === 'aggregated' ? aggRows.length : detailRows.length
 
   return (
     <div>
+      {/* Aggregated (default — one number per metric/date, sources combined)
+          vs Detailed (every raw sample, per source) */}
+      <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg w-fit mb-2">
+        {(['aggregated', 'detailed'] as ViewMode[]).map(v => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setViewMode(v)}
+            className={`px-3 min-h-[32px] rounded-md text-xs font-semibold capitalize transition-colors ${
+              viewMode === v ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
+            }`}
+          >
+            {v === 'aggregated' ? 'Aggregated' : 'Detailed'}
+          </button>
+        ))}
+      </div>
+
       {/* Category pills — quick filter, derived from data actually present */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2">
         <button
@@ -276,14 +340,16 @@ function AllDataTable() {
           <option value="all">All metrics{categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''}</option>
           {metricNames.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <select
-          value={sourceFilter}
-          onChange={e => setSourceFilter(e.target.value)}
-          className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
-        >
-          <option value="all">All sources</option>
-          {sources.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        {viewMode === 'detailed' && (
+          <select
+            value={sourceFilter}
+            onChange={e => setSourceFilter(e.target.value)}
+            className="min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700"
+          >
+            <option value="all">All sources</option>
+            {sources.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        )}
         <select
           value={dayFilter}
           onChange={e => setDayFilter(e.target.value as DayFilter)}
@@ -299,10 +365,38 @@ function AllDataTable() {
             <div key={i} className="h-10 rounded-lg bg-cream-200 animate-pulse" />
           ))}
         </div>
-      ) : rows.length === 0 ? (
+      ) : rowCount === 0 ? (
         <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
           <p className="text-2xl mb-2">📊</p>
           <p className="text-ink-600 font-medium text-sm">No metrics match this filter</p>
+        </div>
+      ) : viewMode === 'aggregated' ? (
+        <div className="rounded-xl border border-ink-200 bg-white overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-cream-50 border-b border-ink-100 sticky top-0">
+              <tr>
+                <SortHeader label="Date"     col="date"     sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Category" col="category" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Metric"   col="metric"   sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                <th className="text-left px-3 py-2 font-bold text-ink-500 uppercase tracking-wider">Value (all sources combined)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-50">
+              {aggRows.map(r => (
+                <tr key={`${r.metric_name}-${r.date}`} className="hover:bg-cream-50">
+                  <td className="px-3 py-2 text-ink-500 whitespace-nowrap">{format(new Date(r.date), 'd MMM yyyy')}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-600">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${CATEGORY_COLORS[r.category] ?? 'bg-ink-300'}`} />
+                      {r.category}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-ink-800 font-medium whitespace-nowrap">{r.metric_name}</td>
+                  <td className="px-3 py-2 text-ink-700">{fmtNum2(r.value)}{r.unit ? ` ${r.unit}` : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div className="rounded-xl border border-ink-200 bg-white overflow-x-auto">
@@ -317,7 +411,7 @@ function AllDataTable() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-50">
-              {rows.map(m => (
+              {detailRows.map(m => (
                 <tr key={m.id} className="hover:bg-cream-50">
                   <td className="px-3 py-2 text-ink-500 whitespace-nowrap">{format(new Date(m.date), 'd MMM yyyy')}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
@@ -335,7 +429,7 @@ function AllDataTable() {
           </table>
         </div>
       )}
-      <p className="text-[11px] text-ink-400 mt-1">{rows.length} / {metrics.length} rows</p>
+      <p className="text-[11px] text-ink-400 mt-1">{rowCount} rows{viewMode === 'detailed' ? ` / ${remaining.length} total samples` : ''}</p>
     </div>
   )
 }

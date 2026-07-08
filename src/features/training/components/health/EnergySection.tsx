@@ -27,7 +27,7 @@ export function EnergySection() {
   const { data: activePoints = [] } = useHealthMetricSeries('active_energy', from, to)
   const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', from, to)
 
-  let chartData: { label: string; active: number; basal: number }[]
+  let chartData: { label: string; date?: string; active: number; basal: number }[]
   if (period === 'day') {
     const a = computeHourlyBuckets('active_energy', activePoints)
     const b = computeHourlyBuckets('basal_energy_burned', basalPoints)
@@ -35,14 +35,19 @@ export function EnergySection() {
   } else {
     const a = computeDailySeries('active_energy', activePoints)
     const b = computeDailySeries('basal_energy_burned', basalPoints)
-    const byDate = new Map<string, { label: string; active: number; basal: number }>()
-    for (const d of a) byDate.set(d.date, { label: fmtDay(d.date), active: Math.round(d.value), basal: 0 })
+    const byDate = new Map<string, { label: string; date: string; active: number; basal: number }>()
+    for (const d of a) byDate.set(d.date, { label: fmtDay(d.date), date: d.date, active: Math.round(d.value), basal: 0 })
     for (const d of b) {
-      const row = byDate.get(d.date) ?? { label: fmtDay(d.date), active: 0, basal: 0 }
+      const row = byDate.get(d.date) ?? { label: fmtDay(d.date), date: d.date, active: 0, basal: 0 }
       row.basal = Math.round(d.value)
       byDate.set(d.date, row)
     }
     chartData = [...byDate.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([, v]) => v)
+  }
+
+  function handleBarClick(barData: { payload?: { date?: string } }) {
+    const date = barData?.payload?.date
+    if (period !== 'day' && date) { setPeriod('day'); setAnchor(date) }
   }
 
   return (
@@ -86,8 +91,14 @@ export function EnergySection() {
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
             <Tooltip />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="basal" name="Basal" stackId="e" fill="#94a3b8" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="active" name="Active" stackId="e" fill="#f43f5e" radius={[3, 3, 0, 0]} />
+            <Bar
+              dataKey="basal" name="Basal" stackId="e" fill="#94a3b8" radius={[0, 0, 0, 0]}
+              cursor={period !== 'day' ? 'pointer' : 'default'} onClick={handleBarClick}
+            />
+            <Bar
+              dataKey="active" name="Active" stackId="e" fill="#f43f5e" radius={[3, 3, 0, 0]}
+              cursor={period !== 'day' ? 'pointer' : 'default'} onClick={handleBarClick}
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>

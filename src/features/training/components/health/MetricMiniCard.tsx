@@ -10,6 +10,10 @@ export interface MiniMetricConfig {
   unit: string
   decimals: number
   description: string
+  // Shows how many raw events were logged today alongside the main value —
+  // for metrics where "how many times" matters as much as the total/average
+  // (e.g. handwashing, toothbrushing).
+  showTodayCount?: boolean
 }
 
 // sum metrics read as "today's total" (matches Steps/Energy's headline
@@ -31,23 +35,27 @@ function summarize(metric: string, series: { date: string; value: number }[]) {
 }
 
 export function MetricMiniCard({ config }: { config: MiniMetricConfig }) {
-  const { metric, icon, title, unit, decimals, description } = config
+  const { metric, icon, title, unit, decimals, description, showTodayCount } = config
   const { data: points = [] } = useHealthMetricSeries(metric, daysAgoStr(6), todayStr())
   const series = computeDailySeries(metric, points)
   const { value, windowLabel } = summarize(metric, series)
   const displayUnit = points.find(p => p.unit)?.unit || unit
+  const todayCount = showTodayCount ? points.filter(p => p.date === todayStr()).length : null
 
   return (
     <div className="bg-cream-50 border border-ink-100 rounded-xl p-3 flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-1">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400 leading-tight">{icon} {title}</p>
-        <span className="text-[9px] text-ink-300 shrink-0">{windowLabel}</span>
+        <p className="text-[11.5px] font-bold uppercase tracking-wide text-ink-400 leading-tight">{icon} {title}</p>
+        <span className="text-[10.5px] text-ink-300 shrink-0">{windowLabel}</span>
       </div>
-      <p className="text-lg font-bold text-ink-900 leading-tight">
+      <p className="text-[19.5px] font-bold text-ink-900 leading-tight">
         {value != null ? value.toFixed(decimals) : '—'}
-        <span className="text-[10px] font-normal text-ink-400 ml-1">{displayUnit}</span>
+        <span className="text-[11.5px] font-normal text-ink-400 ml-1">{displayUnit}</span>
       </p>
-      <p className="text-[10px] text-ink-400 leading-snug">{description}</p>
+      {todayCount != null && (
+        <p className="text-[11.5px] font-semibold text-accent-600">{todayCount}× today</p>
+      )}
+      <p className="text-[11.5px] text-ink-400 leading-snug">{description}</p>
     </div>
   )
 }
