@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeSleepSummary } from '../../healthAggregate'
-import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
+import { todayStr } from '../../../../shared/utils/dateUtils'
+import { DateNav } from './DateNav'
+import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -24,9 +26,10 @@ const STAGES = [
 type TrendPeriod = 'week' | 'month'
 
 export function SleepSection() {
+  const today = todayStr()
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('week')
-  const from = daysAgoStr(trendPeriod === 'week' ? 6 : 29)
-  const to = todayStr()
+  const [anchor, setAnchor] = useState(today)
+  const { from, to } = rangeForAnchor(trendPeriod, anchor)
   const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', from, to)
   const summary = computeSleepSummary(points)
   const last = summary[summary.length - 1]
@@ -65,16 +68,21 @@ export function SleepSection() {
         </>
       )}
 
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide">
-          {trendPeriod === 'week' ? 'Last 7 nights' : 'Last 30 nights'}
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <DateNav
+          label={labelForAnchor(trendPeriod, anchor)}
+          onPrev={() => setAnchor(a => stepAnchor(trendPeriod, a, -1))}
+          onNext={() => setAnchor(a => stepAnchor(trendPeriod, a, 1))}
+          canGoNext={anchor !== today}
+          value={anchor}
+          onPick={setAnchor}
+        />
         <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg">
           {(['week', 'month'] as TrendPeriod[]).map(p => (
             <button
               key={p}
               type="button"
-              onClick={() => setTrendPeriod(p)}
+              onClick={() => { setTrendPeriod(p); setAnchor(today) }}
               className={`px-2.5 min-h-[28px] rounded-md text-[11px] font-semibold transition-colors ${
                 trendPeriod === p ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
               }`}
