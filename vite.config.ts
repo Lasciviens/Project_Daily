@@ -7,6 +7,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // We register the service worker ourselves (src/main.tsx) via
+      // virtual:pwa-register so it can force an update+reload — the
+      // auto-injected register script is just a bare `.register()` call with
+      // no update-detection logic at all.
+      injectRegister: false,
       base: '/Project_Daily/',
       scope: '/Project_Daily/',
       includeAssets: ['favicon.svg', 'icons.svg'],
@@ -35,6 +40,18 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Without these, a new service worker installs but sits "waiting"
+        // until every open tab of the app is fully closed — a hard refresh
+        // does NOT activate it (a hard refresh bypasses the HTTP cache, not
+        // an already-controlling service worker). This was a real bug: a
+        // shipped fix (stale Health chart dates) never appeared for the
+        // user even after a successful deploy + hard refresh, because the
+        // old service worker kept serving its own precached old bundle.
+        // skipWaiting + clientsClaim make a new SW activate and take
+        // control immediately; combined with registerSW({ immediate: true })
+        // in main.tsx, updates are detected and applied automatically.
+        skipWaiting: true,
+        clientsClaim: true,
         // Cache static assets indefinitely
         runtimeCaching: [
           {
