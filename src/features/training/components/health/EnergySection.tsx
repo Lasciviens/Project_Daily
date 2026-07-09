@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
-import { todayStr } from '../../../../shared/utils/dateUtils'
+import { computeDailySeries, computeHourlyBuckets, computeBasalEnergyDailySeries } from '../../healthAggregate'
+import { todayStr, shiftDateStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
@@ -19,23 +19,26 @@ export function EnergySection() {
   const [period, setPeriod] = useState<Period>('week')
   const [anchor, setAnchor] = useAnchorDate()
 
-  const { data: todayActive = [], isLoading } = useHealthMetricSeries('active_energy', today, today)
-  const { data: todayBasal = [] } = useHealthMetricSeries('basal_energy_burned', today, today)
-  const activeToday = Math.round(computeDailySeries('active_energy', todayActive)[0]?.value ?? 0)
-  const basalToday = Math.round(computeDailySeries('basal_energy_burned', todayBasal)[0]?.value ?? 0)
+  // Headline follows the anchor (whichever day is selected), not always the
+  // literal calendar today — basal fetches one extra buffer day before it so
+  // computeBasalEnergyDailySeries has a reference rate for gap-filling.
+  const { data: anchorActive = [], isLoading } = useHealthMetricSeries('active_energy', anchor, anchor)
+  const { data: anchorBasalBuffered = [] } = useHealthMetricSeries('basal_energy_burned', shiftDateStr(anchor, -1), anchor)
+  const activeToday = Math.round(computeDailySeries('active_energy', anchorActive)[0]?.value ?? 0)
+  const basalToday = Math.round(computeBasalEnergyDailySeries(anchorBasalBuffered, [anchor])[0]?.value ?? 0)
 
   const { from, to } = rangeForAnchor(period, anchor)
   const { data: activePoints = [] } = useHealthMetricSeries('active_energy', from, to)
-  const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', from, to)
+  const { data: basalPointsBuffered = [] } = useHealthMetricSeries('basal_energy_burned', shiftDateStr(from, -1), to)
 
   let chartData: { label: string; date?: string; active: number; basal: number }[]
   if (period === 'day') {
     const a = computeHourlyBuckets('active_energy', activePoints)
-    const b = computeHourlyBuckets('basal_energy_burned', basalPoints)
+    const b = computeHourlyBuckets('basal_energy_burned', basalPointsBuffered.filter(p => p.date === from))
     chartData = a.map((row, i) => ({ label: row.label, active: Math.round(row.value), basal: Math.round(b[i]?.value ?? 0) }))
   } else {
     const a = computeDailySeries('active_energy', activePoints)
-    const b = computeDailySeries('basal_energy_burned', basalPoints)
+    const b = computeBasalEnergyDailySeries(basalPointsBuffered, datesBetweenStr(from, to))
     const byDate = new Map<string, { label: string; date: string; active: number; basal: number }>()
     for (const d of a) byDate.set(d.date, { label: fmtDay(d.date), date: d.date, active: Math.round(d.value), basal: 0 })
     for (const d of b) {
@@ -55,7 +58,9 @@ export function EnergySection() {
     <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">🔥 Energy Today</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
+            🔥 Energy {anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`}
+          </p>
           <p className="text-3xl font-bold text-ink-900 leading-tight">
             {isLoading ? '…' : (activeToday + basalToday).toLocaleString('en-GB')} <span className="text-sm font-normal text-ink-400">kcal</span>
           </p>

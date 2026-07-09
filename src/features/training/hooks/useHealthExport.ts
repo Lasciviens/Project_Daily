@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import { fetchHealthWorkouts, fetchHealthMetrics, fetchHealthMetricSeries } from '../api/healthApi'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchHealthWorkouts, fetchHealthMetrics, fetchHealthMetricSeries, insertManualSleepEntry, type ManualSleepInput } from '../api/healthApi'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 
 export function useHealthWorkouts(opts: { limit?: number; offset?: number } = {}) {
   return useQuery({
@@ -24,5 +25,17 @@ export function useHealthMetricSeries(metricName: string, fromDate: string, toDa
     queryKey: ['health', 'metric-series', metricName, fromDate, toDate],
     queryFn:  () => fetchHealthMetricSeries(metricName, fromDate, toDate),
     staleTime: 5 * 60_000,
+  })
+}
+
+// Logs a night the Watch wasn't worn for as source: 'manual' — see
+// insertManualSleepEntry for the Deep/Core/REM split logic.
+export function useAddManualSleep() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'add_manual_sleep',
+    successMessage: 'Sleep entry added ✓',
+    mutationFn:     (input: ManualSleepInput) => insertManualSleepEntry(input),
+    onSuccess:      () => qc.invalidateQueries({ queryKey: ['health', 'metric-series', 'sleep_analysis'] }),
   })
 }

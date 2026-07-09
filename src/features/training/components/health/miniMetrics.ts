@@ -27,7 +27,7 @@ export const STEPS_EXTRA_METRICS: MiniMetricConfig[] = [
   { metric: 'flights_climbed', icon: '🏢', title: 'Flights Climbed', unit: 'floors', decimals: 0,
     description: 'Equivalent flights of stairs climbed today.' },
   { metric: 'push_count', icon: '🦽', title: 'Pushes', unit: 'pushes', decimals: 0,
-    description: 'Wheelchair push count — only populates in wheelchair mode.' },
+    description: 'HealthKit "wheelchair push count" — if you don’t use a wheelchair, this is likely misdetected (check Watch Settings → Accessibility → Wheelchair).' },
   { metric: 'time_in_daylight', icon: '☀️', title: 'Daylight Time', unit: 'min', decimals: 0,
     description: 'Minutes spent in outdoor daylight — linked to sleep quality & mood.' },
 ]
@@ -65,7 +65,7 @@ export const BODY_EXTRA_METRICS: MiniMetricConfig[] = [
     description: 'Estimated UV exposure today — higher means more sun protection needed.' },
   { metric: 'handwashing', icon: '🧼', title: 'Handwashing', unit: 'min', decimals: 0, showTodayCount: true,
     description: 'Total time spent handwashing today.' },
-  { metric: 'toothbrushing', icon: '🪥', title: 'Toothbrushing', unit: 'min', decimals: 0, showTodayCount: true,
+  { metric: 'toothbrushing', icon: '🪥', title: 'Toothbrushing', unit: 'min', decimals: 0, showTodayCount: true, showTodayTimes: true,
     description: 'Total time spent brushing teeth today.' },
   { metric: 'mindful_minutes', icon: '🧘', title: 'Mindful Minutes', unit: 'min', decimals: 0,
     description: 'Minutes spent in mindfulness/breathing sessions today.' },
