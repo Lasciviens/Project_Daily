@@ -19,9 +19,11 @@ export function HeartSection() {
   const [period, setPeriod] = useState<Period>('week')
   const [anchor, setAnchor] = useAnchorDate()
 
-  const { data: todayHr = [], isLoading } = useHealthMetricSeries('heart_rate', today, today)
-  const { data: todayResting = [] } = useHealthMetricSeries('resting_heart_rate', today, today)
-  const { data: todayHrv = [] } = useHealthMetricSeries('heart_rate_variability', today, today)
+  // Headline follows the anchor (whichever day is selected), not always the
+  // literal calendar today.
+  const { data: todayHr = [], isLoading } = useHealthMetricSeries('heart_rate', anchor, anchor)
+  const { data: todayResting = [] } = useHealthMetricSeries('resting_heart_rate', anchor, anchor)
+  const { data: todayHrv = [] } = useHealthMetricSeries('heart_rate_variability', anchor, anchor)
   const todayRange = computeHeartRateDailySeries(todayHr)[0]
   const restingToday = computeDailySeries('resting_heart_rate', todayResting)[0]?.value
   const hrvToday = computeDailySeries('heart_rate_variability', todayHrv)[0]?.value
@@ -36,7 +38,9 @@ export function HeartSection() {
     <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">❤️ Heart Rate Today</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
+            ❤️ Heart Rate {anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`}
+          </p>
           <p className="text-3xl font-bold text-ink-900 leading-tight">
             {isLoading ? '…' : todayRange ? `${Math.round(todayRange.min)}–${Math.round(todayRange.max)}` : '—'}
             <span className="text-sm font-normal text-ink-400"> bpm</span>

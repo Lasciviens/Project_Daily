@@ -3,6 +3,7 @@
 // numbers for rings/summary cards/charts. Kept separate from healthApi.ts
 // (which only fetches) so these are trivially unit-testable without a DB.
 import { getAggregationType } from './healthMetrics'
+import { todayStr, shiftDateStr } from '../../shared/utils/dateUtils'
 import type { HealthMetric } from './api/healthApi'
 
 // Health Auto Export can export active/basal energy in kJ instead of kcal
@@ -166,4 +167,55 @@ export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
     if (total > 0 || awake > 0) result.push({ date, core, rem, deep, awake, total })
   }
   return result.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+// Average share of Deep/Core/REM (normalized to sum to 1) across nights with
+// real stage data — used to back-fill a manually-logged night (the user only
+// enters a total when the Watch wasn't worn to sleep) with a realistic
+// breakdown instead of leaving it as one undifferentiated bucket. Awake time
+// is deliberately excluded from the split (a manual entry has no way to know
+// how long you were briefly awake, so it's left at 0 rather than guessed).
+export function estimateSleepStageProportions(summaries: SleepSummary[]): { deep: number; core: number; rem: number } | null {
+  const withStages = summaries
+    .map(s => ({ ...s, stageTotal: s.deep + s.core + s.rem }))
+    .filter(s => s.stageTotal > 0)
+  if (!withStages.length) return null
+  const fractions = withStages.map(s => ({ deep: s.deep / s.stageTotal, core: s.core / s.stageTotal, rem: s.rem / s.stageTotal }))
+  const avgOf = (key: 'deep' | 'core' | 'rem') => fractions.reduce((sum, f) => sum + f[key], 0) / fractions.length
+  return { deep: avgOf('deep'), core: avgOf('core'), rem: avgOf('rem') }
+}
+
+// Basal (resting) energy is roughly constant hour-to-hour, so a gap from the
+// Watch being off (charging, not worn, or just removed mid-hour) shouldn't
+// read as zero/partial for that stretch. For every hour of the target day,
+// if the Watch-measured amount is below what a normal hour usually
+// contributes, top it up to that floor instead of leaving the raw (possibly
+// partial) reading. The floor is estimated from the PRECEDING day's own
+// hourly average (of hours that have any data) — "normal" varies per
+// person, and even day-to-day wear patterns, so yesterday is a better
+// reference than a fixed constant. `allPoints` must include the day before
+// the earliest date in `dates` (callers fetch one extra buffer day).
+export function computeBasalEnergyDailySeries(allPoints: HealthMetric[], dates: string[]): DailyValue[] {
+  const byDate = groupByDate(allPoints)
+  const today = todayStr()
+  const currentHour = new Date().getHours()
+  const result: DailyValue[] = []
+
+  for (const date of dates) {
+    const dayPts = byDate.get(date) ?? []
+    const hourly = computeHourlyBuckets('basal_energy_burned', dayPts).map(h => h.value)
+    // Don't project into hours of today that haven't happened yet.
+    const maxHour = date === today ? currentHour : 23
+
+    const prevPts = byDate.get(shiftDateStr(date, -1)) ?? []
+    const prevHourly = computeHourlyBuckets('basal_energy_burned', prevPts).map(h => h.value).filter(v => v > 0)
+    const referenceRate = prevHourly.length ? prevHourly.reduce((a, b) => a + b, 0) / prevHourly.length : null
+
+    let total = 0
+    for (let h = 0; h <= maxHour; h++) {
+      total += referenceRate != null ? Math.max(hourly[h], referenceRate) : hourly[h]
+    }
+    if (total > 0 || dayPts.length) result.push({ date, value: Math.round(total * 10) / 10 })
+  }
+  return result
 }

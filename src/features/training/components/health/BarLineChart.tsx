@@ -7,6 +7,42 @@ import { ComposedChart, Bar, Line, Area, XAxis, YAxis, Tooltip, ResponsiveContai
 // faint [min,max] band behind the bar/line (used by Heart for its daily range).
 type ChartPoint = Record<string, unknown>
 
+interface TooltipEntry {
+  dataKey?: string | number
+  name?: string
+  color?: string
+  value?: number | [number, number]
+}
+
+// Bar + Line intentionally share the same dataKey/name (same value, two
+// visual layers) — recharts' default Tooltip shows one row per graphical
+// element, so without this it displayed the average twice. Dedupe by
+// dataKey and keep the custom [min,max]/unit formatting the old `formatter`
+// prop had.
+function makeTooltipContent(unit: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
+  return function TooltipContent({ active, payload, label }: any) {
+    if (!active || !payload?.length) return null
+    const seen = new Set<string | number>()
+    const rows: TooltipEntry[] = payload.filter((p: TooltipEntry) => {
+      const key = p.dataKey ?? p.name ?? ''
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    return (
+      <div className="bg-white border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
+        <p className="text-ink-400 font-medium">{label}</p>
+        {rows.map(r => (
+          <p key={String(r.dataKey ?? r.name)} style={{ color: r.color }} className="font-semibold">
+            {Array.isArray(r.value) ? `${r.value[0]}–${r.value[1]} ${unit}` : `${r.value} ${unit}`} {r.name}
+          </p>
+        ))}
+      </div>
+    )
+  }
+}
+
 export function BarLineChart({
   data, dataKey, color, unit, tooltipLabel, height = 112, xInterval, rangeKey, onPointClick,
 }: {
@@ -33,12 +69,7 @@ export function BarLineChart({
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
           <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
           <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
-          <Tooltip
-            cursor={false}
-            formatter={(v, name) => Array.isArray(v)
-              ? [`${v[0]}–${v[1]} ${unit}`, name]
-              : [`${v} ${unit}`, name]}
-          />
+          <Tooltip cursor={false} content={makeTooltipContent(unit)} />
           {rangeKey && <Area dataKey={rangeKey} name="Range" stroke="none" fill={color} fillOpacity={0.12} />}
           <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={9} {...barProps} />
           <Line dataKey={dataKey} name={tooltipLabel} stroke={color} strokeWidth={2} dot={{ r: 3 }} />

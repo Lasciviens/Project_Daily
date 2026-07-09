@@ -19,9 +19,10 @@ export function StepsSection() {
   const [period, setPeriod] = useState<Period>('week')
   const [anchor, setAnchor] = useAnchorDate()
 
-  // Today's headline numbers — independent of the chart period below.
-  const { data: todayStepPoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', today, today)
-  const { data: todayDistPoints = [] } = useHealthMetricSeries('walking_running_distance', today, today)
+  // Headline follows the anchor (whichever day is selected), not always the
+  // literal calendar today — independent of the chart period below.
+  const { data: todayStepPoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', anchor, anchor)
+  const { data: todayDistPoints = [] } = useHealthMetricSeries('walking_running_distance', anchor, anchor)
   const steps = computeDailySeries('step_count', todayStepPoints)[0]?.value ?? 0
   const distanceKm = computeDailySeries('walking_running_distance', todayDistPoints)[0]?.value ?? 0
   const pace = steps > 0 && distanceKm > 0 ? (distanceKm * 1000) / steps : null
@@ -41,7 +42,9 @@ export function StepsSection() {
     <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">🚶 Steps Today</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
+            🚶 Steps {anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`}
+          </p>
           <p className="text-3xl font-bold text-ink-900 leading-tight">
             {stepsLoading ? '…' : steps.toLocaleString('en-GB')}
           </p>

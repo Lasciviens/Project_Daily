@@ -21,6 +21,13 @@ export function daysAgoStr(n: number): string {
   return formatLocalDate(addDays(new Date(), -n))
 }
 
+// Shift a date string by N days (negative = earlier). Used to compute a
+// "buffer" day just before a range (e.g. yesterday, as a reference point for
+// today's incomplete data) without re-deriving addDays/parseISO everywhere.
+export function shiftDateStr(dateStr: string, days: number): string {
+  return formatLocalDate(addDays(parseISO(dateStr), days))
+}
+
 // Every calendar date from `from` to `to` inclusive — used to left-join
 // sparse daily series so a chart still shows a gap for days with no data,
 // instead of silently compressing the x-axis around only the days that have

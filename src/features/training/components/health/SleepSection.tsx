@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeSleepSummary } from '../../healthAggregate'
-import { todayStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
+import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
+import { computeSleepSummary, estimateSleepStageProportions } from '../../healthAggregate'
+import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 import { useAnchorDate } from './useAnchorDate'
@@ -28,6 +28,25 @@ const STAGES = [
 
 type TrendPeriod = 'week' | 'month'
 
+function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
+  return function TooltipContent({ active, payload, label }: any) {
+    if (!active || !payload?.length) return null
+    const point = payload[0]
+    const date: string | undefined = point?.payload?.date
+    const sources = date ? sourcesByDate.get(date) : null
+    return (
+      <div className="bg-white border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
+        <p className="text-ink-400 font-medium">{label}</p>
+        <p className="font-semibold text-indigo-600">{point.value != null ? `${point.value} hr` : '—'}</p>
+        {sources && sources.size > 0 && (
+          <p className="text-ink-400">{[...sources].join(', ')}</p>
+        )}
+      </div>
+    )
+  }
+}
+
 export function SleepSection() {
   const today = todayStr()
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('week')
@@ -42,17 +61,85 @@ export function SleepSection() {
   const summaryByDate = new Map(summary.map(s => [s.date, s]))
   const chartData = datesBetweenStr(from, to).map(date => {
     const s = summaryByDate.get(date)
-    return { label: fmtDay(date), total: s ? Math.round(s.total * 10) / 10 : null }
+    return { label: fmtDay(date), date, total: s ? Math.round(s.total * 10) / 10 : null }
   })
+
+  // Shown in the trend chart's tooltip so it's clear which nights are
+  // Watch-tracked vs manually logged.
+  const sourcesByDate = new Map<string, Set<string>>()
+  for (const p of points) {
+    const set = sourcesByDate.get(p.date) ?? new Set<string>()
+    set.add(p.source === 'manual' ? 'Manual' : (p.source || 'Unknown'))
+    sourcesByDate.set(p.date, set)
+  }
+
+  // A wider, fixed history (independent of the Week/Month toggle above) so
+  // the Deep/Core/REM estimate for a manual entry is based on a stable
+  // sample, not just whatever's currently in view.
+  const { data: historyPoints = [] } = useHealthMetricSeries('sleep_analysis', daysAgoStr(29), today)
+  const stageProportions = estimateSleepStageProportions(computeSleepSummary(historyPoints))
+
+  const addManualSleep = useAddManualSleep()
+  const [showManualForm, setShowManualForm] = useState(false)
+  const [manualDate, setManualDate] = useState(daysAgoStr(1))
+  const [manualHours, setManualHours] = useState('')
+
+  function handleManualSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const hours = parseFloat(manualHours)
+    if (!manualDate || !hours || hours <= 0) return
+    addManualSleep.mutate(
+      { date: manualDate, totalHours: hours, stageProportions },
+      { onSuccess: () => { setShowManualForm(false); setManualHours('') } },
+    )
+  }
 
   return (
     <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 Last Night's Sleep</p>
-        <p className="text-3xl font-bold text-ink-900 leading-tight">
-          {isLoading ? '…' : last ? fmtHrs(last.total) : '—'}
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 Last Night's Sleep</p>
+          <p className="text-3xl font-bold text-ink-900 leading-tight">
+            {isLoading ? '…' : last ? fmtHrs(last.total) : '—'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowManualForm(v => !v)}
+          className="min-h-[32px] px-3 rounded-lg text-xs font-semibold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 transition-colors"
+        >
+          + Manual
+        </button>
       </div>
+
+      {showManualForm && (
+        <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Night of</label>
+            <input
+              type="date" value={manualDate} max={today} onChange={e => setManualDate(e.target.value)}
+              className="min-h-[36px] px-2 text-sm border border-ink-200 rounded-lg bg-white"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Hours slept</label>
+            <input
+              type="number" step="0.25" min="0" max="24" placeholder="7.5" value={manualHours}
+              onChange={e => setManualHours(e.target.value)}
+              className="min-h-[36px] w-20 px-2 text-sm border border-ink-200 rounded-lg bg-white"
+            />
+          </div>
+          <button
+            type="submit" disabled={addManualSleep.isPending}
+            className="min-h-[36px] px-3 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {addManualSleep.isPending ? 'Saving…' : 'Save'}
+          </button>
+          <p className="text-[10px] text-ink-400 basis-full">
+            Logged as source “Manual” — Deep/Core/REM split estimated from your {stageProportions ? 'own' : 'default'} sleep-stage average.
+          </p>
+        </form>
+      )}
 
       {last && (
         <>
@@ -108,7 +195,7 @@ export function SleepSection() {
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={trendPeriod === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            <Tooltip cursor={false} formatter={(v) => [`${v} hr`, 'Total sleep']} />
+            <Tooltip cursor={false} content={makeSleepTooltipContent(sourcesByDate)} />
             <Bar dataKey="total" fill="#6366f1" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

@@ -14,6 +14,9 @@ export interface MiniMetricConfig {
   // for metrics where "how many times" matters as much as the total/average
   // (e.g. handwashing, toothbrushing).
   showTodayCount?: boolean
+  // Lists the time-of-day of each occurrence today (e.g. "08:44, 23:03") —
+  // for metrics where WHEN it happened is useful, not just how much/often.
+  showTodayTimes?: boolean
 }
 
 // sum metrics read as "today's total" (matches Steps/Energy's headline
@@ -35,12 +38,18 @@ function summarize(metric: string, series: { date: string; value: number }[]) {
 }
 
 export function MetricMiniCard({ config }: { config: MiniMetricConfig }) {
-  const { metric, icon, title, unit, decimals, description, showTodayCount } = config
+  const { metric, icon, title, unit, decimals, description, showTodayCount, showTodayTimes } = config
   const { data: points = [] } = useHealthMetricSeries(metric, daysAgoStr(6), todayStr())
   const series = computeDailySeries(metric, points)
   const { value, windowLabel } = summarize(metric, series)
   const displayUnit = points.find(p => p.unit)?.unit || unit
-  const todayCount = showTodayCount ? points.filter(p => p.date === todayStr()).length : null
+  const todayPoints = (showTodayCount || showTodayTimes) ? points.filter(p => p.date === todayStr()) : []
+  const todayCount = showTodayCount ? todayPoints.length : null
+  const todayTimes = showTodayTimes
+    ? todayPoints
+        .map(p => new Date(p.recorded_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
+        .sort()
+    : null
 
   return (
     <div className="bg-cream-50 border border-ink-100 rounded-xl p-3 flex flex-col gap-1.5">
@@ -54,6 +63,9 @@ export function MetricMiniCard({ config }: { config: MiniMetricConfig }) {
       </p>
       {todayCount != null && (
         <p className="text-[11.5px] font-semibold text-accent-600">{todayCount}× today</p>
+      )}
+      {todayTimes && todayTimes.length > 0 && (
+        <p className="text-[11.5px] font-semibold text-accent-600">{todayTimes.join(', ')}</p>
       )}
       <p className="text-[11.5px] text-ink-400 leading-snug">{description}</p>
     </div>
