@@ -225,9 +225,11 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
             )}
           </div>
 
-          {/* ─── Phases view ─── */}
+          {/* ─── Phases view — matrix layout: phases flow side-by-side, each
+              sized to its own content (collapsed/expanded independently)
+              rather than stacking full-width down the page. ─── */}
           {view === 'phases' && (
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
               {phasesLoading ? (
                 [1, 2].map(i => <div key={i} className="h-12 bg-white/50 rounded-xl animate-pulse" />)
               ) : (

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeDailySeries, computeHourlyBuckets, computeBasalEnergyDailySeries } from '../../healthAggregate'
+import { computeDailySeries, computeHourlyBuckets, computeBasalEnergyDailySeries, BASAL_REFERENCE_WINDOW_DAYS } from '../../healthAggregate'
 import { todayStr, shiftDateStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
 import { DateNav } from './DateNav'
@@ -20,16 +20,16 @@ export function EnergySection() {
   const [anchor, setAnchor] = useAnchorDate()
 
   // Headline follows the anchor (whichever day is selected), not always the
-  // literal calendar today — basal fetches one extra buffer day before it so
-  // computeBasalEnergyDailySeries has a reference rate for gap-filling.
+  // literal calendar today — basal fetches extra buffer days before it so
+  // computeBasalEnergyDailySeries has a per-hour reference for gap-filling.
   const { data: anchorActive = [], isLoading } = useHealthMetricSeries('active_energy', anchor, anchor)
-  const { data: anchorBasalBuffered = [] } = useHealthMetricSeries('basal_energy_burned', shiftDateStr(anchor, -1), anchor)
+  const { data: anchorBasalBuffered = [] } = useHealthMetricSeries('basal_energy_burned', shiftDateStr(anchor, -BASAL_REFERENCE_WINDOW_DAYS), anchor)
   const activeToday = Math.round(computeDailySeries('active_energy', anchorActive)[0]?.value ?? 0)
   const basalToday = Math.round(computeBasalEnergyDailySeries(anchorBasalBuffered, [anchor])[0]?.value ?? 0)
 
   const { from, to } = rangeForAnchor(period, anchor)
   const { data: activePoints = [] } = useHealthMetricSeries('active_energy', from, to)
-  const { data: basalPointsBuffered = [] } = useHealthMetricSeries('basal_energy_burned', shiftDateStr(from, -1), to)
+  const { data: basalPointsBuffered = [] } = useHealthMetricSeries('basal_energy_burned', shiftDateStr(from, -BASAL_REFERENCE_WINDOW_DAYS), to)
 
   let chartData: { label: string; date?: string; active: number; basal: number }[]
   if (period === 'day') {

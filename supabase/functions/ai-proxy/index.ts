@@ -91,6 +91,35 @@ function throwRateLimit(errText: string): never {
   throw new RateLimitError(dailyLimit, retryAfterSec)
 }
 
+const MAX_GEMINI_RETRIES = 6
+const RETRY_BASE_DELAY_MS = 500
+
+// Gemini occasionally returns a transient "model overloaded"/high-demand
+// error (5xx) that clears up within seconds if retried — distinct from a 429
+// (real daily/per-minute quota exhaustion, which retrying won't fix, so that
+// still surfaces immediately via throwRateLimit upstream). Retries up to
+// MAX_GEMINI_RETRIES times with a short backoff before giving up, so the
+// user only sees a failure after genuinely exhausting attempts instead of on
+// the first transient hiccup — this was a real ~80%-of-requests pain point.
+async function fetchGeminiWithRetry(url: string, body: AnyRecord): Promise<Response> {
+  let lastRes: Response | null = null
+  for (let attempt = 0; attempt < MAX_GEMINI_RETRIES; attempt++) {
+    const res = await fetch(url, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    })
+    // 429 (real quota) and other 4xx (permanent client errors) are never
+    // helped by a retry — only 5xx (transient server-side overload) is.
+    if (res.ok || res.status < 500) return res
+    lastRes = res
+    if (attempt < MAX_GEMINI_RETRIES - 1) {
+      await new Promise(r => setTimeout(r, RETRY_BASE_DELAY_MS * (attempt + 1)))
+    }
+  }
+  return lastRes!
+}
+
 const TOOLS = [
   {
     functionDeclarations: [
@@ -463,11 +492,7 @@ async function callGemini(
 
   // Multi-turn function calling loop
   for (let turn = 0; turn < 16; turn++) {
-    const res = await fetch(url, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ ...baseBody, contents }),
-    })
+    const res = await fetchGeminiWithRetry(url, { ...baseBody, contents })
 
     if (!res.ok) {
       const errText = await res.text()
@@ -521,11 +546,7 @@ async function callGemini(
   }]
   const finalBody: AnyRecord = { ...baseBody, contents: resumeContents }
   delete finalBody.tools
-  const finalRes = await fetch(url, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(finalBody),
-  })
+  const finalRes = await fetchGeminiWithRetry(url, finalBody)
   if (finalRes.ok) {
     const finalData = await finalRes.json()
     const finalText = finalData.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text
@@ -578,11 +599,7 @@ async function callGeminiStructured(
   }
   if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] }
 
-  const res = await fetch(url, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(body),
-  })
+  const res = await fetchGeminiWithRetry(url, body)
 
   if (!res.ok) {
     const errText = await res.text()
