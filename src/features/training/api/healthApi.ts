@@ -64,22 +64,47 @@ export async function fetchHealthMetrics(opts: { limit?: number } = {}): Promise
   return data ?? []
 }
 
+// Supabase/PostgREST caps every response at this many rows server-side
+// (confirmed: an explicit Range header asking for more still comes back
+// capped) — a client-side .limit() alone can't ask for more than this.
+const MAX_ROWS_PER_PAGE = 1000
+
 // All points (any source) for one metric within a date range — used by chart
 // sections (rings, steps, energy, heart, sleep, body) to build daily/hourly
 // series. Ordered ascending so callers can group-by-day without re-sorting.
+//
+// Paginates past the server's row cap (real bug, fixed): high-frequency
+// metrics like active_energy/heart_rate arrive roughly once a minute from
+// Apple Watch, so a week (let alone a month) can easily exceed 1000 rows.
+// With no pagination, ascending order + the silent cap meant the response
+// was truncated to the OLDEST rows in range — the most recent days (today,
+// yesterday) fell off the end entirely. This showed up as "Day view has
+// data, Week view doesn't" (a single day rarely hits the cap; a week/month
+// range routinely does).
 export async function fetchHealthMetricSeries(
   metricName: string,
   fromDate: string,
   toDate: string,
 ): Promise<HealthMetric[]> {
-  const { data, error } = await supabase
-    .from('health_metrics')
-    .select('*')
-    .eq('metric_name', metricName)
-    .gte('date', fromDate)
-    .lte('date', toDate)
-    .order('recorded_at', { ascending: true })
+  const all: HealthMetric[] = []
+  let offset = 0
 
-  if (error) throw error
-  return data ?? []
+  for (;;) {
+    const { data, error } = await supabase
+      .from('health_metrics')
+      .select('*')
+      .eq('metric_name', metricName)
+      .gte('date', fromDate)
+      .lte('date', toDate)
+      .order('recorded_at', { ascending: true })
+      .range(offset, offset + MAX_ROWS_PER_PAGE - 1)
+
+    if (error) throw error
+    const page = data ?? []
+    all.push(...page)
+    if (page.length < MAX_ROWS_PER_PAGE) break
+    offset += MAX_ROWS_PER_PAGE
+  }
+
+  return all
 }
