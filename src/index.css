@@ -34,6 +34,18 @@
   .recharts-surface:focus {
     outline: none !important;
   }
+
+  /* Was referenced in several horizontal-scroll strips (nav, DailyPage,
+     GamesPage) but never actually defined — a real fix, not just tidying,
+     since a scroll strip with no scrollbar AND no other affordance gives no
+     hint at all that it scrolls. */
+  .scrollbar-none {
+    scrollbar-width: none;      /* Firefox */
+    -ms-overflow-style: none;   /* old Edge/IE */
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;              /* Chrome/Safari */
+  }
 }
 
 @layer components {

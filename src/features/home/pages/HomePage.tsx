@@ -66,6 +66,16 @@ export function HomePage() {
      */
     <div className="min-h-[calc(100vh-56px)] flex flex-col xl:flex-row xl:items-start gap-4 p-4 xl:p-5">
 
+      {/* Mobile-only lead: morning briefing + weather, in that order, ahead
+          of everything else. Below xl the 3-column layout drops to a
+          single DOM-ordered stack (Left col → Center col → Right col), which
+          buried these two behind Currency/Projects/Training/Games — moved
+          here instead of reshuffling the desktop columns themselves. */}
+      <div className="xl:hidden space-y-4">
+        <DailyBriefing />
+        <WeatherWidget />
+      </div>
+
       {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
       <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-4">
         <CurrencyWidget />
@@ -76,8 +86,11 @@ export function HomePage() {
 
       {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 space-y-4">
-        {/* AI morning briefing — leads the page, auto-generated once per day */}
-        <DailyBriefing />
+        {/* AI morning briefing — leads the page on desktop; mobile gets its
+            own copy above (see the xl:hidden block) instead of this one. */}
+        <div className="hidden xl:block">
+          <DailyBriefing />
+        </div>
 
         {/* Overview summary */}
         <TodaySummary />
@@ -101,9 +114,15 @@ export function HomePage() {
         {/* Today's schedule */}
         <TodayScheduleWidget />
 
-        {/* Weather + transit side-by-side */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-          <WeatherWidget />
+        {/* Weather + transit side-by-side on desktop; mobile shows Weather
+            separately up top (see the xl:hidden block above), Ruter still
+            flows here either way. Grid breakpoint matches the xl cutoff
+            used for Weather's visibility so there's no leftover empty
+            column at in-between widths. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          <div className="hidden xl:block">
+            <WeatherWidget />
+          </div>
           <RuterWidget />
         </div>
 

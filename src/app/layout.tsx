@@ -11,14 +11,57 @@ export function Layout() {
   return (
     <div className="min-h-screen flex flex-col bg-canvas">
       <Nav />
-      <main className="flex-1">
+      <main className="flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
         <Outlet />
       </main>
+      <BottomTabBar />
       <DevRequestsDrawer />
       <AIPanel />
       <CommandBar />
       <Toaster />
     </div>
+  )
+}
+
+// ─── Mobile bottom tab bar ──────────────────────────────────────────────────
+// Below sm (640px) the old horizontal top nav is hidden in favor of this —
+// a real app-style fixed tab bar reads immediately as "this is an app", and
+// (the actual bug it fixes) sidesteps the scrollable top nav's stuck-scroll-
+// position problem: that nav never resets `scrollLeft` between route changes
+// and has no scroll affordance, so once a user scrolled right to reach
+// Training/Projects/Games, Home/Personal/Media/Work looked like they'd
+// vanished. All 7 destinations are always-visible, equal-width, no scrolling.
+const TABS: { to: string; label: string; icon: string; match: string[] }[] = [
+  { to: '/home',     label: 'Home',     icon: '🏠', match: ['/home'] },
+  { to: '/daily',    label: 'Personal', icon: '📅', match: ['/daily', '/shop', '/recipes'] },
+  { to: '/media',    label: 'Media',    icon: '🎬', match: ['/media'] },
+  { to: '/work',     label: 'Work',     icon: '💼', match: ['/work'] },
+  { to: '/training', label: 'Training', icon: '🏋️', match: ['/training'] },
+  { to: '/projects', label: 'Projects', icon: '📁', match: ['/projects'] },
+  { to: '/games',    label: 'Games',    icon: '🎮', match: ['/games'] },
+]
+
+function BottomTabBar() {
+  const location = useLocation()
+
+  return (
+    <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-white/95 backdrop-blur-lg border-t border-ink-200 pb-[env(safe-area-inset-bottom)]">
+      {TABS.map(tab => {
+        const isActive = tab.match.includes(location.pathname)
+        return (
+          <NavLink
+            key={tab.to}
+            to={tab.to}
+            className={`flex-1 min-h-[56px] flex flex-col items-center justify-center gap-0.5 transition-colors duration-150 active:scale-95 ${
+              isActive ? 'text-accent-600' : 'text-ink-400'
+            }`}
+          >
+            <span className="text-xl leading-none">{tab.icon}</span>
+            <span className="text-[9px] font-semibold leading-none">{tab.label}</span>
+          </NavLink>
+        )
+      })}
+    </nav>
   )
 }
 
@@ -61,8 +104,10 @@ function Nav() {
           <span className="font-semibold text-ink-900 text-sm hidden sm:block">Lasci's Board</span>
         </div>
 
-        {/* Nav links — scrollable on mobile so they never wrap or overflow */}
-        <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-none flex-1 min-w-0">
+        {/* Nav links — below sm, this is replaced entirely by BottomTabBar
+            (a fixed app-style tab bar), so hide this row rather than have
+            two navigations. From sm+ this is the only nav (no bottom bar). */}
+        <nav className="hidden sm:flex items-center gap-0.5 overflow-x-auto scrollbar-none flex-1 min-w-0">
           <NavLink to="/home"      className={linkClass}>Home</NavLink>
           <PersonalNavLink />
           <NavLink to="/media"     className={linkClass}>Media</NavLink>
