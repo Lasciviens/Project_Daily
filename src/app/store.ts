@@ -2,12 +2,11 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 interface UIState {
-  isToDoOpen:      boolean
+  isDevRequestsOpen: boolean
   isAIOpen:        boolean
   isCommandBarOpen:boolean
-  toggleToDo:    () => void
-  openToDo:      () => void
-  closeToDo:     () => void
+  toggleDevRequests: () => void
+  closeDevRequests:  () => void
   toggleAI:      () => void
   openAI:        () => void
   closeAI:       () => void
@@ -16,14 +15,13 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  isToDoOpen:       false,
+  isDevRequestsOpen: false,
   isAIOpen:         false,
   isCommandBarOpen: false,
-  toggleToDo:    () => set(s => ({ isToDoOpen: !s.isToDoOpen, isAIOpen: false })),
-  openToDo:      () => set({ isToDoOpen: true,  isAIOpen: false }),
-  closeToDo:     () => set({ isToDoOpen: false }),
-  toggleAI:      () => set(s => ({ isAIOpen: !s.isAIOpen, isToDoOpen: false })),
-  openAI:        () => set({ isAIOpen: true,  isToDoOpen: false }),
+  toggleDevRequests: () => set(s => ({ isDevRequestsOpen: !s.isDevRequestsOpen, isAIOpen: false })),
+  closeDevRequests:  () => set({ isDevRequestsOpen: false }),
+  toggleAI:      () => set(s => ({ isAIOpen: !s.isAIOpen, isDevRequestsOpen: false })),
+  openAI:        () => set({ isAIOpen: true,  isDevRequestsOpen: false }),
   closeAI:       () => set({ isAIOpen: false }),
   openCommandBar:  () => set({ isCommandBarOpen: true }),
   closeCommandBar: () => set({ isCommandBarOpen: false }),

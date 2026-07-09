@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
-import { ToDoDrawer } from '../features/todo/components/ToDoDrawer'
+import { DevRequestsDrawer } from '../features/devRequests/components/DevRequestsDrawer'
 import { AIPanel } from '../features/ai/components/AIPanel'
 import { CommandBar } from '../shared/components/CommandBar'
 import { SettingsMenu } from '../shared/components/SettingsMenu'
@@ -14,7 +14,7 @@ export function Layout() {
       <main className="flex-1">
         <Outlet />
       </main>
-      <ToDoDrawer />
+      <DevRequestsDrawer />
       <AIPanel />
       <CommandBar />
       <Toaster />
@@ -43,7 +43,7 @@ function PersonalNavLink() {
 }
 
 function Nav() {
-  const { isToDoOpen, toggleToDo, isAIOpen, toggleAI, openCommandBar } = useUIStore()
+  const { isDevRequestsOpen, toggleDevRequests, isAIOpen, toggleAI, openCommandBar } = useUIStore()
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-2.5 min-h-[44px] inline-flex items-center text-sm font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
@@ -100,15 +100,15 @@ function Nav() {
           </button>
 
           <button
-            onClick={toggleToDo}
+            onClick={toggleDevRequests}
             className={`min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 flex items-center flex-shrink-0 ${
-              isToDoOpen
+              isDevRequestsOpen
                 ? 'bg-accent-50 text-accent-600'
                 : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
             }`}
           >
-            <span className="sm:hidden">☑</span>
-            <span className="hidden sm:inline">☑ To-Do</span>
+            <span className="sm:hidden">🗒️</span>
+            <span className="hidden sm:inline">🗒️ Requests</span>
           </button>
 
           <SettingsMenu />
