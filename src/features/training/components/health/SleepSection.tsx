@@ -5,6 +5,7 @@ import { computeSleepSummary } from '../../healthAggregate'
 import { todayStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
+import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { SLEEP_EXTRA_METRICS } from './miniMetrics'
 
@@ -30,7 +31,7 @@ type TrendPeriod = 'week' | 'month'
 export function SleepSection() {
   const today = todayStr()
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('week')
-  const [anchor, setAnchor] = useState(today)
+  const [anchor, setAnchor] = useAnchorDate()
   const { from, to } = rangeForAnchor(trendPeriod, anchor)
   const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', from, to)
   const summary = computeSleepSummary(points)

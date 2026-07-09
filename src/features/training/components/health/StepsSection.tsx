@@ -6,6 +6,7 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
+import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { STEPS_EXTRA_METRICS } from './miniMetrics'
 
@@ -16,7 +17,7 @@ function fmtDay(dateStr: string): string {
 export function StepsSection() {
   const today = todayStr()
   const [period, setPeriod] = useState<Period>('week')
-  const [anchor, setAnchor] = useState(today)
+  const [anchor, setAnchor] = useAnchorDate()
 
   // Today's headline numbers — independent of the chart period below.
   const { data: todayStepPoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', today, today)
