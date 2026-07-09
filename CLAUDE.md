@@ -44,6 +44,19 @@ Runs on **Claude Code on the web** (claude.ai/code). Container clones repo fresh
 
 UI primitives: `@headlessui/react` v2 (Dialog, Combobox, Popover, Menu). No animation library, no shadcn/ui, no SSR, no AI keys in client code.
 
+**PWA / service worker (real bug, fixed):** `vite-plugin-pwa`'s `registerType: 'autoUpdate'`
+does NOT auto-update by default the way the name implies — the auto-injected `registerSW.js`
+is a bare `navigator.serviceWorker.register(...)` call with no update-detection logic. A new
+service worker installs but sits **waiting** until every open tab of the app is fully closed;
+a hard refresh does NOT activate it, because a hard refresh bypasses the HTTP cache, not an
+already-controlling service worker. This caused a shipped fix to be invisible to the user even
+after a successful deploy + hard refresh. Fixed: `vite.config.ts` sets `injectRegister: false`
++ `workbox: { skipWaiting: true, clientsClaim: true }`, and `src/main.tsx` calls
+`registerSW({ immediate: true })` from `virtual:pwa-register` (types via `src/vite-env.d.ts`) —
+this checks for updates immediately (and periodically after) and reloads automatically when
+one is found, so deploys now actually reach the browser without the user manually clearing
+site data or reinstalling the PWA.
+
 ---
 
 ## Routes
