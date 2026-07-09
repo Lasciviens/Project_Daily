@@ -6,6 +6,7 @@ import { PeriodToggle, type Period } from './PeriodToggle'
 import { BarLineChart } from './BarLineChart'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
+import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { HEART_EXTRA_METRICS } from './miniMetrics'
 
@@ -16,7 +17,7 @@ function fmtDay(dateStr: string): string {
 export function HeartSection() {
   const today = todayStr()
   const [period, setPeriod] = useState<Period>('week')
-  const [anchor, setAnchor] = useState(today)
+  const [anchor, setAnchor] = useAnchorDate()
 
   const { data: todayHr = [], isLoading } = useHealthMetricSeries('heart_rate', today, today)
   const { data: todayResting = [] } = useHealthMetricSeries('resting_heart_rate', today, today)
