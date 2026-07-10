@@ -49,7 +49,7 @@ function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
   const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
   return (
     <button onClick={onClick}
-      className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-md hover:scale-[1.02] transition-all duration-150 group"
+      className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-md hover:scale-[1.02] transition-all duration-150 press-feedback group"
     >
       <div className="relative bg-ink-100 flex-shrink-0" style={{ aspectRatio: '3/4' }}>
         <CoverImg url={game.cover_url} title={game.title} />
@@ -85,7 +85,7 @@ function CompactCard({ game, onClick }: { game: Game; onClick: () => void }) {
   const dotColor  = ({ playing: 'bg-orange-400', completed: 'bg-green-500', wishlist: 'bg-purple-500', backlog: 'bg-ink-300', dropped: 'bg-red-400' } as Record<string, string>)[game.play_status] ?? 'bg-ink-300'
   return (
     <button onClick={onClick} title={game.title}
-      className="relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-all duration-150 bg-ink-100 shadow-sm group"
+      className="relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-all duration-150 press-feedback bg-ink-100 shadow-sm group"
       style={{ aspectRatio: '3/4' }}
     >
       <CoverImg url={game.cover_url} title={game.title} />
@@ -101,7 +101,7 @@ function PosterCard({ game, onClick }: { game: Game; onClick: () => void }) {
   const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
   return (
     <button onClick={onClick}
-      className="relative rounded-2xl overflow-hidden shadow-md border border-ink-200 hover:shadow-xl hover:border-accent-400 hover:scale-[1.03] transition-all duration-200 bg-ink-900 group"
+      className="relative rounded-2xl overflow-hidden shadow-md border border-ink-200 hover:shadow-xl hover:border-accent-400 hover:scale-[1.03] transition-all duration-200 press-feedback bg-ink-900 group"
       style={{ aspectRatio: '2/3' }}
     >
       <CoverImg url={game.cover_url} title={game.title} className="absolute inset-0" />

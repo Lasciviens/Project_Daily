@@ -79,7 +79,7 @@ export function RecentMediaWidget() {
           sm: up where there's actual room for it. */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
         {data.map(item => (
-          <Link key={item.id} to="/media" className="flex flex-col group">
+          <Link key={item.id} to="/media" className="flex flex-col group press-feedback">
             <div className="relative aspect-[2/3] rounded overflow-hidden bg-ink-100">
               <img
                 src={posterUrl(item.poster, 'w154')}

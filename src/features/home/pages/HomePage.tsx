@@ -101,7 +101,7 @@ export function HomePage() {
             <Link
               key={card.to}
               to={card.to}
-              className="group flex items-center justify-center gap-1.5 bg-white rounded-lg border border-ink-200 px-2 min-h-[44px] shadow-sm hover:shadow-md hover:border-accent-300 transition-shadow duration-150"
+              className="group flex items-center justify-center gap-1.5 bg-white rounded-lg border border-ink-200 px-2 min-h-[44px] shadow-sm hover:shadow-md hover:border-accent-300 transition-shadow duration-150 press-feedback"
             >
               <span className="text-base leading-none">{card.icon}</span>
               <span className="text-xs font-semibold text-ink-800 group-hover:text-accent-600 transition-colors duration-150 truncate">
