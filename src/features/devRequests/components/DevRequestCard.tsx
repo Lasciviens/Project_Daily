@@ -36,21 +36,30 @@ export function DevRequestCard({ request, dragging, onDragStart, onDragEnd, onCy
       </button>
 
       <div className="flex-1 min-w-0 flex flex-col gap-1">
-        <button
-          type="button"
-          onClick={onEdit}
-          className={`text-left text-sm leading-snug hover:bg-ink-50 rounded px-0.5 -mx-0.5 transition-colors ${
-            isDone ? 'line-through text-ink-400' : 'text-ink-800'
-          }`}
-        >
-          {request.title}
-        </button>
+        <div className="flex items-start justify-between gap-2">
+          <button
+            type="button"
+            onClick={onEdit}
+            className={`text-left text-sm leading-snug hover:bg-ink-50 rounded px-0.5 -mx-0.5 transition-colors ${
+              isDone ? 'line-through text-ink-400' : 'text-ink-800'
+            }`}
+          >
+            {request.title}
+          </button>
+          {/* Page/category the request came from — framed and pinned to the
+              card's top-right corner so it reads as metadata about the
+              request, not just another inline tag buried in the meta row. */}
+          {request.page && (
+            <span className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-md border border-ink-200 bg-ink-50 text-ink-500 whitespace-nowrap">
+              {request.page}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${CATEGORY_BADGE[request.category]}`}>
             {request.category}
           </span>
           <span className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[request.priority]}`} title={`priority: ${request.priority}`} />
-          {request.page && <span className="text-[10px] text-ink-400 truncate">{request.page}</span>}
           {request.effort && <span className="text-[10px] text-ink-300">· {request.effort}</span>}
         </div>
       </div>

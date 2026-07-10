@@ -31,6 +31,14 @@ Runs on **Claude Code on the web** (claude.ai/code). Container clones repo fresh
 
 ---
 
+## Communication Style (per user request)
+
+The user is learning software engineering terminology as we go (comes from a SAP/ABAP background). When describing what was done, **use the correct technical term and add a short parenthetical explaining what it means** — e.g. "yeni bir **hook** yazdım (component'ler arası paylaşılan, tekrar kullanılabilir mantık — SAP'deki bir class method'una en yakın karşılık)" instead of just describing it in plain words with no term attached. Do this consistently, not just when explicitly asked — it's meant to build vocabulary over many sessions. Don't overdo it into a glossary dump; one clear parenthetical per term, only for terms actually used that turn.
+
+Also: don't narrate routine PR housekeeping (subscribing to PR activity, "checking CI status", "no comments yet") — the user checks PRs themselves and considers this noise. Only speak up about a PR when there's something requiring their input or a genuinely notable outcome (merged, a real CI failure, a review comment needing a decision).
+
+---
+
 ## Stack
 
 | Layer | Choice |

@@ -1,8 +1,6 @@
 import { useState, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
 import { useTasksForDay, useCreateTask } from '../../todo/hooks/useTodos'
-import { usePullToRefresh } from '../../../shared/hooks/usePullToRefresh'
 import { useTimeBlocks } from '../../daily/hooks/useSchedule'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import type { Task } from '../../todo/types'
@@ -57,14 +55,6 @@ export function HomePage() {
   const progress      = countable.length > 0 ? (done / countable.length) * 100 : 0
   const [editingTask, setEditingTask] = useState<Task | null>(null)
 
-  // Pull-to-refresh (mobile only — onTouchStart/Move never fire on desktop
-  // mouse input, so this is inert there) — every Home widget manages its own
-  // useQuery independently, so a full refresh means invalidating everything
-  // rather than picking individual query keys, matching how a native app's
-  // pull-to-refresh typically re-syncs the whole screen.
-  const qc = useQueryClient()
-  const pullToRefresh = usePullToRefresh(() => qc.invalidateQueries())
-
   return (
     /*
      * Layout: 3-column grid on ≥1280px
@@ -74,22 +64,7 @@ export function HomePage() {
      * On <1280px: right panel drops below center
      * On <768px : all single column
      */
-    <div className="min-h-[calc(100vh-56px)] flex flex-col xl:flex-row xl:items-start gap-4 p-4 xl:p-5" {...pullToRefresh.containerProps}>
-
-      {/* Pull-to-refresh indicator — grows with pull distance, spins once
-          the refresh threshold is crossed and a refetch is in flight. */}
-      <div
-        className="sm:hidden fixed left-1/2 -translate-x-1/2 z-30 flex items-center justify-center w-9 h-9 rounded-full bg-white shadow-md border border-ink-200 text-accent-600 transition-transform"
-        style={{
-          top: '56px',
-          opacity: pullToRefresh.pullDistance > 4 || pullToRefresh.isRefreshing ? 1 : 0,
-          transform: `translate(-50%, ${Math.max(pullToRefresh.pullDistance, pullToRefresh.isRefreshing ? 44 : 0) - 36}px)`,
-        }}
-      >
-        <span className={pullToRefresh.isRefreshing ? 'animate-spin' : ''} style={{
-          transform: pullToRefresh.isRefreshing ? undefined : `rotate(${pullToRefresh.pullDistance * 3}deg)`,
-        }}>↻</span>
-      </div>
+    <div className="min-h-[calc(100vh-56px)] flex flex-col xl:flex-row xl:items-start gap-4 p-4 xl:p-5">
 
       {/* Mobile-only lead: morning briefing + weather, in that order, ahead
           of everything else. Below xl the 3-column layout drops to a

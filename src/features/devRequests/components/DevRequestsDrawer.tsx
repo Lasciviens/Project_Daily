@@ -44,8 +44,8 @@ function NewRequestForm({ currentPage, onDone }: { currentPage: string; onDone: 
       <textarea
         value={description} onChange={e => setDescription(e.target.value)}
         placeholder="Details (optional) — the more context, the less back-and-forth later"
-        rows={2}
-        className="px-2.5 py-1.5 text-xs border border-ink-200 rounded-lg bg-white resize-none"
+        rows={4}
+        className="px-2.5 py-1.5 text-xs border border-ink-200 rounded-lg bg-white resize-y min-h-[90px] lg:min-h-[180px]"
       />
       <div className="grid grid-cols-2 gap-1.5">
         <select value={category} onChange={e => setCategory(e.target.value as DevRequestCategory)}
@@ -98,9 +98,9 @@ function EditRequestForm({ request, onDone }: { request: DevRequest; onDone: () 
     <div className="flex flex-col gap-2 p-2.5 bg-accent-50/60 border border-accent-200 rounded-xl">
       <input value={title} onChange={e => setTitle(e.target.value)}
         className="min-h-[36px] px-2 text-sm border border-ink-200 rounded-lg bg-white" />
-      <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
+      <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4}
         placeholder="Details (optional)"
-        className="px-2 py-1.5 text-xs border border-ink-200 rounded-lg bg-white resize-none" />
+        className="px-2 py-1.5 text-xs border border-ink-200 rounded-lg bg-white resize-y min-h-[90px] lg:min-h-[180px]" />
       <div className="grid grid-cols-2 gap-1.5">
         <select value={category} onChange={e => setCategory(e.target.value as DevRequestCategory)}
           className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-white">
@@ -207,10 +207,16 @@ export function DevRequestsDrawer() {
 
         {/* Filters + sort */}
         <div className="flex items-center gap-1.5 px-3 py-2 border-b border-ink-100 flex-wrap">
+          {/* "all" now matches the accent-based selected/unselected convention
+              used for filter pills elsewhere in the app (Shop/Games category
+              filters) instead of a one-off dark-gray style; the unselected
+              state also gets a light fill (not plain white) so it doesn't
+              read as an empty/unstyled box against the drawer's white
+              background. */}
           <button
             onClick={() => setCategoryFilter(null)}
-            className={`text-[10px] px-2 min-h-[28px] rounded border transition-colors ${
-              categoryFilter === null ? 'bg-ink-800 text-white border-ink-800' : 'bg-white text-ink-500 border-ink-200'
+            className={`text-[10px] px-2 min-h-[28px] rounded border font-medium transition-colors ${
+              categoryFilter === null ? 'bg-accent-500 text-white border-accent-500' : 'bg-ink-50 text-ink-600 border-ink-200'
             }`}
           >
             all {active.length}
@@ -223,7 +229,7 @@ export function DevRequestsDrawer() {
                 key={c}
                 onClick={() => setCategoryFilter(f => f === c ? null : c)}
                 className={`text-[10px] px-2 min-h-[28px] rounded border transition-colors ${
-                  categoryFilter === c ? CATEGORY_BADGE[c] + ' font-semibold' : 'bg-white text-ink-500 border-ink-200'
+                  categoryFilter === c ? CATEGORY_BADGE[c] + ' font-semibold' : 'bg-ink-50 text-ink-600 border-ink-200'
                 }`}
               >
                 {c} {count}

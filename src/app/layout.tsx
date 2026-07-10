@@ -1,10 +1,12 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Home as HomeIcon, CalendarDays, Clapperboard, Briefcase, Dumbbell, FolderKanban, Gamepad2,
   type LucideIcon,
 } from 'lucide-react'
 import { useViewTransitionNav } from '../shared/hooks/useViewTransitionNav'
+import { usePullToRefresh } from '../shared/hooks/usePullToRefresh'
 import { DevRequestsDrawer } from '../features/devRequests/components/DevRequestsDrawer'
 import { AIPanel } from '../features/ai/components/AIPanel'
 import { CommandBar } from '../shared/components/CommandBar'
@@ -13,10 +15,23 @@ import { Toaster } from '../shared/components/Toaster'
 import { useUIStore } from './store'
 
 export function Layout() {
+  // Lives here (the shell every route renders inside), not on individual
+  // pages — a hook called once at this level applies to every route
+  // automatically, instead of every page needing to call it separately.
+  // Every page's queries get invalidated on refresh regardless of which
+  // route is active — simplest match for "pull down, everything re-syncs"
+  // without threading a page-specific refetch list through this component.
+  const qc = useQueryClient()
+  const pullToRefresh = usePullToRefresh(() => qc.invalidateQueries())
+
   return (
     <div className="min-h-screen flex flex-col bg-canvas">
       <Nav />
-      <main className="flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
+      <main
+        className="flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
+        {...pullToRefresh.containerProps}
+      >
+        <PullToRefreshIndicator pullDistance={pullToRefresh.pullDistance} isRefreshing={pullToRefresh.isRefreshing} />
         <Outlet />
       </main>
       <BottomTabBar />
@@ -24,6 +39,28 @@ export function Layout() {
       <AIPanel />
       <CommandBar />
       <Toaster />
+    </div>
+  )
+}
+
+// ─── Pull-to-refresh indicator ──────────────────────────────────────────────
+// Mobile only (sm:hidden — pull gestures never fire from desktop mouse input
+// anyway, this just also hides the dot visually). Grows with pull distance,
+// spins in place once the refresh threshold is crossed and a refetch is
+// actually in flight.
+function PullToRefreshIndicator({ pullDistance, isRefreshing }: { pullDistance: number; isRefreshing: boolean }) {
+  return (
+    <div
+      className="sm:hidden fixed left-1/2 -translate-x-1/2 z-30 flex items-center justify-center w-9 h-9 rounded-full bg-white shadow-md border border-ink-200 text-accent-600 transition-transform"
+      style={{
+        top: '56px',
+        opacity: pullDistance > 4 || isRefreshing ? 1 : 0,
+        transform: `translate(-50%, ${Math.max(pullDistance, isRefreshing ? 44 : 0) - 36}px)`,
+      }}
+    >
+      <span className={isRefreshing ? 'animate-spin' : ''} style={{
+        transform: isRefreshing ? undefined : `rotate(${pullDistance * 3}deg)`,
+      }}>↻</span>
     </div>
   )
 }
