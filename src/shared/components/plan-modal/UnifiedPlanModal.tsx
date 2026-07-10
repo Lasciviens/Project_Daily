@@ -187,6 +187,12 @@ export function UnifiedPlanModal({
       const link = linkedTaskId
         ? { source_type: 'task', source_id: linkedTaskId }
         : { source_type: source?.sourceType, source_id: source?.sourceId }
+      // Only present for a single-episode plan (see PlanSource.episodeInfo) —
+      // lets a DB trigger match this exact episode being marked watched back
+      // to this exact block, which plain source_id (show-level only) can't.
+      const episodeFields = source?.episodeInfo
+        ? { season_number: source.episodeInfo.seasonNumber, episode_number: source.episodeInfo.episodeNumber }
+        : {}
       const block = await createBlock.mutateAsync({
         date:             form.date,
         title:            form.title.trim(),
@@ -195,6 +201,7 @@ export function UnifiedPlanModal({
         color:            defaults?.color,
         category:         form.category,
         ...link,
+        ...episodeFields,
       })
       createdBlockId = block.id
     } else {
@@ -378,7 +385,10 @@ export function UnifiedPlanModal({
           )}
 
           {activeTab === 'schedule'
-            ? <ScheduleTab form={form} patch={patch} config={config} gcalAvailable={!!calToken} extra={scheduleExtra} />
+            ? <ScheduleTab
+                form={form} patch={patch} config={config} gcalAvailable={!!calToken} extra={scheduleExtra}
+                taskAlreadyLinked={!!timeBlock && !task && timeBlock.source_type === 'task'}
+              />
             : <TaskTab form={form} patch={patch} config={config} gcalAvailable={!!calToken} editMode={editMode} extra={taskExtra} />
           }
 

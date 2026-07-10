@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { isToday, isTomorrow, isPast } from 'date-fns'
 import type { Task } from '../types'
-import { useToggleTask, useDeleteTask } from '../hooks/useTodos'
+import { useToggleTask, useDeleteTask, useUpdateTask } from '../hooks/useTodos'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
 import { PRIORITY_DOT_CLASS as PRIORITY_DOT } from '../../../shared/utils/priorityColors'
@@ -30,7 +30,9 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
   const [editing, setEditing] = useState(false)
   const toggle = useToggleTask()
   const remove = useDeleteTask()
-  const isDone = task.status === 'done'
+  const update = useUpdateTask()
+  const isDone      = task.status === 'done'
+  const isCancelled = task.status === 'cancelled'
   // Mobile-only affordance (lg:hidden on the reveal panel below) — desktop
   // already has hover-revealed action buttons including delete, so the
   // swipe gesture would just be redundant clutter there.
@@ -86,12 +88,17 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
           {/* Title row with priority dot */}
           <div className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
-            <span className={`text-sm leading-snug ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}>
+            <span className={`text-sm leading-snug ${(isDone || isCancelled) ? 'line-through text-ink-400' : 'text-ink-800'}`}>
               {task.title}
             </span>
           </div>
           {/* Domain tag + due date chip + description */}
           <div className="flex items-center gap-1.5 mt-1 ml-3">
+            {isCancelled && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-ink-100 text-ink-400">
+                Cancelled
+              </span>
+            )}
             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${DOMAIN_TAG_CLASS[task.domain]}`}>
               {DOMAIN_LABEL[task.domain]}
             </span>
@@ -130,6 +137,14 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
             title="Edit"
           >✎</button>
+          {!isCancelled && (
+            <button
+              onClick={e => { e.stopPropagation(); update.mutate({ id: task.id, patch: { status: 'cancelled' } }) }}
+              disabled={update.isPending}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-orange-500 transition-colors duration-150 text-xs"
+              title="Cancel (keeps a record, unlike Delete)"
+            >⊘</button>
+          )}
           <button
             onClick={e => { e.stopPropagation(); remove.mutate(task.id) }}
             disabled={remove.isPending}
@@ -160,6 +175,14 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
               className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
               title="Edit"
             >✎</button>
+            {!isCancelled && (
+              <button
+                onClick={e => { e.stopPropagation(); update.mutate({ id: task.id, patch: { status: 'cancelled' } }) }}
+                disabled={update.isPending}
+                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-orange-500 transition-colors duration-150 text-xs"
+                title="Cancel (keeps a record, unlike Delete)"
+              >⊘</button>
+            )}
             <button
               onClick={e => { e.stopPropagation(); remove.mutate(task.id) }}
               disabled={remove.isPending}

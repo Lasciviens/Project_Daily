@@ -146,6 +146,15 @@ export default function WorkTaskCard({
         >
           ✎
         </button>
+        {task.status !== 'cancelled' && (
+          <button
+            onClick={() => onStatusChange(task.id, 'cancelled')}
+            title="Cancel (keeps a record, unlike Delete)"
+            className="min-h-[44px] min-w-[44px] md:min-h-[26px] md:min-w-[26px] flex items-center justify-center rounded-md text-[11px] text-ink-300 hover:bg-orange-50 hover:text-orange-500 transition-colors"
+          >
+            ⊘
+          </button>
+        )}
         <button
           onClick={() => onDelete(task.id)}
           title="Delete"

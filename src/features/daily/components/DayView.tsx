@@ -11,8 +11,14 @@ export function DayView({ date }: Props) {
   const { tasks, isLoading, section } = useDayData(date)
   const [modalOpen, setModalOpen] = useState(false)
 
-  const openTasks = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
-  const doneTasks = tasks.filter(t => t.status === 'done' && completedWithinLast24h(t.updated_at))
+  const openTasks      = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
+  const doneTasks      = tasks.filter(t => t.status === 'done' && completedWithinLast24h(t.updated_at))
+  // Cancelled tasks used to just vanish (every other view filters status !==
+  // 'cancelled' out of open/active counts) — that's right for counts, but a
+  // task the user explicitly cancelled should still be visible as "cancelled"
+  // somewhere rather than looking identical to a silent delete. Same 24h
+  // window as Done so this doesn't accumulate forever.
+  const cancelledTasks = tasks.filter(t => t.status === 'cancelled' && completedWithinLast24h(t.updated_at))
 
   return (
     <>
@@ -74,6 +80,15 @@ export function DayView({ date }: Props) {
                 <p className="text-[11px] uppercase tracking-wider text-ink-400 font-medium mb-1 px-3">Done</p>
                 <div className="opacity-50">
                   {doneTasks.map(task => <ToDoItem key={task.id} task={task} />)}
+                </div>
+              </div>
+            )}
+
+            {cancelledTasks.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-ink-100">
+                <p className="text-[11px] uppercase tracking-wider text-ink-400 font-medium mb-1 px-3">Cancelled</p>
+                <div className="opacity-50">
+                  {cancelledTasks.map(task => <ToDoItem key={task.id} task={task} />)}
                 </div>
               </div>
             )}

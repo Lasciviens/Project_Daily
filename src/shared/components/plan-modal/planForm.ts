@@ -52,7 +52,12 @@ export function buildInitialForm(defaults?: PlanDefaults, task?: Task, timeBlock
     category:       timeBlock?.category ?? defaults?.category ?? 'other',
     recurrence:     defaults?.recurrence ?? 'none',
     weeklyDays:     defaults?.daysOfWeek ?? WEEKDAYS,
-    alsoCreateTask: defaults?.alsoCreateTask ?? false,
+    // Editing an existing plan whose block already has a linked task (e.g.
+    // Training's "Edit Session") must show that truthfully — previously this
+    // only ever looked at `defaults`, which the edit call site never passes,
+    // so the checkbox always rendered unchecked even when a To-Do already
+    // existed for this plan.
+    alsoCreateTask: timeBlock?.source_type === 'task' || (defaults?.alsoCreateTask ?? false),
 
     notes:          task?.description ?? defaults?.notes ?? '',
     section:        task?.section ?? defaults?.section ?? 'today',

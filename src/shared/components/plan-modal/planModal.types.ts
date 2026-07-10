@@ -93,6 +93,13 @@ export interface PlanSource {
   sourceId?: string
   /** tasks.source_type (enum) — defaults to 'manual' when omitted. */
   taskSourceType?: TaskSourceType
+  /**
+   * Only pass this when sourceType is 'tv_episode' AND exactly one specific
+   * episode was planned (never for a multi-episode batch plan) — stamps
+   * season/episode number onto the created time_block so a DB trigger can
+   * precisely match "this episode was marked watched" back to it.
+   */
+  episodeInfo?: { seasonNumber: number; episodeNumber: number }
 }
 
 // ── Result handed to onSaved (post-save hook — caller-side side effects) ──────

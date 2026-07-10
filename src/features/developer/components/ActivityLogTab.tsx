@@ -7,7 +7,16 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 // CRUD audit trail (audit_logs table, written by DB triggers — see migration
 // 037). Shows every insert/update/delete on user-authored tables, whoever
 // made it (web UI, Ask AI, edge functions), grouped by transaction so
-// cascades ("this delete also removed those") read as one event.
+// cascades ("this delete also removed those") read as one connected event.
+//
+// Layout: a 4-column matrix (grid-cols-4 on wide screens) rather than one
+// long vertical list — there's plenty of horizontal room on this page and a
+// flat list buries same-transaction cascades among unrelated entries. A
+// group sharing one tx_id (e.g. deleting a time_block that migration 043's
+// trigger also cascades into deleting its linked task) spans multiple grid
+// columns as a single connected strip with a directional arrow between each
+// step, so "this caused that" reads visually instead of needing to mentally
+// correlate timestamps across separate rows.
 
 interface AuditLog {
   id:         string
@@ -125,6 +134,68 @@ function DiffView({ log }: { log: AuditLog }) {
   )
 }
 
+// One compact card — used both standalone (grid cell) and inside a cascade
+// chain (flex item connected by arrows to its neighbors).
+function LogCard({ log, expanded, onToggle }: { log: AuditLog; expanded: boolean; onToggle: () => void }) {
+  return (
+    <div className="rounded-xl border border-ink-100 bg-white overflow-hidden flex-1 min-w-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex flex-col items-start gap-1 px-3 py-2.5 min-h-[44px] text-left hover:bg-cream-50 transition-colors"
+      >
+        <div className="flex items-center gap-1.5 w-full">
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${OP_DOT[log.operation]}`} />
+          <span className="text-xs font-medium text-ink-500 truncate">{log.table_name}</span>
+          <span className="text-[10px] text-ink-400 flex-shrink-0">{OP_LABEL[log.operation]}</span>
+          <span className={`ml-auto text-[9px] font-medium rounded-full px-1.5 py-0.5 flex-shrink-0 ${
+            log.actor === 'web' ? 'bg-ink-100 text-ink-500' : 'bg-accent-100 text-accent-700'
+          }`}>
+            {log.actor === 'web' ? 'me' : 'service'}
+          </span>
+        </div>
+        <p className="text-sm text-ink-800 truncate w-full">{rowLabel(log)}</p>
+        <div className="flex items-center justify-between w-full">
+          <span className="text-[10px] text-ink-400">{fmtDate(log.created_at)}</span>
+          <span className="text-[10px] text-ink-300">{expanded ? '▲' : '▼'}</span>
+        </div>
+      </button>
+      {expanded && (
+        <div className="border-t border-ink-100 bg-ink-50 px-3 py-2">
+          <DiffView log={log} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// A same-transaction group of >1 changes — rendered as a connected chain
+// with a directional arrow between each step (the order they were written
+// in, which for a trigger-caused cascade is "the direct change" first,
+// followed by whatever it triggered).
+function CascadeChain({ group, expandedId, onToggle }: { group: AuditLog[]; expandedId: string | null; onToggle: (id: string) => void }) {
+  return (
+    <div
+      className="rounded-xl border border-accent-200 bg-accent-50/40 p-2 flex flex-col gap-1"
+      style={{ gridColumn: `span ${Math.min(group.length, 4)} / span ${Math.min(group.length, 4)}` }}
+    >
+      <p className="text-[10px] font-semibold text-accent-600 uppercase tracking-wide px-1">
+        Linked — same transaction, {group.length} changes
+      </p>
+      <div className="flex items-stretch gap-1.5 flex-wrap">
+        {group.map((log, i) => (
+          <div key={log.id} className="flex items-stretch gap-1.5 flex-1 min-w-[160px]">
+            <LogCard log={log} expanded={expandedId === log.id} onToggle={() => onToggle(log.id)} />
+            {i < group.length - 1 && (
+              <span className="flex items-center text-accent-400 text-lg leading-none flex-shrink-0" title="triggered">→</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function ActivityLogTab() {
   const [days, setDays] = useState(7)
   const [tableFilter, setTableFilter] = useState('all')
@@ -144,7 +215,7 @@ export function ActivityLogTab() {
   ), [logs, tableFilter, opFilter, actorFilter])
 
   // Consecutive rows sharing a tx_id changed in the same transaction — render
-  // them as one visual group so cascades read as a single event.
+  // them as one connected chain so cascades read as a single linked event.
   const groups = useMemo(() => {
     const out: AuditLog[][] = []
     for (const log of filtered) {
@@ -156,6 +227,7 @@ export function ActivityLogTab() {
   }, [filtered])
 
   const selectCls = 'min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700'
+  const toggle = (id: string) => setExpanded(e => e === id ? null : id)
 
   return (
     <>
@@ -202,9 +274,9 @@ export function ActivityLogTab() {
       </div>
 
       {isLoading && (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-10 rounded-lg bg-cream-200 animate-pulse" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-20 rounded-xl bg-cream-200 animate-pulse" />
           ))}
         </div>
       )}
@@ -222,46 +294,13 @@ export function ActivityLogTab() {
         </div>
       )}
 
-      <div className="space-y-2">
+      {/* 4-column matrix — a lone entry occupies one cell; a same-transaction
+          cascade spans (up to 4) columns and renders as a connected chain. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-start">
         {groups.map(group => (
-          <div key={group[0].id} className="rounded-xl border border-ink-100 bg-white overflow-hidden">
-            {group.length > 1 && (
-              <p className="px-3 pt-2 text-[10px] font-semibold text-ink-400 uppercase tracking-wide">
-                Same transaction — {group.length} changes
-              </p>
-            )}
-            <div className="divide-y divide-ink-50">
-              {group.map(log => {
-                const isOpen = expanded === log.id
-                return (
-                  <div key={log.id}>
-                    <button
-                      type="button"
-                      onClick={() => setExpanded(isOpen ? null : log.id)}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 min-h-[44px] text-left hover:bg-cream-50 transition-colors"
-                    >
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${OP_DOT[log.operation]}`} />
-                      <span className="text-xs font-medium text-ink-500 whitespace-nowrap">{log.table_name}</span>
-                      <span className="text-xs text-ink-400 whitespace-nowrap">{OP_LABEL[log.operation]}</span>
-                      <span className="text-sm text-ink-800 flex-1 truncate">{rowLabel(log)}</span>
-                      <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 flex-shrink-0 ${
-                        log.actor === 'web' ? 'bg-ink-100 text-ink-500' : 'bg-accent-100 text-accent-700'
-                      }`}>
-                        {log.actor === 'web' ? 'me' : 'service'}
-                      </span>
-                      <span className="text-[10px] text-ink-400 whitespace-nowrap flex-shrink-0">{fmtDate(log.created_at)}</span>
-                      <span className="text-[10px] text-ink-300 flex-shrink-0">{isOpen ? '▲' : '▼'}</span>
-                    </button>
-                    {isOpen && (
-                      <div className="border-t border-ink-100 bg-ink-50 px-3 py-2">
-                        <DiffView log={log} />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+          group.length === 1
+            ? <LogCard key={group[0].id} log={group[0]} expanded={expanded === group[0].id} onToggle={() => toggle(group[0].id)} />
+            : <CascadeChain key={group[0].id} group={group} expandedId={expanded} onToggle={toggle} />
         ))}
       </div>
 

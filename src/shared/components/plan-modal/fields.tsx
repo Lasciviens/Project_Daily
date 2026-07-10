@@ -230,17 +230,19 @@ export function RecurrenceField({
 // ── Checkbox row ──────────────────────────────────────────────────────────────
 
 export function CheckboxRow({
-  checked, onChange, label,
+  checked, onChange, label, disabled, title,
 }: {
   checked: boolean
   onChange: (v: boolean) => void
   label: string
+  disabled?: boolean
+  title?: string
 }) {
   return (
-    <label className="flex items-center gap-3 min-h-[44px] cursor-pointer">
+    <label className={`flex items-center gap-3 min-h-[44px] ${disabled ? 'cursor-default opacity-60' : 'cursor-pointer'}`} title={title}>
       <input
-        type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
-        className="w-4 h-4 accent-accent-500 rounded"
+        type="checkbox" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)}
+        className="w-4 h-4 accent-accent-500 rounded disabled:cursor-default"
       />
       <span className="text-sm text-ink-700">{label}</span>
     </label>
