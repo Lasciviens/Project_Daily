@@ -51,7 +51,13 @@ export default function WorkTaskCard({
       {...listeners}
       onClick={() => onEdit(task)}
       className={[
-        'group relative rounded-xl border bg-white p-2.5 cursor-pointer select-none transition-all touch-manipulation',
+        // touch-none (not touch-manipulation): dnd-kit's own docs flag this —
+        // `manipulation` still lets the browser start its own pan/scroll on
+        // touchstart, which can beat TouchSensor's activation delay and
+        // silently prevent a drag from ever starting on a real device (a tap
+        // to open the edit modal still works fine either way, since that
+        // fires from the click event, not from touch-action).
+        'group relative rounded-xl border bg-white p-2.5 cursor-pointer select-none transition-all touch-none',
         'hover:shadow-md hover:-translate-y-px',
         isFocused  ? 'border-accent-300 ring-1 ring-accent-200' : 'border-ink-200 hover:border-ink-300',
         isDone     ? 'opacity-60' : '',
