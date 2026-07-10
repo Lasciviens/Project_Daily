@@ -18,9 +18,14 @@ interface Props {
   config?: PlanModalConfig
   gcalAvailable: boolean
   extra?: React.ReactNode
+  /** True when editing an existing block that already has a linked task —
+   *  the checkbox becomes a truthful status readout instead of a live
+   *  toggle, since this save path (updating a plain block in place) doesn't
+   *  create or remove a task either way. */
+  taskAlreadyLinked?: boolean
 }
 
-export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props) {
+export function ScheduleTab({ form, patch, config, gcalAvailable, extra, taskAlreadyLinked }: Props) {
   const hidden = (f: Parameters<typeof isScheduleFieldHidden>[0]) => isScheduleFieldHidden(f, config)
   const locked = (f: Parameters<typeof isScheduleFieldLocked>[0]) => isScheduleFieldLocked(f, config)
 
@@ -98,7 +103,9 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
         {!hidden('alsoCreateTask') && (
           <CheckboxRow
             checked={form.alsoCreateTask} onChange={v => patch({ alsoCreateTask: v })}
-            label="Also add to To-Do"
+            label={taskAlreadyLinked ? 'Also added to To-Do ✓' : 'Also add to To-Do'}
+            disabled={taskAlreadyLinked}
+            title={taskAlreadyLinked ? 'A To-Do already exists for this plan' : undefined}
           />
         )}
         {!hidden('gcal') && gcalAvailable && (

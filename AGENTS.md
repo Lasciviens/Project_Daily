@@ -130,6 +130,58 @@ if (!user) throw new Error('Not authenticated')
 
 ---
 
+### Linked-entity sync (migration 043) — `link_rules` + DB triggers
+
+This app writes to Postgres from **three different doors**: the web UI, the
+Ask AI panel's generic `db_insert`/`db_update`/`db_delete` tool layer, and
+sync webhooks/edge functions (Hevy, Health Auto Export). Any cross-entity
+consistency rule written only in one door's application code (a React hook,
+an API function) silently doesn't apply when a write comes through a
+different door. Real bugs this caused before migration 043: deleting a
+Training-plan `time_block` left its auto-created `task` behind; dragging a
+planned block to a new day never updated the linked task's due date (or vice
+versa); marking a TV episode watched never cleaned up its "planned to watch"
+block; deleting a Project item left its scheduled block behind too.
+
+**The fix is DB triggers, not app code** — same principle as `audit_logs`
+(migration 037): a trigger runs inside Postgres itself, so it fires no matter
+which door the write came through.
+
+- **`link_rules`** (table) — small config, NOT a fully generic rule
+  interpreter. Each row is `rule_name` (unique), `enabled` (toggle a rule off
+  without a migration), and a `config` jsonb blob for the one thing that
+  plausibly varies per rule (e.g. `block_delete_cascades_task`'s
+  `auto_task_source_types` array — which `tasks.source_type` values count as
+  "this task only exists because a plan created it"). The actual matching
+  logic per relationship shape (task↔block by id, episode→block by
+  season/episode number, project_item→block by id) stays explicit SQL in
+  typed trigger functions — Postgres has no safe generic polymorphic join
+  without dynamic SQL, and dynamic SQL is a correctness/security risk not
+  worth taking here. Adding a new "auto-created" task source_type, or turning
+  a rule off, is a data change (`UPDATE link_rules ...`), not a code change.
+- **Hub tables**: `time_blocks` and `tasks` both carry `source_type`/
+  `source_id` pointing at whatever they were created from — this is the
+  existing polymorphic-association pattern (see `time_blocks_source` index
+  from migration 010), not something migration 043 introduced.
+- **Trigger functions** (`sync_task_from_time_block`, `sync_time_block_from_task`,
+  `cleanup_block_on_episode_watched`, `cleanup_block_on_project_item_delete`):
+  each checks `link_rule_enabled('...')` at the top before doing anything.
+- **Recursion guard**: `time_blocks` → `tasks` and `tasks` → `time_blocks`
+  sync can each cause the other to fire. Guarded with `pg_trigger_depth() = 1`
+  — a direct user edit propagates to the other side exactly once; that
+  propagation does not bounce back and ping-pong.
+- **Google Calendar/Google Tasks sync is deliberately NOT done in triggers**
+  — a trigger runs inside Postgres and has no access to the end user's OAuth
+  token (lives in the browser). That stays best-effort at the API layer
+  (`src/features/daily/api/scheduleApi.ts`, `src/features/todo/api/tasksApi.ts`).
+- **When adding a new "plannable" entity** (something else that can get a
+  `time_blocks` row via `UnifiedPlanModal`'s `source` prop): decide whether it
+  needs a cleanup-on-source-change trigger the same way `user_tv_episodes`/
+  `project_items` do, and add it to this migration's pattern (a new trigger
+  function + `link_rules` row), not a one-off app-code fix.
+
+---
+
 ### Edge Function Rules
 
 - Runtime: **Deno** — use `import` not `require`, no Node built-ins.

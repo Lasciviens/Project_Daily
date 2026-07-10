@@ -215,7 +215,17 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
           category: 'media',
           color:    'blue',
         }}
-        source={{ sourceType: 'tv_episode', sourceId: tvEntryId, taskSourceType: 'tv_series' }}
+        source={{
+          sourceType: 'tv_episode',
+          sourceId: tvEntryId,
+          taskSourceType: 'tv_series',
+          // Only when exactly one specific episode was planned — a batch
+          // "watch 3 episodes" block intentionally isn't auto-matched when
+          // just one of them gets marked watched (see migration 043).
+          episodeInfo: selectedEpisodes.length === 1
+            ? { seasonNumber: season, episodeNumber: selectedEpisodes[0].episode_number }
+            : undefined,
+        }}
       />
     </div>
   )

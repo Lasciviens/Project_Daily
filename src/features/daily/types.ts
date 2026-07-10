@@ -22,6 +22,12 @@ export interface TimeBlock {
   category:         TimeBlockCategory
   source_type?:     string | null
   source_id?:       string | null
+  // Only stamped when a single specific TV episode was planned (never for a
+  // multi-episode batch plan) — source_id alone only identifies the show,
+  // not which episode, so this is what lets a DB trigger match "this episode
+  // was marked watched" back to the one planned time_block for it.
+  season_number?:   number | null
+  episode_number?:  number | null
   notes:            string | null
   google_calendar_event_id?: string | null
   created_at:       string
@@ -37,6 +43,8 @@ export interface CreateTimeBlockInput {
   category?:        TimeBlockCategory
   source_type?:     string
   source_id?:       string
+  season_number?:   number
+  episode_number?:  number
 }
 
 export interface CreateScheduleBlockInput {
