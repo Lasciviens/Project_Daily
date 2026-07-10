@@ -73,6 +73,15 @@
     transform: scale(0.96);
     opacity: 0.85;
   }
+
+  /* Bottom-tab-bar route crossfade via the View Transitions API (see
+     useViewTransitionNav.ts) — a no-op declaration on browsers that don't
+     support the API at all (they just navigate instantly, same as before). */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 180ms;
+    animation-timing-function: ease-out;
+  }
 }
 
 @layer components {
