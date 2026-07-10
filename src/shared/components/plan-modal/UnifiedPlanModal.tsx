@@ -54,6 +54,7 @@ import { useCreateTimeBlock, useCreateScheduleBlock } from '../../../features/da
 import { updateTimeBlock, deleteTimeBlock } from '../../../features/daily/api/scheduleApi'
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
 import { createCalendarEvent } from '../../../features/calendar/api/calendarApi'
+import { logError } from '../../utils/logError'
 import { supabase } from '../../../integrations/supabase/client'
 import { ScheduleTab } from './ScheduleTab'
 import { TaskTab } from './TaskTab'
@@ -120,8 +121,14 @@ export function UnifiedPlanModal({
       })
       await updateTimeBlock(blockId, { google_calendar_event_id: created.id })
       qc.invalidateQueries({ queryKey: ['calendar'] })
-    } catch {
-      toast.error('Planned locally, Google Calendar sync failed')
+    } catch (err) {
+      // Was a hardcoded generic message with the real cause swallowed —
+      // surfacing it (expired token, missing write scope, a malformed
+      // date/time producing an Invalid Date before the request is even
+      // sent, etc.) so a sync failure is actually diagnosable instead of
+      // needing a code change every time to find out why.
+      toast.error(`Planned locally, Google Calendar sync failed: ${(err as Error).message}`)
+      logError((err as Error).message, { action: 'link_calendar_event' })
     }
   }
 

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useHevyBodyMeasurements, useUpsertBodyMeasurement } from '../hooks/useHevyBodyMeasurements'
 import { todayStr } from '../../../shared/utils/dateUtils'
+import { DateInput } from '../../../shared/components/DateInput'
 import { formatTrainingDate } from '../dateFormat'
 import type { HevyBodyMeasurement } from '../types.hevy'
 
@@ -119,10 +120,9 @@ function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
               <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
                 Date
               </label>
-              <input
-                type="date"
+              <DateInput
                 value={form.date}
-                onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                onChange={v => setForm(f => ({ ...f, date: v }))}
                 className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400"
               />
             </div>

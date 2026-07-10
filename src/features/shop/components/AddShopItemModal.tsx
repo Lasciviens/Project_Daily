@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { toast } from '../../../app/store'
 import { useShopCategories, useCreateShopCategory, useCreateShopItem } from '../hooks/useShop'
+import { DateInput } from '../../../shared/components/DateInput'
 import type { ShopPriority, ShopRegion } from '../types'
 
 interface Props {
@@ -149,7 +150,7 @@ export function AddShopItemModal({ open, onClose }: Props) {
                 <option value="">Region…</option>
                 {REGIONS.map(r => <option key={r} value={r}>{REGION_LABEL[r]}</option>)}
               </select>
-              <input value={plannedDate} onChange={e => setPlannedDate(e.target.value)} type="date" className={inputCls} />
+              <DateInput value={plannedDate} onChange={setPlannedDate} className={inputCls} />
             </div>
           </div>
 

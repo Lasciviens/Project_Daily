@@ -6,6 +6,8 @@ interface Props {
   className?:  string
   placeholder?: string
   min?:        string             // YYYY-MM-DD
+  max?:        string             // YYYY-MM-DD
+  'aria-label'?: string
 }
 
 function isoToDisplay(iso: string): string {
@@ -32,12 +34,16 @@ function formatDisplay(raw: string): string {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
 }
 
-export function DateInput({ value, onChange, className, placeholder, min }: Props) {
+export function DateInput({ value, onChange, className, placeholder, min, max, 'aria-label': ariaLabel }: Props) {
   const [display, setDisplay] = useState(() => isoToDisplay(value))
 
   useEffect(() => {
     setDisplay(isoToDisplay(value))
   }, [value])
+
+  function inRange(iso: string): boolean {
+    return (!min || iso >= min) && (!max || iso <= max)
+  }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const formatted = formatDisplay(e.target.value)
@@ -45,10 +51,7 @@ export function DateInput({ value, onChange, className, placeholder, min }: Prop
     const digits = formatted.replace(/\D/g, '')
     if (digits.length === 8) {
       const iso = digitsToIso(digits)
-      if (iso) {
-        // Enforce min constraint
-        if (!min || iso >= min) onChange(iso)
-      }
+      if (iso && inRange(iso)) onChange(iso)
     } else if (!formatted) {
       onChange('')
     }
@@ -57,7 +60,7 @@ export function DateInput({ value, onChange, className, placeholder, min }: Prop
   function handleBlur() {
     const digits = display.replace(/\D/g, '')
     const iso = digitsToIso(digits)
-    if (iso && (!min || iso >= min)) {
+    if (iso && inRange(iso)) {
       setDisplay(isoToDisplay(iso))
       onChange(iso)
     } else if (!display) {
@@ -76,6 +79,7 @@ export function DateInput({ value, onChange, className, placeholder, min }: Prop
       onChange={handleChange}
       onBlur={handleBlur}
       placeholder={placeholder ?? 'DD/MM/YYYY'}
+      aria-label={ariaLabel}
       className={className}
     />
   )

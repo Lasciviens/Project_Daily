@@ -49,9 +49,34 @@ export function EnergySection() {
     chartData = [...byDate.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([, v]) => v)
   }
 
-  function handleBarClick(barData: { payload?: { date?: string } }) {
-    const date = barData?.payload?.date
+  // Bar click only opens/updates the tooltip now (Tooltip's trigger="click")
+  // — it no longer jumps straight to that day by itself. "See details"
+  // inside the tooltip (rendered below) is the only thing that navigates,
+  // so glancing at a day's numbers doesn't also navigate away from the
+  // chart you were looking at.
+  function goToDay(date?: string) {
     if (period !== 'day' && date) { setPeriod('day'); setAnchor(date) }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
+  function EnergyTooltipContent({ active, payload, label }: any) {
+    if (!active || !payload?.length) return null
+    const date: string | undefined = payload[0]?.payload?.date
+    return (
+      <div className="bg-white border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
+        <p className="text-ink-400 font-medium">{label}</p>
+        {payload.map((p: { dataKey?: string; name?: string; color?: string; value?: number }) => (
+          <p key={p.dataKey} style={{ color: p.color }} className="font-semibold">
+            {p.value} kcal {p.name}
+          </p>
+        ))}
+        {period !== 'day' && date && (
+          <button type="button" onClick={() => goToDay(date)} className="text-accent-600 underline text-[10px] pt-1 block">
+            See details
+          </button>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -95,15 +120,15 @@ export function EnergySection() {
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            <Tooltip cursor={false} trigger="click" />
+            <Tooltip cursor={false} trigger="click" content={EnergyTooltipContent} wrapperStyle={{ pointerEvents: 'auto' }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar
               dataKey="basal" name="Basal" stackId="e" fill="#94a3b8" radius={[0, 0, 0, 0]}
-              cursor={period !== 'day' ? 'pointer' : 'default'} onClick={handleBarClick}
+              cursor={period !== 'day' ? 'pointer' : 'default'}
             />
             <Bar
               dataKey="active" name="Active" stackId="e" fill="#f43f5e" radius={[3, 3, 0, 0]}
-              cursor={period !== 'day' ? 'pointer' : 'default'} onClick={handleBarClick}
+              cursor={period !== 'day' ? 'pointer' : 'default'}
             />
           </BarChart>
         </ResponsiveContainer>
