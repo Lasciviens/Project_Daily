@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { DateInput } from '../../../../shared/components/DateInput'
 import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
 import { computeSleepSummary, estimateSleepStageProportions } from '../../healthAggregate'
 import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
@@ -116,8 +117,13 @@ export function SleepSection() {
         <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Night of</label>
-            <input
-              type="date" value={manualDate} max={today} onChange={e => setManualDate(e.target.value)}
+            {/* DateInput (not a raw <input type="date">) — native date inputs
+                render in the browser/OS locale regardless of the stored
+                value's format, which silently showed MM/DD/YYYY for
+                anyone not on an en-GB locale. CLAUDE.md mandates DD/MM/YYYY
+                everywhere, no exceptions. */}
+            <DateInput
+              value={manualDate} max={today} onChange={setManualDate}
               className="min-h-[36px] px-2 text-sm border border-ink-200 rounded-lg bg-white"
             />
           </div>

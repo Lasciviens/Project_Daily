@@ -19,7 +19,13 @@ interface TooltipEntry {
 // element, so without this it displayed the average twice. Dedupe by
 // dataKey and keep the custom [min,max]/unit formatting the old `formatter`
 // prop had.
-function makeTooltipContent(unit: string) {
+//
+// "See details" link (not a click-anywhere-on-the-bar navigation): clicking
+// a bar used to jump straight to that day, which meant there was no way to
+// just glance at the tooltip without also navigating away. Now the bar
+// click only opens/keeps the tooltip open (via Tooltip's trigger="click"),
+// and this explicit link inside it is the only thing that navigates.
+function makeTooltipContent(unit: string, onPointClick?: (point: ChartPoint) => void) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
   return function TooltipContent({ active, payload, label }: any) {
     if (!active || !payload?.length) return null
@@ -30,6 +36,7 @@ function makeTooltipContent(unit: string) {
       seen.add(key)
       return true
     })
+    const rawPoint = payload[0]?.payload as ChartPoint | undefined
     return (
       <div className="bg-white border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
         <p className="text-ink-400 font-medium">{label}</p>
@@ -38,6 +45,15 @@ function makeTooltipContent(unit: string) {
             {Array.isArray(r.value) ? `${r.value[0]}–${r.value[1]} ${unit}` : `${r.value} ${unit}`} {r.name}
           </p>
         ))}
+        {onPointClick && rawPoint && (
+          <button
+            type="button"
+            onClick={() => onPointClick(rawPoint)}
+            className="text-accent-600 underline text-[10px] pt-1 block"
+          >
+            See details
+          </button>
+        )}
       </div>
     )
   }
@@ -58,10 +74,6 @@ export function BarLineChart({
   // — used to jump a week/month chart to that day's Day view.
   onPointClick?: (point: ChartPoint) => void
 }) {
-  const barProps = onPointClick
-    ? { cursor: 'pointer', onClick: (point: { payload?: ChartPoint }) => point.payload && onPointClick(point.payload) }
-    : {}
-
   return (
     <div style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -72,12 +84,20 @@ export function BarLineChart({
           {/* trigger="click": recharts' default hover Tooltip relies on
               synthesized mousemove events that don't reliably repeat on
               touch (a second tap on a different bar doesn't always update
-              it) — tap-to-show is the documented recharts fix for touch. */}
-          <Tooltip cursor={false} trigger="click" content={makeTooltipContent(unit)} />
+              it) — tap-to-show is the documented recharts fix for touch.
+              wrapperStyle pointerEvents: recharts tooltips are
+              pointer-events:none by default (so hovering the tooltip itself
+              doesn't interfere with chart mouse-tracking) — without
+              overriding this, the "See details" link inside would render
+              but never actually receive a click. */}
+          <Tooltip cursor={false} trigger="click" content={makeTooltipContent(unit, onPointClick)} wrapperStyle={{ pointerEvents: 'auto' }} />
           {rangeKey && <Area dataKey={rangeKey} name="Range" stroke="none" fill={color} fillOpacity={0.12} />}
           {/* barSize bumped from 9 to 16 and activeDot added — the old size
-              was well under a comfortable touch tap target. */}
-          <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={16} {...barProps} />
+              was well under a comfortable touch tap target. Clicking a bar
+              only opens/updates the tooltip now (see Tooltip trigger="click"
+              above) — it no longer navigates by itself; "See details"
+              inside the tooltip is the only thing that does. */}
+          <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={16} />
           <Line dataKey={dataKey} name={tooltipLabel} stroke={color} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} />
         </ComposedChart>
       </ResponsiveContainer>

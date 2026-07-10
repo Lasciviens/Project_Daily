@@ -1,4 +1,5 @@
 import { todayStr } from '../../../../shared/utils/dateUtils'
+import { DateInput } from '../../../../shared/components/DateInput'
 
 export function DateNav({
   label, onPrev, onNext, canGoNext, value, onPick,
@@ -28,13 +29,16 @@ export function DateNav({
       >
         ›
       </button>
-      <input
-        type="date"
+      {/* DateInput (not a raw <input type="date">) — a native date input's
+          visible text follows the browser/OS locale, which silently showed
+          MM/DD/YYYY instead of the mandated DD/MM/YYYY for anyone not on an
+          en-GB locale. */}
+      <DateInput
         value={value}
         max={todayStr()}
-        onChange={e => e.target.value && onPick(e.target.value > todayStr() ? todayStr() : e.target.value)}
+        onChange={v => v && onPick(v > todayStr() ? todayStr() : v)}
         aria-label="Jump to date"
-        className="min-h-[28px] px-1 text-[11px] text-ink-500 border border-ink-100 rounded-md bg-transparent"
+        className="min-h-[28px] w-[76px] px-1 text-[11px] text-ink-500 border border-ink-100 rounded-md bg-transparent"
       />
     </div>
   )
