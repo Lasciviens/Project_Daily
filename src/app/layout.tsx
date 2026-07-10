@@ -21,8 +21,18 @@ export function Layout() {
   // Every page's queries get invalidated on refresh regardless of which
   // route is active — simplest match for "pull down, everything re-syncs"
   // without threading a page-specific refetch list through this component.
+  //
+  // dailyBriefing is excluded on purpose: useDailyBriefing.ts sets
+  // staleTime: Infinity specifically to enforce "generate at most once per
+  // day" (it costs a real AI call) — but invalidateQueries() ignores
+  // staleTime entirely and force-refetches anyway, which silently defeated
+  // that once-a-day design every time pull-to-refresh ran (the extra AI
+  // call is exactly why a refresh felt like it took noticeably longer).
+  // The card's own ↻ button is still the explicit manual override for it.
   const qc = useQueryClient()
-  const pullToRefresh = usePullToRefresh(() => qc.invalidateQueries())
+  const pullToRefresh = usePullToRefresh(() => qc.invalidateQueries({
+    predicate: query => query.queryKey[0] !== 'dailyBriefing',
+  }))
 
   return (
     <div className="min-h-screen flex flex-col bg-canvas">
