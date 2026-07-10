@@ -32,13 +32,18 @@ export function ShopPage() {
 
   return (
     <div className="w-full h-full flex flex-col sm:flex-row overflow-hidden">
-      {/* Left pane — AI chat, fixed width on desktop, fixed height on mobile */}
-      <div className="h-[42vh] sm:h-full w-full sm:w-[380px] sm:flex-shrink-0 border-b sm:border-b-0 sm:border-r border-ink-200 bg-white">
+      {/* Left pane — AI chat, fixed width on desktop, fixed height on mobile.
+          order-2 on mobile (sm:order-none restores DOM order side-by-side):
+          this pane renders mostly blank until a conversation starts, and
+          being first in DOM meant it was the entire first screenful on
+          mobile — the actual wishlist content below looked like it didn't
+          exist until scrolling past ~42vh of empty chat. */}
+      <div className="order-2 sm:order-none h-[42vh] sm:h-full w-full sm:w-[380px] sm:flex-shrink-0 border-t sm:border-t-0 sm:border-b-0 sm:border-r border-ink-200 bg-white">
         <ShopAIBox />
       </div>
 
       {/* Right pane — categories + wishlist, its own scroll */}
-      <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
+      <div className="order-1 sm:order-none flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-xl font-bold text-ink-900">Shop</h1>
@@ -73,7 +78,13 @@ export function ShopPage() {
           </div>
         )}
 
-        {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
+        {isLoading && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-20 rounded-xl bg-cream-200 animate-pulse" />
+            ))}
+          </div>
+        )}
 
         {!isLoading && categories.length === 0 && (
           <div className="text-center py-14 border border-dashed border-ink-200 rounded-xl">

@@ -91,7 +91,7 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
               key={e.id}
               onClick={() => onOpenDetail(e.id, type)}
               title={e.title}
-              className="min-h-[44px] flex items-center justify-center"
+              className="min-h-[44px] flex items-center justify-center press-feedback"
             >
               <img
                 src={posterUrl(e.poster_path, 'w185')}

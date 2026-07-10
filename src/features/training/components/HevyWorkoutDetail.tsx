@@ -60,7 +60,11 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
 
           <div className="px-5 py-4 flex flex-col gap-6">
             {isLoading && (
-              <p className="text-sm text-ink-400 py-4 text-center">Loading…</p>
+              <div className="space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-12 rounded-lg bg-cream-200 animate-pulse" />
+                ))}
+              </div>
             )}
 
             {!isLoading && workout && (

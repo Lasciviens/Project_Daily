@@ -4,6 +4,7 @@ import {
   Home as HomeIcon, CalendarDays, Clapperboard, Briefcase, Dumbbell, FolderKanban, Gamepad2,
   type LucideIcon,
 } from 'lucide-react'
+import { useViewTransitionNav } from '../shared/hooks/useViewTransitionNav'
 import { DevRequestsDrawer } from '../features/devRequests/components/DevRequestsDrawer'
 import { AIPanel } from '../features/ai/components/AIPanel'
 import { CommandBar } from '../shared/components/CommandBar'
@@ -51,6 +52,7 @@ const TABS: { to: string; label: string; icon: LucideIcon; match: string[] }[] =
 
 function BottomTabBar() {
   const location = useLocation()
+  const navigateWithTransition = useViewTransitionNav()
 
   return (
     <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-white/95 backdrop-blur-lg border-t border-ink-200 pb-[env(safe-area-inset-bottom)]">
@@ -61,6 +63,13 @@ function BottomTabBar() {
           <NavLink
             key={tab.to}
             to={tab.to}
+            onClick={e => {
+              // View Transitions API gives a native-feeling crossfade between
+              // tabs (see useViewTransitionNav) — no-ops to a plain navigation
+              // on browsers that don't support it (pre-iOS-18 Safari etc).
+              e.preventDefault()
+              navigateWithTransition(tab.to)
+            }}
             className={`flex-1 min-h-[56px] flex flex-col items-center justify-center gap-0.5 transition-colors duration-150 press-feedback ${
               isActive ? 'text-accent-600' : 'text-ink-400'
             }`}

@@ -6,6 +6,7 @@ import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
 import { PRIORITY_DOT_CLASS as PRIORITY_DOT } from '../../../shared/utils/priorityColors'
 import { isOverdue, dueLabel } from '../taskRules'
+import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
 
 function dueDateCls(dateStr: string, isDone: boolean): string {
   if (isDone) return 'bg-ink-100 text-ink-400'
@@ -30,22 +31,37 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
   const toggle = useToggleTask()
   const remove = useDeleteTask()
   const isDone = task.status === 'done'
+  // Mobile-only affordance (lg:hidden on the reveal panel below) — desktop
+  // already has hover-revealed action buttons including delete, so the
+  // swipe gesture would just be redundant clutter there.
+  const swipe = useSwipeToReveal()
 
   return (
     <>
-      {/* Entire row is a click target that opens the edit modal.
-          Inline controls (checkbox / action buttons) stopPropagation so they act independently. */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setEditing(true)}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true) } }}
-        className={`group flex items-start gap-2.5 px-3 py-2 min-h-[44px] rounded-lg cursor-pointer transition-colors duration-150 press-feedback ${
-          hovered ? 'bg-cream-100' : ''
-        }`}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
+      <div className="relative overflow-hidden rounded-lg">
+        {/* Delete panel revealed behind the row on swipe-left (mobile only) */}
+        <button
+          onClick={() => { remove.mutate(task.id); swipe.close() }}
+          disabled={remove.isPending}
+          className="lg:hidden absolute inset-y-0 right-0 w-[76px] flex items-center justify-center bg-red-500 text-white text-sm font-semibold press-feedback"
+        >
+          Delete
+        </button>
+
+        {/* Entire row is a click target that opens the edit modal.
+            Inline controls (checkbox / action buttons) stopPropagation so they act independently. */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => { if (!swipe.isOpen) setEditing(true) }}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true) } }}
+          className={`relative bg-white group flex items-start gap-2.5 px-3 py-2 min-h-[44px] rounded-lg cursor-pointer transition-colors duration-150 press-feedback ${
+            hovered ? 'bg-cream-100' : ''
+          }`}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          {...swipe.rowProps}
+        >
         {/* Circle checkbox — matches Google Tasks iPhone style */}
         <button
           onClick={e => { e.stopPropagation(); toggle.mutate({ id: task.id, isDone: !isDone }) }}
@@ -152,6 +168,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             >✕</button>
           </div>
         )}
+        </div>
       </div>
 
       <UnifiedPlanModal

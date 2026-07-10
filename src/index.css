@@ -24,6 +24,13 @@
     min-height: 100vh;
   }
 
+  /* Suppresses the browser's own native pull-to-refresh/bounce so the
+     custom one (usePullToRefresh.ts) doesn't fight it — WebKit/Safari reads
+     this off <html>, Chrome/Android off <body>, so both are set. */
+  html, body {
+    overscroll-behavior-y: contain;
+  }
+
   ::-webkit-scrollbar       { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-ink-300 rounded-full; }
@@ -72,6 +79,15 @@
   .press-feedback:active {
     transform: scale(0.96);
     opacity: 0.85;
+  }
+
+  /* Bottom-tab-bar route crossfade via the View Transitions API (see
+     useViewTransitionNav.ts) — a no-op declaration on browsers that don't
+     support the API at all (they just navigate instantly, same as before). */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 180ms;
+    animation-timing-function: ease-out;
   }
 }
 
