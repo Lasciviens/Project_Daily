@@ -121,7 +121,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
             value={project.name}
             onSave={name => updateProject.mutate({ id: project.id, patch: { name } })}
             className="text-base font-bold text-ink-900"
-            inputClass="text-base font-bold text-ink-900 w-64"
+            inputClass="text-base font-bold text-ink-900 flex-1 min-w-0 max-w-[16rem]"
           />
           <StatusCycleChip
             value={project.status}

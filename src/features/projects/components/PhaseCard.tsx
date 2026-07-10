@@ -62,7 +62,7 @@ export function PhaseCard({
           value={phase.name}
           onSave={name => onUpdatePhase({ name })}
           className="text-sm font-semibold text-ink-800 flex-1"
-          inputClass="text-sm font-semibold text-ink-800 w-48"
+          inputClass="text-sm font-semibold text-ink-800 flex-1 min-w-0 max-w-[12rem]"
         />
 
         <StatusCycleChip
