@@ -121,23 +121,28 @@ export function DayTimeline({ date }: Props) {
   })
   const taskNotesMap = new Map(linkedTaskNotes.map(t => [t.id, t.description as string | null]))
 
-  const handleBlockMouseDown = useCallback((e: React.MouseEvent, blockId: string, topPx: number) => {
+  // Pointer Events (not mouse-only) so block drag-to-reschedule works on
+  // touch — mouse events never fire on a touchscreen at all, which made
+  // this completely unusable on mobile. Pointer Events unify mouse/touch/
+  // pen under one API with no separate touch handlers needed.
+  const handleBlockPointerDown = useCallback((e: React.PointerEvent, blockId: string, topPx: number) => {
     e.stopPropagation()
     e.preventDefault()
     const rect = timelineRef.current!.getBoundingClientRect()
     const offsetY = (e.clientY - rect.top) - topPx
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     setDragging({ id: blockId, offsetY, dateStr })
     setDragY(e.clientY - rect.top)
   }, [dateStr])
 
   useEffect(() => {
     if (!dragging) return
-    function onMove(e: MouseEvent) {
+    function onMove(e: PointerEvent) {
       const rect = timelineRef.current?.getBoundingClientRect()
       if (!rect) return
       setDragY(e.clientY - rect.top)
     }
-    function onUp(e: MouseEvent) {
+    function onUp(e: PointerEvent) {
       const rect = timelineRef.current?.getBoundingClientRect()
       if (rect && dragging) {
         const rawHour = HOUR_START + (e.clientY - rect.top - dragging.offsetY) / HOUR_PX
@@ -148,9 +153,9 @@ export function DayTimeline({ date }: Props) {
       setDragging(null)
       setDragY(null)
     }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }
   }, [dragging, updateBlock])
 
   // Build unified block list
@@ -425,12 +430,18 @@ export function DayTimeline({ date }: Props) {
                   : isEditing
                     ? (e) => e.stopPropagation()
                     : (e) => { e.stopPropagation(); setSelectedId(isSelected ? null : block.id) }}
-                onMouseDown={block.deletable && !isSelected && !isEditing ? (e) => handleBlockMouseDown(e, block.id, baseTopPx) : undefined}
+                onPointerDown={block.deletable && !isSelected && !isEditing ? (e) => handleBlockPointerDown(e, block.id, baseTopPx) : undefined}
                 className={`absolute left-11 right-1 rounded-lg border px-2 py-1 group ${isSelected ? 'overflow-visible z-30 shadow-lg' : 'overflow-hidden'} ${block.colorClass} ${isCalEvent ? 'cursor-pointer hover:brightness-95' : block.deletable ? 'cursor-pointer' : 'cursor-default'} ${isDraggingThis ? 'opacity-80 shadow-lg z-20' : ''} ${isSelected ? 'ring-2 ring-accent-400' : ''} ${isOverlap && !isSelected ? 'ring-1 ring-red-400' : ''}`}
-                style={isSelected ? { top: `${topPx}px`, minHeight: `${heightPx}px` } : { top: `${topPx}px`, height: `${heightPx}px` }}
+                style={{
+                  ...(isSelected ? { top: `${topPx}px`, minHeight: `${heightPx}px` } : { top: `${topPx}px`, height: `${heightPx}px` }),
+                  // Prevents the page from also trying to vertically scroll
+                  // while a drag is in progress on touch — without this the
+                  // browser fights the reschedule gesture.
+                  touchAction: block.deletable && !isSelected && !isEditing ? 'none' : undefined,
+                }}
               >
                 {block.deletable && !isSelected && !isEditing && (
-                  <span className="absolute top-1 left-1 text-[10px] opacity-0 group-hover:opacity-40 transition-opacity select-none">⠿</span>
+                  <span className="absolute top-1 left-1 text-[10px] opacity-40 group-hover:opacity-70 transition-opacity select-none">⠿</span>
                 )}
                 {isEditing ? (
                   <input
@@ -488,7 +499,7 @@ export function DayTimeline({ date }: Props) {
                   </div>
                 )}
                 {isCalEvent && !isSelected && (
-                  <span className="absolute top-1 right-1.5 text-[10px] opacity-0 group-hover:opacity-50 transition-opacity">
+                  <span className="absolute top-1 right-1.5 text-[10px] opacity-30 group-hover:opacity-50 transition-opacity">
                     ✎
                   </span>
                 )}

@@ -237,9 +237,9 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                     <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5} placeholder="Paste recipe text here…"
                       className="w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
                     <div className="flex gap-2">
-                      <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[36px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
+                      <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[44px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
                       <button type="button" onClick={handleParsePaste} disabled={parsing || !pasteText.trim()}
-                        className="flex-1 min-h-[36px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
+                        className="flex-1 min-h-[44px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
                         {parsing ? 'Parsing…' : 'Parse with AI'}
                       </button>
                     </div>
@@ -250,9 +250,9 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                     <input value={urlInput} onChange={e => setUrlInput(e.target.value)} type="url" placeholder="https://…"
                       className="w-full min-h-[40px] bg-white border border-ink-200 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
                     <div className="flex gap-2">
-                      <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[36px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
+                      <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[44px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
                       <button type="button" onClick={handleParseUrl} disabled={parsing || !urlInput.trim()}
-                        className="flex-1 min-h-[36px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
+                        className="flex-1 min-h-[44px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
                         {parsing ? 'Fetching…' : 'Fetch & Parse'}
                       </button>
                     </div>
@@ -281,7 +281,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                         className="w-16 min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
                       <input value={row.name} onChange={e => setRow(i, { name: e.target.value })} placeholder="Ingredient"
                         className="flex-1 min-w-0 min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                      <button onClick={() => removeRow(i)} className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-300 hover:text-red-400 text-sm flex-shrink-0">×</button>
+                      <button onClick={() => removeRow(i)} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 text-sm flex-shrink-0">×</button>
                     </div>
                     {macroMode === 'from_ingredients' && (
                       <select
@@ -308,7 +308,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                   </div>
                 ))}
               </div>
-              <button onClick={addRow} className="mt-2 text-xs text-accent-600 hover:text-accent-700 min-h-[36px]">+ Add ingredient</button>
+              <button onClick={addRow} className="mt-2 text-xs text-accent-600 hover:text-accent-700 min-h-[44px]">+ Add ingredient</button>
             </div>
 
             {/* Instructions */}
@@ -352,7 +352,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                     ))}
                   </div>
                   <button type="button" onClick={handleEstimateMacros} disabled={estimating}
-                    className="mt-2 text-xs text-accent-600 hover:text-accent-700 min-h-[36px] disabled:opacity-50">
+                    className="mt-2 text-xs text-accent-600 hover:text-accent-700 min-h-[44px] disabled:opacity-50">
                     {estimating ? 'Estimating…' : '✨ Estimate with AI'}
                   </button>
                 </div>

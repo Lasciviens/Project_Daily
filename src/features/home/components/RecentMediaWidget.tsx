@@ -74,7 +74,10 @@ export function RecentMediaWidget() {
         <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Recently Watched</h3>
         <Link to="/media" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
       </div>
-      <div className="grid grid-cols-6 gap-1.5">
+      {/* grid-cols-3 on mobile — 6 columns at ~390px squeezed posters down to
+          ~60px with 9px titles, too cramped to read; 6 columns is kept from
+          sm: up where there's actual room for it. */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
         {data.map(item => (
           <Link key={item.id} to="/media" className="flex flex-col group">
             <div className="relative aspect-[2/3] rounded overflow-hidden bg-ink-100">
@@ -88,7 +91,7 @@ export function RecentMediaWidget() {
                 {item.type === 'movie' ? '🎬' : '📺'}
               </span>
             </div>
-            <p className="text-[9px] text-ink-600 truncate mt-0.5 leading-tight">{item.title}</p>
+            <p className="text-[10px] sm:text-[9px] text-ink-600 truncate mt-0.5 leading-tight">{item.title}</p>
           </Link>
         ))}
       </div>

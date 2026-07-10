@@ -60,7 +60,13 @@ export function GamesHomeWidget() {
         <Link to="/games" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
       </div>
 
-      {statsLoading && <div className="text-ink-400 text-sm">Loading…</div>}
+      {statsLoading && (
+        <div className="flex gap-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-12 flex-1 rounded-lg bg-cream-200 animate-pulse" />
+          ))}
+        </div>
+      )}
 
       {statsError && (
         <div className="text-xs text-red-500 space-y-0.5">

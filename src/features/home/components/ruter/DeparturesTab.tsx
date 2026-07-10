@@ -372,7 +372,13 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       {!queryStop && (
         <div className="text-sm text-ink-400 py-2">Search a stop or choose a saved stop.</div>
       )}
-      {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
+      {isLoading && (
+        <div className="space-y-1.5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-8 rounded-lg bg-cream-200 animate-pulse" />
+          ))}
+        </div>
+      )}
       {error && (
         <div className="text-red-500 text-xs py-1">
           {(error as Error).message?.includes('Rate')

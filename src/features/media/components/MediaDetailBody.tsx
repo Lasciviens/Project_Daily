@@ -57,7 +57,7 @@ function findTrailer(videos: TMDBVideo[]): TMDBVideo | undefined {
 function CastMember({ member }: { member: TMDBCastMember }) {
   const initials = member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
   return (
-    <div className="flex flex-col items-center gap-1 flex-shrink-0 w-16">
+    <div className="flex flex-col items-center gap-1 flex-shrink-0 w-16 snap-start">
       {member.profile_path ? (
         <img
           src={`https://image.tmdb.org/t/p/w185${member.profile_path}`}
@@ -256,7 +256,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
         {cast.length > 0 && (
           <div className="mb-4">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Cast</p>
-            <div className="flex gap-3 overflow-x-auto pb-2">
+            <div className="flex gap-3 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory pb-2">
               {cast.map(m => <CastMember key={m.id} member={m} />)}
             </div>
           </div>

@@ -1,4 +1,12 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
+import {
+  DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, arrayMove, verticalListSortingStrategy, useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { usePlayQueue, useUpdateGame, useReorderQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
 import { toast } from '../../../app/store'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
@@ -31,8 +39,6 @@ export function PlayQueueTab() {
 
   // Local copy for instant drag-and-drop feedback
   const [items, setItems]       = useState<QueueGame[] | null>(null)
-  const dragIdx                 = useRef<number | null>(null)
-  const [dragOver, setDragOver] = useState<number | null>(null)
   const [scheduleGame, setScheduleGame] = useState<QueueGame | null>(null)
 
   const displayItems: QueueGame[] = items ?? (queue as QueueGame[])
@@ -40,31 +46,25 @@ export function PlayQueueTab() {
   const upcoming = displayItems.filter(g => g.play_status !== 'playing')
 
   // ── Drag & drop ──────────────────────────────────────────────────────────
+  // dnd-kit (not native HTML5 draggable) — native drag-and-drop never fires
+  // on touch screens at all, which made queue reordering entirely unusable
+  // on mobile. TouchSensor's activation delay lets a normal vertical page
+  // scroll through the list still work; only a held-then-moved touch starts
+  // a drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
 
-  function onDragStart(idx: number) {
-    dragIdx.current = idx
-  }
-
-  function onDragOver(e: React.DragEvent, idx: number) {
-    e.preventDefault()
-    setDragOver(idx)
-  }
-
-  function onDrop(targetIdx: number) {
-    const src = dragIdx.current
-    if (src === null || src === targetIdx) { setDragOver(null); return }
-    const arr = [...displayItems]
-    const [item] = arr.splice(src, 1)
-    arr.splice(targetIdx, 0, item)
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const oldIndex = displayItems.findIndex(g => g.id === active.id)
+    const newIndex = displayItems.findIndex(g => g.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const arr = arrayMove(displayItems, oldIndex, newIndex)
     setItems(arr)
-    setDragOver(null)
-    dragIdx.current = null
     reorder(arr.map((g, i) => ({ id: g.id, play_order: i + 1 })))
-  }
-
-  function onDragEnd() {
-    setDragOver(null)
-    dragIdx.current = null
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -117,22 +117,29 @@ export function PlayQueueTab() {
   )
 
   function QueueItem({ game, globalIdx }: { game: QueueGame; globalIdx: number }) {
-    const isPlaying   = game.play_status === 'playing'
-    const isDragOver  = dragOver === globalIdx
+    const isPlaying = game.play_status === 'playing'
+    const {
+      attributes, listeners, setNodeRef, transform, transition, isDragging,
+    } = useSortable({ id: game.id })
+    const style = { transform: CSS.Transform.toString(transform), transition }
+
     return (
       <div
-        draggable
-        onDragStart={() => onDragStart(globalIdx)}
-        onDragOver={e  => onDragOver(e, globalIdx)}
-        onDrop={()     => onDrop(globalIdx)}
-        onDragEnd={onDragEnd}
-        className={`flex items-center gap-3 bg-white rounded-xl border transition-all cursor-grab active:cursor-grabbing select-none
-          ${isPlaying    ? 'border-orange-300 ring-1 ring-orange-200' : 'border-ink-200'}
-          ${isDragOver   ? 'border-accent-400 bg-accent-50 scale-[1.01]' : ''}
+        ref={setNodeRef}
+        style={style}
+        className={`flex items-center gap-3 bg-white rounded-xl border transition-shadow select-none
+          ${isPlaying   ? 'border-orange-300 ring-1 ring-orange-200' : 'border-ink-200'}
+          ${isDragging  ? 'border-accent-400 bg-accent-50 shadow-lg z-10 relative' : ''}
         `}
       >
-        {/* Drag handle + position */}
-        <div className="flex-shrink-0 w-10 flex flex-col items-center justify-center py-3 gap-1 text-ink-300">
+        {/* Drag handle + position — dnd-kit's listeners are bound only to
+            this handle (not the whole row) so the rest of the row keeps
+            normal tap/scroll behavior. */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="flex-shrink-0 w-10 min-h-[44px] flex flex-col items-center justify-center py-3 gap-1 text-ink-300 cursor-grab active:cursor-grabbing touch-none"
+        >
           <span className="text-base leading-none select-none">⠿</span>
           <span className={`text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center
             ${isPlaying
@@ -205,25 +212,31 @@ export function PlayQueueTab() {
         <p className="text-xs text-ink-400 self-center ml-auto">Drag ⠿ to reorder</p>
       </div>
 
-      {/* Playing now */}
-      {playing.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">▶ Now Playing</p>
-          <div className="space-y-2">
-            {playing.map(g => <QueueItem key={g.id} game={g} globalIdx={displayItems.indexOf(g)} />)}
-          </div>
-        </div>
-      )}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={displayItems.map(g => g.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-4">
+            {/* Playing now */}
+            {playing.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">▶ Now Playing</p>
+                <div className="space-y-2">
+                  {playing.map(g => <QueueItem key={g.id} game={g} globalIdx={displayItems.indexOf(g)} />)}
+                </div>
+              </div>
+            )}
 
-      {/* Up next */}
-      {upcoming.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-2">Up Next</p>
-          <div className="space-y-2">
-            {upcoming.map(g => <QueueItem key={g.id} game={g} globalIdx={displayItems.indexOf(g)} />)}
+            {/* Up next */}
+            {upcoming.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-2">Up Next</p>
+                <div className="space-y-2">
+                  {upcoming.map(g => <QueueItem key={g.id} game={g} globalIdx={displayItems.indexOf(g)} />)}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        </SortableContext>
+      </DndContext>
 
       {/* Schedule session modal */}
       <UnifiedPlanModal

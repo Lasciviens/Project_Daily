@@ -1,5 +1,9 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
+import {
+  Home as HomeIcon, CalendarDays, Clapperboard, Briefcase, Dumbbell, FolderKanban, Gamepad2,
+  type LucideIcon,
+} from 'lucide-react'
 import { DevRequestsDrawer } from '../features/devRequests/components/DevRequestsDrawer'
 import { AIPanel } from '../features/ai/components/AIPanel'
 import { CommandBar } from '../shared/components/CommandBar'
@@ -31,14 +35,18 @@ export function Layout() {
 // and has no scroll affordance, so once a user scrolled right to reach
 // Training/Projects/Games, Home/Personal/Media/Work looked like they'd
 // vanished. All 7 destinations are always-visible, equal-width, no scrolling.
-const TABS: { to: string; label: string; icon: string; match: string[] }[] = [
-  { to: '/home',     label: 'Home',     icon: '🏠', match: ['/home'] },
-  { to: '/daily',    label: 'Personal', icon: '📅', match: ['/daily', '/shop', '/recipes'] },
-  { to: '/media',    label: 'Media',    icon: '🎬', match: ['/media'] },
-  { to: '/work',     label: 'Work',     icon: '💼', match: ['/work'] },
-  { to: '/training', label: 'Training', icon: '🏋️', match: ['/training'] },
-  { to: '/projects', label: 'Projects', icon: '📁', match: ['/projects'] },
-  { to: '/games',    label: 'Games',    icon: '🎮', match: ['/games'] },
+// Lucide (outline SVG icons), not emoji — emoji glyphs render inconsistently
+// across OS/browser font versions and read as dated rather than "native app"
+// polish; a single crisp icon set that recolors/fills on the active tab is
+// the modern-iOS-tab-bar look this is going for.
+const TABS: { to: string; label: string; icon: LucideIcon; match: string[] }[] = [
+  { to: '/home',     label: 'Home',     icon: HomeIcon,     match: ['/home'] },
+  { to: '/daily',    label: 'Personal', icon: CalendarDays, match: ['/daily', '/shop', '/recipes'] },
+  { to: '/media',    label: 'Media',    icon: Clapperboard, match: ['/media'] },
+  { to: '/work',     label: 'Work',     icon: Briefcase,    match: ['/work'] },
+  { to: '/training', label: 'Training', icon: Dumbbell,     match: ['/training'] },
+  { to: '/projects', label: 'Projects', icon: FolderKanban, match: ['/projects'] },
+  { to: '/games',    label: 'Games',    icon: Gamepad2,      match: ['/games'] },
 ]
 
 function BottomTabBar() {
@@ -48,16 +56,17 @@ function BottomTabBar() {
     <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-white/95 backdrop-blur-lg border-t border-ink-200 pb-[env(safe-area-inset-bottom)]">
       {TABS.map(tab => {
         const isActive = tab.match.includes(location.pathname)
+        const Icon = tab.icon
         return (
           <NavLink
             key={tab.to}
             to={tab.to}
-            className={`flex-1 min-h-[56px] flex flex-col items-center justify-center gap-0.5 transition-colors duration-150 active:scale-95 ${
+            className={`flex-1 min-h-[56px] flex flex-col items-center justify-center gap-0.5 transition-colors duration-150 press-feedback ${
               isActive ? 'text-accent-600' : 'text-ink-400'
             }`}
           >
-            <span className="text-xl leading-none">{tab.icon}</span>
-            <span className="text-[9px] font-semibold leading-none">{tab.label}</span>
+            <Icon size={22} strokeWidth={isActive ? 2.25 : 1.75} fill={isActive ? 'currentColor' : 'none'} fillOpacity={isActive ? 0.15 : 0} />
+            <span className={`text-[10px] leading-none ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
           </NavLink>
         )
       })}

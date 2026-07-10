@@ -46,6 +46,33 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;              /* Chrome/Safari */
   }
+
+  /* Edge-fade affordance for horizontal scroll strips (nav pills, tab bars,
+     card carousels) — a hidden scrollbar with no other hint gives no clue
+     that a strip scrolls at all. Fades content near both edges so a user
+     can see there's more to reveal, independent of scroll position (a
+     scroll-position-aware gradient would need JS; this static fade is the
+     zero-JS approximation and is the standard mobile-web pattern for it). */
+  .scroll-fade-x {
+    mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+  }
+
+  /* Native-feeling snap points for horizontal scroll strips — pairs with
+     `snap-start`/`snap-center` on each child. */
+  .snap-x-mandatory {
+    scroll-snap-type: x mandatory;
+  }
+
+  /* Press feedback on any tappable surface — the near-universal "this is a
+     real app" cue that was entirely absent (no :active state anywhere). */
+  .press-feedback {
+    transition: transform 100ms ease-out, opacity 100ms ease-out;
+  }
+  .press-feedback:active {
+    transform: scale(0.96);
+    opacity: 0.85;
+  }
 }
 
 @layer components {

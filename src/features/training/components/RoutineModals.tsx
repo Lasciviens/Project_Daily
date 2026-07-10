@@ -177,9 +177,9 @@ const inputCls =
 
 // Tiny field-label sits above a set input so the column is scannable.
 // The label only renders on the header row; later rows keep the spacing.
-function SetField({ label, showLabel, children }: { label: string; showLabel: boolean; children: ReactNode }) {
+function SetField({ label, showLabel, children, wide }: { label: string; showLabel: boolean; children: ReactNode; wide?: boolean }) {
   return (
-    <label className="flex flex-col gap-0.5 min-w-0 flex-1">
+    <label className={`flex flex-col gap-0.5 min-w-0 ${wide ? 'flex-[2]' : 'flex-1'}`}>
       <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400 text-center leading-none h-[10px]">
         {showLabel ? label : ' '}
       </span>
@@ -298,7 +298,7 @@ function SetRow({ set, index, fields, useRange, canRemove, showLabel, onChange, 
         )}
 
         {fields.reps && useRange && (
-          <SetField label="Rep range" showLabel={showLabel}>
+          <SetField label="Rep range" showLabel={showLabel} wide>
             <div className="flex items-center gap-1">
               <input
                 type="number" inputMode="numeric" value={set.rep_range_start}

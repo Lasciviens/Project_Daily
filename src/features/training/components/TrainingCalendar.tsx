@@ -106,7 +106,7 @@ function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWor
 
   return (
     <div
-      className={`flex flex-col items-stretch gap-1.5 min-h-[76px] p-1.5 rounded-2xl border transition-colors cursor-pointer ${
+      className={`flex flex-col items-stretch gap-1.5 min-h-[76px] w-[92px] flex-shrink-0 snap-start sm:w-auto sm:flex-shrink p-1.5 rounded-2xl border transition-colors cursor-pointer ${
         isSelected
           ? 'border-accent-400 bg-accent-50 ring-1 ring-accent-300'
           : isToday
@@ -333,8 +333,12 @@ function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, toda
         </div>
       </div>
 
-      {/* 7-day grid */}
-      <div className="grid grid-cols-7 gap-1.5">
+      {/* 7-day grid — a true 7-col grid squeezes each day to ~43px at phone
+          widths, truncating workout/plan chip text to illegibility. Below
+          sm this becomes a horizontally scrollable strip of fixed-width day
+          cards instead, wide enough for the chip text to actually read;
+          sm+ (desktop rail) keeps the original 7-col grid unchanged. */}
+      <div className="flex overflow-x-auto gap-1.5 scrollbar-none scroll-fade-x snap-x snap-mandatory pb-1 sm:grid sm:grid-cols-7 sm:overflow-visible sm:pb-0">
         {days.map(day => (
           <WeekDayCell
             key={day.date.toISOString()}

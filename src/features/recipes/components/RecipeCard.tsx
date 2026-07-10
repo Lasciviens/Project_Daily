@@ -8,7 +8,7 @@ export function RecipeCard({ recipe, onClick }: { recipe: RecipeWithIngredients;
   return (
     <button
       onClick={onClick}
-      className="text-left bg-white rounded-xl border border-ink-200 overflow-hidden hover:shadow-md hover:border-accent-300 transition-shadow flex flex-col"
+      className="text-left bg-white rounded-xl border border-ink-200 overflow-hidden hover:shadow-md hover:border-accent-300 transition-shadow press-feedback flex flex-col"
     >
       {/* Cover image — falls back to a food-icon tile so cards stay uniform */}
       <div className="relative w-full aspect-[16/10] bg-cream-100 flex-shrink-0">

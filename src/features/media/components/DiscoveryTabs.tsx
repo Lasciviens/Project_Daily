@@ -116,12 +116,12 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
     <div className="mb-6">
       {/* Tab bar + sync controls */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
-        <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-full sm:w-auto overflow-x-auto">
+        <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-full sm:w-auto overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory">
           {TABS.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex-shrink-0 sm:flex-none px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 min-h-[44px] whitespace-nowrap ${
+              className={`flex-shrink-0 sm:flex-none px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 min-h-[44px] whitespace-nowrap press-feedback snap-start ${
                 tab === t.key
                   ? 'bg-white text-ink-900 shadow-sm'
                   : 'text-ink-500 hover:text-ink-700'

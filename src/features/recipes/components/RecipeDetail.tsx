@@ -89,7 +89,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
             <div className="relative w-full aspect-[16/9] flex-shrink-0">
               <img src={recipe.image_url!} alt={recipe.title} onError={() => setImgError(true)} className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-              <button onClick={onClose} className="absolute top-3 right-3 min-w-[36px] min-h-[36px] flex items-center justify-center text-white bg-black/30 hover:bg-black/50 rounded-full text-lg transition-colors">×</button>
+              <button onClick={onClose} className="absolute top-3 right-3 min-w-[44px] min-h-[44px] flex items-center justify-center text-white bg-black/30 hover:bg-black/50 rounded-full text-lg transition-colors">×</button>
               {recipe.times_cooked > 0 && (
                 <span className="absolute bottom-3 left-4 flex items-center gap-1 text-xs font-semibold bg-black/40 text-white px-2 py-1 rounded-full backdrop-blur-sm">
                   🔥 Made {recipe.times_cooked}×
@@ -113,20 +113,20 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Servings</span>
               <div className="flex items-center gap-1">
-                <button onClick={() => setServings(s => Math.max(1, s - 1))} className="min-w-[36px] min-h-[36px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">−</button>
+                <button onClick={() => setServings(s => Math.max(1, s - 1))} className="min-w-[44px] min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">−</button>
                 <span className="w-10 text-center text-sm font-bold text-ink-900 tabular-nums">{servings}</span>
-                <button onClick={() => setServings(s => s + 1)} className="min-w-[36px] min-h-[36px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">+</button>
+                <button onClick={() => setServings(s => s + 1)} className="min-w-[44px] min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">+</button>
               </div>
               {servings !== recipe.servings && (
                 <button onClick={() => setServings(recipe.servings)} className="text-[11px] text-accent-600 hover:text-accent-700">reset</button>
               )}
               <div className="flex items-center gap-1.5 ml-auto">
                 {steps.length > 0 && (
-                  <button onClick={() => setCookMode(true)} className="min-h-[36px] px-3 text-xs font-semibold bg-ink-900 text-white rounded-lg hover:bg-ink-800 transition-colors">
+                  <button onClick={() => setCookMode(true)} className="min-h-[44px] px-3 text-xs font-semibold bg-ink-900 text-white rounded-lg hover:bg-ink-800 transition-colors">
                     👨‍🍳 Cook Mode
                   </button>
                 )}
-                <button onClick={handleMadeThis} disabled={cooked.isPending} title="I made this!" className="min-h-[36px] min-w-[36px] flex items-center justify-center text-base bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors disabled:opacity-50">
+                <button onClick={handleMadeThis} disabled={cooked.isPending} title="I made this!" className="min-h-[44px] min-w-[44px] flex items-center justify-center text-base bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors disabled:opacity-50">
                   🔥
                 </button>
               </div>
@@ -159,7 +159,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                       <li key={ing.id}>
                         <button
                           type="button" onClick={() => toggleHave(ing.id)}
-                          className={`w-full flex items-center gap-2 text-sm text-left rounded-lg px-1.5 py-1 min-h-[36px] transition-colors ${checked ? 'opacity-50' : 'hover:bg-cream-50'}`}
+                          className={`w-full flex items-center gap-2 text-sm text-left rounded-lg px-1.5 py-1 min-h-[44px] transition-colors ${checked ? 'opacity-50' : 'hover:bg-cream-50'}`}
                         >
                           <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${checked ? 'bg-accent-500 border-accent-500' : 'border-ink-300'}`}>
                             {checked && <span className="text-white text-[9px] font-bold leading-none">✓</span>}

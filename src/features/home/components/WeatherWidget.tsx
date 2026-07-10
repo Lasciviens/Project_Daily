@@ -27,7 +27,15 @@ export function WeatherWidget() {
 
   return (
     <WidgetShell title="Oslo Weather" ws={ws} onManualSync={handleManualSync}>
-      {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
+      {isLoading && (
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-cream-200 animate-pulse flex-shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-16 rounded bg-cream-200 animate-pulse" />
+            <div className="h-3 w-24 rounded bg-cream-200 animate-pulse" />
+          </div>
+        </div>
+      )}
       {error    && <div className="text-ink-400 text-sm">Unavailable</div>}
 
       {data && (
