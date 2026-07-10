@@ -201,7 +201,13 @@ export function ActivityLogTab() {
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
+      {isLoading && (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-10 rounded-lg bg-cream-200 animate-pulse" />
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl p-3">

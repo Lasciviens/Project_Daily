@@ -101,7 +101,13 @@ export function TierEditorTab() {
     setPicking(null)
   }
 
-  if (isLoading) return <div className="text-sm text-ink-400 py-12 text-center">Loading…</div>
+  if (isLoading) return (
+    <div className="space-y-2">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="h-24 rounded-2xl bg-cream-200 animate-pulse" />
+      ))}
+    </div>
+  )
 
   return (
     <div className="space-y-3">

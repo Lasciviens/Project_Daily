@@ -259,7 +259,13 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
             className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-ink-100 hover:bg-ink-200 rounded-full text-ink-500 transition-colors">✕</button>
         </div>
 
-        {isLoading && <div className="flex items-center justify-center h-48 text-ink-400">Loading…</div>}
+        {isLoading && (
+          <div className="p-4 space-y-3">
+            <div className="h-40 rounded-xl bg-cream-200 animate-pulse" />
+            <div className="h-4 w-2/3 rounded bg-cream-200 animate-pulse" />
+            <div className="h-4 w-1/2 rounded bg-cream-200 animate-pulse" />
+          </div>
+        )}
 
         {game && (
           <div>

@@ -90,7 +90,13 @@ export function ProgramPickerDialog({ onLoad, onClose }: Props) {
           </div>
 
           <div className="p-5 space-y-3">
-            {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
+            {isLoading && (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-14 rounded-lg bg-cream-200 animate-pulse" />
+                ))}
+              </div>
+            )}
 
             {!isLoading && programs.length === 0 && (
               <p className="text-sm text-ink-400 text-center py-6">
