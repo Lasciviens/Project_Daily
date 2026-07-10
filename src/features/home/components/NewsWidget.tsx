@@ -47,7 +47,13 @@ export function NewsWidget() {
       headerRight={categoryTabs}
       onManualSync={() => { refetch(); ws.markSynced() }}
     >
-      {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
+      {isLoading && (
+        <div className="space-y-2.5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-4 rounded bg-cream-200 animate-pulse" style={{ width: `${85 - i * 12}%` }} />
+          ))}
+        </div>
+      )}
       {error     && (
         <div className="text-ink-400 text-sm">
           Feed unavailable — {(error as Error).message}

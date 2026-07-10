@@ -37,7 +37,12 @@ export function TrainingHomeWidget() {
         <Link to="/training" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
       </div>
 
-      {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
+      {isLoading && (
+        <div className="flex gap-3">
+          <div className="h-14 flex-1 rounded-lg bg-cream-200 animate-pulse" />
+          <div className="h-14 flex-1 rounded-lg bg-cream-200 animate-pulse" />
+        </div>
+      )}
 
       {!isLoading && !hasData && (
         <div className="text-ink-400 text-sm">No data — sync Hevy or connect Strava.</div>

@@ -220,7 +220,13 @@ function TodayTasksWidget({ tasks, done, total, open, progress, isLoading, onEdi
         <Link to="/daily" className="text-xs text-accent-600 hover:text-accent-700">Open Daily →</Link>
       </div>
 
-      {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
+      {isLoading && (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-9 rounded-lg bg-cream-200 animate-pulse" />
+          ))}
+        </div>
+      )}
 
       {!isLoading && tasks.length === 0 && (
         <div className="text-ink-400 text-sm mb-3">No tasks today — enjoy the day!</div>

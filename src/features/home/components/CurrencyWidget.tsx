@@ -134,7 +134,12 @@ export function CurrencyWidget() {
       headerRight={modeTabs}
       onManualSync={async () => { const result = await refetch(); if (result.isSuccess) ws.markSynced() }}
     >
-      {isLoading && <div className="text-ink-400 text-sm">Loading…</div>}
+      {isLoading && (
+        <div className="space-y-2">
+          <div className="h-4 w-full rounded bg-cream-200 animate-pulse" />
+          <div className="h-4 w-3/4 rounded bg-cream-200 animate-pulse" />
+        </div>
+      )}
       {error     && <div className="text-ink-400 text-sm">Unavailable</div>}
 
       {data && (
