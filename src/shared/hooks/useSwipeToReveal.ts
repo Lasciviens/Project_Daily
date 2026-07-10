@@ -25,6 +25,13 @@ export function useSwipeToReveal() {
     startY.current = e.clientY
     axisLocked.current = null
     setDragging(true)
+    // Without this, a fast real-finger swipe (routine on an actual device,
+    // rare in a slow simulated drag) can move the pointer outside this
+    // row's bounds mid-gesture — pointer events without capture are
+    // re-hit-tested on every move, so they'd stop reaching this element
+    // entirely and the row could get stuck mid-drag, never receiving the
+    // pointerup that finalizes open/closed state.
+    e.currentTarget.setPointerCapture(e.pointerId)
   }, [])
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
