@@ -69,10 +69,16 @@ export function BarLineChart({
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
           <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
           <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
-          <Tooltip cursor={false} content={makeTooltipContent(unit)} />
+          {/* trigger="click": recharts' default hover Tooltip relies on
+              synthesized mousemove events that don't reliably repeat on
+              touch (a second tap on a different bar doesn't always update
+              it) — tap-to-show is the documented recharts fix for touch. */}
+          <Tooltip cursor={false} trigger="click" content={makeTooltipContent(unit)} />
           {rangeKey && <Area dataKey={rangeKey} name="Range" stroke="none" fill={color} fillOpacity={0.12} />}
-          <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={9} {...barProps} />
-          <Line dataKey={dataKey} name={tooltipLabel} stroke={color} strokeWidth={2} dot={{ r: 3 }} />
+          {/* barSize bumped from 9 to 16 and activeDot added — the old size
+              was well under a comfortable touch tap target. */}
+          <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={16} {...barProps} />
+          <Line dataKey={dataKey} name={tooltipLabel} stroke={color} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>

@@ -81,7 +81,7 @@ export function StepsSection() {
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            <Tooltip cursor={false} formatter={(v) => [`${v} steps`, '']} />
+            <Tooltip cursor={false} trigger="click" formatter={(v) => [`${v} steps`, '']} />
             <Bar
               dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]}
               cursor={period !== 'day' ? 'pointer' : 'default'}

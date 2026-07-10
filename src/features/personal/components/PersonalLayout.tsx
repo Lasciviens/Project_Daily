@@ -12,8 +12,12 @@ const TABS = [
 ]
 
 export function PersonalLayout() {
+  // h-full (not a vh/dvh calc) so this resolves against <main>'s own
+  // computed flex height, which already accounts for the mobile bottom tab
+  // bar's reserved padding — a hardcoded vh subtraction here would ignore
+  // that reservation and run this content's tail under the fixed tab bar.
   return (
-    <div className="h-[calc(100vh-56px)] flex flex-col">
+    <div className="h-full flex flex-col">
       <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 pt-4">
         <div className="inline-flex items-center gap-0.5 bg-cream-100 rounded-xl p-1">
           {TABS.map(tab => (

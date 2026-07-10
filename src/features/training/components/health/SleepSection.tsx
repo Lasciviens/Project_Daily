@@ -195,7 +195,7 @@ export function SleepSection() {
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={trendPeriod === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            <Tooltip cursor={false} content={makeSleepTooltipContent(sourcesByDate)} />
+            <Tooltip cursor={false} trigger="click" content={makeSleepTooltipContent(sourcesByDate)} />
             <Bar dataKey="total" fill="#6366f1" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

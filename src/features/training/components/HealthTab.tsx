@@ -112,13 +112,13 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
   return (
     <div className="flex flex-col gap-4">
       {/* Section pills */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory pb-1">
         {SECTIONS.map(s => (
           <button
             key={s.id}
             type="button"
             onClick={() => setSection(s.id)}
-            className={`min-h-[36px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors ${
+            className={`min-h-[44px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors press-feedback snap-start ${
               section === s.id ? 'bg-ink-900 text-white' : 'bg-white border border-ink-200 text-ink-600 hover:bg-ink-50'
             }`}
           >
