@@ -76,13 +76,13 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
       <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-2">Episodes</p>
 
       {/* Season tabs + Select All */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-1 mb-3">
+      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory pb-1 mb-3">
         {realSeasons.map(s => (
           <button
             key={s.season_number}
             onClick={() => { setSeason(s.season_number); setSelected(new Set()) }}
             className={[
-              'flex-shrink-0 text-xs px-2.5 py-1 rounded-lg min-h-[44px] transition-colors',
+              'flex-shrink-0 text-xs px-2.5 py-1 rounded-lg min-h-[44px] transition-colors press-feedback snap-start',
               season === s.season_number
                 ? 'bg-accent-500 text-white font-semibold'
                 : 'bg-cream-100 text-ink-500 hover:bg-cream-200',

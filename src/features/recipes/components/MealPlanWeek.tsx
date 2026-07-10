@@ -36,13 +36,15 @@ export function MealPlanWeek() {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setWeekOffset(w => w - 1)} className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg">‹</button>
-          <button onClick={() => setWeekOffset(w => w + 1)} className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg">›</button>
+          <button onClick={() => setWeekOffset(w => w - 1)} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg press-feedback">‹</button>
+          <button onClick={() => setWeekOffset(w => w + 1)} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg press-feedback">›</button>
         </div>
       </div>
 
-      {/* Grid — meal slots as rows, days as columns */}
-      <div className="overflow-x-auto">
+      {/* Grid — meal slots as rows, days as columns. min-w-[720px] means this
+          always needs horizontal scroll below ~720px viewports; scroll-fade-x
+          is at least a visible hint that it does (previously silent). */}
+      <div className="overflow-x-auto scrollbar-none scroll-fade-x">
         <div className="grid gap-1.5 min-w-[720px]" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
           {/* Header row */}
           <div />

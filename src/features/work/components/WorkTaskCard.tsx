@@ -1,4 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useDraggable } from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 import type { Task, TaskStatus } from '../../todo/types'
 import { PRIORITY_META, dueLabel } from './workMeta'
 
@@ -11,13 +13,11 @@ interface Props {
   onFocus: (task: Task) => void
   isFocused: boolean
   isDragging?: boolean
-  onDragStart?: (id: string) => void
-  onDragEnd?: () => void
 }
 
 export default function WorkTaskCard({
   task, accentColor, onStatusChange, onDelete, onEdit, onFocus,
-  isFocused, isDragging, onDragStart, onDragEnd,
+  isFocused, isDragging,
 }: Props) {
   const isDone = task.status === 'done'
   const due    = dueLabel(task)
@@ -36,24 +36,26 @@ export default function WorkTaskCard({
     onStatusChange(task.id, 'waiting', waitingText.trim() || undefined)
   }
 
-  function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
-    e.dataTransfer.setData('taskId', task.id)
-    e.dataTransfer.effectAllowed = 'move'
-    onDragStart?.(task.id)
-  }
+  // dnd-kit (not native HTML5 draggable) — see WorkBoard.tsx for why. The
+  // whole card is the drag source (matches the old behavior); a plain tap
+  // still opens the edit modal since PointerSensor only arms a drag once
+  // the pointer has actually moved past its activation distance.
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: task.id })
+  const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined
 
   return (
     <div
-      draggable
-      onDragStart={handleDragStart}
-      onDragEnd={() => onDragEnd?.()}
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
       onClick={() => onEdit(task)}
       className={[
-        'group relative rounded-xl border bg-white p-2.5 cursor-pointer select-none transition-all',
+        'group relative rounded-xl border bg-white p-2.5 cursor-pointer select-none transition-all touch-manipulation',
         'hover:shadow-md hover:-translate-y-px',
         isFocused  ? 'border-accent-300 ring-1 ring-accent-200' : 'border-ink-200 hover:border-ink-300',
         isDone     ? 'opacity-60' : '',
-        isDragging ? 'opacity-30 scale-95 shadow-lg' : '',
+        isDragging ? 'opacity-30 scale-95 shadow-lg z-10 relative' : '',
       ].join(' ')}
     >
       {/* Focus bolt — always visible when focused */}

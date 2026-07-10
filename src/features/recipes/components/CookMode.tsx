@@ -55,16 +55,21 @@ export function CookMode({ recipe, steps, onClose }: Props) {
           </div>
 
           {/* Progress dots */}
-          <div className="flex items-center gap-1.5 px-4 sm:px-8 pb-4 flex-shrink-0 overflow-x-auto">
+          <div className="flex items-center px-4 sm:px-8 pb-4 flex-shrink-0 overflow-x-auto scrollbar-none scroll-fade-x">
             {steps.map((_, i) => (
+              // Visual dot stays small (w-2 h-2) but the button's own box is
+              // padded out to a real 44px tap target — the old version made
+              // the whole 8px dot itself the only tappable area.
               <button
                 key={i}
                 onClick={() => setStepIdx(i)}
-                className={`flex-shrink-0 rounded-full transition-all ${
-                  i === stepIdx ? 'w-6 h-2 bg-accent-400' : 'w-2 h-2 bg-white/25 hover:bg-white/40'
-                }`}
+                className="flex-shrink-0 min-w-[32px] min-h-[44px] flex items-center justify-center press-feedback"
                 aria-label={`Go to step ${i + 1}`}
-              />
+              >
+                <span className={`block rounded-full transition-all ${
+                  i === stepIdx ? 'w-6 h-2 bg-accent-400' : 'w-2 h-2 bg-white/25'
+                }`} />
+              </button>
             ))}
           </div>
 

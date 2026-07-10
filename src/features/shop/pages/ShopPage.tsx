@@ -57,7 +57,7 @@ export function ShopPage() {
           <div className="flex flex-wrap gap-1.5 mb-5">
             <button
               onClick={() => setActiveTop(null)}
-              className={`text-xs px-3 min-h-[36px] rounded-full border font-medium transition-colors ${
+              className={`text-xs px-3 min-h-[44px] rounded-full border font-medium transition-colors ${
                 !activeTop ? 'bg-ink-900 text-white border-ink-900' : 'border-ink-200 text-ink-600 hover:border-accent-300'
               }`}
             >All</button>
@@ -65,7 +65,7 @@ export function ShopPage() {
               <button
                 key={t.id}
                 onClick={() => setActiveTop(t.id)}
-                className={`text-xs px-3 min-h-[36px] rounded-full border font-medium transition-colors ${
+                className={`text-xs px-3 min-h-[44px] rounded-full border font-medium transition-colors ${
                   activeTop === t.id ? 'bg-accent-500 text-white border-accent-500' : 'border-ink-200 text-ink-600 hover:border-accent-300'
                 }`}
               >{t.name}</button>

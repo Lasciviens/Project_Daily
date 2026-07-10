@@ -120,7 +120,7 @@ export function TierEditorTab() {
                 {label}
               </div>
               {/* Games */}
-              <div className="flex-1 flex items-center gap-2 p-3 overflow-x-auto min-h-[96px]">
+              <div className="flex-1 flex items-center gap-2 p-3 overflow-x-auto scrollbar-none scroll-fade-x min-h-[96px]">
                 {games.length === 0 ? (
                   <span className="text-xs text-ink-300 italic">No games</span>
                 ) : (

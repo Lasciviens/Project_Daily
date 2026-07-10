@@ -316,7 +316,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       </div>
 
       {/* Status chips — horizontally scrollable on mobile */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2 scrollbar-none">
+      <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2 scrollbar-none scroll-fade-x">
         <button onClick={() => setStatusFilter(null)}
           className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] flex-shrink-0 ${!statusFilter ? 'bg-accent-500 text-white border-accent-500' : 'bg-white text-ink-600 border-ink-200 hover:border-accent-300'}`}
         >All</button>
@@ -360,7 +360,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       </div>
 
       {/* Sort + view mode — separate row, scrollable on mobile */}
-      <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 scrollbar-none">
+      <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 scrollbar-none scroll-fade-x">
         {view !== 'series' && (
           <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
             className="text-xs px-2 py-2 rounded-lg border border-ink-200 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] flex-shrink-0">

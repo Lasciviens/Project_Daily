@@ -120,7 +120,12 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
       </button>
 
       {!collapsed && (
-        <div className="px-3 pb-3 grid grid-cols-2 gap-4">
+        // grid-cols-1 on mobile — the fixed 86px-wide posters in a 2-column
+        // split left each column only ~159px wide at 390px viewports (barely
+        // over one poster), which risked overflow at narrower devices too.
+        // Single column below sm gives posters the full card width to wrap
+        // multiple per row instead.
+        <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-4">{leftGroups.map(renderGroup)}</div>
           <div className="space-y-4">{rightGroups.map(renderGroup)}</div>
         </div>

@@ -67,13 +67,13 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
       <div className="flex items-center gap-1 mt-1 pt-1.5 border-t border-ink-100">
         <button
           onClick={toggleBought}
-          className="flex-1 min-h-[36px] text-[11px] font-medium rounded-lg transition-colors hover:bg-cream-100 text-ink-600"
+          className="flex-1 min-h-[44px] text-[11px] font-medium rounded-lg transition-colors hover:bg-cream-100 text-ink-600"
         >
           {isBought ? '↩ Back to wishlist' : '✓ Mark bought'}
         </button>
         <button
           onClick={handleDelete}
-          className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors text-sm"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors text-sm"
         >✕</button>
       </div>
     </div>

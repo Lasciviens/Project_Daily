@@ -21,7 +21,7 @@ export default function FocusStrip({ tasks, onMarkDone, onClearFocus, onEdit }: 
   }
 
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1 snap-x">
+    <div className="flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x pb-1 snap-x snap-mandatory">
       {tasks.map(task => {
         const due  = dueLabel(task)
         const prio = PRIORITY_META[task.priority]

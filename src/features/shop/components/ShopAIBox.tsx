@@ -85,7 +85,7 @@ export function ShopAIBox() {
                     key={r}
                     onClick={() => send(r)}
                     disabled={sending}
-                    className="text-xs px-3 min-h-[36px] rounded-full border border-accent-300 text-accent-700 bg-white hover:bg-accent-50 transition-colors disabled:opacity-50"
+                    className="text-xs px-3 min-h-[44px] rounded-full border border-accent-300 text-accent-700 bg-white hover:bg-accent-50 transition-colors disabled:opacity-50"
                   >
                     {r}
                   </button>

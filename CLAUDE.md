@@ -119,7 +119,7 @@ Authentication → URL Configuration → Redirect URLs, or Supabase silently ref
 ### Media Feature Detail
 Full-width layout (no max-width constraint). Key components:
 - `MediaSearch` — movie/TV radio toggle, genre/year/rating filters, TMDB `/discover` or `/search`
-- `CompactLibraryStrip` — 4-col poster grid above Discovery; groups: Upcoming/Wishlist/Watching/Paused/Completed; collapse toggle
+- `CompactLibraryStrip` — 2-column status-group layout above Discovery (each column a flex-wrap poster strip, single column below `sm:`); groups: Upcoming/Wishlist/Watching/Paused/Completed; collapse toggle
 - `DiscoveryTabs` — Today/This Week/Popular/Upcoming/Norway tabs; manual sync only (24h stale)
 - `EpisodesPanel` — season selector, per-episode watched checkbox (saves `watched_on` date), plan checkbox for adding to today's schedule as time blocks, Select All season
 - `MediaDetailBody` — personal 1-10 rating, status buttons (save on click), upcoming auto-suggest for future releases
