@@ -203,8 +203,8 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
     <Dialog open={open} onClose={onClose} className="relative z-[70]">
       <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[92vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-ink-100 sticky top-0 bg-white z-10">
+        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+          <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-ink-100 sticky top-0 bg-cream-50 z-10">
             <h2 className="text-base font-bold text-ink-900">{editMode ? 'Edit recipe' : 'New recipe'}</h2>
             <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl">×</button>
           </div>
@@ -220,7 +220,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
 
             {pasteOpen && (
               <div className="p-3 rounded-xl border border-accent-200 bg-accent-50/50 flex flex-col gap-2">
-                <div className="flex gap-1 bg-white p-0.5 rounded-lg w-fit">
+                <div className="flex gap-1 bg-cream-50 p-0.5 rounded-lg w-fit">
                   {(['text', 'url'] as const).map(m => (
                     <button key={m} type="button" onClick={() => setPasteMode(m)}
                       className={`text-[10px] px-2.5 min-h-[28px] rounded-md font-medium transition-colors ${
@@ -235,7 +235,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                   <>
                     <p className="text-[11px] text-accent-700">Paste a recipe (from anywhere) — AI will fill in the title, servings, ingredients, instructions, and a rough macro estimate (translated to Turkish).</p>
                     <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5} placeholder="Paste recipe text here…"
-                      className="w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                      className="w-full bg-cream-50 border border-ink-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
                     <div className="flex gap-2">
                       <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[44px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
                       <button type="button" onClick={handleParsePaste} disabled={parsing || !pasteText.trim()}
@@ -248,7 +248,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                   <>
                     <p className="text-[11px] text-accent-700">Paste a recipe page link — AI will fetch it, extract the recipe, and translate everything to Turkish.</p>
                     <input value={urlInput} onChange={e => setUrlInput(e.target.value)} type="url" placeholder="https://…"
-                      className="w-full min-h-[40px] bg-white border border-ink-200 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                      className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
                     <div className="flex gap-2">
                       <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[44px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
                       <button type="button" onClick={handleParseUrl} disabled={parsing || !urlInput.trim()}
@@ -287,7 +287,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                       <select
                         value={row.library_ingredient_id ?? ''}
                         onChange={e => handleLinkChange(i, e.target.value)}
-                        className="ml-[3.75rem] min-h-[36px] bg-white border border-ink-200 rounded-lg px-2 text-xs text-ink-600 focus:outline-none focus:ring-1 focus:ring-accent-400"
+                        className="ml-[3.75rem] min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-ink-600 focus:outline-none focus:ring-1 focus:ring-accent-400"
                       >
                         <option value="">— link to a library ingredient for macros —</option>
                         {library.map(l => <option key={l.id} value={l.id}>{l.name} (per 100{l.unit})</option>)}
@@ -326,7 +326,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                   {(['manual', 'from_ingredients'] as MacroMode[]).map(m => (
                     <button key={m} type="button" onClick={() => setMacroMode(m)}
                       className={`text-[10px] px-2 min-h-[28px] rounded-md font-medium transition-colors ${
-                        macroMode === m ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
+                        macroMode === m ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
                       }`}>
                       {m === 'manual' ? 'Manual' : 'From ingredients'}
                     </button>
@@ -394,7 +394,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
             <input value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} placeholder="Source link (optional)" className={inputCls} />
           </div>
 
-          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-white">
+          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-cream-50">
             <button onClick={onClose} className="flex-1 min-h-[44px] border border-ink-200 text-ink-700 rounded-xl text-sm font-medium hover:bg-cream-50">Cancel</button>
             <button onClick={handleSave} disabled={saving || !title.trim()} className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 disabled:opacity-50">
               {saving ? 'Saving…' : editMode ? 'Save changes' : 'Add recipe'}
@@ -440,8 +440,8 @@ function NewIngredientInline({ defaultName, onCancel, onCreate }: {
     <div className="ml-[3.75rem] p-2.5 rounded-lg border border-accent-200 bg-accent-50/50 flex flex-col gap-1.5">
       <p className="text-[10px] font-semibold text-accent-700">New library ingredient — macros per 100{unit || 'g'}</p>
       <div className="flex gap-1.5">
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" className="flex-1 min-h-[36px] bg-white border border-ink-200 rounded-lg px-2 text-xs" />
-        <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Unit" className="w-14 min-h-[36px] bg-white border border-ink-200 rounded-lg px-2 text-xs text-center" />
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" className="flex-1 min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs" />
+        <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Unit" className="w-14 min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-center" />
       </div>
       <div className="grid grid-cols-5 gap-1">
         {[
@@ -452,7 +452,7 @@ function NewIngredientInline({ defaultName, onCancel, onCreate }: {
           { v: sugar,    set: setSugar,    ph: 'Sugar' },
         ].map((m, i) => (
           <input key={i} value={m.v} onChange={e => m.set(e.target.value)} placeholder={m.ph} inputMode="decimal"
-            className="min-h-[36px] bg-white border border-ink-200 rounded-lg px-1 text-[11px] text-center" />
+            className="min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-1 text-[11px] text-center" />
         ))}
       </div>
       <div className="flex gap-1.5 mt-0.5">

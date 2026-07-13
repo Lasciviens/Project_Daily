@@ -50,7 +50,7 @@ function ActivityCard({ activity }: { activity: StravaActivity }) {
   const color = TYPE_COLOR[activity.type] ?? 'bg-ink-50 text-ink-600 border-ink-100'
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-xl border border-ink-100 bg-white hover:border-ink-200 hover:shadow-sm transition-shadow duration-150">
+    <div className="flex items-start gap-3 p-3 rounded-xl border border-ink-100 bg-cream-50 hover:border-ink-200 hover:shadow-sm transition-shadow duration-150">
       <div className={`w-9 h-9 flex-shrink-0 rounded-lg border flex items-center justify-center text-lg ${color}`}>
         {icon}
       </div>
@@ -93,7 +93,7 @@ function ActivityCard({ activity }: { activity: StravaActivity }) {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="max-w-[10rem] flex-1 min-w-[7rem] p-3 rounded-xl border border-ink-100 bg-white">
+    <div className="max-w-[10rem] flex-1 min-w-[7rem] p-3 rounded-xl border border-ink-100 bg-cream-50">
       <p className="text-lg font-semibold text-ink-800 leading-none">{value}</p>
       <p className="mt-1 text-xs text-ink-400">{label}</p>
     </div>

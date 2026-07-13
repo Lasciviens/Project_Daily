@@ -38,7 +38,7 @@ function makeTooltipContent(unit: string, onPointClick?: (point: ChartPoint) => 
     })
     const rawPoint = payload[0]?.payload as ChartPoint | undefined
     return (
-      <div className="bg-white border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
+      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
         <p className="text-ink-400 font-medium">{label}</p>
         {rows.map(r => (
           <p key={String(r.dataKey ?? r.name)} style={{ color: r.color }} className="font-semibold">
@@ -78,7 +78,7 @@ export function BarLineChart({
     <div style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
           <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
           <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
           {/* trigger="click": recharts' default hover Tooltip relies on

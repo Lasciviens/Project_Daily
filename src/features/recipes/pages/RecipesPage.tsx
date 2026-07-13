@@ -55,7 +55,7 @@ export function RecipesPage() {
 
       {/* Tab toggle */}
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-        <div className="flex gap-1 bg-white border border-ink-200 p-1 rounded-xl w-fit">
+        <div className="flex gap-1 bg-cream-50 border border-ink-200 p-1 rounded-xl w-fit">
           {(['library', 'plan'] as Tab[]).map(t => (
             <button
               key={t}
@@ -75,7 +75,7 @@ export function RecipesPage() {
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Search recipes or ingredients…"
-              className="w-full min-h-[40px] bg-white border border-ink-200 rounded-xl pl-8 pr-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
+              className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-xl pl-8 pr-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
             />
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-300 text-sm">🔍</span>
           </div>

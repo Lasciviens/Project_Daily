@@ -37,7 +37,7 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
     const date: string | undefined = point?.payload?.date
     const sources = date ? sourcesByDate.get(date) : null
     return (
-      <div className="bg-white border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
+      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
         <p className="text-ink-400 font-medium">{label}</p>
         <p className="font-semibold text-indigo-600">{point.value != null ? `${point.value} hr` : '—'}</p>
         {sources && sources.size > 0 && (
@@ -96,7 +96,7 @@ export function SleepSection() {
   }
 
   return (
-    <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 Last Night's Sleep</p>
@@ -124,7 +124,7 @@ export function SleepSection() {
                 everywhere, no exceptions. */}
             <DateInput
               value={manualDate} max={today} onChange={setManualDate}
-              className="min-h-[36px] px-2 text-sm border border-ink-200 rounded-lg bg-white"
+              className="min-h-[36px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -132,7 +132,7 @@ export function SleepSection() {
             <input
               type="number" step="0.25" min="0" max="24" placeholder="7.5" value={manualHours}
               onChange={e => setManualHours(e.target.value)}
-              className="min-h-[36px] w-20 px-2 text-sm border border-ink-200 rounded-lg bg-white"
+              className="min-h-[36px] w-20 px-2 text-sm border border-ink-200 rounded-lg bg-cream-50"
             />
           </div>
           <button
@@ -186,7 +186,7 @@ export function SleepSection() {
               type="button"
               onClick={() => { setTrendPeriod(p); setAnchor(today) }}
               className={`px-2.5 min-h-[28px] rounded-md text-[11px] font-semibold transition-colors ${
-                trendPeriod === p ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
+                trendPeriod === p ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
               }`}
             >
               {p === 'week' ? 'Week' : 'Month'}
@@ -198,7 +198,7 @@ export function SleepSection() {
       <div className="h-28">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={trendPeriod === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
             <Tooltip cursor={false} trigger="click" content={makeSleepTooltipContent(sourcesByDate)} />

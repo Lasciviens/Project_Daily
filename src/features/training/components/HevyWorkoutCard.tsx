@@ -54,7 +54,7 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
   const deleteTask    = useDeleteTask()
 
   return (
-    <div className="rounded-xl border border-ink-100 bg-white overflow-hidden">
+    <div className="rounded-xl border border-ink-100 bg-cream-50 overflow-hidden">
       <button
         type="button"
         onClick={onClick}

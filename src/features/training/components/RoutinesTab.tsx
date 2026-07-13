@@ -69,7 +69,7 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
   }
 
   return (
-    <div className={`border border-ink-200 border-l-4 ${accentBorder} rounded-xl overflow-hidden bg-white`}>
+    <div className={`border border-ink-200 border-l-4 ${accentBorder} rounded-xl overflow-hidden bg-cream-50`}>
       {/* Card header */}
       <div className="flex items-start gap-3 px-3 py-2.5">
         <button

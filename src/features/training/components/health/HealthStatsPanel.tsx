@@ -44,7 +44,7 @@ function StatRow({ label, value, sub, trend }: { label: string; value: string; s
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white border border-ink-200 rounded-2xl p-4">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4">
       <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-2">📈 {title}</p>
       {children}
     </div>

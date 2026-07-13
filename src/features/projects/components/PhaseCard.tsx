@@ -45,7 +45,7 @@ export function PhaseCard({
   }
 
   return (
-    <div className="border border-ink-200 rounded-xl overflow-hidden bg-white">
+    <div className="border border-ink-200 rounded-xl overflow-hidden bg-cream-50">
       {/* Phase header */}
       <div
         className="flex items-center gap-2 px-4 py-2.5 cursor-pointer select-none hover:bg-ink-50 transition-colors min-h-[44px]"

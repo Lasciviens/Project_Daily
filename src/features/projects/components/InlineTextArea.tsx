@@ -42,7 +42,7 @@ export function InlineTextArea({ value, onSave, placeholder, className = '' }: P
       onKeyDown={e => {
         if (e.key === 'Escape') { setEditing(false); setDraft(value ?? '') }
       }}
-      className={`w-full text-xs border border-accent-300 rounded px-1 py-0.5 outline-none resize-none bg-white ${className}`}
+      className={`w-full text-xs border border-accent-300 rounded px-1 py-0.5 outline-none resize-none bg-cream-50 ${className}`}
     />
   )
 }

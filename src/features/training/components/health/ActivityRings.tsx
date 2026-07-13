@@ -49,7 +49,7 @@ export function ActivityRings() {
   const gap = 3
 
   return (
-    <div className="bg-white border border-ink-200 rounded-2xl p-4 flex items-center gap-5 flex-wrap">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex items-center gap-5 flex-wrap">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         {loading && <div className="absolute inset-0 rounded-full bg-cream-100 animate-pulse" />}
         <svg width={size} height={size} className="-rotate-0">

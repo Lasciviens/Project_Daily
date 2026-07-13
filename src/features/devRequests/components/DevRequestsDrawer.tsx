@@ -39,27 +39,27 @@ function NewRequestForm({ currentPage, onDone }: { currentPage: string; onDone: 
       <input
         autoFocus value={title} onChange={e => setTitle(e.target.value)}
         placeholder="What's the request/bug/idea?"
-        className="min-h-[40px] px-2.5 text-sm border border-ink-200 rounded-lg bg-white"
+        className="min-h-[40px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50"
       />
       <textarea
         value={description} onChange={e => setDescription(e.target.value)}
         placeholder="Details (optional) — the more context, the less back-and-forth later"
         rows={4}
-        className="px-2.5 py-1.5 text-xs border border-ink-200 rounded-lg bg-white resize-y min-h-[90px] lg:min-h-[180px]"
+        className="px-2.5 py-1.5 text-xs border border-ink-200 rounded-lg bg-cream-50 resize-y min-h-[90px] lg:min-h-[180px]"
       />
       <div className="grid grid-cols-2 gap-1.5">
         <select value={category} onChange={e => setCategory(e.target.value as DevRequestCategory)}
-          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-white">
+          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={priority} onChange={e => setPriority(e.target.value as DevRequestPriority)}
-          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-white">
+          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <input value={page} onChange={e => setPage(e.target.value)} placeholder="Page"
-          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-white" />
+          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50" />
         <select value={effort} onChange={e => setEffort(e.target.value as DevRequestEffort | '')}
-          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-white">
+          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           <option value="">effort?</option>
           {EFFORTS.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
@@ -97,23 +97,23 @@ function EditRequestForm({ request, onDone }: { request: DevRequest; onDone: () 
   return (
     <div className="flex flex-col gap-2 p-2.5 bg-accent-50/60 border border-accent-200 rounded-xl">
       <input value={title} onChange={e => setTitle(e.target.value)}
-        className="min-h-[36px] px-2 text-sm border border-ink-200 rounded-lg bg-white" />
+        className="min-h-[36px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50" />
       <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4}
         placeholder="Details (optional)"
-        className="px-2 py-1.5 text-xs border border-ink-200 rounded-lg bg-white resize-y min-h-[90px] lg:min-h-[180px]" />
+        className="px-2 py-1.5 text-xs border border-ink-200 rounded-lg bg-cream-50 resize-y min-h-[90px] lg:min-h-[180px]" />
       <div className="grid grid-cols-2 gap-1.5">
         <select value={category} onChange={e => setCategory(e.target.value as DevRequestCategory)}
-          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-white">
+          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={priority} onChange={e => setPriority(e.target.value as DevRequestPriority)}
-          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-white">
+          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <input value={page} onChange={e => setPage(e.target.value)} placeholder="Page"
-          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-white" />
+          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50" />
         <select value={effort} onChange={e => setEffort(e.target.value as DevRequestEffort | '')}
-          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-white">
+          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           <option value="">effort?</option>
           {EFFORTS.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
@@ -175,7 +175,7 @@ export function DevRequestsDrawer() {
 
       <div
         className={[
-          'fixed z-50 bg-white overflow-y-auto transition-transform duration-200 border-ink-200 flex flex-col',
+          'fixed z-50 bg-cream-50 overflow-y-auto transition-transform duration-200 border-ink-200 flex flex-col',
           'bottom-0 left-0 right-0 h-[75vh] rounded-t-2xl border-t',
           'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-96 lg:rounded-none lg:border-t-0 lg:border-l',
           isDevRequestsOpen
@@ -183,7 +183,7 @@ export function DevRequestsDrawer() {
             : 'translate-y-full lg:translate-y-0 lg:translate-x-full',
         ].join(' ')}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-white z-10">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-cream-50 z-10">
           <h2 className="text-sm font-semibold text-ink-800">🗒️ Requests & Ideas</h2>
           <div className="flex items-center gap-1">
             <button

@@ -37,7 +37,7 @@ function SaveRouteForm({
           value={label} onChange={e => onLabelChange(e.target.value)}
           placeholder={placeholder} autoFocus
           onKeyDown={e => e.key === 'Enter' && onSave()}
-          className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+          className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50 min-h-[44px]"
         />
         <button onClick={onSave} disabled={!label.trim() || saving}
           className="text-xs px-3 py-2 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors duration-150 disabled:opacity-50 min-h-[44px]">
@@ -165,7 +165,7 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
         className={`flex flex-col text-left px-3 py-2 rounded-xl border transition-colors duration-150 min-h-[44px] pr-7 ${
           active
             ? 'bg-accent-500 text-white border-accent-500'
-            : 'bg-white text-ink-700 border-ink-200 hover:border-accent-300'
+            : 'bg-cream-50 text-ink-700 border-ink-200 hover:border-accent-300'
         }`}
       >
         <span className="text-xs font-semibold leading-tight">{route.label}</span>
@@ -438,7 +438,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
         <div className="space-y-3">
 
           {/* FROM + TO — grouped in a single card with a swap divider */}
-          <div className="rounded-xl border border-ink-200 bg-white overflow-hidden divide-y divide-ink-100">
+          <div className="rounded-xl border border-ink-200 bg-cream-50 overflow-hidden divide-y divide-ink-100">
 
             {/* FROM field */}
             <div className="px-3 pt-3 pb-3">
@@ -532,7 +532,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                 <div className="flex items-center gap-1">
                   <input value={draftLine} onChange={e => setDraftLine(e.target.value)}
                     placeholder="e.g. 68" autoFocus
-                    className="w-20 px-2 py-2 text-xs rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[40px] placeholder:text-ink-300" />
+                    className="w-20 px-2 py-2 text-xs rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50 min-h-[40px] placeholder:text-ink-300" />
                   <button onClick={() => { setDraftLine(''); setShowLineFilter(false) }}
                     className="text-ink-300 hover:text-ink-600 transition-colors duration-150 min-w-[36px] min-h-[36px] flex items-center justify-center text-sm">✕</button>
                 </div>
@@ -542,7 +542,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
             {draftWhen === 'arriveBy' && (
               <div className="space-y-1">
                 <select value={draftTime} onChange={e => setDraftTime(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]">
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50 min-h-[44px]">
                   {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
                 <p className="text-[10px] text-ink-400">Arrive by this time today</p>
@@ -563,9 +563,9 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                 </div>
                 <div className="flex gap-2">
                   <DateInput value={draftDate} onChange={setDraftDate} min={todayString()}
-                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]" />
+                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50 min-h-[44px]" />
                   <select value={draftTime} onChange={e => setDraftTime(e.target.value)}
-                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]">
+                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50 min-h-[44px]">
                     {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>

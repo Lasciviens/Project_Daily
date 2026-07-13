@@ -63,7 +63,7 @@ export function EnergySection() {
     if (!active || !payload?.length) return null
     const date: string | undefined = payload[0]?.payload?.date
     return (
-      <div className="bg-white border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
+      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
         <p className="text-ink-400 font-medium">{label}</p>
         {payload.map((p: { dataKey?: string; name?: string; color?: string; value?: number }) => (
           <p key={p.dataKey} style={{ color: p.color }} className="font-semibold">
@@ -80,7 +80,7 @@ export function EnergySection() {
   }
 
   return (
-    <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
@@ -117,7 +117,7 @@ export function EnergySection() {
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
             <Tooltip cursor={false} trigger="click" content={EnergyTooltipContent} wrapperStyle={{ pointerEvents: 'auto' }} />

@@ -140,7 +140,7 @@ export function WorkPage() {
   return (
     <div className="flex flex-col h-full">
       {/* ── Command bar ── */}
-      <div className="flex items-center gap-3 flex-wrap px-4 sm:px-6 py-3 border-b border-ink-100 bg-white sticky top-0 z-10">
+      <div className="flex items-center gap-3 flex-wrap px-4 sm:px-6 py-3 border-b border-ink-100 bg-cream-50 sticky top-0 z-10">
         <div className="flex items-baseline gap-3 min-w-0">
           <h1 className="text-xl font-bold text-ink-900">Work</h1>
           <LiveClock />
@@ -220,7 +220,7 @@ export function WorkPage() {
 
             {/* Board controls: view toggle + quick add + filters */}
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex gap-0.5 p-0.5 bg-white border border-ink-200 rounded-lg">
+              <div className="flex gap-0.5 p-0.5 bg-cream-50 border border-ink-200 rounded-lg">
                 {(['board', 'list'] as ViewMode[]).map(v => (
                   <button
                     key={v}
@@ -239,18 +239,18 @@ export function WorkPage() {
                 onKeyDown={handleQuickAdd}
                 placeholder="Quick add task… (Enter)"
                 disabled={createTask.isPending}
-                className="flex-1 min-w-[140px] max-w-xs text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-white placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300 disabled:opacity-50"
+                className="flex-1 min-w-[140px] max-w-xs text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300 disabled:opacity-50"
               />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="🔍 Search…"
-                className="flex-1 min-w-[120px] max-w-[200px] text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-white placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300"
+                className="flex-1 min-w-[120px] max-w-[200px] text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300"
               />
               <select
                 value={prioFilter}
                 onChange={e => setPrioFilter(e.target.value as 'all' | TaskPriority)}
-                className="min-h-[44px] text-xs border border-ink-200 rounded-xl px-2 bg-white text-ink-700"
+                className="min-h-[44px] text-xs border border-ink-200 rounded-xl px-2 bg-cream-50 text-ink-700"
               >
                 <option value="all">All priorities</option>
                 <option value="high">High</option>

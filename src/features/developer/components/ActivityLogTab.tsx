@@ -138,7 +138,7 @@ function DiffView({ log }: { log: AuditLog }) {
 // chain (flex item connected by arrows to its neighbors).
 function LogCard({ log, expanded, onToggle }: { log: AuditLog; expanded: boolean; onToggle: () => void }) {
   return (
-    <div className="rounded-xl border border-ink-100 bg-white overflow-hidden flex-1 min-w-0">
+    <div className="rounded-xl border border-ink-100 bg-cream-50 overflow-hidden flex-1 min-w-0">
       <button
         type="button"
         onClick={onToggle}
@@ -226,7 +226,7 @@ export function ActivityLogTab() {
     return out
   }, [filtered])
 
-  const selectCls = 'min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-white text-ink-700'
+  const selectCls = 'min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
   const toggle = (id: string) => setExpanded(e => e === id ? null : id)
 
   return (

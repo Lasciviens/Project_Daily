@@ -52,7 +52,7 @@ export default function EODSummaryWidget({ tasks, bare }: Props) {
   if (bare) return body
 
   return (
-    <div className="rounded-xl border border-ink-200 bg-white px-4 py-4">
+    <div className="rounded-xl border border-ink-200 bg-cream-50 px-4 py-4">
       <h3 className="text-[10px] font-bold uppercase tracking-widest text-ink-400 mb-3">
         Today's Summary
       </h3>

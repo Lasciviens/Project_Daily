@@ -76,7 +76,7 @@ export function HevySyncButton({ compact = false, iconOnly = false }: HevySyncBu
           </PopoverButton>
           <PopoverPanel
             anchor="bottom end"
-            className="z-50 mt-2 w-72 rounded-2xl border border-ink-200 bg-white shadow-lg p-4 flex flex-col gap-3"
+            className="z-50 mt-2 w-72 rounded-2xl border border-ink-200 bg-cream-50 shadow-lg p-4 flex flex-col gap-3"
           >
             {/* Last synced info */}
             <div>

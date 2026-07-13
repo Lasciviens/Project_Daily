@@ -75,7 +75,7 @@ export default function WorkDayTimeline({ workTasks }: Props) {
   }
 
   return (
-    <div className="rounded-xl border border-ink-200 bg-white px-4 py-3 w-full">
+    <div className="rounded-xl border border-ink-200 bg-cream-50 px-4 py-3 w-full">
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <p className="text-[10px] font-bold uppercase tracking-widest text-ink-400">
           Today's Schedule

@@ -15,7 +15,7 @@ export function PeriodToggle({ value, onChange }: { value: Period; onChange: (p:
           type="button"
           onClick={() => onChange(o.value)}
           className={`px-2.5 min-h-[28px] rounded-md text-[11px] font-semibold transition-colors ${
-            value === o.value ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
+            value === o.value ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
           }`}
         >
           {o.label}

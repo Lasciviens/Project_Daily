@@ -19,7 +19,7 @@ export function DevRequestCard({ request, dragging, onDragStart, onDragEnd, onCy
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`flex items-start gap-2 bg-white border border-ink-100 rounded-xl p-2.5 cursor-grab select-none transition-opacity ${
+      className={`flex items-start gap-2 bg-cream-50 border border-ink-100 rounded-xl p-2.5 cursor-grab select-none transition-opacity ${
         dragging ? 'opacity-30' : ''
       } ${isDone ? 'opacity-60' : ''}`}
     >

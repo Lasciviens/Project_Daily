@@ -144,7 +144,7 @@ function QuaySavePanel({ stopId, stopName, onSave, onCancel }: QuaySavePanelProp
             className={`text-left text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
               selectedQuay === 'all'
                 ? 'bg-accent-500 text-white border-accent-500'
-                : 'text-ink-700 border-ink-200 hover:border-accent-300 bg-white'
+                : 'text-ink-700 border-ink-200 hover:border-accent-300 bg-cream-50'
             }`}
           >
             All quays
@@ -159,7 +159,7 @@ function QuaySavePanel({ stopId, stopName, onSave, onCancel }: QuaySavePanelProp
                 className={`text-left text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
                   selectedQuay !== 'all' && (selectedQuay as QuayDirectionHint)?.quayId === q.quayId
                     ? 'bg-accent-500 text-white border-accent-500'
-                    : 'text-ink-700 border-ink-200 hover:border-accent-300 bg-white'
+                    : 'text-ink-700 border-ink-200 hover:border-accent-300 bg-cream-50'
                 }`}
               >
                 <span className="font-medium">{label2}</span>
@@ -175,7 +175,7 @@ function QuaySavePanel({ stopId, stopName, onSave, onCancel }: QuaySavePanelProp
         <input
           value={label}
           onChange={e => setLabel(e.target.value)}
-          className="w-full px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+          className="w-full px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50 min-h-[44px]"
         />
       </div>
 

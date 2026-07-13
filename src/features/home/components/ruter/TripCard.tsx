@@ -163,7 +163,7 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
       {/* Summary row — tap to expand */}
       <button
         onClick={() => setExpanded(v => !v)}
-        className="w-full px-3 pt-3 pb-2.5 text-left min-h-[52px] bg-white"
+        className="w-full px-3 pt-3 pb-2.5 text-left min-h-[52px] bg-cream-50"
       >
         {/* Time row: HH:MM → HH:MM  Xm */}
         <div className="flex items-center justify-between gap-2 mb-1.5">

@@ -49,7 +49,7 @@ function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
   const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
   return (
     <button onClick={onClick}
-      className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-md hover:scale-[1.02] transition-all duration-150 press-feedback group"
+      className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-md hover:scale-[1.02] transition-all duration-150 press-feedback group"
     >
       <div className="relative bg-ink-100 flex-shrink-0" style={{ aspectRatio: '3/4' }}>
         <CoverImg url={game.cover_url} title={game.title} />
@@ -130,7 +130,7 @@ function PosterCard({ game, onClick }: { game: Game; onClick: () => void }) {
 function GameListItem({ game, onClick }: { game: Game; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className={`w-full flex items-center gap-3 p-3 bg-white rounded-xl border border-ink-200 border-l-4 ${STATUS_BORDER[game.play_status] ?? 'border-l-ink-200'} hover:shadow-sm transition-all text-left`}
+      className={`w-full flex items-center gap-3 p-3 bg-cream-50 rounded-xl border border-ink-200 border-l-4 ${STATUS_BORDER[game.play_status] ?? 'border-l-ink-200'} hover:shadow-sm transition-all text-left`}
     >
       <div className="flex-shrink-0 w-10 bg-ink-100 rounded-lg overflow-hidden border border-ink-100" style={{ aspectRatio: '3/4' }}>
         <CoverImg url={game.cover_url} title={game.title} />
@@ -310,7 +310,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       {/* Search */}
       <div className="relative mb-3">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search games, series…"
-          className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white" />
+          className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50" />
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-sm">🔍</span>
         {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-300 hover:text-ink-600">✕</button>}
       </div>
@@ -318,11 +318,11 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       {/* Status chips — horizontally scrollable on mobile */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2 scrollbar-none scroll-fade-x">
         <button onClick={() => setStatusFilter(null)}
-          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] flex-shrink-0 ${!statusFilter ? 'bg-accent-500 text-white border-accent-500' : 'bg-white text-ink-600 border-ink-200 hover:border-accent-300'}`}
+          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] flex-shrink-0 ${!statusFilter ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'}`}
         >All</button>
         {STATUSES.map(s => (
           <button key={s} onClick={() => setStatusFilter(statusFilter === s ? null : s)}
-            className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] flex-shrink-0 ${statusFilter === s ? 'bg-accent-500 text-white border-accent-500' : 'bg-white text-ink-600 border-ink-200 hover:border-accent-300'}`}
+            className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] flex-shrink-0 ${statusFilter === s ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'}`}
           >{STATUS_LABEL[s]}</button>
         ))}
       </div>
@@ -330,32 +330,32 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       {/* Dropdowns + toggles — wrap on mobile */}
       <div className="flex items-center gap-2 flex-wrap mb-2">
         <select value={tierFilter ?? ''} onChange={e => setTierFilter(e.target.value || null)}
-          className={`text-xs px-2 py-2 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${tierFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+          className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${tierFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
           <option value="">Tier: All</option>
           {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
         </select>
         <select value={genreFilter ?? ''} onChange={e => setGenreFilter(e.target.value || null)}
-          className={`text-xs px-2 py-2 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${genreFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+          className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${genreFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
           <option value="">Genre: All</option>
           {genreOptions.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
         <select value={platformFilter ?? ''} onChange={e => setPlatformFilter(e.target.value || null)}
-          className={`text-xs px-2 py-2 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${platformFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+          className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${platformFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
           <option value="">Platform: All</option>
           {platformOptions.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         {seriesOptions.length > 0 && (
           <select value={seriesFilter ?? ''} onChange={e => setSeriesFilter(e.target.value || null)}
-            className={`text-xs px-2 py-2 rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${seriesFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+            className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${seriesFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
             <option value="">Series: All</option>
             {seriesOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         )}
         <button onClick={() => setCoopOnly(v => !v)}
-          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${coopOnly ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'}`}
+          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${coopOnly ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'}`}
         >2P Co-op</button>
         <button onClick={() => setIconicOnly(v => !v)}
-          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${iconicOnly ? 'bg-yellow-400 text-yellow-900 border-yellow-400' : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'}`}
+          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${iconicOnly ? 'bg-yellow-400 text-yellow-900 border-yellow-400' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'}`}
         >⭐ Iconic</button>
       </div>
 
@@ -363,7 +363,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 scrollbar-none scroll-fade-x">
         {view !== 'series' && (
           <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
-            className="text-xs px-2 py-2 rounded-lg border border-ink-200 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] flex-shrink-0">
+            className="text-xs px-2 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] flex-shrink-0">
             <option value="az">A → Z</option>
             <option value="za">Z → A</option>
             <option value="year-asc">Year ↑</option>
@@ -373,7 +373,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
             <option value="series">By Series</option>
           </select>
         )}
-        <div className="flex border border-ink-200 rounded-lg overflow-hidden bg-white flex-shrink-0">
+        <div className="flex border border-ink-200 rounded-lg overflow-hidden bg-cream-50 flex-shrink-0">
           {LIB_VIEWS.map(({ v, icon, label }, i) => (
             <button key={v} onClick={() => setView(v)} title={label}
               className={`min-w-[44px] min-h-[44px] px-2.5 py-2 text-sm transition-colors ${view === v ? 'bg-accent-500 text-white' : 'text-ink-500 hover:bg-ink-50'} ${i > 0 ? 'border-l border-ink-200' : ''}`}
@@ -411,7 +411,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
         </div>
       )}
       {!isLoading && view === 'table' && (
-        <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-x-auto">
+        <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm overflow-x-auto">
           <table className="w-full text-sm min-w-[700px]">
             <thead>
               <tr className="border-b border-ink-100 text-left">
@@ -472,7 +472,7 @@ function RetroidSection() {
             { label: 'Iconic',   value: stats.iconic,    color: 'text-yellow-600' },
             { label: 'Series',   value: seriesCount,     color: 'text-cyan-600'   },
           ].map(s => (
-            <div key={s.label} className="bg-white rounded-xl border border-ink-200 p-2.5 text-center">
+            <div key={s.label} className="bg-cream-50 rounded-xl border border-ink-200 p-2.5 text-center">
               <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
               <div className="text-[10px] text-ink-400">{s.label}</div>
             </div>
@@ -481,7 +481,7 @@ function RetroidSection() {
       )}
 
       {/* Sub-tab bar */}
-      <div className="flex items-center gap-1 mb-5 bg-white rounded-xl border border-ink-200 p-1 shadow-sm">
+      <div className="flex items-center gap-1 mb-5 bg-cream-50 rounded-xl border border-ink-200 p-1 shadow-sm">
         {([
           { t: 'library' as RetroidTab, label: '📚 Library' },
           { t: 'tiers'   as RetroidTab, label: '🏆 Tier Editor' },
@@ -544,7 +544,7 @@ export function GamesPage() {
         {/* Top-level platform tabs */}
         <div className="flex items-center gap-3 mb-6">
           <h1 className="text-xl font-bold text-ink-900 mr-2">🎮 Games</h1>
-          <div className="flex flex-1 gap-1 bg-white rounded-xl border border-ink-200 p-1 shadow-sm">
+          <div className="flex flex-1 gap-1 bg-cream-50 rounded-xl border border-ink-200 p-1 shadow-sm">
             {([
               { t: 'retroid'     as PlatformTab, label: '📱 Retroid',      color: platform === 'retroid'     ? 'bg-accent-500 text-white' : '' },
               { t: 'playstation' as PlatformTab, label: '🎮 PlayStation',  color: platform === 'playstation' ? 'bg-accent-500 text-white' : '' },

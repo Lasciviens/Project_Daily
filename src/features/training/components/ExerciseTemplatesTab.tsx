@@ -38,7 +38,7 @@ function TypeChip({ type }: { type: string }) {
 function TemplateCard({ t }: { t: HevyExerciseTemplate }) {
   const muscles = t.secondary_muscle_groups ?? []
   return (
-    <div className="break-inside-avoid mb-2 flex flex-col gap-1.5 p-3 bg-white border border-ink-100 rounded-xl hover:border-accent-300 hover:shadow-sm transition-all">
+    <div className="break-inside-avoid mb-2 flex flex-col gap-1.5 p-3 bg-cream-50 border border-ink-100 rounded-xl hover:border-accent-300 hover:shadow-sm transition-all">
       <div className="flex items-start justify-between gap-2">
         <span className="text-sm font-semibold text-ink-800 leading-snug">{t.title}</span>
         <TypeChip type={t.type} />

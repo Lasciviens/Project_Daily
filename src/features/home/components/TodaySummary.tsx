@@ -66,7 +66,7 @@ export function TodaySummary() {
   })
 
   return (
-    <div className="bg-white rounded-2xl border border-ink-200 shadow-sm p-5">
+    <div className="bg-cream-50 rounded-2xl border border-ink-200 shadow-sm p-5">
       {/* Header row: greeting + compact weather */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

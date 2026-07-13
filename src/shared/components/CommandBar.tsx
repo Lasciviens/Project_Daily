@@ -207,7 +207,7 @@ export function CommandBar() {
           transition
           className="pointer-events-auto fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-xl mx-auto transition duration-150 data-[closed]:opacity-0 data-[closed]:-translate-y-2"
         >
-          <div className="bg-white rounded-2xl shadow-2xl border border-ink-200 overflow-hidden">
+          <div className="bg-cream-50 rounded-2xl shadow-2xl border border-ink-200 overflow-hidden">
             <Combobox onChange={handleSelect} onClose={() => {}}>
               {/* Input */}
               <div className="border-b-2 border-ink-200">

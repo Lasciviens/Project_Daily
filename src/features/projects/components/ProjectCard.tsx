@@ -37,7 +37,7 @@ export function ProjectCard({ project, stat, onOpen }: Props) {
     <button
       type="button"
       onClick={onOpen}
-      className="group relative w-full text-left bg-white border border-ink-200 rounded-2xl overflow-hidden hover:border-accent-300 hover:shadow-card-hover transition-all min-h-[44px]"
+      className="group relative w-full text-left bg-cream-50 border border-ink-200 rounded-2xl overflow-hidden hover:border-accent-300 hover:shadow-card-hover transition-all min-h-[44px]"
     >
       {/* Color accent stripe */}
       <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${COLOR_BAR[project.color] ?? 'bg-ink-300'}`} />

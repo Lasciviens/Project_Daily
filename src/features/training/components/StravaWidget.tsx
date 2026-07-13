@@ -72,7 +72,7 @@ export function StravaWidget() {
 
   if (isLoading || connecting) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-ink-100 bg-white text-xs text-ink-500">
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-ink-100 bg-cream-50 text-xs text-ink-500">
         <span className="animate-spin">↻</span>
         {connecting ? 'Connecting to Strava…' : 'Loading…'}
       </div>
@@ -110,7 +110,7 @@ export function StravaWidget() {
         <button
           onClick={handleSync}
           disabled={sync.isPending}
-          className="text-xs px-2.5 py-1 rounded bg-white border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors duration-150 min-h-[44px]"
+          className="text-xs px-2.5 py-1 rounded bg-cream-50 border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors duration-150 min-h-[44px]"
         >
           {sync.isPending ? '…' : '↻ Sync'}
         </button>

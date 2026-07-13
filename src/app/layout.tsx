@@ -61,7 +61,7 @@ export function Layout() {
 function PullToRefreshIndicator({ pullDistance, isRefreshing }: { pullDistance: number; isRefreshing: boolean }) {
   return (
     <div
-      className="sm:hidden fixed left-1/2 -translate-x-1/2 z-30 flex items-center justify-center w-9 h-9 rounded-full bg-white shadow-md border border-ink-200 text-accent-600 transition-transform"
+      className="sm:hidden fixed left-1/2 -translate-x-1/2 z-30 flex items-center justify-center w-9 h-9 rounded-full bg-cream-50 shadow-md border border-ink-200 text-accent-600 transition-transform"
       style={{
         top: '56px',
         opacity: pullDistance > 4 || isRefreshing ? 1 : 0,

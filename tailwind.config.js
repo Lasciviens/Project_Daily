@@ -1,25 +1,31 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'selector',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // App page background (canvas) — soft warm cream
-        canvas: '#ede4d5',
+        // canvas/cream/ink resolve through CSS custom properties (same
+        // pattern as accent below) so :root.dark can redefine every one of
+        // them in index.css without touching any of the ~120 component
+        // files that already use these class names — the token NAME keeps
+        // its semantic role (ink-900 = "most prominent ink amount") while
+        // its actual value inverts per theme.
+        canvas: 'rgb(var(--canvas) / <alpha-value>)',
         cream: {
-          50:  '#fefcf9',
-          100: '#faf8f4',
-          200: '#f5f0e8',
-          300: '#ede4d5',
+          50:  'rgb(var(--cream-50)  / <alpha-value>)',
+          100: 'rgb(var(--cream-100) / <alpha-value>)',
+          200: 'rgb(var(--cream-200) / <alpha-value>)',
+          300: 'rgb(var(--cream-300) / <alpha-value>)',
         },
         ink: {
-          900: '#1c1917',
-          700: '#44403c',
-          500: '#78716c',
-          400: '#a8a29e',
-          300: '#d6d3d1',
-          200: '#e7e5e4',
-          100: '#f5f5f4',
+          900: 'rgb(var(--ink-900) / <alpha-value>)',
+          700: 'rgb(var(--ink-700) / <alpha-value>)',
+          500: 'rgb(var(--ink-500) / <alpha-value>)',
+          400: 'rgb(var(--ink-400) / <alpha-value>)',
+          300: 'rgb(var(--ink-300) / <alpha-value>)',
+          200: 'rgb(var(--ink-200) / <alpha-value>)',
+          100: 'rgb(var(--ink-100) / <alpha-value>)',
         },
         accent: {
           50:  'rgb(var(--accent-50)  / <alpha-value>)',
