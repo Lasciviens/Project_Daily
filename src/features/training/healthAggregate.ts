@@ -145,7 +145,17 @@ export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = groupByDate(points)
   const result: SleepSummary[] = []
   for (const [date, pts] of byDate) {
-    const preAggregated = pts.filter(p => typeof p.value?.totalSleep === 'number')
+    // A manual entry is a deliberate correction for that specific night — it
+    // must win over synced Watch data for the same date, not just get summed
+    // or shadowed by it. Real bug this fixes: whenever ANY Watch point (even
+    // a pre-aggregated one, regardless of source) existed for a date, the
+    // branch below took it unconditionally and never looked at the manual
+    // per-segment rows for that same date, so a manual backfill silently
+    // never showed up whenever the Watch had already reported something.
+    const manualPts = pts.filter(p => p.source === 'manual')
+    const sourcePts = manualPts.length > 0 ? manualPts : pts
+
+    const preAggregated = sourcePts.filter(p => typeof p.value?.totalSleep === 'number')
     if (preAggregated.length > 0) {
       const latest = [...preAggregated].sort((a, b) => a.recorded_at.localeCompare(b.recorded_at)).pop()!
       const v = latest.value
@@ -155,7 +165,7 @@ export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
     }
 
     const stageSum: Record<string, number> = { Core: 0, REM: 0, Deep: 0, Awake: 0, Asleep: 0 }
-    for (const p of pts) {
+    for (const p of sourcePts) {
       const stage = p.value?.value
       const qty = p.value?.qty
       if (typeof stage === 'string' && typeof qty === 'number' && SLEEP_STAGE_KEYS.includes(stage as typeof SLEEP_STAGE_KEYS[number])) {
