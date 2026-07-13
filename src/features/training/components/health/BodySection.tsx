@@ -53,7 +53,7 @@ export function BodySection() {
   const bmi = computeDailySeries('body_mass_index', bmiPoints)
 
   return (
-    <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-4">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-4">
       <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">⚖️ Body (last 90 days)</p>
       <div className="flex flex-wrap gap-5">
         <BodyMiniChart title="Weight" icon="⚖️" unit="kg" color="#7c3aed" series={weight} decimals={1} />

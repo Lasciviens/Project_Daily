@@ -217,7 +217,7 @@ function ExerciseSearch({ templates, onSelect }: ExerciseSearchProps) {
           onChange={e => setQuery(e.target.value)}
         />
         {filtered.length > 0 && (
-          <ComboboxOptions className="absolute z-50 mt-1 w-full rounded-xl border border-ink-200 bg-white shadow-lg max-h-56 overflow-y-auto">
+          <ComboboxOptions className="absolute z-50 mt-1 w-full rounded-xl border border-ink-200 bg-cream-50 shadow-lg max-h-56 overflow-y-auto">
             {filtered.map(t => (
               <ComboboxOption
                 key={t.id}
@@ -606,7 +606,7 @@ function RoutineFormContent({ title, onClose, initial }: RoutineFormProps) {
                             onChange={e => patchExercise(ex._key, { notes: e.target.value })}
                             placeholder="Exercise notes…"
                             rows={2}
-                            className="w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-y"
+                            className="w-full bg-cream-50 border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-y"
                           />
                         </label>
                       </div>
@@ -683,7 +683,7 @@ export function NewRoutineModal({ isOpen, onClose }: NewRoutineModalProps) {
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
           transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-4xl bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
+          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-4xl bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
         >
           <RoutineFormContent title="New Routine" onClose={onClose} />
         </DialogPanel>
@@ -709,7 +709,7 @@ export function EditRoutineModal({ routine, onClose }: EditRoutineModalProps) {
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
           transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-4xl bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
+          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-4xl bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
         >
           {routine && (
             <RoutineFormContent title={`Edit: ${routine.title}`} onClose={onClose} initial={routine} />

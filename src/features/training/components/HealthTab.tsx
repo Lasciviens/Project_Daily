@@ -28,7 +28,7 @@ function fmtDuration(seconds: number | null): string {
 
 function HealthWorkoutRow({ workout }: { workout: HealthWorkout }) {
   return (
-    <div className="w-full rounded-xl border border-ink-100 bg-white min-h-[60px] flex overflow-hidden">
+    <div className="w-full rounded-xl border border-ink-100 bg-cream-50 min-h-[60px] flex overflow-hidden">
       <div className="w-1 shrink-0 bg-blue-400" />
       <div className="flex-1 px-3 py-2.5 flex flex-col gap-1 min-w-0">
         <div className="flex items-start justify-between gap-3">
@@ -59,7 +59,7 @@ function WorkoutsList() {
   const [expanded, setExpanded] = useState(false)
   const { data: workouts = [], isLoading } = useHealthWorkouts({ limit: 20 })
   return (
-    <div className="bg-white border border-ink-200 rounded-2xl overflow-hidden">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl overflow-hidden">
       <button
         type="button"
         onClick={() => setExpanded(e => !e)}
@@ -119,7 +119,7 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
             type="button"
             onClick={() => setSection(s.id)}
             className={`min-h-[44px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors press-feedback snap-start ${
-              section === s.id ? 'bg-ink-900 text-white' : 'bg-white border border-ink-200 text-ink-600 hover:bg-ink-50'
+              section === s.id ? 'bg-ink-900 text-white' : 'bg-cream-50 border border-ink-200 text-ink-600 hover:bg-ink-50'
             }`}
           >
             <span>{s.icon}</span>{s.label}

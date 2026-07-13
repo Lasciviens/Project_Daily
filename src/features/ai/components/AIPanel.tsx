@@ -91,7 +91,7 @@ export function AIPanel() {
 
       <div
         className={[
-          'fixed z-50 bg-white flex flex-col border-ink-200',
+          'fixed z-50 bg-cream-50 flex flex-col border-ink-200',
           'bottom-0 left-0 right-0 h-[80vh] rounded-t-2xl border-t',
           'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-[420px] lg:rounded-none lg:border-t-0 lg:border-l',
           isAIOpen
@@ -225,8 +225,8 @@ export function AIPanel() {
       <Dialog open={detailSteps !== null} onClose={() => setDetailSteps(null)} className="relative z-[60]">
         <DialogBackdrop className="fixed inset-0 bg-ink-900/30" />
         <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <DialogPanel className="w-full sm:max-w-md max-h-[80vh] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl border border-ink-200">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-white">
+          <DialogPanel className="w-full sm:max-w-md max-h-[80vh] overflow-y-auto bg-cream-50 rounded-t-2xl sm:rounded-2xl border border-ink-200">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-cream-50">
               <h3 className="text-sm font-semibold text-ink-800">AI activity</h3>
               <button onClick={() => setDetailSteps(null)} className="w-9 h-9 flex items-center justify-center text-ink-400 hover:text-ink-700 text-lg">×</button>
             </div>

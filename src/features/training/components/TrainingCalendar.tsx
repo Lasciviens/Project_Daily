@@ -111,7 +111,7 @@ function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWor
           ? 'border-accent-400 bg-accent-50 ring-1 ring-accent-300'
           : isToday
           ? 'border-accent-200 bg-accent-50/40'
-          : 'border-ink-100 bg-white hover:border-ink-300 hover:bg-cream-50'
+          : 'border-ink-100 bg-cream-50 hover:border-ink-300 hover:bg-cream-50'
       }`}
       onClick={() => onSelect(isSelected ? '' : dateStr)}
     >

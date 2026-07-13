@@ -121,7 +121,7 @@ export function ErrorLogTab() {
           return (
             <div
               key={log.id}
-              className="rounded-xl border border-ink-100 bg-white overflow-hidden"
+              className="rounded-xl border border-ink-100 bg-cream-50 overflow-hidden"
             >
               <div className="flex items-start gap-3 p-3">
                 <span className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0 mt-1.5" />

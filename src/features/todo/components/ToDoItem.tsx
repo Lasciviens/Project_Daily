@@ -57,7 +57,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
           tabIndex={0}
           onClick={() => { if (!swipe.isOpen) setEditing(true) }}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true) } }}
-          className={`relative bg-white group flex items-start gap-2.5 px-3 py-2 min-h-[44px] rounded-lg cursor-pointer transition-colors duration-150 press-feedback ${
+          className={`relative bg-cream-50 group flex items-start gap-2.5 px-3 py-2 min-h-[44px] rounded-lg cursor-pointer transition-colors duration-150 press-feedback ${
             hovered ? 'bg-cream-100' : ''
           }`}
           onMouseEnter={() => setHovered(true)}

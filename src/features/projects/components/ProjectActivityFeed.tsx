@@ -63,7 +63,7 @@ export function ProjectActivityFeed({ projectId, itemIds, phaseIds }: { projectI
   const { data: logs = [], isLoading } = useProjectActivity(projectId, itemIds, phaseIds)
 
   return (
-    <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-2">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-2">
       <span className="text-[11px] font-bold uppercase tracking-wider text-ink-400">Activity</span>
       {isLoading ? (
         <div className="h-16 rounded-xl bg-cream-100 animate-pulse" />

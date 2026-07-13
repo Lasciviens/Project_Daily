@@ -125,7 +125,7 @@ function EditPanel({
         <div>
           <label className="text-xs text-ink-400 mb-1 block">Status</label>
           <select value={status} onChange={e => setStatus(e.target.value)}
-            className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400">
+            className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400">
             <option value="playing">Playing</option>
             <option value="completed">Completed</option>
             <option value="wishlist">Wishlist</option>
@@ -138,7 +138,7 @@ function EditPanel({
         <div>
           <label className="text-xs text-ink-400 mb-1 block">Tier</label>
           <select value={tier} onChange={e => setTier(e.target.value)}
-            className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400">
+            className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400">
             <option value="">— None —</option>
             {['S','A','B','C','D','F'].map(t => <option key={t} value={t}>Tier {t}</option>)}
           </select>
@@ -149,7 +149,7 @@ function EditPanel({
           <label className="text-xs text-ink-400 mb-1 block">My Rating (1–10)</label>
           <input type="number" min={1} max={10} value={rating} onChange={e => setRating(e.target.value)}
             placeholder="—"
-            className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400" />
+            className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
         </div>
 
         {/* Flags */}
@@ -170,7 +170,7 @@ function EditPanel({
         <label className="text-xs text-ink-400 mb-1 block">Personal Notes</label>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
           placeholder="Your thoughts…"
-          className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none" />
+          className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none" />
       </div>
 
       <div className="flex gap-2">
@@ -246,7 +246,7 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
       <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
 
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <DialogPanel transition className="w-full sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl border border-ink-200 shadow-2xl transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+      <DialogPanel transition className="w-full sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto bg-cream-50 rounded-t-2xl sm:rounded-2xl border border-ink-200 shadow-2xl transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
         {/* Controls */}
         <div className="absolute top-3 right-3 z-10 flex gap-2">
           {updateGame && game && !editing && (

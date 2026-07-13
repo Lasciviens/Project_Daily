@@ -92,7 +92,7 @@ export function MediaStats({ movieEntries, tvEntries }: Props) {
 
 function StatBox({ label, value, icon }: { label: string; value: string | number; icon: string }) {
   return (
-    <div className="text-center p-2 rounded-lg bg-white border border-ink-100">
+    <div className="text-center p-2 rounded-lg bg-cream-50 border border-ink-100">
       <div className="text-lg">{icon}</div>
       <div className="text-base font-bold text-ink-900">{value}</div>
       <div className="text-[10px] text-ink-400 leading-tight">{label}</div>

@@ -87,12 +87,12 @@ function ExerciseRowEditor({ ex, templates, onChange, onRemove }: ExerciseRowPro
             onClose={() => {}}
           >
             <ComboboxInput
-              className="w-full min-h-[40px] bg-white border border-ink-200 rounded-lg px-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
+              className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-lg px-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
               placeholder="Search exercise…"
               displayValue={(t: HevyExerciseTemplate | null) => t?.title ?? ''}
               onChange={e => onChange({ ...ex, query: e.target.value })}
             />
-            <ComboboxOptions className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto bg-white border border-ink-200 rounded-xl shadow-lg">
+            <ComboboxOptions className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto bg-cream-50 border border-ink-200 rounded-xl shadow-lg">
               {filtered.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-ink-400">No matches</div>
               ) : (
@@ -293,10 +293,10 @@ export function LogHevyWorkoutModal({ isOpen, onClose }: Props) {
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
           transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-2xl max-h-[92vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
+          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-2xl max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-100 sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-100 sticky top-0 bg-cream-50 z-10">
             <h2 className="text-base font-bold text-ink-900">Log Workout</h2>
             <button
               type="button"
@@ -381,7 +381,7 @@ export function LogHevyWorkoutModal({ isOpen, onClose }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-white">
+          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-cream-50">
             <button
               type="button"
               onClick={onClose}

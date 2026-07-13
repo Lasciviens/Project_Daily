@@ -123,7 +123,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
               onClick={() => setTab(t.key)}
               className={`flex-shrink-0 sm:flex-none px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 min-h-[44px] whitespace-nowrap press-feedback snap-start ${
                 tab === t.key
-                  ? 'bg-white text-ink-900 shadow-sm'
+                  ? 'bg-cream-50 text-ink-900 shadow-sm'
                   : 'text-ink-500 hover:text-ink-700'
               }`}
             >

@@ -40,7 +40,7 @@ function BestLiftsCard() {
     .slice(0, 5)
 
   return (
-    <div className="rounded-xl border border-ink-200 bg-white overflow-hidden mb-3">
+    <div className="rounded-xl border border-ink-200 bg-cream-50 overflow-hidden mb-3">
       <div className="px-3 py-2 bg-cream-50 border-b border-ink-100">
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Top 5 Lifts by Weight</p>
       </div>

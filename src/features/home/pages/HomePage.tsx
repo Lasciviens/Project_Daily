@@ -101,7 +101,7 @@ export function HomePage() {
             <Link
               key={card.to}
               to={card.to}
-              className="group flex items-center justify-center gap-1.5 bg-white rounded-lg border border-ink-200 px-2 min-h-[44px] shadow-sm hover:shadow-md hover:border-accent-300 transition-shadow duration-150 press-feedback"
+              className="group flex items-center justify-center gap-1.5 bg-cream-50 rounded-lg border border-ink-200 px-2 min-h-[44px] shadow-sm hover:shadow-md hover:border-accent-300 transition-shadow duration-150 press-feedback"
             >
               <span className="text-base leading-none">{card.icon}</span>
               <span className="text-xs font-semibold text-ink-800 group-hover:text-accent-600 transition-colors duration-150 truncate">
@@ -160,7 +160,7 @@ function TodayScheduleWidget() {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
+    <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Day Schedule</h3>
         <Link to="/daily" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
@@ -214,7 +214,7 @@ function TodayTasksWidget({ tasks, done, total, open, progress, isLoading, onEdi
   }
 
   return (
-    <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
+    <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Today's Tasks</h3>
         <Link to="/daily" className="text-xs text-accent-600 hover:text-accent-700">Open Daily →</Link>
@@ -286,7 +286,7 @@ function TodayTasksWidget({ tasks, done, total, open, progress, isLoading, onEdi
           onKeyDown={handleKeyDown}
           placeholder="Quick add task… (Enter to save)"
           disabled={create.isPending}
-          className="flex-1 text-sm px-2.5 py-1.5 rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white placeholder:text-ink-300 disabled:opacity-50 min-h-[44px]"
+          className="flex-1 text-sm px-2.5 py-1.5 rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50 placeholder:text-ink-300 disabled:opacity-50 min-h-[44px]"
         />
       </div>
     </div>

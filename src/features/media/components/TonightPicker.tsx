@@ -141,7 +141,7 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
   }
 
   return (
-    <div className="rounded-xl border border-ink-200 bg-white p-3">
+    <div className="rounded-xl border border-ink-200 bg-cream-50 p-3">
       {/* Header + source selector */}
       <div className="flex items-center justify-between mb-2.5">
         <h3 className="text-[10px] font-bold uppercase tracking-wider text-ink-400">🎲 What to Watch?</h3>

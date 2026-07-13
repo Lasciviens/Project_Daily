@@ -32,7 +32,7 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
   }
 
   return (
-    <div className={`rounded-xl border border-ink-200 bg-white p-3 flex flex-col gap-1.5 ${isBought ? 'opacity-50' : ''}`}>
+    <div className={`rounded-xl border border-ink-200 bg-cream-50 p-3 flex flex-col gap-1.5 ${isBought ? 'opacity-50' : ''}`}>
       <div className="flex items-start gap-2">
         <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${PRIORITY_DOT[item.priority]}`} />
         <div className="flex-1 min-w-0">

@@ -65,7 +65,7 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
             onChange={e => setQ(e.target.value)}
             placeholder={placeholder}
             displayValue={() => q}
-            className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white min-h-[44px]"
+            className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50 min-h-[44px]"
           />
           {q && (
             <button
@@ -76,7 +76,7 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
           )}
         </div>
 
-        <ComboboxOptions className="absolute z-20 mt-1 w-full bg-white border border-ink-200 rounded-lg shadow-lg overflow-hidden text-sm empty:hidden">
+        <ComboboxOptions className="absolute z-20 mt-1 w-full bg-cream-50 border border-ink-200 rounded-lg shadow-lg overflow-hidden text-sm empty:hidden">
 
           {/* ── Favorites (shown when input is focused, before typing) ── */}
           {showFavorites && hasFavorites && (

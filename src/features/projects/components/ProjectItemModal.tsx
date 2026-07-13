@@ -34,7 +34,7 @@ interface Props {
   item?:       ProjectItem | null   // present → edit mode; absent → add mode
 }
 
-const inputCls = 'w-full min-h-[44px] px-3 rounded-lg border border-ink-200 bg-white text-sm text-ink-800 focus:outline-none focus:ring-2 focus:ring-accent-300'
+const inputCls = 'w-full min-h-[44px] px-3 rounded-lg border border-ink-200 bg-cream-50 text-sm text-ink-800 focus:outline-none focus:ring-2 focus:ring-accent-300'
 
 export function ProjectItemModal({ open, onClose, projectId, phases, defaultPhaseId, item }: Props) {
   const isEdit = !!item
@@ -105,7 +105,7 @@ export function ProjectItemModal({ open, onClose, projectId, phases, defaultPhas
     <Dialog open={open} onClose={onClose} className="relative z-[60]">
       <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
           <div className="p-4 sm:p-5 flex flex-col gap-3">
             <h2 className="text-base font-bold text-ink-900">{isEdit ? 'Edit item' : 'New item'}</h2>
 

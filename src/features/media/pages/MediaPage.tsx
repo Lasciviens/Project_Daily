@@ -59,7 +59,7 @@ export function MediaPage() {
                     onClick={() => setTab(t)}
                     className={`flex-1 sm:flex-none px-4 min-h-[44px] rounded-md text-sm font-medium transition-colors duration-150 ${
                       tab === t
-                        ? 'bg-white text-ink-900 shadow-sm'
+                        ? 'bg-cream-50 text-ink-900 shadow-sm'
                         : 'text-ink-500 hover:text-ink-700'
                     }`}
                   >

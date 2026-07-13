@@ -45,7 +45,7 @@ export function ProjectNotesCard({ notes, onSave }: { notes: string | null; onSa
     status === 'pending' ? 'Not saved' : ''
 
   return (
-    <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-2">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-bold uppercase tracking-wider text-ink-400">Notes</span>
         <span className="text-xs text-ink-300 transition-opacity duration-300" aria-live="polite">{statusLabel}</span>

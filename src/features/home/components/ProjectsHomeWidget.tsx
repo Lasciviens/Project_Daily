@@ -16,7 +16,7 @@ export function ProjectsHomeWidget() {
   if (active.length === 0) return null
 
   return (
-    <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
+    <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Active Projects</h3>
         <Link to="/projects" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>

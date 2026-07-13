@@ -40,7 +40,7 @@ export function DailyPage() {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
       {/* Tab bar: scrollable on mobile so 5 tabs never overflow the viewport */}
-      <div className="flex gap-1 mb-6 bg-white border border-ink-200 p-1 rounded-xl overflow-x-auto scrollbar-none w-full sm:w-fit">
+      <div className="flex gap-1 mb-6 bg-cream-50 border border-ink-200 p-1 rounded-xl overflow-x-auto scrollbar-none w-full sm:w-fit">
         {TABS.map(t => (
           <button
             key={t.id}

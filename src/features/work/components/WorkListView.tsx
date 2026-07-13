@@ -51,7 +51,7 @@ export default function WorkListView({
   }
 
   return (
-    <div className="rounded-2xl border border-ink-200 bg-white overflow-hidden divide-y divide-ink-50">
+    <div className="rounded-2xl border border-ink-200 bg-cream-50 overflow-hidden divide-y divide-ink-50">
       {rows.map(task => {
         const isDone  = task.status === 'done'
         const meta    = statusMeta(task)

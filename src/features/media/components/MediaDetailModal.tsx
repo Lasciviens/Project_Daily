@@ -51,7 +51,7 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
     <Dialog open={tmdbId !== null} onClose={onClose} className="relative z-[60]">
       <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-start justify-center overflow-y-auto py-4 px-2 sm:py-8 sm:px-4">
-        <DialogPanel transition className="max-w-3xl w-full rounded-2xl overflow-hidden bg-white max-h-[92vh] sm:max-h-[88vh] flex flex-col transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+        <DialogPanel transition className="max-w-3xl w-full rounded-2xl overflow-hidden bg-cream-50 max-h-[92vh] sm:max-h-[88vh] flex flex-col transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
           {/* Backdrop header */}
           <div className="relative h-36 sm:h-48 flex-shrink-0 bg-ink-200">
             {backdrop && (

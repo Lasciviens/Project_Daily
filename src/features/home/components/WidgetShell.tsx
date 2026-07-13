@@ -31,7 +31,7 @@ export function WidgetShell({ title, ws, onManualSync, headerRight, children }: 
   // call it internally.
 
   return (
-    <div className="bg-white rounded-xl border border-ink-200 shadow-sm overflow-hidden">
+    <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm overflow-hidden">
       {/* ── Header — wraps to a second row rather than clipping content/buttons
            when the widget sits in a narrow column (e.g. the 280px sidebar). ── */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-ink-100 min-h-[44px]">

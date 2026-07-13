@@ -31,7 +31,7 @@ export function TrainingHomeWidget() {
   const hasData = workouts.length > 0 || stravaActivities.length > 0
 
   return (
-    <div className="bg-white rounded-xl border border-ink-200 shadow-sm p-4">
+    <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Training</h3>
         <Link to="/training" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>

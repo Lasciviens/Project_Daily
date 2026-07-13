@@ -91,3 +91,40 @@ export const useCalendarStore = create<CalendarState>()(
     { name: 'calendar-token' }
   )
 )
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+export type ThemePreference = 'light' | 'dark' | 'system'
+
+interface ThemeState {
+  theme:    ThemePreference
+  setTheme: (theme: ThemePreference) => void
+}
+
+function applyTheme(theme: ThemePreference) {
+  const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  document.documentElement.classList.toggle('dark', dark)
+}
+
+// Storage key matches the inline script in index.html, which stamps .dark
+// on <html> before first paint (reading the same persisted value) so the
+// page never flashes the wrong theme for a frame while React boots.
+export const useThemeStore = create<ThemeState>()(
+  persist(
+    (set) => ({
+      theme: 'system',
+      setTheme: (theme) => { applyTheme(theme); set({ theme }) },
+    }),
+    { name: 'theme-preference' }
+  )
+)
+
+// The inline script only fires once, on load — this keeps the DOM in sync
+// if the OS-level preference flips while the tab stays open (e.g. macOS's
+// automatic light→dark at sunset) and the user hasn't overridden to an
+// explicit light/dark choice.
+if (typeof window !== 'undefined') {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (useThemeStore.getState().theme === 'system') applyTheme('system')
+  })
+}

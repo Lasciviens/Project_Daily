@@ -114,7 +114,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
       </button>
 
       {/* Header card */}
-      <div className="bg-white border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
+      <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <span className={`w-3 h-3 rounded-full shrink-0 ${COLOR_DOT[project.color] ?? 'bg-ink-300'}`} />
           <InlineText
@@ -182,7 +182,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
         <div className="flex flex-col gap-4">
           {/* View toggle + type filter */}
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex gap-0.5 p-0.5 bg-white border border-ink-200 rounded-lg">
+            <div className="flex gap-0.5 p-0.5 bg-cream-50 border border-ink-200 rounded-lg">
               {(['phases', 'board'] as const).map(v => (
                 <button
                   key={v}
@@ -201,7 +201,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                 <button
                   onClick={() => setTypeFilter(null)}
                   className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
-                    typeFilter === null ? 'bg-ink-800 text-white border-ink-800' : 'bg-white text-ink-500 border-ink-200 hover:border-ink-400'
+                    typeFilter === null ? 'bg-ink-800 text-white border-ink-800' : 'bg-cream-50 text-ink-500 border-ink-200 hover:border-ink-400'
                   }`}
                 >
                   all
@@ -214,7 +214,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                       key={f.type}
                       onClick={() => setTypeFilter(t => t === f.type ? null : f.type)}
                       className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
-                        typeFilter === f.type ? f.cls + ' font-semibold' : 'bg-white text-ink-500 border-ink-200 hover:border-ink-400'
+                        typeFilter === f.type ? f.cls + ' font-semibold' : 'bg-cream-50 text-ink-500 border-ink-200 hover:border-ink-400'
                       }`}
                     >
                       {f.label} {count}
@@ -287,7 +287,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                         draggable
                         onDragStart={e => { e.dataTransfer.setData('itemId', item.id); e.dataTransfer.effectAllowed = 'move'; setDraggingId(item.id) }}
                         onDragEnd={() => setDraggingId(null)}
-                        className={`bg-white border border-ink-100 rounded-xl p-2.5 flex flex-col gap-1.5 shadow-card cursor-grab select-none transition-opacity ${
+                        className={`bg-cream-50 border border-ink-100 rounded-xl p-2.5 flex flex-col gap-1.5 shadow-card cursor-grab select-none transition-opacity ${
                           draggingId === item.id ? 'opacity-30' : ''
                         }`}
                       >

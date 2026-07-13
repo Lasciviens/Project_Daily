@@ -71,7 +71,7 @@ export function MealPlanWeek() {
                     key={`${slot}-${dateStr}`}
                     onClick={() => setTarget({ date: dateStr, slot, entry })}
                     className={`min-h-[52px] rounded-lg border p-1.5 text-left transition-colors ${
-                      label ? 'bg-white border-ink-200 hover:border-accent-300' : 'bg-cream-50 border-dashed border-ink-200 hover:border-accent-300'
+                      label ? 'bg-cream-50 border-ink-200 hover:border-accent-300' : 'bg-cream-50 border-dashed border-ink-200 hover:border-accent-300'
                     }`}
                   >
                     {label ? (

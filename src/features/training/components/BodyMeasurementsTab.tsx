@@ -98,7 +98,7 @@ function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
           transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
+          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-100">
@@ -270,7 +270,7 @@ function WeightChart({ measurements }: { measurements: HevyBodyMeasurement[] }) 
   const lastLabel  = chartData[chartData.length - 1].date.slice(5).replace('-', '/')
 
   return (
-    <div className="rounded-xl border border-ink-100 bg-white px-3 py-3 overflow-hidden">
+    <div className="rounded-xl border border-ink-100 bg-cream-50 px-3 py-3 overflow-hidden">
       <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-2">Weight over time</p>
       <svg
         viewBox={`0 0 ${W} ${H}`}
@@ -279,17 +279,17 @@ function WeightChart({ measurements }: { measurements: HevyBodyMeasurement[] }) 
         aria-hidden="true"
       >
         {/* Y-axis labels */}
-        <text x={PAD.left - 4} y={PAD.top + 4} textAnchor="end" fontSize={9} fill="#94a3b8">{paddedMax.toFixed(1)}</text>
-        <text x={PAD.left - 4} y={PAD.top + innerH} textAnchor="end" fontSize={9} fill="#94a3b8">{paddedMin.toFixed(1)}</text>
+        <text x={PAD.left - 4} y={PAD.top + 4} textAnchor="end" fontSize={9} fill="rgb(var(--ink-400))">{paddedMax.toFixed(1)}</text>
+        <text x={PAD.left - 4} y={PAD.top + innerH} textAnchor="end" fontSize={9} fill="rgb(var(--ink-400))">{paddedMin.toFixed(1)}</text>
 
         {/* Grid lines */}
-        <line x1={PAD.left} y1={PAD.top} x2={PAD.left + innerW} y2={PAD.top} stroke="#f1f5f9" strokeWidth={1} />
-        <line x1={PAD.left} y1={PAD.top + innerH / 2} x2={PAD.left + innerW} y2={PAD.top + innerH / 2} stroke="#f1f5f9" strokeWidth={1} />
-        <line x1={PAD.left} y1={PAD.top + innerH} x2={PAD.left + innerW} y2={PAD.top + innerH} stroke="#f1f5f9" strokeWidth={1} />
+        <line x1={PAD.left} y1={PAD.top} x2={PAD.left + innerW} y2={PAD.top} stroke="rgb(var(--ink-200))" strokeWidth={1} />
+        <line x1={PAD.left} y1={PAD.top + innerH / 2} x2={PAD.left + innerW} y2={PAD.top + innerH / 2} stroke="rgb(var(--ink-200))" strokeWidth={1} />
+        <line x1={PAD.left} y1={PAD.top + innerH} x2={PAD.left + innerW} y2={PAD.top + innerH} stroke="rgb(var(--ink-200))" strokeWidth={1} />
 
         {/* Fat % line (dashed, secondary) */}
         {fatPath && (
-          <path d={fatPath} fill="none" stroke="#cbd5e1" strokeWidth={1.5} strokeDasharray="4 3" />
+          <path d={fatPath} fill="none" stroke="rgb(var(--ink-300))" strokeWidth={1.5} strokeDasharray="4 3" />
         )}
 
         {/* Weight line */}
@@ -305,8 +305,8 @@ function WeightChart({ measurements }: { measurements: HevyBodyMeasurement[] }) 
         })}
 
         {/* X-axis labels */}
-        <text x={toX(0)} y={H - 3} textAnchor="start" fontSize={9} fill="#94a3b8">{firstLabel}</text>
-        <text x={toX(1)} y={H - 3} textAnchor="end" fontSize={9} fill="#94a3b8">{lastLabel}</text>
+        <text x={toX(0)} y={H - 3} textAnchor="start" fontSize={9} fill="rgb(var(--ink-400))">{firstLabel}</text>
+        <text x={toX(1)} y={H - 3} textAnchor="end" fontSize={9} fill="rgb(var(--ink-400))">{lastLabel}</text>
       </svg>
 
       {fatPath && (
@@ -342,7 +342,7 @@ function LatestHeroCard({
         <button
           type="button"
           onClick={onEdit}
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-500 hover:text-ink-800 hover:bg-white rounded-xl transition-colors text-sm border border-transparent hover:border-ink-200"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-500 hover:text-ink-800 hover:bg-cream-50 rounded-xl transition-colors text-sm border border-transparent hover:border-ink-200"
           title="Edit this measurement"
         >
           ✎

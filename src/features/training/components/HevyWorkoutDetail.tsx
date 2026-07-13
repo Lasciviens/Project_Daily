@@ -37,7 +37,7 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
           transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
+          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
         >
           <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-ink-100">
             <div className="flex flex-col gap-0.5 min-w-0">

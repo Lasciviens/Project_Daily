@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { useGoogleLogin } from '@react-oauth/google'
-import { useCalendarStore } from '../../app/store'
+import { useCalendarStore, useThemeStore, type ThemePreference } from '../../app/store'
 import { supabase } from '../../integrations/supabase/client'
 import { exchangeCalendarCode, disconnectCalendar } from '../../features/calendar/api/calendarApi'
 import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCalendar'
@@ -15,7 +15,14 @@ export function SettingsMenu() {
   const [theme,      setTheme]      = useState(() => localStorage.getItem('accent-theme') ?? 'orange')
 
   const { accessToken, expiresAt, setAccessToken } = useCalendarStore()
+  const { theme: appearance, setTheme: setAppearance } = useThemeStore()
   useAutoRefreshCalendarToken()
+
+  const APPEARANCE_OPTIONS: { value: ThemePreference; label: string; icon: string }[] = [
+    { value: 'light',  label: 'Light',  icon: '☀️' },
+    { value: 'dark',   label: 'Dark',   icon: '🌙' },
+    { value: 'system', label: 'System', icon: '💻' },
+  ]
 
   const isCalConnected = !!accessToken && (!expiresAt || Date.now() < expiresAt - 60_000)
 
@@ -65,7 +72,7 @@ export function SettingsMenu() {
       <MenuItems
         anchor="bottom end"
         transition
-        className="z-50 bg-white border border-ink-200 rounded-xl shadow-card-hover w-60 overflow-hidden [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0 data-[closed]:scale-95"
+        className="z-50 bg-cream-50 border border-ink-200 rounded-xl shadow-card-hover w-60 overflow-hidden [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0 data-[closed]:scale-95"
       >
         {/* Google Calendar */}
         <div className="px-4 py-3 border-b border-ink-100">
@@ -114,6 +121,28 @@ export function SettingsMenu() {
                   }`}
                   style={{ backgroundColor: t.hex }}
                 />
+              </MenuItem>
+            ))}
+          </div>
+        </div>
+
+        {/* Appearance (light/dark/system) */}
+        <div className="px-4 py-3 border-b border-ink-100">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2.5">Appearance</p>
+          <div className="flex gap-1 p-0.5 bg-cream-100 rounded-lg">
+            {APPEARANCE_OPTIONS.map(opt => (
+              <MenuItem key={opt.value}>
+                {({ close }) => (
+                  <button
+                    onClick={() => { setAppearance(opt.value); close() }}
+                    title={opt.label}
+                    className={`flex-1 min-h-[32px] rounded-md text-xs font-medium transition-colors duration-150 ${
+                      appearance === opt.value ? 'bg-cream-50 text-ink-900 shadow-card' : 'text-ink-500 hover:text-ink-800'
+                    }`}
+                  >
+                    {opt.icon}
+                  </button>
+                )}
               </MenuItem>
             ))}
           </div>

@@ -62,14 +62,14 @@ function CurrencyConverter({ rawRates }: { rawRates: Record<string, number> }) {
         <button
           onClick={swap}
           title="Swap"
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white border border-ink-200 text-ink-500 hover:text-accent-600 hover:border-accent-300 transition-colors duration-150 flex items-center justify-center text-sm shadow-sm"
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-cream-50 border border-ink-200 text-ink-500 hover:text-accent-600 hover:border-accent-300 transition-colors duration-150 flex items-center justify-center text-sm shadow-sm"
         >
           ⇅
         </button>
       </div>
 
       {/* To row */}
-      <div className="flex items-center gap-3 px-3 py-3 bg-white">
+      <div className="flex items-center gap-3 px-3 py-3 bg-cream-50">
         <div className="flex-1 min-w-0 text-2xl font-semibold text-ink-900 tabular-nums">
           {result !== null
             ? result >= 1000
@@ -118,7 +118,7 @@ export function CurrencyWidget() {
           key={m}
           onClick={() => setMode(m)}
           className={`text-[10px] px-2 rounded-md font-medium transition-colors duration-150 capitalize min-h-[36px] ${
-            mode === m ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
+            mode === m ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
           }`}
         >
           {m}

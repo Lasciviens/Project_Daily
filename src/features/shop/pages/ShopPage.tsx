@@ -38,7 +38,7 @@ export function ShopPage() {
           being first in DOM meant it was the entire first screenful on
           mobile — the actual wishlist content below looked like it didn't
           exist until scrolling past ~42vh of empty chat. */}
-      <div className="order-2 sm:order-none h-[42vh] sm:h-full w-full sm:w-[380px] sm:flex-shrink-0 border-t sm:border-t-0 sm:border-b-0 sm:border-r border-ink-200 bg-white">
+      <div className="order-2 sm:order-none h-[42vh] sm:h-full w-full sm:w-[380px] sm:flex-shrink-0 border-t sm:border-t-0 sm:border-b-0 sm:border-r border-ink-200 bg-cream-50">
         <ShopAIBox />
       </div>
 

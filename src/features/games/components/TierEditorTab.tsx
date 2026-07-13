@@ -12,7 +12,7 @@ const TIER_ROWS: { tier: string | null; label: string; bg: string; text: string;
   { tier: 'C', label: 'C', bg: 'bg-blue-50',    text: 'text-blue-900',   bar: 'bg-blue-400'   },
   { tier: 'D', label: 'D', bg: 'bg-ink-50',     text: 'text-ink-700',    bar: 'bg-ink-400'    },
   { tier: 'F', label: 'F', bg: 'bg-red-50',     text: 'text-red-900',    bar: 'bg-red-400'    },
-  { tier: null, label: '—', bg: 'bg-white',     text: 'text-ink-400',    bar: 'bg-ink-200'    },
+  { tier: null, label: '—', bg: 'bg-cream-50',     text: 'text-ink-400',    bar: 'bg-ink-200'    },
 ]
 
 // Small game cover with click-to-edit
@@ -53,7 +53,7 @@ function TierPicker({
     <Dialog open onClose={onClose} className="relative z-[60]">
       <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
           <div className="p-5 w-full">
             <p className="text-sm font-semibold text-ink-800 mb-1 truncate">{game.title}</p>
             <p className="text-xs text-ink-400 mb-4">Current tier: <strong>{game.tier ?? '—'}</strong></p>
@@ -65,14 +65,14 @@ function TierPicker({
                   className={`py-3 rounded-xl text-sm font-bold border-2 transition-all hover:scale-105 min-h-[44px] ${
                     game.tier === t
                       ? (TIER_BADGE[t] ?? 'bg-ink-200') + ' border-transparent scale-105 ring-2 ring-offset-1 ring-ink-400'
-                      : 'bg-white text-ink-600 border-ink-200 hover:border-ink-400'
+                      : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'
                   }`}
                 >{t}</button>
               ))}
               <button
                 onClick={() => onSelect(null)}
                 className={`col-span-2 py-2.5 rounded-xl text-xs text-ink-500 border-2 transition-all hover:border-ink-400 min-h-[44px] ${
-                  game.tier == null ? 'border-ink-400 bg-ink-50' : 'border-ink-200 bg-white'
+                  game.tier == null ? 'border-ink-400 bg-ink-50' : 'border-ink-200 bg-cream-50'
                 }`}
               >Remove tier</button>
             </div>

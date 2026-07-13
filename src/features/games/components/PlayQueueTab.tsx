@@ -127,7 +127,7 @@ export function PlayQueueTab() {
       <div
         ref={setNodeRef}
         style={style}
-        className={`flex items-center gap-3 bg-white rounded-xl border transition-shadow select-none
+        className={`flex items-center gap-3 bg-cream-50 rounded-xl border transition-shadow select-none
           ${isPlaying   ? 'border-orange-300 ring-1 ring-orange-200' : 'border-ink-200'}
           ${isDragging  ? 'border-accent-400 bg-accent-50 shadow-lg z-10 relative' : ''}
         `}
@@ -204,7 +204,7 @@ export function PlayQueueTab() {
           { label: 'Playing',  value: playing.length,                      color: 'text-orange-600' },
           { label: 'Upcoming', value: upcoming.length,                     color: 'text-accent-600' },
         ].map(s => (
-          <div key={s.label} className="bg-white border border-ink-200 rounded-xl px-4 py-2.5 text-center">
+          <div key={s.label} className="bg-cream-50 border border-ink-200 rounded-xl px-4 py-2.5 text-center">
             <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
             <p className="text-[10px] text-ink-400">{s.label}</p>
           </div>

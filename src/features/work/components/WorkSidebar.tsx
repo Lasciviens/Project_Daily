@@ -34,7 +34,7 @@ function RailSection({ id, title, defaultCollapsed, children }: {
 }) {
   const { collapsed, toggle } = usePersistedCollapse(id, defaultCollapsed)
   return (
-    <div className="rounded-xl border border-ink-200 bg-white overflow-hidden">
+    <div className="rounded-xl border border-ink-200 bg-cream-50 overflow-hidden">
       <button
         type="button"
         onClick={toggle}

@@ -57,7 +57,7 @@ export default function WorkTaskCard({
         // silently prevent a drag from ever starting on a real device (a tap
         // to open the edit modal still works fine either way, since that
         // fires from the click event, not from touch-action).
-        'group relative rounded-xl border bg-white p-2.5 cursor-pointer select-none transition-all touch-none',
+        'group relative rounded-xl border bg-cream-50 p-2.5 cursor-pointer select-none transition-all touch-none',
         'hover:shadow-md hover:-translate-y-px',
         isFocused  ? 'border-accent-300 ring-1 ring-accent-200' : 'border-ink-200 hover:border-ink-300',
         isDone     ? 'opacity-60' : '',

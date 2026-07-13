@@ -12,6 +12,42 @@
     --accent-500: 245 158 11;
     --accent-600: 217 119 6;
     --accent-700: 180 83 9;
+
+    /* Light theme (default) — identical to the hex values this app has
+       always shipped with, just expressed as space-separated RGB triplets
+       so Tailwind's <alpha-value> opacity modifiers keep working. */
+    --canvas:    237 228 213;
+    --cream-50:  254 252 249;
+    --cream-100: 250 248 244;
+    --cream-200: 245 240 232;
+    --cream-300: 237 228 213;
+    --ink-900:   28  25  23;
+    --ink-700:   68  64  60;
+    --ink-500:   120 113 108;
+    --ink-400:   168 162 158;
+    --ink-300:   214 211 209;
+    --ink-200:   231 229 228;
+    --ink-100:   245 245 244;
+  }
+
+  /* Dark theme — same token names, inverted lightness. ink-900 stays "the
+     most prominent ink amount" (primary text) in both themes; it's just
+     near-white instead of near-black. Stamped by the inline script in
+     index.html before paint (avoids a flash of the wrong theme) and kept in
+     sync by useTheme()/ThemeToggle. */
+  :root.dark {
+    --canvas:    21  19  15;
+    --cream-50:  32  29  23;
+    --cream-100: 38  34  25;
+    --cream-200: 45  40  32;
+    --cream-300: 21  19  15;
+    --ink-900:   242 237 225;
+    --ink-700:   203 195 179;
+    --ink-500:   156 147 132;
+    --ink-400:   116 107 94;
+    --ink-300:   74  68  59;
+    --ink-200:   53  49  42;
+    --ink-100:   41  38  31;
   }
 
   body {
@@ -93,10 +129,10 @@
 
 @layer components {
   .card {
-    @apply bg-white border border-ink-200 rounded-xl shadow-card transition-shadow duration-150;
+    @apply bg-cream-50 border border-ink-200 rounded-xl shadow-card transition-shadow duration-150;
   }
   .card-interactive {
-    @apply bg-white border border-ink-200 rounded-xl shadow-card transition-shadow duration-150 hover:shadow-card-hover;
+    @apply bg-cream-50 border border-ink-200 rounded-xl shadow-card transition-shadow duration-150 hover:shadow-card-hover;
   }
 
   .btn-primary {
@@ -105,7 +141,7 @@
   }
 
   .btn-secondary {
-    @apply bg-white hover:bg-ink-100 text-ink-700 font-medium px-4 py-2 rounded-lg
+    @apply bg-cream-50 hover:bg-ink-100 text-ink-700 font-medium px-4 py-2 rounded-lg
            transition-colors duration-150 cursor-pointer border border-ink-200 text-sm min-h-[44px];
   }
 
@@ -115,7 +151,7 @@
   }
 
   .input {
-    @apply w-full bg-white border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900
+    @apply w-full bg-cream-50 border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900
            placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
            focus:border-accent-400 transition-colors duration-150 min-h-[44px];
   }

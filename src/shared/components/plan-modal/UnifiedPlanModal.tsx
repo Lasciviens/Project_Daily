@@ -359,10 +359,10 @@ export function UnifiedPlanModal({
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
           transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
+          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-100 sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-100 sticky top-0 bg-cream-50 z-10">
             <h2 className="text-base font-bold text-ink-900">{config?.heading ?? 'Plan'}</h2>
             <button
               type="button" onClick={onClose}
@@ -377,7 +377,7 @@ export function UnifiedPlanModal({
                 <button
                   key={t} type="button" onClick={() => setActiveTab(t)}
                   className={`flex-1 text-xs min-h-[40px] rounded-md font-medium transition-colors ${
-                    activeTab === t ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'
+                    activeTab === t ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500'
                   }`}
                 >{TAB_LABELS[t]}</button>
               ))}
@@ -393,7 +393,7 @@ export function UnifiedPlanModal({
           }
 
           {/* Footer */}
-          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-white">
+          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-cream-50">
             <button
               type="button" onClick={onClose}
               className="flex-1 min-h-[44px] border border-ink-200 text-ink-700 rounded-xl text-sm font-medium hover:bg-cream-50 transition-colors"
