@@ -5,6 +5,7 @@ import { fmtTrainingDate as formatDate } from '../dateFormat'
 export function HevyPRList() {
   const { data: prs, isLoading } = useHevyPRs()
   const [activeGroup, setActiveGroup] = useState<string>('All')
+  const [query, setQuery] = useState('')
 
 
   if (isLoading) {
@@ -26,9 +27,14 @@ export function HevyPRList() {
     new Set(prs.map(pr => pr.primary_muscle_group).filter(Boolean) as string[])
   ).sort()
 
-  const filtered = activeGroup === 'All'
+  const groupFiltered = activeGroup === 'All'
     ? prs
     : prs.filter(pr => pr.primary_muscle_group === activeGroup)
+
+  // Live substring match, not prefix-only — searching "zzz" must still find
+  // "XXX ZZZ YYY" since the matching word can be anywhere in the title.
+  const q = query.trim().toLowerCase()
+  const filtered = q ? groupFiltered.filter(pr => pr.title.toLowerCase().includes(q)) : groupFiltered
 
   const sorted = [...filtered].sort(
     (a, b) => new Date(b.achieved_at).getTime() - new Date(a.achieved_at).getTime()
@@ -41,6 +47,16 @@ export function HevyPRList() {
         <span className="text-sm leading-none">🏆</span>
         <p className="text-xs text-accent-700 font-medium">All-time heaviest lift per exercise, sorted by most recent. Weights in kg.</p>
       </div>
+
+      {/* Search */}
+      <input
+        type="text"
+        inputMode="search"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="Search exercises… (e.g. press, curl)"
+        className="w-full min-h-[44px] px-3 rounded-xl border border-ink-200 text-sm placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-300"
+      />
 
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2">
@@ -60,6 +76,9 @@ export function HevyPRList() {
       </div>
 
       {/* PR list */}
+      {sorted.length === 0 && (
+        <p className="text-sm text-ink-400 py-6 text-center">No exercises match “{query}”.</p>
+      )}
       <ul>
         {sorted.map(pr => (
           <li

@@ -37,7 +37,7 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
           transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
+          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-white border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
         >
           <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-ink-100">
             <div className="flex flex-col gap-0.5 min-w-0">
@@ -58,7 +58,7 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
             </button>
           </div>
 
-          <div className="px-5 py-4 flex flex-col gap-6">
+          <div className="px-5 py-4 flex flex-col gap-4">
             {isLoading && (
               <div className="space-y-2">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -73,55 +73,57 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
                   <p className="text-sm text-ink-400 py-4 text-center">No exercise data</p>
                 )}
 
-                {workout.exercises
-                  ?.slice()
-                  .sort((a, b) => a.index - b.index)
-                  .map((ex) => (
-                    <div key={ex.id} className="flex flex-col gap-2">
-                      <div>
-                        <h3 className="text-sm font-semibold text-ink-900">{ex.title}</h3>
-                        {ex.notes && (
-                          <p className="text-[12px] text-ink-400 mt-0.5">{ex.notes}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {workout.exercises
+                    ?.slice()
+                    .sort((a, b) => a.index - b.index)
+                    .map((ex) => (
+                      <div key={ex.id} className="flex flex-col gap-2 md:border md:border-ink-100 md:rounded-xl md:p-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-ink-900">{ex.title}</h3>
+                          {ex.notes && (
+                            <p className="text-[12px] text-ink-400 mt-0.5">{ex.notes}</p>
+                          )}
+                        </div>
+
+                        {ex.sets && ex.sets.length > 0 && (
+                          <div className="overflow-x-auto -mx-1">
+                            <table className="w-full text-xs min-w-[280px]">
+                              <thead>
+                                <tr className="text-[10px] font-semibold uppercase tracking-wider text-ink-400">
+                                  <th className="text-left py-1.5 px-1 w-6">#</th>
+                                  <th className="text-left py-1.5 px-1 w-8">Type</th>
+                                  <th className="text-left py-1.5 px-1">Weight × Reps</th>
+                                  <th className="text-left py-1.5 px-1">RPE</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {ex.sets
+                                  .slice()
+                                  .sort((a, b) => a.index - b.index)
+                                  .map((set) => (
+                                    <tr key={set.id} className="border-t border-ink-50">
+                                      <td className="py-1.5 px-1 text-ink-400">{set.index + 1}</td>
+                                      <td className="py-1.5 px-1">
+                                        <SetTypeBadge type={set.type} />
+                                      </td>
+                                      <td className="py-1.5 px-1 text-ink-700">
+                                        {set.weight_kg !== null ? `${set.weight_kg} kg` : '—'}
+                                        {' × '}
+                                        {set.reps !== null ? set.reps : '—'}
+                                      </td>
+                                      <td className="py-1.5 px-1 text-ink-400">
+                                        {set.rpe !== null ? `RPE ${set.rpe}` : '—'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </div>
                         )}
                       </div>
-
-                      {ex.sets && ex.sets.length > 0 && (
-                        <div className="overflow-x-auto -mx-1">
-                          <table className="w-full text-xs min-w-[280px]">
-                            <thead>
-                              <tr className="text-[10px] font-semibold uppercase tracking-wider text-ink-400">
-                                <th className="text-left py-1.5 px-1 w-6">#</th>
-                                <th className="text-left py-1.5 px-1 w-8">Type</th>
-                                <th className="text-left py-1.5 px-1">Weight × Reps</th>
-                                <th className="text-left py-1.5 px-1">RPE</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {ex.sets
-                                .slice()
-                                .sort((a, b) => a.index - b.index)
-                                .map((set) => (
-                                  <tr key={set.id} className="border-t border-ink-50">
-                                    <td className="py-1.5 px-1 text-ink-400">{set.index + 1}</td>
-                                    <td className="py-1.5 px-1">
-                                      <SetTypeBadge type={set.type} />
-                                    </td>
-                                    <td className="py-1.5 px-1 text-ink-700">
-                                      {set.weight_kg !== null ? `${set.weight_kg} kg` : '—'}
-                                      {' × '}
-                                      {set.reps !== null ? set.reps : '—'}
-                                    </td>
-                                    <td className="py-1.5 px-1 text-ink-400">
-                                      {set.rpe !== null ? `RPE ${set.rpe}` : '—'}
-                                    </td>
-                                  </tr>
-                                ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                </div>
               </>
             )}
           </div>
