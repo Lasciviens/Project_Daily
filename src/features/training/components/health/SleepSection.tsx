@@ -29,7 +29,13 @@ const STAGES = [
 
 type TrendPeriod = 'week' | 'month'
 
-function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
+// "Correct manually" link inside the tooltip (not a standalone "+ Manual"
+// button) — clicking a bar (or an empty gap, which still has a date even
+// with no bar to show) opens the manual-entry form pre-filled for exactly
+// that night, pre-filled with its existing manual total if there is one
+// (see manualHoursForDate) so re-opening it reads as "correct" rather than
+// "add a second, conflicting entry".
+function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>, onCorrect: (date: string) => void) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
   return function TooltipContent({ active, payload, label }: any) {
     if (!active || !payload?.length) return null
@@ -42,6 +48,15 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
         <p className="font-semibold text-indigo-600">{point.value != null ? `${point.value} hr` : '—'}</p>
         {sources && sources.size > 0 && (
           <p className="text-ink-400">{[...sources].join(', ')}</p>
+        )}
+        {date && (
+          <button
+            type="button"
+            onClick={() => onCorrect(date)}
+            className="text-accent-600 underline text-[10px] pt-1 block"
+          >
+            Correct manually
+          </button>
         )}
       </div>
     )
@@ -84,6 +99,26 @@ export function SleepSection() {
   const [showManualForm, setShowManualForm] = useState(false)
   const [manualDate, setManualDate] = useState(daysAgoStr(1))
   const [manualHours, setManualHours] = useState('')
+  const [isCorrectingExisting, setIsCorrectingExisting] = useState(false)
+
+  // Existing manual total for a date, if any — read from whatever's already
+  // loaded for the currently-displayed range (the clicked bar is always
+  // within `points`, since that's what rendered it). Reuses
+  // computeSleepSummary's own manual-vs-synced priority logic rather than
+  // re-deriving it here.
+  function manualHoursForDate(date: string): number | null {
+    const manualPts = points.filter(p => p.date === date && p.source === 'manual')
+    if (!manualPts.length) return null
+    return computeSleepSummary(manualPts)[0]?.total ?? null
+  }
+
+  function openCorrectForm(date: string) {
+    const existing = manualHoursForDate(date)
+    setManualDate(date)
+    setManualHours(existing != null ? String(Math.round(existing * 100) / 100) : '')
+    setIsCorrectingExisting(existing != null)
+    setShowManualForm(true)
+  }
 
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -97,24 +132,23 @@ export function SleepSection() {
 
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 Last Night's Sleep</p>
-          <p className="text-3xl font-bold text-ink-900 leading-tight">
-            {isLoading ? '…' : last ? fmtHrs(last.total) : '—'}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowManualForm(v => !v)}
-          className="min-h-[32px] px-3 rounded-lg text-xs font-semibold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 transition-colors"
-        >
-          + Manual
-        </button>
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 Last Night's Sleep</p>
+        <p className="text-3xl font-bold text-ink-900 leading-tight">
+          {isLoading ? '…' : last ? fmtHrs(last.total) : '—'}
+        </p>
       </div>
 
       {showManualForm && (
-        <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3">
+        <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 relative">
+          <button
+            type="button"
+            onClick={() => setShowManualForm(false)}
+            aria-label="Cancel"
+            className="absolute top-1.5 right-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-sm leading-none"
+          >
+            ×
+          </button>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Night of</label>
             {/* DateInput (not a raw <input type="date">) — native date inputs
@@ -139,10 +173,12 @@ export function SleepSection() {
             type="submit" disabled={addManualSleep.isPending}
             className="min-h-[36px] px-3 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
           >
-            {addManualSleep.isPending ? 'Saving…' : 'Save'}
+            {addManualSleep.isPending ? 'Saving…' : isCorrectingExisting ? 'Save correction' : 'Save'}
           </button>
-          <p className="text-[10px] text-ink-400 basis-full">
-            Logged as source “Manual” — Deep/Core/REM split estimated from your {stageProportions ? 'own' : 'default'} sleep-stage average.
+          <p className="text-[10px] text-ink-400 basis-full pr-6">
+            {isCorrectingExisting
+              ? 'Overwrites your previous manual entry for this night only — Watch-synced nights are never touched.'
+              : `Logged as source "Manual" — Deep/Core/REM split estimated from your ${stageProportions ? 'own' : 'default'} sleep-stage average.`}
           </p>
         </form>
       )}
@@ -201,7 +237,7 @@ export function SleepSection() {
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={trendPeriod === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            <Tooltip cursor={false} trigger="click" content={makeSleepTooltipContent(sourcesByDate)} />
+            <Tooltip cursor={false} trigger="click" content={makeSleepTooltipContent(sourcesByDate, openCorrectForm)} />
             <Bar dataKey="total" fill="#6366f1" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

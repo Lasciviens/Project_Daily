@@ -120,15 +120,24 @@ export interface ManualSleepInput {
 // only when there's no real Watch-tracked history yet to estimate from.
 const DEFAULT_STAGE_SPLIT = { deep: 0.15, core: 0.60, rem: 0.25 }
 
-// Logs a night the Watch didn't track (source: 'manual') as separate
-// Deep/Core/REM rows — matching the same raw per-segment shape real Watch
-// data arrives in, so every existing aggregation/render path (stage bar,
-// totals, trend chart) handles it identically without special-casing.
-// Stage hours are the entered total split by `stageProportions` (the
-// user's own historical average, computed by the caller) rather than one
-// undifferentiated "Asleep" bucket, so the stage breakdown still looks
-// like a real night instead of reading as unknown/empty.
-export async function insertManualSleepEntry(input: ManualSleepInput): Promise<void> {
+// Logs (or corrects) a night as source: 'manual', as separate Deep/Core/REM
+// rows — matching the same raw per-segment shape real Watch data arrives
+// in, so every existing aggregation/render path (stage bar, totals, trend
+// chart) handles it identically without special-casing. Stage hours are
+// the entered total split by `stageProportions` (the user's own historical
+// average, computed by the caller) rather than one undifferentiated
+// "Asleep" bucket, so the stage breakdown still looks like a real night
+// instead of reading as unknown/empty.
+//
+// Upsert, not insert: `recorded_at` is deterministic per (date, stage) —
+// baseMs only depends on `input.date` — so re-submitting a correction for a
+// night that already has a manual entry lands on the exact same 3 rows and
+// overwrites them, rather than colliding with the unique index (a plain
+// insert would 409 on the second submission for the same night). Apple's
+// own rows for that date have a different `source` and different real
+// `recorded_at` timestamps, so they're never touched by this — a manual
+// correction can never clobber synced Watch data, only other manual rows.
+export async function upsertManualSleepEntry(input: ManualSleepInput): Promise<void> {
   const user = await requireUser()
   const split = input.stageProportions ?? DEFAULT_STAGE_SPLIT
   const baseMs = new Date(`${input.date}T08:00:00`).getTime()
@@ -149,6 +158,8 @@ export async function insertManualSleepEntry(input: ManualSleepInput): Promise<v
     },
   }))
 
-  const { error } = await supabase.from('health_metrics').insert(rows)
+  const { error } = await supabase
+    .from('health_metrics')
+    .upsert(rows, { onConflict: 'user_id,metric_name,recorded_at,source' })
   if (error) throw error
 }
