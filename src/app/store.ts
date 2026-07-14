@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { applyTheme as applyAccentTheme } from '../shared/components/ThemeSwitcher'
 
 interface UIState {
   isDevRequestsOpen: boolean
@@ -104,6 +105,13 @@ interface ThemeState {
 function applyTheme(theme: ThemePreference) {
   const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.classList.toggle('dark', dark)
+  // Re-apply the user's picked accent color for whichever mode we just
+  // switched to — applyAccentTheme reads document.documentElement's .dark
+  // class itself, so calling it AFTER the toggle above picks the right
+  // light/dark variant. Without this, switching Light/Dark mid-session left
+  // accent's inline-style variables stuck on whatever mode was active when
+  // the page first loaded, until the next full reload.
+  applyAccentTheme(localStorage.getItem('accent-theme') ?? 'orange')
 }
 
 // Storage key matches the inline script in index.html, which stamps .dark
