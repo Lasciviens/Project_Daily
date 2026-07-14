@@ -171,3 +171,5 @@ claude/<descriptive-name>   # e.g. claude/add-weather-widget
 ```
 
 Never commit directly to `main`.
+
+<!-- merge diagnostic test, safe to delete -->
