@@ -86,7 +86,7 @@ export function AIPanel() {
   return (
     <>
       {isAIOpen && (
-        <div className="fixed inset-0 z-40 bg-ink-900/10" onClick={closeAI} />
+        <div className="fixed inset-0 z-40 bg-ink-950/10" onClick={closeAI} />
       )}
 
       <div
@@ -223,7 +223,7 @@ export function AIPanel() {
 
       {/* Activity-trace detail modal — what the AI did behind the scenes */}
       <Dialog open={detailSteps !== null} onClose={() => setDetailSteps(null)} className="relative z-[60]">
-        <DialogBackdrop className="fixed inset-0 bg-ink-900/30" />
+        <DialogBackdrop className="fixed inset-0 bg-ink-950/30" />
         <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <DialogPanel className="w-full sm:max-w-md max-h-[80vh] overflow-y-auto bg-cream-50 rounded-t-2xl sm:rounded-2xl border border-ink-200">
             <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-cream-50">

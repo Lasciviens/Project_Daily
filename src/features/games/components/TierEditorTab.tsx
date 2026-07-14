@@ -51,7 +51,7 @@ function TierPicker({
 }) {
   return (
     <Dialog open onClose={onClose} className="relative z-[60]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
+      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
           <div className="p-5 w-full">
@@ -145,7 +145,7 @@ export function TierEditorTab() {
       })}
 
       {isPending && (
-        <div className="fixed bottom-6 right-6 bg-ink-900 text-white text-xs px-4 py-2 rounded-full shadow-lg">
+        <div className="fixed bottom-6 right-6 bg-ink-950 text-white text-xs px-4 py-2 rounded-full shadow-lg">
           Saving…
         </div>
       )}

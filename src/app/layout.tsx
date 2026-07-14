@@ -102,7 +102,7 @@ function BottomTabBar() {
   const navigateWithTransition = useViewTransitionNav()
 
   return (
-    <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-white/95 backdrop-blur-lg border-t border-ink-200 pb-[env(safe-area-inset-bottom)]">
+    <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-cream-50/95 backdrop-blur-lg border-t border-ink-200 pb-[env(safe-area-inset-bottom)]">
       {TABS.map(tab => {
         const isActive = tab.match.includes(location.pathname)
         const Icon = tab.icon
@@ -161,7 +161,7 @@ function Nav() {
     }`
 
   return (
-    <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-ink-200">
+    <header className="sticky top-0 z-40 bg-cream-50/80 backdrop-blur border-b border-ink-200">
       <div className="w-full px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">

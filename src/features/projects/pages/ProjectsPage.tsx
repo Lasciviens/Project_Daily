@@ -37,7 +37,7 @@ export function ProjectsPage() {
       <div className="flex items-center gap-3 flex-wrap mb-5">
         <h1 className="text-lg font-bold text-ink-900">Projects</h1>
         {projects.length > 0 && (
-          <span className="text-xs font-medium text-ink-600 bg-white/70 px-2 py-0.5 rounded-full border border-ink-200">
+          <span className="text-xs font-medium text-ink-600 bg-cream-50/70 px-2 py-0.5 rounded-full border border-ink-200">
             {activeCount} active · {projects.length} total
           </span>
         )}
@@ -55,7 +55,7 @@ export function ProjectsPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-5xl">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-32 rounded-2xl bg-white/40 animate-pulse" />
+            <div key={i} className="h-32 rounded-2xl bg-cream-50/40 animate-pulse" />
           ))}
         </div>
       ) : projects.length === 0 ? (

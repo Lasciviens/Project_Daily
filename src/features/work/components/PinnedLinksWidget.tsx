@@ -128,7 +128,7 @@ export default function PinnedLinksWidget({ bare }: { bare?: boolean } = {}) {
             <button
               onClick={handleAdd}
               disabled={createLink.isPending}
-              className="min-h-[44px] flex-1 bg-ink-900 text-cream-50 rounded-xl text-sm font-medium hover:bg-ink-700 transition disabled:opacity-50"
+              className="min-h-[44px] flex-1 bg-ink-950 text-cream-50 rounded-xl text-sm font-medium hover:bg-ink-700 transition disabled:opacity-50"
             >
               Add
             </button>

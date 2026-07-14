@@ -36,6 +36,19 @@
      index.html before paint (avoids a flash of the wrong theme) and kept in
      sync by useTheme()/ThemeToggle. */
   :root.dark {
+    /* accent had no dark variant at all — it stayed the same light
+       amber-on-white tint in both themes, washing out anything built on it
+       (info banners, the Daily Brief/FocusStrip gradient cards). 50-200 get
+       darkened into muted amber-tinted surfaces; 400-700 get slightly
+       lifted for contrast against a dark canvas. */
+    --accent-50:  46  36  20;
+    --accent-100: 56  43  22;
+    --accent-200: 77  56  24;
+    --accent-400: 217 142 45;
+    --accent-500: 230 155 45;
+    --accent-600: 199 130 35;
+    --accent-700: 168 108 30;
+
     --canvas:    21  19  15;
     --cream-50:  32  29  23;
     --cream-100: 38  34  25;

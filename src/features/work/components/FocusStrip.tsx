@@ -13,7 +13,7 @@ interface Props {
 export default function FocusStrip({ tasks, onMarkDone, onClearFocus, onEdit }: Props) {
   if (tasks.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-ink-200 bg-white/60 px-4 py-2.5 flex items-center gap-2 text-ink-400 text-xs">
+      <div className="rounded-xl border border-dashed border-ink-200 bg-cream-50/60 px-4 py-2.5 flex items-center gap-2 text-ink-400 text-xs">
         <span className="text-sm">⚡</span>
         <span>No focus — hit ⚡ on any task to pin it here</span>
       </div>
@@ -28,7 +28,7 @@ export default function FocusStrip({ tasks, onMarkDone, onClearFocus, onEdit }: 
         return (
           <div
             key={task.id}
-            className="snap-start flex-shrink-0 w-[280px] sm:w-[320px] rounded-xl border border-accent-200 bg-gradient-to-br from-accent-50 to-white px-3.5 py-2.5 flex flex-col gap-1.5"
+            className="snap-start flex-shrink-0 w-[280px] sm:w-[320px] rounded-xl border border-accent-200 bg-gradient-to-br from-accent-50 to-cream-50 px-3.5 py-2.5 flex flex-col gap-1.5"
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-[9px] font-bold uppercase tracking-widest text-accent-500">⚡ Focus</span>

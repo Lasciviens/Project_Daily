@@ -19,6 +19,17 @@ export default {
           300: 'rgb(var(--cream-300) / <alpha-value>)',
         },
         ink: {
+          // 950 is a FIXED literal shade (not var-backed) — real ink-900 was
+          // doing double duty as both "primary text color" (rightly
+          // theme-reactive, inverts to near-white in dark mode) AND "an
+          // always-near-black surface" (modal backdrop scrims, solid
+          // selected-pill states) — inverting the latter broke every modal
+          // backdrop and active-tab pill in dark mode, since bg-ink-900 was
+          // turning near-WHITE right when it needed to stay dark. Anything
+          // that wants "always dark, regardless of theme" as a BACKGROUND
+          // should use ink-950; text color keeps using the reactive 900-100
+          // scale below.
+          950: '#1c1917',
           900: 'rgb(var(--ink-900) / <alpha-value>)',
           700: 'rgb(var(--ink-700) / <alpha-value>)',
           500: 'rgb(var(--ink-500) / <alpha-value>)',

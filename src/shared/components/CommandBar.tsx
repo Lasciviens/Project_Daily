@@ -199,7 +199,7 @@ export function CommandBar() {
     <Dialog open={isOpen} onClose={closeBar} className="relative z-[70]">
       <DialogBackdrop
         transition
-        className="fixed inset-0 bg-ink-900/50 transition duration-150 data-[closed]:opacity-0"
+        className="fixed inset-0 bg-ink-950/50 transition duration-150 data-[closed]:opacity-0"
       />
 
       <div className="fixed inset-0 pointer-events-none">

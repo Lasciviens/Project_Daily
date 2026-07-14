@@ -52,7 +52,7 @@ function getLayoutMode(width: number): LayoutMode {
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-ink-100 bg-white/60 p-2 sm:p-3 min-w-0 overflow-hidden">
+    <div className="rounded-xl border border-ink-100 bg-cream-50/60 p-2 sm:p-3 min-w-0 overflow-hidden">
       {children}
     </div>
   )

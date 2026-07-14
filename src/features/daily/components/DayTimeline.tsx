@@ -455,7 +455,7 @@ export function DayTimeline({ date }: Props) {
                     }}
                     onClick={e => e.stopPropagation()}
                     onMouseDown={e => e.stopPropagation()}
-                    className="w-full bg-white/80 text-[11px] font-semibold rounded px-1 py-0.5 outline-none text-inherit"
+                    className="w-full bg-cream-50/80 text-[11px] font-semibold rounded px-1 py-0.5 outline-none text-inherit"
                   />
                 ) : (
                   <p className="text-[11px] font-semibold leading-tight truncate pl-3">
@@ -478,23 +478,23 @@ export function DayTimeline({ date }: Props) {
                     <button
                       onMouseDown={e => e.stopPropagation()}
                       onClick={() => postpone30m()}
-                      className="text-[10px] px-1.5 min-h-[44px] rounded bg-white/90 hover:bg-cream-50 border border-current"
+                      className="text-[10px] px-1.5 min-h-[44px] rounded bg-cream-50/90 hover:bg-cream-50 border border-current"
                     >+30m</button>
                     <button
                       onMouseDown={e => e.stopPropagation()}
                       onClick={() => postpone1d()}
-                      className="text-[10px] px-1.5 min-h-[44px] rounded bg-white/90 hover:bg-cream-50 border border-current"
+                      className="text-[10px] px-1.5 min-h-[44px] rounded bg-cream-50/90 hover:bg-cream-50 border border-current"
                     >+1d</button>
                     <button
                       onMouseDown={e => e.stopPropagation()}
                       onClick={startEdit}
-                      className="text-[10px] px-1.5 min-h-[44px] rounded bg-white/90 hover:bg-cream-50 border border-current"
+                      className="text-[10px] px-1.5 min-h-[44px] rounded bg-cream-50/90 hover:bg-cream-50 border border-current"
                       title="Edit title"
                     >✎</button>
                     <button
                       onMouseDown={e => e.stopPropagation()}
                       onClick={() => { deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }}
-                      className="text-[10px] px-1.5 min-h-[44px] rounded bg-white/70 hover:bg-cream-50 border border-current opacity-70 hover:opacity-100 ml-auto mr-1"
+                      className="text-[10px] px-1.5 min-h-[44px] rounded bg-cream-50/70 hover:bg-cream-50 border border-current opacity-70 hover:opacity-100 ml-auto mr-1"
                     >✕</button>
                   </div>
                 )}

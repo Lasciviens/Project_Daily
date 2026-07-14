@@ -188,7 +188,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                   key={v}
                   onClick={() => setView(v)}
                   className={`px-3 min-h-[44px] rounded-md text-xs font-semibold transition-colors ${
-                    view === v ? 'bg-ink-900 text-white' : 'text-ink-600 hover:text-ink-900'
+                    view === v ? 'bg-ink-950 text-white' : 'text-ink-600 hover:text-ink-900'
                   }`}
                 >
                   {v === 'phases' ? 'Phases' : 'Board'}
@@ -231,7 +231,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
           {view === 'phases' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
               {phasesLoading ? (
-                [1, 2].map(i => <div key={i} className="h-12 bg-white/50 rounded-xl animate-pulse" />)
+                [1, 2].map(i => <div key={i} className="h-12 bg-cream-50/50 rounded-xl animate-pulse" />)
               ) : (
                 <>
                   {phases.map(phase => (
@@ -251,7 +251,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                   <button
                     onClick={handleAddPhase}
                     disabled={createPhase.isPending}
-                    className="w-full text-xs text-ink-500 hover:text-accent-600 min-h-[44px] py-2 rounded-xl border border-dashed border-ink-300 hover:border-accent-300 bg-white/40 transition-colors"
+                    className="w-full text-xs text-ink-500 hover:text-accent-600 min-h-[44px] py-2 rounded-xl border border-dashed border-ink-300 hover:border-accent-300 bg-cream-50/40 transition-colors"
                   >
                     + Add phase
                   </button>
@@ -273,7 +273,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                     onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null) }}
                     onDrop={e => handleDrop(e, col.key)}
                     className={`border rounded-2xl p-2.5 flex flex-col gap-2 min-h-[80px] transition-colors ${
-                      isDropTarget ? 'border-accent-400 border-dashed bg-accent-50/60' : 'bg-white/60 border-ink-200'
+                      isDropTarget ? 'border-accent-400 border-dashed bg-accent-50/60' : 'bg-cream-50/60 border-ink-200'
                     }`}
                   >
                     <div className="flex items-center justify-between px-1">
