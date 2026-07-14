@@ -38,6 +38,27 @@ export async function fetchHevyWorkouts(opts: {
   return data ?? []
 }
 
+// All exercise_template_ids performed in workouts within a date range (by
+// start_time). Used by the "Worked muscles this week" body map — flattened to a
+// plain id[] (one entry per exercise-instance) so callers can count per muscle.
+export async function fetchWorkoutExerciseTemplateIds(fromISO: string, toISO: string): Promise<string[]> {
+  const { data: workouts, error: wErr } = await supabase
+    .from('hevy_workouts')
+    .select('id')
+    .gte('start_time', fromISO)
+    .lte('start_time', toISO)
+  if (wErr) throw wErr
+  const ids = (workouts ?? []).map(w => w.id)
+  if (ids.length === 0) return []
+
+  const { data: exercises, error: eErr } = await supabase
+    .from('hevy_workout_exercises')
+    .select('exercise_template_id')
+    .in('hevy_workout_id', ids)
+  if (eErr) throw eErr
+  return (exercises ?? []).map(e => e.exercise_template_id).filter(Boolean)
+}
+
 export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | null> {
   const { data: workout, error: workoutErr } = await supabase
     .from('hevy_workouts')

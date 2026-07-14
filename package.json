@@ -20,6 +20,7 @@
     "date-fns": "^4.4.0",
     "lucide-react": "^1.24.0",
     "react": "^19.2.6",
+    "react-body-highlighter": "^2.0.5",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.16.0",
     "recharts": "^3.9.2",
