@@ -16,16 +16,52 @@ interface Message { role: 'user' | 'assistant'; content: string }
 // deno-lint-ignore no-explicit-any
 type AnyRecord = Record<string, any>
 
-// Blocks the obvious SSRF targets (localhost/loopback/link-local/private
-// ranges) — this fetches whatever URL the user pastes, server-side.
+// True for a dotted-quad that lands in a loopback/private/link-local range.
+// 169.254.0.0/16 covers cloud metadata (169.254.169.254) too. A malformed
+// dotted-numeric string is treated as suspicious (blocked) rather than allowed.
+function isPrivateIPv4(ip: string): boolean {
+  const p = ip.split('.').map(Number)
+  if (p.length !== 4 || p.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true
+  const [a, b] = p
+  if (a === 0 || a === 127 || a === 10) return true
+  if (a === 192 && b === 168) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 169 && b === 254) return true
+  return false
+}
+
+// Blocks SSRF targets (localhost/loopback/link-local/private ranges) — this
+// fetches whatever URL the user pastes, server-side. Beyond the obvious
+// dotted-quad ranges this also blocks the encodings that trivially bypass a
+// naive string check: numeric-encoded IPv4 (decimal 2130706433, 0x-hex, octal),
+// and IPv6 loopback/mapped/unique-local/link-local forms. (DNS rebinding — a
+// public name that re-resolves to a private IP at connect time — can't be fully
+// closed here without a custom resolver; fetchPageText's manual redirect
+// re-validation closes the redirect-based variant, which is the practical one.)
 function isPrivateHost(hostname: string): boolean {
-  const h = hostname.toLowerCase()
-  if (h === 'localhost' || h === '0.0.0.0' || h === '::1') return true
-  if (/^127\./.test(h))                    return true
-  if (/^10\./.test(h))                     return true
-  if (/^192\.168\./.test(h))               return true
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true
-  if (/^169\.254\./.test(h))               return true
+  let h = hostname.toLowerCase().trim()
+  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)   // [::1] -> ::1
+
+  if (h === 'localhost' || h.endsWith('.localhost')) return true
+
+  // IPv6
+  if (h.includes(':')) {
+    if (h === '::1' || h === '::') return true
+    const mapped = h.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)  // IPv4-mapped
+    if (mapped) return isPrivateIPv4(mapped[1])
+    if (/^f[cd]/.test(h)) return true      // fc00::/7 unique-local
+    if (/^fe[89ab]/.test(h)) return true   // fe80::/10 link-local
+    return false
+  }
+
+  // Dotted-quad IPv4
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
+
+  // All-numeric or 0x/octal host = decimal/hex/octal-encoded IPv4 (e.g.
+  // 2130706433, 0x7f000001, 017700000001) — Deno's fetch resolves these to the
+  // encoded IP, skipping the dotted-quad checks above. Block outright.
+  if (/^(0x[0-9a-f]+|\d+)$/.test(h)) return true
+
   return false
 }
 
@@ -46,18 +82,33 @@ function extractReadableText(html: string): string {
 }
 
 async function fetchPageText(rawUrl: string): Promise<string> {
-  let url: URL
-  try { url = new URL(rawUrl) } catch { throw new Error('Invalid URL') }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Invalid URL')
-  if (isPrivateHost(url.hostname)) throw new Error('URL not allowed')
-
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   try {
-    const res = await fetch(url.toString(), {
-      signal:  controller.signal,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LascisBoardRecipeBot/1.0)' },
-    })
+    // Follow redirects MANUALLY so every hop's target is re-checked against the
+    // SSRF guard. With fetch's default automatic redirect following, a URL on a
+    // public host that passes the initial check could 30x-bounce to an internal
+    // address (e.g. 169.254.169.254) that never gets re-validated.
+    let current = rawUrl
+    let res!: Response
+    for (let hop = 0; ; hop++) {
+      let url: URL
+      try { url = new URL(current) } catch { throw new Error('Invalid URL') }
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Invalid URL')
+      if (isPrivateHost(url.hostname)) throw new Error('URL not allowed')
+
+      res = await fetch(url.toString(), {
+        signal:   controller.signal,
+        redirect: 'manual',
+        headers:  { 'User-Agent': 'Mozilla/5.0 (compatible; LascisBoardRecipeBot/1.0)' },
+      })
+
+      const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null
+      if (!location) break
+      if (hop >= 5) throw new Error('Too many redirects')
+      current = new URL(location, url).toString()   // resolve relative redirects
+    }
+
     if (!res.ok) throw new Error(`Failed to fetch URL: ${res.status}`)
     const html = await res.text()
     return extractReadableText(html)
