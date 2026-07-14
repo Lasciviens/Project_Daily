@@ -163,6 +163,16 @@ Deno.serve(async (req) => {
       )
     }
 
+    // Owner check: one shared Hevy account (global HEVY_API_KEY), so a valid
+    // JWT alone isn't enough — gate on the fixed owner id (see hevy-sync).
+    const ownerId = Deno.env.get('HEVY_USER_ID')
+    if (!ownerId || user.id !== ownerId) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...headers, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Step 1: Read last cursor
     const { data: cursorRow } = await supabase
       .from('hevy_workout_events_cursor')

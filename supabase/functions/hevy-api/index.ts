@@ -204,6 +204,18 @@ Deno.serve(async (req) => {
       })
     }
 
+    // --- Owner check ---
+    // Writes go to ONE shared Hevy account (global HEVY_API_KEY): a valid JWT
+    // alone would let any signed-up user create/overwrite the real owner's
+    // workouts, routines and body measurements. Gate on the fixed owner id.
+    const ownerId = Deno.env.get('HEVY_USER_ID')
+    if (!ownerId || user.id !== ownerId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
+
     // --- Hevy API key ---
     const hevyApiKey = Deno.env.get('HEVY_API_KEY')
     if (!hevyApiKey) {

@@ -312,6 +312,20 @@ Deno.serve(async (req) => {
       })
     }
 
+    // --- Owner check ---
+    // This app is single-user and syncs ONE shared Hevy account (one global
+    // HEVY_API_KEY). A valid JWT alone is not enough: any account that can
+    // sign up against this Supabase project would otherwise pull the owner's
+    // entire real Hevy history into their own user_id. Gate on the fixed
+    // owner id from Vault, same as hevy-sync/health-export-webhook already do.
+    const ownerId = Deno.env.get('HEVY_USER_ID')
+    if (!ownerId || user.id !== ownerId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
+
     // --- Hevy API key ---
     const hevyApiKey = Deno.env.get('HEVY_API_KEY')
     if (!hevyApiKey) {
