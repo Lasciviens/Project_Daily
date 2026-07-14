@@ -1,0 +1,17 @@
+# Supabase project config — consumed by `supabase functions deploy` in CI
+# (.github/workflows/deploy-functions.yml) so per-function settings apply
+# automatically on every merge, instead of hand-deploying each function.
+#
+# CRITICAL: the two webhook receivers authenticate with their OWN Bearer secret
+# (HEVY_WEBHOOK_SECRET / HEALTH_EXPORT_WEBHOOK_SECRET), NOT a Supabase JWT. If
+# platform JWT verification is left ON for them, Supabase rejects every Hevy /
+# Health Auto Export call before our code runs. verify_jwt = false keeps them
+# reachable (this is the deploy gotcha long documented in CLAUDE.md, now
+# enforced declaratively so a redeploy can't silently re-break it).
+project_id = "hsaedwwqpcjizeozjbch"
+
+[functions.hevy-sync]
+verify_jwt = false
+
+[functions.health-export-webhook]
+verify_jwt = false

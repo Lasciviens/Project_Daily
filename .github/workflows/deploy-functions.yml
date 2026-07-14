@@ -1,0 +1,56 @@
+# Auto-deploys all Supabase Edge Functions on merge to main — replaces the
+# manual "copy-paste each function into the Dashboard" flow. Only runs when
+# something under supabase/functions/ (or the config / this workflow) changes.
+#
+# ONE-TIME SETUP (owner, in GitHub): add a repo secret SUPABASE_ACCESS_TOKEN
+#   Supabase Dashboard → Account → Access Tokens → Generate new token
+#   GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+# Nothing else is needed — the project ref is public (it's in the app URL) and
+# function secrets (HEVY_API_KEY etc.) live in Supabase Vault, untouched by deploy.
+name: Deploy Edge Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/deploy-functions.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+    steps:
+      # Gate on the secret so this job is a harmless GREEN no-op until the owner
+      # sets SUPABASE_ACCESS_TOKEN — merging function changes never produces a
+      # scary red X just because the token isn't configured yet. Once the secret
+      # exists, the deploy steps run.
+      - name: Check for access token
+        id: gate
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SUPABASE_ACCESS_TOKEN not set — skipping edge-function deploy. Add it in repo Settings → Secrets and variables → Actions to enable auto-deploy."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.ready == 'true'
+
+      - uses: supabase/setup-cli@v1
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          version: latest
+
+      # Deploys every function under supabase/functions/. Per-function JWT
+      # settings (verify_jwt) come from supabase/config.toml, so the two
+      # bearer-secret webhooks stay reachable.
+      - name: Deploy all edge functions
+        if: steps.gate.outputs.ready == 'true'
+        run: supabase functions deploy --project-ref hsaedwwqpcjizeozjbch
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
