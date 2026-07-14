@@ -189,7 +189,7 @@ export function ItemRow({ item, onUpdate, onDelete, onEdit, isPending }: Props) 
           priority:       item.priority,
           alsoCreateTask: true,
         }}
-        source={{ sourceType: 'project_item', sourceId: item.id }}
+        source={{ sourceType: 'project_item', sourceId: item.id, taskSourceType: 'project_item' }}
       />
     </div>
   )
