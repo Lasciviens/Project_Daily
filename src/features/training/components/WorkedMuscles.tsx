@@ -47,7 +47,7 @@ const BANDS = RAMP.length
 
 export function WorkedMuscles() {
   const [view, setView] = useState<'anterior' | 'posterior'>('anterior')
-  const [selected, setSelected] = useState<{ muscle: string; count: number } | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
 
   const now = new Date()
   const from = startOfWeek(now, { weekStartsOn: 1 }).toISOString()
@@ -60,33 +60,45 @@ export function WorkedMuscles() {
     staleTime: 5 * 60_000,
   })
 
-  // template id → Hevy primary_muscle_group
-  const muscleById = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const t of templates) if (t.primary_muscle_group) m.set(t.id, t.primary_muscle_group.toLowerCase())
+  // template id → { muscle, title }
+  const metaById = useMemo(() => {
+    const m = new Map<string, { muscle: string; title: string }>()
+    for (const t of templates) {
+      if (t.primary_muscle_group) m.set(t.id, { muscle: t.primary_muscle_group.toLowerCase(), title: t.title })
+    }
     return m
   }, [templates])
 
-  // Count exercise-instances per body-muscle key, then band 1..BANDS.
-  const { data, perMuscleCount, total } = useMemo(() => {
-    const counts: Record<string, number> = {}
+  // Per body-muscle key: total exercise-instances + distinct exercise names
+  // (with their own instance counts), then band the totals 1..BANDS.
+  const { data, perMuscle, total } = useMemo(() => {
+    const acc: Record<string, { count: number; exercises: Map<string, number> }> = {}
     let total = 0
     for (const id of ids) {
-      const hevy = muscleById.get(id)
-      if (!hevy) continue
-      const keys = HEVY_TO_BODY[hevy]
+      const meta = metaById.get(id)
+      if (!meta) continue
+      const keys = HEVY_TO_BODY[meta.muscle]
       if (!keys) continue
       total++
-      for (const k of keys) counts[k] = (counts[k] ?? 0) + 1
+      for (const k of keys) {
+        const entry = acc[k] ?? (acc[k] = { count: 0, exercises: new Map() })
+        entry.count++
+        entry.exercises.set(meta.title, (entry.exercises.get(meta.title) ?? 0) + 1)
+      }
     }
-    const max = Math.max(1, ...Object.values(counts))
-    const data: IExerciseData[] = Object.entries(counts).map(([key, c]) => ({
+    const max = Math.max(1, ...Object.values(acc).map(e => e.count))
+    const data: IExerciseData[] = Object.entries(acc).map(([key, e]) => ({
       name: key,
       muscles: [key] as IExerciseData['muscles'],
-      frequency: Math.max(1, Math.ceil((c / max) * BANDS)),
+      frequency: Math.max(1, Math.ceil((e.count / max) * BANDS)),
     }))
-    return { data, perMuscleCount: counts, total }
-  }, [ids, muscleById])
+    return { data, perMuscle: acc, total }
+  }, [ids, metaById])
+
+  const selectedEntry = selected ? perMuscle[selected] : undefined
+  const selectedExercises = selectedEntry
+    ? [...selectedEntry.exercises.entries()].sort((a, b) => b[1] - a[1])
+    : []
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -122,15 +134,36 @@ export function WorkedMuscles() {
               type={view}
               bodyColor="#c9c4bb"
               highlightedColors={RAMP}
-              onClick={(stats) => setSelected({ muscle: stats.muscle, count: perMuscleCount[stats.muscle] ?? 0 })}
+              onClick={(stats) => setSelected(stats.muscle)}
               style={{ width: '100%' }}
             />
           </div>
-          <p className="text-xs text-ink-500 h-4">
-            {selected
-              ? `${selected.muscle.replace('-', ' ')}: ${selected.count} exercise${selected.count !== 1 ? 's' : ''} this week`
-              : 'Tap a muscle for its count'}
-          </p>
+
+          {/* Tap-a-muscle detail: which exercises hit it this week */}
+          <div className="w-full max-w-[360px] min-h-[64px]">
+            {selectedEntry ? (
+              <div className="rounded-xl border border-ink-200 bg-cream-50 p-3">
+                <div className="flex items-baseline justify-between mb-1.5">
+                  <p className="text-sm font-semibold text-ink-800 capitalize">{selected!.replace('-', ' ')}</p>
+                  <p className="text-[11px] text-ink-400">
+                    {selectedExercises.length} exercise{selectedExercises.length !== 1 ? 's' : ''} · {selectedEntry.count} time{selectedEntry.count !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                <ul className="flex flex-col gap-1">
+                  {selectedExercises.map(([name, c]) => (
+                    <li key={name} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-ink-700 truncate">{name}</span>
+                      <span className="text-ink-400 shrink-0">×{c}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs text-ink-400 text-center py-4">
+                Tap a highlighted muscle to see which exercises hit it this week.
+              </p>
+            )}
+          </div>
         </>
       )}
     </div>
