@@ -366,7 +366,7 @@ Reference files: `src/shared/components/plan-modal/UnifiedPlanModal.tsx` (Dialog
 
 ## Edge Functions (Supabase)
 
-**Deploy: Edge Functions auto-deploy via GitHub Actions** (`.github/workflows/deploy-functions.yml`) on any merge to `main` that touches `supabase/functions/**` — `supabase functions deploy` pushes all functions, with per-function JWT settings from `supabase/config.toml` (the two bearer-secret webhooks, `hevy-sync`/`health-export-webhook`, are pinned `verify_jwt = false` there so a redeploy can't re-break them). One-time setup: a `SUPABASE_ACCESS_TOKEN` repo secret. Manual Dashboard/CLI deploy still works as a fallback (every function is self-contained — no `_shared` imports). **DB migrations are still manual** (Supabase Dashboard → SQL Editor or `supabase db push`); the `db-migrations` CI job remains removed (drift with prod made auto-apply unsafe — re-add once the history is reconciled).
+**Deploy: Edge Functions are deployed MANUALLY** (Supabase Dashboard, or `supabase functions deploy` via CLI). A GitHub Actions auto-deploy job was tried and removed — it kept failing/red on the runner and wasn't worth the noise. Manual deploy is clean now because **every function is self-contained (no `_shared/` imports** — the shared Hevy upsert logic is inlined into all 4 Hevy functions), so a Dashboard paste no longer hits the "Module not found `_shared`" bundling error. `supabase/config.toml` still records the per-function JWT settings (`hevy-sync`/`health-export-webhook` → `verify_jwt = false`) — set the same toggle in the Dashboard when deploying those two, or it's applied automatically if you deploy via the CLI. **DB migrations are also manual** (Dashboard → SQL Editor or `supabase db push`).
 
 | Function | Purpose |
 |---|---|
