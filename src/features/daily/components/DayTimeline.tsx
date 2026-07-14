@@ -15,13 +15,20 @@ const HOUR_START = 0
 const HOUR_END   = 24
 const HOUR_PX    = 52
 
+// accent is already theme-aware (CSS-variable-backed); blue/green/orange/
+// purple/red are Tailwind's own stock palettes, which never got a dark:
+// variant here — a block colored via any of those five looked like a
+// bright, glary light-mode pastel patch sitting on the dark canvas.
+// Tailwind already ships full dark-appropriate shades for its own
+// palettes (no custom CSS variable needed, unlike our ink/cream/accent),
+// so this is just adding the dark: classes Tailwind already provides.
 const COLOR: Record<string, string> = {
-  blue:   'bg-blue-100 border-blue-300 text-blue-800',
-  green:  'bg-green-100 border-green-300 text-green-800',
-  orange: 'bg-orange-100 border-orange-300 text-orange-800',
-  purple: 'bg-purple-100 border-purple-300 text-purple-800',
+  blue:   'bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-950/40 dark:border-blue-700 dark:text-blue-300',
+  green:  'bg-green-100 border-green-300 text-green-800 dark:bg-green-950/40 dark:border-green-700 dark:text-green-300',
+  orange: 'bg-orange-100 border-orange-300 text-orange-800 dark:bg-orange-950/40 dark:border-orange-700 dark:text-orange-300',
+  purple: 'bg-purple-100 border-purple-300 text-purple-800 dark:bg-purple-950/40 dark:border-purple-700 dark:text-purple-300',
   accent: 'bg-accent-100 border-accent-300 text-accent-700',
-  red:    'bg-red-100 border-red-300 text-red-800',
+  red:    'bg-red-100 border-red-300 text-red-800 dark:bg-red-950/40 dark:border-red-700 dark:text-red-300',
 }
 
 function timeStrToHour(t: string): number {
