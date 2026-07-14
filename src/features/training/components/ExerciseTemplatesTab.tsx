@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
+import { ExerciseThumb } from '../exerciseMedia'
 import type { HevyExerciseTemplate } from '../types.hevy'
 
 // Friendly labels for Hevy's CustomExerciseType enum. Anything not listed
@@ -39,9 +40,12 @@ function TemplateCard({ t }: { t: HevyExerciseTemplate }) {
   const muscles = t.secondary_muscle_groups ?? []
   return (
     <div className="break-inside-avoid mb-2 flex flex-col gap-1.5 p-3 bg-cream-50 border border-ink-100 rounded-xl hover:border-accent-300 hover:shadow-sm transition-all">
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-ink-800 leading-snug">{t.title}</span>
-        <TypeChip type={t.type} />
+      <div className="flex items-start gap-2">
+        <ExerciseThumb title={t.title} />
+        <div className="flex-1 min-w-0 flex items-start justify-between gap-2">
+          <span className="text-sm font-semibold text-ink-800 leading-snug">{t.title}</span>
+          <TypeChip type={t.type} />
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-1">
         {t.primary_muscle_group && (
