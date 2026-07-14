@@ -226,7 +226,7 @@ export function WorkPage() {
                     key={v}
                     onClick={() => setView(v)}
                     className={`px-3 min-h-[44px] rounded-md text-xs font-semibold capitalize transition-colors ${
-                      view === v ? 'bg-ink-900 text-white' : 'text-ink-500 hover:text-ink-900'
+                      view === v ? 'bg-ink-950 text-white' : 'text-ink-500 hover:text-ink-900'
                     }`}
                   >
                     {v}

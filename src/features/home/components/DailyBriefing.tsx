@@ -14,7 +14,7 @@ export function DailyBriefing() {
   })
 
   return (
-    <div className="rounded-2xl border border-accent-200 bg-gradient-to-br from-accent-50 to-white shadow-sm p-5">
+    <div className="rounded-2xl border border-accent-200 bg-gradient-to-br from-accent-50 to-cream-50 shadow-sm p-5">
       <div className={`flex items-center justify-between gap-2 ${collapsed ? '' : 'mb-2'}`}>
         <h2 className="text-xs font-bold text-accent-700 uppercase tracking-wide flex items-center gap-1.5">
           <span>✦</span> Daily Brief

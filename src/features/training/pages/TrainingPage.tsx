@@ -35,14 +35,14 @@ export function TrainingPage() {
           <h1 className="text-lg font-bold text-ink-900">Training</h1>
 
           {/* Hevy / Strava / Health pills */}
-          <div className="flex gap-0.5 p-0.5 bg-white/70 backdrop-blur rounded-lg border border-ink-200">
+          <div className="flex gap-0.5 p-0.5 bg-cream-50/70 backdrop-blur rounded-lg border border-ink-200">
             {(['hevy', 'strava', 'health'] as Tab[]).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors duration-150 min-h-[44px] ${
                   tab === t
-                    ? 'bg-ink-900 text-white'
+                    ? 'bg-ink-950 text-white'
                     : 'bg-transparent text-ink-600 hover:text-ink-900'
                 }`}
               >

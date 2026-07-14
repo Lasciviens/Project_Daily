@@ -206,7 +206,7 @@ export function RecurrenceField({
           <button
             key={o.value} type="button" disabled={locked} onClick={() => onMode(o.value)}
             className={`min-h-[44px] px-3 text-xs font-medium rounded-lg border transition-colors disabled:opacity-40 ${
-              mode === o.value ? 'bg-ink-900 text-white border-ink-900' : 'border-ink-200 text-ink-600 hover:bg-cream-50'
+              mode === o.value ? 'bg-ink-950 text-white border-ink-950' : 'border-ink-200 text-ink-600 hover:bg-cream-50'
             }`}
           >{o.label}</button>
         ))}

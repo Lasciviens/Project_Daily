@@ -101,7 +101,7 @@ function PosterCard({ game, onClick }: { game: Game; onClick: () => void }) {
   const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
   return (
     <button onClick={onClick}
-      className="relative rounded-2xl overflow-hidden shadow-md border border-ink-200 hover:shadow-xl hover:border-accent-400 hover:scale-[1.03] transition-all duration-200 press-feedback bg-ink-900 group"
+      className="relative rounded-2xl overflow-hidden shadow-md border border-ink-200 hover:shadow-xl hover:border-accent-400 hover:scale-[1.03] transition-all duration-200 press-feedback bg-ink-950 group"
       style={{ aspectRatio: '2/3' }}
     >
       <CoverImg url={game.cover_url} title={game.title} className="absolute inset-0" />

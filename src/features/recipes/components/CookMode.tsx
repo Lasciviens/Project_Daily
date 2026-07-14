@@ -32,9 +32,9 @@ export function CookMode({ recipe, steps, onClose }: Props) {
 
   return (
     <Dialog open onClose={onClose} className="relative z-[80]">
-      <div className="fixed inset-0 bg-ink-900" />
+      <div className="fixed inset-0 bg-ink-950" />
       <div className="fixed inset-0 flex flex-col">
-        <DialogPanel className="flex-1 flex flex-col min-h-0 bg-ink-900 text-white">
+        <DialogPanel className="flex-1 flex flex-col min-h-0 bg-ink-950 text-white">
           {/* Header */}
           <div className="flex items-center justify-between px-4 sm:px-8 py-4 flex-shrink-0">
             <div className="min-w-0">

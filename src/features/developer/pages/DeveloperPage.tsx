@@ -22,7 +22,7 @@ export function DeveloperPage() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`px-3 min-h-[44px] rounded-md text-xs font-semibold transition-colors ${
-                tab === t.id ? 'bg-ink-900 text-white' : 'text-ink-600 hover:text-ink-900'
+                tab === t.id ? 'bg-ink-950 text-white' : 'text-ink-600 hover:text-ink-900'
               }`}
             >
               {t.label}

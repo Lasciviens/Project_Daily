@@ -63,7 +63,7 @@ export function ShopPage() {
             <button
               onClick={() => setActiveTop(null)}
               className={`text-xs px-3 min-h-[44px] rounded-full border font-medium transition-colors ${
-                !activeTop ? 'bg-ink-900 text-white border-ink-900' : 'border-ink-200 text-ink-600 hover:border-accent-300'
+                !activeTop ? 'bg-ink-950 text-white border-ink-950' : 'border-ink-200 text-ink-600 hover:border-accent-300'
               }`}
             >All</button>
             {tops.map(t => (

@@ -170,7 +170,7 @@ export function DevRequestsDrawer() {
   return (
     <>
       {isDevRequestsOpen && (
-        <div className="fixed inset-0 z-40 bg-ink-900/10" onClick={closeDevRequests} />
+        <div className="fixed inset-0 z-40 bg-ink-950/10" onClick={closeDevRequests} />
       )}
 
       <div

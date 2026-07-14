@@ -678,7 +678,7 @@ export function NewRoutineModal({ isOpen, onClose }: NewRoutineModalProps) {
     <Dialog open={isOpen} onClose={onClose} className="relative z-[60]">
       <DialogBackdrop
         transition
-        className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0"
+        className="fixed inset-0 bg-ink-950/30 transition duration-200 data-[closed]:opacity-0"
       />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
@@ -704,7 +704,7 @@ export function EditRoutineModal({ routine, onClose }: EditRoutineModalProps) {
     <Dialog open={routine != null} onClose={onClose} className="relative z-[60]">
       <DialogBackdrop
         transition
-        className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0"
+        className="fixed inset-0 bg-ink-950/30 transition duration-200 data-[closed]:opacity-0"
       />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
