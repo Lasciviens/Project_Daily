@@ -1,8 +1,22 @@
 import { useState, useRef, useEffect } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useUIStore } from '../../../app/store'
 import { sendMessage } from '../api/aiApi'
 import type { Message } from '../api/aiApi'
+
+// The AI performs real DB writes server-side (ai-proxy's db_insert/update/
+// delete + create_task/plan_media/etc.), but the panel had NO cache
+// invalidation — so "add a task", "schedule a workout", "create this recipe"
+// succeeded in the DB yet nothing on screen updated until a full reload. After
+// every completed turn we refresh every namespace the AI can write to. (Broad
+// invalidation is cheap: TanStack only refetches queries that are actually
+// mounted; keys that don't exist are no-ops.)
+const AI_WRITE_NAMESPACES = [
+  ['tasks'], ['schedule'], ['calendar'],
+  ['recipes'], ['meal-plan'], ['recipe-ingredient-library'],
+  ['shop'], ['projects'], ['movies'], ['tv'], ['media'],
+]
 
 const STORAGE_KEY = 'lasci-ai-chat'
 
@@ -31,6 +45,7 @@ const SUGGESTIONS = [
 
 export function AIPanel() {
   const { isAIOpen, closeAI } = useUIStore()
+  const qc = useQueryClient()
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) as ChatMessage[] : [] }
     catch { return [] }
@@ -69,6 +84,8 @@ export function AIPanel() {
     try {
       const reply = await sendMessage(next)
       setMessages(m => [...m, { role: 'assistant', content: reply.text, steps: reply.steps }])
+      // The turn may have written to the DB — refresh every AI-writable view.
+      for (const key of AI_WRITE_NAMESPACES) qc.invalidateQueries({ queryKey: key })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {

@@ -54,6 +54,13 @@ export function useToggleEpisodeWatched(tvEntryId: string) {
     onError: (_err, _vars, context) => {
       if (context?.previous !== undefined) qc.setQueryData(key, context.previous)
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: key })
+      // Marking an episode watched deletes its planned time_block server-side
+      // (migration 043 cleanup_block_on_episode_watched), so refresh the
+      // schedule + the series progress view.
+      qc.invalidateQueries({ queryKey: ['schedule'] })
+      qc.invalidateQueries({ queryKey: ['tv'] })
+    },
   })
 }

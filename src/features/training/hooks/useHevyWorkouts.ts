@@ -39,6 +39,11 @@ export function useIncrementalHevySync() {
     mutationFn: triggerIncrementalHevySync,
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['hevy'] })
+      // A synced workout logged from a routine deletes its matching
+      // training-session task + linked block server-side (_shared/hevySync),
+      // so refresh task + schedule views too.
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['schedule'] })
       toast.success(`Synced: +${result.updated} updated, ${result.deleted} deleted`)
     },
     onError: (e) => {

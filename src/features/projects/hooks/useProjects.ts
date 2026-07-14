@@ -139,7 +139,9 @@ export function useDeleteItem(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteItem(id),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: QK.items(projectId) }); qc.invalidateQueries({ queryKey: QK.stats }) },
+    // Deleting a project item cascades to its planned time_block via migration
+    // 043's cleanup_block_on_project_item_delete trigger, so refresh schedule too.
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: QK.items(projectId) }); qc.invalidateQueries({ queryKey: QK.stats }); qc.invalidateQueries({ queryKey: ['schedule'] }) },
     onError:    errToast('Failed to delete item', 'delete_item'),
   })
 }

@@ -64,6 +64,11 @@ export function useTrainingBlocks(from: string, to: string) {
 function invalidateSchedule(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['schedule'] })
   qc.invalidateQueries({ queryKey: ['calendar'] })
+  // A block edit/delete can cascade to its linked task via migration 043's
+  // sync_task_from_time_block trigger (date/time propagation on update,
+  // soft-cancel on delete), so task views must refresh too — mirrors the
+  // reverse direction (useUpdateTask/useDeleteTask already invalidate schedule).
+  qc.invalidateQueries({ queryKey: ['tasks'] })
 }
 
 // NOT using useMutationWithFeedback here — both consumers (UnifiedPlanModal,
