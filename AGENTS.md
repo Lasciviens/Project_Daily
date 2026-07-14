@@ -152,7 +152,12 @@ which door the write came through.
   without a migration), and a `config` jsonb blob for the one thing that
   plausibly varies per rule (e.g. `block_delete_cascades_task`'s
   `auto_task_source_types` array — which `tasks.source_type` values count as
-  "this task only exists because a plan created it"). The actual matching
+  "this task only exists because a plan created it"; as of migration 047 that
+  array is `training_session` + `movie` + `project_item`). **This cascade
+  SOFT-CANCELS, it does not delete** (migration 047): when a plan's block is
+  deleted, the linked task becomes `status='cancelled'` (reversible, visible),
+  never a hard `DELETE` — the deliberate mitigation against silent, irreversible
+  data loss. The actual matching
   logic per relationship shape (task↔block by id, episode→block by
   season/episode number, project_item→block by id) stays explicit SQL in
   typed trigger functions — Postgres has no safe generic polymorphic join
