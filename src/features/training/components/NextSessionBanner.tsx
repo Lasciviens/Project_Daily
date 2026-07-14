@@ -62,15 +62,15 @@ export function NextSessionBanner() {
         type="button"
         onClick={() => setEditOpen(true)}
         title="Edit this session"
-        className="w-full flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 mb-4 text-left transition-colors duration-150 hover:bg-blue-100 cursor-pointer"
+        className="w-full flex items-center gap-3 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 mb-4 text-left transition-colors duration-150 hover:bg-blue-100 dark:hover:bg-blue-900/40 cursor-pointer"
       >
         <span className="text-xl flex-shrink-0">🏋️</span>
         <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-500">Next session</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-500 dark:text-blue-400">Next session</p>
           <p className="text-sm font-semibold text-ink-900 truncate">{next.title}</p>
         </div>
         <div className="text-right flex-shrink-0">
-          <p className="text-sm font-bold text-blue-700">{relativeDay(next.date)}</p>
+          <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{relativeDay(next.date)}</p>
           {time && <p className="text-xs text-ink-500">{time}</p>}
         </div>
       </button>

@@ -15,14 +15,25 @@
 
     /* Light theme (default) — identical to the hex values this app has
        always shipped with, just expressed as space-separated RGB triplets
-       so Tailwind's <alpha-value> opacity modifiers keep working. */
+       so Tailwind's <alpha-value> opacity modifiers keep working. ink-800
+       and ink-600 are interpolated additions: text-ink-800/text-ink-600
+       were referenced in ~190 places across the app (DailyBriefing, etc.)
+       but those two shades were never actually defined on the ink scale —
+       a real pre-existing gap, not something dark mode introduced. Every
+       one of those elements was rendering with NO explicit color at all,
+       silently inheriting whatever an ancestor happened to set; that was
+       invisible in light mode (the inherited fallback usually landed near
+       ink-900, dark-on-light, close enough to pass) but broke visibly once
+       dark mode made the fallback chain far less predictable per-component. */
     --canvas:    237 228 213;
     --cream-50:  254 252 249;
     --cream-100: 250 248 244;
     --cream-200: 245 240 232;
     --cream-300: 237 228 213;
     --ink-900:   28  25  23;
+    --ink-800:   48  45  42;
     --ink-700:   68  64  60;
+    --ink-600:   94  89  84;
     --ink-500:   120 113 108;
     --ink-400:   168 162 158;
     --ink-300:   214 211 209;
@@ -55,7 +66,9 @@
     --cream-200: 45  40  32;
     --cream-300: 21  19  15;
     --ink-900:   242 237 225;
+    --ink-800:   223 216 202;
     --ink-700:   203 195 179;
+    --ink-600:   180 171 156;
     --ink-500:   156 147 132;
     --ink-400:   116 107 94;
     --ink-300:   74  68  59;

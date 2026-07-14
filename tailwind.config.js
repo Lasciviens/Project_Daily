@@ -31,7 +31,9 @@ export default {
           // scale below.
           950: '#1c1917',
           900: 'rgb(var(--ink-900) / <alpha-value>)',
+          800: 'rgb(var(--ink-800) / <alpha-value>)',
           700: 'rgb(var(--ink-700) / <alpha-value>)',
+          600: 'rgb(var(--ink-600) / <alpha-value>)',
           500: 'rgb(var(--ink-500) / <alpha-value>)',
           400: 'rgb(var(--ink-400) / <alpha-value>)',
           300: 'rgb(var(--ink-300) / <alpha-value>)',
