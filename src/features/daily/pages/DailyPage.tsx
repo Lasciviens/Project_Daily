@@ -5,6 +5,7 @@ import { DayTimeline } from '../components/DayTimeline'
 import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
 import { UpcomingReleasesBanner } from '../components/UpcomingReleasesBanner'
+import { TodaySummary } from '../components/TodaySummary'
 
 type DailyTab = 'yesterday' | 'today' | 'tomorrow' | 'week' | 'month'
 
@@ -167,6 +168,9 @@ function TodayView({
       </div>
 
       <UpcomingReleasesBanner />
+
+      {/* Whole-day overview: nutrition vs. goals, today's training, watch-next */}
+      <TodaySummary date={date} />
 
       {/* Left: Tasks (indented, narrower) · Middle: Schedule · Right: date
           widgets — structurally independent column, kept in sync with the

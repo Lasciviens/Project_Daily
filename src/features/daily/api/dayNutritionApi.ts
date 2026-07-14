@@ -1,0 +1,102 @@
+import { supabase } from '../../../integrations/supabase/client'
+
+// A single planned meal for a day, resolved to its display title + macro
+// contribution. Macros are the TOTAL for that entry (recipe per-serving ×
+// servings, or library ingredient per-100g × quantity/100 for weight/volume
+// units). Custom-title entries carry no macros.
+export interface DayMeal {
+  id:        string
+  meal_slot: 'breakfast' | 'lunch' | 'dinner' | 'snack'
+  title:     string
+  servings:  number
+  calories:  number
+  protein_g: number
+  carbs_g:   number
+  fat_g:     number
+}
+
+export interface DayNutrition {
+  meals:     DayMeal[]
+  calories:  number
+  protein_g: number
+  carbs_g:   number
+  fat_g:     number
+}
+
+// Only weight/volume units let a per-100g library macro be scaled to a real
+// amount; a "piece"/"clove"/etc. quantity can't be converted, so it's skipped
+// (same rule the recipe macro compute uses).
+const SCALABLE_UNITS = new Set(['g', 'gram', 'grams', 'ml'])
+
+interface MealRow {
+  id:                    string
+  meal_slot:             DayMeal['meal_slot']
+  recipe_id:             string | null
+  custom_title:          string | null
+  library_ingredient_id: string | null
+  ingredient_quantity:   number | null
+  ingredient_unit:       string | null
+  servings:              number | null
+  recipe:                { title: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null } | null
+  ingredient:            { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null } | null
+}
+
+const SLOT_ORDER: Record<DayMeal['meal_slot'], number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 }
+
+export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
+  const { data, error } = await supabase
+    .from('recipe_meal_plans')
+    .select(
+      '*, recipe:recipes(title, calories, protein_g, carbs_g, fat_g), ' +
+      'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g)'
+    )
+    .eq('date', date)
+
+  if (error) throw error
+
+  const meals: DayMeal[] = ((data ?? []) as unknown as MealRow[]).map(row => {
+    const servings = row.servings ?? 1
+    let title = row.custom_title ?? '—'
+    let calories = 0, protein_g = 0, carbs_g = 0, fat_g = 0
+
+    if (row.recipe) {
+      title = row.recipe.title
+      calories  = (row.recipe.calories  ?? 0) * servings
+      protein_g = (row.recipe.protein_g ?? 0) * servings
+      carbs_g   = (row.recipe.carbs_g   ?? 0) * servings
+      fat_g     = (row.recipe.fat_g     ?? 0) * servings
+    } else if (row.ingredient) {
+      const qty  = row.ingredient_quantity ?? 0
+      const unit = (row.ingredient_unit ?? '').toLowerCase()
+      const factor = SCALABLE_UNITS.has(unit) ? qty / 100 : 0
+      const qtyLabel = qty ? `${qty}${row.ingredient_unit ?? ''}` : ''
+      title = qtyLabel ? `${row.ingredient.name} · ${qtyLabel}` : row.ingredient.name
+      calories  = (row.ingredient.calories  ?? 0) * factor
+      protein_g = (row.ingredient.protein_g ?? 0) * factor
+      carbs_g   = (row.ingredient.carbs_g   ?? 0) * factor
+      fat_g     = (row.ingredient.fat_g     ?? 0) * factor
+    }
+
+    return {
+      id: row.id,
+      meal_slot: row.meal_slot,
+      title,
+      servings,
+      calories:  Math.round(calories),
+      protein_g: Math.round(protein_g),
+      carbs_g:   Math.round(carbs_g),
+      fat_g:     Math.round(fat_g),
+    }
+  }).sort((a, b) => SLOT_ORDER[a.meal_slot] - SLOT_ORDER[b.meal_slot])
+
+  const sum = (k: keyof Pick<DayMeal, 'calories' | 'protein_g' | 'carbs_g' | 'fat_g'>) =>
+    meals.reduce((acc, m) => acc + m[k], 0)
+
+  return {
+    meals,
+    calories:  sum('calories'),
+    protein_g: sum('protein_g'),
+    carbs_g:   sum('carbs_g'),
+    fat_g:     sum('fat_g'),
+  }
+}
