@@ -48,6 +48,11 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
         await markEpisodeWatched(tvEntryId, season, epNum, TODAY)
       }
       await queryClient.invalidateQueries({ queryKey: ['watched-episodes', tvEntryId] })
+      // Marking watched cleans up the episode's planned block server-side
+      // (migration 043) — refresh schedule + series progress so the timeline
+      // and TV views update without a reload.
+      queryClient.invalidateQueries({ queryKey: ['schedule'] })
+      queryClient.invalidateQueries({ queryKey: ['tv'] })
       toast.dismiss(tid)
       toast.success(`Marked as watched ✓`)
       setSelected(new Set())
