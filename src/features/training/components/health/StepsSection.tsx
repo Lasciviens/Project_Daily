@@ -83,7 +83,7 @@ export function StepsSection() {
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
             <Tooltip cursor={false} trigger="click" formatter={(v) => [`${v} steps`, '']} />
             <Bar
-              dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]}
+              dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]} activeBar={false}
               cursor={period !== 'day' ? 'pointer' : 'default'}
               onClick={handleBarClick}
             />

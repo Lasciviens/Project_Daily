@@ -123,11 +123,11 @@ export function EnergySection() {
             <Tooltip cursor={false} trigger="click" content={EnergyTooltipContent} wrapperStyle={{ pointerEvents: 'auto' }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar
-              dataKey="basal" name="Basal" stackId="e" fill="#94a3b8" radius={[0, 0, 0, 0]}
+              dataKey="basal" name="Basal" stackId="e" fill="#94a3b8" radius={[0, 0, 0, 0]} activeBar={false}
               cursor={period !== 'day' ? 'pointer' : 'default'}
             />
             <Bar
-              dataKey="active" name="Active" stackId="e" fill="#f43f5e" radius={[3, 3, 0, 0]}
+              dataKey="active" name="Active" stackId="e" fill="#f43f5e" radius={[3, 3, 0, 0]} activeBar={false}
               cursor={period !== 'day' ? 'pointer' : 'default'}
             />
           </BarChart>
