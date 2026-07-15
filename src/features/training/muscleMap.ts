@@ -56,3 +56,10 @@ const SLUG_LABEL: Record<string, string> = {
 export function labelForSlug(slug: string): string {
   return SLUG_LABEL[slug] ?? slug.replace(/-/g, ' ')
 }
+
+// Which mapped slugs are visible on each body side (some — deltoids, forearm —
+// show on both). Used to filter the stats to the side currently being viewed.
+export const SIDE_SLUGS: Record<'front' | 'back', ReadonlySet<Slug>> = {
+  front: new Set<Slug>(['chest', 'abs', 'biceps', 'quadriceps', 'adductors', 'deltoids', 'forearm', 'neck']),
+  back:  new Set<Slug>(['upper-back', 'trapezius', 'lower-back', 'triceps', 'hamstring', 'gluteal', 'calves', 'deltoids', 'forearm']),
+}

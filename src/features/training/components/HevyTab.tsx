@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { startOfWeek, startOfMonth, format } from 'date-fns'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useHevyPRs } from '../hooks/useHevyPRs'
@@ -201,8 +201,12 @@ function PRsSubTab() {
 
 // ─── HevyTab ──────────────────────────────────────────────────────────────────
 
-export function HevyTab() {
+export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => void } = {}) {
   const [activeTab, setActiveTab] = useState<SubTab>('workouts')
+
+  // Report the active sub-tab up so the page can widen for the data-dense ones
+  // (Exercises grid, Muscles two-column) on large monitors.
+  useEffect(() => { onSubTabChange?.(activeTab) }, [activeTab, onSubTabChange])
 
   return (
     <div className="flex flex-col gap-3">

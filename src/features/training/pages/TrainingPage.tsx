@@ -9,6 +9,9 @@ import { HealthStatsPanel } from '../components/health/HealthStatsPanel'
 import type { SectionId } from '../components/health/sectionTypes'
 
 type Tab = 'hevy' | 'strava' | 'health'
+// Hevy sub-tabs that benefit from extra width on large monitors.
+type HevySub = 'workouts' | 'routines' | 'prs' | 'muscles' | 'body' | 'exercises'
+const WIDE_HEVY_SUBS = new Set<HevySub>(['exercises', 'muscles'])
 
 const TAB_LABELS: Record<Tab, string> = { hevy: 'Hevy', strava: 'Strava', health: 'Health' }
 
@@ -19,6 +22,9 @@ const HEADER_BG =
 export function TrainingPage() {
   const [tab, setTab] = useState<Tab>('hevy')
   const [healthSection, setHealthSection] = useState<SectionId>('overview')
+  const [hevySub, setHevySub] = useState<HevySub>('workouts')
+
+  const wide = tab === 'health' || (tab === 'hevy' && WIDE_HEVY_SUBS.has(hevySub))
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
@@ -58,9 +64,9 @@ export function TrainingPage() {
 
       {/* Content (left, sized) + calendar pinned to the right edge */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-        <div className={`w-full lg:max-w-4xl min-w-0 ${tab === 'health' ? '2xl:max-w-none 2xl:flex-1' : ''}`}>
+        <div className={`w-full lg:max-w-4xl min-w-0 ${wide ? '2xl:max-w-none 2xl:flex-1' : ''}`}>
           <NextSessionBanner />
-          {tab === 'hevy'   && <HevyTab />}
+          {tab === 'hevy'   && <HevyTab onSubTabChange={setHevySub} />}
           {tab === 'strava' && <StravaTab />}
           {tab === 'health' && <HealthTab section={healthSection} onSectionChange={setHealthSection} />}
         </div>
