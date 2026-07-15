@@ -3,47 +3,20 @@ import { useQuery } from '@tanstack/react-query'
 import {
   startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
 } from 'date-fns'
-// react-body-highlighter (MIT, 0-deps): anterior/posterior SVG body with
-// per-muscle highlighting driven by summed `frequency`.
-import Model, { type IExerciseData } from 'react-body-highlighter'
+import Body, { type ExtendedBodyPart, type Slug } from 'react-muscle-highlighter'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import { fetchWorkoutExerciseTemplateIds } from '../api/hevyApi'
+import { slugForHevyGroup, RAMP, BANDS, BASE_MUSCLE_COLOR, labelForSlug } from '../muscleMap'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  "Worked muscles" — a front/back body heatmap of which muscle groups your
-//  logged workouts hit over the selected period (day / week / month). The body
-//  is ALWAYS shown (grey when nothing's logged); tap a muscle for its stats +
-//  the exact exercises that worked it.
+//  "Worked muscles" — a clean stylised front/back body (react-muscle-highlighter,
+//  MIT) heat-mapped by which muscle groups your logged workouts hit over the
+//  selected period (day / week / month). Body is ALWAYS shown (grey when nothing
+//  logged); tap a muscle for the exact exercises that worked it.
+//
+//  Every Hevy primary_muscle_group maps to a body slug via muscleMap's
+//  HEVY_TO_SLUG (the full Hevy enum), so every exercise is accounted for.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Hevy primary_muscle_group → react-body-highlighter muscle key(s). Array-valued
-// because "shoulders" spans front+back deltoids. Groups with no body region
-// (cardio/full_body/other) are omitted → simply not highlighted.
-const HEVY_TO_BODY: Record<string, string[]> = {
-  chest:       ['chest'],
-  abdominals:  ['abs'],
-  abs:         ['abs'],
-  biceps:      ['biceps'],
-  triceps:     ['triceps'],
-  forearms:    ['forearm'],
-  shoulders:   ['front-deltoids', 'back-deltoids'],
-  lats:        ['upper-back'],
-  upper_back:  ['upper-back'],
-  lower_back:  ['lower-back'],
-  traps:       ['trapezius'],
-  quadriceps:  ['quadriceps'],
-  hamstrings:  ['hamstring'],
-  glutes:      ['gluteal'],
-  calves:      ['calves'],
-  abductors:   ['abductors'],
-  adductors:   ['adductor'],
-  neck:        ['neck'],
-}
-
-// Light→dark intensity ramp (5 bands). Fixed amber (data-viz intensity, not UI
-// chrome) — reads on both themes.
-const RAMP = ['#fde68a', '#fcd34d', '#fbbf24', '#f59e0b', '#b45309']
-const BANDS = RAMP.length
 
 type Period = 'day' | 'week' | 'month'
 
@@ -66,9 +39,9 @@ const EMPTY_HINT: Record<Period, string> = {
 }
 
 export function WorkedMuscles() {
-  const [view, setView]     = useState<'anterior' | 'posterior'>('anterior')
+  const [side, setSide]     = useState<'front' | 'back'>('front')
   const [period, setPeriod] = useState<Period>('week')
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Slug | null>(null)
 
   const now = new Date()
   const { from, to } = rangeFor(period, now)
@@ -82,51 +55,49 @@ export function WorkedMuscles() {
 
   const workoutCount = worked?.workoutCount ?? 0
 
-  // template id → { muscle, title }
+  // template id → { slug, title } (Hevy primary_muscle_group resolved to a body slug)
   const metaById = useMemo(() => {
-    const m = new Map<string, { muscle: string; title: string }>()
+    const m = new Map<string, { slug: Slug; title: string }>()
     for (const t of templates) {
-      if (t.primary_muscle_group) m.set(t.id, { muscle: t.primary_muscle_group.toLowerCase(), title: t.title })
+      const slug = slugForHevyGroup(t.primary_muscle_group)
+      if (slug) m.set(t.id, { slug, title: t.title })
     }
     return m
   }, [templates])
 
-  // Per body-muscle key: total exercise-instances + distinct exercise names
-  // (with their own instance counts), then band the totals 1..BANDS.
-  const { data, perMuscle, total } = useMemo(() => {
+  // Per body slug: total exercise-instances + distinct exercise names.
+  const { perSlug, total } = useMemo(() => {
     const acc: Record<string, { count: number; exercises: Map<string, number> }> = {}
     let total = 0
     for (const id of (worked?.templateIds ?? [])) {
       const meta = metaById.get(id)
       if (!meta) continue
-      const keys = HEVY_TO_BODY[meta.muscle]
-      if (!keys) continue
       total++
-      for (const k of keys) {
-        const entry = acc[k] ?? (acc[k] = { count: 0, exercises: new Map() })
-        entry.count++
-        entry.exercises.set(meta.title, (entry.exercises.get(meta.title) ?? 0) + 1)
-      }
+      const entry = acc[meta.slug] ?? (acc[meta.slug] = { count: 0, exercises: new Map() })
+      entry.count++
+      entry.exercises.set(meta.title, (entry.exercises.get(meta.title) ?? 0) + 1)
     }
-    const max = Math.max(1, ...Object.values(acc).map(e => e.count))
-    const data: IExerciseData[] = Object.entries(acc).map(([key, e]) => ({
-      name: key,
-      muscles: [key] as IExerciseData['muscles'],
-      frequency: Math.max(1, Math.ceil((e.count / max) * BANDS)),
-    }))
-    return { data, perMuscle: acc, total }
+    return { perSlug: acc, total }
   }, [worked, metaById])
 
-  // Most-hit muscles, for the at-a-glance summary chips.
-  const topMuscles = useMemo(
-    () => Object.entries(perMuscle)
+  // Slug → intensity band (1..BANDS); fed to the body as `intensity`.
+  const bodyData = useMemo<ExtendedBodyPart[]>(() => {
+    const max = Math.max(1, ...Object.values(perSlug).map(e => e.count))
+    return Object.entries(perSlug).map(([slug, e]) => ({
+      slug: slug as Slug,
+      intensity: Math.max(1, Math.ceil((e.count / max) * BANDS)),
+    }))
+  }, [perSlug])
+
+  const topSlugs = useMemo(
+    () => Object.entries(perSlug)
       .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 4)
-      .map(([key, e]) => ({ key, count: e.count })),
-    [perMuscle],
+      .slice(0, 5)
+      .map(([slug, e]) => ({ slug: slug as Slug, count: e.count })),
+    [perSlug],
   )
 
-  const selectedEntry = selected ? perMuscle[selected] : undefined
+  const selectedEntry = selected ? perSlug[selected] : undefined
   const selectedExercises = selectedEntry
     ? [...selectedEntry.exercises.entries()].sort((a, b) => b[1] - a[1])
     : []
@@ -136,16 +107,16 @@ export function WorkedMuscles() {
       {/* Controls: Front/Back + period */}
       <div className="flex items-center justify-between w-full max-w-[380px] gap-2 flex-wrap">
         <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg">
-          {(['anterior', 'posterior'] as const).map(v => (
+          {(['front', 'back'] as const).map(v => (
             <button
               key={v}
               type="button"
-              onClick={() => setView(v)}
-              className={`px-3 min-h-[32px] rounded-md text-xs font-semibold transition-colors ${
-                view === v ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
+              onClick={() => setSide(v)}
+              className={`px-3 min-h-[32px] rounded-md text-xs font-semibold capitalize transition-colors ${
+                side === v ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
               }`}
             >
-              {v === 'anterior' ? 'Front' : 'Back'}
+              {v}
             </button>
           ))}
         </div>
@@ -166,22 +137,25 @@ export function WorkedMuscles() {
       </div>
 
       {/* Summary line */}
-      <p className="text-xs text-ink-500 -mt-1">
+      <p className="text-xs text-ink-500 -mt-1 text-center">
         {workoutCount > 0
-          ? <><strong className="text-ink-800">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · <strong className="text-ink-800">{total}</strong> exercises this {period}</>
+          ? <><strong className="text-ink-800">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · <strong className="text-ink-800">{total}</strong> exercises this {period} · tap a muscle</>
           : EMPTY_HINT[period]}
       </p>
 
-      {/* Body — ALWAYS rendered (grey when nothing logged) */}
-      <div className="relative w-[240px]">
-        {isLoading && <div className="absolute inset-0 z-10 rounded-xl bg-cream-100/60 animate-pulse" />}
-        <Model
-          data={data}
-          type={view}
-          bodyColor="#c9c4bb"
-          highlightedColors={RAMP}
-          onClick={(stats) => setSelected(stats.muscle)}
-          style={{ width: '100%' }}
+      {/* Body — ALWAYS rendered (grey when nothing logged), on a dark panel so
+          the teal→red activation colours pop (matches the reference look). */}
+      <div className="relative w-full max-w-[320px] flex justify-center rounded-2xl bg-gradient-to-b from-ink-800 to-ink-950 p-4">
+        {isLoading && <div className="absolute inset-0 z-10 rounded-2xl bg-ink-900/40 animate-pulse" />}
+        <Body
+          data={bodyData}
+          side={side}
+          gender="male"
+          scale={1.15}
+          colors={RAMP}
+          defaultFill={BASE_MUSCLE_COLOR}
+          border="#ffffff1f"
+          onBodyPartPress={(part) => setSelected(part.slug ?? null)}
         />
       </div>
 
@@ -195,30 +169,30 @@ export function WorkedMuscles() {
       )}
 
       {/* Top-worked chips */}
-      {topMuscles.length > 0 && (
+      {topSlugs.length > 0 && (
         <div className="flex flex-wrap justify-center gap-1.5 w-full max-w-[380px]">
-          {topMuscles.map(m => (
+          {topSlugs.map(m => (
             <button
-              key={m.key}
-              onClick={() => setSelected(m.key)}
-              className={`px-2.5 min-h-[28px] rounded-full text-[11px] font-medium capitalize transition-colors border ${
-                selected === m.key
+              key={m.slug}
+              onClick={() => setSelected(m.slug)}
+              className={`px-2.5 min-h-[28px] rounded-full text-[11px] font-medium transition-colors border ${
+                selected === m.slug
                   ? 'bg-accent-500 text-white border-accent-500'
                   : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'
               }`}
             >
-              {m.key.replace('-', ' ')} · {m.count}
+              {labelForSlug(m.slug)} · {m.count}
             </button>
           ))}
         </div>
       )}
 
-      {/* Tap-a-muscle detail: which exercises hit it this period */}
+      {/* Selected-muscle detail: which exercises hit it this period */}
       <div className="w-full max-w-[380px] min-h-[64px]">
         {selectedEntry ? (
           <div className="rounded-xl border border-ink-200 bg-cream-50 p-3">
             <div className="flex items-baseline justify-between mb-1.5">
-              <p className="text-sm font-semibold text-ink-800 capitalize">{selected!.replace('-', ' ')}</p>
+              <p className="text-sm font-semibold text-ink-800">{labelForSlug(selected!)}</p>
               <p className="text-[11px] text-ink-400">
                 {selectedExercises.length} exercise{selectedExercises.length !== 1 ? 's' : ''} · {selectedEntry.count} time{selectedEntry.count !== 1 ? 's' : ''}
               </p>
