@@ -185,7 +185,18 @@ Deno.serve(async (req) => {
           skippedMetricPoints++
           continue
         }
-        const recordedAt = safeIso(point.date)
+        // Sleep is special: a single night can have MORE THAN ONE session
+        // (main sleep + a nap, or an interrupted night), and Health Auto
+        // Export sends each as its own point — but every one of them carries
+        // point.date = local MIDNIGHT of the attributed day. Keying on that
+        // (as every other metric does) made all a night's sessions collide on
+        // (metric,recorded_at,source) so the upsert kept only the last one,
+        // silently dropping the rest (confirmed: iPhone 7h37m vs our 6.4h).
+        // For sleep we key on the session's own start instead, so every
+        // session survives; `date` still comes from the midnight-attributed
+        // day so they group under the correct night.
+        const sleepStart = typeof point.sleepStart === 'string' ? point.sleepStart : null
+        const recordedAt = (group.name === 'sleep_analysis' && sleepStart ? safeIso(sleepStart) : null) ?? safeIso(point.date)
         if (!recordedAt) {
           skippedMetricPoints++
           continue
