@@ -237,8 +237,11 @@ export function SleepSection() {
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={trendPeriod === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            <Tooltip cursor={false} trigger="click" content={makeSleepTooltipContent(sourcesByDate, openCorrectForm)} />
-            <Bar dataKey="total" fill="#6366f1" radius={[3, 3, 0, 0]} />
+            {/* pointerEvents:auto is required or the "Correct manually" button
+                inside the tooltip never receives its click (recharts sets the
+                tooltip wrapper to pointer-events:none by default). */}
+            <Tooltip cursor={false} trigger="click" wrapperStyle={{ pointerEvents: 'auto' }} content={makeSleepTooltipContent(sourcesByDate, openCorrectForm)} />
+            <Bar dataKey="total" fill="#6366f1" radius={[3, 3, 0, 0]} activeBar={false} />
           </BarChart>
         </ResponsiveContainer>
       </div>

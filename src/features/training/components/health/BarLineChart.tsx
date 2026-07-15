@@ -97,7 +97,7 @@ export function BarLineChart({
               only opens/updates the tooltip now (see Tooltip trigger="click"
               above) — it no longer navigates by itself; "See details"
               inside the tooltip is the only thing that does. */}
-          <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={16} />
+          <Bar dataKey={dataKey} name={tooltipLabel} fill={color} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={16} activeBar={false} />
           <Line dataKey={dataKey} name={tooltipLabel} stroke={color} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} />
         </ComposedChart>
       </ResponsiveContainer>
