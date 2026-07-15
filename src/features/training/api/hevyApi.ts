@@ -38,25 +38,37 @@ export async function fetchHevyWorkouts(opts: {
   return data ?? []
 }
 
-// All exercise_template_ids performed in workouts within a date range (by
-// start_time). Used by the "Worked muscles this week" body map — flattened to a
-// plain id[] (one entry per exercise-instance) so callers can count per muscle.
-export async function fetchWorkoutExerciseTemplateIds(fromISO: string, toISO: string): Promise<string[]> {
+export interface WorkedTemplatesResult {
+  templateIds:  string[]   // one entry per exercise-instance (for per-muscle counts)
+  workoutCount: number      // distinct workouts in the range
+}
+
+// All exercise_template_ids performed in workouts within a date range, plus the
+// workout count. Used by the Muscles body map. Matches on the workout's real
+// date (start_time), falling back to hevy_created_at when start_time is null —
+// the same effective-date rule the Workouts tab uses, so a workout without a
+// start_time is never silently dropped.
+export async function fetchWorkoutExerciseTemplateIds(fromISO: string, toISO: string): Promise<WorkedTemplatesResult> {
+  const inRange = `and(start_time.gte.${fromISO},start_time.lte.${toISO})`
+  const nullFallback = `and(start_time.is.null,hevy_created_at.gte.${fromISO},hevy_created_at.lte.${toISO})`
+
   const { data: workouts, error: wErr } = await supabase
     .from('hevy_workouts')
     .select('id')
-    .gte('start_time', fromISO)
-    .lte('start_time', toISO)
+    .or(`${inRange},${nullFallback}`)
   if (wErr) throw wErr
   const ids = (workouts ?? []).map(w => w.id)
-  if (ids.length === 0) return []
+  if (ids.length === 0) return { templateIds: [], workoutCount: 0 }
 
   const { data: exercises, error: eErr } = await supabase
     .from('hevy_workout_exercises')
     .select('exercise_template_id')
     .in('hevy_workout_id', ids)
   if (eErr) throw eErr
-  return (exercises ?? []).map(e => e.exercise_template_id).filter(Boolean)
+  return {
+    templateIds:  (exercises ?? []).map(e => e.exercise_template_id).filter(Boolean),
+    workoutCount: ids.length,
+  }
 }
 
 export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | null> {
