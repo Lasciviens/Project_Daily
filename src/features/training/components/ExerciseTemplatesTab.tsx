@@ -39,9 +39,9 @@ function TypeChip({ type }: { type: string }) {
 function TemplateCard({ t }: { t: HevyExerciseTemplate }) {
   const muscles = t.secondary_muscle_groups ?? []
   return (
-    <div className="break-inside-avoid mb-2 flex flex-col gap-1.5 p-3 bg-cream-50 border border-ink-100 rounded-xl hover:border-accent-300 hover:shadow-sm transition-all">
-      <div className="flex items-start gap-2">
-        <ExerciseThumb title={t.title} />
+    <div className="flex flex-col gap-2 p-3.5 bg-cream-50 border border-ink-100 rounded-xl hover:border-accent-300 hover:shadow-sm transition-all">
+      <div className="flex items-start gap-2.5">
+        <ExerciseThumb title={t.title} size={64} />
         <div className="flex-1 min-w-0 flex items-start justify-between gap-2">
           <span className="text-sm font-semibold text-ink-800 leading-snug">{t.title}</span>
           <TypeChip type={t.type} />
@@ -86,7 +86,7 @@ function MuscleGroup({ name, templates, forceOpen }: { name: string; templates: 
         <span className="text-ink-400 text-xs">{isOpen ? '▲' : '▼'}</span>
       </button>
       {isOpen && (
-        <div className="p-2.5 columns-1 sm:columns-2 gap-2 bg-cream-50 border-t border-ink-100">
+        <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 bg-cream-50 border-t border-ink-100">
           {templates.map(t => (
             <TemplateCard key={t.id} t={t} />
           ))}

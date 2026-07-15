@@ -71,6 +71,51 @@ export async function fetchWorkoutExerciseTemplateIds(fromISO: string, toISO: st
   }
 }
 
+export interface WorkoutWithTemplates {
+  id:          string
+  date:        string        // ISO — the workout's effective date (start_time ?? hevy_created_at)
+  title:       string | null
+  templateIds: string[]
+}
+
+// Per-workout exercise template ids over a date range (effective date = start_time
+// with hevy_created_at fallback), for building per-muscle training history / the
+// "last trained this muscle" line. Ordered newest-first.
+export async function fetchWorkoutsWithTemplateIds(fromISO: string, toISO: string): Promise<WorkoutWithTemplates[]> {
+  const inRange = `and(start_time.gte.${fromISO},start_time.lte.${toISO})`
+  const nullFallback = `and(start_time.is.null,hevy_created_at.gte.${fromISO},hevy_created_at.lte.${toISO})`
+
+  const { data: workouts, error: wErr } = await supabase
+    .from('hevy_workouts')
+    .select('id, title, start_time, hevy_created_at')
+    .or(`${inRange},${nullFallback}`)
+  if (wErr) throw wErr
+  if (!workouts?.length) return []
+
+  const { data: exercises, error: eErr } = await supabase
+    .from('hevy_workout_exercises')
+    .select('hevy_workout_id, exercise_template_id')
+    .in('hevy_workout_id', workouts.map(w => w.id))
+  if (eErr) throw eErr
+
+  const byWorkout = new Map<string, string[]>()
+  for (const e of (exercises ?? []) as { hevy_workout_id: string; exercise_template_id: string }[]) {
+    if (!e.exercise_template_id) continue
+    const bucket = byWorkout.get(e.hevy_workout_id) ?? []
+    bucket.push(e.exercise_template_id)
+    byWorkout.set(e.hevy_workout_id, bucket)
+  }
+
+  return (workouts as { id: string; title: string | null; start_time: string | null; hevy_created_at: string }[])
+    .map(w => ({
+      id:          w.id,
+      date:        w.start_time ?? w.hevy_created_at,
+      title:       w.title,
+      templateIds: byWorkout.get(w.id) ?? [],
+    }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+}
+
 export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | null> {
   const { data: workout, error: workoutErr } = await supabase
     .from('hevy_workouts')
