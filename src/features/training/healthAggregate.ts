@@ -157,10 +157,26 @@ export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
 
     const preAggregated = sourcePts.filter(p => typeof p.value?.totalSleep === 'number')
     if (preAggregated.length > 0) {
-      const latest = [...preAggregated].sort((a, b) => a.recorded_at.localeCompare(b.recorded_at)).pop()!
-      const v = latest.value
-      const core = v.core ?? 0, rem = v.rem ?? 0, deep = v.deep ?? 0, awake = v.awake ?? 0
-      result.push({ date, core, rem, deep, awake, total: v.totalSleep ?? (core + rem + deep) })
+      // SUM every pre-aggregated session for the night, not just the latest —
+      // a night can have more than one sleep session (e.g. a main sleep + a
+      // nap, or an interrupted night), and they arrive as separate points.
+      // Taking only the latest silently dropped the others (confirmed against
+      // live data: iPhone showed 7h37m while we showed only the 6.4h session).
+      // Dedup by the session's own start (`sleepStart`): the ingestion fix
+      // re-keys sleep rows by sleepStart, so after a re-export the same session
+      // can exist under both the old midnight key and the new sleepStart key —
+      // counting it once keeps the total correct without a destructive cleanup.
+      let core = 0, rem = 0, deep = 0, awake = 0, total = 0
+      const seenSessions = new Set<string>()
+      for (const p of preAggregated) {
+        const v = p.value
+        const sessionKey = (typeof v?.sleepStart === 'string' ? v.sleepStart : null) ?? p.recorded_at
+        if (seenSessions.has(sessionKey)) continue
+        seenSessions.add(sessionKey)
+        core += v.core ?? 0; rem += v.rem ?? 0; deep += v.deep ?? 0; awake += v.awake ?? 0
+        total += v.totalSleep ?? ((v.core ?? 0) + (v.rem ?? 0) + (v.deep ?? 0))
+      }
+      result.push({ date, core, rem, deep, awake, total })
       continue
     }
 
