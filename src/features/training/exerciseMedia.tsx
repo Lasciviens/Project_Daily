@@ -69,7 +69,9 @@ function useExerciseImageDb() {
     queryFn: async (): Promise<IndexedExercise[]> => {
       const res = await fetch(MANIFEST_URL)
       if (!res.ok) throw new Error(`exercise-gif-db ${res.status}`)
-      const raw: RawExercise[] = await res.json()
+      // Manifest is { count, exercises: [...] } — not a bare array.
+      const json = await res.json()
+      const raw: RawExercise[] = Array.isArray(json) ? json : (json.exercises ?? [])
       return raw
         .filter(e => e.gifUrl)
         .map(e => ({
