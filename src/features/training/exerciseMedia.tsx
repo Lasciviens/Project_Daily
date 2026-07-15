@@ -1,26 +1,40 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Exercise demo images — TEST integration.
-//  Source: yuhonas/free-exercise-db — public-domain (Unlicense) dataset of ~873
-//  exercises with static demo photos, served CORS-open from jsDelivr (no API
-//  key, no proxy, works from a static GitHub Pages client). Hevy exercise names
-//  ("Bench Press (Barbell)") don't match the dataset's names
-//  ("Barbell Bench Press - Medium Grip") exactly, so we fuzzy-match at runtime:
-//  normalize → token-overlap (Jaccard) + an equipment-hint bonus, best match
-//  above a threshold, else null (graceful no-image fallback — never a broken img).
+//  Exercise demo GIFs.
+//  Source: JahelCuadrado/ExerciseGymGifsDB — 1323 animated exercise GIFs with a
+//  clean JSON manifest, served CORS-open from jsDelivr (no API key, no proxy,
+//  works from a static GitHub Pages client). Hevy exercise names
+//  ("Bench Press (Barbell)") don't match the dataset's ("Barbell Bench Press")
+//  exactly, so we fuzzy-match at runtime: normalize → token-overlap (Jaccard) +
+//  an equipment-hint bonus, best match above a threshold, else null (graceful
+//  fallback — never a broken img). Each card shows a small looping thumbnail;
+//  tapping it opens a larger view with the movement instructions.
 //
-//  This is a lightweight test (runtime match, no DB). If we keep it, the durable
-//  version bakes the matched slug onto hevy_exercise_templates so runtime is a
-//  pure lookup (see the research notes / a future migration).
+//  SELF-HOST PATH: the dataset's own gifUrl is used as-is, so every GIF URL is
+//  anchored to `GIF_SOURCE`. To move off the public CDN onto our own Supabase
+//  Storage later, mirror the repo's gifs into a bucket and rewrite `gifUrl` (or
+//  swap `GIF_SOURCE`) — the matching/UI code below doesn't change.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DATA_URL = 'https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/dist/exercises.json'
-const IMG_BASE = 'https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/exercises'
+const GIF_SOURCE = 'https://cdn.jsdelivr.net/gh/JahelCuadrado/ExerciseGymGifsDB@v1.1.0'
+const MANIFEST_URL = `${GIF_SOURCE}/api/en/exercises.json`
 
-interface RawExercise { id: string; name: string; equipment: string | null; images: string[] }
-interface IndexedExercise { id: string; tokens: Set<string>; equipment: string | null }
+interface RawExercise {
+  name: string
+  equipment: string | null
+  gifUrl: string
+  instructions?: string[]
+}
+interface IndexedExercise {
+  name: string
+  tokens: Set<string>
+  equipment: string | null
+  gifUrl: string
+  instructions: string[]
+}
 
 // Tokens that add noise rather than identity when matching exercise names.
 const NOISE = new Set([
@@ -51,14 +65,20 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 // Fetched + indexed once, cached forever (the dataset is static).
 function useExerciseImageDb() {
   return useQuery({
-    queryKey: ['exercise-image-db'],
+    queryKey: ['exercise-gif-db'],
     queryFn: async (): Promise<IndexedExercise[]> => {
-      const res = await fetch(DATA_URL)
-      if (!res.ok) throw new Error(`exercise-db ${res.status}`)
+      const res = await fetch(MANIFEST_URL)
+      if (!res.ok) throw new Error(`exercise-gif-db ${res.status}`)
       const raw: RawExercise[] = await res.json()
       return raw
-        .filter(e => e.images?.length)
-        .map(e => ({ id: e.id, equipment: e.equipment, tokens: normalizeTokens(e.name).tokens }))
+        .filter(e => e.gifUrl)
+        .map(e => ({
+          name: e.name,
+          tokens: normalizeTokens(e.name).tokens,
+          equipment: e.equipment,
+          gifUrl: e.gifUrl,
+          instructions: e.instructions ?? [],
+        }))
     },
     staleTime: Infinity,
     gcTime: Infinity,
@@ -66,37 +86,83 @@ function useExerciseImageDb() {
   })
 }
 
-function matchExerciseImage(hevyTitle: string, db: IndexedExercise[]): string | null {
+function matchExercise(hevyTitle: string, db: IndexedExercise[]): IndexedExercise | null {
   const { tokens, equip } = normalizeTokens(hevyTitle)
   if (tokens.size === 0) return null
-  let best: { id: string; s: number } | null = null
+  let best: { ex: IndexedExercise; s: number } | null = null
   for (const ex of db) {
     let s = jaccard(tokens, ex.tokens)
     if (equip && ex.equipment === equip) s += 0.15
-    if (!best || s > best.s) best = { id: ex.id, s }
+    if (!best || s > best.s) best = { ex, s }
   }
   if (!best || best.s < 0.5) return null
-  return `${IMG_BASE}/${best.id}/0.jpg`
+  return best.ex
 }
 
 /**
- * Small demo thumbnail for an exercise, matched by name to free-exercise-db.
- * Renders nothing on no-match or image error (graceful — never a broken box).
+ * Looping demo GIF thumbnail for an exercise, matched by name to
+ * ExerciseGymGifsDB. Tapping opens a larger view with the instructions.
+ * Renders nothing on no-match or load error (graceful — never a broken box).
  */
-export function ExerciseThumb({ title, size = 44 }: { title: string; size?: number }) {
+export function ExerciseThumb({ title, size = 48 }: { title: string; size?: number }) {
   const { data: db } = useExerciseImageDb()
   const [failed, setFailed] = useState(false)
-  const url = useMemo(() => (db ? matchExerciseImage(title, db) : null), [title, db])
+  const [open, setOpen] = useState(false)
+  const match = useMemo(() => (db ? matchExercise(title, db) : null), [title, db])
 
-  if (!url || failed) return null
+  if (!match || failed) return null
+
   return (
-    <img
-      src={url}
-      alt=""
-      loading="lazy"
-      onError={() => setFailed(true)}
-      style={{ width: size, height: size }}
-      className="rounded-lg object-cover border border-ink-200 bg-cream-100 shrink-0"
-    />
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="shrink-0 rounded-lg overflow-hidden border border-ink-200 bg-cream-100 focus:outline-none focus:ring-2 focus:ring-accent-400"
+        style={{ width: size, height: size }}
+        aria-label={`Show ${title} demo`}
+      >
+        <img
+          src={match.gifUrl}
+          alt=""
+          loading="lazy"
+          onError={() => setFailed(true)}
+          className="w-full h-full object-cover"
+        />
+      </button>
+
+      <Dialog open={open} onClose={() => setOpen(false)} className="relative z-[70]">
+        <DialogBackdrop transition className="fixed inset-0 bg-ink-900/50 transition duration-200 data-[closed]:opacity-0" />
+        <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <DialogPanel transition className="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-cream-50">
+              <h3 className="text-sm font-semibold text-ink-800 truncate pr-2">{title}</h3>
+              <button
+                onClick={() => setOpen(false)}
+                className="w-9 h-9 flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none shrink-0"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 flex flex-col gap-3">
+              <img
+                src={match.gifUrl}
+                alt={title}
+                className="w-full rounded-xl border border-ink-100 bg-cream-100"
+              />
+              {match.name.toLowerCase() !== title.toLowerCase() && (
+                <p className="text-[11px] text-ink-400">Demo: {match.name}</p>
+              )}
+              {match.instructions.length > 0 && (
+                <ol className="flex flex-col gap-1.5 list-decimal list-inside">
+                  {match.instructions.map((step, i) => (
+                    <li key={i} className="text-xs text-ink-600 leading-relaxed">{step}</li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </DialogPanel>
+        </div>
+      </Dialog>
+    </>
   )
 }
