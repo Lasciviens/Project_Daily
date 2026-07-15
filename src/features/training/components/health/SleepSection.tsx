@@ -134,9 +134,16 @@ export function SleepSection() {
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
       <div>
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 Last Night's Sleep</p>
-        <p className="text-3xl font-bold text-ink-900 leading-tight">
-          {isLoading ? '…' : last ? fmtHrs(last.total) : '—'}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-3xl font-bold text-ink-900 leading-tight">
+            {isLoading ? '…' : last ? fmtHrs(last.total) : '—'}
+          </p>
+          {last && (sourcesByDate.get(last.date)?.has('Manual') ?? false) && (
+            <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5">
+              Manual
+            </span>
+          )}
+        </div>
       </div>
 
       {showManualForm && (
