@@ -100,6 +100,7 @@ export function SleepSection() {
   const [manualDate, setManualDate] = useState(daysAgoStr(1))
   const [manualHours, setManualHours] = useState('')
   const [isCorrectingExisting, setIsCorrectingExisting] = useState(false)
+  const [showRaw, setShowRaw] = useState(false)
 
   // Existing manual total for a date, if any — read from whatever's already
   // loaded for the currently-displayed range (the clicked bar is always
@@ -254,6 +255,47 @@ export function SleepSection() {
       </div>
 
       <MetricMiniGrid title="Sleep Extras" metrics={SLEEP_EXTRA_METRICS} />
+
+      {/* Raw incoming rows — the actual health_metrics stored for this range,
+          so what the webhook received can be inspected directly (each value is
+          the raw exported point). Handy for spotting missing/collided sessions
+          vs what iPhone Health shows. */}
+      <div className="border-t border-ink-100 pt-2">
+        <button
+          type="button"
+          onClick={() => setShowRaw(v => !v)}
+          className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[28px]"
+        >
+          {showRaw ? '▲ Hide raw data' : `🔍 Raw data (${points.length} rows)`}
+        </button>
+        {showRaw && (
+          <div className="mt-1 max-h-64 overflow-y-auto flex flex-col gap-1">
+            {[...points]
+              .sort((a, b) => (a.recorded_at < b.recorded_at ? 1 : -1))
+              .map((p, i) => {
+                const v = p.value as Record<string, unknown>
+                const isSession = typeof v?.totalSleep === 'number'
+                const hhmm = (s: unknown) => (typeof s === 'string' && s.length >= 16 ? s.slice(11, 16) : '?')
+                return (
+                  <div key={i} className="text-[10px] font-mono bg-cream-100 rounded px-2 py-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                    <span className="text-ink-500">{p.date}</span>
+                    <span className={p.source === 'manual' ? 'text-indigo-600 font-semibold' : 'text-ink-400'}>{p.source || '—'}</span>
+                    {isSession ? (
+                      <>
+                        <span className="text-ink-700">{hhmm(v.sleepStart)}→{hhmm(v.sleepEnd)}</span>
+                        <span className="text-ink-900 font-semibold">{Number(v.totalSleep).toFixed(2)}h</span>
+                        <span className="text-ink-400">C{Number(v.core ?? 0).toFixed(1)} R{Number(v.rem ?? 0).toFixed(1)} D{Number(v.deep ?? 0).toFixed(1)} A{Number(v.awake ?? 0).toFixed(1)}</span>
+                      </>
+                    ) : (
+                      <span className="text-ink-700">{String(v?.value ?? '?')} {typeof v?.qty === 'number' ? `${v.qty.toFixed(2)}h` : ''}</span>
+                    )}
+                  </div>
+                )
+              })}
+            {points.length === 0 && <p className="text-[11px] text-ink-400">No rows in this range.</p>}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
