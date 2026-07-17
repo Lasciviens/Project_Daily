@@ -116,6 +116,69 @@ export async function fetchWorkoutsWithTemplateIds(fromISO: string, toISO: strin
     .sort((a, b) => (a.date < b.date ? 1 : -1))
 }
 
+export interface ExerciseVolumeRow {
+  templateId:  string
+  workoutId:   string
+  workoutDate: string   // ISO — effective date (start_time ?? hevy_created_at)
+  workingSets: number   // sets with type !== 'warmup'
+}
+
+// Per-exercise WORKING-set counts over a date range, for the volume-based muscle
+// map. Effective date = start_time (hevy_created_at fallback). Paginated on the
+// sets read so a long window with many sets is never silently truncated at the
+// 1000-row PostgREST cap.
+export async function fetchMuscleVolume(fromISO: string, toISO: string): Promise<ExerciseVolumeRow[]> {
+  const inRange = `and(start_time.gte.${fromISO},start_time.lte.${toISO})`
+  const nullFallback = `and(start_time.is.null,hevy_created_at.gte.${fromISO},hevy_created_at.lte.${toISO})`
+
+  const { data: workouts, error: wErr } = await supabase
+    .from('hevy_workouts')
+    .select('id, start_time, hevy_created_at')
+    .or(`${inRange},${nullFallback}`)
+  if (wErr) throw wErr
+  if (!workouts?.length) return []
+  const dateByWorkout = new Map<string, string>()
+  for (const w of workouts as { id: string; start_time: string | null; hevy_created_at: string }[]) {
+    dateByWorkout.set(w.id, w.start_time ?? w.hevy_created_at)
+  }
+
+  const { data: exercises, error: eErr } = await supabase
+    .from('hevy_workout_exercises')
+    .select('id, hevy_workout_id, exercise_template_id')
+    .in('hevy_workout_id', [...dateByWorkout.keys()])
+  if (eErr) throw eErr
+  if (!exercises?.length) return []
+  const exRows = exercises as { id: string; hevy_workout_id: string; exercise_template_id: string }[]
+  const exIds = exRows.map(e => e.id)
+
+  // Count working sets per exercise, paginated.
+  const workingByExercise = new Map<string, number>()
+  const PAGE = 1000
+  for (let offset = 0; ; offset += PAGE) {
+    const { data: sets, error: sErr } = await supabase
+      .from('hevy_sets')
+      .select('hevy_exercise_id, type')
+      .in('hevy_exercise_id', exIds)
+      .range(offset, offset + PAGE - 1)
+    if (sErr) throw sErr
+    const page = (sets ?? []) as { hevy_exercise_id: string; type: string | null }[]
+    for (const s of page) {
+      if (s.type === 'warmup') continue
+      workingByExercise.set(s.hevy_exercise_id, (workingByExercise.get(s.hevy_exercise_id) ?? 0) + 1)
+    }
+    if (page.length < PAGE) break
+  }
+
+  return exRows
+    .map(e => ({
+      templateId:  e.exercise_template_id,
+      workoutId:   e.hevy_workout_id,
+      workoutDate: dateByWorkout.get(e.hevy_workout_id) ?? '',
+      workingSets: workingByExercise.get(e.id) ?? 0,
+    }))
+    .filter(r => r.templateId)
+}
+
 export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | null> {
   const { data: workout, error: workoutErr } = await supabase
     .from('hevy_workouts')
