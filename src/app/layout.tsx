@@ -200,13 +200,14 @@ function Nav() {
 
           <button
             onClick={toggleAI}
-            className={`min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 hidden sm:flex items-center ${
+            className={`min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 flex items-center flex-shrink-0 ${
               isAIOpen
                 ? 'bg-accent-50 text-accent-600'
                 : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
             }`}
           >
-            ✦ Ask AI
+            <span className="sm:hidden">✦</span>
+            <span className="hidden sm:inline">✦ Ask AI</span>
           </button>
 
           <button
