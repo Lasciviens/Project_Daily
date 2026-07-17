@@ -206,14 +206,17 @@ export interface AIResponse {
 // The 4-model fallback chain ai-proxy tries on 503 "high demand" — same list,
 // same order, kept here so the UI's model picker and the server never drift
 // apart. 'auto' isn't a real model id: it means "let the server's chain
-// decide", i.e. don't send a `model` field at all.
-export type AIModel = 'auto' | 'gemini-3.5-flash' | 'gemini-3-flash' | 'gemini-3.1-flash-lite' | 'gemini-3.1-pro'
+// decide", i.e. don't send a `model` field at all. Every id LIVE-VERIFIED
+// against the real API (2026-07-17) — two earlier guessed ids (gemini-3-flash,
+// gemini-3.1-pro) turned out not to exist and 404'd in production; use
+// ai-proxy's `listModels` debug branch before ever changing this list.
+export type AIModel = 'auto' | 'gemini-3.5-flash' | 'gemini-3.1-flash-lite' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite'
 export const AI_MODEL_OPTIONS: { id: AIModel; label: string; hint: string }[] = [
   { id: 'auto',                  label: 'Auto',            hint: 'Recommended — tries all models, fastest recovery from overload' },
   { id: 'gemini-3.5-flash',      label: '3.5 Flash',       hint: 'Default balance of speed/quality' },
-  { id: 'gemini-3-flash',        label: '3 Flash',         hint: 'Similar quality, separate capacity pool' },
   { id: 'gemini-3.1-flash-lite', label: '3.1 Flash-Lite',  hint: 'Fastest, lightest — best under heavy load' },
-  { id: 'gemini-3.1-pro',        label: '3.1 Pro',         hint: 'Highest quality, slower' },
+  { id: 'gemini-2.5-flash',      label: '2.5 Flash',       hint: 'Previous generation — stable, separate capacity pool' },
+  { id: 'gemini-2.5-flash-lite', label: '2.5 Flash-Lite',  hint: 'Lightest fallback — last resort under total overload' },
 ]
 
 // A Supabase FunctionsError's body isn't always valid JSON (e.g. an upstream
