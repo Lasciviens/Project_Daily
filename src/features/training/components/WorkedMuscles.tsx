@@ -8,8 +8,10 @@ import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { fetchMuscleVolume } from '../api/hevyApi'
 import {
   slugForHevyGroup, contribution, MUSCLE_LANDMARKS, BANDS_META, bandForWeeklySets,
-  UNTRAINED_COLOR, SIDE_SLUGS, labelForSlug,
+  UNTRAINED_COLOR, SIDE_SLUGS, labelForSlug, type MuscleRole,
 } from '../muscleMap'
+
+const ROLE_LABEL: Record<MuscleRole, string> = { primary: 'Primary', secondary: 'Secondary', tertiary: 'Tertiary' }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  "Worked muscles" — a stylised body coloured by weekly HARD-SET VOLUME per
@@ -26,7 +28,8 @@ const PERIODS: { id: Period; label: string; days: number }[] = [
   { id: '90d', label: '90 days', days: 90 },
 ]
 
-interface SlugAgg { credited: number; dates: Set<string>; exercises: Map<string, number> }
+interface ExerciseHit { sets: number; credited: number; role: MuscleRole }
+interface SlugAgg { credited: number; dates: Set<string>; exercises: Map<string, ExerciseHit> }
 
 function InfoBubble({ children }: { children: React.ReactNode }) {
   return (
@@ -39,6 +42,45 @@ function InfoBubble({ children }: { children: React.ReactNode }) {
       </PopoverPanel>
     </Popover>
   )
+}
+
+// A labelled dual-bar for a balance ratio — on its own row so the numbers never
+// collide (the old inline "Push : Pull 12.0 : 6.1" wrapped into itself).
+function RatioRow({ label, a, b, warn, verdict }: { label: string; a: number; b: number; warn: boolean; verdict: string }) {
+  const total = a + b || 1
+  const pa = Math.round((a / total) * 100)
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 text-[11px] mb-0.5">
+        <span className="text-ink-600">{label}</span>
+        <span className={warn ? 'text-amber-700 font-semibold' : 'text-ink-400'}>{a.toFixed(1)} vs {b.toFixed(1)} · {verdict}{warn ? ' ⚠' : ''}</span>
+      </div>
+      <div className="flex h-2 rounded-full overflow-hidden bg-ink-100">
+        <div style={{ width: `${pa}%`, backgroundColor: '#6366f1' }} />
+        <div style={{ width: `${100 - pa}%`, backgroundColor: '#f59e0b' }} />
+      </div>
+    </div>
+  )
+}
+
+// Plain-language "what does this mean / what to do", no MEV/MAV jargon in the
+// main text (that stays in the info bubble).
+function bandGuidance(band: number, L?: { mev: number; mav: number; mrv: number }): string {
+  if (!L) return ''
+  switch (band) {
+    case 1: return `Below the level needed even to hold this muscle. Aim for at least ${L.mev} sets a week to start growing it.`
+    case 2: return `Enough to maintain, but not to grow. Aim for ${L.mev}–${L.mav} sets a week to build it.`
+    case 3: return `In the growth sweet spot (${L.mev}–${L.mav} sets a week). Keep it here.`
+    case 4: return `High volume — near the most you can recover from (~${L.mrv}/week). Fine short-term; watch fatigue.`
+    case 5: return `Above what you can usually recover from (~${L.mrv}/week). Consider trimming a few sets.`
+    default: return 'Not trained in this period.'
+  }
+}
+
+const ROLE_BADGE: Record<MuscleRole, string> = {
+  primary:   'bg-accent-100 text-accent-700',
+  secondary: 'bg-cream-200 text-ink-500',
+  tertiary:  'bg-cream-100 text-ink-400',
 }
 
 export function WorkedMuscles() {
@@ -84,11 +126,14 @@ export function WorkedMuscles() {
   // Aggregate credited working sets per slug + which exercises/dates hit it.
   const { perSlug, unattributed, totalWorkingSets, workoutCount } = useMemo(() => {
     const acc: Record<string, SlugAgg> = {}
-    const add = (slug: string, credit: number, date: string, title: string, ws: number) => {
+    const add = (slug: string, credit: number, date: string, title: string, ws: number, role: MuscleRole) => {
       const e = acc[slug] ?? (acc[slug] = { credited: 0, dates: new Set(), exercises: new Map() })
       e.credited += credit
       if (date) e.dates.add(date.slice(0, 10))
-      e.exercises.set(title, (e.exercises.get(title) ?? 0) + ws)
+      const prev = e.exercises.get(title)
+      e.exercises.set(title, prev
+        ? { sets: prev.sets + ws, credited: prev.credited + credit, role: prev.role === 'primary' ? 'primary' : role }
+        : { sets: ws, credited: credit, role })
     }
     let unattributedSets = 0
     const unattributedTitles = new Set<string>()
@@ -100,13 +145,13 @@ export function WorkedMuscles() {
       workouts.add(row.workoutId)
       totalWorkingSets += row.workingSets
       if (t.primary) {
-        add(t.primary, row.workingSets * contribution(row.templateId, t.primary, 'primary'), row.workoutDate, t.title, row.workingSets)
+        add(t.primary, row.workingSets * contribution(row.templateId, t.primary, 'primary'), row.workoutDate, t.title, row.workingSets, 'primary')
       } else {
         unattributedSets += row.workingSets
         if (row.workingSets > 0) unattributedTitles.add(t.title)
       }
       for (const s of t.secondaries) {
-        add(s, row.workingSets * contribution(row.templateId, s, 'secondary'), row.workoutDate, t.title, row.workingSets)
+        add(s, row.workingSets * contribution(row.templateId, s, 'secondary'), row.workoutDate, t.title, row.workingSets, 'secondary')
       }
     }
     return {
@@ -288,104 +333,151 @@ export function WorkedMuscles() {
               : `No workouts logged in the last ${windowDays} days.`}
         </p>
 
-        {/* Under-dosed / over lists */}
-        {hasData && (underDosed.length > 0 || overMrv.length > 0) && (
-          <div className="flex flex-col gap-2">
-            {underDosed.length > 0 && (
-              <div className="text-xs">
-                <span className="font-semibold text-blue-600">⚠ Under target (below MEV): </span>
-                <span className="text-ink-600">{underDosed.map(u => `${labelForSlug(u.slug)} (${u.wk.toFixed(1)})`).join(' · ')}</span>
-              </div>
-            )}
-            {overMrv.length > 0 && (
-              <div className="text-xs">
-                <span className="font-semibold text-red-600">🔺 Over MRV: </span>
-                <span className="text-ink-600">{overMrv.map(u => `${labelForSlug(u.slug)} (${u.wk.toFixed(1)})`).join(' · ')}</span>
-              </div>
-            )}
-          </div>
-        )}
+        {/* ── GENERAL OVERVIEW (muted card — deliberately distinct from the
+              prominent selected-muscle card below) ─────────────────────────── */}
+        {hasData && (
+          <div className="rounded-xl border border-ink-100 bg-cream-100/40 p-3.5 flex flex-col gap-3.5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">Overview · last {windowDays} days</p>
 
-        {/* Balance ratios */}
-        {hasData && (balance.pushPull != null || balance.quadHam != null) && (
-          <div className="flex flex-wrap gap-3 text-xs">
-            {balance.pushPull != null && (
-              <span className={`px-2.5 py-1 rounded-lg ${balance.pushPull < 0.8 || balance.pushPull > 1.25 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-cream-100 text-ink-600'}`}>
-                Push : Pull {balance.push.toFixed(1)} : {balance.pull.toFixed(1)}
-                {(balance.pushPull < 0.8 || balance.pushPull > 1.25) && ' ⚠'}
-              </span>
+            {(balance.pushPull != null || balance.quadHam != null) && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-semibold text-ink-600 flex items-center gap-1">
+                  Muscle balance
+                  <InfoBubble><p><strong>Push</strong> = chest, shoulders, triceps. <strong>Pull</strong> = back, biceps, traps. Keeping push/pull and quads/hamstrings roughly even lowers injury risk and avoids lagging areas.</p></InfoBubble>
+                </p>
+                {balance.pushPull != null && (
+                  <RatioRow label="Push vs Pull" a={balance.push} b={balance.pull}
+                    warn={balance.pushPull < 0.8 || balance.pushPull > 1.25}
+                    verdict={balance.pushPull > 1.25 ? 'push-heavy' : balance.pushPull < 0.8 ? 'pull-heavy' : 'balanced'} />
+                )}
+                {balance.quadHam != null && (
+                  <RatioRow label="Quads vs Hamstrings" a={balance.quad} b={balance.ham}
+                    warn={balance.quadHam > 1.5}
+                    verdict={balance.quadHam > 1.5 ? 'quad-dominant' : 'balanced'} />
+                )}
+              </div>
             )}
-            {balance.quadHam != null && (
-              <span className={`px-2.5 py-1 rounded-lg ${balance.quadHam > 1.5 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-cream-100 text-ink-600'}`}>
-                Quad : Ham {balance.quad.toFixed(1)} : {balance.ham.toFixed(1)}
-                {balance.quadHam > 1.5 && ' ⚠'}
-              </span>
+
+            {underDosed.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-blue-600 flex items-center gap-1 mb-1.5">
+                  Below growth level — add sets
+                  <InfoBubble><p>These muscles are getting fewer weekly sets than the minimum shown to build muscle. To grow them, add working sets across the week. Tap one for its target range.</p></InfoBubble>
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {underDosed.map(u => (
+                    <button key={u.slug} onClick={() => toggle(u.slug as Slug)}
+                      className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 hover:border-blue-300 transition-colors">
+                      {labelForSlug(u.slug)} · {u.wk.toFixed(1)}/wk
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {overMrv.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-red-600 flex items-center gap-1 mb-1.5">
+                  Too much — consider easing off
+                  <InfoBubble><p>These are above the volume you can usually recover from. Extra sets here may just add fatigue / injury risk rather than more growth.</p></InfoBubble>
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {overMrv.map(u => (
+                    <button key={u.slug} onClick={() => toggle(u.slug as Slug)}
+                      className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-100 hover:border-red-300 transition-colors">
+                      {labelForSlug(u.slug)} · {u.wk.toFixed(1)}/wk
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}
 
         {/* Chips for current side */}
         {sideChips.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {sideChips.map(m => (
-              <button key={m.slug} onClick={() => toggle(m.slug)}
-                className={`px-3 min-h-[32px] rounded-full text-xs font-medium transition-colors border flex items-center gap-1.5 ${selected.has(m.slug) ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'}`}>
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: BANDS_META[m.band].color }} />
-                {labelForSlug(m.slug)} · {m.wk.toFixed(1)}/wk
-              </button>
-            ))}
+          <div>
+            <p className="text-[11px] text-ink-400 mb-1.5">{side === 'front' ? 'Front' : 'Back'} muscles · tap to focus</p>
+            <div className="flex flex-wrap gap-1.5">
+              {sideChips.map(m => (
+                <button key={m.slug} onClick={() => toggle(m.slug)}
+                  className={`px-3 min-h-[32px] rounded-full text-xs font-medium transition-colors border flex items-center gap-1.5 ${selected.has(m.slug) ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'}`}>
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: BANDS_META[m.band].color }} />
+                  {labelForSlug(m.slug)} · {m.wk.toFixed(1)}/wk
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Selected-muscle detail */}
+        {/* ── SELECTED MUSCLE (prominent, band-coloured — clearly the focus) ── */}
         {selected.size > 0 ? (
           <div className="flex flex-col gap-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">Selected muscle{selected.size > 1 ? 's' : ''}</p>
             {[...selected].map(slug => {
               const agg = perSlug[slug]
               const wk = (agg?.credited ?? 0) / weeks
               const band = bandForWeeklySets(slug, wk)
               const meta = BANDS_META[band]
               const L = MUSCLE_LANDMARKS[slug]
-              const exercises = agg ? [...agg.exercises.entries()].sort((a, b) => b[1] - a[1]) : []
+              const exercises = agg ? [...agg.exercises.entries()].sort((a, b) => b[1].credited - a[1].credited) : []
               const dates = agg ? [...agg.dates].sort((a, b) => (a < b ? 1 : -1)) : []
               return (
-                <div key={slug} className="rounded-xl border border-ink-200 bg-cream-50 p-4">
-                  <div className="flex items-baseline justify-between gap-2 mb-1">
-                    <p className="text-base font-semibold text-ink-800">{labelForSlug(slug)}</p>
-                    <p className="text-sm font-bold" style={{ color: meta.color }}>{wk.toFixed(1)} sets/wk</p>
-                  </div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: meta.color + '22', color: meta.color }}>{meta.label}</span>
-                    {L && <span className="text-[11px] text-ink-400">target {L.mev}–{L.mav}/wk (MEV–MAV)</span>}
-                    <InfoBubble>{meta.desc}{L && <><br /><br />MEV {L.mev} · MAV {L.mav} · MRV {L.mrv} sets/wk.</>}</InfoBubble>
-                  </div>
-
-                  {exercises.length > 0 && (
-                    <>
-                      <p className="text-[11px] uppercase tracking-wide text-ink-400 mb-1">Exercises (working sets)</p>
-                      <ul className="flex flex-col gap-1 mb-3">
-                        {exercises.map(([name, s]) => (
-                          <li key={name} className="flex items-center justify-between gap-2 text-sm">
-                            <span className="text-ink-700 truncate">{name}</span>
-                            <span className="text-ink-400 shrink-0">{s} set{s !== 1 ? 's' : ''}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-
-                  <p className="text-[11px] uppercase tracking-wide text-ink-400 mb-1">
-                    Trained {dates.length} day{dates.length !== 1 ? 's' : ''}
-                    {dates[0] && <span className="normal-case"> · last {formatDistanceToNow(new Date(dates[0]), { addSuffix: true })}</span>}
-                  </p>
-                  {dates.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {dates.slice(0, 12).map((d, i) => (
-                        <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-cream-100 text-ink-600">{format(new Date(d), 'd MMM')}</span>
-                      ))}
-                      {dates.length > 12 && <span className="text-[11px] text-ink-400 px-1 py-0.5">+{dates.length - 12}</span>}
+                <div key={slug} className="rounded-2xl border-2 bg-cream-50 overflow-hidden shadow-sm" style={{ borderColor: meta.color }}>
+                  {/* Header — band colour, big number */}
+                  <div className="px-4 py-3 flex items-center justify-between gap-2" style={{ backgroundColor: meta.color + '1f' }}>
+                    <div className="min-w-0">
+                      <p className="text-lg font-bold text-ink-900 leading-tight">{labelForSlug(slug)}</p>
+                      <span className="text-xs font-semibold" style={{ color: meta.color }}>{meta.label}</span>
                     </div>
-                  )}
+                    <div className="text-right shrink-0">
+                      <p className="text-2xl font-bold leading-none" style={{ color: meta.color }}>{wk.toFixed(1)}</p>
+                      <p className="text-[10px] text-ink-400 mt-0.5">sets / week</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 flex flex-col gap-3">
+                    {/* Plain-language guidance */}
+                    <p className="text-sm text-ink-600 flex items-start gap-1">
+                      <span>{bandGuidance(band, L)}</span>
+                      <InfoBubble>{meta.desc}{L && <><br /><br />Weekly-set landmarks — maintain {L.mv} · start growing (MEV) {L.mev} · best range up to (MAV) {L.mav} · ceiling (MRV) {L.mrv}.</>}</InfoBubble>
+                    </p>
+
+                    {exercises.length > 0 && (
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-ink-400 mb-1.5 flex items-center gap-1">
+                          Which exercises trained it
+                          <InfoBubble><p><strong>Primary</strong> = this is the exercise's main target (counts as a full set). <strong>Secondary</strong> = it's a helper/synergist here (counts as half a set). Later we'll store an exact % per exercise.</p></InfoBubble>
+                        </p>
+                        <ul className="flex flex-col gap-1.5">
+                          {exercises.map(([name, hit]) => (
+                            <li key={name} className="flex items-center justify-between gap-2 text-sm">
+                              <span className="flex items-center gap-1.5 min-w-0">
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${ROLE_BADGE[hit.role]}`}>{ROLE_LABEL[hit.role]}</span>
+                                <span className="text-ink-700 truncate">{name}</span>
+                              </span>
+                              <span className="text-ink-400 shrink-0">{hit.sets} set{hit.sets !== 1 ? 's' : ''}{hit.role !== 'primary' ? ` · ${hit.credited.toFixed(1)} credited` : ''}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-ink-400 mb-1">
+                        Trained {dates.length} day{dates.length !== 1 ? 's' : ''}
+                        {dates[0] && <span className="normal-case"> · last {formatDistanceToNow(new Date(dates[0]), { addSuffix: true })}</span>}
+                      </p>
+                      {dates.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {dates.slice(0, 12).map((d, i) => (
+                            <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-cream-100 text-ink-600">{format(new Date(d), 'd MMM')}</span>
+                          ))}
+                          {dates.length > 12 && <span className="text-[11px] text-ink-400 px-1 py-0.5">+{dates.length - 12}</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )
             })}
@@ -393,7 +485,7 @@ export function WorkedMuscles() {
         ) : (
           <p className="text-sm text-ink-400 py-1">
             {hasData
-              ? 'Tap a muscle (on the body or a chip) for its weekly volume, target range, exercises and training days.'
+              ? 'Tap a muscle (on the body or a chip) to see, in plain terms, whether you\'re training it enough — plus which exercises hit it and when.'
               : 'Log a workout and sync — your muscle volume lights up here.'}
           </p>
         )}
