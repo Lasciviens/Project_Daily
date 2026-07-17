@@ -295,8 +295,10 @@ export async function fetchStopDirections(stopId: string): Promise<QuayDirection
     if (!byQuay.has(quay.id)) {
       byQuay.set(quay.id, {
         quayId:       quay.id,
-        publicCode:   quay.publicCode ?? null,
-        description:  quay.description ?? null,
+        // `|| null`: publicCode arrives as an empty string (not null) at
+        // roadside stops — normalize so label logic treats it as absent.
+        publicCode:   quay.publicCode || null,
+        description:  quay.description || null,
         destinations: frontText ? [frontText] : [],
         lines:        lineCode ? [lineCode] : [],
       })
@@ -370,9 +372,12 @@ export async function fetchDepartures(
       expected:          c.expectedDepartureTime,
       realtime:          c.realtime,
       quayId:            c.quay?.id,
-      quayCode:          c.quay?.publicCode,
-      quayName:          c.quay?.name,
-      quayDescription:   c.quay?.description,
+      // `|| undefined`: EnTur returns publicCode as an EMPTY STRING (not null)
+      // at plain roadside stops (verified live at Visperud) — let that leak
+      // through and every "is there a code?" check downstream misbehaves.
+      quayCode:          c.quay?.publicCode || undefined,
+      quayName:          c.quay?.name || undefined,
+      quayDescription:   c.quay?.description || undefined,
       lineColour:        c.serviceJourney.line.presentation?.colour,
       lineTextColour:    c.serviceJourney.line.presentation?.textColour,
       situations:        mapSituations(c.serviceJourney.line.situations),
