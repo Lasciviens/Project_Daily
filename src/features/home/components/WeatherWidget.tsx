@@ -1,23 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchWeather, weatherIcon, weatherLabel } from '../api/weatherApi'
+import { useGeolocation } from '../hooks/useGeolocation'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
-
-const OSLO = { lat: 59.9139, lon: 10.7522 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function WeatherWidget() {
   // Weather changes slowly — 10m default is fine; 30m is also acceptable
   const ws = useWidgetState('weather', { collapsed: false, intervalMs: 10 * 60_000 })
+  const { data: geo } = useGeolocation()
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['weather', 'oslo'],
-    queryFn:  () => fetchWeather(OSLO.lat, OSLO.lon),
+    queryKey: ['weather', geo?.lat, geo?.lon],
+    queryFn:  () => fetchWeather(geo!.lat, geo!.lon),
     staleTime: ws.intervalMs,
     // Disable refetch entirely when collapsed or sync is paused
     refetchInterval: !ws.collapsed && ws.syncActive ? ws.intervalMs : false,
-    enabled: !ws.collapsed,
+    enabled: !ws.collapsed && !!geo,
   })
 
   function handleManualSync() {
@@ -26,7 +26,7 @@ export function WeatherWidget() {
   }
 
   return (
-    <WidgetShell title="Oslo Weather" ws={ws} onManualSync={handleManualSync}>
+    <WidgetShell title="Weather" ws={ws} onManualSync={handleManualSync}>
       {isLoading && (
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-full bg-cream-200 animate-pulse flex-shrink-0" />
@@ -38,17 +38,23 @@ export function WeatherWidget() {
       )}
       {error    && <div className="text-ink-400 text-sm">Unavailable</div>}
 
+      {geo?.source === 'default' && (
+        <p className="text-[10px] text-ink-300 mb-2">
+          📍 Using Oslo (location unavailable) — allow location access for your local forecast
+        </p>
+      )}
+
       {data && (
         <>
           {/* Current conditions */}
-          <div className="flex items-end gap-3 mb-4">
+          <div className="flex items-end gap-3 mb-3">
             <span className="text-5xl leading-none">{weatherIcon(data.current.symbol)}</span>
             <div>
               <div className="text-3xl font-bold text-ink-900">{data.current.temp}°C</div>
               <div className="text-sm text-ink-500">{weatherLabel(data.current.symbol)}</div>
             </div>
             <div className="ml-auto text-right text-xs text-ink-400 space-y-1">
-              <div>💨 {data.current.windSpeed} m/s</div>
+              <div>💨 {data.current.windSpeed} m/s {data.current.windDirection}</div>
               <div>💧 {data.current.humidity}%</div>
               {data.current.precip1h > 0 && (
                 <div>🌧 {data.current.precip1h.toFixed(1)} mm</div>
@@ -56,8 +62,23 @@ export function WeatherWidget() {
             </div>
           </div>
 
+          {/* Extra current-conditions detail — pressure + cloud cover, so the
+              widget carries as much at-a-glance weather info as the Transit
+              widget carries transit info. */}
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <div className="rounded-lg bg-cream-100 px-2.5 py-1.5 text-xs text-ink-500 flex items-center justify-between">
+              <span>Pressure</span>
+              <span className="font-semibold text-ink-800">{data.current.pressure} hPa</span>
+            </div>
+            <div className="rounded-lg bg-cream-100 px-2.5 py-1.5 text-xs text-ink-500 flex items-center justify-between">
+              <span>Cloud cover</span>
+              <span className="font-semibold text-ink-800">{data.current.cloudCover}%</span>
+            </div>
+          </div>
+
           {/* 12-hour hourly forecast */}
-          <div className="flex gap-3 overflow-x-auto pb-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Next hours</p>
+          <div className="flex gap-3 overflow-x-auto pb-1 mb-4">
             {data.hours.map((h, i) => (
               <div key={i} className="flex flex-col items-center gap-1 min-w-[44px]">
                 <span className="text-xs text-ink-400">{h.time}</span>
@@ -69,6 +90,24 @@ export function WeatherWidget() {
               </div>
             ))}
           </div>
+
+          {/* Daily forecast */}
+          {data.daily.length > 0 && (
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Next days</p>
+              <div className="grid grid-cols-5 gap-1.5">
+                {data.daily.map(d => (
+                  <div key={d.date} className="flex flex-col items-center gap-0.5 rounded-lg bg-cream-100 py-2 px-1">
+                    <span className="text-[10px] font-medium text-ink-500">{d.label}</span>
+                    <span className="text-xl">{weatherIcon(d.symbol)}</span>
+                    <span className="text-xs font-semibold text-ink-800">{d.max}°</span>
+                    <span className="text-[10px] text-ink-400">{d.min}°</span>
+                    {d.precip > 0 && <span className="text-[9px] text-blue-500">{d.precip.toFixed(1)}mm</span>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
     </WidgetShell>

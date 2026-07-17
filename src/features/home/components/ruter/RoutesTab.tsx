@@ -230,6 +230,16 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
 
   function swapStops() { setDraftFrom(draftTo); setDraftTo(draftFrom) }
 
+  // Every async action must give feedback on completion (CLAUDE.md) — the
+  // 'error' bucket (timeout / position unavailable) previously set state but
+  // rendered NO message anywhere, so a GPS timeout failed completely silently
+  // (only 'denied' had a visible message). A toast covers both branches.
+  function reportLocationError(err: GeolocationPositionError): 'denied' | 'error' {
+    if (err.code === 1) { toast.error('Location permission denied'); return 'denied' }
+    toast.error(err.code === 3 ? 'Getting your location timed out' : 'Could not get your location')
+    return 'error'
+  }
+
   async function planGpsToStop(stopId: string, stopName: string) {
     setFromLocState('loading')
     try {
@@ -243,8 +253,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
       })
       setShowSaveForm(false); setSaveMsg(null); setFormCollapsed(true)
     } catch (e) {
-      const err = e as GeolocationPositionError
-      setFromLocState(err.code === 1 ? 'denied' : 'error')
+      setFromLocState(reportLocationError(e as GeolocationPositionError))
     }
   }
 
@@ -256,8 +265,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
       const place = await getCurrentLocation()
       setPlace(place); setState('granted')
     } catch (e) {
-      const err = e as GeolocationPositionError
-      setState(err.code === 1 ? 'denied' : 'error')
+      setState(reportLocationError(e as GeolocationPositionError))
     }
   }
 

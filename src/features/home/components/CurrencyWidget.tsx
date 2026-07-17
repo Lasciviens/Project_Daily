@@ -11,7 +11,20 @@ type Mode = 'rates' | 'change' | 'convert'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FLAG: Record<string, string> = {
-  NOK: '🇳🇴', TRY: '🇹🇷', EUR: '🇪🇺', USD: '🇺🇸',
+  NOK: '🇳🇴', TRY: '🇹🇷', EUR: '🇪🇺', USD: '🇺🇸', XAU: '🥇',
+}
+
+function ChangeBadge({ pct }: { pct: number }) {
+  const up   = pct > 0
+  const flat = Math.abs(pct) < 0.01
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums ${
+      flat ? 'text-ink-400' : up ? 'text-green-600' : 'text-red-500'
+    }`}>
+      <span>{flat ? '─' : up ? '▲' : '▼'}</span>
+      <span>{flat ? '0.00%' : `${Math.abs(pct).toFixed(2)}%`}</span>
+    </span>
+  )
 }
 
 const CURRENCIES = ['NOK', 'TRY', 'EUR', 'USD']
@@ -151,18 +164,44 @@ export function CurrencyWidget() {
       )}
 
       {data && mode === 'rates' && (
-        <div className="space-y-2.5">
-          {data.crossRates.map(r => (
-            <div key={r.pair} className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm">{FLAG[r.base] ?? '🌐'}</span>
-                <span className="text-xs font-medium text-ink-600">{r.pair}</span>
-              </div>
-              <span className="text-sm font-mono text-ink-900 tabular-nums">
-                {r.rate >= 100 ? r.rate.toFixed(2) : r.rate.toFixed(4)}
+        <div className="space-y-3">
+          {/* Primary: the user's two home currencies, NOK ⇄ TRY directly —
+              never routed through a 3rd currency. */}
+          <div className="rounded-xl border border-ink-200 bg-cream-50 px-3.5 py-3">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-xs font-semibold text-ink-500 flex items-center gap-1.5">
+                {FLAG.NOK} NOK <span className="text-ink-300">⇄</span> {FLAG.TRY} TRY
               </span>
+              <ChangeBadge pct={data.primary.changePct} />
             </div>
-          ))}
+            <div className="text-2xl font-bold text-ink-900 tabular-nums">
+              1 NOK = {data.primary.rate.toFixed(3)} TRY
+            </div>
+          </div>
+
+          {/* Secondary: EUR and USD against EACH OTHER (their own parity) —
+              not "EUR vs NOK" / "USD vs NOK", which was the confusing part. */}
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="text-xs font-medium text-ink-500 flex items-center gap-1.5">
+              {FLAG.EUR} EUR <span className="text-ink-300">⇄</span> {FLAG.USD} USD
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-mono text-ink-900 tabular-nums">1 EUR = {data.secondary.rate.toFixed(4)} USD</span>
+              <ChangeBadge pct={data.secondary.changePct} />
+            </div>
+          </div>
+
+          {/* Gold */}
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="text-xs font-medium text-ink-500 flex items-center gap-1.5">{FLAG.XAU} Gold</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-mono text-ink-900 tabular-nums">
+                ${data.gold.usdPerOz.toLocaleString('en-US', { maximumFractionDigits: 0 })}/oz
+                <span className="text-ink-400"> · {data.gold.nokPerGram.toFixed(1)} NOK/g</span>
+              </span>
+              <ChangeBadge pct={data.gold.changePct} />
+            </div>
+          </div>
         </div>
       )}
 

@@ -165,6 +165,44 @@ export async function searchStops(query: string): Promise<StopResult[]> {
     }))
 }
 
+// ─── Nearby stops (geolocation) ───────────────────────────────────────────────
+
+export interface NearbyStop {
+  id:       string
+  name:     string
+  distance: number   // meters
+}
+
+// EnTur's `nearest` root query (verified live against the v3 schema — returns a
+// Relay-style connection: edges[].node.{distance, place}). Used to suggest real
+// stops around the user's actual location without them typing anything.
+export async function fetchNearestStops(lat: number, lon: number, maxDistanceM = 1000, maxResults = 6): Promise<NearbyStop[]> {
+  const data = await gql(`{
+    nearest(
+      latitude: ${lat}
+      longitude: ${lon}
+      maximumDistance: ${maxDistanceM}
+      maximumResults: ${maxResults}
+      filterByPlaceTypes: [stopPlace]
+    ) {
+      edges {
+        node {
+          distance
+          place { id ... on StopPlace { name } }
+        }
+      }
+    }
+  }`) as {
+    nearest: {
+      edges: { node: { distance: number; place: { id: string; name?: string } } }[]
+    } | null
+  }
+
+  return (data.nearest?.edges ?? [])
+    .filter(e => e.node.place?.id && e.node.place?.name)
+    .map(e => ({ id: e.node.place.id, name: e.node.place.name!, distance: Math.round(e.node.distance) }))
+}
+
 // ─── Stop quay directions ─────────────────────────────────────────────────────
 
 export interface QuayDirectionHint {
