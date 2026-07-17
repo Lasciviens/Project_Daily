@@ -33,9 +33,36 @@ export function StepsSection() {
     ? computeHourlyBuckets('step_count', rangePoints).map(h => ({ label: h.label, value: Math.round(h.value) }))
     : computeDailySeries('step_count', rangePoints).map(d => ({ label: fmtDay(d.date), date: d.date, value: Math.round(d.value) }))
 
-  function handleBarClick(barData: { payload?: { date?: string } }) {
-    const date = barData?.payload?.date
-    if (period !== 'day' && date) { setPeriod('day'); setAnchor(date) }
+  function goToDay(date: string) {
+    setPeriod('day'); setAnchor(date)
+  }
+
+  // Clean custom tooltip — the default recharts tooltip rendered the value as
+  // a bare "': 514 steps'" line (empty series name + colon), which read as
+  // broken. Hovering shows the value immediately; the explicit "Go to this
+  // day" button inside is the ONLY thing that navigates (clicking the bar
+  // itself used to jump straight to the day, killing any chance to glance at
+  // the number without losing your place).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
+  function StepsTooltipContent({ active, payload, label }: any) {
+    if (!active || !payload?.length) return null
+    const date: string | undefined = payload[0]?.payload?.date
+    const value: number | undefined = payload[0]?.value
+    return (
+      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
+        <p className="text-ink-400 font-medium">{label}</p>
+        <p className="font-semibold text-rose-600">{value != null ? `${value.toLocaleString('en-GB')} steps` : '—'}</p>
+        {period !== 'day' && date && (
+          <button
+            type="button"
+            onClick={() => goToDay(date)}
+            className="text-accent-600 underline text-xs py-1.5 block min-h-[32px]"
+          >
+            Go to this day →
+          </button>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -81,12 +108,13 @@ export function StepsSection() {
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            <Tooltip cursor={false} trigger="click" formatter={(v) => [`${v} steps`, '']} />
-            <Bar
-              dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]} activeBar={false}
-              cursor={period !== 'day' ? 'pointer' : 'default'}
-              onClick={handleBarClick}
-            />
+            {/* Hover trigger (default): the value must be visible the moment
+                the pointer is over a bar — click is reserved for the
+                "Go to this day" button inside the tooltip. pointerEvents:
+                recharts tooltips are pointer-events:none by default, which
+                would make that button unclickable. */}
+            <Tooltip cursor={false} content={StepsTooltipContent} wrapperStyle={{ pointerEvents: 'auto' }} />
+            <Bar dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]} activeBar={false} />
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useHevyRoutines, useDeleteHevyRoutineLocal } from '../hooks/useHevyRoutines'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { NewRoutineModal, EditRoutineModal } from './RoutineModals'
+import { ExerciseThumb } from '../exerciseMedia'
 import type { HevyRoutine, HevyRoutineSet } from '../types.hevy'
 
 // ─── Set chip display ─────────────────────────────────────────────────────────
@@ -133,19 +134,29 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
             <p className="text-xs text-ink-400 italic">No exercises</p>
           ) : (
             <>
+              {/* One bordered row per exercise (was a plain text list that
+                  read as one undifferentiated block): order number, animated
+                  demo GIF (tap to enlarge — same ExerciseThumb as the
+                  Exercises catalog), title, set chips, notes. */}
               {(routine.exercises ?? [])
                 .slice(0, showAllExercises ? undefined : EXERCISES_PREVIEW)
-                .map(ex => (
-                  <div key={ex.id}>
-                    <p className="text-xs font-bold text-ink-700 mb-1">{ex.title}</p>
-                    <div className="flex flex-wrap gap-1 pl-2">
-                      {(ex.sets ?? []).map((s, i) => (
-                        <SetChip key={s.id ?? i} s={s} />
-                      ))}
+                .map((ex, exIdx) => (
+                  <div key={ex.id} className="flex items-start gap-2.5 rounded-lg border border-ink-100 bg-cream-100/60 px-2.5 py-2">
+                    <ExerciseThumb title={ex.title} size={52} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-ink-800 leading-snug">
+                        <span className="text-ink-400 font-semibold mr-1">{exIdx + 1}.</span>
+                        {ex.title}
+                      </p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(ex.sets ?? []).map((s, i) => (
+                          <SetChip key={s.id ?? i} s={s} />
+                        ))}
+                      </div>
+                      {ex.notes && (
+                        <p className="text-xs text-ink-400 italic mt-1">{ex.notes}</p>
+                      )}
                     </div>
-                    {ex.notes && (
-                      <p className="text-xs text-ink-400 italic mt-1 pl-2">{ex.notes}</p>
-                    )}
                   </div>
                 ))}
               {exerciseCount > EXERCISES_PREVIEW && (
