@@ -1,141 +1,167 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
-  subDays, formatDistanceToNow, format,
-} from 'date-fns'
+import { subDays, formatDistanceToNow, format } from 'date-fns'
+import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import Body, { type ExtendedBodyPart, type Slug } from 'react-muscle-highlighter'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
-import { fetchWorkoutExerciseTemplateIds, fetchWorkoutsWithTemplateIds } from '../api/hevyApi'
-import { slugForHevyGroup, RAMP, BANDS, BASE_MUSCLE_COLOR, labelForSlug, SIDE_SLUGS } from '../muscleMap'
+import { fetchMuscleVolume } from '../api/hevyApi'
+import {
+  slugForHevyGroup, contribution, MUSCLE_LANDMARKS, BANDS_META, bandForWeeklySets,
+  UNTRAINED_COLOR, SIDE_SLUGS, labelForSlug,
+} from '../muscleMap'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  "Worked muscles" — a stylised front/back body (react-muscle-highlighter).
-//  • No selection → heat-map of everything worked in the period (intensity ramp).
-//  • Tap muscle(s) / chip(s) → multi-select: ONLY the selected muscles stay
-//    coloured, and the right panel shows, per muscle: exercises this period,
-//    when it was last trained, and the history of days it was trained.
-//  • Front/Back switches the body AND filters the stats to that side.
-//  Every Hevy primary_muscle_group maps to a slug via muscleMap's HEVY_TO_SLUG.
+//  "Worked muscles" — a stylised body coloured by weekly HARD-SET VOLUME per
+//  muscle against evidence-based per-muscle landmarks (MV/MEV/MAV/MRV). Diverging
+//  scale: cold = under-dosed, green = optimal growth range, hot = over your
+//  recoverable ceiling. Primary muscle = 1.0 set, secondary = 0.5 (via the
+//  contribution() seam, ready for future per-exercise % from the DB). Window:
+//  30 days (default) or 90. Tap muscles to inspect (multi-select).
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Period = 'day' | 'week' | 'month'
-
-const PERIODS: { id: Period; label: string }[] = [
-  { id: 'day',   label: 'Day'   },
-  { id: 'week',  label: 'Week'  },
-  { id: 'month', label: 'Month' },
+type Period = '30d' | '90d'
+const PERIODS: { id: Period; label: string; days: number }[] = [
+  { id: '30d', label: '30 days', days: 30 },
+  { id: '90d', label: '90 days', days: 90 },
 ]
 
-const HISTORY_DAYS = 180  // how far back "last trained" / history looks
+interface SlugAgg { credited: number; dates: Set<string>; exercises: Map<string, number> }
 
-function rangeFor(period: Period, now: Date): { from: string; to: string } {
-  if (period === 'day')   return { from: startOfDay(now).toISOString(),   to: endOfDay(now).toISOString() }
-  if (period === 'month') return { from: startOfMonth(now).toISOString(), to: endOfMonth(now).toISOString() }
-  return { from: startOfWeek(now, { weekStartsOn: 1 }).toISOString(), to: endOfWeek(now, { weekStartsOn: 1 }).toISOString() }
-}
-
-const EMPTY_HINT: Record<Period, string> = {
-  day:   'No workout logged today yet.',
-  week:  'No workouts logged this week yet.',
-  month: 'No workouts logged this month yet.',
+function InfoBubble({ children }: { children: React.ReactNode }) {
+  return (
+    <Popover className="relative inline-block">
+      <PopoverButton className="w-4 h-4 rounded-full bg-ink-200 text-ink-600 text-[10px] font-bold leading-none inline-flex items-center justify-center hover:bg-ink-300 focus:outline-none align-middle">
+        i
+      </PopoverButton>
+      <PopoverPanel anchor="bottom start" className="z-[70] w-72 max-w-[85vw] rounded-xl border border-ink-200 bg-cream-50 p-3 text-xs text-ink-600 leading-relaxed shadow-lg">
+        {children}
+      </PopoverPanel>
+    </Popover>
+  )
 }
 
 export function WorkedMuscles() {
   const [side, setSide]     = useState<'front' | 'back'>('front')
-  const [period, setPeriod] = useState<Period>('week')
+  const [period, setPeriod] = useState<Period>('30d')
   const [selected, setSelected] = useState<Set<Slug>>(new Set())
 
+  const windowDays = PERIODS.find(p => p.id === period)!.days
   const now = new Date()
-  const { from, to } = rangeFor(period, now)
-  const historyFrom = subDays(now, HISTORY_DAYS).toISOString()
+  const from = subDays(now, windowDays).toISOString()
+  const weeks = windowDays / 7
 
   const { data: templates = [] } = useHevyExerciseTemplates()
   const { data: recentWorkouts = [] } = useHevyWorkouts({ limit: 1 })
   const lastAt = recentWorkouts[0]?.start_time ?? recentWorkouts[0]?.hevy_created_at ?? null
 
-  const { data: worked, isLoading } = useQuery({
-    queryKey: ['hevy', 'muscle-map', period, from, to],
-    queryFn:  () => fetchWorkoutExerciseTemplateIds(from, to),
+  const { data: volume = [], isLoading } = useQuery({
+    queryKey: ['hevy', 'muscle-volume', period, from],
+    queryFn:  () => fetchMuscleVolume(from, now.toISOString()),
     staleTime: 5 * 60_000,
   })
 
-  // Longer window, per-workout, for "last trained" + history.
-  const { data: history = [] } = useQuery({
-    queryKey: ['hevy', 'muscle-history', historyFrom],
-    queryFn:  () => fetchWorkoutsWithTemplateIds(historyFrom, now.toISOString()),
-    staleTime: 5 * 60_000,
-  })
-
-  const workoutCount = worked?.workoutCount ?? 0
-
-  // template id → { slug, title }
-  const metaById = useMemo(() => {
-    const m = new Map<string, { slug: Slug; title: string }>()
+  // templateId → { primary slug|null, secondary slugs[], title }
+  const tplById = useMemo(() => {
+    const m = new Map<string, { primary: Slug | null; secondaries: Slug[]; title: string }>()
     for (const t of templates) {
-      const slug = slugForHevyGroup(t.primary_muscle_group)
-      if (slug) m.set(t.id, { slug, title: t.title })
+      const primary = slugForHevyGroup(t.primary_muscle_group)
+      const secondaries = (t.secondary_muscle_groups ?? [])
+        .map(slugForHevyGroup)
+        .filter((s): s is Slug => !!s)
+      m.set(t.id, { primary, secondaries, title: t.title })
     }
     return m
   }, [templates])
 
-  // Per slug (this period): total exercise-instances + distinct exercise names.
-  const { perSlug, total } = useMemo(() => {
-    const acc: Record<string, { count: number; exercises: Map<string, number> }> = {}
-    let total = 0
-    for (const id of (worked?.templateIds ?? [])) {
-      const meta = metaById.get(id)
-      if (!meta) continue
-      total++
-      const entry = acc[meta.slug] ?? (acc[meta.slug] = { count: 0, exercises: new Map() })
-      entry.count++
-      entry.exercises.set(meta.title, (entry.exercises.get(meta.title) ?? 0) + 1)
+  // Aggregate credited working sets per slug + which exercises/dates hit it.
+  const { perSlug, unattributed, totalWorkingSets, workoutCount } = useMemo(() => {
+    const acc: Record<string, SlugAgg> = {}
+    const add = (slug: string, credit: number, date: string, title: string, ws: number) => {
+      const e = acc[slug] ?? (acc[slug] = { credited: 0, dates: new Set(), exercises: new Map() })
+      e.credited += credit
+      if (date) e.dates.add(date.slice(0, 10))
+      e.exercises.set(title, (e.exercises.get(title) ?? 0) + ws)
     }
-    return { perSlug: acc, total }
-  }, [worked, metaById])
-
-  const maxCount = useMemo(() => Math.max(1, ...Object.values(perSlug).map(e => e.count)), [perSlug])
-  const bandOf = (count: number) => Math.max(1, Math.ceil((count / maxCount) * BANDS))
-
-  // Per slug (history window): the days it was trained (newest-first).
-  const historyBySlug = useMemo(() => {
-    const m = new Map<Slug, string[]>()
-    for (const w of history) {
-      const slugs = new Set<Slug>()
-      for (const id of w.templateIds) {
-        const meta = metaById.get(id)
-        if (meta) slugs.add(meta.slug)
+    let unattributedSets = 0
+    const unattributedTitles = new Set<string>()
+    const workouts = new Set<string>()
+    let totalWorkingSets = 0
+    for (const row of volume) {
+      const t = tplById.get(row.templateId)
+      if (!t) continue
+      workouts.add(row.workoutId)
+      totalWorkingSets += row.workingSets
+      if (t.primary) {
+        add(t.primary, row.workingSets * contribution(row.templateId, t.primary, 'primary'), row.workoutDate, t.title, row.workingSets)
+      } else {
+        unattributedSets += row.workingSets
+        if (row.workingSets > 0) unattributedTitles.add(t.title)
       }
-      for (const s of slugs) {
-        const arr = m.get(s) ?? []
-        arr.push(w.date)
-        m.set(s, arr)
+      for (const s of t.secondaries) {
+        add(s, row.workingSets * contribution(row.templateId, s, 'secondary'), row.workoutDate, t.title, row.workingSets)
       }
     }
-    return m
-  }, [history, metaById])
+    return {
+      perSlug: acc,
+      unattributed: { sets: unattributedSets, exercises: unattributedTitles.size },
+      totalWorkingSets,
+      workoutCount: workouts.size,
+    }
+  }, [volume, tplById])
 
-  // Body colouring: heat-map when nothing selected; otherwise ONLY the selected.
+  const weeklyOf = (slug: string) => (perSlug[slug]?.credited ?? 0) / weeks
+  const bandOf = (slug: string) => bandForWeeklySets(slug, weeklyOf(slug))
+
+  // Body colouring by band (selection-aware: only selected coloured if a
+  // selection is active).
   const bodyData = useMemo<ExtendedBodyPart[]>(() => {
-    if (selected.size === 0) {
-      return Object.entries(perSlug).map(([slug, e]) => ({ slug: slug as Slug, intensity: bandOf(e.count) }))
+    const slugs = selected.size > 0 ? [...selected] : Object.keys(perSlug)
+    const out: ExtendedBodyPart[] = []
+    for (const slug of slugs) {
+      const band = bandForWeeklySets(slug, (perSlug[slug]?.credited ?? 0) / weeks)
+      if (band > 0) out.push({ slug: slug as Slug, color: BANDS_META[band].color })
     }
-    return [...selected].map(slug => {
-      const e = perSlug[slug]
-      return e ? { slug, intensity: bandOf(e.count) } : { slug, color: '#38bdf8' }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [perSlug, selected, maxCount])
+    return out
+  }, [perSlug, selected, weeks])
 
-  // Chips: worked muscles on the CURRENT side, most-worked first.
+  // Chips for the current side, most-worked first.
   const sideChips = useMemo(
-    () => Object.entries(perSlug)
-      .filter(([slug]) => SIDE_SLUGS[side].has(slug as Slug))
-      .sort((a, b) => b[1].count - a[1].count)
-      .map(([slug, e]) => ({ slug: slug as Slug, count: e.count })),
-    [perSlug, side],
+    () => Object.keys(perSlug)
+      .filter(slug => SIDE_SLUGS[side].has(slug as Slug))
+      .map(slug => ({ slug: slug as Slug, wk: weeklyOf(slug), band: bandOf(slug) }))
+      .sort((a, b) => b.wk - a.wk),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [perSlug, side, weeks],
   )
+
+  // Under-dosed (worked but below MEV) and over-MRV lists — the actionable payload.
+  const { underDosed, overMrv } = useMemo(() => {
+    const under: { slug: string; wk: number }[] = []
+    const over:  { slug: string; wk: number }[] = []
+    for (const slug of Object.keys(perSlug)) {
+      const b = bandForWeeklySets(slug, (perSlug[slug]?.credited ?? 0) / weeks)
+      if (b === 1 || b === 2) under.push({ slug, wk: (perSlug[slug]!.credited) / weeks })
+      if (b === 5) over.push({ slug, wk: (perSlug[slug]!.credited) / weeks })
+    }
+    under.sort((a, b) => a.wk - b.wk)
+    return { underDosed: under, overMrv: over }
+  }, [perSlug, weeks])
+
+  // Balance ratios (push/pull, quad/ham).
+  const balance = useMemo(() => {
+    const s = (slug: string) => weeklyOf(slug)
+    const push = s('chest') + s('deltoids') + s('triceps')
+    const pull = s('upper-back') + s('biceps') + s('trapezius')
+    const quad = s('quadriceps'), ham = s('hamstring')
+    return {
+      push, pull,
+      pushPull: pull > 0 ? push / pull : null,
+      quad, ham,
+      quadHam: ham > 0 ? quad / ham : null,
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perSlug, weeks])
 
   function toggle(slug: Slug | null | undefined) {
     if (!slug) return
@@ -146,33 +172,24 @@ export function WorkedMuscles() {
     })
   }
 
-  const selectedList = [...selected]
+  const hasData = Object.keys(perSlug).length > 0
 
   return (
     <div className="flex flex-col lg:flex-row gap-5 lg:gap-8 w-full items-start">
-      {/* ── LEFT: the body ─────────────────────────────────────────────── */}
+      {/* ── LEFT: body + legend ────────────────────────────────────────── */}
       <div className="w-full lg:w-[400px] shrink-0 flex flex-col items-center gap-3">
         <div className="flex items-center gap-2">
           <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg">
             {(['front', 'back'] as const).map(v => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setSide(v)}
-                className={`px-4 min-h-[36px] rounded-md text-sm font-semibold capitalize transition-colors ${
-                  side === v ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
-                }`}
-              >
+              <button key={v} type="button" onClick={() => setSide(v)}
+                className={`px-4 min-h-[36px] rounded-md text-sm font-semibold capitalize transition-colors ${side === v ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'}`}>
                 {v}
               </button>
             ))}
           </div>
           {selected.size > 0 && (
-            <button
-              type="button"
-              onClick={() => setSelected(new Set())}
-              className="min-h-[36px] px-3 text-xs font-medium text-ink-500 hover:text-ink-800 rounded-md hover:bg-cream-100 transition-colors"
-            >
+            <button type="button" onClick={() => setSelected(new Set())}
+              className="min-h-[36px] px-3 text-xs font-medium text-ink-500 hover:text-ink-800 rounded-md hover:bg-cream-100 transition-colors">
               Clear ({selected.size})
             </button>
           )}
@@ -186,23 +203,39 @@ export function WorkedMuscles() {
               side={side}
               gender="male"
               scale={1}
-              colors={RAMP}
-              defaultFill={BASE_MUSCLE_COLOR}
+              defaultFill={UNTRAINED_COLOR}
               border="#ffffff1f"
               onBodyPartPress={(part) => toggle(part.slug)}
             />
           </div>
         </div>
 
-        {total > 0 && selected.size === 0 && (
-          <div className="flex items-center gap-1.5 text-[10px] text-ink-400">
-            <span>Less</span>
-            {RAMP.map(c => <span key={c} className="w-4 h-2.5 rounded-sm" style={{ backgroundColor: c }} />)}
-            <span>More</span>
+        {/* Diverging legend with meaning labels + info bubble */}
+        <div className="w-full max-w-[340px] rounded-xl border border-ink-200 bg-cream-50 p-2.5">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[11px] font-semibold text-ink-600">Volume vs. your body's needs</span>
+            <InfoBubble>
+              <p className="font-semibold text-ink-800 mb-1">How the colours work</p>
+              <p className="mb-1.5">Colour = how many <strong>hard working sets per week</strong> each muscle got, compared to evidence-based volume landmarks (MEV/MAV/MRV). It's an <strong>absolute</strong> scale, not relative to your other muscles — so green really means "the right amount", not "your most-trained".</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Primary muscle of an exercise = 1 set; a secondary (synergist) = 0.5 set.</li>
+                <li>Warm-up sets don't count.</li>
+                <li>Shows <strong>volume</strong>, not effort/fatigue/recovery — and assumes your sets were reasonably hard.</li>
+                <li>Landmarks are population averages (±); treat as guidance.</li>
+              </ul>
+            </InfoBubble>
           </div>
-        )}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            {BANDS_META.map(b => (
+              <div key={b.idx} className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: b.color }} />
+                <span className="text-[10px] text-ink-500">{b.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
         <p className="text-[11px] text-ink-400 text-center">
-          {selected.size > 0 ? 'Tap muscles to add/remove · tap Clear to reset' : 'Tap muscles to inspect (multi-select)'}
+          {selected.size > 0 ? 'Tap muscles to add/remove · Clear to reset' : 'Tap a muscle to inspect (multi-select)'}
         </p>
       </div>
 
@@ -211,78 +244,114 @@ export function WorkedMuscles() {
         {lastAt && (
           <div className="flex items-baseline gap-2 rounded-xl bg-cream-100 px-3.5 py-2.5">
             <span className="text-xs text-ink-400">🏋️ Last workout</span>
-            <span className="text-sm font-semibold text-ink-800">
-              {formatDistanceToNow(new Date(lastAt), { addSuffix: true })}
-            </span>
+            <span className="text-sm font-semibold text-ink-800">{formatDistanceToNow(new Date(lastAt), { addSuffix: true })}</span>
             <span className="text-xs text-ink-400 ml-auto">{format(new Date(lastAt), 'EEE d MMM, HH:mm')}</span>
           </div>
         )}
 
-        <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg w-fit">
-          {PERIODS.map(p => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPeriod(p.id)}
-              className={`px-4 min-h-[36px] rounded-md text-sm font-semibold transition-colors ${
-                period === p.id ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg w-fit">
+            {PERIODS.map(p => (
+              <button key={p.id} type="button" onClick={() => setPeriod(p.id)}
+                className={`px-4 min-h-[36px] rounded-md text-sm font-semibold transition-colors ${period === p.id ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'}`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-ink-400 flex items-center gap-1">
+            weekly-set average
+            <InfoBubble>
+              <p>Everything is shown as <strong>sets per week</strong>: your total credited sets in the {windowDays}-day window ÷ {weeks.toFixed(1)} weeks, so it's comparable to the weekly landmarks.</p>
+            </InfoBubble>
+          </span>
         </div>
 
         <p className="text-sm text-ink-500">
           {workoutCount > 0
-            ? <><strong className="text-ink-800">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · <strong className="text-ink-800">{total}</strong> exercises this {period}</>
-            : EMPTY_HINT[period]}
+            ? <><strong className="text-ink-800">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · <strong className="text-ink-800">{totalWorkingSets}</strong> working sets · last {windowDays} days</>
+            : `No workouts logged in the last ${windowDays} days.`}
         </p>
 
-        {/* Chips for the current side */}
+        {/* Under-dosed / over lists */}
+        {hasData && (underDosed.length > 0 || overMrv.length > 0) && (
+          <div className="flex flex-col gap-2">
+            {underDosed.length > 0 && (
+              <div className="text-xs">
+                <span className="font-semibold text-blue-600">⚠ Under target (below MEV): </span>
+                <span className="text-ink-600">{underDosed.map(u => `${labelForSlug(u.slug)} (${u.wk.toFixed(1)})`).join(' · ')}</span>
+              </div>
+            )}
+            {overMrv.length > 0 && (
+              <div className="text-xs">
+                <span className="font-semibold text-red-600">🔺 Over MRV: </span>
+                <span className="text-ink-600">{overMrv.map(u => `${labelForSlug(u.slug)} (${u.wk.toFixed(1)})`).join(' · ')}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Balance ratios */}
+        {hasData && (balance.pushPull != null || balance.quadHam != null) && (
+          <div className="flex flex-wrap gap-3 text-xs">
+            {balance.pushPull != null && (
+              <span className={`px-2.5 py-1 rounded-lg ${balance.pushPull < 0.8 || balance.pushPull > 1.25 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-cream-100 text-ink-600'}`}>
+                Push : Pull {balance.push.toFixed(1)} : {balance.pull.toFixed(1)}
+                {(balance.pushPull < 0.8 || balance.pushPull > 1.25) && ' ⚠'}
+              </span>
+            )}
+            {balance.quadHam != null && (
+              <span className={`px-2.5 py-1 rounded-lg ${balance.quadHam > 1.5 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-cream-100 text-ink-600'}`}>
+                Quad : Ham {balance.quad.toFixed(1)} : {balance.ham.toFixed(1)}
+                {balance.quadHam > 1.5 && ' ⚠'}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Chips for current side */}
         {sideChips.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {sideChips.map(m => (
-              <button
-                key={m.slug}
-                onClick={() => toggle(m.slug)}
-                className={`px-3 min-h-[32px] rounded-full text-xs font-medium transition-colors border ${
-                  selected.has(m.slug)
-                    ? 'bg-accent-500 text-white border-accent-500'
-                    : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'
-                }`}
-              >
-                {labelForSlug(m.slug)} · {m.count}
+              <button key={m.slug} onClick={() => toggle(m.slug)}
+                className={`px-3 min-h-[32px] rounded-full text-xs font-medium transition-colors border flex items-center gap-1.5 ${selected.has(m.slug) ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'}`}>
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: BANDS_META[m.band].color }} />
+                {labelForSlug(m.slug)} · {m.wk.toFixed(1)}/wk
               </button>
             ))}
           </div>
         )}
 
-        {/* Selected muscle detail cards (multi) */}
-        {selectedList.length > 0 ? (
+        {/* Selected-muscle detail */}
+        {selected.size > 0 ? (
           <div className="flex flex-col gap-3">
-            {selectedList.map(slug => {
-              const e = perSlug[slug]
-              const exercises = e ? [...e.exercises.entries()].sort((a, b) => b[1] - a[1]) : []
-              const days = historyBySlug.get(slug) ?? []
-              const last = days[0]
+            {[...selected].map(slug => {
+              const agg = perSlug[slug]
+              const wk = (agg?.credited ?? 0) / weeks
+              const band = bandForWeeklySets(slug, wk)
+              const meta = BANDS_META[band]
+              const L = MUSCLE_LANDMARKS[slug]
+              const exercises = agg ? [...agg.exercises.entries()].sort((a, b) => b[1] - a[1]) : []
+              const dates = agg ? [...agg.dates].sort((a, b) => (a < b ? 1 : -1)) : []
               return (
                 <div key={slug} className="rounded-xl border border-ink-200 bg-cream-50 p-4">
-                  <div className="flex items-baseline justify-between mb-2 gap-2">
+                  <div className="flex items-baseline justify-between gap-2 mb-1">
                     <p className="text-base font-semibold text-ink-800">{labelForSlug(slug)}</p>
-                    <p className="text-xs text-ink-400 shrink-0">
-                      {last ? <>last trained <strong className="text-ink-700">{formatDistanceToNow(new Date(last), { addSuffix: true })}</strong></> : 'not trained in 6 months'}
-                    </p>
+                    <p className="text-sm font-bold" style={{ color: meta.color }}>{wk.toFixed(1)} sets/wk</p>
+                  </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: meta.color + '22', color: meta.color }}>{meta.label}</span>
+                    {L && <span className="text-[11px] text-ink-400">target {L.mev}–{L.mav}/wk (MEV–MAV)</span>}
+                    <InfoBubble>{meta.desc}{L && <><br /><br />MEV {L.mev} · MAV {L.mav} · MRV {L.mrv} sets/wk.</>}</InfoBubble>
                   </div>
 
                   {exercises.length > 0 && (
                     <>
-                      <p className="text-[11px] uppercase tracking-wide text-ink-400 mb-1">Exercises this {period}</p>
+                      <p className="text-[11px] uppercase tracking-wide text-ink-400 mb-1">Exercises (working sets)</p>
                       <ul className="flex flex-col gap-1 mb-3">
-                        {exercises.map(([name, c]) => (
+                        {exercises.map(([name, s]) => (
                           <li key={name} className="flex items-center justify-between gap-2 text-sm">
                             <span className="text-ink-700 truncate">{name}</span>
-                            <span className="text-ink-400 shrink-0">×{c}</span>
+                            <span className="text-ink-400 shrink-0">{s} set{s !== 1 ? 's' : ''}</span>
                           </li>
                         ))}
                       </ul>
@@ -290,29 +359,34 @@ export function WorkedMuscles() {
                   )}
 
                   <p className="text-[11px] uppercase tracking-wide text-ink-400 mb-1">
-                    History <span className="normal-case">(last 6 months · {days.length}×)</span>
+                    Trained {dates.length} day{dates.length !== 1 ? 's' : ''}
+                    {dates[0] && <span className="normal-case"> · last {formatDistanceToNow(new Date(dates[0]), { addSuffix: true })}</span>}
                   </p>
-                  {days.length > 0 ? (
+                  {dates.length > 0 && (
                     <div className="flex flex-wrap gap-1">
-                      {days.slice(0, 12).map((d, i) => (
-                        <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-cream-100 text-ink-600">
-                          {format(new Date(d), 'd MMM')}
-                        </span>
+                      {dates.slice(0, 12).map((d, i) => (
+                        <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-cream-100 text-ink-600">{format(new Date(d), 'd MMM')}</span>
                       ))}
-                      {days.length > 12 && <span className="text-[11px] text-ink-400 px-1 py-0.5">+{days.length - 12}</span>}
+                      {dates.length > 12 && <span className="text-[11px] text-ink-400 px-1 py-0.5">+{dates.length - 12}</span>}
                     </div>
-                  ) : (
-                    <p className="text-xs text-ink-400">No sessions in the last 6 months.</p>
                   )}
                 </div>
               )
             })}
           </div>
         ) : (
-          <p className="text-sm text-ink-400 py-2">
-            {total > 0
-              ? 'Tap a muscle on the body (or a chip) to see its exercises, when you last trained it, and its history.'
-              : 'Log a workout and sync — your worked muscles light up here.'}
+          <p className="text-sm text-ink-400 py-1">
+            {hasData
+              ? 'Tap a muscle (on the body or a chip) for its weekly volume, target range, exercises and training days.'
+              : 'Log a workout and sync — your muscle volume lights up here.'}
+          </p>
+        )}
+
+        {/* Unattributed (cardio / full-body) */}
+        {unattributed.sets > 0 && (
+          <p className="text-[11px] text-ink-400 flex items-center gap-1">
+            + {unattributed.sets} sets of cardio / full-body / other not shown on the map
+            <InfoBubble>Cardio, full-body and "other" exercises don't target one specific muscle, so their primary work isn't coloured on the body. (Their secondary muscles, if any, still count.)</InfoBubble>
           </p>
         )}
       </div>
