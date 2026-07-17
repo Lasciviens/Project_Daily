@@ -1,23 +1,15 @@
 import { useState } from 'react'
-import { generatePTAssessment } from '../api/ptCoachApi'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { generatePTAssessment, fetchAssessments, type PTAssessmentRow } from '../api/ptCoachApi'
 import { toast } from '../../../app/store'
 import { todayStr } from '../../../shared/utils/dateUtils'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  AI PT — user-initiated daily assessment (NEVER auto-runs; each run costs
-//  one AI request). Once-per-day cache in localStorage, same rationale as the
-//  Home daily briefing; "Yeniden değerlendir" is the explicit re-run.
+//  one AI request). Assessments are LOGGED to pt_assessments (migration 051)
+//  so the coach can follow up on its own advice next time, and the history
+//  is browsable below. DB is the source of truth (localStorage cache retired).
 // ─────────────────────────────────────────────────────────────────────────────
-
-const CACHE_KEY = 'lasci.ptAssessment'
-interface Cached { date: string; text: string; feeling: string }
-
-function readCache(): Cached | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    return raw ? JSON.parse(raw) as Cached : null
-  } catch { return null }
-}
 
 const FEELINGS = [
   { id: 'az çalıştım',  label: '😴 Az çalıştım' },
@@ -36,30 +28,40 @@ function renderBold(text: string) {
   )
 }
 
+const fmtDate = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+
 export function PTCoachTab() {
   const today = todayStr()
-  // Lazy initializers read today's cached assessment once at mount — no
-  // effect needed (and no set-state-in-effect cascade).
-  const [feeling, setFeeling] = useState<string>(() => {
-    const c = readCache()
-    return c?.date === today ? c.feeling : 'normal'
-  })
+  const qc = useQueryClient()
+  const [feeling, setFeeling] = useState('normal')
   const [note, setNote] = useState('')
-  const [result, setResult] = useState<string | null>(() => {
-    const c = readCache()
-    return c?.date === today ? c.text : (c?.text ?? null)
-  })
-  const [resultDate, setResultDate] = useState<string | null>(() => readCache()?.date ?? null)
   const [loading, setLoading] = useState(false)
+  const [openHistoryId, setOpenHistoryId] = useState<string | null>(null)
+  // Fallback display if the DB log isn't available yet (migration 051 not
+  // applied): the generated text still shows, it just isn't persisted.
+  const [localResult, setLocalResult] = useState<{ text: string; model: string | null } | null>(null)
+
+  const { data: history = [] } = useQuery({
+    queryKey: ['pt-assessments'],
+    queryFn:  () => fetchAssessments(14),
+    staleTime: 60_000,
+  })
+
+  // Latest of today = the "current" assessment; everything else is history.
+  const dbCurrent: PTAssessmentRow | undefined = history.find(a => a.date === today)
+  const current = dbCurrent ?? (localResult ? {
+    id: 'local', date: today, feeling, note: note || null,
+    assessment: localResult.text, model: localResult.model, created_at: '',
+  } satisfies PTAssessmentRow : undefined)
+  const past = history.filter(a => a.id !== current?.id)
 
   async function run() {
     setLoading(true)
     const tid = toast.loading('Koç verilerini inceliyor…')
     try {
-      const text = await generatePTAssessment({ feeling, note: note.trim() || undefined })
-      setResult(text)
-      setResultDate(today)
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ date: today, text, feeling } satisfies Cached)) } catch { /* quota */ }
+      const res = await generatePTAssessment({ feeling, note: note.trim() || undefined })
+      setLocalResult(res)
+      qc.invalidateQueries({ queryKey: ['pt-assessments'] })
       toast.dismiss(tid); toast.success('Değerlendirme hazır ✓')
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Değerlendirme başarısız')
@@ -68,20 +70,18 @@ export function PTCoachTab() {
     }
   }
 
-  const hasToday = result != null && resultDate === today
-
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl flex flex-col gap-4">
       <div className="rounded-2xl border border-ink-200 bg-cream-50 p-5 flex flex-col gap-4">
         <div>
           <h3 className="text-base font-bold text-ink-900">🧠 AI Koç — Günlük Değerlendirme</h3>
           <p className="text-xs text-ink-400 mt-0.5">
             Antrenmanını, setlerini/ağırlıklarını, haftalık kas hacmini, uykunu ve aktiviteni okuyup
-            gerçek bir PT gibi değerlendirir. Sen başlatırsın — otomatik çalışmaz.
+            gerçek bir PT gibi değerlendirir; bir önceki değerlendirmesinin takibini de yapar.
+            Sen başlatırsın — otomatik çalışmaz. Her değerlendirme kaydedilir.
           </p>
         </div>
 
-        {/* Feeling input */}
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Bugün nasıl hissediyorsun?</p>
           <div className="flex flex-wrap gap-1.5">
@@ -112,20 +112,50 @@ export function PTCoachTab() {
           disabled={loading}
           className="bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 min-h-[44px] px-4 rounded-xl text-sm font-semibold transition-colors self-start"
         >
-          {loading ? 'Değerlendiriyor…' : hasToday ? '↻ Yeniden değerlendir' : '▶ Değerlendir'}
+          {loading ? 'Değerlendiriyor…' : current ? '↻ Yeniden değerlendir' : '▶ Değerlendir'}
         </button>
 
-        {result && (
+        {current && (
           <div className="border-t border-ink-100 pt-3">
-            {resultDate !== today && (
-              <p className="text-[10px] text-amber-600 mb-1">Bu değerlendirme {resultDate} tarihli.</p>
-            )}
             <div className="text-sm text-ink-700 leading-relaxed whitespace-pre-wrap">
-              {renderBold(result)}
+              {renderBold(current.assessment)}
             </div>
+            {/* Which model ACTUALLY answered — the fallback chain may have
+                landed somewhere other than the default. */}
+            <p className="text-[10px] text-ink-300 mt-2">
+              {current.model ? current.model.replace('gemini-', '') : ''} · his: {current.feeling}
+              {current.note ? ` · "${current.note}"` : ''}
+            </p>
           </div>
         )}
       </div>
+
+      {/* ── Assessment log ── */}
+      {past.length > 0 && (
+        <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-2">📜 Geçmiş değerlendirmeler</p>
+          <ul className="flex flex-col gap-1">
+            {past.map(a => (
+              <li key={a.id} className="border border-ink-100 rounded-lg">
+                <button
+                  onClick={() => setOpenHistoryId(openHistoryId === a.id ? null : a.id)}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left min-h-[40px]"
+                >
+                  <span className="text-xs font-semibold text-ink-800 shrink-0">{fmtDate(a.date)}</span>
+                  <span className="text-[11px] text-ink-400 truncate flex-1">{a.feeling}{a.note ? ` · ${a.note}` : ''}</span>
+                  <span className="text-[10px] text-ink-300 shrink-0">{openHistoryId === a.id ? '▲' : '▼'}</span>
+                </button>
+                {openHistoryId === a.id && (
+                  <div className="px-2.5 pb-2.5 text-xs text-ink-600 leading-relaxed whitespace-pre-wrap border-t border-ink-50 pt-2">
+                    {renderBold(a.assessment)}
+                    {a.model && <p className="text-[10px] text-ink-300 mt-1.5">{a.model.replace('gemini-', '')}</p>}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }

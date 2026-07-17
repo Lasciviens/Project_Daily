@@ -3,7 +3,7 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useUIStore } from '../../../app/store'
-import { sendMessage, AI_MODEL_OPTIONS } from '../api/aiApi'
+import { sendMessage, sendCoachMessage, AI_MODEL_OPTIONS } from '../api/aiApi'
 import type { Message, AIModel } from '../api/aiApi'
 
 // The AI performs real DB writes server-side (ai-proxy's db_insert/update/
@@ -43,13 +43,20 @@ function renderMarkdown(text: string): React.ReactNode {
 
 // Chat messages carry an optional activity trace (tool calls the AI ran),
 // shown behind a "Show detail" link. The extra field is ignored by the backend.
-interface ChatMessage extends Message { steps?: string[] }
+interface ChatMessage extends Message { steps?: string[]; model?: string }
 
 const SUGGESTIONS = [
   'What should I focus on today?',
   'Help me prioritize my tasks',
   'Suggest a schedule for my day',
   'What movies should I watch next?',
+]
+
+const COACH_SUGGESTIONS = [
+  'Son 30 günümü değerlendir — nerede iyiyim, nerede kötüyüm?',
+  'Programımı incele: hangi kaslar eksik kalıyor?',
+  'Bu haftaki beslenmem ve kilom hedefe uygun mu?',
+  'Back Day rutinimde ne değiştirirdin?',
 ]
 
 export function AIPanel() {
@@ -64,6 +71,9 @@ export function AIPanel() {
   const [error,       setError]       = useState<string | null>(null)
   const [detailSteps, setDetailSteps] = useState<string[] | null>(null)
   const [model,       setModel]       = useState<AIModel>(readStoredModel)
+  // Coach mode: replaces the generic assistant persona+context with the
+  // blunt PT persona + a prepared 30-day training/health/nutrition JSON.
+  const [coachMode,   setCoachMode]   = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
 
@@ -97,8 +107,8 @@ export function AIPanel() {
     setError(null)
 
     try {
-      const reply = await sendMessage(next, model)
-      setMessages(m => [...m, { role: 'assistant', content: reply.text, steps: reply.steps }])
+      const reply = await (coachMode ? sendCoachMessage(next, model) : sendMessage(next, model))
+      setMessages(m => [...m, { role: 'assistant', content: reply.text, steps: reply.steps, model: reply.model }])
       // The turn may have written to the DB — refresh every AI-writable view.
       for (const key of AI_WRITE_NAMESPACES) qc.invalidateQueries({ queryKey: key })
     } catch (err) {
@@ -161,6 +171,19 @@ export function AIPanel() {
                 </ListboxOptions>
               </div>
             </Listbox>
+            {/* Coach mode — blunt PT persona over a prepared 30-day
+                training/health/nutrition JSON (see sendCoachMessage). */}
+            <button
+              onClick={() => setCoachMode(v => !v)}
+              title="Koç modu: PT kimliği + son 30 günün antrenman/uyku/kilo/nutrition verisi hazır bağlam olarak"
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium border transition-colors min-h-[24px] ${
+                coachMode
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-cream-100 text-ink-500 border-ink-200 hover:border-orange-300'
+              }`}
+            >
+              🏋️ Koç
+            </button>
           </div>
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
@@ -186,7 +209,7 @@ export function AIPanel() {
             <div>
               <p className="text-sm text-ink-400 mb-4">What can I help you with?</p>
               <div className="space-y-2">
-                {SUGGESTIONS.map(s => (
+                {(coachMode ? COACH_SUGGESTIONS : SUGGESTIONS).map(s => (
                   <button
                     key={s}
                     onClick={() => handleSend(s)}
@@ -211,13 +234,23 @@ export function AIPanel() {
                 >
                   {renderMarkdown(msg.content)}
                 </div>
-                {msg.role === 'assistant' && msg.steps && msg.steps.length > 0 && (
-                  <button
-                    onClick={() => setDetailSteps(msg.steps!)}
-                    className="text-[11px] text-accent-600 hover:text-accent-700 underline underline-offset-2 px-1 min-h-[28px]"
-                  >
-                    Show detail ({msg.steps.length})
-                  </button>
+                {msg.role === 'assistant' && (msg.model || (msg.steps && msg.steps.length > 0)) && (
+                  <div className="flex items-center gap-2 px-1">
+                    {/* Which model ACTUALLY answered — the fallback chain can
+                        land somewhere other than the picked/preferred model,
+                        and the user wants to see where it landed. */}
+                    {msg.model && (
+                      <span className="text-[10px] text-ink-300">{msg.model.replace('gemini-', '')}</span>
+                    )}
+                    {msg.steps && msg.steps.length > 0 && (
+                      <button
+                        onClick={() => setDetailSteps(msg.steps!)}
+                        className="text-[11px] text-accent-600 hover:text-accent-700 underline underline-offset-2 min-h-[28px]"
+                      >
+                        Show detail ({msg.steps.length})
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

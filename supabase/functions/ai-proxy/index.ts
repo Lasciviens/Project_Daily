@@ -166,8 +166,12 @@ function isGeminiModel(m: unknown): m is GeminiModel {
   return typeof m === 'string' && (MODEL_CHAIN as readonly string[]).includes(m)
 }
 
-const RETRIES_PER_MODEL = 2
-const RETRY_BASE_DELAY_MS = 600
+// Per-CHAIN-POSITION retry budget — the user wants the BETTER models tried
+// hard before falling to a lighter one ("düşük model zaten her türlü dönüyor"):
+// the preferred/first model gets 4 attempts with growing backoff (~7s worth),
+// the second 3, the tail models 2 (they're the escape hatch, not the goal).
+const RETRIES_BY_POSITION = [4, 3, 2, 2]
+const RETRY_BASE_DELAY_MS = 700
 
 // Random spread on the backoff delay ("jitter") — without it, if this
 // function is ever invoked concurrently (e.g. two tabs), every retry lands on
@@ -198,8 +202,10 @@ async function fetchGeminiWithFallback(
 
   let lastRes: Response | null = null
   let lastModel: GeminiModel = chain[0]
-  for (const model of chain) {
-    for (let attempt = 0; attempt < RETRIES_PER_MODEL; attempt++) {
+  for (let pos = 0; pos < chain.length; pos++) {
+    const model = chain[pos]
+    const retries = RETRIES_BY_POSITION[pos] ?? 2
+    for (let attempt = 0; attempt < retries; attempt++) {
       const res = await fetch(buildUrl(model), {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -214,11 +220,12 @@ async function fetchGeminiWithFallback(
       // 429 (per-KEY quota — switching models won't help) and other 4xx
       // (malformed request — same for every model) surface immediately.
       if (res.status < 500) return { res, modelUsed: model }
-      // 5xx: transient overload — retry this model, then move to the next.
+      // 5xx: transient overload — retry this model (exponentially growing,
+      // jittered waits), then move to the next.
       lastRes = res
       lastModel = model
-      if (attempt < RETRIES_PER_MODEL - 1) {
-        await new Promise(r => setTimeout(r, jitter(RETRY_BASE_DELAY_MS * (attempt + 1))))
+      if (attempt < retries - 1) {
+        await new Promise(r => setTimeout(r, jitter(RETRY_BASE_DELAY_MS * Math.pow(2, attempt))))
       }
     }
   }
@@ -363,6 +370,19 @@ const TOOLS = [
             note:     { type: 'STRING', description: 'Personal note about the episode (optional)' },
           },
           required: ['entry_id'],
+        },
+      },
+      {
+        name: 'update_hevy_routine',
+        description: 'Update an existing Hevy routine (title and/or full exercises list) — writes to the REAL Hevy account. RULES: (1) db_query hevy_routines + hevy_routine_exercises + hevy_routine_sets FIRST to get the routine id and its CURRENT full exercise/set structure. (2) Send the COMPLETE exercises array (every exercise you want kept, in order) — this REPLACES the whole list, omitted exercises are DELETED. (3) Set shape: {type:"normal"|"warmup"|"dropset"|"failure", weight_kg, reps} — use rep_range:{start,end} INSTEAD of reps only when a range is wanted, never both, never rep_range:null. Exercise shape: {exercise_template_id, superset_id, rest_seconds, notes, sets:[...]}. (4) ALWAYS summarize the exact change and get the user\'s explicit confirmation in a prior turn before calling this.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            routine_id: { type: 'STRING', description: 'hevy_routines.id (from db_query)' },
+            title:      { type: 'STRING', description: 'Routine title (required by Hevy — resend the current one if unchanged)' },
+            exercises:  { type: 'STRING', description: 'JSON array of the COMPLETE exercise list in the shape described above.' },
+          },
+          required: ['routine_id', 'title', 'exercises'],
         },
       },
       {
@@ -575,7 +595,7 @@ Deno.serve(async (req) => {
     // things like parsing pasted recipe text into a JSON shape.
     const result = responseSchema
       ? await callGeminiStructured(GEMINI_KEY, messages, systemPrompt, responseSchema, preferredModel)
-      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel)
+      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader)
     return new Response(JSON.stringify(result), {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
@@ -602,6 +622,7 @@ async function callGemini(
   supabase: any,
   userId: string,
   preferredModel?: GeminiModel,
+  authHeader?: string,
 ): Promise<{ text: string; quickReplies?: string[]; steps?: string[]; model?: string }> {
   const buildUrl = (model: GeminiModel) =>
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
@@ -670,7 +691,7 @@ async function callGemini(
     const toolResponseParts = await Promise.all(
       fnCallParts.map(async (part: AnyRecord) => {
         const { name, args } = part.functionCall
-        const result = await dispatch(name, args, supabase, userId)
+        const result = await dispatch(name, args, supabase, userId, authHeader)
         steps.push(describeStep(name, args, result))
         return { functionResponse: { name, response: result } }
       })
@@ -762,6 +783,7 @@ async function dispatch(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   userId: string,
+  authHeader?: string,
 ): Promise<AnyRecord> {
   switch (name) {
     case 'describe_database':    return describeDatabase(args)
@@ -783,8 +805,39 @@ async function dispatch(
     case 'search_transit_stops': return searchTransitStops(args)
     case 'save_transit_stop':    return saveTransitStop(supabase, userId, args)
     case 'save_transit_route':   return saveTransitRoute(supabase, userId, args)
+    case 'update_hevy_routine':  return updateHevyRoutine(args, authHeader)
     default:                     return { success: false, error: `Unknown function: ${name}` }
   }
+}
+
+// Forwards a routine update to the existing hevy-api edge function rather
+// than talking to Hevy directly — hevy-api already handles every documented
+// payload trap (strips null rep_range, drops folder_id on PUT, unwraps
+// Hevy's inconsistent response shapes, re-upserts the result into our DB).
+// The user's own Authorization header is passed through so hevy-api's
+// owner check still applies.
+async function updateHevyRoutine(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
+  if (!authHeader) return { success: false, error: 'No auth context for hevy-api call' }
+  let exercises: unknown
+  try {
+    exercises = typeof args.exercises === 'string' ? JSON.parse(args.exercises) : args.exercises
+  } catch {
+    return { success: false, error: 'exercises is not valid JSON' }
+  }
+  if (!Array.isArray(exercises) || exercises.length === 0) {
+    return { success: false, error: 'exercises must be a non-empty array (it REPLACES the whole list)' }
+  }
+  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hevy-api`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+    body: JSON.stringify({
+      action: 'update_routine',
+      payload: { id: args.routine_id, title: args.title, exercises },
+    }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) return { success: false, error: body?.error ?? `hevy-api ${res.status}` }
+  return { success: true, message: 'Routine updated in Hevy and synced locally.' }
 }
 
 async function getMedia(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
