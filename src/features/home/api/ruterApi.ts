@@ -19,6 +19,30 @@ export interface StopResult {
   lon?:      number
 }
 
+// A live service disruption/alert on a line — verified live against EnTur's
+// schema (Line.situations) before use. `severity` is EnTur's own Severity enum
+// (unknown/noImpact/verySlight/slight/normal/severe/verySevere/undefined).
+export interface Situation {
+  summary:  string
+  severity: string
+}
+
+interface RawMultilingualString { value: string; language?: string }
+interface RawSituation { summary: RawMultilingualString[]; severity?: string | null }
+
+// Prefers an English entry (falls back to whichever the feed sent first) —
+// EnTur situations are usually authored in Norwegian with an English pair.
+function firstText(strs?: RawMultilingualString[] | null): string | null {
+  if (!strs || strs.length === 0) return null
+  return (strs.find(s => s.language === 'en') ?? strs[0]).value
+}
+
+function mapSituations(raw?: RawSituation[] | null): Situation[] {
+  return (raw ?? [])
+    .map(s => ({ summary: firstText(s.summary), severity: s.severity ?? 'unknown' }))
+    .filter((s): s is Situation => !!s.summary)
+}
+
 export interface Departure {
   line:              string
   transport:         string
@@ -31,6 +55,7 @@ export interface Departure {
   quayDescription?:  string          // e.g. "mot Oslo"
   lineColour?:       string          // hex without #, from line.presentation.colour
   lineTextColour?:   string          // hex without #, from line.presentation.textColour
+  situations:        Situation[]     // active disruptions/alerts on this line, if any
 }
 
 export interface TripLeg {
@@ -52,6 +77,7 @@ export interface TripLeg {
   arrivalTime?:     string          // expected arrival at toPlace ISO
   lineColour?:      string          // hex without #, from line.presentation.colour
   lineTextColour?:  string          // hex without #, from line.presentation.textColour
+  situations?:      Situation[]     // active disruptions/alerts on this line, if any
 }
 
 export interface TripPattern {
@@ -206,11 +232,29 @@ export async function fetchNearestStops(lat: number, lon: number, maxDistanceM =
 // ─── Stop quay directions ─────────────────────────────────────────────────────
 
 export interface QuayDirectionHint {
-  quayId:      string
-  publicCode?: string | null
-  description?: string | null   // e.g. "mot Oslo S" — from quay.description
-  fallback?:   string | null    // "mot " + frontText when description is null
-  lines:       string[]         // line codes serving this quay e.g. ["31", "32"]
+  quayId:       string
+  publicCode?:  string | null
+  description?: string | null   // official platform signage text, e.g. "Retning øst" — shown as-is (it's what's physically printed at the stop), NOT translated
+  destinations: string[]        // every distinct destination (frontText) actually served from this quay — a quay can serve more than one line/direction, so this is a list, not a single guess
+  lines:        string[]        // line codes serving this quay e.g. ["31", "32"]
+}
+
+// Plain-language label for a quay/direction — used everywhere a quay needs to
+// be shown to the user, so the wording stays consistent. Real bug this fixes:
+// the previous version only kept the FIRST destination seen for a quay (as a
+// single "mot <frontText>" string in our own code, not from the API) — but one
+// physical platform commonly serves several lines to DIFFERENT destinations
+// (verified live: Jernbanetorget's platform D serves both a bus toward Helsfyr
+// AND one toward Grorud T), so that single guess was sometimes just wrong, not
+// just unclear. Also drops the literal Norwegian "mot" for an English "Toward".
+export function quayLabel(hint: Pick<QuayDirectionHint, 'description' | 'destinations' | 'publicCode'>): string {
+  const towards = hint.destinations.length > 0
+    ? `Toward ${hint.destinations.slice(0, 2).join(', ')}${hint.destinations.length > 2 ? '…' : ''}`
+    : null
+  if (hint.description && towards) return `${hint.description} · ${towards}`
+  if (hint.description) return hint.description
+  if (towards) return towards
+  return hint.publicCode ? `Platform ${hint.publicCode}` : 'This platform'
 }
 
 // Fetches direction hints for a stop without loading full departure times.
@@ -249,16 +293,16 @@ export async function fetchStopDirections(stopId: string): Promise<QuayDirection
 
     if (!byQuay.has(quay.id)) {
       byQuay.set(quay.id, {
-        quayId:      quay.id,
-        publicCode:  quay.publicCode ?? null,
-        description: quay.description ?? null,
-        // When description is null use frontText as a readable fallback
-        fallback:    !quay.description && frontText ? `mot ${frontText}` : null,
-        lines:       lineCode ? [lineCode] : [],
+        quayId:       quay.id,
+        publicCode:   quay.publicCode ?? null,
+        description:  quay.description ?? null,
+        destinations: frontText ? [frontText] : [],
+        lines:        lineCode ? [lineCode] : [],
       })
     } else {
       const existing = byQuay.get(quay.id)!
       if (lineCode && !existing.lines.includes(lineCode)) existing.lines.push(lineCode)
+      if (frontText && !existing.destinations.includes(frontText)) existing.destinations.push(frontText)
     }
   }
 
@@ -286,6 +330,7 @@ export async function fetchDepartures(
             publicCode
             transportMode
             presentation { colour textColour }
+            situations { summary { value language } severity }
           }
         }
       }
@@ -304,6 +349,7 @@ export async function fetchDepartures(
             publicCode: string
             transportMode: string
             presentation?: { colour?: string; textColour?: string } | null
+            situations?: RawSituation[] | null
           }
         }
       }[]
@@ -327,6 +373,7 @@ export async function fetchDepartures(
       quayDescription:   c.quay?.description,
       lineColour:        c.serviceJourney.line.presentation?.colour,
       lineTextColour:    c.serviceJourney.line.presentation?.textColour,
+      situations:        mapSituations(c.serviceJourney.line.situations),
     }))
 
   return { stopName: data.stopPlace.name, departures }
@@ -340,21 +387,48 @@ function gqlPlace(p: TransitPlace): string {
   return `{ coordinates: { latitude: ${p.lat}, longitude: ${p.lon} } }`
 }
 
+// Builds one `TripViaLocationInput` entry — verified live against EnTur's schema
+// (TripVisitViaLocationInput for a stop, a plain coordinate for GPS). A via point
+// is a "pass through here" waypoint, not a from/to endpoint, so it uses its own
+// input shape rather than reusing gqlPlace's `{place}`/`{coordinates}` wrapper.
+function gqlViaLocation(p: TransitPlace): string {
+  if (p.kind === 'stop') {
+    return `{ visit: { stopLocationIds: ["${p.id}"] } }`
+  }
+  return `{ visit: { coordinate: { latitude: ${p.lat}, longitude: ${p.lon} } } }`
+}
+
+// Personal trip-planning preferences (see useTravelProfile) — all optional so
+// existing call sites (and a user with no profile set) are unaffected.
+export interface TripPreferences {
+  walkSpeed?:            number    // m/s — verified live arg on `trip`
+  maximumTransfers?:     number | null
+  wheelchairAccessible?: boolean
+}
+
 export async function fetchTrips(
   from:       TransitPlace,
   to:         TransitPlace,
   count?:     number,
   dateTime?:  string,   // ISO 8601 — omit for "depart now"
   arriveBy?:  boolean,  // EnTur v3: arriveBy — treat dateTime as arrival target
+  prefs?:     TripPreferences,
+  via?:       TransitPlace[],  // optional intermediate waypoint(s) — Via tab
 ): Promise<TripPattern[]> {
   const n    = count ?? 5
   const dtArg = dateTime ? `\n      dateTime: "${dateTime}"` : ''
   const abArg = arriveBy  ? `\n      arriveBy: true`         : ''
+  const wsArg = prefs?.walkSpeed != null ? `\n      walkSpeed: ${prefs.walkSpeed}` : ''
+  const mtArg = prefs?.maximumTransfers != null ? `\n      maximumTransfers: ${prefs.maximumTransfers}` : ''
+  const waArg = prefs?.wheelchairAccessible ? `\n      wheelchairAccessible: true` : ''
+  const viaArg = via && via.length > 0
+    ? `\n      via: [${via.map(gqlViaLocation).join(', ')}]`
+    : ''
   const data = await gql(`{
     trip(
       from: ${gqlPlace(from)}
       to:   ${gqlPlace(to)}
-      numTripPatterns: ${n}${dtArg}${abArg}
+      numTripPatterns: ${n}${dtArg}${abArg}${wsArg}${mtArg}${waArg}${viaArg}
     ) {
       tripPatterns {
         duration
@@ -372,6 +446,7 @@ export async function fetchTrips(
             name
             transportMode
             presentation { colour textColour }
+            situations { summary { value language } severity }
           }
           fromEstimatedCall {
             quay { publicCode name description }
@@ -400,7 +475,7 @@ export async function fetchTrips(
           distance: number | null
           fromPlace: { name: string }
           toPlace:   { name: string }
-          line?: { publicCode: string; name: string; transportMode: string; presentation?: { colour?: string; textColour?: string } | null } | null
+          line?: { publicCode: string; name: string; transportMode: string; presentation?: { colour?: string; textColour?: string } | null; situations?: RawSituation[] | null } | null
           fromEstimatedCall?: {
             quay?: { publicCode?: string; name?: string; description?: string } | null
             aimedDepartureTime:    string
@@ -438,6 +513,7 @@ export async function fetchTrips(
         leg.lineName      = l.line.name
         leg.lineColour    = l.line.presentation?.colour
         leg.lineTextColour = l.line.presentation?.textColour
+        leg.situations    = mapSituations(l.line.situations)
       }
       if (l.fromEstimatedCall) {
         leg.destination      = l.fromEstimatedCall.destinationDisplay.frontText

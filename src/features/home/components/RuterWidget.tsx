@@ -3,9 +3,10 @@ import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { DeparturesTab } from './ruter/DeparturesTab'
 import { RoutesTab } from './ruter/RoutesTab'
+import { ViaTab } from './ruter/ViaTab'
 import { SettingsTab } from './ruter/SettingsTab'
 
-type Tab        = 'departures' | 'routes' | 'settings'
+type Tab        = 'departures' | 'routes' | 'via' | 'settings'
 type LayoutMode = 'compact' | 'medium' | 'wide'
 
 function useNow(): number {
@@ -63,10 +64,16 @@ export function RuterWidget() {
   const ws  = useWidgetState('ruter', { collapsed: true, intervalMs: 60_000 })
   const now = useNow()
 
+  // Lets a Favorite Route tapped in Settings jump straight to Routes with that
+  // route applied — Settings has no planner state of its own, so this is the
+  // hand-off: set here, switch tab, RoutesTab applies it once and clears it.
+  const [pendingRouteId, setPendingRouteId] = useState<string | null>(null)
+
   const { ref: bodyRef, width } = useElementWidth<HTMLDivElement>()
   const layout         = getLayoutMode(width)
   const isSettings     = tab === 'settings'
-  const showSideBySide = layout === 'wide' && !isSettings
+  const isVia          = tab === 'via'
+  const showSideBySide = layout === 'wide' && !isSettings && !isVia
 
   const tabBar = (
     <div className="flex gap-1">
@@ -85,6 +92,14 @@ export function RuterWidget() {
         }`}
       >
         routes
+      </button>
+      <button
+        onClick={() => setTab('via')}
+        className={`text-[10px] px-2 rounded font-medium capitalize transition-colors duration-150 min-h-[44px] ${
+          isVia ? 'bg-accent-500 text-white' : 'text-ink-400 hover:bg-ink-100'
+        }`}
+      >
+        via
       </button>
 
       {showSideBySide && (
@@ -113,7 +128,7 @@ export function RuterWidget() {
       <div ref={bodyRef} className="w-full overflow-x-hidden">
         {isSettings && (
           <div className="max-w-2xl mx-auto">
-            <SettingsTab />
+            <SettingsTab onSelectRoute={id => { setPendingRouteId(id); setTab('routes') }} />
           </div>
         )}
 
@@ -123,7 +138,7 @@ export function RuterWidget() {
               <DeparturesTab ws={ws} now={now} />
             </Panel>
             <Panel>
-              <RoutesTab ws={ws} now={now} />
+              <RoutesTab ws={ws} now={now} pendingRouteId={pendingRouteId} onRouteConsumed={() => setPendingRouteId(null)} />
             </Panel>
           </div>
         )}
@@ -131,7 +146,8 @@ export function RuterWidget() {
         {!isSettings && !showSideBySide && (
           <div className={layout === 'medium' ? 'mx-auto w-full max-w-[760px]' : 'w-full'}>
             {tab === 'departures' && <DeparturesTab ws={ws} now={now} />}
-            {tab === 'routes'     && <RoutesTab ws={ws} now={now} />}
+            {tab === 'routes'     && <RoutesTab ws={ws} now={now} pendingRouteId={pendingRouteId} onRouteConsumed={() => setPendingRouteId(null)} />}
+            {tab === 'via'        && <ViaTab ws={ws} now={now} />}
           </div>
         )}
       </div>

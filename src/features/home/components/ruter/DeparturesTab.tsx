@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchDepartures, fetchNearestStops, type Departure, type StopResult } from '../../api/ruterApi'
-import { useTransitStops } from '../../hooks/useTransitStops'
+import { fetchDepartures, fetchNearestStops, type Departure, type StopResult, type Situation } from '../../api/ruterApi'
+import { useTransitStops, DuplicateStopError } from '../../hooks/useTransitStops'
 import { useGeolocation } from '../../hooks/useGeolocation'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
@@ -25,6 +25,7 @@ interface LineGroup {
   realtime:        boolean
   aimed:           string
   expected:        string
+  situations:      Situation[]
   departures:      Departure[]
 }
 
@@ -44,6 +45,7 @@ function buildLineGroups(deps: Departure[]): LineGroup[] {
         realtime:      dep.realtime,
         aimed:         dep.aimed,
         expected:      dep.expected,
+        situations:    dep.situations,
         departures:    [dep],
       })
     } else {
@@ -51,6 +53,14 @@ function buildLineGroups(deps: Departure[]): LineGroup[] {
     }
   }
   return Array.from(map.values())
+}
+
+// Colour by severity — grey/neutral for informational, amber for moderate,
+// red for severe. Matches EnTur's own Severity enum.
+function situationColor(severity: string): string {
+  if (severity === 'severe' || severity === 'verySevere') return 'text-red-600 bg-red-50 border-red-200'
+  if (severity === 'slight' || severity === 'normal')     return 'text-amber-700 bg-amber-50 border-amber-200'
+  return 'text-ink-500 bg-ink-50 border-ink-200'
 }
 
 // ─── DepartureRow ─────────────────────────────────────────────────────────────
@@ -80,6 +90,14 @@ function DepartureRow({ group, now }: { group: LineGroup; now: number }) {
             Next: {nextTimes.join(', ')}
           </div>
         )}
+        {/* Live disruption/alert for this line, e.g. "Cancelled today" —
+            straight from EnTur's own situations feed, not just the
+            aimed-vs-expected delay indicator on the right. */}
+        {group.situations.length > 0 && (
+          <div className={`text-[10px] px-1.5 py-0.5 rounded border mt-1 truncate ${situationColor(group.situations[0].severity)}`}>
+            ⚠ {group.situations[0].summary}
+          </div>
+        )}
       </div>
 
       <div className="text-right flex-shrink-0 flex items-center gap-1.5">
@@ -103,7 +121,7 @@ function DepartureRow({ group, now }: { group: LineGroup; now: number }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function DeparturesTab({ ws, now }: DeparturesTabProps) {
-  const { stops, addStop } = useTransitStops()
+  const { stops, addStop, updateStop } = useTransitStops()
   const queryClient = useQueryClient()
   const { data: geo } = useGeolocation()
 
@@ -114,6 +132,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   const [lastUpdated,   setLastUpdated]   = useState<number | null>(null)
   const [refreshing,    setRefreshing]    = useState(false)
   const [visibleCount,  setVisibleCount]  = useState(4)
+  const [includeAddresses, setIncludeAddresses] = useState(false)
 
   // Real nearby stops from the user's actual location (EnTur's `nearest` query)
   // — only when location was actually granted, never suggested off the Oslo
@@ -128,6 +147,9 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
 
   const activeSaved = activeId ? stops.find(s => s.id === activeId) ?? defaultStop : defaultStop
   const queryStop   = adHocStop ?? (activeSaved ? { id: activeSaved.stop_id, name: activeSaved.stop_name } : null)
+  // An address favorite (or an address search result) has no NSR stop id, so
+  // there's no departures board for it — only saving it for trip planning.
+  const isAddressQuery = !!queryStop && !queryStop.id.startsWith('NSR:')
 
   // Reset the load-more window whenever the viewed stop changes.
   useEffect(() => { setVisibleCount(4) }, [queryStop?.id])
@@ -141,24 +163,30 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
     },
     staleTime:       ws.intervalMs,
     refetchInterval: !ws.collapsed && ws.syncActive ? ws.intervalMs : false,
-    enabled:         !ws.collapsed && !!queryStop?.id,
+    enabled:         !ws.collapsed && !!queryStop?.id && !isAddressQuery,
   })
 
   const quayGroups = useMemo(() => {
     if (!data?.departures) return []
     const rawMap = new Map<string, { code?: string; description?: string; deps: Departure[] }>()
     for (const dep of data.departures) {
-      const key = dep.quayDescription ?? dep.quayCode ?? '__default__'
+      // Group by the physical quay (code) when known — NOT by description,
+      // which is often missing (real bug: grouping by description first meant
+      // a stop with no description data collapsed everything into one bucket
+      // even when quayCode clearly distinguished separate platforms).
+      const key = dep.quayCode ?? dep.quayDescription ?? '__default__'
       if (!rawMap.has(key)) {
         rawMap.set(key, { code: dep.quayCode, description: dep.quayDescription, deps: [] })
       }
       rawMap.get(key)!.deps.push(dep)
     }
-    return Array.from(rawMap.values()).map(({ code, description, deps }) => ({
-      code,
-      description,
-      lineGroups: buildLineGroups(deps),
-    }))
+    return Array.from(rawMap.values()).map(({ code, description, deps }) => {
+      // Derive "Toward X, Y" from the departures actually seen at this quay —
+      // no extra API call needed, and it can't go stale/wrong the way a
+      // single first-seen guess could (a platform often serves >1 destination).
+      const destinations = [...new Set(deps.map(d => d.destination))]
+      return { code, description, destinations, lineGroups: buildLineGroups(deps) }
+    })
   }, [data])
 
   const departuresQueryKey = ['departures', queryStop?.id ?? '']
@@ -190,14 +218,27 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
 
   async function handleSaveFromPanel(quayId: string | null, quayDescription: string | null, label: string) {
     if (!adHocStop) return
-    const tid = toast.loading('Saving stop…')
     try {
       await addStop(adHocStop, quayId ?? undefined, quayDescription ?? undefined, label !== adHocStop.name ? label : undefined)
-      toast.dismiss(tid)
       toast.success('Stop saved ✓')
       setShowSavePanel(false)
     } catch (e) {
-      toast.dismiss(tid)
+      // Same stop + direction already saved — offer to update it instead of a
+      // raw "duplicate key" error (real bug this replaces).
+      if (e instanceof DuplicateStopError) {
+        const proceed = confirm(
+          `You already have this saved as "${e.existing.label ?? e.existing.stop_name}". Update it with this direction and label instead?`
+        )
+        if (!proceed) return
+        try {
+          await updateStop(e.existing.id, { label, quayId, quayDescription })
+          toast.success('Stop updated ✓')
+          setShowSavePanel(false)
+        } catch (e2) {
+          toast.error((e2 as Error).message ?? 'Failed to update')
+        }
+        return
+      }
       toast.error((e as Error).message ?? 'Failed to save')
     }
   }
@@ -211,22 +252,33 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
         <div className="mb-3">
           <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Saved stops</p>
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {stops.map(s => (
-              <button
-                key={s.id}
-                onClick={() => handleSavedStopClick(s.id)}
-                className={`flex-shrink-0 text-left text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
-                  !adHocStop && activeSaved?.id === s.id
-                    ? 'bg-accent-500 text-white border-accent-500'
-                    : 'text-ink-600 border-ink-200 hover:border-accent-300'
-                }`}
-              >
-                <span className="block whitespace-nowrap">{s.label ?? s.stop_name}</span>
-                {s.quay_description && (
-                  <span className="block whitespace-nowrap text-[10px] opacity-70">{s.quay_description}</span>
-                )}
-              </button>
-            ))}
+            {stops.map(s => {
+              const active = !adHocStop && activeSaved?.id === s.id
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => handleSavedStopClick(s.id)}
+                  className={`flex-shrink-0 text-left text-xs px-3 py-2 rounded-lg border transition-colors duration-150 min-h-[44px] ${
+                    active
+                      ? 'bg-accent-500 text-white border-accent-500'
+                      : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                  }`}
+                >
+                  <span className="flex items-center gap-1 whitespace-nowrap">
+                    {s.label ?? s.stop_name}
+                    {/* Clarifies "why is this one pre-selected" — the default
+                        is the first stop you ever saved, or whichever you
+                        picked in Settings; it's not a fixed/hardcoded stop. */}
+                    {s.is_default && (
+                      <span className={`text-[9px] ${active ? 'text-white/80' : 'text-accent-500'}`} title="Default stop — shown first when you open Departures">★</span>
+                    )}
+                  </span>
+                  {s.quay_description && (
+                    <span className="block whitespace-nowrap text-[10px] opacity-70">{s.quay_description}</span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -256,7 +308,16 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       {/* ── Search stop — always visible ── */}
       <div className="mb-3">
         <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Search stop</p>
-        <StopSearchInput placeholder="Search any stop…" onSelect={handleSearchSelect} stopsOnly={true} />
+        <StopSearchInput placeholder="Search any stop…" onSelect={handleSearchSelect} stopsOnly={!includeAddresses} />
+        <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-ink-500 min-h-[28px]">
+          <input
+            type="checkbox"
+            checked={includeAddresses}
+            onChange={e => setIncludeAddresses(e.target.checked)}
+            className="rounded border-ink-300"
+          />
+          Include addresses (for trip planning — no live departures)
+        </label>
       </div>
 
       {/* ── Active stop header + refresh ── */}
@@ -308,6 +369,9 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       {!queryStop && (
         <div className="text-sm text-ink-400 py-2">Search a stop or choose a saved stop.</div>
       )}
+      {queryStop && isAddressQuery && (
+        <div className="text-sm text-ink-400 py-2">This is an address, not a transit stop — no departures board. Use "+ Save" above to keep it for trip planning.</div>
+      )}
       {isLoading && (
         <div className="space-y-1.5">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -324,19 +388,23 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
         </div>
       )}
 
-      {/* ── Departures: 2-col quay grid, lines grouped within each quay ── */}
+      {/* ── Departures: each platform/direction gets its own bordered box, in a
+             2-col grid on stops with multiple platforms — so which lines belong
+             to which platform is never ambiguous. ── */}
       {data && quayGroups.length > 0 && (
-        <div className={quayGroups.length >= 2 ? 'grid grid-cols-2 gap-x-4' : ''}>
+        <div className={quayGroups.length >= 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-3' : ''}>
           {quayGroups.map((group, i) => (
-            <div key={i}>
-              {(group.code || group.description) && (
-                <div className="mb-1 pb-1 border-b border-ink-100">
+            <div key={i} className={quayGroups.length >= 2 ? 'rounded-lg border border-ink-200 bg-ink-50/40 p-2' : ''}>
+              {quayGroups.length >= 2 && (
+                <div className="mb-1 pb-1.5 border-b border-ink-100">
                   <p className="text-[11px] font-bold text-ink-700 truncate leading-snug">
-                    {group.code ? `Platform ${group.code}` : group.description}
+                    {group.code ? `Platform ${group.code}` : 'Platform'}
                   </p>
-                  {group.code && group.description && (
-                    <p className="text-[10px] text-ink-400 truncate leading-tight">{group.description}</p>
-                  )}
+                  <p className="text-[10px] text-ink-400 truncate leading-tight">
+                    {group.description ?? (group.destinations.length > 0
+                      ? `Toward ${group.destinations.slice(0, 2).join(', ')}${group.destinations.length > 2 ? '…' : ''}`
+                      : 'Direction unknown')}
+                  </p>
                 </div>
               )}
               <div className="divide-y divide-ink-50">
