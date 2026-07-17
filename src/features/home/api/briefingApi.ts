@@ -110,7 +110,9 @@ async function buildBriefingContext(): Promise<string> {
     lines.push(`SON ANTRENMAN: ${lastWorkout.title} (${lastWorkout.hevy_created_at?.slice(0, 10)})`)
   }
 
-  // Currency week trend
+  // Currency week trend — just the user's two home currencies (NOK/TRY) plus
+  // EUR/USD in their own right, and gold. Kept deliberately short (was 5 cross
+  // rates through NOK/TRY, which read as a confusing wall of numbers).
   const currency = val(currencyR, [] as Awaited<ReturnType<typeof fetchCurrencyWeekTrend>>)
   if (currency.length) {
     lines.push('\nDÖVİZ — SON 7 GÜN TRENDİ:')
