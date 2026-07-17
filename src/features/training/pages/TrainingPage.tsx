@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { HevyTab } from '../components/HevyTab'
+import { PTCoachTab } from '../components/PTCoachTab'
 import { StravaTab } from '../components/StravaTab'
 import { HealthTab } from '../components/HealthTab'
 import { HevySyncButton } from '../components/HevySyncButton'
@@ -8,10 +9,10 @@ import { NextSessionBanner } from '../components/NextSessionBanner'
 import { HealthStatsPanel } from '../components/health/HealthStatsPanel'
 import type { SectionId } from '../components/health/sectionTypes'
 
-type Tab = 'hevy' | 'strava' | 'health'
+type Tab = 'hevy' | 'strava' | 'health' | 'coach'
 type HevySub = 'workouts' | 'routines' | 'prs' | 'muscles' | 'body' | 'exercises'
 
-const TAB_LABELS: Record<Tab, string> = { hevy: 'Hevy', strava: 'Strava', health: 'Health' }
+const TAB_LABELS: Record<Tab, string> = { hevy: 'Hevy', strava: 'Strava', health: 'Health', coach: '🧠 Coach' }
 
 // Royalty-free training photo (Unsplash license) used as a faint header backdrop.
 const HEADER_BG =
@@ -43,7 +44,7 @@ export function TrainingPage() {
 
           {/* Hevy / Strava / Health pills */}
           <div className="flex gap-0.5 p-0.5 bg-cream-50/70 backdrop-blur rounded-lg border border-ink-200">
-            {(['hevy', 'strava', 'health'] as Tab[]).map(t => (
+            {(['hevy', 'strava', 'health', 'coach'] as Tab[]).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -70,6 +71,7 @@ export function TrainingPage() {
           {tab === 'hevy'   && <HevyTab onSubTabChange={setHevySub} />}
           {tab === 'strava' && <StravaTab />}
           {tab === 'health' && <HealthTab section={healthSection} onSectionChange={setHealthSection} />}
+          {tab === 'coach'  && <PTCoachTab />}
         </div>
 
         {/* Hevy/Strava: training calendar, always relevant. Health: the

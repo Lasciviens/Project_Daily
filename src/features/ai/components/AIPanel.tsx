@@ -109,8 +109,8 @@ export function AIPanel() {
       <div
         className={[
           'fixed z-50 bg-cream-50 flex flex-col border-ink-200',
-          'bottom-0 left-0 right-0 h-[80vh] rounded-t-2xl border-t',
-          'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-[420px] lg:rounded-none lg:border-t-0 lg:border-l',
+          'bottom-0 left-0 right-0 h-[88vh] rounded-t-2xl border-t',
+          'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-[520px] xl:w-[620px] lg:rounded-none lg:border-t-0 lg:border-l',
           isAIOpen
             ? 'translate-y-0 lg:translate-x-0'
             : 'translate-y-full lg:translate-y-0 lg:translate-x-full',
