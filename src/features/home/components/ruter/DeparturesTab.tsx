@@ -161,13 +161,17 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   const [showAllDirections, setShowAllDirections] = useState(false)
 
   // Reset the load-more window (and the all-directions override) whenever the
-  // viewed stop changes.
-  useEffect(() => { setVisibleCount(4); setShowAllDirections(false) }, [queryStop?.id])
+  // viewed stop OR the viewed saved direction changes — two favorites can point
+  // at the same physical stop with different quays, so stop id alone isn't enough.
+  useEffect(() => { setVisibleCount(4); setShowAllDirections(false) }, [queryStop?.id, savedQuayId])
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['departures', queryStop?.id ?? ''],
     queryFn: async () => {
-      const result = await fetchDepartures(queryStop!.id)
+      // 24 (not the default 12): the quay scope below filters CLIENT-side from
+      // this one pool, so at a two-direction stop a 12-item fetch could leave
+      // the saved direction with only a handful of rows.
+      const result = await fetchDepartures(queryStop!.id, 24)
       setLastUpdated(Date.now())
       return result
     },
@@ -176,15 +180,33 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
     enabled:         !ws.collapsed && !!queryStop?.id && !isAddressQuery,
   })
 
-  const allQuayGroups = useMemo(() => {
-    if (!data?.departures) return []
+  // Scope to the saved favorite's quay at the DEPARTURE level, before any
+  // grouping. Real bug this fixes (verified live at Visperud): scoping used to
+  // happen on the built groups, but the grouping key was quayCode/description —
+  // at ordinary roadside stops BOTH are empty ("" / null), so every direction
+  // merged into one group whose quayId was whichever departure happened to come
+  // first. The group filter then either passed that whole merged list or
+  // matched nothing and fell back to everything — either way the saved quay was
+  // ignored, which is exactly what the user reported.
+  const { scopedDepartures, scopeActive } = useMemo(() => {
+    const all = data?.departures ?? []
+    if (!savedQuayId || showAllDirections) return { scopedDepartures: all, scopeActive: false }
+    const matched = all.filter(d => d.quayId === savedQuayId)
+    // Stale saved quay id (e.g. EnTur re-ids a quay) → show everything rather
+    // than an empty board that reads as "no departures".
+    if (matched.length === 0) return { scopedDepartures: all, scopeActive: false }
+    return { scopedDepartures: matched, scopeActive: true }
+  }, [data, savedQuayId, showAllDirections])
+
+  const quayGroups = useMemo(() => {
     const rawMap = new Map<string, { quayId?: string; code?: string; description?: string; deps: Departure[] }>()
-    for (const dep of data.departures) {
-      // Group by the physical quay (code) when known — NOT by description,
-      // which is often missing (real bug: grouping by description first meant
-      // a stop with no description data collapsed everything into one bucket
-      // even when quayCode clearly distinguished separate platforms).
-      const key = dep.quayCode ?? dep.quayDescription ?? '__default__'
+    for (const dep of scopedDepartures) {
+      // Group by the quay's real NSR id — it's the only identifier that is
+      // ALWAYS present. publicCode/description are both commonly empty at
+      // roadside stops (verified live: Visperud's quays have publicCode ""
+      // and description null), which previously merged distinct directions
+      // into a single bucket.
+      const key = dep.quayId ?? dep.quayCode ?? dep.quayDescription ?? '__default__'
       if (!rawMap.has(key)) {
         rawMap.set(key, { quayId: dep.quayId, code: dep.quayCode, description: dep.quayDescription, deps: [] })
       }
@@ -197,18 +219,7 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       const destinations = [...new Set(deps.map(d => d.destination))]
       return { quayId, code, description, destinations, lineGroups: buildLineGroups(deps) }
     })
-  }, [data])
-
-  // Scope the board to the saved favorite's platform/direction, unless the
-  // user explicitly asked to see every platform at the stop.
-  const quayGroups = useMemo(() => {
-    if (!savedQuayId || showAllDirections) return allQuayGroups
-    const matched = allQuayGroups.filter(g => g.quayId === savedQuayId)
-    // Fall back to showing everything if the saved quay id doesn't match any
-    // currently-live quay (e.g. EnTur re-ids a quay) — a silently empty board
-    // would look like "no departures" when really it's just a stale id.
-    return matched.length > 0 ? matched : allQuayGroups
-  }, [allQuayGroups, savedQuayId, showAllDirections])
+  }, [scopedDepartures])
 
   const departuresQueryKey = ['departures', queryStop?.id ?? '']
 
@@ -376,19 +387,26 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
         </div>
       )}
 
-      {/* ── Saved-direction scope note — makes the filtering from savedQuayId
-             visible instead of silently narrowing the board with no explanation ── */}
-      {queryStop && !isAddressQuery && savedQuayId && (
-        <div className="flex items-center gap-2 text-[11px] text-ink-400 mb-2">
+      {/* ── Saved-direction scope note — states what the board is ACTUALLY
+             showing (never claims the saved direction while a fallback is
+             silently showing everything, which is how the original bug hid) ── */}
+      {queryStop && !isAddressQuery && savedQuayId && data && (
+        <div className="flex items-center gap-2 flex-wrap text-[11px] text-ink-400 mb-2">
           <span>
-            Showing: {activeSaved?.quay_description ?? 'saved direction'}
+            {showAllDirections
+              ? 'Showing: all directions'
+              : scopeActive
+                ? `Showing: ${activeSaved?.quay_description ?? 'saved direction'}`
+                : 'Saved direction not found in current departures — showing all'}
           </span>
-          <button
-            onClick={() => setShowAllDirections(v => !v)}
-            className="text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[28px]"
-          >
-            {showAllDirections ? 'Show saved direction only' : 'Show all directions'}
-          </button>
+          {(scopeActive || showAllDirections) && (
+            <button
+              onClick={() => setShowAllDirections(v => !v)}
+              className="text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[28px]"
+            >
+              {showAllDirections ? 'Show saved direction only' : 'Show all directions'}
+            </button>
+          )}
         </div>
       )}
 
@@ -432,18 +450,24 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
         <div className={quayGroups.length >= 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-3' : ''}>
           {quayGroups.map((group, i) => (
             <div key={i} className={quayGroups.length >= 2 ? 'rounded-lg border border-ink-200 bg-ink-50/40 p-2' : ''}>
-              {quayGroups.length >= 2 && (
-                <div className="mb-1 pb-1.5 border-b border-ink-100">
-                  <p className="text-[11px] font-bold text-ink-700 truncate leading-snug">
-                    {group.code ? `Platform ${group.code}` : 'Platform'}
-                  </p>
-                  <p className="text-[10px] text-ink-400 truncate leading-tight">
-                    {group.description ?? (group.destinations.length > 0
-                      ? `Toward ${group.destinations.slice(0, 2).join(', ')}${group.destinations.length > 2 ? '…' : ''}`
-                      : 'Direction unknown')}
-                  </p>
-                </div>
-              )}
+              {quayGroups.length >= 2 && (() => {
+                // Roadside stops often have NO platform code (verified live:
+                // Visperud) — a bare bold "Platform" on every box says nothing,
+                // so in that case the direction itself becomes the headline.
+                const towards = group.destinations.length > 0
+                  ? `Toward ${group.destinations.slice(0, 2).join(', ')}${group.destinations.length > 2 ? '…' : ''}`
+                  : 'Direction unknown'
+                return (
+                  <div className="mb-1 pb-1.5 border-b border-ink-100">
+                    <p className="text-[11px] font-bold text-ink-700 truncate leading-snug">
+                      {group.code ? `Platform ${group.code}` : towards}
+                    </p>
+                    <p className="text-[10px] text-ink-400 truncate leading-tight">
+                      {group.code ? (group.description ?? towards) : (group.description ?? ' ')}
+                    </p>
+                  </div>
+                )
+              })()}
               <div className="divide-y divide-ink-50">
                 {group.lineGroups.slice(0, visibleCount).map((lg, j) => (
                   <DepartureRow key={j} group={lg} now={now} />
