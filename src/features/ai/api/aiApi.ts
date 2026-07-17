@@ -200,7 +200,21 @@ export interface AIResponse {
   text:          string
   quickReplies?: string[]
   steps?:        string[]   // activity trace of tool calls the AI ran
+  model?:        string     // which Gemini model actually served this reply (fallback chain may differ from the request)
 }
+
+// The 4-model fallback chain ai-proxy tries on 503 "high demand" — same list,
+// same order, kept here so the UI's model picker and the server never drift
+// apart. 'auto' isn't a real model id: it means "let the server's chain
+// decide", i.e. don't send a `model` field at all.
+export type AIModel = 'auto' | 'gemini-3.5-flash' | 'gemini-3-flash' | 'gemini-3.1-flash-lite' | 'gemini-3.1-pro'
+export const AI_MODEL_OPTIONS: { id: AIModel; label: string; hint: string }[] = [
+  { id: 'auto',                  label: 'Auto',            hint: 'Recommended — tries all models, fastest recovery from overload' },
+  { id: 'gemini-3.5-flash',      label: '3.5 Flash',       hint: 'Default balance of speed/quality' },
+  { id: 'gemini-3-flash',        label: '3 Flash',         hint: 'Similar quality, separate capacity pool' },
+  { id: 'gemini-3.1-flash-lite', label: '3.1 Flash-Lite',  hint: 'Fastest, lightest — best under heavy load' },
+  { id: 'gemini-3.1-pro',        label: '3.1 Pro',         hint: 'Highest quality, slower' },
+]
 
 // A Supabase FunctionsError's body isn't always valid JSON (e.g. an upstream
 // gateway error page) — swallow that parse failure here so callers always get
@@ -210,9 +224,9 @@ async function throwFunctionError(error: { message: string }): Promise<never> {
   throw new Error(friendlyError(body, error.message))
 }
 
-export async function invokeAI(messages: Message[], systemPrompt: string): Promise<AIResponse> {
+export async function invokeAI(messages: Message[], systemPrompt: string, model?: AIModel): Promise<AIResponse> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
-    body: { messages, systemPrompt },
+    body: { messages, systemPrompt, ...(model && model !== 'auto' ? { model } : {}) },
   })
 
   if (error) await throwFunctionError(error)
@@ -223,10 +237,10 @@ export async function invokeAI(messages: Message[], systemPrompt: string): Promi
 
 // ─── Main send function ───────────────────────────────────────────────────────
 
-export async function sendMessage(messages: Message[]): Promise<AIResponse> {
+export async function sendMessage(messages: Message[], model?: AIModel): Promise<AIResponse> {
   const context = await buildContext()
   const systemWithContext = `${SYSTEM_PROMPT}\n\n---\nLIVE DATA:\n${context}`
-  return invokeAI(messages, systemWithContext)
+  return invokeAI(messages, systemWithContext, model)
 }
 
 // ─── Shop-scoped send function ───────────────────────────────────────────────
