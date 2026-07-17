@@ -141,8 +141,30 @@ const SLEEP_STAGE_KEYS = ['Core', 'REM', 'Deep', 'Awake', 'Asleep'] as const
 // core/rem/deep/awake/totalSleep fields already computed) or raw per-segment
 // points ({value:'Core'|'Deep'|'REM'|'Awake'|'Asleep', qty: hours, start, end}
 // — one row per sleep-stage transition). Handle both.
+
+// The night a sleep session belongs to = the day you WOKE UP (Apple's own
+// convention). For pre-aggregated sessions we derive it from the session's
+// own sleepEnd (a local-time string like "2026-07-17 07:27:08 +0200" — the
+// date part IS the local wake day, no timezone math needed) rather than
+// trusting the ingest-stamped `date` blindly: an interrupted night can arrive
+// as multiple sessions, and if the exporter ever attributes a pre-midnight
+// session to the previous calendar day, keying on `date` alone would split
+// one real night across two chart bars. Rows without a parseable sleepEnd
+// (manual entries, raw segments) keep their stored date.
+function sleepNightKey(p: HealthMetric): string {
+  const end = p.value?.sleepEnd
+  if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end)) return end.slice(0, 10)
+  return p.date
+}
+
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
-  const byDate = groupByDate(points)
+  const byDate = new Map<string, HealthMetric[]>()
+  for (const p of points) {
+    const key = sleepNightKey(p)
+    const arr = byDate.get(key)
+    if (arr) arr.push(p)
+    else byDate.set(key, [p])
+  }
   const result: SleepSummary[] = []
   for (const [date, pts] of byDate) {
     // A manual entry is a deliberate correction for that specific night — it

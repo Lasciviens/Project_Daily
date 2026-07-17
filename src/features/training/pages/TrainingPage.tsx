@@ -9,9 +9,7 @@ import { HealthStatsPanel } from '../components/health/HealthStatsPanel'
 import type { SectionId } from '../components/health/sectionTypes'
 
 type Tab = 'hevy' | 'strava' | 'health'
-// Hevy sub-tabs that benefit from extra width on large monitors.
 type HevySub = 'workouts' | 'routines' | 'prs' | 'muscles' | 'body' | 'exercises'
-const WIDE_HEVY_SUBS = new Set<HevySub>(['exercises', 'muscles'])
 
 const TAB_LABELS: Record<Tab, string> = { hevy: 'Hevy', strava: 'Strava', health: 'Health' }
 
@@ -23,8 +21,11 @@ export function TrainingPage() {
   const [tab, setTab] = useState<Tab>('hevy')
   const [healthSection, setHealthSection] = useState<SectionId>('overview')
   const [hevySub, setHevySub] = useState<HevySub>('workouts')
+  void hevySub // sub-tab no longer affects layout width, but the callback contract stays
 
-  const wide = tab === 'health' || (tab === 'hevy' && WIDE_HEVY_SUBS.has(hevySub))
+  // Hevy + Health both fill the space up to the calendar rail on big
+  // monitors now — routine cards with exercise GIFs need the room.
+  const wide = tab === 'health' || tab === 'hevy'
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">

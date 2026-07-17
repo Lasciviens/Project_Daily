@@ -53,7 +53,7 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>, onCorr
           <button
             type="button"
             onClick={() => onCorrect(date)}
-            className="text-accent-600 underline text-[10px] pt-1 block"
+            className="text-accent-600 underline text-xs py-1.5 block min-h-[32px]"
           >
             Correct manually
           </button>
@@ -248,7 +248,7 @@ export function SleepSection() {
             {/* pointerEvents:auto is required or the "Correct manually" button
                 inside the tooltip never receives its click (recharts sets the
                 tooltip wrapper to pointer-events:none by default). */}
-            <Tooltip cursor={false} trigger="click" wrapperStyle={{ pointerEvents: 'auto' }} content={makeSleepTooltipContent(sourcesByDate, openCorrectForm)} />
+            <Tooltip cursor={false} wrapperStyle={{ pointerEvents: 'auto' }} content={makeSleepTooltipContent(sourcesByDate, openCorrectForm)} />
             <Bar dataKey="total" fill="#6366f1" radius={[3, 3, 0, 0]} activeBar={false} />
           </BarChart>
         </ResponsiveContainer>

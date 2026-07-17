@@ -93,13 +93,6 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-ink-300 rounded-full; }
 
-  /* recharts makes bars/points focusable for a11y, which shows the browser's
-     default focus rectangle on click — not something an end user should see. */
-  .recharts-wrapper *:focus,
-  .recharts-surface:focus {
-    outline: none !important;
-  }
-
   /* Was referenced in several horizontal-scroll strips (nav, DailyPage,
      GamesPage) but never actually defined — a real fix, not just tidying,
      since a scroll strip with no scrollbar AND no other affordance gives no
@@ -177,4 +170,19 @@
            placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
            focus:border-accent-400 transition-colors duration-150 min-h-[44px];
   }
+}
+
+/* recharts v3 gives the chart <svg class="recharts-surface"> tabIndex=0
+   (accessibilityLayer), so clicking a chart focuses it and draws the
+   browser's default focus ring around the WHOLE chart — the "frame" seen on
+   every Health chart. DELIBERATELY OUTSIDE any @layer: Tailwind tree-shakes
+   custom rules inside @layer blocks whose selectors never appear in source
+   files (.recharts-* only exist at runtime, inside the library), which is
+   exactly how two earlier versions of this fix silently never shipped —
+   the rule was in @layer base, got purged from the build, and the frame
+   survived. Plain top-level CSS is passed through untouched. */
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus,
+.recharts-surface:focus {
+  outline: none !important;
 }

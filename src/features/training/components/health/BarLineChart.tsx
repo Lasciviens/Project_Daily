@@ -49,9 +49,9 @@ function makeTooltipContent(unit: string, onPointClick?: (point: ChartPoint) => 
           <button
             type="button"
             onClick={() => onPointClick(rawPoint)}
-            className="text-accent-600 underline text-[10px] pt-1 block"
+            className="text-accent-600 underline text-xs py-1.5 block min-h-[32px]"
           >
-            See details
+            Go to this day →
           </button>
         )}
       </div>
@@ -81,16 +81,14 @@ export function BarLineChart({
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
           <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
           <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
-          {/* trigger="click": recharts' default hover Tooltip relies on
-              synthesized mousemove events that don't reliably repeat on
-              touch (a second tap on a different bar doesn't always update
-              it) — tap-to-show is the documented recharts fix for touch.
-              wrapperStyle pointerEvents: recharts tooltips are
-              pointer-events:none by default (so hovering the tooltip itself
-              doesn't interfere with chart mouse-tracking) — without
-              overriding this, the "See details" link inside would render
-              but never actually receive a click. */}
-          <Tooltip cursor={false} trigger="click" content={makeTooltipContent(unit, onPointClick)} wrapperStyle={{ pointerEvents: 'auto' }} />
+          {/* Hover trigger (default): per explicit user request, the value
+              must appear the moment the pointer is over a point — no click
+              needed. On touch, the first tap acts as hover and still shows
+              it. wrapperStyle pointerEvents: recharts tooltips are
+              pointer-events:none by default — without overriding this, the
+              "Go to this day" link inside would render but never actually
+              receive a click. */}
+          <Tooltip cursor={false} content={makeTooltipContent(unit, onPointClick)} wrapperStyle={{ pointerEvents: 'auto' }} />
           {rangeKey && <Area dataKey={rangeKey} name="Range" stroke="none" fill={color} fillOpacity={0.12} />}
           {/* barSize bumped from 9 to 16 and activeDot added — the old size
               was well under a comfortable touch tap target. Clicking a bar
