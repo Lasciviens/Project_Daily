@@ -47,17 +47,24 @@ export function WorkedMuscles() {
   const [selected, setSelected] = useState<Set<Slug>>(new Set())
 
   const windowDays = PERIODS.find(p => p.id === period)!.days
-  const now = new Date()
-  const from = subDays(now, windowDays).toISOString()
   const weeks = windowDays / 7
+
+  // The query window must be STABLE across renders or React Query refetches
+  // forever (a fresh `new Date()` each render = a new key each render). Anchor
+  // to the calendar day so the key only changes when the day or period changes.
+  const anchorDay = format(new Date(), 'yyyy-MM-dd')
+  const { fromIso, toIso } = useMemo(() => {
+    const end = new Date(`${anchorDay}T23:59:59`)
+    return { fromIso: subDays(end, windowDays).toISOString(), toIso: end.toISOString() }
+  }, [windowDays, anchorDay])
 
   const { data: templates = [] } = useHevyExerciseTemplates()
   const { data: recentWorkouts = [] } = useHevyWorkouts({ limit: 1 })
   const lastAt = recentWorkouts[0]?.start_time ?? recentWorkouts[0]?.hevy_created_at ?? null
 
   const { data: volume = [], isLoading } = useQuery({
-    queryKey: ['hevy', 'muscle-volume', period, from],
-    queryFn:  () => fetchMuscleVolume(from, now.toISOString()),
+    queryKey: ['hevy', 'muscle-volume', windowDays, anchorDay],
+    queryFn:  () => fetchMuscleVolume(fromIso, toIso),
     staleTime: 5 * 60_000,
   })
 
@@ -196,7 +203,14 @@ export function WorkedMuscles() {
         </div>
 
         <div className="relative w-full flex justify-center rounded-2xl bg-gradient-to-b from-ink-800 to-ink-950 p-5">
-          {isLoading && <div className="absolute inset-0 z-10 rounded-2xl bg-ink-900/40 animate-pulse" />}
+          {isLoading && (
+            <div className="absolute inset-0 z-10 rounded-2xl bg-ink-900/60 flex items-center justify-center">
+              <span className="flex items-center gap-2 text-xs text-ink-200">
+                <span className="w-3 h-3 border-2 border-ink-400 border-t-transparent rounded-full animate-spin" />
+                Loading your volume…
+              </span>
+            </div>
+          )}
           <div className="w-full max-w-[340px] [&>svg]:w-full [&>svg]:h-auto">
             <Body
               data={bodyData}
@@ -267,9 +281,11 @@ export function WorkedMuscles() {
         </div>
 
         <p className="text-sm text-ink-500">
-          {workoutCount > 0
-            ? <><strong className="text-ink-800">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · <strong className="text-ink-800">{totalWorkingSets}</strong> working sets · last {windowDays} days</>
-            : `No workouts logged in the last ${windowDays} days.`}
+          {isLoading
+            ? 'Loading…'
+            : workoutCount > 0
+              ? <><strong className="text-ink-800">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · <strong className="text-ink-800">{totalWorkingSets}</strong> working sets · last {windowDays} days</>
+              : `No workouts logged in the last ${windowDays} days.`}
         </p>
 
         {/* Under-dosed / over lists */}
