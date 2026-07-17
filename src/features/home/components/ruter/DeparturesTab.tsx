@@ -151,8 +151,18 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
   // there's no departures board for it — only saving it for trip planning.
   const isAddressQuery = !!queryStop && !queryStop.id.startsWith('NSR:')
 
-  // Reset the load-more window whenever the viewed stop changes.
-  useEffect(() => { setVisibleCount(4) }, [queryStop?.id])
+  // A saved favorite's quay_id (which direction/platform it was saved for) —
+  // real bug this fixes: the board used to always show EVERY platform at the
+  // stop regardless of which one was actually saved, so "kaydedildigi quay'dan
+  // bagimsiz sorgu atiyor" (queries independent of the saved quay) was literally
+  // true. null quay_id means the favorite was saved as "all directions" on
+  // purpose, so that case still shows everything.
+  const savedQuayId = (!adHocStop && activeSaved?.quay_id) ? activeSaved.quay_id : null
+  const [showAllDirections, setShowAllDirections] = useState(false)
+
+  // Reset the load-more window (and the all-directions override) whenever the
+  // viewed stop changes.
+  useEffect(() => { setVisibleCount(4); setShowAllDirections(false) }, [queryStop?.id])
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['departures', queryStop?.id ?? ''],
@@ -166,9 +176,9 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
     enabled:         !ws.collapsed && !!queryStop?.id && !isAddressQuery,
   })
 
-  const quayGroups = useMemo(() => {
+  const allQuayGroups = useMemo(() => {
     if (!data?.departures) return []
-    const rawMap = new Map<string, { code?: string; description?: string; deps: Departure[] }>()
+    const rawMap = new Map<string, { quayId?: string; code?: string; description?: string; deps: Departure[] }>()
     for (const dep of data.departures) {
       // Group by the physical quay (code) when known — NOT by description,
       // which is often missing (real bug: grouping by description first meant
@@ -176,18 +186,29 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
       // even when quayCode clearly distinguished separate platforms).
       const key = dep.quayCode ?? dep.quayDescription ?? '__default__'
       if (!rawMap.has(key)) {
-        rawMap.set(key, { code: dep.quayCode, description: dep.quayDescription, deps: [] })
+        rawMap.set(key, { quayId: dep.quayId, code: dep.quayCode, description: dep.quayDescription, deps: [] })
       }
       rawMap.get(key)!.deps.push(dep)
     }
-    return Array.from(rawMap.values()).map(({ code, description, deps }) => {
+    return Array.from(rawMap.values()).map(({ quayId, code, description, deps }) => {
       // Derive "Toward X, Y" from the departures actually seen at this quay —
       // no extra API call needed, and it can't go stale/wrong the way a
       // single first-seen guess could (a platform often serves >1 destination).
       const destinations = [...new Set(deps.map(d => d.destination))]
-      return { code, description, destinations, lineGroups: buildLineGroups(deps) }
+      return { quayId, code, description, destinations, lineGroups: buildLineGroups(deps) }
     })
   }, [data])
+
+  // Scope the board to the saved favorite's platform/direction, unless the
+  // user explicitly asked to see every platform at the stop.
+  const quayGroups = useMemo(() => {
+    if (!savedQuayId || showAllDirections) return allQuayGroups
+    const matched = allQuayGroups.filter(g => g.quayId === savedQuayId)
+    // Fall back to showing everything if the saved quay id doesn't match any
+    // currently-live quay (e.g. EnTur re-ids a quay) — a silently empty board
+    // would look like "no departures" when really it's just a stale id.
+    return matched.length > 0 ? matched : allQuayGroups
+  }, [allQuayGroups, savedQuayId, showAllDirections])
 
   const departuresQueryKey = ['departures', queryStop?.id ?? '']
 
@@ -352,6 +373,22 @@ export function DeparturesTab({ ws, now }: DeparturesTabProps) {
               <span className={`text-base leading-none select-none ${refreshing ? 'animate-spin' : ''}`}>↻</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── Saved-direction scope note — makes the filtering from savedQuayId
+             visible instead of silently narrowing the board with no explanation ── */}
+      {queryStop && !isAddressQuery && savedQuayId && (
+        <div className="flex items-center gap-2 text-[11px] text-ink-400 mb-2">
+          <span>
+            Showing: {activeSaved?.quay_description ?? 'saved direction'}
+          </span>
+          <button
+            onClick={() => setShowAllDirections(v => !v)}
+            className="text-accent-500 hover:text-accent-700 transition-colors duration-150 min-h-[28px]"
+          >
+            {showAllDirections ? 'Show saved direction only' : 'Show all directions'}
+          </button>
         </div>
       )}
 

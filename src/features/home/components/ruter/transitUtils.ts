@@ -41,3 +41,10 @@ export function fmtLastUpdated(timestamp: number): string {
   return fmtTime(new Date(timestamp).toISOString())
 }
 
+// "just now" / "Xm ago" — used where a cached value's age matters (e.g. reused
+// geolocation) so the user can judge whether to force a fresh read instead.
+export function fmtMinsAgo(timestamp: number, now: number): string {
+  const mins = Math.max(0, Math.round((now - timestamp) / 60_000))
+  return mins < 1 ? 'just now' : `${mins}m ago`
+}
+

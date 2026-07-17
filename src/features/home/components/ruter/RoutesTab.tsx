@@ -2,14 +2,14 @@ import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchTrips, fetchStopDirections, quayLabel, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
-import { useTransitStops } from '../../hooks/useTransitStops'
+import { useTransitStops, type UserTransitStop } from '../../hooks/useTransitStops'
 import { useTransitRecentSearches, type RecentSearch } from '../../hooks/useTransitRecentSearches'
 import { useGeolocation } from '../../hooks/useGeolocation'
 import { useTravelProfile, WALK_SPEED_MPS } from '../../hooks/useTravelProfile'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
-import { fmtLastUpdated, fmtTime } from './transitUtils'
+import { fmtLastUpdated, fmtMinsAgo, fmtTime } from './transitUtils'
 import { toast } from '../../../../app/store'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { todayStr as todayString } from '../../../../shared/utils/dateUtils'
@@ -193,7 +193,7 @@ export function RoutesTab({ ws, now, pendingRouteId, onRouteConsumed }: RoutesTa
   const { routes, addRoute, removeRoute } = useTransitRoutes()
   const { stops: savedStops } = useTransitStops()
   const { recent: recentSearches, recordSearch } = useTransitRecentSearches()
-  const { data: geo } = useGeolocation()
+  const { data: geo, dataUpdatedAt: geoUpdatedAt, refetch: refetchGeo, isFetching: geoRefreshing } = useGeolocation()
   const { profile: travelProfile } = useTravelProfile()
   const queryClient = useQueryClient()
 
@@ -269,11 +269,27 @@ export function RoutesTab({ ws, now, pendingRouteId, onRouteConsumed }: RoutesTa
     return 'error'
   }
 
-  async function planGpsToStop(stopId: string, stopName: string) {
+  // Reuses the already-cached app-wide geolocation (shared with Weather, Home,
+  // etc via useGeolocation's React Query cache) instead of hitting the browser
+  // GPS API fresh on every click — a real bug this replaces: every "use current
+  // location" action here called its own raw getCurrentLocation(), ignoring the
+  // cache entirely and re-prompting/re-computing location every single time.
+  async function resolveGpsPlace(): Promise<TransitPlace> {
+    if (geo?.source === 'gps') return { kind: 'coords', lat: geo.lat, lon: geo.lon, name: 'Current location' }
+    return getCurrentLocation()
+  }
+
+  async function planGpsToStop(stop: UserTransitStop) {
     setFromLocState('loading')
     try {
-      const gpsPlace = await getCurrentLocation()
-      const toPlace: TransitPlace = { kind: 'stop', id: stopId, name: stopName }
+      const gpsPlace = await resolveGpsPlace()
+      const isAddress = !stop.stop_id.startsWith('NSR:')
+      // Real bug fix: an address favorite has no NSR stop id, so passing it as
+      // `{kind:'stop'}` sent an invalid id to EnTur's trip planner (silently no
+      // results) — addresses need their stored lat/lon as coordinates instead.
+      const toPlace: TransitPlace = isAddress && stop.lat != null && stop.lon != null
+        ? { kind: 'coords', lat: stop.lat, lon: stop.lon, name: stop.label ?? stop.stop_name }
+        : { kind: 'stop', id: stop.stop_id, name: stop.label ?? stop.stop_name }
       setDraftFrom(gpsPlace); setDraftTo(toPlace); setFromLocState('granted')
       setSearch({
         from: gpsPlace, to: toPlace, dateTime: undefined, arriveBy: false,
@@ -291,10 +307,20 @@ export function RoutesTab({ ws, now, pendingRouteId, onRouteConsumed }: RoutesTa
     const setPlace = side === 'from' ? setDraftFrom    : setDraftTo
     setState('loading')
     try {
-      const place = await getCurrentLocation()
+      const place = await resolveGpsPlace()
       setPlace(place); setState('granted')
     } catch (e) {
       setState(reportLocationError(e as GeolocationPositionError))
+    }
+  }
+
+  // Explicit "update current location" escape hatch — forces a fresh GPS read
+  // (bypassing the cache) and, if From is currently set to the cached location,
+  // refreshes it in place too.
+  async function refreshCurrentLocation() {
+    const { data: fresh } = await refetchGeo()
+    if (fresh?.source === 'gps' && draftFrom?.kind === 'coords') {
+      setDraftFrom({ kind: 'coords', lat: fresh.lat, lon: fresh.lon, name: 'Current location' })
     }
   }
 
@@ -459,19 +485,42 @@ export function RoutesTab({ ws, now, pendingRouteId, onRouteConsumed }: RoutesTa
             {savedStops.map(s => (
               <button
                 key={s.id}
-                onClick={() => planGpsToStop(s.stop_id, s.label ?? s.stop_name)}
+                onClick={() => planGpsToStop(s)}
                 className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-ink-200 text-ink-700 hover:border-accent-300 transition-colors duration-150 min-h-[44px]"
               >
                 <span>📍</span>
                 <span>→</span>
-                <span>{s.label ?? s.stop_name.split(',')[0]}</span>
+                <span className="flex flex-col items-start leading-tight">
+                  <span>{s.label ?? s.stop_name.split(',')[0]}</span>
+                  {/* Which platform/direction this favorite was saved for — was
+                      only shown in Departures, not here, even though the same
+                      ambiguity applies (a stop can have several saved directions). */}
+                  {s.quay_description && (
+                    <span className="text-[10px] opacity-70">{s.quay_description}</span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
+          {/* Current-location freshness — reused from cache (see resolveGpsPlace)
+              rather than re-computed on every click, so it's worth showing how
+              old the cached fix is and offering an explicit refresh. */}
+          {geo?.source === 'gps' && (
+            <p className="text-[11px] text-ink-400 mt-1.5 flex items-center gap-1.5">
+              📍 Using location from {fmtMinsAgo(geoUpdatedAt, now)}
+              <button
+                onClick={refreshCurrentLocation}
+                disabled={geoRefreshing}
+                className="text-accent-500 hover:text-accent-700 transition-colors duration-150 disabled:opacity-50 min-h-[28px]"
+              >
+                {geoRefreshing ? 'Updating…' : '↻ Update'}
+              </button>
+            </p>
+          )}
           {fromLocState === 'denied' && (
             <p className="text-[11px] text-red-500 mt-1">Location permission denied</p>
           )}
-          {fromLocState === 'loading' && (
+          {fromLocState === 'loading' && !geo && (
             <p className="text-[11px] text-ink-400 mt-1">Getting location…</p>
           )}
         </div>

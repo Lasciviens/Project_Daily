@@ -50,6 +50,7 @@ export interface Departure {
   aimed:             string          // ISO datetime
   expected:          string          // ISO datetime
   realtime:          boolean
+  quayId?:           string          // raw NSR quay id — matches saved favorites' quay_id for scoping
   quayCode?:         string
   quayName?:         string
   quayDescription?:  string          // e.g. "mot Oslo"
@@ -324,7 +325,7 @@ export async function fetchDepartures(
         aimedDepartureTime
         expectedDepartureTime
         destinationDisplay { frontText }
-        quay { publicCode name description }
+        quay { id publicCode name description }
         serviceJourney {
           line {
             publicCode
@@ -343,7 +344,7 @@ export async function fetchDepartures(
         aimedDepartureTime:    string
         expectedDepartureTime: string
         destinationDisplay:    { frontText: string }
-        quay?: { publicCode?: string; name?: string; description?: string }
+        quay?: { id?: string; publicCode?: string; name?: string; description?: string }
         serviceJourney:        {
           line: {
             publicCode: string
@@ -368,6 +369,7 @@ export async function fetchDepartures(
       aimed:             c.aimedDepartureTime,
       expected:          c.expectedDepartureTime,
       realtime:          c.realtime,
+      quayId:            c.quay?.id,
       quayCode:          c.quay?.publicCode,
       quayName:          c.quay?.name,
       quayDescription:   c.quay?.description,
