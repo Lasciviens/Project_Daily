@@ -148,13 +148,17 @@ function throwRateLimit(errText: string): never {
 // far more than others during the same window), so retrying the SAME model
 // repeatedly can spend the whole retry budget inside one overloaded pool.
 // Trying a DIFFERENT model is a materially better fallback than trying the
-// same one again. Order here is "best default first, then progressively
-// more likely to have spare capacity": 3.5 Flash (current default, best
-// balance) → 3 Flash (older tier, different capacity pool, similar quality)
-// → 3.1 Flash-Lite (lightest/fastest, typically least contested) → 3.1 Pro
-// (highest quality, slower/costlier, but yet another independent pool — a
-// good last resort rather than giving up).
-const MODEL_CHAIN = ['gemini-3.5-flash', 'gemini-3-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro'] as const
+// same one again.
+//
+// EVERY id here was live-verified against the real API (2026-07-17) — an
+// earlier version of this chain included two guessed ids (gemini-3-flash,
+// gemini-3.1-pro) that 404'd in production; never add ids without probing
+// (use the `listModels` debug branch below with the real key). Verified:
+// gemini-3.5-flash (exists; was 503-overloaded at test time),
+// gemini-3.1-flash-lite (exists; served a live request). gemini-2.5-flash /
+// -lite are Google-documented GA-stable until 2026-10-16 — and even if an id
+// here ever dies, a 404 now SKIPS to the next model instead of aborting.
+const MODEL_CHAIN = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const
 type GeminiModel = typeof MODEL_CHAIN[number]
 const DEFAULT_MODEL: GeminiModel = MODEL_CHAIN[0]
 
@@ -201,9 +205,16 @@ async function fetchGeminiWithFallback(
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
       })
-      // 429 (real quota) and other 4xx (permanent client errors) are never
-      // helped by a retry — only 5xx (transient server-side overload) is.
-      if (res.ok || res.status < 500) return { res, modelUsed: model }
+      if (res.ok) return { res, modelUsed: model }
+      // 404 = THIS model id doesn't exist (retired/renamed) — skip straight
+      // to the next model in the chain. Real production bug this fixes: a
+      // 404 mid-chain used to be returned as the final answer, aborting the
+      // whole chain even though later models were alive and serving.
+      if (res.status === 404) { lastRes = res; lastModel = model; break }
+      // 429 (per-KEY quota — switching models won't help) and other 4xx
+      // (malformed request — same for every model) surface immediately.
+      if (res.status < 500) return { res, modelUsed: model }
+      // 5xx: transient overload — retry this model, then move to the next.
       lastRes = res
       lastModel = model
       if (attempt < RETRIES_PER_MODEL - 1) {
@@ -507,7 +518,27 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as
-      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string }
+      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean }
+
+    // Debug/maintenance: return the REAL list of models this API key can use
+    // (name + generateContent support). Exists so the MODEL_CHAIN above is
+    // never guessed again — probe here before adding/renaming any model id.
+    if (body.listModels) {
+      const key = Deno.env.get('GEMINI_API_KEY')
+      if (!key) {
+        return new Response(JSON.stringify({ error: 'AI not configured' }), {
+          status: 503, headers: { ...headers, 'Content-Type': 'application/json' },
+        })
+      }
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=${key}`)
+      const j = await r.json()
+      const models = (j.models ?? [])
+        .filter((m: AnyRecord) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
+        .map((m: AnyRecord) => m.name?.replace('models/', ''))
+      return new Response(JSON.stringify({ models, chain: MODEL_CHAIN }), {
+        status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
 
     // Fetch-and-extract-text is a distinct, lightweight action (no Gemini
     // call) — used to pull a recipe page's readable text server-side, since
