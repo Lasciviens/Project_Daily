@@ -1,77 +1,83 @@
 import { useState, useEffect } from 'react'
-import { addDays, format, startOfWeek, endOfWeek, isToday, isTomorrow, differenceInCalendarDays } from 'date-fns'
+import { addDays, format, startOfWeek, endOfWeek, isToday, isYesterday, isTomorrow, differenceInCalendarDays } from 'date-fns'
 import { DayView } from '../components/DayView'
-import { DayTimeline } from '../components/DayTimeline'
+import { DayAgenda } from '../components/DayAgenda'
 import { WeekWidget } from '../components/WeekWidget'
-import { MonthWidget } from '../components/MonthWidget'
 import { UpcomingReleasesBanner } from '../components/UpcomingReleasesBanner'
 import { TodaySummary } from '../components/TodaySummary'
+import { PersonalTabs } from '../../personal/components/PersonalLayout'
+import { DateNav } from '../../../shared/components/DateNav'
 
-type DailyTab = 'yesterday' | 'today' | 'tomorrow' | 'week' | 'month'
+// ─────────────────────────────────────────────────────────────────────────────
+//  DailyPage v2 — one compact header row instead of the old three stacked
+//  rows (Personal tab bar + 5-tab bar + big date heading):
+//    ‹ [date] › · context — [Yesterday|Today|Tomorrow|Week] ——— [Daily|Shop|Recipes]
+//  The monthly calendar is gone (weekly is enough, per explicit request);
+//  Yesterday/Today/Tomorrow were three near-identical view components — now
+//  one DaySection whose tab highlight is DERIVED from the viewed date.
+// ─────────────────────────────────────────────────────────────────────────────
 
-const TABS: { id: DailyTab; label: string }[] = [
-  { id: 'yesterday', label: 'Yesterday'  },
-  { id: 'today',     label: 'Today'      },
-  { id: 'tomorrow',  label: 'Tomorrow'   },
-  { id: 'week',      label: 'This Week'  },
-  { id: 'month',     label: 'This Month' },
-]
+type Mode = 'day' | 'week'
 
 export function DailyPage() {
-  const [tab,      setTab]      = useState<DailyTab>('today')
+  const [mode,     setMode]     = useState<Mode>('day')
   const [viewDate, setViewDate] = useState<Date>(new Date())
 
   function handleDayClick(date: Date) {
     setViewDate(date)
-    if (isToday(date))         setTab('today')
-    else if (isTomorrow(date)) setTab('tomorrow')
-    else                       setTab('today')
+    setMode('day')
   }
 
-  function handleTabChange(t: DailyTab) {
-    setTab(t)
-    if (t === 'yesterday') setViewDate(addDays(new Date(), -1))
-    if (t === 'today')     setViewDate(new Date())
-    if (t === 'tomorrow')  setViewDate(addDays(new Date(), 1))
-  }
+  const dayTab: 'yesterday' | 'today' | 'tomorrow' | null =
+    mode !== 'day' ? null
+      : isYesterday(viewDate) ? 'yesterday'
+      : isToday(viewDate)     ? 'today'
+      : isTomorrow(viewDate)  ? 'tomorrow'
+      : null
 
-  const isCustomDate = !isToday(viewDate) && tab === 'today' && !isTomorrow(viewDate)
   const diff = differenceInCalendarDays(viewDate, new Date())
+  const { greeting, timeStr } = useGreeting()
+
+  const context = mode === 'week' ? null
+    : isToday(viewDate) ? `${greeting} · ${timeStr}`
+    : dayTab === 'yesterday' ? 'Yesterday'
+    : dayTab === 'tomorrow'  ? 'Tomorrow'
+    : diff > 0 ? `in ${diff} day${diff !== 1 ? 's' : ''}`
+    : `${Math.abs(diff)} day${Math.abs(diff) !== 1 ? 's' : ''} ago`
+
+  const tabBtn = (active: boolean) =>
+    `px-2.5 min-h-[36px] flex-shrink-0 text-xs font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
+      active ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
+    }`
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-      {/* Tab bar: scrollable on mobile so 5 tabs never overflow the viewport */}
-      <div className="flex gap-1 mb-6 bg-cream-50 border border-ink-200 p-1 rounded-xl overflow-x-auto scrollbar-none w-full sm:w-fit">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => handleTabChange(t.id)}
-            className={`px-3 sm:px-4 min-h-[44px] flex-shrink-0 text-sm font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
-              tab === t.id
-                ? 'bg-accent-500 text-white'
-                : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+      {/* ── Single compact header row (wraps on narrow screens) ── */}
+      <div className="flex items-center gap-x-3 gap-y-2 flex-wrap mb-4">
+        <DateNav
+          size="md"
+          label={format(viewDate, 'EEE, d MMM')}
+          labelClassName="text-lg font-bold text-ink-900 min-w-[120px]"
+          onPrev={() => { setViewDate(d => addDays(d, -1)); setMode('day') }}
+          onNext={() => { setViewDate(d => addDays(d,  1)); setMode('day') }}
+          onToday={() => { setViewDate(new Date()); setMode('day') }}
+          isToday={mode === 'day' && isToday(viewDate)}
+        />
+        {context && <span className="text-xs text-accent-600 font-medium hidden sm:inline">{context}</span>}
+
+        <div className="flex gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl overflow-x-auto scrollbar-none">
+          <button onClick={() => { setViewDate(addDays(new Date(), -1)); setMode('day') }} className={tabBtn(dayTab === 'yesterday')}>Yesterday</button>
+          <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={tabBtn(dayTab === 'today')}>Today</button>
+          <button onClick={() => { setViewDate(addDays(new Date(), 1)); setMode('day') }} className={tabBtn(dayTab === 'tomorrow')}>Tomorrow</button>
+          <button onClick={() => setMode('week')} className={tabBtn(mode === 'week')}>Week</button>
+        </div>
+
+        {/* Personal group tabs live in THIS row now (far right) instead of
+            their own row above the page — one header row total. */}
+        <div className="ml-auto"><PersonalTabs /></div>
       </div>
 
-      {tab === 'yesterday' && <YesterdayView date={viewDate} onDayClick={handleDayClick} />}
-      {tab === 'today' && (
-        <TodayView
-          date={viewDate}
-          isCustom={isCustomDate}
-          dayDiff={diff}
-          onDayClick={handleDayClick}
-          onBackToToday={() => { setViewDate(new Date()); setTab('today') }}
-          onPrevDay={() => setViewDate(d => addDays(d, -1))}
-          onNextDay={() => setViewDate(d => addDays(d,  1))}
-        />
-      )}
-      {tab === 'tomorrow' && <TomorrowView date={viewDate} onDayClick={handleDayClick} />}
-      {tab === 'week'     && <WeekTabView  onDayClick={handleDayClick} selectedDate={viewDate} />}
-      {tab === 'month'    && <MonthTabView onDayClick={handleDayClick} selectedDate={viewDate} />}
+      {mode === 'day' ? <DaySection date={viewDate} onDayClick={handleDayClick} /> : <WeekSection onDayClick={handleDayClick} selectedDate={viewDate} />}
     </div>
   )
 }
@@ -87,141 +93,33 @@ function useGreeting() {
   return { greeting, timeStr: format(now, 'HH:mm') }
 }
 
-// The 3-column Day/Timeline/right-rail grid — was duplicated identically
-// across Yesterday/Today/Tomorrow views (Today's right rail additionally
-// stacks MonthWidget below WeekWidget, passed in via rightRail).
-function DayLayout({ date, rightRail }: { date: Date; rightRail: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] xl:grid-cols-[340px_1fr_320px] gap-5">
-      <div className="lg:pl-1"><DayView date={date} /></div>
-      <DayTimeline date={date} />
-      <div className="flex flex-col gap-4">{rightRail}</div>
-    </div>
-  )
-}
-
-function YesterdayView({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
+// One unified day view (was three copies: Yesterday/Today/Tomorrow). The
+// dashboard strip (TodaySummary) shows for EVERY day — planning tomorrow's
+// meals/training/episode from Daily was the whole point of the redesign.
+function DaySection({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
   return (
     <div>
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
-        <p className="text-sm text-ink-400 mt-0.5">Yesterday</p>
-      </div>
-      <DayLayout date={date} rightRail={<WeekWidget onDayClick={onDayClick} highlightDate={date} />} />
-    </div>
-  )
-}
-
-
-function TodayView({
-  date, isCustom, dayDiff, onDayClick, onBackToToday, onPrevDay, onNextDay,
-}: {
-  date: Date; isCustom: boolean; dayDiff: number
-  onDayClick: (d: Date) => void; onBackToToday: () => void
-  onPrevDay: () => void; onNextDay: () => void
-}) {
-  const { greeting, timeStr } = useGreeting()
-
-  return (
-    <div>
-      <div className="flex items-start justify-between gap-2 mb-5">
-        <div className="flex items-center gap-2 min-w-0">
-          {/* Day navigation */}
-          <div className="flex items-center gap-0.5 flex-shrink-0 mt-1">
-            <button
-              onClick={onPrevDay}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
-            >
-              ‹
-            </button>
-            <button
-              onClick={onNextDay}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg transition-colors duration-150"
-            >
-              ›
-            </button>
-          </div>
-          <div className="min-w-0">
-            {isToday(date) && !isCustom && (
-              <p className="text-xs text-accent-600 font-medium mb-0.5">
-                {greeting} · {timeStr}
-              </p>
-            )}
-            <h1 className="text-xl sm:text-2xl font-bold text-ink-900 leading-tight">{format(date, 'EEEE, MMMM d')}</h1>
-            <p className="text-sm text-ink-400 mt-0.5">
-              {isCustom
-                ? dayDiff > 0
-                  ? `${dayDiff} day${dayDiff !== 1 ? 's' : ''} from today`
-                  : `${Math.abs(dayDiff)} day${Math.abs(dayDiff) !== 1 ? 's' : ''} ago`
-                : `${format(date, 'yyyy')} · Week ${format(date, 'w')}`}
-            </p>
-          </div>
-        </div>
-        {isCustom && (
-          <button
-            onClick={onBackToToday}
-            className="min-h-[44px] px-2 flex items-center text-xs text-accent-600 hover:text-accent-700 font-medium transition-colors duration-150 flex-shrink-0"
-          >
-            ← Today
-          </button>
-        )}
-      </div>
-
-      <UpcomingReleasesBanner />
-
-      {/* Whole-day overview: nutrition vs. goals, today's training, watch-next */}
+      {isToday(date) && <UpcomingReleasesBanner />}
       <TodaySummary date={date} />
-
-      {/* Left: Tasks (indented, narrower) · Middle: Schedule · Right: date
-          widgets — structurally independent column, kept in sync with the
-          viewed date via highlightDate (see WeekWidget/MonthWidget). */}
-      <DayLayout
-        date={date}
-        rightRail={<>
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] xl:grid-cols-[340px_1fr_320px] gap-5">
+        <div className="lg:pl-1"><DayView date={date} /></div>
+        <DayAgenda date={date} />
+        <div className="flex flex-col gap-4">
           <WeekWidget onDayClick={onDayClick} highlightDate={date} />
-          <MonthWidget onDayClick={onDayClick} highlightDate={date} />
-        </>}
-      />
-    </div>
-  )
-}
-
-function TomorrowView({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
-  return (
-    <div>
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-ink-900">{format(date, 'EEEE, MMMM d')}</h1>
-        <p className="text-sm text-ink-400 mt-0.5">Tomorrow</p>
+        </div>
       </div>
-      <DayLayout date={date} rightRail={<WeekWidget onDayClick={onDayClick} highlightDate={date} />} />
     </div>
   )
 }
 
-function WeekTabView({ onDayClick, selectedDate }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
+function WeekSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
   const now   = new Date()
   const start = startOfWeek(now, { weekStartsOn: 1 })
   const end   = endOfWeek(now,   { weekStartsOn: 1 })
   return (
     <div>
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-ink-900">This Week</h1>
-        <p className="text-sm text-ink-400 mt-0.5">{format(start, 'MMM d')} – {format(end, 'MMM d, yyyy')}</p>
-      </div>
+      <p className="text-sm text-ink-400 mb-3">{format(start, 'MMM d')} – {format(end, 'MMM d, yyyy')}</p>
       <WeekWidget onDayClick={onDayClick} highlightDate={selectedDate} />
-    </div>
-  )
-}
-
-function MonthTabView({ onDayClick, selectedDate }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
-  const now = new Date()
-  return (
-    <div>
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-ink-900">{format(now, 'MMMM yyyy')}</h1>
-        <p className="text-sm text-ink-400 mt-0.5">Monthly overview</p>
-      </div>
-      <MonthWidget onDayClick={onDayClick} highlightDate={selectedDate} />
     </div>
   )
 }

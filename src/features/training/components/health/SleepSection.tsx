@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
-import { computeSleepSummary, estimateSleepStageProportions } from '../../healthAggregate'
+import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions, computeSleepScore } from '../../healthAggregate'
 import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
@@ -26,6 +26,56 @@ const STAGES = [
   { key: 'rem'  as const, label: 'REM',   color: '#a5b4fc' },
   { key: 'awake' as const, label: 'Awake', color: '#f87171' },
 ]
+
+const fmtClock = (ms: number) => {
+  const d = new Date(ms)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+// Night timeline at SESSION granularity — when you fell asleep, woke up, and
+// any interruption gap between distinct sessions. Deliberately NOT a
+// per-stage hypnogram: the exported data carries only whole-session stage
+// TOTALS (verified against every live row), so exact stage start/end times
+// simply don't exist — drawing them would be invented precision.
+function SessionTimeline({ sessions }: { sessions: { startMs: number; endMs: number }[] }) {
+  if (sessions.length === 0) return null
+  const pad = 20 * 60_000
+  const min = sessions[0].startMs - pad
+  const max = sessions[sessions.length - 1].endMs + pad
+  const span = max - min
+  const pct = (ms: number) => ((ms - min) / span) * 100
+
+  return (
+    <div>
+      <div className="relative h-6 rounded-lg bg-ink-100 overflow-hidden">
+        {sessions.map((s, i) => (
+          <div
+            key={i}
+            className="absolute top-0.5 bottom-0.5 rounded-md bg-indigo-500/85"
+            style={{ left: `${pct(s.startMs)}%`, width: `${pct(s.endMs) - pct(s.startMs)}%` }}
+            title={`${fmtClock(s.startMs)} – ${fmtClock(s.endMs)}`}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-between mt-0.5 text-[10px] text-ink-400 tabular-nums">
+        <span>😴 {fmtClock(sessions[0].startMs)}</span>
+        {sessions.length > 1 && (
+          <span className="text-amber-600">
+            {sessions.length - 1} interruption{sessions.length > 2 ? 's' : ''}
+            {' '}({sessions.slice(1).map((s, i) => `${fmtClock(sessions[i].endMs)}–${fmtClock(s.startMs)}`).join(', ')})
+          </span>
+        )}
+        <span>⏰ {fmtClock(sessions[sessions.length - 1].endMs)}</span>
+      </div>
+    </div>
+  )
+}
+
+function scoreColor(score: number): string {
+  if (score >= 80) return 'bg-green-100 text-green-700 border-green-200'
+  if (score >= 60) return 'bg-amber-100 text-amber-700 border-amber-200'
+  return 'bg-red-100 text-red-700 border-red-200'
+}
 
 type TrendPeriod = 'week' | 'month'
 
@@ -71,6 +121,8 @@ export function SleepSection() {
   const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', from, to)
   const summary = computeSleepSummary(points)
   const last = summary[summary.length - 1]
+  const lastSessions = last ? extractSleepSessions(points, last.date) : []
+  const sleepScore = last ? computeSleepScore(last, Math.max(lastSessions.length, 1)) : null
 
   // Left-join onto every date in range so a night with no synced data still
   // shows as a gap on the axis instead of silently disappearing.
@@ -139,6 +191,14 @@ export function SleepSection() {
           <p className="text-3xl font-bold text-ink-900 leading-tight">
             {isLoading ? '…' : last ? fmtHrs(last.total) : '—'}
           </p>
+          {sleepScore != null && (
+            <span
+              className={`text-[11px] font-bold border rounded-full px-2 py-0.5 ${scoreColor(sleepScore)}`}
+              title="Estimated score from duration (vs 8h), deep/REM share and interruptions — not a medical metric"
+            >
+              {sleepScore} <span className="font-normal opacity-70">est.</span>
+            </span>
+          )}
           {last && (sourcesByDate.get(last.date)?.has('Manual') ?? false) && (
             <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5">
               Manual
@@ -146,6 +206,9 @@ export function SleepSection() {
           )}
         </div>
       </div>
+
+      {/* Night timeline — session windows + interruption gaps */}
+      {lastSessions.length > 0 && <SessionTimeline sessions={lastSessions} />}
 
       {showManualForm && (
         <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 relative">

@@ -157,6 +157,90 @@ function sleepNightKey(p: HealthMetric): string {
   return p.date
 }
 
+// "2026-07-17 02:00:51 +0200" (Health Auto Export's local-time format) → ms.
+// JS Date parses this shape correctly (space before offset included).
+function sessionMs(s: unknown): number | null {
+  if (typeof s !== 'string') return null
+  const t = new Date(s).getTime()
+  return Number.isFinite(t) ? t : null
+}
+
+// Clusters pre-aggregated sessions whose [sleepStart, sleepEnd] windows
+// overlap and keeps only the LONGEST (by totalSleep) session per cluster —
+// overlapping windows are duplicate reports of the same sleep (old
+// midnight-keyed row vs new sleepStart-keyed row after a re-export, or a
+// partial "Since Last Sync" delivery), never two real simultaneous sleeps.
+// Sessions with unparseable times are kept as-is (can't prove overlap).
+function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
+  interface Sess { p: HealthMetric; start: number; end: number; total: number }
+  const timed: Sess[] = []
+  const untimed: HealthMetric[] = []
+  const seenExact = new Set<string>()
+  for (const p of preAggregated) {
+    const start = sessionMs(p.value?.sleepStart)
+    const end   = sessionMs(p.value?.sleepEnd)
+    const key   = `${p.value?.sleepStart ?? p.recorded_at}`
+    if (seenExact.has(key)) continue // identical session under two row keys
+    seenExact.add(key)
+    if (start != null && end != null && end > start) {
+      timed.push({ p, start, end, total: p.value?.totalSleep ?? 0 })
+    } else {
+      untimed.push(p)
+    }
+  }
+  timed.sort((a, b) => a.start - b.start)
+  const kept: HealthMetric[] = [...untimed]
+  let cluster: Sess[] = []
+  let clusterEnd = -Infinity
+  const flush = () => {
+    if (cluster.length === 0) return
+    kept.push(cluster.reduce((best, s) => (s.total > best.total ? s : best)).p)
+    cluster = []
+  }
+  for (const s of timed) {
+    if (s.start >= clusterEnd) flush()
+    cluster.push(s)
+    clusterEnd = Math.max(clusterEnd, s.end)
+  }
+  flush()
+  return kept
+}
+
+export interface SleepSessionInterval { startMs: number; endMs: number; totalSleep: number }
+
+// The night's distinct sleep session windows (post overlap-merge), for the
+// session-interval timeline. Session-level ONLY — the source data carries no
+// per-stage segment timing (verified against every live row), so this is the
+// finest honest granularity available.
+export function extractSleepSessions(points: HealthMetric[], nightKey: string): SleepSessionInterval[] {
+  const pts = points.filter(p => sleepNightKey(p) === nightKey && typeof p.value?.totalSleep === 'number')
+  return mergeSleepSessions(pts)
+    .map(p => {
+      const start = sessionMs(p.value?.sleepStart)
+      const end   = sessionMs(p.value?.sleepEnd)
+      return start != null && end != null && end > start
+        ? { startMs: start, endMs: end, totalSleep: p.value?.totalSleep ?? 0 }
+        : null
+    })
+    .filter((s): s is SleepSessionInterval => s !== null)
+    .sort((a, b) => a.startMs - b.startMs)
+}
+
+// Heuristic 0–100 sleep score — an ESTIMATE from what the data can support:
+// duration vs 8h (55), deep share vs ~15% (20), REM share vs ~22% (15),
+// continuity (10, minus 5 per extra session/interruption). Not a medical
+// metric; label it "estimated" wherever shown.
+export function computeSleepScore(s: SleepSummary, sessionCount: number): number {
+  const duration = Math.min(s.total / 8, 1) * 55
+  const stageTotal = s.deep + s.core + s.rem
+  const deepShare = stageTotal > 0 ? s.deep / stageTotal : 0
+  const remShare  = stageTotal > 0 ? s.rem / stageTotal : 0
+  const deep = stageTotal > 0 ? Math.min(deepShare / 0.15, 1) * 20 : 10
+  const rem  = stageTotal > 0 ? Math.min(remShare / 0.22, 1) * 15 : 7
+  const continuity = Math.max(0, 10 - Math.max(0, sessionCount - 1) * 5)
+  return Math.round(duration + deep + rem + continuity)
+}
+
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = new Map<string, HealthMetric[]>()
   for (const p of points) {
@@ -179,22 +263,18 @@ export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
 
     const preAggregated = sourcePts.filter(p => typeof p.value?.totalSleep === 'number')
     if (preAggregated.length > 0) {
-      // SUM every pre-aggregated session for the night, not just the latest —
-      // a night can have more than one sleep session (e.g. a main sleep + a
-      // nap, or an interrupted night), and they arrive as separate points.
-      // Taking only the latest silently dropped the others (confirmed against
-      // live data: iPhone showed 7h37m while we showed only the 6.4h session).
-      // Dedup by the session's own start (`sleepStart`): the ingestion fix
-      // re-keys sleep rows by sleepStart, so after a re-export the same session
-      // can exist under both the old midnight key and the new sleepStart key —
-      // counting it once keeps the total correct without a destructive cleanup.
+      // SUM every DISTINCT session for the night — a night can genuinely have
+      // more than one session (interrupted sleep, nap). But sessions that
+      // OVERLAP in time are the same sleep reported twice with different
+      // windows (verified live: after a webhook redeploy + re-export, one
+      // night had a 02:00→07:27/4.94h row AND a 03:36→…/3.34h subset row —
+      // naive summing showed 8.28h for what was really 4.94h of sleep).
+      // mergeSleepSessions clusters overlapping [sleepStart, sleepEnd]
+      // windows and keeps only the longest session per cluster.
+      const kept = mergeSleepSessions(preAggregated)
       let core = 0, rem = 0, deep = 0, awake = 0, total = 0
-      const seenSessions = new Set<string>()
-      for (const p of preAggregated) {
+      for (const p of kept) {
         const v = p.value
-        const sessionKey = (typeof v?.sleepStart === 'string' ? v.sleepStart : null) ?? p.recorded_at
-        if (seenSessions.has(sessionKey)) continue
-        seenSessions.add(sessionKey)
         core += v.core ?? 0; rem += v.rem ?? 0; deep += v.deep ?? 0; awake += v.awake ?? 0
         total += v.totalSleep ?? ((v.core ?? 0) + (v.rem ?? 0) + (v.deep ?? 0))
       }

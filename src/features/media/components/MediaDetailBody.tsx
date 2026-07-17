@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
+import { markEpisodeWatched } from '../api/watchedEpisodesApi'
 import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
@@ -115,6 +117,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
   const removeTV    = useDeleteTV()
   const updateMovie = useUpdateMovie()
   const updateTV    = useUpdateTV()
+  const qc          = useQueryClient()
 
   const isAdding  = addMovie.isPending || addTV.isPending
   const entryId   = userEntry?.id
@@ -165,17 +168,24 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
     }
   }
 
+  // "Advance" now records a real watched-episode row instead of bumping the
+  // cached counter directly — the counter is trigger/API-maintained from
+  // user_tv_episodes since migration 050, so writing it here would just get
+  // overwritten and (worse) leave no actual watch record. Real bugs this
+  // replaces: the old wrap check compared a per-season counter against the
+  // SERIES-wide episode total, and on "wrap" reset the episode to 0 without
+  // ever advancing the season.
   async function handleNextEpisode() {
     if (!tvEntry) return
-    const maxEp = (tv?.number_of_episodes ?? 999)
-    const ep    = tvEntry.current_episode + 1
-    // Compute once — the toast previously reported the un-wrapped `ep` (e.g.
-    // "S1 E11") even when the stored value was reset to 0 on wrap.
-    const nextEp = ep > maxEp ? 0 : ep
-    const tid   = toast.loading('Updating episode…')
+    const season  = Math.max(tvEntry.current_season, 1)
+    const episode = tvEntry.current_episode + 1
+    const tid = toast.loading('Marking next episode watched…')
     try {
-      await updateTV.mutateAsync({ id: tvEntry.id, patch: { current_episode: nextEp } })
-      toast.dismiss(tid); toast.success(`S${tvEntry.current_season} E${nextEp} ✓`)
+      await markEpisodeWatched(tvEntry.id, season, episode, new Date().toISOString().slice(0, 10))
+      qc.invalidateQueries({ queryKey: ['tv'] })
+      qc.invalidateQueries({ queryKey: ['watched-episodes'] })
+      qc.invalidateQueries({ queryKey: ['next-episode'] })
+      toast.dismiss(tid); toast.success(`S${season} E${episode} watched ✓`)
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
     }
