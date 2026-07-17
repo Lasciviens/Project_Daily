@@ -3,6 +3,7 @@ import { useDayNutrition } from '../../hooks/useDayNutrition'
 import { useDayTargets } from '../../hooks/useDayTargets'
 import { useRecentMeals, useSetQuickMeal, useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
+import { AssignMealModal } from '../../../recipes/components/AssignMealModal'
 import type { MealSlot } from '../../../recipes/types'
 
 const SLOTS: { slot: MealSlot; label: string }[] = [
@@ -40,6 +41,7 @@ function SlotRow({ date, slot, label, meal }: {
   meal?: { id: string; title: string; calories: number }
 }) {
   const [adding, setAdding] = useState(false)
+  const [detail, setDetail] = useState(false)
   const [text, setText] = useState('')
   const { data: recent = [] } = useRecentMeals()
   const setMeal = useSetQuickMeal()
@@ -50,49 +52,67 @@ function SlotRow({ date, slot, label, meal }: {
     setMeal.mutate({ date, slot, title: title.trim(), recipeId }, { onSuccess: () => { setAdding(false); setText('') } })
   }
 
-  if (meal) {
-    return (
-      <li className="flex items-center gap-2 text-xs min-h-[28px]">
-        <span className="text-ink-400 w-16 shrink-0">{label}</span>
-        <span className="text-ink-700 flex-1 truncate">{meal.title}</span>
-        {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
-        <button
-          onClick={() => delMeal.mutate(meal.id)}
-          className="text-ink-300 hover:text-red-500 min-w-[28px] min-h-[28px] flex items-center justify-center shrink-0"
-          aria-label={`Remove ${label}`}
-        >✕</button>
-      </li>
-    )
-  }
-
   return (
     <li className="text-xs min-h-[28px]">
-      <div className="flex items-center gap-2">
-        <span className="text-ink-400 w-16 shrink-0">{label}</span>
-        {adding ? (
-          <input
-            autoFocus value={text} onChange={e => setText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') save(text); if (e.key === 'Escape') setAdding(false) }}
-            onBlur={() => { if (!text.trim()) setAdding(false) }}
-            placeholder="What did/will you eat?"
-            className="flex-1 min-w-0 px-2 py-1 rounded-md border border-accent-300 bg-cream-50 focus:outline-none focus:ring-1 focus:ring-accent-400 min-h-[28px]"
-          />
-        ) : (
+      {meal ? (
+        <div className="flex items-center gap-2 min-h-[28px]">
+          <span className="text-ink-400 w-16 shrink-0">{label}</span>
+          <span className="text-ink-700 flex-1 truncate">{meal.title}</span>
+          {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
           <button
-            onClick={() => setAdding(true)}
-            className="flex-1 text-left text-ink-300 hover:text-accent-600 transition-colors min-h-[28px]"
-          >+ add</button>
-        )}
-      </div>
-      {adding && recent.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1 pl-[4.5rem]">
-          {recent.slice(0, 5).map(r => (
-            <button key={r.title} onClick={() => save(r.title, r.recipeId)}
-              className="px-2 py-0.5 rounded-full border border-ink-200 text-[10px] text-ink-600 hover:border-accent-300 min-h-[24px]">
-              {r.title}
-            </button>
-          ))}
+            onClick={() => setDetail(true)}
+            className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
+            title="Edit in detail (recipe/ingredient/servings)"
+          >✎</button>
+          <button
+            onClick={() => delMeal.mutate(meal.id)}
+            className="text-ink-300 hover:text-red-500 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
+            aria-label={`Remove ${label}`}
+          >✕</button>
         </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="text-ink-400 w-16 shrink-0">{label}</span>
+            {adding ? (
+              <input
+                autoFocus value={text} onChange={e => setText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') save(text); if (e.key === 'Escape') setAdding(false) }}
+                onBlur={() => { if (!text.trim()) setAdding(false) }}
+                placeholder="What did/will you eat?"
+                className="flex-1 min-w-0 px-2 py-1 rounded-md border border-accent-300 bg-cream-50 focus:outline-none focus:ring-1 focus:ring-accent-400 min-h-[28px]"
+              />
+            ) : (
+              <button
+                onClick={() => setAdding(true)}
+                className="flex-1 text-left text-ink-300 hover:text-accent-600 transition-colors min-h-[28px]"
+              >+ add</button>
+            )}
+            {adding && (
+              <button
+                onClick={() => { setAdding(false); setDetail(true) }}
+                className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] shrink-0"
+                title="Detailed entry (recipe / ingredient / servings)"
+              >⋯</button>
+            )}
+          </div>
+          {adding && recent.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1 pl-[4.5rem]">
+              {recent.slice(0, 5).map(r => (
+                <button key={r.title} onClick={() => save(r.title, r.recipeId)}
+                  className="px-2 py-0.5 rounded-full border border-ink-200 text-[10px] text-ink-600 hover:border-accent-300 min-h-[24px]">
+                  {r.title}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {/* Detailed manual entry — the SAME full modal Recipes' meal planner
+          uses (recipe picker / library ingredient / servings / notes), so the
+          "detailed" path exists on Daily too, not just the fast path. */}
+      {detail && (
+        <AssignMealModal open onClose={() => setDetail(false)} date={date} mealSlot={slot} />
       )}
     </li>
   )

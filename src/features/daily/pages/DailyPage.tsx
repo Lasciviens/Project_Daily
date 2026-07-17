@@ -101,7 +101,10 @@ function DaySection({ date, onDayClick }: { date: Date; onDayClick: (d: Date) =>
     <div>
       {isToday(date) && <UpcomingReleasesBanner />}
       <TodaySummary date={date} />
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] xl:grid-cols-[340px_1fr_320px] gap-5">
+      {/* Content-sized columns, left-aligned (layout rule): the schedule was
+          `1fr` and swallowed all leftover width — an agenda list doesn't need
+          it. Fixed caps now; spare space stays on the right. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_500px_300px] xl:grid-cols-[340px_560px_320px] gap-5 justify-start">
         <div className="lg:pl-1"><DayView date={date} /></div>
         <DayAgenda date={date} />
         <div className="flex flex-col gap-4">
