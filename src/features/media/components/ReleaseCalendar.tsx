@@ -32,9 +32,14 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props
 
   const today = new Date()
 
-  // Upcoming movies from wishlist with future release dates
+  // Upcoming movies with future release dates. Status-filtered (real bug:
+  // the comment always said "from wishlist" but nothing filtered, so
+  // completed/dropped titles were listed too): wishlist = wants to watch,
+  // upcoming = tracked unreleased, watching = in progress — all relevant;
+  // completed/dropped are not.
+  const RELEVANT = new Set(['wishlist', 'upcoming', 'watching'])
   const upcomingMovies: UpcomingItem[] = movieEntries
-    .filter(e => e.movie.release_date && new Date(e.movie.release_date + 'T00:00:00') > today)
+    .filter(e => RELEVANT.has(e.status) && e.movie.release_date && new Date(e.movie.release_date + 'T00:00:00') > today)
     .map(e => {
       const d = new Date(e.movie.release_date! + 'T00:00:00')
       return {
@@ -51,7 +56,7 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props
 
   // Upcoming TV from wishlist with future first air dates
   const upcomingTV: UpcomingItem[] = tvEntries
-    .filter(e => e.tv_series.first_air_date && new Date(e.tv_series.first_air_date + 'T00:00:00') > today)
+    .filter(e => RELEVANT.has(e.status) && e.tv_series.first_air_date && new Date(e.tv_series.first_air_date + 'T00:00:00') > today)
     .map(e => {
       const d = new Date(e.tv_series.first_air_date! + 'T00:00:00')
       return {

@@ -1,6 +1,9 @@
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { DateInput } from '../../../../shared/components/DateInput'
+import { DateNav as SharedDateNav } from '../../../../shared/components/DateNav'
 
+// Thin wrapper around the app-wide standard DateNav (shared/components/
+// DateNav.tsx) — Health was the original pattern source; the shared component
+// is now canonical and this keeps Health's existing call sites unchanged.
 export function DateNav({
   label, onPrev, onNext, canGoNext, value, onPick,
 }: {
@@ -12,34 +15,14 @@ export function DateNav({
   onPick: (date: string) => void
 }) {
   return (
-    <div className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={onPrev}
-        className="min-h-[28px] min-w-[28px] flex items-center justify-center rounded-md text-ink-400 hover:text-ink-800 hover:bg-cream-100"
-      >
-        ‹
-      </button>
-      <span className="text-xs font-semibold text-ink-700 min-w-[92px] text-center">{label}</span>
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={!canGoNext}
-        className="min-h-[28px] min-w-[28px] flex items-center justify-center rounded-md text-ink-400 hover:text-ink-800 hover:bg-cream-100 disabled:opacity-30 disabled:hover:bg-transparent"
-      >
-        ›
-      </button>
-      {/* DateInput (not a raw <input type="date">) — a native date input's
-          visible text follows the browser/OS locale, which silently showed
-          MM/DD/YYYY instead of the mandated DD/MM/YYYY for anyone not on an
-          en-GB locale. */}
-      <DateInput
-        value={value}
-        max={todayStr()}
-        onChange={v => v && onPick(v > todayStr() ? todayStr() : v)}
-        aria-label="Jump to date"
-        className="min-h-[28px] w-[76px] px-1 text-[11px] text-ink-500 border border-ink-100 rounded-md bg-transparent"
-      />
-    </div>
+    <SharedDateNav
+      label={label}
+      onPrev={onPrev}
+      onNext={onNext}
+      canGoNext={canGoNext}
+      pickerValue={value}
+      onPick={onPick}
+      pickerMax={todayStr()}
+    />
   )
 }

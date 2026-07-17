@@ -3,6 +3,7 @@ import { addDays, addWeeks, format, startOfWeek, endOfWeek, isToday, isSameDay, 
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange, useCalendarList } from '../../calendar/hooks/useCalendar'
 import { useCalendarStore } from '../../../app/store'
+import { DateNav } from '../../../shared/components/DateNav'
 import type { Task } from '../../todo/types'
 
 interface Props {
@@ -72,31 +73,26 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
 
   return (
     <div className="card p-5">
-      {/* Header with navigation */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">
-            Week {weekNumber}
-          </h2>
-          {!isCurrentWeek && (
-            <button
-              onClick={() => setWeekOffset(0)}
-              className="text-[10px] text-accent-600 hover:text-accent-700 font-medium transition-colors duration-150"
-            >
-              Back to now
-            </button>
-          )}
+      {/* Header — app-standard ‹ label › navigation (shared DateNav) */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-1">
+        <DateNav
+          label={`Week ${weekNumber}`}
+          onPrev={() => setWeekOffset(w => w - 1)}
+          onNext={() => setWeekOffset(w => w + 1)}
+          onToday={() => setWeekOffset(0)}
+          isToday={isCurrentWeek}
+          labelClassName="text-xs font-semibold uppercase tracking-wider text-ink-500 min-w-[64px]"
+        />
+        <div className="flex items-center gap-1">
           {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length > 0 && (
             <span className="text-[10px] bg-accent-50 text-accent-600 font-semibold px-1.5 py-0.5 rounded-full">
               {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length} open
             </span>
           )}
-        </div>
-        <div className="flex items-center gap-1">
           {calList.length > 1 && (
             <button
               onClick={() => setShowCalFilter(p => !p)}
-              className={`min-h-[44px] min-w-[44px] flex items-center justify-center text-[10px] px-1.5 py-0.5 rounded transition-colors duration-150 font-medium ${
+              className={`min-h-[28px] min-w-[28px] flex items-center justify-center text-[10px] rounded transition-colors duration-150 font-medium ${
                 showCalFilter ? 'bg-accent-100 text-accent-700' : 'text-ink-400 hover:text-ink-600'
               }`}
               title="Filter calendars"
@@ -104,18 +100,6 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
               ⊞
             </button>
           )}
-          <button
-            onClick={() => setWeekOffset(w => w - 1)}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded transition-colors duration-150 text-sm"
-          >
-            ‹
-          </button>
-          <button
-            onClick={() => setWeekOffset(w => w + 1)}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded transition-colors duration-150 text-sm"
-          >
-            ›
-          </button>
         </div>
       </div>
 

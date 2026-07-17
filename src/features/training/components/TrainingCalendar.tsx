@@ -4,6 +4,7 @@ import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useTrainingBlocks } from '../../daily/hooks/useSchedule'
 import { HevyWorkoutDetail } from './HevyWorkoutDetail'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { DateNav } from '../../../shared/components/DateNav'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import type { HevyWorkout, StravaActivity } from '../types.hevy'
 import type { TimeBlock } from '../../daily/types'
@@ -298,39 +299,23 @@ function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, toda
     <div className="flex flex-col gap-3">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onPrev}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 rounded-xl text-ink-500 hover:bg-cream-50 transition-colors"
-          >
-            ←
-          </button>
-          <span className="text-sm font-semibold text-ink-700 min-w-[160px] text-center">{weekLabel}</span>
-          <button
-            type="button"
-            onClick={onNext}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 rounded-xl text-ink-500 hover:bg-cream-50 transition-colors"
-          >
-            →
-          </button>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onToday}
-            className="min-h-[44px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={onSwitchToMonth}
-            className="min-h-[44px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
-          >
-            Month
-          </button>
-        </div>
+        {/* App-standard ‹ label › date navigation (shared DateNav) */}
+        <DateNav
+          size="md"
+          label={weekLabel}
+          labelClassName="text-sm font-semibold text-ink-700 min-w-[150px]"
+          onPrev={onPrev}
+          onNext={onNext}
+          onToday={onToday}
+          isToday={false}
+        />
+        <button
+          type="button"
+          onClick={onSwitchToMonth}
+          className="min-h-[36px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
+        >
+          Month
+        </button>
       </div>
 
       {/* 7-day grid — a true 7-col grid squeezes each day to ~43px at phone
@@ -423,35 +408,21 @@ function MonthView({ year, month, workouts, activities, plansByDate, todayStr, t
     <div className="flex flex-col gap-3">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onPrevMonth}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 rounded-xl text-ink-500 hover:bg-cream-50 transition-colors"
-          >
-            ←
-          </button>
-          <span className="text-sm font-semibold text-ink-700 min-w-[160px] text-center">{monthLabel}</span>
-          <button
-            type="button"
-            onClick={onNextMonth}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 rounded-xl text-ink-500 hover:bg-cream-50 transition-colors"
-          >
-            →
-          </button>
-        </div>
+        {/* App-standard ‹ label › date navigation (shared DateNav) */}
+        <DateNav
+          size="md"
+          label={monthLabel}
+          labelClassName="text-sm font-semibold text-ink-700 min-w-[150px]"
+          onPrev={onPrevMonth}
+          onNext={onNextMonth}
+          onToday={onToday}
+          isToday={false}
+        />
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={onToday}
-            className="min-h-[44px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
-          >
-            Today
-          </button>
-          <button
-            type="button"
             onClick={onSwitchToWeek}
-            className="min-h-[44px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
+            className="min-h-[36px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
           >
             Week
           </button>

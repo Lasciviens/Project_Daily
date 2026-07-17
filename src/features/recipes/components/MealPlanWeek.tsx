@@ -2,6 +2,7 @@ import { useState, Fragment } from 'react'
 import { format, addDays, addWeeks, startOfWeek, endOfWeek, isToday, getISOWeek } from 'date-fns'
 import { useMealPlan } from '../hooks/useMealPlan'
 import { AssignMealModal } from './AssignMealModal'
+import { DateNav } from '../../../shared/components/DateNav'
 import type { MealSlot, MealPlanEntry } from '../types'
 
 const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack']
@@ -27,18 +28,17 @@ export function MealPlanWeek() {
   return (
     <div>
       {/* Week nav */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-bold text-ink-900">Week {getISOWeek(weekStart)}</h2>
-          <span className="text-xs text-ink-400">{format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d')}</span>
-          {weekOffset !== 0 && (
-            <button onClick={() => setWeekOffset(0)} className="text-[11px] text-accent-600 hover:text-accent-700 font-medium">Today</button>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setWeekOffset(w => w - 1)} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg press-feedback">‹</button>
-          <button onClick={() => setWeekOffset(w => w + 1)} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-ink-100 rounded-lg press-feedback">›</button>
-        </div>
+      {/* App-standard ‹ label › date navigation (shared DateNav) */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-1">
+        <DateNav
+          label={`Week ${getISOWeek(weekStart)}`}
+          labelClassName="text-sm font-bold text-ink-900 min-w-[72px]"
+          onPrev={() => setWeekOffset(w => w - 1)}
+          onNext={() => setWeekOffset(w => w + 1)}
+          onToday={() => setWeekOffset(0)}
+          isToday={weekOffset === 0}
+        />
+        <span className="text-xs text-ink-400">{format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d')}</span>
       </div>
 
       {/* Grid — meal slots as rows, days as columns. min-w-[720px] means this
