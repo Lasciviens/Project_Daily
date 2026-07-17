@@ -142,33 +142,76 @@ function throwRateLimit(errText: string): never {
   throw new RateLimitError(dailyLimit, retryAfterSec)
 }
 
-const MAX_GEMINI_RETRIES = 6
-const RETRY_BASE_DELAY_MS = 500
+// Model fallback chain — real-world Gemini 503 ("high demand") waves hit
+// individual models' capacity pools unevenly (verified via research: Google's
+// own forum + status trackers show newly-launched/high-traffic tiers overload
+// far more than others during the same window), so retrying the SAME model
+// repeatedly can spend the whole retry budget inside one overloaded pool.
+// Trying a DIFFERENT model is a materially better fallback than trying the
+// same one again. Order here is "best default first, then progressively
+// more likely to have spare capacity": 3.5 Flash (current default, best
+// balance) → 3 Flash (older tier, different capacity pool, similar quality)
+// → 3.1 Flash-Lite (lightest/fastest, typically least contested) → 3.1 Pro
+// (highest quality, slower/costlier, but yet another independent pool — a
+// good last resort rather than giving up).
+const MODEL_CHAIN = ['gemini-3.5-flash', 'gemini-3-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro'] as const
+type GeminiModel = typeof MODEL_CHAIN[number]
+const DEFAULT_MODEL: GeminiModel = MODEL_CHAIN[0]
+
+function isGeminiModel(m: unknown): m is GeminiModel {
+  return typeof m === 'string' && (MODEL_CHAIN as readonly string[]).includes(m)
+}
+
+const RETRIES_PER_MODEL = 2
+const RETRY_BASE_DELAY_MS = 600
+
+// Random spread on the backoff delay ("jitter") — without it, if this
+// function is ever invoked concurrently (e.g. two tabs), every retry lands on
+// the exact same schedule and re-hammers the just-recovering server at once
+// (the "thundering herd" problem); jitter spreads retries out instead.
+function jitter(ms: number): number {
+  return ms + Math.random() * ms * 0.4
+}
 
 // Gemini occasionally returns a transient "model overloaded"/high-demand
 // error (5xx) that clears up within seconds if retried — distinct from a 429
 // (real daily/per-minute quota exhaustion, which retrying won't fix, so that
-// still surfaces immediately via throwRateLimit upstream). Retries up to
-// MAX_GEMINI_RETRIES times with a short backoff before giving up, so the
-// user only sees a failure after genuinely exhausting attempts instead of on
-// the first transient hiccup — this was a real ~80%-of-requests pain point.
-async function fetchGeminiWithRetry(url: string, body: AnyRecord): Promise<Response> {
+// still surfaces immediately via throwRateLimit upstream). Retries each model
+// a couple of times with jittered backoff, then moves to the NEXT model in
+// the chain rather than continuing to hammer one — so the user only sees a
+// failure after every model's capacity pool has genuinely been exhausted,
+// not after one pool's transient hiccup (this was a real ~80%-of-requests
+// pain point even before the multi-model chain existed).
+async function fetchGeminiWithFallback(
+  apiKey:          string,
+  buildUrl:        (model: GeminiModel) => string,
+  body:            AnyRecord,
+  preferredModel?: GeminiModel,
+): Promise<{ res: Response; modelUsed: GeminiModel }> {
+  const chain: GeminiModel[] = preferredModel
+    ? [preferredModel, ...MODEL_CHAIN.filter(m => m !== preferredModel)]
+    : [...MODEL_CHAIN]
+
   let lastRes: Response | null = null
-  for (let attempt = 0; attempt < MAX_GEMINI_RETRIES; attempt++) {
-    const res = await fetch(url, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(body),
-    })
-    // 429 (real quota) and other 4xx (permanent client errors) are never
-    // helped by a retry — only 5xx (transient server-side overload) is.
-    if (res.ok || res.status < 500) return res
-    lastRes = res
-    if (attempt < MAX_GEMINI_RETRIES - 1) {
-      await new Promise(r => setTimeout(r, RETRY_BASE_DELAY_MS * (attempt + 1)))
+  let lastModel: GeminiModel = chain[0]
+  for (const model of chain) {
+    for (let attempt = 0; attempt < RETRIES_PER_MODEL; attempt++) {
+      const res = await fetch(buildUrl(model), {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      })
+      // 429 (real quota) and other 4xx (permanent client errors) are never
+      // helped by a retry — only 5xx (transient server-side overload) is.
+      if (res.ok || res.status < 500) return { res, modelUsed: model }
+      lastRes = res
+      lastModel = model
+      if (attempt < RETRIES_PER_MODEL - 1) {
+        await new Promise(r => setTimeout(r, jitter(RETRY_BASE_DELAY_MS * (attempt + 1))))
+      }
     }
   }
-  return lastRes!
+  return { res: lastRes!, modelUsed: lastModel }
 }
 
 const TOOLS = [
@@ -464,7 +507,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as
-      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string }
+      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string }
 
     // Fetch-and-extract-text is a distinct, lightweight action (no Gemini
     // call) — used to pull a recipe page's readable text server-side, since
@@ -476,7 +519,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { messages, systemPrompt, responseSchema } = body
+    const { messages, systemPrompt, responseSchema, model } = body
     if (!messages?.length) {
       return new Response(JSON.stringify({ error: 'messages or fetchUrl required' }), {
         status: 400, headers: { ...headers, 'Content-Type': 'application/json' },
@@ -490,11 +533,18 @@ Deno.serve(async (req) => {
       })
     }
 
+    // An explicit client-chosen model (the AI panel's model picker) becomes
+    // the PREFERRED start of the fallback chain, not the only model tried —
+    // manual choice and automatic resilience aren't mutually exclusive; a
+    // 503 on the chosen model still falls through to the rest of the chain
+    // rather than failing outright.
+    const preferredModel = isGeminiModel(model) ? model : undefined
+
     // Structured single-shot extraction (no tool-calling loop) — used for
     // things like parsing pasted recipe text into a JSON shape.
     const result = responseSchema
-      ? await callGeminiStructured(GEMINI_KEY, messages, systemPrompt, responseSchema)
-      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id)
+      ? await callGeminiStructured(GEMINI_KEY, messages, systemPrompt, responseSchema, preferredModel)
+      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel)
     return new Response(JSON.stringify(result), {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
@@ -520,8 +570,16 @@ async function callGemini(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   userId: string,
-): Promise<{ text: string; quickReplies?: string[]; steps?: string[] }> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`
+  preferredModel?: GeminiModel,
+): Promise<{ text: string; quickReplies?: string[]; steps?: string[]; model?: string }> {
+  const buildUrl = (model: GeminiModel) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+
+  // Sticks with whichever model actually served the last turn — a mid-
+  // conversation model switch would be a strange (if harmless) inconsistency;
+  // if that model degrades mid-conversation, the fallback chain still kicks
+  // in again from wherever it left off.
+  let modelUsed: GeminiModel = preferredModel ?? DEFAULT_MODEL
 
   let contents: AnyRecord[] = messages.map(m => ({
     role:  m.role === 'assistant' ? 'model' : 'user',
@@ -543,7 +601,8 @@ async function callGemini(
 
   // Multi-turn function calling loop
   for (let turn = 0; turn < 16; turn++) {
-    const res = await fetchGeminiWithRetry(url, { ...baseBody, contents })
+    const { res, modelUsed: usedThisTurn } = await fetchGeminiWithFallback(apiKey, buildUrl, { ...baseBody, contents }, modelUsed)
+    modelUsed = usedThisTurn
 
     if (!res.ok) {
       const errText = await res.text()
@@ -553,14 +612,14 @@ async function callGemini(
 
     const data      = await res.json()
     const candidate = data.candidates?.[0]
-    if (!candidate) return { text: '' }
+    if (!candidate) return { text: '', model: modelUsed }
 
     const parts: AnyRecord[] = candidate.content?.parts ?? []
     const fnCallParts = parts.filter((p: AnyRecord) => p.functionCall)
 
     if (fnCallParts.length === 0) {
       // No more function calls — return the text response
-      return { text: parts.find((p: AnyRecord) => p.text)?.text ?? '', steps: steps.length ? steps : undefined }
+      return { text: parts.find((p: AnyRecord) => p.text)?.text ?? '', steps: steps.length ? steps : undefined, model: modelUsed }
     }
 
     // ask_clarifying_question short-circuits the loop: the "answer" has to
@@ -569,7 +628,7 @@ async function callGemini(
     const clarifyCall = fnCallParts.find((p: AnyRecord) => p.functionCall.name === 'ask_clarifying_question')
     if (clarifyCall) {
       const { question, options } = clarifyCall.functionCall.args
-      return { text: question, quickReplies: Array.isArray(options) ? options : [], steps: steps.length ? steps : undefined }
+      return { text: question, quickReplies: Array.isArray(options) ? options : [], steps: steps.length ? steps : undefined, model: modelUsed }
     }
 
     // Preserve candidate.content verbatim — dropping it loses the encrypted thoughtSignature
@@ -597,17 +656,18 @@ async function callGemini(
   }]
   const finalBody: AnyRecord = { ...baseBody, contents: resumeContents }
   delete finalBody.tools
-  const finalRes = await fetchGeminiWithRetry(url, finalBody)
+  const { res: finalRes, modelUsed: finalModel } = await fetchGeminiWithFallback(apiKey, buildUrl, finalBody, modelUsed)
   if (finalRes.ok) {
     const finalData = await finalRes.json()
     const finalText = finalData.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text
-    if (finalText) return { text: finalText, steps: steps.length ? steps : undefined }
+    if (finalText) return { text: finalText, steps: steps.length ? steps : undefined, model: finalModel }
   }
   // Deterministic fallback that still shows exactly what was done + offers to resume.
   const doneList = steps.length ? '\n\nŞu ana kadar yaptıklarım:\n' + steps.map(s => '• ' + s).join('\n') : ''
   return {
     text: `Bu turda çok fazla adım gerektiği için işlemi tek seferde bitiremedim.${doneList}\n\nKaldığım yerden devam etmemi ister misin? "devam et" yaz, sürdüreyim.`,
     steps: steps.length ? steps : undefined,
+    model: finalModel,
   }
 }
 
@@ -632,8 +692,10 @@ async function callGeminiStructured(
   messages: Message[],
   systemPrompt: string | undefined,
   responseSchema: AnyRecord,
+  preferredModel?: GeminiModel,
 ): Promise<{ data: AnyRecord }> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`
+  const buildUrl = (model: GeminiModel) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
   const contents: AnyRecord[] = messages.map(m => ({
     role:  m.role === 'assistant' ? 'model' : 'user',
@@ -650,7 +712,7 @@ async function callGeminiStructured(
   }
   if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] }
 
-  const res = await fetchGeminiWithRetry(url, body)
+  const { res } = await fetchGeminiWithFallback(apiKey, buildUrl, body, preferredModel)
 
   if (!res.ok) {
     const errText = await res.text()

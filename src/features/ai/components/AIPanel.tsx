@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useUIStore } from '../../../app/store'
-import { sendMessage } from '../api/aiApi'
-import type { Message } from '../api/aiApi'
+import { sendMessage, AI_MODEL_OPTIONS } from '../api/aiApi'
+import type { Message, AIModel } from '../api/aiApi'
 
 // The AI performs real DB writes server-side (ai-proxy's db_insert/update/
 // delete + create_task/plan_media/etc.), but the panel had NO cache
@@ -19,6 +20,14 @@ const AI_WRITE_NAMESPACES = [
 ]
 
 const STORAGE_KEY = 'lasci-ai-chat'
+const MODEL_KEY    = 'lasci-ai-model'
+
+function readStoredModel(): AIModel {
+  try {
+    const raw = localStorage.getItem(MODEL_KEY)
+    return (AI_MODEL_OPTIONS.some(o => o.id === raw) ? raw : 'auto') as AIModel
+  } catch { return 'auto' }
+}
 
 // Minimal markdown → JSX: the model wraps emphasis in **bold**, which was
 // rendering as literal asterisks since message content went straight to
@@ -54,6 +63,7 @@ export function AIPanel() {
   const [loading,     setLoading]     = useState(false)
   const [error,       setError]       = useState<string | null>(null)
   const [detailSteps, setDetailSteps] = useState<string[] | null>(null)
+  const [model,       setModel]       = useState<AIModel>(readStoredModel)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
 
@@ -70,6 +80,11 @@ export function AIPanel() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch { /* quota */ }
   }, [messages])
 
+  function pickModel(next: AIModel) {
+    setModel(next)
+    try { localStorage.setItem(MODEL_KEY, next) } catch { /* quota */ }
+  }
+
   async function handleSend(text: string) {
     const trimmed = text.trim()
     if (!trimmed || loading) return
@@ -82,7 +97,7 @@ export function AIPanel() {
     setError(null)
 
     try {
-      const reply = await sendMessage(next)
+      const reply = await sendMessage(next, model)
       setMessages(m => [...m, { role: 'assistant', content: reply.text, steps: reply.steps }])
       // The turn may have written to the DB — refresh every AI-writable view.
       for (const key of AI_WRITE_NAMESPACES) qc.invalidateQueries({ queryKey: key })
@@ -122,7 +137,30 @@ export function AIPanel() {
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 bg-accent-500 rounded-md flex items-center justify-center text-white text-[10px] font-bold">✦</div>
             <h2 className="text-sm font-semibold text-ink-800">Ask AI</h2>
-            <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded-full font-medium">Gemini</span>
+            {/* Model picker: "Auto" (default) lets the server's 4-model
+                fallback chain pick whichever has capacity; picking one
+                explicitly still falls back to the others on a 503 — this
+                only sets which model the chain tries FIRST. */}
+            <Listbox value={model} onChange={pickModel}>
+              <div className="relative">
+                <ListboxButton className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded-full font-medium hover:bg-green-100 transition-colors min-h-[24px]">
+                  {AI_MODEL_OPTIONS.find(o => o.id === model)?.label ?? 'Auto'}
+                  <span className="opacity-60">▾</span>
+                </ListboxButton>
+                <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-56 rounded-lg border border-ink-200 bg-cream-50 shadow-lg py-1 text-xs">
+                  {AI_MODEL_OPTIONS.map(o => (
+                    <ListboxOption
+                      key={o.id}
+                      value={o.id}
+                      className="px-3 py-2 cursor-pointer data-[focus]:bg-cream-100 min-h-[44px] flex flex-col justify-center"
+                    >
+                      <span className="font-medium text-ink-800">{o.label}</span>
+                      <span className="text-[10px] text-ink-400">{o.hint}</span>
+                    </ListboxOption>
+                  ))}
+                </ListboxOptions>
+              </div>
+            </Listbox>
           </div>
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
