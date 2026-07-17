@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useTransitStops } from '../../hooks/useTransitStops'
+import { useTransitStops, DuplicateStopError } from '../../hooks/useTransitStops'
 import { useTransitRoutes } from '../../hooks/useTransitRoutes'
 import { useGeolocation } from '../../hooks/useGeolocation'
+import { useTravelProfile, type WalkPace } from '../../hooks/useTravelProfile'
 import { fetchNearestStops, type StopResult } from '../../api/ruterApi'
 import { StopSearchInput } from './StopSearchInput'
 import { QuaySavePanel } from './QuaySavePanel'
@@ -10,12 +11,16 @@ import { toast } from '../../../../app/store'
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function SettingsTab() {
-  const { stops, addStop, removeStop, setDefault } = useTransitStops()
+export function SettingsTab({ onSelectRoute }: { onSelectRoute?: (routeId: string) => void } = {}) {
+  const { stops, addStop, updateStop, removeStop, setDefault } = useTransitStops()
   const { routes, removeRoute }                    = useTransitRoutes()
   const { data: geo } = useGeolocation()
+  const { profile, update: updateProfile } = useTravelProfile()
 
   const [newStop, setNewStop] = useState<StopResult | null>(null)
+  // Off by default — most searches are for a transit stop, and showing
+  // addresses alongside stops made results noisier for the common case.
+  const [includeAddresses, setIncludeAddresses] = useState(false)
 
   // Real nearby stops for one-tap add — the point being asked for: adding a
   // "Home"/"Work" stop shouldn't require typing its name if you're standing there.
@@ -29,14 +34,27 @@ export function SettingsTab() {
 
   async function handleSaveNewStop(quayId: string | null, quayDescription: string | null, label: string) {
     if (!newStop) return
-    const tid = toast.loading('Saving stop…')
     try {
       await addStop(newStop, quayId ?? undefined, quayDescription ?? undefined, label !== newStop.name ? label : undefined)
-      toast.dismiss(tid)
       toast.success('Stop saved ✓')
       setNewStop(null)
     } catch (e) {
-      toast.dismiss(tid)
+      // Same stop + direction already saved — offer to update it instead of a
+      // raw "duplicate key" error (real bug this replaces).
+      if (e instanceof DuplicateStopError) {
+        const proceed = confirm(
+          `You already have this saved as "${e.existing.label ?? e.existing.stop_name}". Update it with this direction and label instead?`
+        )
+        if (!proceed) return
+        try {
+          await updateStop(e.existing.id, { label, quayId, quayDescription })
+          toast.success('Stop updated ✓')
+          setNewStop(null)
+        } catch (e2) {
+          toast.error((e2 as Error).message ?? 'Failed to update')
+        }
+        return
+      }
       toast.error((e as Error).message ?? 'Failed to save')
     }
   }
@@ -67,7 +85,18 @@ export function SettingsTab() {
         )}
 
         {!newStop && (
-          <StopSearchInput placeholder="Search any stop…" onSelect={setNewStop} stopsOnly={true} />
+          <>
+            <StopSearchInput placeholder="Search any stop…" onSelect={setNewStop} stopsOnly={!includeAddresses} />
+            <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-ink-500 min-h-[28px]">
+              <input
+                type="checkbox"
+                checked={includeAddresses}
+                onChange={e => setIncludeAddresses(e.target.checked)}
+                className="rounded border-ink-300"
+              />
+              Include addresses (for trip planning — no live departures)
+            </label>
+          </>
         )}
 
         {newStop && (
@@ -141,10 +170,14 @@ export function SettingsTab() {
         <ul className="space-y-1">
           {routes.map(r => (
             <li key={r.id} className="flex items-center gap-2 min-h-[44px]">
-              <div className="flex-1 min-w-0">
+              <button
+                onClick={() => onSelectRoute?.(r.id)}
+                className="flex-1 min-w-0 text-left"
+                title="Open in Routes"
+              >
                 <span className="text-sm text-ink-800">{r.label}</span>
                 <p className="text-xs text-ink-400 truncate">{r.from_stop_name} → {r.to_stop_name}</p>
-              </div>
+              </button>
               <button
                 onClick={() => removeRoute(r.id).catch(e => toast.error((e as Error).message ?? 'Failed'))}
                 className="text-ink-300 hover:text-red-500 transition-colors duration-150 text-xs min-h-[44px] min-w-[44px] flex items-center justify-center flex-shrink-0"
@@ -153,6 +186,65 @@ export function SettingsTab() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <div className="border-t border-ink-100" />
+
+      {/* Travel profile — applied to every route search automatically, so
+          these preferences don't need re-entering each time you plan a trip. */}
+      <section>
+        <h4 className="text-xs font-semibold text-ink-600 uppercase tracking-wide mb-2">
+          Travel Profile
+        </h4>
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-ink-600 mb-1.5">Walking pace</p>
+            <div className="flex gap-1.5">
+              {(['slow', 'normal', 'fast'] as WalkPace[]).map(pace => (
+                <button
+                  key={pace}
+                  onClick={() => updateProfile({ walkPace: pace })}
+                  className={`flex-1 text-xs py-2 rounded-lg border capitalize transition-colors duration-150 min-h-[40px] ${
+                    profile.walkPace === pace
+                      ? 'bg-accent-500 text-white border-accent-500'
+                      : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                  }`}
+                >
+                  {pace}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs text-ink-600 mb-1.5">Maximum transfers</p>
+            <div className="flex gap-1.5">
+              {[null, 0, 1, 2].map(n => (
+                <button
+                  key={n ?? 'any'}
+                  onClick={() => updateProfile({ maximumTransfers: n })}
+                  className={`flex-1 text-xs py-2 rounded-lg border transition-colors duration-150 min-h-[40px] ${
+                    profile.maximumTransfers === n
+                      ? 'bg-accent-500 text-white border-accent-500'
+                      : 'text-ink-600 border-ink-200 hover:border-accent-300'
+                  }`}
+                >
+                  {n === null ? 'No limit' : n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 min-h-[44px] text-sm text-ink-700">
+            <input
+              type="checkbox"
+              checked={profile.wheelchairAccessible}
+              onChange={e => updateProfile({ wheelchairAccessible: e.target.checked })}
+              className="rounded border-ink-300"
+            />
+            Wheelchair-accessible routes only
+          </label>
+        </div>
       </section>
     </div>
   )

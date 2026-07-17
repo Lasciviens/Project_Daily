@@ -1,5 +1,13 @@
 import { useState } from 'react'
 import { TRANSPORT_ICON, type TripPattern, type TripLeg } from '../../api/ruterApi'
+
+// Colour by severity — grey/neutral for informational, amber for moderate, red
+// for severe. Matches EnTur's own Severity enum.
+function situationColor(severity: string): string {
+  if (severity === 'severe' || severity === 'verySevere') return 'text-red-600 bg-red-50 border-red-200'
+  if (severity === 'slight' || severity === 'normal')     return 'text-amber-700 bg-amber-50 border-amber-200'
+  return 'text-ink-500 bg-ink-50 border-ink-200'
+}
 import { fmtTime, fmtDuration, fmtDistance, lineStyle, MODE_FALLBACK_BG } from './transitUtils'
 
 interface TripCardProps {
@@ -26,12 +34,19 @@ function LineBadge({ leg }: { leg: TripLeg }) {
   if (!leg.line) return null
   const style = lineStyle(leg.lineColour, leg.lineTextColour)
   const fallbackBg = MODE_FALLBACK_BG[leg.mode] ?? '#555'
+  const hasSituation = (leg.situations?.length ?? 0) > 0
   return (
-    <span
-      className="inline-flex items-center justify-center text-[11px] font-bold px-2 py-0.5 rounded min-w-[1.75rem] flex-shrink-0 leading-tight"
-      style={style ?? { backgroundColor: fallbackBg, color: '#ffffff' }}
-    >
-      {leg.line}
+    <span className="relative inline-flex flex-shrink-0">
+      <span
+        className="inline-flex items-center justify-center text-[11px] font-bold px-2 py-0.5 rounded min-w-[1.75rem] leading-tight"
+        style={style ?? { backgroundColor: fallbackBg, color: '#ffffff' }}
+      >
+        {leg.line}
+      </span>
+      {/* Visible even collapsed — tap the row to expand and read the alert */}
+      {hasSituation && (
+        <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 border border-cream-50" title="Service alert on this line" />
+      )}
     </span>
   )
 }
@@ -111,6 +126,12 @@ function TransitLeg({ leg }: { leg: TripLeg }) {
             </span>
           )}
         </div>
+        {/* Live disruption/alert for this line — e.g. "Cancelled today" */}
+        {leg.situations && leg.situations.length > 0 && (
+          <div className={`text-[10px] px-1.5 py-0.5 rounded border mt-1 ${situationColor(leg.situations[0].severity)}`}>
+            ⚠ {leg.situations[0].summary}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -165,31 +186,33 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
         onClick={() => setExpanded(v => !v)}
         className="w-full px-3 pt-3 pb-2.5 text-left min-h-[52px] bg-cream-50"
       >
-        {/* Time row: HH:MM → HH:MM  Xm */}
-        <div className="flex items-center justify-between gap-2 mb-1.5">
-          <div className="flex items-center gap-2 min-w-0">
-            {isBest && (
-              <span className="text-[9px] font-bold uppercase tracking-wider text-accent-600 bg-accent-100 px-1.5 py-0.5 rounded flex-shrink-0">
-                Best
-              </span>
-            )}
-            <span className={`text-base font-bold tabular-nums flex-shrink-0 ${
-              isNow ? 'text-red-500' : isPast ? 'text-ink-400' : 'text-ink-900'
-            }`}>
-              {isNow ? 'Now' : diffMin <= 90 ? `${diffMin} min` : fmtTime(trip.departure)}
-            </span>
-            <span className="text-ink-300 text-sm">→</span>
-            <span className="text-base font-bold tabular-nums text-ink-700">
-              {fmtTime(trip.arrival)}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-xs text-ink-400 tabular-nums">{durationMin}m</span>
-            {transfers > 0 && (
-              <span className="text-[10px] text-ink-300">{transfers} transfer{transfers !== 1 ? 's' : ''}</span>
-            )}
-            <span className="text-[10px] text-ink-300">{expanded ? '▲' : '▼'}</span>
-          </div>
+        {/* "Leave in X" is the one number a user glances at first — a bare bold
+            time (no label) read ambiguously as duration/arrival/etc, so it's
+            explicit now, and de-emphasized (was the same bold size as the
+            arrival time, competing for attention rather than leading it). */}
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <span className={`text-sm font-semibold flex-shrink-0 ${
+            isNow ? 'text-red-500' : isPast ? 'text-ink-400' : 'text-accent-700'
+          }`}>
+            {isBest && <span className="text-[9px] font-bold uppercase tracking-wider text-accent-600 bg-accent-100 px-1.5 py-0.5 rounded mr-1.5">Best</span>}
+            {isNow ? 'Leaving now' : diffMin <= 90 ? `Leave in ${diffMin} min` : `Leave at ${fmtTime(trip.departure)}`}
+          </span>
+          <span className="text-[10px] text-ink-300 flex-shrink-0">{expanded ? '▲' : '▼'}</span>
+        </div>
+
+        {/* Departure/arrival times + duration — secondary detail, smaller */}
+        <div className="flex items-center gap-2 mb-1.5 text-xs text-ink-500 tabular-nums">
+          <span>{fmtTime(trip.departure)}</span>
+          <span className="text-ink-300">→</span>
+          <span>{fmtTime(trip.arrival)}</span>
+          <span className="text-ink-300">·</span>
+          <span>{durationMin} min</span>
+          {transfers > 0 && (
+            <>
+              <span className="text-ink-300">·</span>
+              <span>{transfers} transfer{transfers !== 1 ? 's' : ''}</span>
+            </>
+          )}
         </div>
 
         {/* Journey strip: line badges + walk chips */}
@@ -199,6 +222,7 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
       {/* Expandable leg details */}
       {expanded && (
         <div className="px-3 pb-2 border-t border-ink-50 bg-cream-50 divide-y divide-ink-50">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400 pt-2 pb-1">Journey details</p>
           {trip.legs.map((leg, i) => {
             const prevLeg       = trip.legs[i - 1]
             const isTransit     = leg.mode !== 'foot'

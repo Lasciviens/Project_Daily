@@ -1,8 +1,11 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchTrips, fetchStopDirections, type StopResult, type TransitPlace } from '../../api/ruterApi'
+import { fetchTrips, fetchStopDirections, quayLabel, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
 import { useTransitStops } from '../../hooks/useTransitStops'
+import { useTransitRecentSearches, type RecentSearch } from '../../hooks/useTransitRecentSearches'
+import { useGeolocation } from '../../hooks/useGeolocation'
+import { useTravelProfile, WALK_SPEED_MPS } from '../../hooks/useTravelProfile'
 import type { WidgetStateResult } from '../../hooks/useWidgetState'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
@@ -14,6 +17,11 @@ import { todayStr as todayString } from '../../../../shared/utils/dateUtils'
 interface RoutesTabProps {
   ws:  WidgetStateResult
   now: number
+  // Lets Settings' "Favorite Routes" list select a route here: RuterWidget
+  // sets pendingRouteId + switches to this tab; this effect applies it once,
+  // then reports back so RuterWidget clears it.
+  pendingRouteId?:   string | null
+  onRouteConsumed?:  () => void
 }
 
 // Inline "name this route" form — appears both under the draft planner and
@@ -120,7 +128,7 @@ function suggestLabel(from: TransitPlace, to: TransitPlace): string {
 
 // Stop card with quay direction hints.
 // Uses fetchStopDirections (lightweight: 20 departures, one per line+destination)
-// to get "mot Oslo S" / "mot Snarøya" labels from real departure context.
+// to get "Toward Oslo S" / "Toward Snarøya" labels from real departure context.
 function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: string; onClear: () => void }) {
   const isFrom = label.toLowerCase() === 'from'
 
@@ -132,10 +140,7 @@ function PlaceDisplay({ place, label, onClear }: { place: TransitPlace; label: s
     retry:     false,
   })
 
-  const directions = useMemo(() => {
-    const labels = hints.map(h => h.description ?? h.fallback).filter((d): d is string => !!d)
-    return [...new Set(labels)]
-  }, [hints])
+  const directions = useMemo(() => [...new Set(hints.map(quayLabel))], [hints])
 
   return (
     <div className="flex items-center gap-2 px-2.5 py-2 bg-ink-50 border border-ink-200 rounded-xl min-h-[44px]">
@@ -184,9 +189,12 @@ function SavedRouteChip({ route, active, onSelect, onDelete }: {
   )
 }
 
-export function RoutesTab({ ws, now }: RoutesTabProps) {
+export function RoutesTab({ ws, now, pendingRouteId, onRouteConsumed }: RoutesTabProps) {
   const { routes, addRoute, removeRoute } = useTransitRoutes()
   const { stops: savedStops } = useTransitStops()
+  const { recent: recentSearches, recordSearch } = useTransitRecentSearches()
+  const { data: geo } = useGeolocation()
+  const { profile: travelProfile } = useTravelProfile()
   const queryClient = useQueryClient()
 
   const [draftFrom,      setDraftFrom]      = useState<TransitPlace | null>(null)
@@ -208,6 +216,27 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const [saveMsg,        setSaveMsg]        = useState<string | null>(null)
   const [refreshing,     setRefreshing]     = useState(false)
   const [visibleCount,   setVisibleCount]   = useState(4)
+  const [autoFilledFrom, setAutoFilledFrom] = useState(false)
+
+  // Prefill "From" with the user's real location once it's available, so
+  // planning a trip doesn't require tapping 📍 every time — but only once,
+  // and only if From is still empty, so it never fights a manual choice or
+  // re-fills itself right after the user clears it on purpose.
+  useEffect(() => {
+    if (autoFilledFrom || draftFrom || geo?.source !== 'gps') return
+    setDraftFrom({ kind: 'coords', lat: geo.lat, lon: geo.lon, name: 'Current location' })
+    setAutoFilledFrom(true)
+  }, [geo, draftFrom, autoFilledFrom])
+
+  // A favorite Route selected from the Settings tab lands here once, applied
+  // the same way tapping a "Saved routes" chip would.
+  useEffect(() => {
+    if (!pendingRouteId) return
+    const route = routes.find(r => r.id === pendingRouteId)
+    if (route) applyPreset(route)
+    onRouteConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRouteId, routes])
 
   const favoriteStops = useMemo(() => {
     const seen = new Set<string>()
@@ -285,6 +314,20 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
       version: (search?.version ?? 0) + 1,
     })
     setShowSaveForm(false); setSaveMsg(null); setFormCollapsed(true)
+    // Only stop→stop searches can be recorded (the recent-searches table has
+    // no coordinate columns, so an address/GPS endpoint can't be represented).
+    if (draftFrom.kind === 'stop' && draftTo.kind === 'stop') {
+      recordSearch({ id: draftFrom.id, name: draftFrom.name }, { id: draftTo.id, name: draftTo.name })
+    }
+  }
+
+  function planFromRecent(r: RecentSearch) {
+    const from: TransitPlace = { kind: 'stop', id: r.from_stop_id, name: r.from_stop_name }
+    const to:   TransitPlace = { kind: 'stop', id: r.to_stop_id,   name: r.to_stop_name   }
+    setDraftFrom(from); setDraftTo(to); setDraftWhen('now'); setSaveMsg(null); setShowSaveForm(false)
+    setSearch({ from, to, dateTime: undefined, arriveBy: false, label: 'Leave now',
+      preferredLine: undefined, version: (search?.version ?? 0) + 1 })
+    setFormCollapsed(true)
   }
 
   const fromKey = search?.from.kind === 'stop' ? search.from.id
@@ -292,7 +335,7 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const toKey = search?.to.kind === 'stop' ? search.to.id
     : search ? `${(search.to as { lat: number }).lat},${(search.to as { lon: number }).lon}` : ''
 
-  const tripQueryKey = ['trip', fromKey, toKey, search?.arriveBy, search?.dateTime ?? 'now', search?.version]
+  const tripQueryKey = ['trip', fromKey, toKey, search?.arriveBy, search?.dateTime ?? 'now', search?.version, travelProfile]
 
   // Reset the load-more window whenever a fresh search runs.
   useEffect(() => { setVisibleCount(4) }, [search?.version])
@@ -300,7 +343,11 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: tripQueryKey,
     queryFn:  async () => {
-      const result = await fetchTrips(search!.from, search!.to, undefined, search!.dateTime, search!.arriveBy)
+      const result = await fetchTrips(search!.from, search!.to, undefined, search!.dateTime, search!.arriveBy, {
+        walkSpeed:            WALK_SPEED_MPS[travelProfile.walkPace],
+        maximumTransfers:     travelProfile.maximumTransfers,
+        wheelchairAccessible: travelProfile.wheelchairAccessible,
+      })
       setLastUpdated(Date.now())
       return result
     },
@@ -380,6 +427,26 @@ export function RoutesTab({ ws, now }: RoutesTabProps) {
                   onDelete={() => removeRoute(r.id).catch(e => toast.error((e as Error).message ?? 'Failed to delete route'))} />
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Recent searches — repeat a stop→stop trip without re-typing it */}
+      {recentSearches.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide mb-2">Recent searches</p>
+          <div className="flex flex-wrap gap-2">
+            {recentSearches.map(r => (
+              <button
+                key={r.id}
+                onClick={() => planFromRecent(r)}
+                className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-ink-200 text-ink-700 hover:border-accent-300 transition-colors duration-150 min-h-[44px]"
+              >
+                <span className="truncate max-w-[100px]">{r.from_stop_name.split(',')[0]}</span>
+                <span className="text-ink-300">→</span>
+                <span className="truncate max-w-[100px]">{r.to_stop_name.split(',')[0]}</span>
+              </button>
+            ))}
           </div>
         </div>
       )}

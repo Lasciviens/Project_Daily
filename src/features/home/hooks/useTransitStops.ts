@@ -8,7 +8,8 @@ import type { StopResult } from '../api/ruterApi'
 
 export interface UserTransitStop {
   id:               string
-  stop_id:          string        // NSR:StopPlace:...
+  stop_id:          string        // NSR:StopPlace:... for transit stops, or a
+                                   // provider address id for an address favorite
   stop_name:        string
   stop_locality:    string | null
   label:            string | null
@@ -16,6 +17,22 @@ export interface UserTransitStop {
   sort_order:       number
   quay_id?:         string | null
   quay_description?: string | null
+  lat?:             number | null   // set only for address favorites
+  lon?:             number | null
+}
+
+// Thrown by addStop when the exact same (stop, direction) is already saved —
+// callers should offer to update the existing favorite instead of just
+// surfacing a raw "duplicate key" database error (a real bug this replaces:
+// the unique index didn't even cover the quay before migration 049, so saving
+// a second direction of the same stop was outright impossible).
+export class DuplicateStopError extends Error {
+  existing: UserTransitStop
+  constructor(existing: UserTransitStop) {
+    super('This stop and direction is already saved')
+    this.name = 'DuplicateStopError'
+    this.existing = existing
+  }
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -24,6 +41,7 @@ export function useTransitStops(): {
   stops:      UserTransitStop[]
   isLoading:  boolean
   addStop:    (stop: StopResult, quayId?: string, quayDescription?: string, label?: string) => Promise<void>
+  updateStop: (id: string, patch: { label?: string | null; quayId?: string | null; quayDescription?: string | null }) => Promise<void>
   removeStop: (id: string) => Promise<void>
   setDefault: (id: string) => Promise<void>
 } {
@@ -44,7 +62,15 @@ export function useTransitStops(): {
   async function addStop(stop: StopResult, quayId?: string, quayDescription?: string, label?: string): Promise<void> {
     const user = await requireUser()
 
+    // Same stop + same direction (quay) already saved? Surface it as a typed
+    // conflict instead of letting the DB's unique-index violation bubble up
+    // as a raw "duplicate key value violates unique constraint" message.
+    const normalizedQuay = quayId ?? null
+    const existing = stops.find(s => s.stop_id === stop.id && (s.quay_id ?? null) === normalizedQuay)
+    if (existing) throw new DuplicateStopError(existing)
+
     const isFirst = stops.length === 0
+    const isAddress = !stop.id.startsWith('NSR:')
     const { error } = await supabase.from('user_transit_stops').insert({
       user_id:          user.id,
       stop_id:          stop.id,
@@ -53,9 +79,26 @@ export function useTransitStops(): {
       label:            label ?? null,
       is_default:       isFirst,
       sort_order:       stops.length,
-      quay_id:          quayId ?? null,
+      quay_id:          normalizedQuay,
       quay_description: quayDescription ?? null,
+      lat:              isAddress ? stop.lat ?? null : null,
+      lon:              isAddress ? stop.lon ?? null : null,
     })
+    if (error) throw error
+    await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })
+  }
+
+  // Used to apply a saved favorite's new label/direction after the user
+  // confirms overwriting an existing one (see DuplicateStopError above).
+  async function updateStop(id: string, patch: { label?: string | null; quayId?: string | null; quayDescription?: string | null }): Promise<void> {
+    const { error } = await supabase
+      .from('user_transit_stops')
+      .update({
+        ...(patch.label       !== undefined ? { label: patch.label } : {}),
+        ...(patch.quayId      !== undefined ? { quay_id: patch.quayId } : {}),
+        ...(patch.quayDescription !== undefined ? { quay_description: patch.quayDescription } : {}),
+      })
+      .eq('id', id)
     if (error) throw error
     await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })
   }
@@ -98,5 +141,5 @@ export function useTransitStops(): {
     await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })
   }
 
-  return { stops, isLoading, addStop, removeStop, setDefault }
+  return { stops, isLoading, addStop, updateStop, removeStop, setDefault }
 }

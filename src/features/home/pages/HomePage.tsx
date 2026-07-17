@@ -17,6 +17,7 @@ import { TrainingHomeWidget } from '../components/TrainingHomeWidget'
 import { GamesHomeWidget } from '../components/GamesHomeWidget'
 import { ProjectsHomeWidget } from '../components/ProjectsHomeWidget'
 import { RecentMediaWidget } from '../components/RecentMediaWidget'
+import { useGeolocation } from '../hooks/useGeolocation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,12 @@ const NAV_CARDS: NavCard[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function HomePage() {
+  // Requested here at the top level (not left to Weather/Transit to trigger
+  // individually) so the browser's location prompt fires the instant Home
+  // loads, regardless of which widgets happen to be mounted/collapsed —
+  // every consumer shares this one cached request (see useGeolocation).
+  useGeolocation()
+
   // Same date-scoped query Daily uses — section='today' AND due today (or
   // undated), rather than every task ever filed into the 'today' bucket.
   const today        = useTasksForDay(new Date(), 'today')
