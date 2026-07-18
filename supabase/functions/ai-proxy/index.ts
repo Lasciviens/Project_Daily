@@ -166,6 +166,17 @@ function isGeminiModel(m: unknown): m is GeminiModel {
   return typeof m === 'string' && (MODEL_CHAIN as readonly string[]).includes(m)
 }
 
+// thinking_config/thinking_level is a Gemini-3.x-only generationConfig field —
+// live-verified: sending it to the 2.5-generation tail of the chain (added in
+// the earlier 404-fix round) 400s with "Thinking level is not supported for
+// this model", which a REAL user hit by explicitly picking 2.5 Flash. The
+// request body can no longer be identical across the whole chain (previous
+// bug: one fixed body object reused for every model regardless of generation)
+// — it must be built PER MODEL now.
+function supportsThinking(model: GeminiModel): boolean {
+  return model.startsWith('gemini-3')
+}
+
 // Per-CHAIN-POSITION retry budget — the user wants the BETTER models tried
 // hard before falling to a lighter one ("düşük model zaten her türlü dönüyor"):
 // the preferred/first model gets 4 attempts with growing backoff (~7s worth),
@@ -193,7 +204,7 @@ function jitter(ms: number): number {
 async function fetchGeminiWithFallback(
   apiKey:          string,
   buildUrl:        (model: GeminiModel) => string,
-  body:            AnyRecord,
+  buildBody:       (model: GeminiModel) => AnyRecord,
   preferredModel?: GeminiModel,
 ): Promise<{ res: Response; modelUsed: GeminiModel }> {
   const chain: GeminiModel[] = preferredModel
@@ -209,7 +220,7 @@ async function fetchGeminiWithFallback(
       const res = await fetch(buildUrl(model), {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(body),
+        body:    JSON.stringify(buildBody(model)),
       })
       if (res.ok) return { res, modelUsed: model }
       // 404 = THIS model id doesn't exist (retired/renamed) — skip straight
@@ -642,18 +653,27 @@ async function callGemini(
   // activity trace (shown behind a "Show detail" link, not spoken inline).
   const steps: string[] = []
 
-  // thinking_level MINIMAL keeps latency low while satisfying the thought_signature requirement
-  const baseBody: AnyRecord = {
-    tools: TOOLS,
-    generationConfig: { thinking_config: { thinking_level: 'MINIMAL' } },
-  }
+  // thinking_level MINIMAL keeps latency low while satisfying the thought_signature
+  // requirement — but ONLY on Gemini 3.x models (supportsThinking); the 2.5-tier
+  // tail of the fallback chain 400s on this field entirely, so the body is
+  // built per-model (buildBody), not once and reused across the whole chain.
+  const baseBody: AnyRecord = { tools: TOOLS }
   if (systemPrompt) {
     baseBody.systemInstruction = { parts: [{ text: systemPrompt }] }
+  }
+  function buildBodyFor(model: GeminiModel, extra: AnyRecord): AnyRecord {
+    return {
+      ...baseBody,
+      ...extra,
+      generationConfig: supportsThinking(model) ? { thinking_config: { thinking_level: 'MINIMAL' } } : undefined,
+    }
   }
 
   // Multi-turn function calling loop
   for (let turn = 0; turn < 16; turn++) {
-    const { res, modelUsed: usedThisTurn } = await fetchGeminiWithFallback(apiKey, buildUrl, { ...baseBody, contents }, modelUsed)
+    const { res, modelUsed: usedThisTurn } = await fetchGeminiWithFallback(
+      apiKey, buildUrl, m => buildBodyFor(m, { contents }), modelUsed,
+    )
     modelUsed = usedThisTurn
 
     if (!res.ok) {
@@ -706,9 +726,11 @@ async function callGemini(
     role: 'user',
     parts: [{ text: 'You have reached the step limit for this turn. Do NOT call any tools now. In my language, briefly summarize what you already completed and what still remains, then ask if I want you to continue with the rest.' }],
   }]
-  const finalBody: AnyRecord = { ...baseBody, contents: resumeContents }
-  delete finalBody.tools
-  const { res: finalRes, modelUsed: finalModel } = await fetchGeminiWithFallback(apiKey, buildUrl, finalBody, modelUsed)
+  const { res: finalRes, modelUsed: finalModel } = await fetchGeminiWithFallback(
+    apiKey, buildUrl,
+    m => { const b = buildBodyFor(m, { contents: resumeContents }); delete b.tools; return b },
+    modelUsed,
+  )
   if (finalRes.ok) {
     const finalData = await finalRes.json()
     const finalText = finalData.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text
@@ -754,17 +776,19 @@ async function callGeminiStructured(
     parts: [{ text: m.content }],
   }))
 
-  const body: AnyRecord = {
-    contents,
+  const baseBody: AnyRecord = { contents }
+  if (systemPrompt) baseBody.systemInstruction = { parts: [{ text: systemPrompt }] }
+
+  // thinking_config is Gemini-3.x-only (see supportsThinking) — built per
+  // model so the 2.5-tier tail of the fallback chain doesn't 400 on it.
+  const { res } = await fetchGeminiWithFallback(apiKey, buildUrl, model => ({
+    ...baseBody,
     generationConfig: {
-      thinking_config:  { thinking_level: 'MINIMAL' },
+      ...(supportsThinking(model) ? { thinking_config: { thinking_level: 'MINIMAL' } } : {}),
       responseMimeType: 'application/json',
       responseSchema,
     },
-  }
-  if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] }
-
-  const { res } = await fetchGeminiWithFallback(apiKey, buildUrl, body, preferredModel)
+  }), preferredModel)
 
   if (!res.ok) {
     const errText = await res.text()

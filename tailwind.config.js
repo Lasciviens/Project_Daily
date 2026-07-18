@@ -66,10 +66,18 @@ export default {
           '0%,100%': { transform: 'rotate(-3deg)' },
           '50%':     { transform: 'rotate(3deg)' },
         },
+        // Bottom-tab-bar active icon "pop" — the springy overshoot native
+        // tab bars give the icon you just tapped.
+        tabPop: {
+          '0%':   { transform: 'scale(1)' },
+          '45%':  { transform: 'scale(1.22)' },
+          '100%': { transform: 'scale(1)' },
+        },
       },
       animation: {
         fadeSlideIn: 'fadeSlideIn 0.2s ease-out',
         wiggle:      'wiggle 0.3s ease-in-out',
+        tabPop:      'tabPop 0.3s ease-out',
       },
     },
   },

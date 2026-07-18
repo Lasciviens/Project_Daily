@@ -19,8 +19,11 @@ export default defineConfig({
         name: "Lasci's Board",
         short_name: 'Board',
         description: 'Personal dashboard — daily planning, tasks, media, training',
-        theme_color: '#ef4444',
-        background_color: '#fffdf7',
+        // Matched to the app's actual light-mode header/canvas surfaces —
+        // the old #ef4444 red predated the amber/cream design entirely and
+        // tinted the installed PWA's splash/chrome the wrong color.
+        theme_color: '#FEFCF9',
+        background_color: '#EDE4D5',
         display: 'standalone',
         start_url: '/Project_Daily/',
         scope: '/Project_Daily/',

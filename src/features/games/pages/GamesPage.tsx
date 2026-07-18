@@ -527,7 +527,7 @@ export function GamesPage() {
 
   if (!rp5) {
     return (
-      <div className="min-h-[calc(100vh-56px)] flex items-center justify-center bg-cream-50">
+      <div className="min-h-full flex items-center justify-center bg-cream-50">
         <div className="text-center">
           <div className="text-5xl mb-4">🎮</div>
           <h1 className="text-2xl font-bold text-ink-900 mb-2">Games</h1>
@@ -538,7 +538,7 @@ export function GamesPage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-56px)] bg-cream-50">
+    <div className="min-h-full bg-cream-50">
       <div className="max-w-7xl mx-auto px-4 py-5">
 
         {/* Top-level platform tabs */}

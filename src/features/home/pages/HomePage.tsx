@@ -71,7 +71,7 @@ export function HomePage() {
      * On <1280px: right panel drops below center
      * On <768px : all single column
      */
-    <div className="min-h-[calc(100vh-56px)] flex flex-col xl:flex-row xl:items-start gap-4 p-4 xl:p-5">
+    <div className="min-h-full flex flex-col xl:flex-row xl:items-start gap-4 p-4 xl:p-5">
 
       {/* Mobile-only lead: morning briefing + weather, in that order, ahead
           of everything else. Below xl the 3-column layout drops to a
