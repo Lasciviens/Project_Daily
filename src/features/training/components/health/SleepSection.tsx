@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
-import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions, computeSleepEfficiency } from '../../healthAggregate'
+import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions } from '../../healthAggregate'
 import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { DateNav } from './DateNav'
 import { shiftStr, rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
@@ -133,26 +133,9 @@ function NightChart({ sessions }: { sessions: { startMs: number; endMs: number }
   )
 }
 
-// (The estimated "sleep score" chip was removed on explicit user decision —
-// no wearable exports a real score via HealthKit and ours was an invented
-// composite. Efficiency stays: it's a standard clinical ratio.)
-
-// Efficiency bands (clinical rule of thumb: ≥85% good, 75–85% fair, <75% poor).
-function effColor(pct: number): string {
-  if (pct >= 85) return 'bg-green-100 text-green-700 border-green-200'
-  if (pct >= 75) return 'bg-amber-100 text-amber-700 border-amber-200'
-  return 'bg-red-100 text-red-700 border-red-200'
-}
-
-// A compact stat "chip" — a big number over a small label, color-banded.
-function StatChip({ value, label, cls, title }: { value: string; label: string; cls: string; title?: string }) {
-  return (
-    <div className={`flex flex-col items-center justify-center rounded-xl border px-3 py-1 ${cls}`} title={title}>
-      <span className="text-lg font-bold leading-none tabular-nums">{value}</span>
-      <span className="text-[9px] font-semibold uppercase tracking-wide opacity-70 mt-0.5">{label}</span>
-    </div>
-  )
-}
+// (Both derived chips — the estimated "sleep score" AND the efficiency % —
+// were removed on explicit user decision: only measured values are shown.
+// Don't reintroduce derived sleep metrics without asking.)
 
 // Hover tooltip shows VALUES ONLY. Links inside a hover tooltip were
 // unreachable in practice — the tooltip re-anchors/hides the moment the
@@ -204,7 +187,6 @@ export function SleepSection() {
 
   const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length
   let periodDetail: (typeof summary)[number] | null = null
-  let avgEff: number | null = null
   let bestNight: (typeof summary)[number] | null = null
   let worstNight: (typeof summary)[number] | null = null
   if (!isDay && summary.length > 0) {
@@ -216,21 +198,12 @@ export function SleepSection() {
       rem:   mean(summary.map(n => n.rem)),
       awake: mean(summary.map(n => n.awake)),
     }
-    const effs: number[] = []
-    for (const n of summary) {
-      const e = computeSleepEfficiency(n, extractSleepSessions(points, n.date))
-      if (e != null) effs.push(e)
-    }
-    avgEff = effs.length ? Math.round(mean(effs)) : null
     bestNight = summary.reduce((a, b) => (a.total >= b.total ? a : b))
     worstNight = summary.reduce((a, b) => (a.total <= b.total ? a : b))
   }
 
   const detail = isDay ? dayDetail : periodDetail
   const detailSessions = daySessions
-  const efficiency = isDay
-    ? (dayDetail ? computeSleepEfficiency(dayDetail, daySessions) : null)
-    : avgEff
 
   const headline = isDay
     ? (anchor === today ? "Today's Sleep" : `Sleep · ${fmtDayLong(anchor)}`)
@@ -313,14 +286,6 @@ export function SleepSection() {
             {isLoading ? '…' : detail ? fmtHrs(detail.total) : '—'}
             {!isDay && detail && <span className="text-sm font-normal text-ink-400"> /night</span>}
           </p>
-          {efficiency != null && (
-            <StatChip
-              value={`${efficiency}%`}
-              label={isDay ? 'Efficiency' : 'Avg efficiency'}
-              cls={effColor(efficiency)}
-              title="Sleep efficiency — % of time in bed actually spent asleep (≥85% is generally good)"
-            />
-          )}
           {isDay && detail && (sourcesByDate.get(anchor)?.has('Manual') ?? false) && (
             <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5">
               Manual

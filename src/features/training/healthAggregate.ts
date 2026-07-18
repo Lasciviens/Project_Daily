@@ -253,27 +253,12 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
     .sort((a, b) => a.startMs - b.startMs)
 }
 
-// (A heuristic 0–100 "sleep score" used to live here — removed on explicit
-// user decision: no wearable actually exports a score over HealthKit, ours
-// was an invented estimate, and it read as authoritative. Efficiency below
-// is the one derived sleep metric we keep — it's a standard clinical ratio,
-// not a made-up composite.)
-
-// Sleep efficiency ("verim") — % of time in bed actually spent asleep, the
-// standard clinical sleep metric. Time in bed = first session start → last
-// session end (so gaps BETWEEN interrupted sessions count against it, not
-// just within-session awake time). Falls back to total/(total+awake) when
-// session windows aren't available (e.g. manual entries have no timestamps).
-// Returns null when neither can be computed. Not medical advice; ~85%+ is
-// generally considered good.
-export function computeSleepEfficiency(s: SleepSummary, sessions: SleepSessionInterval[]): number | null {
-  if (sessions.length > 0) {
-    const inBedH = (sessions[sessions.length - 1].endMs - sessions[0].startMs) / 3_600_000
-    if (inBedH > 0) return Math.min(100, Math.round((s.total / inBedH) * 100))
-  }
-  const denom = s.total + s.awake
-  return denom > 0 ? Math.min(100, Math.round((s.total / denom) * 100)) : null
-}
+// (Derived sleep metrics used to live here — a heuristic 0–100 "sleep score"
+// and a clinical sleep-efficiency % — BOTH removed on explicit user decision:
+// only measured values are shown for sleep. Don't reintroduce derived sleep
+// metrics without asking. If a future source exports its own score/efficiency
+// natively — Fitbit's API does for efficiency — showing THAT value is fine;
+// computing our own is what was rejected.)
 
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = new Map<string, HealthMetric[]>()
