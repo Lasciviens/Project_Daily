@@ -58,7 +58,9 @@ interface AgendaBlock {
   allDay?:        boolean
 }
 
-export function DayAgenda({ date }: { date: Date }) {
+// `bare` — render as a chrome-less pane inside a parent surface (Daily's hero
+// panel provides the card); default keeps the own-card look (Month tab).
+export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }) {
   const dateStr   = format(date, 'yyyy-MM-dd')
   const dayOfWeek = getDay(date)
 
@@ -202,8 +204,8 @@ export function DayAgenda({ date }: { date: Date }) {
     return (
       <div
         onClick={() => isCal ? setEditEvent(block.calendarEvent!) : setSelectedId(isSelected ? null : block.id)}
-        className={`group rounded-lg border border-l-4 ${block.edgeClass} px-2.5 py-1.5 cursor-pointer transition-colors ${
-          isActive ? 'border-ink-300 bg-cream-100' : 'border-ink-100 bg-cream-50 hover:bg-cream-100/70'
+        className={`group rounded-md border-l-2 ${block.edgeClass} px-2.5 py-1.5 cursor-pointer transition-colors ${
+          isActive || isSelected ? 'bg-cream-100' : 'hover:bg-cream-100/70'
         } ${isPast ? 'opacity-50' : ''} ${overlappingIds.has(block.id) ? 'ring-1 ring-red-300' : ''}`}
       >
         <div className="flex items-center gap-2.5 min-h-[24px]">
@@ -263,7 +265,7 @@ export function DayAgenda({ date }: { date: Date }) {
     return (
       <div className="flex items-center gap-1.5 px-1">
         <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-        <span className="text-[9px] font-semibold text-red-500 shrink-0">{hourToTimeStr(nowHour)}</span>
+        <span className="text-[10px] font-semibold text-red-500 shrink-0">{hourToTimeStr(nowHour)}</span>
         <div className="flex-1 border-t border-red-300" />
       </div>
     )
@@ -273,14 +275,14 @@ export function DayAgenda({ date }: { date: Date }) {
   const nowIndex = today ? day.findIndex(b => b.startHour > nowHour) : -1
 
   return (
-    <div className="card p-4">
+    <div className={bare ? 'p-4 sm:p-5' : 'card p-4'}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="min-w-0">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">Schedule</h2>
           {nextBlock && (
-            <p className="text-[10px] text-accent-600 mt-0.5 truncate">
-              Next: <span className="font-semibold">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
+            <p className="text-[10px] text-ink-500 mt-0.5 truncate">
+              Next: <span className="font-semibold text-ink-700">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
             </p>
           )}
         </div>
@@ -312,7 +314,7 @@ export function DayAgenda({ date }: { date: Date }) {
         {/* 🌙 Night — anything before 06:00 is the night, not the morning */}
         {night.length > 0 && (
           <>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-ink-300 px-1 pt-1">🌙 Night</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-300 px-1 pt-1">🌙 Night</p>
             {night.map(b => <div key={b.id}>{renderRow(b)}</div>)}
             <div className="border-t border-ink-100 my-0.5" />
           </>
@@ -330,7 +332,7 @@ export function DayAgenda({ date }: { date: Date }) {
         {/* Unscheduled (no start time) */}
         {unscheduled.length > 0 && (
           <>
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-ink-300 px-1 pt-1">No time set</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-300 px-1 pt-1">No time set</p>
             {unscheduled.map(b => <div key={b.id}>{renderRow(b)}</div>)}
           </>
         )}

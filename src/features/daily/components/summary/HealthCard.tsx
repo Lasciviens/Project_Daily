@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Cell, CellHeader, CellLink } from './cellKit'
 import { useHealthMetricSeries } from '../../../training/hooks/useHealthExport'
 import {
   computeSleepSummary, extractSleepSessions, computeSleepScore,
@@ -22,7 +22,8 @@ const round = (n: number, d = 0) => { const p = 10 ** d; return Math.round(n * p
 function Panel({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {
   return (
     // Fixed-width snap panels — the strip scrolls; each panel is content-sized.
-    <div className="snap-start shrink-0 w-[150px] rounded-xl border border-ink-100 bg-cream-100/50 p-3 flex flex-col gap-1">
+    // No border (the board surface owns borders) — a soft tint is enough.
+    <div className="snap-start shrink-0 w-[150px] rounded-lg bg-cream-100/60 p-3 flex flex-col gap-1">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">{icon} {label}</p>
       {children}
     </div>
@@ -53,13 +54,8 @@ export function HealthCard({ date }: { date: string }) {
   const weight = wSeries.length ? wSeries[wSeries.length - 1] : null
 
   return (
-    <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-2.5">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink-800 flex items-center gap-1.5">❤️ Health</h3>
-        <Link to="/training" className="text-[11px] text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 flex items-center">
-          Details →
-        </Link>
-      </div>
+    <Cell>
+      <CellHeader icon="❤️" title="Health" action={<CellLink to="/training">Details →</CellLink>} />
 
       {/* Swipeable strip — snap + edge fade signals there's more to the side */}
       <div className="flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory -mx-1 px-1 pb-1">
@@ -79,6 +75,6 @@ export function HealthCard({ date }: { date: string }) {
           {weight ? (<><Big>{round(weight.value, 1)}</Big><Sub>kg · {new Date(weight.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</Sub></>) : <Empty />}
         </Panel>
       </div>
-    </div>
+    </Cell>
   )
 }

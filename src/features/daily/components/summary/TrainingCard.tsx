@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Cell, CellHeader, CellLink } from './cellKit'
 import { useTimeBlocks } from '../../hooks/useSchedule'
 import { useHevyWorkouts } from '../../../training/hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../../../training/hooks/useHevyRoutines'
@@ -25,13 +25,8 @@ export function TrainingCard({ date }: { date: string }) {
   )
 
   return (
-    <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink-800 flex items-center gap-1.5">💪 Training</h3>
-        <Link to="/training" className="text-[11px] text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 flex items-center">
-          Open →
-        </Link>
-      </div>
+    <Cell>
+      <CellHeader icon="💪" title="Training" action={<CellLink to="/training">Open →</CellLink>} />
 
       {loggedToday.length > 0 ? (
         <div className="flex flex-col gap-1.5">
@@ -96,6 +91,6 @@ export function TrainingCard({ date }: { date: string }) {
           onSaved={() => { setPlanning(null); setShowPicker(false) }}
         />
       )}
-    </div>
+    </Cell>
   )
 }
