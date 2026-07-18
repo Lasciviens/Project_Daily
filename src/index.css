@@ -239,6 +239,39 @@
     .glass-chrome { background-color: rgb(var(--cream-50) / 0.96); }
   }
 
+  /* Density tokens (DENSITY PILOT — DensityControl.tsx): one wrapper class
+     defines the spacing/type scale as CSS vars, two modifier classes step it
+     down. Components inside consume the vars via arbitrary-value utilities
+     (px-[var(--dz-pad-x)] etc.) — no per-component density logic. `.dz-hide`
+     marks nice-to-have content that Dense mode drops entirely. */
+  .density-scope {
+    --dz-pad-x: 0.75rem;   /* card horizontal padding */
+    --dz-pad-y: 0.625rem;  /* card vertical padding */
+    --dz-gap: 0.375rem;    /* list gap */
+    --dz-minh: 60px;       /* row min-height */
+    --dz-text: 0.875rem;   /* primary text */
+    --dz-sub: 0.75rem;     /* secondary text */
+  }
+  .density-scope.dz-compact {
+    --dz-pad-x: 0.625rem;
+    --dz-pad-y: 0.375rem;
+    --dz-gap: 0.25rem;
+    --dz-minh: 46px;
+    --dz-text: 0.8125rem;
+    --dz-sub: 0.6875rem;
+  }
+  .density-scope.dz-dense {
+    --dz-pad-x: 0.5rem;
+    --dz-pad-y: 0.1875rem;
+    --dz-gap: 0.125rem;
+    --dz-minh: 34px;
+    --dz-text: 0.8125rem;
+    --dz-sub: 0.6875rem;
+  }
+  .density-scope.dz-dense .dz-hide {
+    display: none;
+  }
+
   .input {
     @apply w-full bg-cream-50 border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900
            placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400

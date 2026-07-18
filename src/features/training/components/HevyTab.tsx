@@ -12,6 +12,8 @@ import { BodyMeasurementsTab } from './BodyMeasurementsTab'
 import { ExerciseTemplatesTab } from './ExerciseTemplatesTab'
 import { LogHevyWorkoutModal } from './LogHevyWorkoutModal'
 import { WorkedMuscles } from './WorkedMuscles'
+import { DensityControl } from './DensityControl'
+import { useDensity, DENSITY_CLASS } from '../density'
 
 type SubTab = 'workouts' | 'routines' | 'prs' | 'muscles' | 'body' | 'exercises'
 
@@ -67,6 +69,9 @@ function WorkoutsSubTab() {
   const [page, setPage] = useState(0)
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
   const [logOpen, setLogOpen] = useState(false)
+  // DENSITY PILOT: this list demonstrates the density-token strategy —
+  // Comfortable/Compact/Dense swaps CSS vars on the wrapper (index.css).
+  const [density, setDensity] = useDensity('lasci-density-workouts')
 
   const { data: workouts = [], isLoading } = useHevyWorkouts({
     limit:  PAGE_SIZE,
@@ -117,14 +122,17 @@ function WorkoutsSubTab() {
             </>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setLogOpen(true)}
-          className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5 shrink-0"
-        >
-          <span className="text-base leading-none">+</span>
-          <span>Log Workout</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <DensityControl value={density} onChange={setDensity} />
+          <button
+            type="button"
+            onClick={() => setLogOpen(true)}
+            className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5"
+          >
+            <span className="text-base leading-none">+</span>
+            <span>Log Workout</span>
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -140,7 +148,7 @@ function WorkoutsSubTab() {
           <p className="text-ink-400 text-xs mt-1">Click Sync to import your Hevy data</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-1.5">
+        <div className={`density-scope ${DENSITY_CLASS[density]} flex flex-col gap-[var(--dz-gap)]`}>
           {workouts.map(workout => (
             <HevyWorkoutCard
               key={workout.id}

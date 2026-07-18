@@ -227,9 +227,16 @@ export function WorkedMuscles() {
   const hasData = Object.keys(perSlug).length > 0
 
   return (
-    <div className="flex flex-col lg:flex-row gap-5 lg:gap-8 w-full items-start">
+    // DENSITY PILOT — this tab demonstrates CONTAINER QUERIES: the layout
+    // switches on the width of THIS component's own box (@container +
+    // @3xl:/@5xl: variants), not the viewport. Same component is a single
+    // column in a narrow slot, figure-beside-stats when its container can
+    // afford it, and gets wider figure + roomier stats on a big monitor —
+    // no viewport breakpoints, no fixed sizes, zero JS.
+    <div className="@container w-full">
+    <div className="flex flex-col @3xl:flex-row gap-5 @3xl:gap-8 w-full items-start">
       {/* ── LEFT: body + legend ────────────────────────────────────────── */}
-      <div className="w-full lg:w-[400px] shrink-0 flex flex-col items-center gap-3">
+      <div className="w-full @3xl:w-[360px] @5xl:w-[420px] shrink-0 flex flex-col items-center gap-3">
         <div className="flex items-center gap-2">
           <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg">
             {(['front', 'back'] as const).map(v => (
@@ -336,8 +343,11 @@ export function WorkedMuscles() {
         {/* ── GENERAL OVERVIEW (muted card — deliberately distinct from the
               prominent selected-muscle card below) ─────────────────────────── */}
         {hasData && (
-          <div className="rounded-xl border border-ink-100 bg-cream-100/40 p-3.5 flex flex-col gap-3.5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">Overview · last {windowDays} days</p>
+          // @4xl: (container ≥ 896px, i.e. a real monitor slot) the three
+          // overview blocks pack into two columns instead of one long stack —
+          // the container-query way of spending width instead of height.
+          <div className="rounded-xl border border-ink-100 bg-cream-100/40 p-3.5 flex flex-col gap-3.5 @4xl:grid @4xl:grid-cols-2 @4xl:gap-x-8">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 @4xl:col-span-2">Overview · last {windowDays} days</p>
 
             {(balance.pushPull != null || balance.quadHam != null) && (
               <div className="flex flex-col gap-2">
@@ -498,6 +508,7 @@ export function WorkedMuscles() {
           </p>
         )}
       </div>
+    </div>
     </div>
   )
 }
