@@ -105,6 +105,23 @@
     touch-action: manipulation;
   }
 
+  /* iOS auto-zoom guard (the general fix, alongside maximum-scale=1 in
+     index.html): Safari zooms the whole page in when a focused text control's
+     font-size is below 16px — and in the PWA the zoom often sticks after
+     blur, leaving the frame misaligned. Forcing every text-entry control to
+     16px on touch devices removes the trigger app-wide, so no per-input
+     class discipline is needed. !important is required: Tailwind's text-sm/
+     text-xs are class selectors and would beat these element selectors.
+     Checkbox/radio/range/color/file are excluded (no text, no zoom).
+     Slightly larger input text on phones is also just better ergonomics. */
+  @media (pointer: coarse) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
   /* Suppresses the browser's own native pull-to-refresh/bounce so the
      custom one (usePullToRefresh.ts) doesn't fight it — WebKit/Safari reads
      this off <html>, Chrome/Android off <body>, so both are set. */

@@ -18,7 +18,15 @@
       })()
     </script>
     <link rel="icon" type="image/svg+xml" href="/Project_Daily/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- maximum-scale=1 kills iOS Safari's AUTO-zoom on input focus (the
+         "screen zooms in when tapping the chat box and stays zoomed / frame
+         misaligned" bug — it fires whenever the focused control's font-size
+         is under 16px). Since iOS 10 Safari deliberately IGNORES
+         maximum-scale for user pinch gestures, so manual zoom still works —
+         this only suppresses the automatic focus zoom. Paired with the
+         16px-inputs-on-touch rule in index.css, which removes the root
+         trigger as well. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
     <!-- theme-color tints the browser/PWA chrome (Android status bar, Safari
          tab bar) — matched to the header surface (cream-50) per scheme; the
          old #ef4444 red predated the amber/cream design entirely. -->

@@ -92,7 +92,13 @@ column. **BottomTabBar is a floating glass capsule** (left-3 right-3, rounded-[2
 safe-area offset, active icon in an accent chip) — `<main>` reserves
 `pb-[calc(5.5rem+env(safe-area-inset-bottom))]` for it. Header gains a shadow once
 `main.scrollTop > 8` (scroll depth cue); AIPanel's mobile sheet has a grab handle +
-rounded-t-3xl. ALL view-transition CSS
+rounded-t-3xl. **iOS input auto-zoom is disabled app-wide** (real bug: tapping the AI chat
+box zoomed the page and the zoom stuck after blur, misaligning the frame — iOS zooms whenever
+a focused text control's font-size is <16px): `maximum-scale=1` in the viewport meta (user
+pinch-zoom still works — iOS ignores max-scale for pinch since iOS 10) + a
+`@media (pointer: coarse)` rule in index.css forcing all text-entry controls to
+`font-size: 16px !important` (removes the trigger itself; no per-input class discipline
+needed — never "fix" this per-field). ALL view-transition CSS
 lives OUTSIDE `@layer` (same Tailwind purge gotcha as the recharts rules — the original
 crossfade rule inside `@layer base` was silently purged from every build). Touch polish:
 `-webkit-tap-highlight-color: transparent` + `touch-action: manipulation` on interactive
