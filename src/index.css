@@ -193,6 +193,35 @@
     transform: scale(0.985);
   }
 
+  /* iOS "liquid glass" chrome — the frosted, saturated translucency of a
+     native tab bar / navigation bar. Works because the app shell now scrolls
+     <main> BEHIND this fixed chrome (see the app-shell notes above), so
+     there's real content for backdrop-filter to frost. The inset top hairline
+     is the bright glass edge iOS draws; the outer shadow lifts the bar off the
+     content. `saturate` is what separates real glass from a plain blur — it
+     pulls the color out of whatever scrolls underneath. -webkit- prefix for
+     iOS Safari, which still needs it. Safe inside @layer: `.glass-chrome`
+     appears in layout.tsx source, so Tailwind won't purge it (unlike the
+     runtime-only view-transition rules, which had to live outside @layer). */
+  .glass-chrome {
+    background-color: rgb(var(--cream-50) / 0.62);
+    /* Only the standard property — autoprefixer (postcss.config.js) emits the
+       -webkit-backdrop-filter Safari/iOS needs. Hand-writing both made the
+       minifier keep only the prefixed one and drop the standard, so Firefox
+       lost the effect. */
+    backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.35);
+  }
+  :root.dark .glass-chrome {
+    background-color: rgb(var(--cream-50) / 0.7);
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.08);
+  }
+  /* Browsers without backdrop-filter fall back to a near-opaque bar so tab
+     labels never sit unreadable over scrolling content. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-chrome { background-color: rgb(var(--cream-50) / 0.96); }
+  }
+
   .input {
     @apply w-full bg-cream-50 border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900
            placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
