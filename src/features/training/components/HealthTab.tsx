@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useHealthWorkouts } from '../hooks/useHealthExport'
 import { ActivityRings } from './health/ActivityRings'
+import { HealthWorkoutDetail } from './health/HealthWorkoutDetail'
 import { StepsSection } from './health/StepsSection'
 import { EnergySection } from './health/EnergySection'
 import { HeartSection } from './health/HeartSection'
@@ -26,9 +27,16 @@ function fmtDuration(seconds: number | null): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`
 }
 
-function HealthWorkoutRow({ workout }: { workout: HealthWorkout }) {
+// A workout carries far more inside `raw` than the summary shows (HR curve,
+// GPS route, cadence, distance, weather, HR recovery). The whole row is a
+// button that opens HealthWorkoutDetail to surface it.
+function HealthWorkoutRow({ workout, onOpen }: { workout: HealthWorkout; onOpen: () => void }) {
   return (
-    <div className="w-full rounded-xl border border-ink-100 bg-cream-50 min-h-[60px] flex overflow-hidden">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full text-left rounded-xl border border-ink-100 bg-cream-50 min-h-[60px] flex overflow-hidden hover:border-accent-300 transition-colors"
+    >
       <div className="w-1 shrink-0 bg-blue-400" />
       <div className="flex-1 px-3 py-2.5 flex flex-col gap-1 min-w-0">
         <div className="flex items-start justify-between gap-3">
@@ -44,19 +52,23 @@ function HealthWorkoutRow({ workout }: { workout: HealthWorkout }) {
               avg {Math.round(workout.avg_heart_rate)} bpm
             </span>
           )}
+          {/* HAE sends workout energy in kcal (units:"kcal"), despite the
+              column being named *_kj — label it correctly (was a wrong "kJ"). */}
           {workout.active_energy_kj != null && (
             <span className="text-[11px] font-medium bg-ink-100 text-ink-500 rounded-full px-2 py-0.5">
-              {Math.round(workout.active_energy_kj)} kJ
+              {Math.round(workout.active_energy_kj)} kcal
             </span>
           )}
+          <span className="text-[11px] text-ink-300 ml-auto">Details →</span>
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 
 function WorkoutsList() {
   const [expanded, setExpanded] = useState(false)
+  const [selected, setSelected] = useState<HealthWorkout | null>(null)
   const { data: workouts = [], isLoading } = useHealthWorkouts({ limit: 20 })
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl overflow-hidden">
@@ -85,11 +97,12 @@ function WorkoutsList() {
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">
-              {workouts.map(w => <HealthWorkoutRow key={w.id} workout={w} />)}
+              {workouts.map(w => <HealthWorkoutRow key={w.id} workout={w} onOpen={() => setSelected(w)} />)}
             </div>
           )}
         </div>
       )}
+      {selected && <HealthWorkoutDetail workout={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }

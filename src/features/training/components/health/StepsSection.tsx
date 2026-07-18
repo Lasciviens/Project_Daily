@@ -8,7 +8,7 @@ import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
-import { STEPS_EXTRA_METRICS } from './miniMetrics'
+import { STEPS_EXTRA_METRICS, RUNNING_EXTRA_METRICS } from './miniMetrics'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -139,6 +139,7 @@ export function StepsSection() {
       </div>
 
       <MetricMiniGrid title="Mobility & Activity" metrics={STEPS_EXTRA_METRICS} />
+      <MetricMiniGrid title="Running Dynamics" metrics={RUNNING_EXTRA_METRICS} />
     </div>
   )
 }

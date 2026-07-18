@@ -50,12 +50,20 @@ export const METRIC_AGGREGATION: Record<string, AggType> = {
   // Heart rate — Min/Avg/Max shaped points
   heart_rate: 'minmaxavg',
 
+  // Running dynamics (rate/level metrics from a run — never sum)
+  running_speed: 'average',
+  running_power: 'average',
+  running_stride_length: 'average',
+  running_vertical_oscillation: 'average',
+  running_ground_contact_time: 'average',
+
   // Point-in-time measurements — latest reading of the day wins
   weight_body_mass: 'latest',
   body_fat_percentage: 'latest',
   body_mass_index: 'latest',
   resting_heart_rate: 'latest',
   cardio_recovery: 'latest',
+  vo2_max: 'latest',
   apple_sleeping_wrist_temperature: 'latest',
 
   // Sleep — special multi-field merge

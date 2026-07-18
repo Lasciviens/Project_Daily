@@ -182,6 +182,28 @@ function sessionMs(s: unknown): number | null {
 // midnight-keyed row vs new sleepStart-keyed row after a re-export, or a
 // partial "Since Last Sync" delivery), never two real simultaneous sleeps.
 // Sessions with unparseable times are kept as-is (can't prove overlap).
+//
+// ⚠️ KNOWN LIMITATION — this merge is NOT the whole story for Apple/HAE sleep.
+// Live case (night of 2026-07-17): DB had ONLY two overlapping rows,
+// 02:00→07:27/4.94h and its subset 03:36→07:27/3.34h, BOTH deep=0. Keep-
+// longest yields 4.94h and the site showed 4h56m — but Apple Health's own UI
+// showed 8h8m for that night, with all the Deep sleep in an EARLIER session
+// (~21:45→~01:00) that NEVER arrived in our DB. So the low number was a DATA-
+// DELIVERY gap (HAE's aggregate + "Since Last Sync" mode split the night and
+// dropped the early piece), not a merge win. Two aggregate rows carry no
+// per-segment timestamps, so a lost sub-session is unrecoverable from them —
+// the merge can only dedupe what actually arrived. Mitigations: run HAE's
+// "Previous 7 Days" reconciliation automation (re-sends a complete night as
+// ONE row, as the clean 2026-07-18 00:51→09:55/8.64h row proves), and/or move
+// sleep to Fitbit (below). Do NOT "fix" this by summing overlapping rows —
+// that double-counts the genuine duplicate-redelivery case.
+//
+// ⚠️ FITBIT NOTE (the durable fix — Fitbit becomes the sleep source): Google
+// Health API returns sleep as timestamped stage SEGMENTS (stages[],
+// light/deep/rem/wake), so the true night is reconstructable with no aggregate
+// ambiguity. It also reports one "main sleep" log plus separate NON-overlapping
+// nap logs (those must keep summing) and exposes its own efficiency. Re-verify
+// this merge against real Fitbit payloads before trusting it for that source.
 function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
   interface Sess { p: HealthMetric; start: number; end: number; total: number }
   const timed: Sess[] = []
@@ -237,36 +259,12 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
     .sort((a, b) => a.startMs - b.startMs)
 }
 
-// Heuristic 0–100 sleep score — an ESTIMATE from what the data can support:
-// duration vs 8h (55), deep share vs ~15% (20), REM share vs ~22% (15),
-// continuity (10, minus 5 per extra session/interruption). Not a medical
-// metric; label it "estimated" wherever shown.
-export function computeSleepScore(s: SleepSummary, sessionCount: number): number {
-  const duration = Math.min(s.total / 8, 1) * 55
-  const stageTotal = s.deep + s.core + s.rem
-  const deepShare = stageTotal > 0 ? s.deep / stageTotal : 0
-  const remShare  = stageTotal > 0 ? s.rem / stageTotal : 0
-  const deep = stageTotal > 0 ? Math.min(deepShare / 0.15, 1) * 20 : 10
-  const rem  = stageTotal > 0 ? Math.min(remShare / 0.22, 1) * 15 : 7
-  const continuity = Math.max(0, 10 - Math.max(0, sessionCount - 1) * 5)
-  return Math.round(duration + deep + rem + continuity)
-}
-
-// Sleep efficiency ("verim") — % of time in bed actually spent asleep, the
-// standard clinical sleep metric. Time in bed = first session start → last
-// session end (so gaps BETWEEN interrupted sessions count against it, not
-// just within-session awake time). Falls back to total/(total+awake) when
-// session windows aren't available (e.g. manual entries have no timestamps).
-// Returns null when neither can be computed. Not medical advice; ~85%+ is
-// generally considered good.
-export function computeSleepEfficiency(s: SleepSummary, sessions: SleepSessionInterval[]): number | null {
-  if (sessions.length > 0) {
-    const inBedH = (sessions[sessions.length - 1].endMs - sessions[0].startMs) / 3_600_000
-    if (inBedH > 0) return Math.min(100, Math.round((s.total / inBedH) * 100))
-  }
-  const denom = s.total + s.awake
-  return denom > 0 ? Math.min(100, Math.round((s.total / denom) * 100)) : null
-}
+// (Derived sleep metrics used to live here — a heuristic 0–100 "sleep score"
+// and a clinical sleep-efficiency % — BOTH removed on explicit user decision:
+// only measured values are shown for sleep. Don't reintroduce derived sleep
+// metrics without asking. If a future source exports its own score/efficiency
+// natively — Fitbit's API does for efficiency — showing THAT value is fine;
+// computing our own is what was rejected.)
 
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = new Map<string, HealthMetric[]>()
