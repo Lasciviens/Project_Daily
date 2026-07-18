@@ -19,19 +19,29 @@ export function StepsSection() {
   const [period, setPeriod] = useState<Period>('week')
   const [anchor, setAnchor] = useAnchorDate()
 
-  // Headline follows the anchor (whichever day is selected), not always the
-  // literal calendar today — independent of the chart period below.
-  const { data: todayStepPoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', anchor, anchor)
-  const { data: todayDistPoints = [] } = useHealthMetricSeries('walking_running_distance', anchor, anchor)
-  const steps = computeDailySeries('step_count', todayStepPoints)[0]?.value ?? 0
-  const distanceKm = computeDailySeries('walking_running_distance', todayDistPoints)[0]?.value ?? 0
-  const pace = steps > 0 && distanceKm > 0 ? (distanceKm * 1000) / steps : null
-
+  // Headline follows the SELECTED PERIOD, not always a single day: Day →
+  // that day's total; Week/Month → daily average + period totals, computed
+  // from the same range the chart shows (in Day mode from==to==anchor, so
+  // these queries dedupe with what the old anchor-only queries fetched).
+  const isDay = period === 'day'
   const { from, to } = rangeForAnchor(period, anchor)
-  const { data: rangePoints = [] } = useHealthMetricSeries('step_count', from, to)
-  const chartData: { label: string; date?: string; value: number }[] = period === 'day'
+  const { data: rangePoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', from, to)
+  const { data: rangeDistPoints = [] } = useHealthMetricSeries('walking_running_distance', from, to)
+
+  const stepDays = computeDailySeries('step_count', rangePoints)
+  const distDays = computeDailySeries('walking_running_distance', rangeDistPoints)
+  const totalSteps = stepDays.reduce((s, d) => s + d.value, 0)
+  const totalKm = distDays.reduce((s, d) => s + d.value, 0)
+  const avgSteps = stepDays.length ? totalSteps / stepDays.length : 0
+
+  // Day-mode figures (single-day range → at most one series entry)
+  const steps = isDay ? (stepDays[0]?.value ?? 0) : avgSteps
+  const distanceKm = isDay ? (distDays[0]?.value ?? 0) : totalKm
+  const pace = isDay && steps > 0 && distanceKm > 0 ? (distanceKm * 1000) / steps : null
+
+  const chartData: { label: string; date?: string; value: number }[] = isDay
     ? computeHourlyBuckets('step_count', rangePoints).map(h => ({ label: h.label, value: Math.round(h.value) }))
-    : computeDailySeries('step_count', rangePoints).map(d => ({ label: fmtDay(d.date), date: d.date, value: Math.round(d.value) }))
+    : stepDays.map(d => ({ label: fmtDay(d.date), date: d.date, value: Math.round(d.value) }))
 
   function goToDay(date: string) {
     setPeriod('day'); setAnchor(date)
@@ -70,16 +80,25 @@ export function StepsSection() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
-            🚶 Steps {anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`}
+            🚶 Steps {isDay
+              ? (anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`)
+              : period === 'week' ? '· Weekly Average' : '· Monthly Average'}
           </p>
           <p className="text-3xl font-bold text-ink-900 leading-tight">
-            {stepsLoading ? '…' : steps.toLocaleString('en-GB')}
+            {stepsLoading ? '…' : Math.round(steps).toLocaleString('en-GB')}
+            {!isDay && <span className="text-sm font-normal text-ink-400"> /day</span>}
           </p>
         </div>
         <div className="flex gap-4">
+          {!isDay && (
+            <div className="text-center">
+              <p className="text-lg font-bold text-ink-800">{Math.round(totalSteps).toLocaleString('en-GB')}</p>
+              <p className="text-[10px] text-ink-400">total steps</p>
+            </div>
+          )}
           <div className="text-center">
-            <p className="text-lg font-bold text-ink-800">{distanceKm.toFixed(2)}</p>
-            <p className="text-[10px] text-ink-400">km</p>
+            <p className="text-lg font-bold text-ink-800">{distanceKm.toFixed(isDay ? 2 : 1)}</p>
+            <p className="text-[10px] text-ink-400">{isDay ? 'km' : 'km total'}</p>
           </div>
           {pace != null && (
             <div className="text-center">
