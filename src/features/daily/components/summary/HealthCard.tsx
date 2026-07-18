@@ -1,7 +1,7 @@
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { useHealthMetricSeries } from '../../../training/hooks/useHealthExport'
 import {
-  computeSleepSummary, extractSleepSessions, computeSleepScore,
+  computeSleepSummary, extractSleepSessions, computeSleepEfficiency,
   computeDailySeries, computeHeartRateDailySeries,
 } from '../../../training/healthAggregate'
 import { shiftDateStr } from '../../../../shared/utils/dateUtils'
@@ -37,7 +37,7 @@ export function HealthCard({ date }: { date: string }) {
   // Sleep (night that ended on `date`) — 2-day window for midnight attribution.
   const { data: sleepPts = [] } = useHealthMetricSeries('sleep_analysis', shiftDateStr(date, -1), date)
   const sleep = computeSleepSummary(sleepPts).find(s => s.date === date) ?? null
-  const sleepScore = sleep ? computeSleepScore(sleep, Math.max(extractSleepSessions(sleepPts, date).length, 1)) : null
+  const sleepEff = sleep ? computeSleepEfficiency(sleep, extractSleepSessions(sleepPts, date)) : null
 
   const { data: stepPts = [] }   = useHealthMetricSeries('step_count', date, date)
   const steps = computeDailySeries('step_count', stepPts).find(d => d.date === date)?.value ?? null
@@ -60,7 +60,7 @@ export function HealthCard({ date }: { date: string }) {
       {/* Swipeable strip — snap + edge fade signals there's more to the side */}
       <div className="flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory -mx-1 px-1 pb-1">
         <Panel icon="😴" label="Sleep">
-          {sleep ? (<><Big>{fmtHrs(sleep.total)}</Big><Sub>{sleepScore != null ? `score ${sleepScore} · est` : ''}</Sub></>) : <Empty />}
+          {sleep ? (<><Big>{fmtHrs(sleep.total)}</Big><Sub>{sleepEff != null ? `${sleepEff}% efficiency` : ''}</Sub></>) : <Empty />}
         </Panel>
         <Panel icon="🚶" label="Steps">
           {steps != null ? (<><Big>{round(steps).toLocaleString('en-GB')}</Big><Sub>steps today</Sub></>) : <Empty />}

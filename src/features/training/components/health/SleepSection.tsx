@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
-import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions, computeSleepScore, computeSleepEfficiency } from '../../healthAggregate'
+import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions, computeSleepEfficiency } from '../../healthAggregate'
 import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { DateNav } from './DateNav'
 import { shiftStr, rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
@@ -133,11 +133,9 @@ function NightChart({ sessions }: { sessions: { startMs: number; endMs: number }
   )
 }
 
-function scoreColor(score: number): string {
-  if (score >= 80) return 'bg-green-100 text-green-700 border-green-200'
-  if (score >= 60) return 'bg-amber-100 text-amber-700 border-amber-200'
-  return 'bg-red-100 text-red-700 border-red-200'
-}
+// (The estimated "sleep score" chip was removed on explicit user decision —
+// no wearable exports a real score via HealthKit and ours was an invented
+// composite. Efficiency stays: it's a standard clinical ratio.)
 
 // Efficiency bands (clinical rule of thumb: ≥85% good, 75–85% fair, <75% poor).
 function effColor(pct: number): string {
@@ -206,7 +204,6 @@ export function SleepSection() {
 
   const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length
   let periodDetail: (typeof summary)[number] | null = null
-  let avgScore: number | null = null
   let avgEff: number | null = null
   let bestNight: (typeof summary)[number] | null = null
   let worstNight: (typeof summary)[number] | null = null
@@ -219,15 +216,11 @@ export function SleepSection() {
       rem:   mean(summary.map(n => n.rem)),
       awake: mean(summary.map(n => n.awake)),
     }
-    const scores: number[] = []
     const effs: number[] = []
     for (const n of summary) {
-      const sess = extractSleepSessions(points, n.date)
-      scores.push(computeSleepScore(n, Math.max(sess.length, 1)))
-      const e = computeSleepEfficiency(n, sess)
+      const e = computeSleepEfficiency(n, extractSleepSessions(points, n.date))
       if (e != null) effs.push(e)
     }
-    avgScore = Math.round(mean(scores))
     avgEff = effs.length ? Math.round(mean(effs)) : null
     bestNight = summary.reduce((a, b) => (a.total >= b.total ? a : b))
     worstNight = summary.reduce((a, b) => (a.total <= b.total ? a : b))
@@ -235,9 +228,6 @@ export function SleepSection() {
 
   const detail = isDay ? dayDetail : periodDetail
   const detailSessions = daySessions
-  const sleepScore = isDay
-    ? (dayDetail ? computeSleepScore(dayDetail, Math.max(daySessions.length, 1)) : null)
-    : avgScore
   const efficiency = isDay
     ? (dayDetail ? computeSleepEfficiency(dayDetail, daySessions) : null)
     : avgEff
@@ -323,14 +313,6 @@ export function SleepSection() {
             {isLoading ? '…' : detail ? fmtHrs(detail.total) : '—'}
             {!isDay && detail && <span className="text-sm font-normal text-ink-400"> /night</span>}
           </p>
-          {sleepScore != null && (
-            <StatChip
-              value={String(sleepScore)}
-              label={isDay ? 'Score · est' : 'Avg score · est'}
-              cls={scoreColor(sleepScore)}
-              title="Estimated 0–100 score from duration (vs 8h), deep/REM share and interruptions — not a medical metric"
-            />
-          )}
           {efficiency != null && (
             <StatChip
               value={`${efficiency}%`}

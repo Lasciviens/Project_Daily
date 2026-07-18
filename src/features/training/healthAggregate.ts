@@ -182,6 +182,22 @@ function sessionMs(s: unknown): number | null {
 // midnight-keyed row vs new sleepStart-keyed row after a re-export, or a
 // partial "Since Last Sync" delivery), never two real simultaneous sleeps.
 // Sessions with unparseable times are kept as-is (can't prove overlap).
+//
+// Live-verified example (night of 2026-07-17): the export delivered BOTH the
+// whole night (02:00→07:27, totalSleep 4.94h, awake 0.50h — the interruption
+// is already inside the window as `awake`) AND a subset re-report of its tail
+// (03:36→07:27, 3.34h, same 0.50h awake). One cluster → keep 4.94h. An
+// interrupted night is therefore ONE session window with awake-time counted,
+// not two windows; genuinely separate sessions (evening nap + night sleep)
+// don't overlap and still SUM correctly.
+//
+// ⚠️ FITBIT NOTE (future ingestion source): Fitbit/Google Health API sleep
+// logs may behave differently — Fitbit reports one "main sleep" log plus
+// separate NON-overlapping nap logs (those must keep summing), stages use
+// light/deep/rem/wake naming, and its own sleep-score/efficiency come from
+// the API rather than being derived here. Re-verify this merge logic against
+// real Fitbit payloads before trusting it for that source; don't assume the
+// Apple-Health duplicate-window pattern carries over.
 function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
   interface Sess { p: HealthMetric; start: number; end: number; total: number }
   const timed: Sess[] = []
@@ -237,20 +253,11 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
     .sort((a, b) => a.startMs - b.startMs)
 }
 
-// Heuristic 0–100 sleep score — an ESTIMATE from what the data can support:
-// duration vs 8h (55), deep share vs ~15% (20), REM share vs ~22% (15),
-// continuity (10, minus 5 per extra session/interruption). Not a medical
-// metric; label it "estimated" wherever shown.
-export function computeSleepScore(s: SleepSummary, sessionCount: number): number {
-  const duration = Math.min(s.total / 8, 1) * 55
-  const stageTotal = s.deep + s.core + s.rem
-  const deepShare = stageTotal > 0 ? s.deep / stageTotal : 0
-  const remShare  = stageTotal > 0 ? s.rem / stageTotal : 0
-  const deep = stageTotal > 0 ? Math.min(deepShare / 0.15, 1) * 20 : 10
-  const rem  = stageTotal > 0 ? Math.min(remShare / 0.22, 1) * 15 : 7
-  const continuity = Math.max(0, 10 - Math.max(0, sessionCount - 1) * 5)
-  return Math.round(duration + deep + rem + continuity)
-}
+// (A heuristic 0–100 "sleep score" used to live here — removed on explicit
+// user decision: no wearable actually exports a score over HealthKit, ours
+// was an invented estimate, and it read as authoritative. Efficiency below
+// is the one derived sleep metric we keep — it's a standard clinical ratio,
+// not a made-up composite.)
 
 // Sleep efficiency ("verim") — % of time in bed actually spent asleep, the
 // standard clinical sleep metric. Time in bed = first session start → last
