@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { addDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isToday, isYesterday, isTomorrow, isSameDay, differenceInCalendarDays } from 'date-fns'
 import { DayView } from '../components/DayView'
 import { DayAgenda } from '../components/DayAgenda'
+import { WeekStrip } from '../components/WeekStrip'
 import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
 import { TodaySummary } from '../components/TodaySummary'
@@ -106,22 +107,29 @@ function useGreeting() {
 }
 
 // One unified day view (was three copies: Yesterday/Today/Tomorrow). The
-// dashboard strip (TodaySummary) shows for EVERY day — planning tomorrow's
+// dashboard board (TodaySummary) shows for EVERY day — planning tomorrow's
 // meals/training/episode from Daily was the whole point of the redesign.
+//
+// TWO fixed surfaces instead of nine boxes ("professional website look" +
+// "boxes must never change position" — both explicit requests):
+//   1. HERO — the day itself: week strip band on top, then Schedule (left
+//      pane) + Tasks (right rail) inside ONE card, divided by hairlines.
+//      The page's single accent bar marks it as the primary surface.
+//   2. GLANCE BOARD — the six life modules as fixed cells of one panel.
+// On 2xl monitors the two surfaces sit side by side; below that they stack.
+// Every slot is explicit per breakpoint — no auto-fill, nothing reflows.
 function DaySection({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
   return (
-    <div className="flex flex-col gap-5">
-      {/* COMPACT top row — schedule sits in the MIDDLE column with the day's
-          to-do (left) and week (right) filling its flanks: no empty gutters,
-          nothing stretched (fixed content-width columns per the standard).
-          The releasing-soon banner was removed per request. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,320px)_minmax(0,540px)_minmax(0,300px)] gap-5 justify-start items-start">
-        <DayView date={date} />
-        <DayAgenda date={date} />
-        <WeekWidget onDayClick={onDayClick} highlightDate={date} />
-      </div>
+    <div className="flex flex-col gap-5 2xl:grid 2xl:grid-cols-[minmax(0,58rem)_minmax(0,58rem)] 2xl:gap-6 2xl:items-start">
+      <section className="max-w-[58rem] w-full bg-cream-50 border border-ink-200 rounded-2xl shadow-card overflow-hidden">
+        <div className="h-0.5 bg-accent-500" />
+        <WeekStrip viewDate={date} onDayClick={onDayClick} />
+        <div className="lg:grid lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:divide-x lg:divide-ink-100 divide-y divide-ink-100 lg:divide-y-0">
+          <DayAgenda date={date} bare />
+          <DayView date={date} />
+        </div>
+      </section>
 
-      {/* At a glance — content-width card grid */}
       <TodaySummary date={date} />
     </div>
   )

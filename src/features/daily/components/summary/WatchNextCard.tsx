@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { Cell, CellHeader, CellLink } from './cellKit'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMovies } from '../../../media/hooks/useMovies'
 import { useTVSeries } from '../../../media/hooks/useTVSeries'
@@ -66,13 +67,8 @@ export function WatchNextCard({ date }: { date: string }) {
   const series = entry?.tv_series
 
   return (
-    <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-2.5">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink-800 flex items-center gap-1.5">🎬 Watch next</h3>
-        <Link to="/media" className="text-[11px] text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 flex items-center">
-          Browse →
-        </Link>
-      </div>
+    <Cell>
+      <CellHeader icon="🎬" title="Watch next" action={<CellLink to="/media">Browse →</CellLink>} />
 
       {/* Show switcher — one chip per in-progress series */}
       {shows.length > 1 && (
@@ -180,6 +176,6 @@ export function WatchNextCard({ date }: { date: string }) {
           }}
         />
       )}
-    </div>
+    </Cell>
   )
 }

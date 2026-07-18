@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Cell, CellHeader } from './cellKit'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
 import { useDayTargets } from '../../hooks/useDayTargets'
 import { useRecentMeals, useSetQuickMeal, useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
@@ -162,6 +163,9 @@ export function NutritionCard({ date }: { date: string }) {
   const copyYesterday = useCopyYesterdayMeals()
 
   const [logOpen, setLogOpen] = useState(false)
+  // Empty day → compact one-liner IN PLACE (the cell never moves or grows
+  // unless the user expands it or logs something).
+  const [expanded, setExpanded] = useState(false)
   const consumed = nut?.calories ?? 0
   const protein  = nut?.protein_g ?? 0
   const proteinPct = targets.protein > 0 ? Math.min(Math.round((protein / targets.protein) * 100), 100) : 0
@@ -174,30 +178,20 @@ export function NutritionCard({ date }: { date: string }) {
   }
   const filledSlots = new Set(mealsBySlot.keys())
 
+  const hasMeals = (nut?.meals?.length ?? 0) > 0
+
   return (
-    <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink-800 flex items-center gap-1.5">🍽️ Nutrition</h3>
-        <div className="flex items-center gap-1">
+    <Cell>
+      <CellHeader
+        icon="🍽️" title="Nutrition"
+        action={
           <button onClick={() => setLogOpen(true)}
-            className="text-[11px] font-semibold text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 rounded transition-colors"
+            className="text-[11px] font-semibold text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 rounded transition-colors shrink-0"
             title="Log food — pick ingredients from your library, grams, done">
             + Log
           </button>
-          {filledSlots.size < SLOTS.length && (
-            <button
-              onClick={() => copyYesterday.mutate({ date, filledSlots })}
-              disabled={copyYesterday.isPending}
-              className="text-[11px] text-ink-400 hover:text-accent-600 min-h-[28px] px-1.5 rounded transition-colors disabled:opacity-50"
-              title="Copy yesterday's meals into empty slots"
-            >⧉ Yesterday</button>
-          )}
-          <button onClick={() => setEditing(e => !e)}
-            className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[28px] px-1.5 rounded transition-colors">
-            {editing ? 'Done' : 'Goals'}
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {editing ? (
         <div className="flex flex-col gap-2">
@@ -209,8 +203,12 @@ export function NutritionCard({ date }: { date: string }) {
             <span>Protein goal</span>
             <GoalStepper value={targets.protein} step={10} onChange={v => update({ protein: v })} suffix="g" />
           </div>
+          <button onClick={() => setEditing(false)}
+            className="self-end text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[28px] px-1.5 rounded transition-colors">
+            Done
+          </button>
         </div>
-      ) : (
+      ) : hasMeals || expanded ? (
         <>
           <div className="flex items-center gap-3">
             <CalorieRing consumed={consumed} target={targets.calories} />
@@ -241,9 +239,39 @@ export function NutritionCard({ date }: { date: string }) {
               <SlotRow key={slot} date={date} slot={slot} label={label} meals={mealsBySlot.get(slot) ?? []} />
             ))}
           </ul>
+
+          {/* Footer meta — secondary tools demoted out of the header */}
+          <div className="flex items-center justify-end gap-1 border-t border-ink-100 pt-1.5 -mb-1">
+            {filledSlots.size < SLOTS.length && (
+              <button
+                onClick={() => copyYesterday.mutate({ date, filledSlots })}
+                disabled={copyYesterday.isPending}
+                className="text-[10px] text-ink-400 hover:text-accent-600 min-h-[28px] px-1.5 rounded transition-colors disabled:opacity-50"
+                title="Copy yesterday's meals into empty slots"
+              >⧉ Yesterday</button>
+            )}
+            <button onClick={() => setEditing(true)}
+              className="text-[10px] text-ink-400 hover:text-ink-700 min-h-[28px] px-1.5 rounded transition-colors">
+              Goals
+            </button>
+          </div>
         </>
+      ) : (
+        <div className="flex flex-col gap-1 py-0.5">
+          <p className="text-xs text-ink-400">Nothing logged yet · goal {targets.calories} kcal / {targets.protein}g protein</p>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setExpanded(true)}
+              className="text-xs text-ink-500 hover:text-accent-600 text-left min-h-[28px] transition-colors">
+              Meal slots ▾
+            </button>
+            <button onClick={() => setEditing(true)}
+              className="text-xs text-ink-400 hover:text-ink-700 min-h-[28px] transition-colors">
+              Goals
+            </button>
+          </div>
+        </div>
       )}
       <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={date} />
-    </div>
+    </Cell>
   )
 }

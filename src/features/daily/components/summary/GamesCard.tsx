@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Cell, CellHeader, CellLink } from './cellKit'
 import { usePlayQueue } from '../../../home/hooks/useGames'
 import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
 import type { QueueGame } from '../../../home/api/gamesApi'
@@ -12,13 +13,8 @@ export function GamesCard({ date }: { date: string }) {
   const top = queue.slice(0, 3)
 
   return (
-    <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-2.5">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink-800 flex items-center gap-1.5">🎮 Play next</h3>
-        <Link to="/games" className="text-[11px] text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 flex items-center">
-          Queue →
-        </Link>
-      </div>
+    <Cell>
+      <CellHeader icon="🎮" title="Play next" action={<CellLink to="/games">Queue →</CellLink>} />
 
       {isError || top.length === 0 ? (
         <Link to="/games" className="text-xs text-accent-600 hover:text-accent-700 py-1.5">
@@ -58,6 +54,6 @@ export function GamesCard({ date }: { date: string }) {
           defaults={{ title: `🎮 ${planning.title}`, date, duration: 60, category: 'other', color: 'purple' }}
         />
       )}
-    </div>
+    </Cell>
   )
 }

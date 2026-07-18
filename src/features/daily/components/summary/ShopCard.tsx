@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Cell, CellHeader, CellLink } from './cellKit'
 import { useShopItems, useUpdateShopItem } from '../../../shop/hooks/useShop'
 import type { ShopItem } from '../../../shop/types'
 
@@ -19,13 +19,8 @@ export function ShopCard({ date }: { date: string }) {
     .slice(0, 2)
 
   return (
-    <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-2.5">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink-800 flex items-center gap-1.5">🛒 Shopping</h3>
-        <Link to="/shop" className="text-[11px] text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 flex items-center">
-          Open →
-        </Link>
-      </div>
+    <Cell>
+      <CellHeader icon="🛒" title="Shopping" action={<CellLink to="/shop">Open →</CellLink>} />
 
       {planned.length > 0 ? (
         <ul className="flex flex-col gap-1.5">
@@ -56,7 +51,7 @@ export function ShopCard({ date }: { date: string }) {
 
       {unplanned.length > 0 && (
         <div className="border-t border-ink-100 pt-1.5">
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-ink-300 mb-1">Top wishlist</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-300 mb-1">Top wishlist</p>
           <ul className="flex flex-col gap-1">
             {unplanned.map((i: ShopItem) => (
               <li key={i.id} className="flex items-center gap-2">
@@ -75,6 +70,6 @@ export function ShopCard({ date }: { date: string }) {
           </ul>
         </div>
       )}
-    </div>
+    </Cell>
   )
 }

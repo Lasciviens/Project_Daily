@@ -1,15 +1,27 @@
 import { useState } from 'react'
-import { format } from 'date-fns'
+import { format, startOfWeek, endOfWeek } from 'date-fns'
 import { useDayData } from '../hooks/useDayData'
+import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { completedWithinLast24h } from '../../todo/taskRules'
+import type { Task } from '../../todo/types'
 
 interface Props { date: Date }
 
+// Renders as a chrome-less pane inside Daily's hero surface (the hero owns
+// the card border + accent bar). The undated "this week" tasks moved here
+// from the old WeekWidget column so nothing was lost in the consolidation.
 export function DayView({ date }: Props) {
   const { tasks, isLoading, section } = useDayData(date)
   const [modalOpen, setModalOpen] = useState(false)
+  const [showWeek, setShowWeek] = useState(false)
+
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
+  const { data: weekTasks = [] } = useTasksByWeek(weekStart, endOfWeek(weekStart, { weekStartsOn: 1 }))
+  const floating = weekTasks.filter(
+    (t): t is Task => !t.due_date && t.status !== 'done' && t.status !== 'cancelled',
+  )
 
   const openTasks      = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
   const doneTasks      = tasks.filter(t => t.status === 'done' && completedWithinLast24h(t.updated_at))
@@ -22,10 +34,7 @@ export function DayView({ date }: Props) {
 
   return (
     <>
-      <div className="card overflow-hidden">
-        {/* Accent bar gives the card a clear visual anchor in the page hierarchy */}
-        <div className="h-0.5 bg-accent-500" />
-        <div className="p-5">
+      <div className="p-4 sm:p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">Tasks</h2>
           <div className="flex items-center gap-2">
@@ -95,7 +104,25 @@ export function DayView({ date }: Props) {
 
           </div>
         )}
-        </div>
+
+        {/* Undated this-week tasks (relocated from the old WeekWidget column) */}
+        {floating.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-ink-100">
+            <button
+              onClick={() => setShowWeek(s => !s)}
+              className="w-full flex items-center justify-between text-left min-h-[32px]"
+            >
+              <span className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold">This week — no date</span>
+              <span className="text-[10px] text-ink-400">{floating.length} {showWeek ? '▴' : '▾'}</span>
+            </button>
+            {showWeek && (
+              <div className="mt-1">
+                {floating.slice(0, 6).map(t => <ToDoItem key={t.id} task={t} />)}
+                {floating.length > 6 && <p className="text-xs text-ink-400 mt-1">+{floating.length - 6} more</p>}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <UnifiedPlanModal
