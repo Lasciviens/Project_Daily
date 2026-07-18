@@ -47,6 +47,24 @@ export const ENERGY_EXTRA_METRICS: MiniMetricConfig[] = [
 export const HEART_EXTRA_METRICS: MiniMetricConfig[] = [
   { metric: 'cardio_recovery', icon: '💓', title: 'Cardio Recovery', unit: 'bpm', decimals: 0,
     description: 'How much your heart rate drops in the minute after exercise — higher is fitter.' },
+  { metric: 'vo2_max', icon: '🫀', title: 'VO₂ Max', unit: 'ml/kg·min', decimals: 1,
+    description: 'Cardio fitness — estimated max oxygen uptake; higher is fitter. Apple estimates it from outdoor walks/runs, so it only updates on those days.' },
+]
+
+// Running dynamics — form metrics captured during a run (sparse: only exist on
+// run days). Rendered under Steps. These arrived from HealthKit but had no home
+// in the UI before (received-but-unprocessed audit).
+export const RUNNING_EXTRA_METRICS: MiniMetricConfig[] = [
+  { metric: 'running_speed', icon: '🏃', title: 'Run Speed', unit: 'km/h', decimals: 1,
+    description: 'Average running speed on your latest run.' },
+  { metric: 'running_power', icon: '⚡', title: 'Run Power', unit: 'W', decimals: 0,
+    description: 'Running power output — effort delivered, like cycling watts.' },
+  { metric: 'running_stride_length', icon: '📐', title: 'Stride Length', unit: 'm', decimals: 2,
+    description: 'Distance covered per running stride.' },
+  { metric: 'running_vertical_oscillation', icon: '↕️', title: 'Vertical Oscillation', unit: 'cm', decimals: 1,
+    description: 'How much you bounce vertically per stride — lower is usually more efficient.' },
+  { metric: 'running_ground_contact_time', icon: '⏱️', title: 'Ground Contact', unit: 'ms', decimals: 0,
+    description: 'Time each foot spends on the ground per stride — lower tends to mean a snappier turnover.' },
 ]
 
 export const SLEEP_EXTRA_METRICS: MiniMetricConfig[] = [
