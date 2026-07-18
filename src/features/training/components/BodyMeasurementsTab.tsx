@@ -1,8 +1,6 @@
 import { useState, useMemo } from 'react'
 import { flushSync } from 'react-dom'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
-import { DensityControl } from './DensityControl'
-import { useDensity, DENSITY_CLASS } from '../density'
 import { useHevyBodyMeasurements, useUpsertBodyMeasurement } from '../hooks/useHevyBodyMeasurements'
 import { useHealthMetricSeries } from '../hooks/useHealthExport'
 import { computeDailySeries } from '../healthAggregate'
@@ -399,11 +397,13 @@ function WeightChart({ measurements, expanded, onToggleExpand }: {
       </div>
 
       <div className={expanded ? '' : '@md:block hidden'}>
+      {/* Expanded keeps the chart's own aspect ratio (viewBox scaling) and
+          caps at max-w-4xl — bigger, never stretched into a wall-to-wall
+          smear. Compact keeps the original fixed-height fit. */}
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className={`w-full ${expanded ? 'h-[320px]' : ''}`}
+        className={expanded ? 'w-full max-w-4xl h-auto' : 'w-full'}
         style={expanded ? undefined : { height: H }}
-        preserveAspectRatio="none"
         aria-hidden="true"
       >
         {/* Y-axis labels */}
@@ -505,20 +505,19 @@ function MeasurementRow({
 
   return (
     <div className="border-b border-ink-100 last:border-0">
-      {/* Summary row — sizes flow from the density-scope vars (falls back to
-          the original values outside a scope) */}
-      <div className="flex items-center gap-2 px-[var(--dz-pad-x,0.75rem)] py-[var(--dz-pad-y,0.5rem)] min-h-[var(--dz-minh,44px)]">
+      {/* Summary row */}
+      <div className="flex items-center gap-2 px-3 py-2 min-h-[44px]">
         <button
           type="button"
           onClick={() => hasDetails && setExpanded(o => !o)}
           disabled={!hasDetails}
           className="flex-1 flex items-center gap-3 text-left min-w-0"
         >
-          <span className="w-28 shrink-0 text-[length:var(--dz-text,0.875rem)] font-semibold text-ink-700">{fmtDate(m.date)}</span>
+          <span className="w-28 shrink-0 text-sm font-semibold text-ink-700">{fmtDate(m.date)}</span>
           <div className="flex flex-1 flex-wrap gap-x-4 gap-y-0.5 min-w-0">
             {mainValues.map(f => (
-              <span key={f.key} className="text-[length:var(--dz-text,0.875rem)] text-ink-600">
-                <span className="text-ink-400 text-[length:var(--dz-sub,0.75rem)] dz-hide">{f.label}:</span>{' '}
+              <span key={f.key} className="text-sm text-ink-600">
+                <span className="text-ink-400 text-xs">{f.label}:</span>{' '}
                 <strong className="text-ink-800">{m[f.key]} {f.unit}</strong>
               </span>
             ))}
@@ -565,10 +564,9 @@ export function BodyMeasurementsTab() {
   const [logKey,       setLogKey]       = useState(0)
   const [editTarget,   setEditTarget]   = useState<HevyBodyMeasurement | null>(null)
 
-  // DENSITY PILOT — Body is the "ALL strategies combined" showcase:
-  // auto-fill bento grid + container-query chart + density tokens +
-  // view-transition zoom from chart card to full width.
-  const [density, setDensity] = useDensity('lasci-density-body')
+  // Bento + container-query chart + view-transition zoom (the horizontal
+  // space-efficiency pilot; the density-token toggle was tried and rejected
+  // — the complaint was WIDTH, not vertical spacing).
   const [chartExpanded, setChartExpanded] = useState(false)
   function toggleChart() {
     if (typeof document.startViewTransition === 'function') {
@@ -602,7 +600,6 @@ export function BodyMeasurementsTab() {
           <p className="text-xs text-ink-400">{measurements.length} entries</p>
         </div>
         <div className="flex items-center gap-2">
-          <DensityControl value={density} onChange={setDensity} />
           <button
             type="button"
             onClick={() => { setLogKey(k => k + 1); setLogOpen(true) }}
@@ -625,7 +622,7 @@ export function BodyMeasurementsTab() {
         // (monitor 3-4 cells, laptop 2, phone 1 — no breakpoints). The chart
         // spans the leftover row space; expanded it takes the full row via
         // the view-transition morph. History always spans full width.
-        <div className={`@container density-scope ${DENSITY_CLASS[density]}`}>
+        <div className="@container">
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 items-start">
           <LatestHeroCard m={latest} onEdit={() => setEditTarget(latest)} />
           <div className={chartExpanded ? 'col-span-full' : '@3xl:col-span-2'}>

@@ -55,38 +55,34 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
 
   return (
     <div className="rounded-xl border border-ink-100 bg-cream-50 overflow-hidden">
-      {/* Sizing/typography come from the density-scope CSS vars (DENSITY
-          PILOT — see index.css): Comfortable/Compact shrink padding and type,
-          Dense additionally drops the .dz-hide muscle-tag row. Fallback
-          values keep the card identical outside a density scope. */}
       <button
         type="button"
         onClick={onClick}
-        className="w-full text-left min-h-[var(--dz-minh,60px)] cursor-pointer hover:bg-cream-50/60 transition-colors duration-150 flex overflow-hidden"
+        className="w-full text-left min-h-[60px] cursor-pointer hover:bg-cream-50/60 transition-colors duration-150 flex overflow-hidden"
       >
         {/* Left accent bar */}
         <div className={`w-1 shrink-0 ${accentBar}`} />
 
-        <div className="flex-1 px-[var(--dz-pad-x,0.75rem)] py-[var(--dz-pad-y,0.625rem)] flex flex-col gap-1 min-w-0">
+        <div className="flex-1 px-3 py-2.5 flex flex-col gap-1 min-w-0">
           {/* Title row */}
           <div className="flex items-start justify-between gap-3">
-            <span className="text-[length:var(--dz-text,0.875rem)] font-bold text-ink-900 truncate">{workout.title}</span>
-            <span className="text-[length:var(--dz-text,0.875rem)] font-semibold text-ink-700 whitespace-nowrap shrink-0">{duration}</span>
+            <span className="text-sm font-bold text-ink-900 truncate">{workout.title}</span>
+            <span className="text-sm font-semibold text-ink-700 whitespace-nowrap shrink-0">{duration}</span>
           </div>
 
           {/* Date + exercise count */}
           <div className="flex items-center gap-3">
-            <span className="text-[length:var(--dz-sub,0.75rem)] text-ink-500">{date}{time ? ` · ${time}` : ''}</span>
+            <span className="text-xs text-ink-500">{date}{time ? ` · ${time}` : ''}</span>
             {exerciseCount !== null && (
-              <span className="text-[11px] font-medium bg-ink-100 text-ink-500 rounded-full px-2 py-0.5 whitespace-nowrap dz-hide">
+              <span className="text-[11px] font-medium bg-ink-100 text-ink-500 rounded-full px-2 py-0.5 whitespace-nowrap">
                 {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
               </span>
             )}
           </div>
 
-          {/* Muscle group tags — dropped entirely in Dense mode */}
+          {/* Muscle group tags */}
           {muscleGroups.length > 0 && (
-            <div className="flex flex-wrap gap-1 dz-hide">
+            <div className="flex flex-wrap gap-1">
               {muscleGroups.map((mg, i) => (
                 <span
                   key={mg}
