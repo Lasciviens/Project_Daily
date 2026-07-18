@@ -129,7 +129,7 @@ function BottomTabBar() {
   const activeIndex = TABS.findIndex(tab => tab.match.includes(location.pathname))
 
   return (
-    <nav className="vt-pin-tabbar sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-cream-50/95 backdrop-blur-lg border-t border-ink-200 pb-[env(safe-area-inset-bottom)] select-none">
+    <nav className="vt-pin-tabbar glass-chrome sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch border-t border-ink-200/60 pb-[env(safe-area-inset-bottom)] select-none shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.10)]">
       {TABS.map((tab, index) => {
         const isActive = index === activeIndex
         const Icon = tab.icon
@@ -201,7 +201,7 @@ function Nav() {
     // under the iOS status bar — this padding keeps the header's content below
     // the clock/battery while the header's own background fills the gap, the
     // standard native-app look. 0 everywhere else (browser tabs, desktop).
-    <header className="vt-pin-header sticky top-0 z-40 bg-cream-50/80 backdrop-blur border-b border-ink-200 pt-[env(safe-area-inset-top)]">
+    <header className="vt-pin-header glass-chrome sticky top-0 z-40 border-b border-ink-200/60 pt-[env(safe-area-inset-top)]">
       <div className="w-full px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
@@ -229,13 +229,19 @@ function Nav() {
             {format(new Date(), 'EEE, d MMM')} · W{getISOWeek(new Date())}
           </span>
 
-          {/* ⌘K command bar trigger */}
+          {/* ⌘K command bar trigger — global fuzzy task search / jump-to /
+              quick-add. On mobile the ⌘K keyboard shortcut can't be typed and
+              this was the ONLY trigger (previously hidden md:flex), so the
+              whole command palette was unreachable on phones. Now icon-only
+              below md (matching the ✦/🗒️ neighbours) so it's always reachable. */}
           <button
             onClick={openCommandBar}
-            className="min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100 transition-colors duration-150 hidden md:flex items-center gap-1.5 border border-ink-200"
+            aria-label="Search"
+            className="min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100 transition-colors duration-150 flex items-center gap-1.5 md:border md:border-ink-200 flex-shrink-0"
           >
-            <span>Search</span>
-            <kbd className="text-[10px] bg-ink-100 px-1 py-0.5 rounded">⌘K</kbd>
+            <span className="md:hidden text-base leading-none">🔍</span>
+            <span className="hidden md:inline">Search</span>
+            <kbd className="hidden md:inline text-[10px] bg-ink-100 px-1 py-0.5 rounded">⌘K</kbd>
           </button>
 
           <button

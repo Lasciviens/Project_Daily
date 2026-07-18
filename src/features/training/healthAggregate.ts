@@ -241,6 +241,22 @@ export function computeSleepScore(s: SleepSummary, sessionCount: number): number
   return Math.round(duration + deep + rem + continuity)
 }
 
+// Sleep efficiency ("verim") — % of time in bed actually spent asleep, the
+// standard clinical sleep metric. Time in bed = first session start → last
+// session end (so gaps BETWEEN interrupted sessions count against it, not
+// just within-session awake time). Falls back to total/(total+awake) when
+// session windows aren't available (e.g. manual entries have no timestamps).
+// Returns null when neither can be computed. Not medical advice; ~85%+ is
+// generally considered good.
+export function computeSleepEfficiency(s: SleepSummary, sessions: SleepSessionInterval[]): number | null {
+  if (sessions.length > 0) {
+    const inBedH = (sessions[sessions.length - 1].endMs - sessions[0].startMs) / 3_600_000
+    if (inBedH > 0) return Math.min(100, Math.round((s.total / inBedH) * 100))
+  }
+  const denom = s.total + s.awake
+  return denom > 0 ? Math.min(100, Math.round((s.total / denom) * 100)) : null
+}
+
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = new Map<string, HealthMetric[]>()
   for (const p of points) {

@@ -1,17 +1,22 @@
 import { useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
-import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions, computeSleepScore } from '../../healthAggregate'
+import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions, computeSleepScore, computeSleepEfficiency } from '../../healthAggregate'
 import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { DateNav } from './DateNav'
-import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
+import { shiftStr, rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
+import { PeriodToggle, type Period } from './PeriodToggle'
 import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { SLEEP_EXTRA_METRICS } from './miniMetrics'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
+}
+
+function fmtDayLong(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 function fmtHrs(h: number): string {
@@ -77,15 +82,32 @@ function scoreColor(score: number): string {
   return 'bg-red-100 text-red-700 border-red-200'
 }
 
-type TrendPeriod = 'week' | 'month'
+// Efficiency bands (clinical rule of thumb: ≥85% good, 75–85% fair, <75% poor).
+function effColor(pct: number): string {
+  if (pct >= 85) return 'bg-green-100 text-green-700 border-green-200'
+  if (pct >= 75) return 'bg-amber-100 text-amber-700 border-amber-200'
+  return 'bg-red-100 text-red-700 border-red-200'
+}
 
-// "Correct manually" link inside the tooltip (not a standalone "+ Manual"
-// button) — clicking a bar (or an empty gap, which still has a date even
-// with no bar to show) opens the manual-entry form pre-filled for exactly
-// that night, pre-filled with its existing manual total if there is one
-// (see manualHoursForDate) so re-opening it reads as "correct" rather than
-// "add a second, conflicting entry".
-function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>, onCorrect: (date: string) => void) {
+// A compact stat "chip" — a big number over a small label, color-banded.
+function StatChip({ value, label, cls, title }: { value: string; label: string; cls: string; title?: string }) {
+  return (
+    <div className={`flex flex-col items-center justify-center rounded-xl border px-3 py-1 ${cls}`} title={title}>
+      <span className="text-lg font-bold leading-none tabular-nums">{value}</span>
+      <span className="text-[9px] font-semibold uppercase tracking-wide opacity-70 mt-0.5">{label}</span>
+    </div>
+  )
+}
+
+// "Correct manually" + "View this day" links inside the tooltip (not standalone
+// buttons) — clicking a bar (or an empty gap, which still has a date even with
+// no bar to show) can either open the manual-entry form pre-filled for exactly
+// that night, or jump the section to that night's Day view.
+function makeSleepTooltipContent(
+  sourcesByDate: Map<string, Set<string>>,
+  onCorrect: (date: string) => void,
+  onViewDay: (date: string) => void,
+) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
   return function TooltipContent({ active, payload, label }: any) {
     if (!active || !payload?.length) return null
@@ -100,13 +122,24 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>, onCorr
           <p className="text-ink-400">{[...sources].join(', ')}</p>
         )}
         {date && (
-          <button
-            type="button"
-            onClick={() => onCorrect(date)}
-            className="text-accent-600 underline text-xs py-1.5 block min-h-[32px]"
-          >
-            Correct manually
-          </button>
+          <div className="flex flex-col">
+            {point.value != null && (
+              <button
+                type="button"
+                onClick={() => onViewDay(date)}
+                className="text-indigo-600 underline text-xs py-1.5 text-left min-h-[32px]"
+              >
+                View this day →
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onCorrect(date)}
+              className="text-accent-600 underline text-xs py-1.5 text-left min-h-[32px]"
+            >
+              Correct manually
+            </button>
+          </div>
         )}
       </div>
     )
@@ -115,19 +148,38 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>, onCorr
 
 export function SleepSection() {
   const today = todayStr()
-  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('week')
+  const [period, setPeriod] = useState<Period>('week')
   const [anchor, setAnchor] = useAnchorDate()
-  const { from, to } = rangeForAnchor(trendPeriod, anchor)
-  const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', from, to)
+
+  // In Day mode the chart still shows a 7-night CONTEXT window ending at the
+  // anchor (a 1-bar chart is useless) while the detail block below reflects
+  // just the anchored night. Week/Month behave as a normal trend range.
+  const chartRange = period === 'day'
+    ? { from: shiftStr(anchor, -6), to: anchor }
+    : rangeForAnchor(period, anchor)
+  const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', chartRange.from, chartRange.to)
   const summary = computeSleepSummary(points)
-  const last = summary[summary.length - 1]
-  const lastSessions = last ? extractSleepSessions(points, last.date) : []
-  const sleepScore = last ? computeSleepScore(last, Math.max(lastSessions.length, 1)) : null
+  const summaryByDate = new Map(summary.map(s => [s.date, s]))
+
+  // The night whose full detail (stages, timeline, score, efficiency) is shown:
+  // Day mode → the anchored night; Week/Month → the most recent night WITH data
+  // in range (so "Last Night's Sleep" is never a blank today-not-synced-yet).
+  const detailDate = period === 'day'
+    ? anchor
+    : (summary.length ? summary[summary.length - 1].date : anchor)
+  const detail = summaryByDate.get(detailDate) ?? null
+  const detailSessions = detail ? extractSleepSessions(points, detailDate) : []
+  const sleepScore = detail ? computeSleepScore(detail, Math.max(detailSessions.length, 1)) : null
+  const efficiency = detail ? computeSleepEfficiency(detail, detailSessions) : null
+
+  const detailIsToday = detailDate === today
+  const headline = period === 'day'
+    ? (detailIsToday ? "Today's Sleep" : `Sleep · ${fmtDayLong(detailDate)}`)
+    : "Last Night's Sleep"
 
   // Left-join onto every date in range so a night with no synced data still
   // shows as a gap on the axis instead of silently disappearing.
-  const summaryByDate = new Map(summary.map(s => [s.date, s]))
-  const chartData = datesBetweenStr(from, to).map(date => {
+  const chartData = datesBetweenStr(chartRange.from, chartRange.to).map(date => {
     const s = summaryByDate.get(date)
     return { label: fmtDay(date), date, total: s ? Math.round(s.total * 10) / 10 : null }
   })
@@ -141,7 +193,7 @@ export function SleepSection() {
     sourcesByDate.set(p.date, set)
   }
 
-  // A wider, fixed history (independent of the Week/Month toggle above) so
+  // A wider, fixed history (independent of the Day/Week/Month toggle above) so
   // the Deep/Core/REM estimate for a manual entry is based on a stable
   // sample, not just whatever's currently in view.
   const { data: historyPoints = [] } = useHealthMetricSeries('sleep_analysis', daysAgoStr(29), today)
@@ -173,6 +225,12 @@ export function SleepSection() {
     setShowManualForm(true)
   }
 
+  // Jump to a specific night's Day view (from the trend tooltip).
+  function viewDay(date: string) {
+    setPeriod('day')
+    setAnchor(date)
+  }
+
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault()
     const hours = parseFloat(manualHours)
@@ -186,29 +244,40 @@ export function SleepSection() {
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 Last Night's Sleep</p>
-        <div className="flex items-center gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 {headline}</p>
+        <div className="flex items-center gap-2 flex-wrap mt-1">
           <p className="text-3xl font-bold text-ink-900 leading-tight">
-            {isLoading ? '…' : last ? fmtHrs(last.total) : '—'}
+            {isLoading ? '…' : detail ? fmtHrs(detail.total) : '—'}
           </p>
           {sleepScore != null && (
-            <span
-              className={`text-[11px] font-bold border rounded-full px-2 py-0.5 ${scoreColor(sleepScore)}`}
-              title="Estimated score from duration (vs 8h), deep/REM share and interruptions — not a medical metric"
-            >
-              {sleepScore} <span className="font-normal opacity-70">est.</span>
-            </span>
+            <StatChip
+              value={String(sleepScore)}
+              label="Score · est"
+              cls={scoreColor(sleepScore)}
+              title="Estimated 0–100 score from duration (vs 8h), deep/REM share and interruptions — not a medical metric"
+            />
           )}
-          {last && (sourcesByDate.get(last.date)?.has('Manual') ?? false) && (
+          {efficiency != null && (
+            <StatChip
+              value={`${efficiency}%`}
+              label="Verim"
+              cls={effColor(efficiency)}
+              title="Sleep efficiency — % of time in bed actually spent asleep (≥85% is generally good)"
+            />
+          )}
+          {detail && (sourcesByDate.get(detailDate)?.has('Manual') ?? false) && (
             <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5">
               Manual
             </span>
           )}
         </div>
+        {period === 'day' && !detail && !isLoading && (
+          <p className="text-xs text-ink-400 mt-1">Bu gece için veri yok — ‹ › ile başka bir güne geç veya aşağıdan manuel gir.</p>
+        )}
       </div>
 
       {/* Night timeline — session windows + interruption gaps */}
-      {lastSessions.length > 0 && <SessionTimeline sessions={lastSessions} />}
+      {detailSessions.length > 0 && <SessionTimeline sessions={detailSessions} />}
 
       {showManualForm && (
         <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 relative">
@@ -254,12 +323,12 @@ export function SleepSection() {
         </form>
       )}
 
-      {last && (
+      {detail && (
         <>
           <div className="h-4 rounded-full overflow-hidden flex w-full bg-ink-100">
             {STAGES.map(s => {
-              const val = last[s.key]
-              const pct = last.total > 0 ? (val / last.total) * 100 : 0
+              const val = detail[s.key]
+              const pct = detail.total > 0 ? (val / detail.total) * 100 : 0
               return pct > 0 ? (
                 <div key={s.key} style={{ width: `${pct}%`, backgroundColor: s.color }} title={`${s.label}: ${fmtHrs(val)}`} />
               ) : null
@@ -270,7 +339,7 @@ export function SleepSection() {
               <div key={s.key} className="flex items-center gap-1.5 text-xs">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
                 <span className="text-ink-500">{s.label}</span>
-                <span className="font-semibold text-ink-800">{fmtHrs(last[s.key])}</span>
+                <span className="font-semibold text-ink-800">{fmtHrs(detail[s.key])}</span>
               </div>
             ))}
           </div>
@@ -279,40 +348,33 @@ export function SleepSection() {
 
       <div className="flex items-center justify-between flex-wrap gap-2">
         <DateNav
-          label={labelForAnchor(trendPeriod, anchor)}
-          onPrev={() => setAnchor(a => stepAnchor(trendPeriod, a, -1))}
-          onNext={() => setAnchor(a => stepAnchor(trendPeriod, a, 1))}
+          label={labelForAnchor(period, anchor)}
+          onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
+          onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
           canGoNext={anchor !== today}
           value={anchor}
           onPick={setAnchor}
         />
-        <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg">
-          {(['week', 'month'] as TrendPeriod[]).map(p => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => { setTrendPeriod(p); setAnchor(today) }}
-              className={`px-2.5 min-h-[28px] rounded-md text-[11px] font-semibold transition-colors ${
-                trendPeriod === p ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
-              }`}
-            >
-              {p === 'week' ? 'Week' : 'Month'}
-            </button>
-          ))}
-        </div>
+        <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
       </div>
 
       <div className="h-28">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={trendPeriod === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            {/* pointerEvents:auto is required or the "Correct manually" button
-                inside the tooltip never receives its click (recharts sets the
-                tooltip wrapper to pointer-events:none by default). */}
-            <Tooltip cursor={false} wrapperStyle={{ pointerEvents: 'auto' }} content={makeSleepTooltipContent(sourcesByDate, openCorrectForm)} />
-            <Bar dataKey="total" fill="#6366f1" radius={[3, 3, 0, 0]} activeBar={false} />
+            {/* pointerEvents:auto is required or the links inside the tooltip
+                never receive their click (recharts sets the tooltip wrapper to
+                pointer-events:none by default). */}
+            <Tooltip cursor={false} wrapperStyle={{ pointerEvents: 'auto' }} content={makeSleepTooltipContent(sourcesByDate, openCorrectForm, viewDay)} />
+            <Bar dataKey="total" radius={[3, 3, 0, 0]} activeBar={false}>
+              {/* In Day mode the anchored night is highlighted so it reads as
+                  "this is the night shown above"; other bars are context. */}
+              {chartData.map(d => (
+                <Cell key={d.date} fill={period === 'day' && d.date === detailDate ? '#4338ca' : '#6366f1'} fillOpacity={period === 'day' && d.date !== detailDate ? 0.4 : 1} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
