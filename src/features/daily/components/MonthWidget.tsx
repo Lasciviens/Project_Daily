@@ -10,9 +10,11 @@ import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 interface Props {
   onDayClick?:    (date: Date) => void
   highlightDate?: Date
+  /** Larger day cells + type — used by the Month tab's two-pane view. */
+  big?:           boolean
 }
 
-export function MonthWidget({ onDayClick, highlightDate }: Props) {
+export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
   const [viewDate, setViewDate] = useState(new Date())
 
   // Structurally independent of the day view, but its position still follows
@@ -101,7 +103,7 @@ export function MonthWidget({ onDayClick, highlightDate }: Props) {
               key={day.toISOString()}
               onClick={() => clickable && onDayClick?.(day)}
               disabled={!clickable}
-              className={`relative flex flex-col items-center justify-center aspect-square rounded-md text-xs font-medium transition-colors duration-150 ${
+              className={`relative flex flex-col items-center justify-center aspect-square rounded-md font-medium transition-colors duration-150 ${big ? 'text-sm' : 'text-xs'} ${
                 current
                   ? 'bg-accent-500 text-white'
                   : selected
