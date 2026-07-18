@@ -47,7 +47,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 // hosts anyway, and a shape is enough to recognise the run). lat north-up.
 function RouteMap({ route }: { route: Raw[] }) {
   const pts = route
-    .map(p => ({ lat: Number(p.latitude), lon: Number(p.longitude) }))
+    .map(p => ({ lat: Number(p?.latitude), lon: Number(p?.longitude) }))
     .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon))
   if (pts.length < 2) return null
   const lats = pts.map(p => p.lat), lons = pts.map(p => p.lon)
@@ -88,17 +88,22 @@ export function HealthWorkoutDetail({ workout, onClose }: { workout: HealthWorko
   const intensity = qty(raw.intensity)
   const steps = Array.isArray(raw.stepCount) ? Math.round(raw.stepCount.reduce((s: number, p: Raw) => s + (qty(p) ?? 0), 0)) : null
   const pace = avgSpeed && avgSpeed > 0 ? 60 / avgSpeed : null // min/km
+  // Compute min:ss jointly so 59.5s doesn't render "5:60" (round total seconds).
+  const paceStr = pace != null ? (() => { const t = Math.round(pace * 60); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` })() : null
 
-  // HR curve — per-interval Avg with a faint [Min,Max] band.
+  // HR curve — per-interval Avg with a faint [Min,Max] band. `qty` tolerates
+  // either a plain number or {qty} (HAE varies by field); `?.` guards a stray
+  // null array element (free-form jsonb) so one bad point can't crash the modal.
   const hrSeries = Array.isArray(raw.heartRateData)
     ? raw.heartRateData
-        .map((p: Raw) => ({ label: hhmm(p.date), avg: Math.round(Number(p.Avg)), range: [Math.round(Number(p.Min)), Math.round(Number(p.Max))] }))
-        .filter((p: { avg: number }) => Number.isFinite(p.avg))
+        .map((p: Raw) => ({ label: hhmm(p?.date), avg: qty(p?.Avg), range: [qty(p?.Min), qty(p?.Max)] }))
+        .filter((p: { avg: number | null }): p is { label: string; avg: number; range: [number, number] } => p.avg != null)
+        .map((p: { label: string; avg: number; range: (number | null)[] }) => ({ label: p.label, avg: Math.round(p.avg), range: [Math.round(p.range[0] ?? p.avg), Math.round(p.range[1] ?? p.avg)] }))
     : []
 
   const recovery = Array.isArray(raw.heartRateRecovery) && raw.heartRateRecovery.length > 1
     ? (() => {
-        const vals = raw.heartRateRecovery.map((p: Raw) => Number(p.Avg)).filter(Number.isFinite)
+        const vals = raw.heartRateRecovery.map((p: Raw) => qty(p?.Avg)).filter((v): v is number => v != null)
         return vals.length > 1 ? Math.round(vals[0] - vals[vals.length - 1]) : null
       })()
     : null
@@ -130,7 +135,7 @@ export function HealthWorkoutDetail({ workout, onClose }: { workout: HealthWorko
               {active != null && <Stat label="Active" value={`${Math.round(active)}`} sub="kcal" />}
               {workout.avg_heart_rate != null && <Stat label="Avg HR" value={`${Math.round(workout.avg_heart_rate)}`} sub={workout.max_heart_rate != null ? `max ${Math.round(workout.max_heart_rate)}` : 'bpm'} />}
               {distance != null && <Stat label="Distance" value={distance.toFixed(2)} sub="km" />}
-              {pace != null && <Stat label="Pace" value={`${Math.floor(pace)}:${String(Math.round((pace % 1) * 60)).padStart(2, '0')}`} sub="min/km" />}
+              {paceStr != null && <Stat label="Pace" value={paceStr} sub="min/km" />}
               {avgSpeed != null && <Stat label="Avg Speed" value={avgSpeed.toFixed(1)} sub={maxSpeed != null ? `max ${maxSpeed.toFixed(1)} km/h` : 'km/h'} />}
               {cadence != null && <Stat label="Cadence" value={`${Math.round(cadence)}`} sub="spm" />}
               {steps != null && steps > 0 && <Stat label="Steps" value={steps.toLocaleString('en-GB')} />}
