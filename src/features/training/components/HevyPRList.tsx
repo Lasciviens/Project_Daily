@@ -63,20 +63,20 @@ export function HevyPRList() {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Info banner */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-accent-50 border border-accent-200 rounded-xl">
+      {/* Info banner — content-sized, not a full-monitor-width band */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-accent-50 border border-accent-200 rounded-xl w-fit max-w-full">
         <span className="text-sm leading-none">🏆</span>
         <p className="text-xs text-accent-700 font-medium">All-time heaviest lift per exercise, sorted by most recent. Weights in kg.</p>
       </div>
 
-      {/* Search */}
+      {/* Search — a text box never needs 1900px */}
       <input
         type="text"
         inputMode="search"
         value={query}
         onChange={e => setQuery(e.target.value)}
         placeholder="Search exercises… (e.g. press, curl)"
-        className="w-full min-h-[44px] px-3 rounded-xl border border-ink-200 text-sm placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-300"
+        className="w-full max-w-md min-h-[44px] px-3 rounded-xl border border-ink-200 text-sm placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-300"
       />
 
       {/* Filter bar */}
@@ -101,7 +101,10 @@ export function HevyPRList() {
       {sorted.length === 0 && (
         <p className="text-sm text-ink-400 py-6 text-center">No exercises match “{query}”.</p>
       )}
-      <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-x-4">
+      {/* HORIZONTAL fix: fixed-width columns (15–18rem each) via auto-fill —
+          column count derives from available width, rows never stretch to
+          fill a monitor, leftover space stays empty on the right. */}
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(15rem,18rem))] gap-x-3 justify-start">
         {sorted.map(pr => {
           const isOpen = peekId === pr.exercise_template_id
           return (

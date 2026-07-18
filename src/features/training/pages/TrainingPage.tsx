@@ -67,7 +67,6 @@ export function TrainingPage() {
       {/* Content (left, sized) + calendar pinned to the right edge */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
         <div className={`w-full lg:max-w-4xl min-w-0 ${wide ? '2xl:max-w-none 2xl:flex-1' : ''}`}>
-          <NextSessionBanner />
           {tab === 'hevy'   && <HevyTab onSubTabChange={setHevySub} />}
           {tab === 'strava' && <StravaTab />}
           {tab === 'health' && <HealthTab section={healthSection} onSectionChange={setHealthSection} />}
@@ -77,9 +76,13 @@ export function TrainingPage() {
         {/* Hevy/Strava: training calendar, always relevant. Health: the
             calendar isn't useful here, so this space becomes a short
             (non-AI, plain computed) stats/analysis panel for whichever
-            Health section is active instead. */}
-        <div className="w-full lg:w-[440px] lg:flex-shrink-0">
+            Health section is active instead. Next Session lives UNDER the
+            calendar (per request) — it was a full-width band above the
+            content for one line of text, the exact width waste being
+            standardised away. */}
+        <div className="w-full lg:w-[440px] lg:flex-shrink-0 flex flex-col gap-4">
           {tab === 'health' ? <HealthStatsPanel section={healthSection} /> : <TrainingCalendar />}
+          <NextSessionBanner />
         </div>
       </div>
     </div>
