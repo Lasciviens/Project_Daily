@@ -143,6 +143,7 @@ export async function createRecipe(input: RecipeInput): Promise<string> {
       ...macros,
       image_url:    input.image_url ?? null,
       source_url:   input.source_url ?? null,
+      category:     input.category ?? null,
     })
     .select('id')
     .single()
@@ -167,6 +168,7 @@ export async function updateRecipe(id: string, input: RecipeInput): Promise<void
       ...macros,
       image_url:    input.image_url ?? null,
       source_url:   input.source_url ?? null,
+      category:     input.category ?? null,
       updated_at:   new Date().toISOString(),
     })
     .eq('id', id)

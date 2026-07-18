@@ -23,8 +23,33 @@ export async function createIngredientLibraryItem(input: CreateIngredientLibrary
       protein_g: input.protein_g ?? null,
       carbs_g:   input.carbs_g   ?? null,
       fat_g:     input.fat_g     ?? null,
+      fiber_g:   input.fiber_g   ?? null,
       sugar_g:   input.sugar_g   ?? null,
+      serving_label: input.serving_label?.trim() || null,
+      serving_grams: input.serving_grams ?? null,
     })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateIngredientLibraryItem(id: string, input: CreateIngredientLibraryItemInput): Promise<IngredientLibraryItem> {
+  const { data, error } = await supabase
+    .from('recipe_ingredient_library')
+    .update({
+      name:      input.name.trim(),
+      unit:      input.unit?.trim() || 'g',
+      calories:  input.calories  ?? null,
+      protein_g: input.protein_g ?? null,
+      carbs_g:   input.carbs_g   ?? null,
+      fat_g:     input.fat_g     ?? null,
+      fiber_g:   input.fiber_g   ?? null,
+      sugar_g:   input.sugar_g   ?? null,
+      serving_label: input.serving_label?.trim() || null,
+      serving_grams: input.serving_grams ?? null,
+    })
+    .eq('id', id)
     .select()
     .single()
   if (error) throw error

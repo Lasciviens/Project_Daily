@@ -46,7 +46,7 @@ const NAV_ITEMS: NavItem[] = [
   { kind: 'nav', id: 'home',      label: 'Home',      icon: '🏠', path: '/home'      },
   { kind: 'nav', id: 'daily',     label: 'Daily',     icon: '📅', path: '/daily'     },
   { kind: 'nav', id: 'shop',      label: 'Shop',      icon: '🛍️', path: '/shop'      },
-  { kind: 'nav', id: 'recipes',   label: 'Recipes',   icon: '🍳', path: '/recipes'   },
+  { kind: 'nav', id: 'recipes',   label: 'Food',   icon: '🍳', path: '/recipes'   },
   { kind: 'nav', id: 'work',      label: 'Work',      icon: '💼', path: '/work'      },
   { kind: 'nav', id: 'media',     label: 'Media',     icon: '🎬', path: '/media'     },
   { kind: 'nav', id: 'training',  label: 'Training',  icon: '🏃', path: '/training'  },

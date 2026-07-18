@@ -4,13 +4,17 @@ import { useDayTargets } from '../../hooks/useDayTargets'
 import { useRecentMeals, useSetQuickMeal, useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
 import { AssignMealModal } from '../../../recipes/components/AssignMealModal'
+import { FoodLogModal } from '../../../recipes/components/FoodLogModal'
+import { useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
 import type { MealSlot } from '../../../recipes/types'
+import type { DayMeal } from '../../api/dayNutritionApi'
 
 const SLOTS: { slot: MealSlot; label: string }[] = [
-  { slot: 'breakfast', label: 'Breakfast' },
-  { slot: 'lunch',     label: 'Lunch' },
-  { slot: 'dinner',    label: 'Dinner' },
-  { slot: 'snack',     label: 'Snack' },
+  { slot: 'breakfast',  label: 'Breakfast' },
+  { slot: 'lunch',      label: 'Lunch' },
+  { slot: 'dinner',     label: 'Dinner' },
+  { slot: 'snack',      label: 'Snack' },
+  { slot: 'supplement', label: 'Suppl.' },
 ]
 
 function CalorieRing({ consumed, target }: { consumed: number; target: number }) {
@@ -36,9 +40,9 @@ function CalorieRing({ consumed, target }: { consumed: number; target: number })
 // One slot row: filled → title + kcal + remove; empty → inline quick-add with
 // recent-meal chips. The whole point is adding a meal in 1-2 taps without
 // leaving Daily (the old card was read-only and linked out to /recipes).
-function SlotRow({ date, slot, label, meal }: {
+function SlotRow({ date, slot, label, meals }: {
   date: string; slot: MealSlot; label: string
-  meal?: { id: string; title: string; calories: number }
+  meals: DayMeal[]
 }) {
   const [adding, setAdding] = useState(false)
   const [detail, setDetail] = useState(false)
@@ -46,6 +50,7 @@ function SlotRow({ date, slot, label, meal }: {
   const { data: recent = [] } = useRecentMeals()
   const setMeal = useSetQuickMeal()
   const delMeal = useDeleteQuickMeal()
+  const delLog  = useDeleteFoodLogEntry()
 
   function save(title: string, recipeId?: string | null) {
     if (!title.trim()) return
@@ -54,21 +59,27 @@ function SlotRow({ date, slot, label, meal }: {
 
   return (
     <li className="text-xs min-h-[28px]">
-      {meal ? (
-        <div className="flex items-center gap-2 min-h-[28px]">
-          <span className="text-ink-400 w-16 shrink-0">{label}</span>
-          <span className="text-ink-700 flex-1 truncate">{meal.title}</span>
-          {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
-          <button
-            onClick={() => setDetail(true)}
-            className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
-            title="Edit in detail (recipe/ingredient/servings)"
-          >✎</button>
-          <button
-            onClick={() => delMeal.mutate(meal.id)}
-            className="text-ink-300 hover:text-red-500 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
-            aria-label={`Remove ${label}`}
-          >✕</button>
+      {meals.length > 0 ? (
+        <div className="flex flex-col gap-0.5">
+          {meals.map((meal, i) => (
+            <div key={meal.id} className="flex items-center gap-2 min-h-[28px]">
+              <span className="text-ink-400 w-16 shrink-0">{i === 0 ? label : ''}</span>
+              <span className="text-ink-700 flex-1 truncate">{meal.title}</span>
+              {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
+              {meal.source === 'plan' && (
+                <button
+                  onClick={() => setDetail(true)}
+                  className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
+                  title="Edit in detail (recipe/ingredient/servings)"
+                >✎</button>
+              )}
+              <button
+                onClick={() => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)}
+                className="text-ink-300 hover:text-red-500 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
+                aria-label={`Remove ${meal.title}`}
+              >✕</button>
+            </div>
+          ))}
         </div>
       ) : (
         <>
@@ -150,10 +161,17 @@ export function NutritionCard({ date }: { date: string }) {
   const [editing, setEditing] = useState(false)
   const copyYesterday = useCopyYesterdayMeals()
 
+  const [logOpen, setLogOpen] = useState(false)
   const consumed = nut?.calories ?? 0
   const protein  = nut?.protein_g ?? 0
   const proteinPct = targets.protein > 0 ? Math.min(Math.round((protein / targets.protein) * 100), 100) : 0
-  const mealsBySlot = new Map((nut?.meals ?? []).map(m => [m.meal_slot, m]))
+  // A slot can now hold MANY rows (planned meal + individually logged foods).
+  const mealsBySlot = new Map<string, DayMeal[]>()
+  for (const m of nut?.meals ?? []) {
+    const arr = mealsBySlot.get(m.meal_slot) ?? []
+    arr.push(m)
+    mealsBySlot.set(m.meal_slot, arr)
+  }
   const filledSlots = new Set(mealsBySlot.keys())
 
   return (
@@ -161,6 +179,11 @@ export function NutritionCard({ date }: { date: string }) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-ink-800 flex items-center gap-1.5">🍽️ Nutrition</h3>
         <div className="flex items-center gap-1">
+          <button onClick={() => setLogOpen(true)}
+            className="text-[11px] font-semibold text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 rounded transition-colors"
+            title="Log food — pick ingredients from your library, grams, done">
+            + Log
+          </button>
           {filledSlots.size < SLOTS.length && (
             <button
               onClick={() => copyYesterday.mutate({ date, filledSlots })}
@@ -215,11 +238,12 @@ export function NutritionCard({ date }: { date: string }) {
 
           <ul className="flex flex-col gap-0.5 pt-1 border-t border-ink-100">
             {SLOTS.map(({ slot, label }) => (
-              <SlotRow key={slot} date={date} slot={slot} label={label} meal={mealsBySlot.get(slot)} />
+              <SlotRow key={slot} date={date} slot={slot} label={label} meals={mealsBySlot.get(slot) ?? []} />
             ))}
           </ul>
         </>
       )}
+      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={date} />
     </div>
   )
 }

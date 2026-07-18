@@ -5,9 +5,12 @@ import { RecipeModal } from '../components/RecipeModal'
 import { RecipeDetail } from '../components/RecipeDetail'
 import { MealPlanWeek } from '../components/MealPlanWeek'
 import { RecipeBackdrop } from '../components/RecipeBackdrop'
-import type { RecipeWithIngredients } from '../types'
+import { IngredientManager } from '../components/IngredientManager'
+import { FoodLogModal } from '../components/FoodLogModal'
+import type { RecipeWithIngredients, FoodCategory } from '../types'
+import { PersonalTabs } from '../../personal/components/PersonalLayout'
 
-type Tab = 'library' | 'plan'
+type Tab = 'library' | 'ingredients' | 'plan'
 
 export function RecipesPage() {
   const { data: recipes = [], isLoading } = useRecipes()
@@ -16,6 +19,8 @@ export function RecipesPage() {
   const [detail,    setDetail]    = useState<RecipeWithIngredients | null>(null)
   const [editing,   setEditing]   = useState<RecipeWithIngredients | null>(null)
   const [query,     setQuery]     = useState('')
+  const [category,  setCategory]  = useState<FoodCategory | 'all'>('all')
+  const [logOpen,   setLogOpen]   = useState(false)
 
   // Keep the open detail/edit view in sync with refreshed query data.
   const liveDetail  = detail  ? recipes.find(r => r.id === detail.id)  ?? null : null
@@ -23,13 +28,15 @@ export function RecipesPage() {
 
   const filteredRecipes = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return recipes
-    return recipes.filter(r =>
+    let out = recipes
+    if (category !== 'all') out = out.filter(r => r.category === category)
+    if (!q) return out
+    return out.filter(r =>
       r.title.toLowerCase().includes(q) ||
       (r.description ?? '').toLowerCase().includes(q) ||
       r.ingredients.some(i => i.name.toLowerCase().includes(q))
     )
-  }, [recipes, query])
+  }, [recipes, query, category])
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
@@ -39,24 +46,33 @@ export function RecipesPage() {
         <div className="absolute inset-0 bg-gradient-to-r from-cream-50/90 via-cream-50/60 to-cream-50/10" aria-hidden />
         <div className="relative z-10 flex items-center justify-between gap-2 flex-wrap min-h-[92px] px-4 py-4 sm:px-5">
           <div>
-            <h1 className="text-xl font-bold text-ink-900">Recipes</h1>
-            <p className="text-xs text-ink-500 mt-0.5">Your recipes — scale servings, track macros</p>
+            <h1 className="text-xl font-bold text-ink-900">Food</h1>
+            <p className="text-xs text-ink-500 mt-0.5">Your meals & ingredients — log, scale, track macros</p>
           </div>
-          {tab === 'library' && (
+          <div className="flex items-center gap-2 ml-auto">
             <button
-              onClick={() => setAddOpen(true)}
+              onClick={() => setLogOpen(true)}
               className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm"
             >
-              + Add recipe
+              🍽️ Log food
             </button>
-          )}
+            {tab === 'library' && (
+              <button
+                onClick={() => setAddOpen(true)}
+                className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors"
+              >
+                + Add recipe
+              </button>
+            )}
+            <PersonalTabs />
+          </div>
         </div>
       </div>
 
       {/* Tab toggle */}
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
         <div className="flex gap-1 bg-cream-50 border border-ink-200 p-1 rounded-xl w-fit">
-          {(['library', 'plan'] as Tab[]).map(t => (
+          {(['library', 'ingredients', 'plan'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -64,7 +80,7 @@ export function RecipesPage() {
                 tab === t ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
               }`}
             >
-              {t === 'library' ? 'Library' : 'Meal Plan'}
+              {t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
             </button>
           ))}
         </div>
@@ -82,14 +98,28 @@ export function RecipesPage() {
         )}
       </div>
 
+      {tab === 'library' && recipes.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {(['all', 'breakfast', 'lunch', 'dinner', 'snack', 'supplement'] as const).map(c => (
+            <button key={c} onClick={() => setCategory(c)}
+              className={`text-xs px-3 min-h-[36px] rounded-full border font-medium capitalize transition-colors ${
+                category === c ? 'bg-accent-500 text-white border-accent-500' : 'border-ink-200 text-ink-600 hover:border-accent-300'
+              }`}>
+              {c === 'all' ? 'All' : c}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'ingredients' && <IngredientManager />}
       {tab === 'plan' && <MealPlanWeek />}
 
       {tab === 'library' && (
         <>
           {isLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,12rem))] justify-start gap-2.5">
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-48 rounded-xl bg-cream-200 animate-pulse" />
+                <div key={i} className="h-36 rounded-xl bg-cream-200 animate-pulse" />
               ))}
             </div>
           )}
@@ -106,13 +136,17 @@ export function RecipesPage() {
             <p className="text-sm text-ink-400 py-10 text-center">No recipes match "{query}"</p>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {/* Dense small cards — fixed-width auto-fill columns (width standard) */}
+          <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,12rem))] justify-start gap-2.5">
             {filteredRecipes.map(r => (
               <RecipeCard key={r.id} recipe={r} onClick={() => setDetail(r)} />
             ))}
           </div>
         </>
       )}
+
+      {/* Log food (today) */}
+      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={new Date().toISOString().slice(0, 10)} />
 
       {/* Create */}
       <RecipeModal open={addOpen} onClose={() => setAddOpen(false)} />

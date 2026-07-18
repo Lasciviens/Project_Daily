@@ -4,7 +4,6 @@ import { DayView } from '../components/DayView'
 import { DayAgenda } from '../components/DayAgenda'
 import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
-import { UpcomingReleasesBanner } from '../components/UpcomingReleasesBanner'
 import { TodaySummary } from '../components/TodaySummary'
 import { PersonalTabs } from '../../personal/components/PersonalLayout'
 import { DateNav } from '../../../shared/components/DateNav'
@@ -55,25 +54,27 @@ export function DailyPage() {
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-      {/* ── Single compact header row (wraps on narrow screens) ── */}
+      {/* ── Single compact header row ──
+          FIXED-SLOT layout (the standard, not per-case tweaks): the left
+          block (date + context) lives in a CONSTANT-width slot with the
+          variable text truncating inside it, and the tab cluster is
+          right-anchored. Because neither slot's width depends on its text,
+          NOTHING can shift when switching Yesterday/Today/Tomorrow — the
+          row geometry is fixed by construction. */}
       <div className="flex items-center gap-x-3 gap-y-2 flex-wrap mb-4">
-        <DateNav
-          size="md"
-          label={format(viewDate, 'EEE, d MMM')}
-          labelClassName="text-lg font-bold text-ink-900 min-w-[120px]"
-          onPrev={() => { setViewDate(d => addDays(d, -1)); setMode('day') }}
-          onNext={() => { setViewDate(d => addDays(d,  1)); setMode('day') }}
-          onToday={() => { setViewDate(new Date()); setMode('day') }}
-          isToday={mode === 'day' && isToday(viewDate)}
-        />
-        {context && <span className="text-xs text-accent-600 font-medium hidden sm:inline">{context}</span>}
+        <div className="flex items-center gap-3 min-w-0 sm:w-[400px] sm:flex-shrink-0">
+          <DateNav
+            size="md"
+            label={format(viewDate, 'EEE, d MMM')}
+            labelClassName="text-lg font-bold text-ink-900 min-w-[120px]"
+            onPrev={() => { setViewDate(d => addDays(d, -1)); setMode('day') }}
+            onNext={() => { setViewDate(d => addDays(d,  1)); setMode('day') }}
+            onToday={() => { setViewDate(new Date()); setMode('day') }}
+            isToday={mode === 'day' && isToday(viewDate)}
+          />
+          {context && <span className="text-xs text-accent-600 font-medium hidden sm:inline truncate min-w-0">{context}</span>}
+        </div>
 
-        {/* Both tab groups are anchored to the RIGHT as one cluster (ml-auto)
-            so the variable-width date + context text on the left can grow/
-            shrink between periods WITHOUT nudging the tabs sideways (the
-            "sekmeler kayıyor" bug). PersonalTabs sits at the far right and
-            stays there across Daily/Shop/Recipes (PersonalLayout right-aligns
-            its own bar to match — no left↔right jump between pages). */}
         <div className="ml-auto flex items-center gap-3">
           <div className="flex gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl overflow-x-auto scrollbar-none">
             <button onClick={() => { setViewDate(addDays(new Date(), -1)); setMode('day') }} className={tabBtn(dayTab === 'yesterday')}>Yesterday</button>
@@ -110,24 +111,18 @@ function useGreeting() {
 function DaySection({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
   return (
     <div className="flex flex-col gap-5">
-      {isToday(date) && <UpcomingReleasesBanner />}
-
-      {/* Schedule at the TOP, CENTERED (explicit request) — the day's timeline
-          is the thing you run the day from, so it leads. Centered + content-
-          width (the one deliberately-centered block; the rest of Daily stays
-          left-aligned per the width standard). */}
-      <div className="w-full max-w-2xl mx-auto">
+      {/* COMPACT top row — schedule sits in the MIDDLE column with the day's
+          to-do (left) and week (right) filling its flanks: no empty gutters,
+          nothing stretched (fixed content-width columns per the standard).
+          The releasing-soon banner was removed per request. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,320px)_minmax(0,540px)_minmax(0,300px)] gap-5 justify-start items-start">
+        <DayView date={date} />
         <DayAgenda date={date} />
+        <WeekWidget onDayClick={onDayClick} highlightDate={date} />
       </div>
 
       {/* At a glance — content-width card grid */}
       <TodaySummary date={date} />
-
-      {/* To-do + week, side by side, content-sized (left-aligned) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,360px)_minmax(0,320px)] gap-5 justify-start">
-        <DayView date={date} />
-        <WeekWidget onDayClick={onDayClick} highlightDate={date} />
-      </div>
     </div>
   )
 }

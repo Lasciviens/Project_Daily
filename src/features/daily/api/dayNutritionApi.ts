@@ -6,13 +6,16 @@ import { supabase } from '../../../integrations/supabase/client'
 // units). Custom-title entries carry no macros.
 export interface DayMeal {
   id:        string
-  meal_slot: 'breakfast' | 'lunch' | 'dinner' | 'snack'
+  meal_slot: 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'supplement'
   title:     string
   servings:  number
   calories:  number
   protein_g: number
   carbs_g:   number
   fat_g:     number
+  /** 'plan' = recipe_meal_plans row; 'log' = food_log_entries row (what was
+      actually eaten, macros snapshotted at log time — migration 053). */
+  source:    'plan' | 'log'
 }
 
 export interface DayNutrition {
@@ -41,18 +44,42 @@ interface MealRow {
   ingredient:            { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null } | null
 }
 
-const SLOT_ORDER: Record<DayMeal['meal_slot'], number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 }
+const SLOT_ORDER: Record<DayMeal['meal_slot'], number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3, supplement: 4 }
+
+interface LogRow {
+  id: string
+  meal_slot: DayMeal['meal_slot']
+  custom_title: string | null
+  quantity: number | null
+  unit: string | null
+  calories: number | null
+  protein_g: number | null
+  carbs_g: number | null
+  fat_g: number | null
+  ingredient: { name: string } | null
+  recipe: { title: string } | null
+}
 
 export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
-  const { data, error } = await supabase
-    .from('recipe_meal_plans')
-    .select(
-      '*, recipe:recipes(title, calories, protein_g, carbs_g, fat_g), ' +
-      'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g)'
-    )
-    .eq('date', date)
+  const [{ data, error }, { data: logData, error: logError }] = await Promise.all([
+    supabase
+      .from('recipe_meal_plans')
+      .select(
+        '*, recipe:recipes(title, calories, protein_g, carbs_g, fat_g), ' +
+        'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g)'
+      )
+      .eq('date', date),
+    supabase
+      .from('food_log_entries')
+      .select('id, meal_slot, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, ' +
+        'ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
+      .eq('date', date),
+  ])
 
   if (error) throw error
+  // food_log_entries may predate migration 053 in a given environment — a
+  // missing table must not break the whole nutrition card (plan still shows).
+  const logRows: LogRow[] = logError ? [] : ((logData ?? []) as unknown as LogRow[])
 
   const meals: DayMeal[] = ((data ?? []) as unknown as MealRow[]).map(row => {
     const servings = row.servings ?? 1
@@ -86,14 +113,33 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       protein_g: Math.round(protein_g),
       carbs_g:   Math.round(carbs_g),
       fat_g:     Math.round(fat_g),
+      source:    'plan' as const,
     }
-  }).sort((a, b) => SLOT_ORDER[a.meal_slot] - SLOT_ORDER[b.meal_slot])
+  })
+
+  const logMeals: DayMeal[] = logRows.map(row => {
+    const base = row.ingredient?.name ?? row.recipe?.title ?? row.custom_title ?? '—'
+    const qtyLabel = row.quantity ? ` · ${row.quantity}${row.unit === 'serving' ? '×' : (row.unit ?? 'g')}` : ''
+    return {
+      id: row.id,
+      meal_slot: row.meal_slot,
+      title: `${base}${qtyLabel}`,
+      servings: 1,
+      calories:  Math.round(row.calories  ?? 0),
+      protein_g: Math.round(row.protein_g ?? 0),
+      carbs_g:   Math.round(row.carbs_g   ?? 0),
+      fat_g:     Math.round(row.fat_g     ?? 0),
+      source:    'log' as const,
+    }
+  })
+
+  const allMeals = [...meals, ...logMeals].sort((a, b) => SLOT_ORDER[a.meal_slot] - SLOT_ORDER[b.meal_slot])
 
   const sum = (k: keyof Pick<DayMeal, 'calories' | 'protein_g' | 'carbs_g' | 'fat_g'>) =>
-    meals.reduce((acc, m) => acc + m[k], 0)
+    allMeals.reduce((acc, m) => acc + m[k], 0)
 
   return {
-    meals,
+    meals: allMeals,
     calories:  sum('calories'),
     protein_g: sum('protein_g'),
     carbs_g:   sum('carbs_g'),

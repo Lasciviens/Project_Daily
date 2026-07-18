@@ -256,25 +256,8 @@ export function DayAgenda({ date }: { date: Date }) {
     )
   }
 
-  // Gap row between consecutive blocks (≥ 45 min of free time) — click to add
-  // right at the gap's start. Keeps empty time visible without an hour grid.
-  function renderGap(from: number, to: number) {
-    const mins = Math.round((to - from) * 60)
-    if (mins < 45) return null
-    return (
-      <button
-        onClick={() => openAdd(hourToTimeStr(from))}
-        className="w-full flex items-center gap-2 px-2 min-h-[22px] group"
-        title={`Add at ${hourToTimeStr(from)}`}
-      >
-        <div className="flex-1 border-t border-dashed border-ink-100" />
-        <span className="text-[9px] text-ink-300 group-hover:text-accent-600 transition-colors">
-          {formatDurationMinutes(mins)} free · +
-        </span>
-        <div className="flex-1 border-t border-dashed border-ink-100" />
-      </button>
-    )
-  }
+  // "Nh free · +" gap rows were removed per explicit request ("böyle bir şey
+  // istemiyorum herhangi bir yerde") — the agenda shows only real blocks now.
 
   function renderNowMarker() {
     return (
@@ -335,17 +318,13 @@ export function DayAgenda({ date }: { date: Date }) {
           </>
         )}
 
-        {/* Day blocks with free-gap rows and the now marker between them */}
-        {day.map((b, i) => {
-          const prevEnd = i === 0 ? NIGHT_END : Math.max(day[i - 1].endHour, NIGHT_END)
-          return (
-            <div key={b.id} className="flex flex-col gap-1.5">
-              {today && nowIndex === i && renderNowMarker()}
-              {b.startHour > prevEnd && renderGap(Math.max(prevEnd, today && nowHour > prevEnd && nowHour < b.startHour ? nowHour : prevEnd), b.startHour)}
-              {renderRow(b)}
-            </div>
-          )
-        })}
+        {/* Day blocks with the now marker between them */}
+        {day.map((b, i) => (
+          <div key={b.id} className="flex flex-col gap-1.5">
+            {today && nowIndex === i && renderNowMarker()}
+            {renderRow(b)}
+          </div>
+        ))}
         {today && nowIndex === -1 && day.length > 0 && nowHour > day[day.length - 1].endHour && renderNowMarker()}
 
         {/* Unscheduled (no start time) */}
