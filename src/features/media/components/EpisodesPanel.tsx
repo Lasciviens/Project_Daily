@@ -30,10 +30,19 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const watchedSet = new Set(watched.filter(w => w.season_number === season).map(w => w.episode_number))
   const watchedMap = new Map(watched.filter(w => w.season_number === season).map(w => [w.episode_number, w.watched_at]))
 
+  // Watched count per season — drives the Netflix-style progress on the
+  // season tabs (n/total + a green fill bar), so where you are in a series
+  // is readable at a glance without opening each season.
+  const watchedBySeason = new Map<number, number>()
+  for (const w of watched) {
+    watchedBySeason.set(w.season_number, (watchedBySeason.get(w.season_number) ?? 0) + 1)
+  }
+
   function toggleSelect(epNum: number) {
     setSelected(prev => {
       const next = new Set(prev)
-      next.has(epNum) ? next.delete(epNum) : next.add(epNum)
+      if (next.has(epNum)) next.delete(epNum)
+      else next.add(epNum)
       return next
     })
   }
@@ -82,21 +91,33 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
 
       {/* Season tabs + Select All */}
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory pb-1 mb-3">
-        {realSeasons.map(s => (
-          <button
-            key={s.season_number}
-            onClick={() => { setSeason(s.season_number); setSelected(new Set()) }}
-            className={[
-              'flex-shrink-0 text-xs px-2.5 py-1 rounded-lg min-h-[44px] transition-colors press-feedback snap-start',
-              season === s.season_number
-                ? 'bg-accent-500 text-white font-semibold'
-                : 'bg-cream-100 text-ink-500 hover:bg-cream-200',
-            ].join(' ')}
-          >
-            S{s.season_number}
-            <span className="ml-1 text-[9px] opacity-70">{s.episode_count}</span>
-          </button>
-        ))}
+        {realSeasons.map(s => {
+          const done = watchedBySeason.get(s.season_number) ?? 0
+          const pct = s.episode_count > 0 ? Math.min(100, (done / s.episode_count) * 100) : 0
+          return (
+            <button
+              key={s.season_number}
+              onClick={() => { setSeason(s.season_number); setSelected(new Set()) }}
+              className={[
+                'relative flex-shrink-0 text-xs px-2.5 py-1 rounded-lg min-h-[44px] transition-colors press-feedback snap-start overflow-hidden',
+                season === s.season_number
+                  ? 'bg-accent-500 text-white font-semibold'
+                  : 'bg-cream-100 text-ink-500 hover:bg-cream-200',
+              ].join(' ')}
+            >
+              S{s.season_number}
+              <span className="ml-1 text-[9px] opacity-70">
+                {done > 0 ? `${done}/${s.episode_count}` : s.episode_count}
+              </span>
+              {done === s.episode_count && s.episode_count > 0 && <span className="ml-0.5 text-[9px]">✓</span>}
+              {/* Season progress fill — the at-a-glance "where am I" bar */}
+              <span
+                className={`absolute left-0 bottom-0 h-[3px] rounded-full ${season === s.season_number ? 'bg-white/70' : 'bg-green-500/80'}`}
+                style={{ width: `${pct}%` }}
+              />
+            </button>
+          )
+        })}
         <div className="flex items-center gap-1 ml-auto flex-shrink-0">
           <button
             onClick={() => setSelected(new Set((seasonData?.episodes ?? []).map(e => e.episode_number)))}
@@ -165,7 +186,11 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                 onClick={() => toggleSelect(ep.episode_number)}
                 className={[
                   'w-full flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors text-left',
-                  isSelected ? 'bg-accent-50 border border-accent-200' : 'hover:bg-cream-50',
+                  // Watched rows read as DONE at a glance (Netflix-style):
+                  // tinted green, dimmed title, big check badge on the right.
+                  isSelected ? 'bg-accent-50 border border-accent-200'
+                    : isWatched ? 'bg-green-50/60 hover:bg-green-50'
+                    : 'hover:bg-cream-50',
                 ].join(' ')}
               >
                 {/* Selection checkbox — small visual, full touch target */}
@@ -183,10 +208,10 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                 {/* Episode info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-[10px] font-bold text-ink-400 flex-shrink-0">
+                    <span className={`text-[10px] font-bold flex-shrink-0 ${isWatched ? 'text-green-600' : 'text-ink-400'}`}>
                       E{String(ep.episode_number).padStart(2, '0')}
                     </span>
-                    <span className="text-xs text-ink-800 truncate font-medium">{ep.name}</span>
+                    <span className={`text-xs truncate font-medium ${isWatched ? 'text-ink-500' : 'text-ink-800'}`}>{ep.name}</span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     {runtime && <span className="text-[9px] text-ink-400">{runtime}m</span>}
@@ -197,11 +222,18 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                     )}
                     {isWatched && watchedOn && (
                       <span className="text-[9px] text-green-600 font-medium">
-                        ✓ Watched {new Date(watchedOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        Watched {new Date(watchedOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                       </span>
                     )}
                   </div>
                 </div>
+
+                {/* Watched badge — the unmistakable signal */}
+                {isWatched && (
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    ✓
+                  </span>
+                )}
               </button>
             )
           })}

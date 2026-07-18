@@ -409,52 +409,53 @@ async function handleUpsertBodyMeasurement(
   const date = payload.date as string
   if (!date) throw new Error('payload.date is required for upsert_body_measurement')
 
-  // Send measurement fields to Hevy (excluding date from body per API spec).
-  // Hevy 400s on ANY null field ("Expected number, received null") — the same
-  // strict-payload behavior as rep_range:null — so empty fields must be
-  // OMITTED entirely, not sent as null. Live-verified: this was why every
-  // save from the Body tab failed regardless of what was entered (the form
-  // always sent the full field set with nulls for the blanks). Partial
-  // entry is legitimate — send only what was actually filled in.
-  const { date: _date, ...measurementFields } = payload
-  for (const key of Object.keys(measurementFields)) {
-    const v = (measurementFields as Record<string, unknown>)[key]
-    if (v === null || v === undefined || v === '' || Number.isNaN(v)) {
-      delete (measurementFields as Record<string, unknown>)[key]
-    }
+  const MEASUREMENT_KEYS = [
+    'weight_kg', 'lean_mass_kg', 'fat_percent', 'neck_cm', 'shoulder_cm',
+    'chest_cm', 'left_bicep_cm', 'right_bicep_cm', 'left_forearm_cm',
+    'right_forearm_cm', 'abdomen_cm', 'waist_cm', 'hips_cm', 'left_thigh_cm',
+    'right_thigh_cm', 'left_calf_cm', 'right_calf_cm',
+  ] as const
+
+  // MERGE semantics (real data-loss bug this fixes): Hevy's PUT replaces the
+  // WHOLE day's measurement, and the old DB upsert wrote `payload.X ?? null`
+  // for every column — so a partial save (e.g. just tapping the weight
+  // suggestion chip and hitting Save) silently WIPED the other values the
+  // user had already recorded for that date, both in Hevy and locally.
+  // Now: load what's already stored for the date, overlay only the fields
+  // the caller actually provided, and send/store the full merged set —
+  // partial entry fills gaps, never destroys.
+  const { data: existing } = await supabase
+    .from('hevy_body_measurements')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('date', date)
+    .maybeSingle()
+
+  const merged: Record<string, number | null> = {}
+  for (const key of MEASUREMENT_KEYS) {
+    const provided = (payload as Record<string, unknown>)[key]
+    const hasProvided = provided !== null && provided !== undefined && provided !== '' && !Number.isNaN(provided)
+    merged[key] = hasProvided ? Number(provided) : ((existing?.[key] as number | null) ?? null)
   }
-  // Nothing filled at all → still record the (empty) row locally below, but
-  // there's nothing Hevy would accept; skip the remote call instead of 400ing.
-  if (Object.keys(measurementFields).length > 0) {
-    await hevyRequest('PUT', `/v1/body_measurements/${date}`, hevyApiKey, measurementFields)
+
+  // Hevy 400s on ANY null field ("Expected number, received null") — nulls
+  // must be OMITTED from the request body, not sent (live-verified; this was
+  // why every save used to fail). Send the merged non-null set.
+  const hevyBody: Record<string, number> = {}
+  for (const [k, v] of Object.entries(merged)) {
+    if (v !== null) hevyBody[k] = v
+  }
+  // Nothing known for the date at all → still record the (empty) row locally
+  // below, but there's nothing Hevy would accept; skip the remote call.
+  if (Object.keys(hevyBody).length > 0) {
+    await hevyRequest('PUT', `/v1/body_measurements/${date}`, hevyApiKey, hevyBody)
   }
 
   const now = new Date().toISOString()
   const { error: dbErr } = await supabase
     .from('hevy_body_measurements')
     .upsert(
-      {
-        user_id: userId,
-        date,
-        weight_kg: payload.weight_kg ?? null,
-        lean_mass_kg: payload.lean_mass_kg ?? null,
-        fat_percent: payload.fat_percent ?? null,
-        neck_cm: payload.neck_cm ?? null,
-        shoulder_cm: payload.shoulder_cm ?? null,
-        chest_cm: payload.chest_cm ?? null,
-        left_bicep_cm: payload.left_bicep_cm ?? null,
-        right_bicep_cm: payload.right_bicep_cm ?? null,
-        left_forearm_cm: payload.left_forearm_cm ?? null,
-        right_forearm_cm: payload.right_forearm_cm ?? null,
-        abdomen_cm: payload.abdomen_cm ?? null,
-        waist_cm: payload.waist_cm ?? null,
-        hips_cm: payload.hips_cm ?? null,
-        left_thigh_cm: payload.left_thigh_cm ?? null,
-        right_thigh_cm: payload.right_thigh_cm ?? null,
-        left_calf_cm: payload.left_calf_cm ?? null,
-        right_calf_cm: payload.right_calf_cm ?? null,
-        updated_at: now,
-      },
+      { user_id: userId, date, ...merged, updated_at: now },
       { onConflict: 'user_id,date' },
     )
   if (dbErr) throw dbErr

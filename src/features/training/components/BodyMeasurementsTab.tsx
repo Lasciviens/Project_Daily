@@ -79,11 +79,34 @@ interface MeasurementModalProps {
   isOpen:   boolean
   onClose:  () => void
   initial?: HevyBodyMeasurement
+  /** All known measurements, so picking a date that already has a row
+      prefills its values — the user then sees exactly what a save will
+      keep/replace instead of blindly overlaying a day they can't see. */
+  existing?: HevyBodyMeasurement[]
 }
 
-function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
+function MeasurementModal({ isOpen, onClose, initial, existing = [] }: MeasurementModalProps) {
   const upsert = useUpsertBodyMeasurement()
   const [form, setForm] = useState(() => blankForm(initial))
+
+  // When the selected date has a stored measurement, load its values into
+  // fields the user hasn't typed into (adjust-during-render pattern; typed
+  // values are never clobbered — this only fills blanks). Starts at '' so
+  // the initial date (today) prefills on first open too.
+  const [loadedDate, setLoadedDate] = useState('')
+  if (form.date !== loadedDate) {
+    setLoadedDate(form.date)
+    const row = existing.find(m => m.date === form.date)
+    if (row) {
+      setForm(f => {
+        const values = { ...f.values }
+        for (const fd of ALL_FIELDS) {
+          if (values[fd.key] === '' && row[fd.key] != null) values[fd.key] = String(row[fd.key])
+        }
+        return { ...f, values }
+      })
+    }
+  }
 
   // Latest known weight/body-fat from Apple Health (Watch/manual scale syncs
   // arrive there daily) — offered as one-tap suggestion chips so the values
@@ -568,6 +591,7 @@ export function BodyMeasurementsTab() {
         key={logKey}
         isOpen={logOpen}
         onClose={() => setLogOpen(false)}
+        existing={measurements}
       />
 
       {/* Edit existing */}

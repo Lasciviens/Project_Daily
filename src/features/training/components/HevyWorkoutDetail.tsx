@@ -1,5 +1,6 @@
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useHevyWorkoutDetail } from '../hooks/useHevyWorkouts'
+import { ExerciseThumb } from '../exerciseMedia'
 import { formatDurationBetween as fmtDuration } from '../../../shared/utils/formatDuration'
 import { fmtTrainingDateTime as fmtDateTime } from '../dateFormat'
 import type { HevySet } from '../types.hevy'
@@ -79,11 +80,16 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
                     .sort((a, b) => a.index - b.index)
                     .map((ex) => (
                       <div key={ex.id} className="flex flex-col gap-2 md:border md:border-ink-100 md:rounded-xl md:p-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-ink-900">{ex.title}</h3>
-                          {ex.notes && (
-                            <p className="text-[12px] text-ink-400 mt-0.5">{ex.notes}</p>
-                          )}
+                        {/* Animated demo GIF (same fuzzy-match layer as Routines/
+                            Exercises — tap to enlarge with instructions) */}
+                        <div className="flex items-center gap-2.5">
+                          <ExerciseThumb title={ex.title} size={44} />
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-semibold text-ink-900">{ex.title}</h3>
+                            {ex.notes && (
+                              <p className="text-[12px] text-ink-400 mt-0.5">{ex.notes}</p>
+                            )}
+                          </div>
                         </div>
 
                         {ex.sets && ex.sets.length > 0 && (
