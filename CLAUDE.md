@@ -365,6 +365,16 @@ Never stretch content edge-to-edge. Widgets are sized to their content, not the 
 - Page background is `bg-canvas` (#EDE4D5, soft warm cream); cards stay white for contrast.
 - **Exception — data-dense dashboards on large monitors**: a content column capped at `max-w-4xl` next to a fixed-width side rail leaves a large dead zone on 2xl+ (2450px-class) monitors. For these (e.g. Training → Health), drop the cap at `2xl:` (`2xl:max-w-none 2xl:flex-1`) so the column grows to fill the remaining flex space instead of leaving it empty — grids inside can also add a `2xl:grid-cols-*` step. Still left-aligned/content-sized below 2xl; this only kicks in once there's real estate to fill.
 
+### Width Standard — 6 rules (MANDATORY, user-approved 2026-07-18)
+The complaint that produced this: tiny data stretched wall-to-wall on big monitors. These make "content-sized" **measurable** so it never regresses. When you build/touch ANY list, card grid, control, or chart, it must satisfy these; the compliance test below is the check. (Piloted on Training; roll out page-by-page — Home → Media → Work — only on explicit request per page.)
+- **W1 · Container-relative, not viewport.** A widget adapts to its OWN box width, not the window — use `@container` + `@sm/@3xl/@4xl:` variants (needs the `@tailwindcss/container-queries` plugin, already installed), not `sm:/lg:` on inner widgets. Lets the same component be dense in a narrow slot and rich in a wide one.
+- **W2 · Column flow, fixed widths.** List/card collections flow into content-width columns via `grid-cols-[repeat(auto-fill,minmax(MIN,MAX))]` + `justify-start`; the column COUNT derives from available width, rows never stretch. Caps: dense one-line rows `15–18rem`, cards `19–22rem`, large cards `24–28rem`. A single content row must never exceed **40rem (640px)**.
+- **W3 · Controls are content-sized.** Text/search inputs `≤ max-w-md` (512px); info banners `w-fit`; a one-line control is never full-width. A 1900px search box is a bug.
+- **W4 · Charts: aspect-locked + capped.** A chart keeps its aspect ratio and caps its width by role (small trend `max-w-2xl`, primary `max-w-4xl` = 896px). Growing a chart = grow proportionally, never smear to full width.
+- **W5 · Detail on demand.** Secondary info (GIFs, history, explanations) lives in a hover/tap peek, not permanent screen area (desktop hover + mobile tap, per the mobile-fallback rule).
+- **W6 · Measurable.** Verified at 393 / 1469 / 2450px: no horizontal overflow at any width; on 2450px no single-line content > 640px, no auto-fill column > 384px, no text input > 512px, no chart svg > 896px. The repeatable audit script is `scratchpad/e2e-standard.mjs` (generic selectors, runs against any route) — rerun it when applying the standard to a new page.
+- **Density toggle was tried and REJECTED** (Comfortable/Compact/Dense) — it changed the VERTICAL plane; the complaint was horizontal. Don't reintroduce it.
+
 ### Other rules
 - Date format: always `en-GB` (DD/MM/YYYY). Never `en-US`.
 - Never hardcode `amber-*` — use `accent-*`.

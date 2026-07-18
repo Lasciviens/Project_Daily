@@ -66,17 +66,22 @@ export function DailyPage() {
         />
         {context && <span className="text-xs text-accent-600 font-medium hidden sm:inline">{context}</span>}
 
-        <div className="flex gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl overflow-x-auto scrollbar-none">
-          <button onClick={() => { setViewDate(addDays(new Date(), -1)); setMode('day') }} className={tabBtn(dayTab === 'yesterday')}>Yesterday</button>
-          <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={tabBtn(dayTab === 'today')}>Today</button>
-          <button onClick={() => { setViewDate(addDays(new Date(), 1)); setMode('day') }} className={tabBtn(dayTab === 'tomorrow')}>Tomorrow</button>
-          <button onClick={() => setMode('week')} className={tabBtn(mode === 'week')}>Week</button>
-          <button onClick={() => setMode('month')} className={tabBtn(mode === 'month')}>Month</button>
+        {/* Both tab groups are anchored to the RIGHT as one cluster (ml-auto)
+            so the variable-width date + context text on the left can grow/
+            shrink between periods WITHOUT nudging the tabs sideways (the
+            "sekmeler kayıyor" bug). PersonalTabs sits at the far right and
+            stays there across Daily/Shop/Recipes (PersonalLayout right-aligns
+            its own bar to match — no left↔right jump between pages). */}
+        <div className="ml-auto flex items-center gap-3">
+          <div className="flex gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl overflow-x-auto scrollbar-none">
+            <button onClick={() => { setViewDate(addDays(new Date(), -1)); setMode('day') }} className={tabBtn(dayTab === 'yesterday')}>Yesterday</button>
+            <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={tabBtn(dayTab === 'today')}>Today</button>
+            <button onClick={() => { setViewDate(addDays(new Date(), 1)); setMode('day') }} className={tabBtn(dayTab === 'tomorrow')}>Tomorrow</button>
+            <button onClick={() => setMode('week')} className={tabBtn(mode === 'week')}>Week</button>
+            <button onClick={() => setMode('month')} className={tabBtn(mode === 'month')}>Month</button>
+          </div>
+          <PersonalTabs />
         </div>
-
-        {/* Personal group tabs live in THIS row now (far right) instead of
-            their own row above the page — one header row total. */}
-        <div className="ml-auto"><PersonalTabs /></div>
       </div>
 
       {mode === 'day' && <DaySection date={viewDate} onDayClick={handleDayClick} />}
