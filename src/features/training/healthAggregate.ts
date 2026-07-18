@@ -183,21 +183,27 @@ function sessionMs(s: unknown): number | null {
 // partial "Since Last Sync" delivery), never two real simultaneous sleeps.
 // Sessions with unparseable times are kept as-is (can't prove overlap).
 //
-// Live-verified example (night of 2026-07-17): the export delivered BOTH the
-// whole night (02:00→07:27, totalSleep 4.94h, awake 0.50h — the interruption
-// is already inside the window as `awake`) AND a subset re-report of its tail
-// (03:36→07:27, 3.34h, same 0.50h awake). One cluster → keep 4.94h. An
-// interrupted night is therefore ONE session window with awake-time counted,
-// not two windows; genuinely separate sessions (evening nap + night sleep)
-// don't overlap and still SUM correctly.
+// ⚠️ KNOWN LIMITATION — this merge is NOT the whole story for Apple/HAE sleep.
+// Live case (night of 2026-07-17): DB had ONLY two overlapping rows,
+// 02:00→07:27/4.94h and its subset 03:36→07:27/3.34h, BOTH deep=0. Keep-
+// longest yields 4.94h and the site showed 4h56m — but Apple Health's own UI
+// showed 8h8m for that night, with all the Deep sleep in an EARLIER session
+// (~21:45→~01:00) that NEVER arrived in our DB. So the low number was a DATA-
+// DELIVERY gap (HAE's aggregate + "Since Last Sync" mode split the night and
+// dropped the early piece), not a merge win. Two aggregate rows carry no
+// per-segment timestamps, so a lost sub-session is unrecoverable from them —
+// the merge can only dedupe what actually arrived. Mitigations: run HAE's
+// "Previous 7 Days" reconciliation automation (re-sends a complete night as
+// ONE row, as the clean 2026-07-18 00:51→09:55/8.64h row proves), and/or move
+// sleep to Fitbit (below). Do NOT "fix" this by summing overlapping rows —
+// that double-counts the genuine duplicate-redelivery case.
 //
-// ⚠️ FITBIT NOTE (future ingestion source): Fitbit/Google Health API sleep
-// logs may behave differently — Fitbit reports one "main sleep" log plus
-// separate NON-overlapping nap logs (those must keep summing), stages use
-// light/deep/rem/wake naming, and its own sleep-score/efficiency come from
-// the API rather than being derived here. Re-verify this merge logic against
-// real Fitbit payloads before trusting it for that source; don't assume the
-// Apple-Health duplicate-window pattern carries over.
+// ⚠️ FITBIT NOTE (the durable fix — Fitbit becomes the sleep source): Google
+// Health API returns sleep as timestamped stage SEGMENTS (stages[],
+// light/deep/rem/wake), so the true night is reconstructable with no aggregate
+// ambiguity. It also reports one "main sleep" log plus separate NON-overlapping
+// nap logs (those must keep summing) and exposes its own efficiency. Re-verify
+// this merge against real Fitbit payloads before trusting it for that source.
 function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
   interface Sess { p: HealthMetric; start: number; end: number; total: number }
   const timed: Sess[] = []
