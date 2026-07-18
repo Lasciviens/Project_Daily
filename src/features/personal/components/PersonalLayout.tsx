@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
 
 // Shared shell for the Personal nav group (Daily/Shop/Recipes). Routes are
 // unchanged (/daily, /shop, /recipes) so every existing deep link keeps
@@ -6,7 +6,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 const TABS = [
   { to: '/daily',   label: 'Daily'   },
   { to: '/shop',    label: 'Shop'    },
-  { to: '/recipes', label: 'Recipes' },
+  { to: '/recipes', label: 'Food' },
 ]
 
 // Exported so DailyPage can embed the group tabs INSIDE its own single
@@ -32,25 +32,18 @@ export function PersonalTabs() {
 }
 
 export function PersonalLayout() {
-  const { pathname } = useLocation()
-  // Daily renders PersonalTabs inside its own compact header row — showing
-  // the standalone bar too would duplicate it and waste a whole row.
-  const showBar = !pathname.startsWith('/daily')
-
+  // The STANDARD for the Personal tabs: they render INSIDE each page's own
+  // first header row, far right (Daily, Shop and Recipes all do this) — the
+  // old standalone bar here cost a whole row and pushed page headings down
+  // one line ("Recipes başlığı neden bir satır aşağıda"). Same spot on every
+  // page, no layout jump between them.
+  //
   // h-full (not a vh/dvh calc) so this resolves against <main>'s own
   // computed flex height, which already accounts for the mobile bottom tab
   // bar's reserved padding — a hardcoded vh subtraction here would ignore
   // that reservation and run this content's tail under the fixed tab bar.
   return (
     <div className="h-full flex flex-col">
-      {showBar && (
-        // Right-aligned to match DailyPage's own far-right PersonalTabs, so
-        // the Daily/Shop/Recipes tabs stay in the SAME spot across all three
-        // pages instead of jumping left↔right on navigation.
-        <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 pt-4 flex justify-end">
-          <PersonalTabs />
-        </div>
-      )}
       {/* overflow-y-auto (not hidden): Daily/Recipes are plain page-flow content
           that need the wrapper to scroll; Shop manages its own fixed h-full
           two-pane layout internally and fits exactly, so this never double-scrolls. */}

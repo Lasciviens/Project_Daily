@@ -3,6 +3,7 @@ import { useShopCategories, useShopItems } from '../hooks/useShop'
 import { ShopAIBox } from '../components/ShopAIBox'
 import { ShopItemCard } from '../components/ShopItemCard'
 import { AddShopItemModal } from '../components/AddShopItemModal'
+import { PersonalTabs } from '../../personal/components/PersonalLayout'
 
 // Rendered inside PersonalLayout's flex-1 Outlet slot — h-full (not a
 // viewport calc) so it exactly fills whatever height that slot has left
@@ -44,17 +45,22 @@ export function ShopPage() {
 
       {/* Right pane — categories + wishlist, its own scroll */}
       <div className="order-1 sm:order-none flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
           <div>
             <h1 className="text-xl font-bold text-ink-900">Shop</h1>
             <p className="text-xs text-ink-400 mt-0.5">Wishlist — things you're planning to buy</p>
           </div>
-          <button
-            onClick={() => setAddOpen(true)}
-            className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors flex-shrink-0"
-          >
-            + Add item
-          </button>
+          {/* PersonalTabs live in each page's FIRST header row, far right —
+              same spot on Daily/Shop/Food, no extra row, no jumping. */}
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={() => setAddOpen(true)}
+              className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors flex-shrink-0"
+            >
+              + Add item
+            </button>
+            <PersonalTabs />
+          </div>
         </div>
 
         {/* Top-category filter pills */}

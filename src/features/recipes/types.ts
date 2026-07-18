@@ -1,26 +1,73 @@
 export type MacroMode = 'manual' | 'from_ingredients'
 
+export type FoodCategory = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'supplement'
+export type MealSlot = FoodCategory
+
 export interface IngredientLibraryItem {
-  id:         string
-  user_id:    string
-  name:       string
-  unit:       string
-  calories:   number | null   // per 100g
-  protein_g:  number | null   // per 100g
-  carbs_g:    number | null   // per 100g
-  fat_g:      number | null   // per 100g
-  sugar_g:    number | null   // per 100g
-  created_at: string
+  id:            string
+  user_id:       string
+  name:          string
+  unit:          string
+  calories:      number | null   // per 100g
+  protein_g:     number | null   // per 100g
+  carbs_g:       number | null   // per 100g
+  fat_g:         number | null   // per 100g
+  fiber_g:       number | null   // per 100g
+  sugar_g:       number | null   // per 100g
+  serving_label: string | null   // e.g. '1 scoop'
+  serving_grams: number | null   // grams that label equals
+  created_at:    string
 }
 
 export interface CreateIngredientLibraryItemInput {
-  name:       string
-  unit?:      string
-  calories?:  number | null
-  protein_g?: number | null
-  carbs_g?:   number | null
-  fat_g?:     number | null
-  sugar_g?:   number | null
+  name:           string
+  unit?:          string
+  calories?:      number | null
+  protein_g?:     number | null
+  carbs_g?:       number | null
+  fat_g?:         number | null
+  fiber_g?:       number | null
+  sugar_g?:       number | null
+  serving_label?: string | null
+  serving_grams?: number | null
+}
+
+// One diary row — what was ACTUALLY eaten (vs recipe_meal_plans = the plan).
+// Macros are a SNAPSHOT taken at log time; editing the library later never
+// rewrites history (migration 053).
+export interface FoodLogEntry {
+  id:                    string
+  user_id:               string
+  date:                  string
+  meal_slot:             MealSlot
+  library_ingredient_id: string | null
+  recipe_id:             string | null
+  custom_title:          string | null
+  quantity:              number | null
+  unit:                  string | null
+  calories:              number | null
+  protein_g:             number | null
+  carbs_g:               number | null
+  fat_g:                 number | null
+  fiber_g:               number | null
+  sugar_g:               number | null
+  created_at:            string
+}
+
+export interface FoodLogEntryInput {
+  date:                   string
+  meal_slot:              MealSlot
+  library_ingredient_id?: string | null
+  recipe_id?:             string | null
+  custom_title?:          string | null
+  quantity?:              number | null
+  unit?:                  string | null
+  calories?:              number | null
+  protein_g?:             number | null
+  carbs_g?:               number | null
+  fat_g?:                 number | null
+  fiber_g?:               number | null
+  sugar_g?:               number | null
 }
 
 export interface RecipeIngredient {
@@ -51,6 +98,7 @@ export interface Recipe {
   image_url:    string | null
   source_url:   string | null
   times_cooked: number
+  category:     FoodCategory | null
   created_at:   string
   updated_at:   string
 }
@@ -67,8 +115,6 @@ export interface IngredientDraft {
   note:                  string | null
   library_ingredient_id: string | null
 }
-
-export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack'
 
 export interface MealPlanEntry {
   id:                    string
@@ -112,5 +158,6 @@ export interface RecipeInput {
   sugar_g?:      number | null
   image_url?:    string | null
   source_url?:   string | null
+  category?:     FoodCategory | null
   ingredients:   IngredientDraft[]
 }

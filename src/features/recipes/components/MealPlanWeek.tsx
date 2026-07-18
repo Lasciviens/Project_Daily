@@ -5,8 +5,8 @@ import { AssignMealModal } from './AssignMealModal'
 import { DateNav } from '../../../shared/components/DateNav'
 import type { MealSlot, MealPlanEntry } from '../types'
 
-const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack']
-const SLOT_LABEL: Record<MealSlot, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' }
+const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack', 'supplement']
+const SLOT_LABEL: Record<MealSlot, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack', supplement: 'Suppl.' }
 
 interface CellTarget { date: string; slot: MealSlot; entry: MealPlanEntry | null }
 

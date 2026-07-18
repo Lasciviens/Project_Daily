@@ -46,6 +46,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
   const [instructions, setInstructions] = useState('')
   const [description,  setDescription]  = useState('')
   const [macroMode,    setMacroMode]    = useState<MacroMode>('manual')
+  const [category,     setCategory]     = useState<'' | 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'supplement'>('')
   const [calories,     setCalories]     = useState('')
   const [protein,      setProtein]      = useState('')
   const [carbs,        setCarbs]        = useState('')
@@ -73,6 +74,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
       setInstructions(recipe.instructions ?? '')
       setDescription(recipe.description ?? '')
       setMacroMode(recipe.macro_mode)
+      setCategory(recipe.category ?? '')
       setCalories(recipe.calories?.toString() ?? '')
       setProtein(recipe.protein_g?.toString() ?? '')
       setCarbs(recipe.carbs_g?.toString() ?? '')
@@ -181,6 +183,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
       fat_g: numOrNull(fat), sugar_g: numOrNull(sugar),
       source_url: sourceUrl.trim() || null,
       image_url: imageUrl.trim() || null,
+      category: category || null,
       ingredients: ingredients.filter(i => i.name.trim()),
     }
     setSaving(true)
@@ -212,6 +215,12 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
           <div className="px-5 py-4 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Recipe title" autoFocus className={inputCls + ' mr-2'} />
+              <select value={category} onChange={e => setCategory(e.target.value as typeof category)}
+                className="min-h-[44px] px-2 text-sm border border-ink-200 rounded-xl bg-cream-50 text-ink-700 flex-shrink-0 capitalize"
+                title="Category">
+                <option value="">category?</option>
+                {(['breakfast', 'lunch', 'dinner', 'snack', 'supplement'] as const).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
               <button type="button" onClick={() => setPasteOpen(o => !o)}
                 className="flex-shrink-0 text-xs text-accent-600 hover:text-accent-700 min-h-[44px] px-2 whitespace-nowrap">
                 ✨ Paste recipe

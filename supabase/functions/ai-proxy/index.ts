@@ -1698,6 +1698,12 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: 'Reusable ingredient catalog with macros per 100g.',
     columns: 'id, name(unique per user), unit(default g), calories, protein_g, carbs_g, fat_g, sugar_g (per 100g), created_at',
   },
+  food_log_entries: {
+    access: 'rw',
+    purpose: "The FOOD DIARY — what the user ACTUALLY ate (vs recipe_meal_plans = the plan). When the user says they ate something ('100g tavuk yedim'), insert here with macros resolved from recipe_ingredient_library (per-100g × grams/100) as a SNAPSHOT. Multiple rows per slot are normal.",
+    columns: "id, date(date), meal_slot(breakfast|lunch|dinner|snack|supplement), library_ingredient_id(uuid nullable), recipe_id(uuid nullable), custom_title(text nullable), quantity(numeric — grams for ingredients), unit(text, usually 'g'), calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g (numeric snapshot at log time), created_at",
+    rules: 'At least one of library_ingredient_id/recipe_id/custom_title must be set. Compute and store the macro snapshot at insert time — never leave macros null when the ingredient has per-100g values.',
+  },
   recipe_meal_plans: {
     access: 'rw',
     purpose: 'Weekly meal plan — one entry per (date, meal_slot).',
