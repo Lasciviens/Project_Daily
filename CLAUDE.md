@@ -66,6 +66,29 @@ this checks for updates immediately (and periodically after) and reloads automat
 one is found, so deploys now actually reach the browser without the user manually clearing
 site data or reinstalling the PWA.
 
+**Mobile app-shell (scroll + gestures, real-device PTR fix):** the document NEVER scrolls —
+`html/body/#root` are fixed-height (index.css) and `<main>` (layout.tsx) is THE scroll
+container (Personal group additionally scrolls in PersonalLayout's nested container, as
+before). This is what made the custom pull-to-refresh reliable on a real iPhone: with the
+document as scroller, iOS decides gesture ownership on the FIRST touchmove — one uncancelled
+move commits the root rubber-band and flips `e.cancelable` false for the rest of the gesture,
+so the pull only worked when the first move happened to be cleanly downward. `usePullToRefresh`
+also gained a slop+axis-lock state machine (horizontal swipes on snap strips are never
+hijacked; pull distance re-anchors at commit) and an `isReady` state (indicator flips to solid
+accent = "release to refresh"). Route changes reset `main.scrollTop` (useLayoutEffect in
+Layout, pre-paint so view-transition snapshots are already at top). **Tab navigation slides
+directionally**: BottomTabBar passes `forward`/`back` (tab order) → `useViewTransitionNav`
+stamps `data-vt-dir` on `<html>` → slide keyframes in index.css; header/tab-bar have their own
+`view-transition-name` so the bars stay put while content slides. ALL view-transition CSS
+lives OUTSIDE `@layer` (same Tailwind purge gotcha as the recharts rules — the original
+crossfade rule inside `@layer base` was silently purged from every build). Touch polish:
+`-webkit-tap-highlight-color: transparent` + `touch-action: manipulation` on interactive
+elements, `:active` scale baked into `.btn-*`/`.card-interactive`, `animate-tabPop` icon pop
+on the active tab. iOS PWA is edge-to-edge (`black-translucent` status bar + safe-area top
+padding on the header); `theme-color`/manifest colors match the cream design (the old
+`#ef4444` red was legacy). Pages sizing to the viewport use `min-h-full` (valid now that
+`<main>` has definite height) — never `min-h-[calc(100vh-56px)]`.
+
 ---
 
 ## Routes

@@ -19,10 +19,18 @@
     </script>
     <link rel="icon" type="image/svg+xml" href="/Project_Daily/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#ef4444" />
+    <!-- theme-color tints the browser/PWA chrome (Android status bar, Safari
+         tab bar) — matched to the header surface (cream-50) per scheme; the
+         old #ef4444 red predated the amber/cream design entirely. -->
+    <meta name="theme-color" content="#FEFCF9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#201D17" media="(prefers-color-scheme: dark)" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- black-translucent: the installed PWA draws edge-to-edge under the iOS
+         status bar (clock/battery float over the app's own header background
+         — the native-app look). The header adds pt-[env(safe-area-inset-top)]
+         so its content never sits under the status bar text (layout.tsx). -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Board" />
     <link rel="apple-touch-icon" href="/Project_Daily/favicon.svg" />
     <title>Lasci's Board</title>

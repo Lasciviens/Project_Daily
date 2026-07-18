@@ -1,3 +1,4 @@
+import { useLayoutEffect } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
@@ -34,14 +35,30 @@ export function Layout() {
     predicate: query => query.queryKey[0] !== 'dailyBriefing',
   }))
 
+  // <main> is the app's scroll container (not the document — see the
+  // app-shell notes in index.css/usePullToRefresh.ts), so react-router no
+  // longer gets even the browser's default anywhere near scroll reset:
+  // without this, switching tabs kept the previous page's scroll offset
+  // (land on Home halfway down after scrolling Games). useLayoutEffect (runs
+  // before paint) so a view transition's "new" snapshot is taken already
+  // scrolled to top — no visible jump inside the animation.
+  const { pathname } = useLocation()
+  useLayoutEffect(() => {
+    pullToRefresh.containerProps.ref.current?.scrollTo({ top: 0 })
+  }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div className="min-h-screen flex flex-col bg-canvas">
+    <div className="h-full flex flex-col bg-canvas overflow-hidden">
       <Nav />
       <main
-        className="flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
+        className="flex-1 min-h-0 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
         {...pullToRefresh.containerProps}
       >
-        <PullToRefreshIndicator pullDistance={pullToRefresh.pullDistance} isRefreshing={pullToRefresh.isRefreshing} />
+        <PullToRefreshIndicator
+          pullDistance={pullToRefresh.pullDistance}
+          isRefreshing={pullToRefresh.isRefreshing}
+          isReady={pullToRefresh.isReady}
+        />
         <Outlet />
       </main>
       <BottomTabBar />
@@ -55,17 +72,26 @@ export function Layout() {
 
 // ─── Pull-to-refresh indicator ──────────────────────────────────────────────
 // Mobile only (sm:hidden — pull gestures never fire from desktop mouse input
-// anyway, this just also hides the dot visually). Grows with pull distance,
-// spins in place once the refresh threshold is crossed and a refetch is
+// anyway, this just also hides the dot visually). Follows the finger with a
+// rotation cue, flips to solid accent once the release threshold is crossed
+// (isReady — "letting go now will refresh"), spins while the refetch is
 // actually in flight.
-function PullToRefreshIndicator({ pullDistance, isRefreshing }: { pullDistance: number; isRefreshing: boolean }) {
+function PullToRefreshIndicator({ pullDistance, isRefreshing, isReady }: {
+  pullDistance: number
+  isRefreshing: boolean
+  isReady: boolean
+}) {
   return (
     <div
-      className="sm:hidden fixed left-1/2 -translate-x-1/2 z-30 flex items-center justify-center w-9 h-9 rounded-full bg-cream-50 shadow-md border border-ink-200 text-accent-600 transition-transform"
+      className={`sm:hidden fixed left-1/2 -translate-x-1/2 z-30 flex items-center justify-center w-9 h-9 rounded-full shadow-md border transition-[transform,background-color,color] duration-150 ${
+        isReady || isRefreshing
+          ? 'bg-accent-500 border-accent-500 text-white'
+          : 'bg-cream-50 border-ink-200 text-accent-600'
+      }`}
       style={{
-        top: '56px',
+        top: 'calc(56px + env(safe-area-inset-top))',
         opacity: pullDistance > 4 || isRefreshing ? 1 : 0,
-        transform: `translate(-50%, ${Math.max(pullDistance, isRefreshing ? 44 : 0) - 36}px)`,
+        transform: `translate(-50%, ${Math.max(pullDistance, isRefreshing ? 44 : 0) - 36}px) scale(${isRefreshing ? 1 : Math.min(0.6 + pullDistance / 88, 1.05)})`,
       }}
     >
       <span className={isRefreshing ? 'animate-spin' : ''} style={{
@@ -100,28 +126,37 @@ const TABS: { to: string; label: string; icon: LucideIcon; match: string[] }[] =
 function BottomTabBar() {
   const location = useLocation()
   const navigateWithTransition = useViewTransitionNav()
+  const activeIndex = TABS.findIndex(tab => tab.match.includes(location.pathname))
 
   return (
-    <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-cream-50/95 backdrop-blur-lg border-t border-ink-200 pb-[env(safe-area-inset-bottom)]">
-      {TABS.map(tab => {
-        const isActive = tab.match.includes(location.pathname)
+    <nav className="vt-pin-tabbar sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-cream-50/95 backdrop-blur-lg border-t border-ink-200 pb-[env(safe-area-inset-bottom)] select-none">
+      {TABS.map((tab, index) => {
+        const isActive = index === activeIndex
         const Icon = tab.icon
         return (
           <NavLink
             key={tab.to}
             to={tab.to}
             onClick={e => {
-              // View Transitions API gives a native-feeling crossfade between
-              // tabs (see useViewTransitionNav) — no-ops to a plain navigation
-              // on browsers that don't support it (pre-iOS-18 Safari etc).
+              // View Transitions API slides the page toward the tapped tab
+              // (see useViewTransitionNav + index.css) — no-ops to a plain
+              // navigation on browsers without the API (pre-iOS-18 Safari).
+              // Direction = tab order: tapping a tab to the RIGHT of the
+              // current one slides content in from the right, and vice
+              // versa, matching how native tab bars communicate direction.
               e.preventDefault()
-              navigateWithTransition(tab.to)
+              navigateWithTransition(tab.to, activeIndex >= 0 && index < activeIndex ? 'back' : 'forward')
             }}
             className={`flex-1 min-h-[56px] flex flex-col items-center justify-center gap-0.5 transition-colors duration-150 press-feedback ${
               isActive ? 'text-accent-600' : 'text-ink-400'
             }`}
           >
-            <Icon size={22} strokeWidth={isActive ? 2.25 : 1.75} fill={isActive ? 'currentColor' : 'none'} fillOpacity={isActive ? 0.15 : 0} />
+            {/* animate-tabPop replays its once-off scale bounce each time
+                this wrapper (re)gains the class — i.e. whenever this tab
+                becomes the active one. */}
+            <span className={isActive ? 'animate-tabPop inline-flex' : 'inline-flex'}>
+              <Icon size={22} strokeWidth={isActive ? 2.25 : 1.75} fill={isActive ? 'currentColor' : 'none'} fillOpacity={isActive ? 0.15 : 0} />
+            </span>
             <span className={`text-[10px] leading-none ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
           </NavLink>
         )
@@ -161,7 +196,12 @@ function Nav() {
     }`
 
   return (
-    <header className="sticky top-0 z-40 bg-cream-50/80 backdrop-blur border-b border-ink-200">
+    // pt-[env(safe-area-inset-top)]: with apple-mobile-web-app-status-bar-style
+    // "black-translucent" (index.html) the installed PWA draws edge-to-edge
+    // under the iOS status bar — this padding keeps the header's content below
+    // the clock/battery while the header's own background fills the gap, the
+    // standard native-app look. 0 everywhere else (browser tabs, desktop).
+    <header className="vt-pin-header sticky top-0 z-40 bg-cream-50/80 backdrop-blur border-b border-ink-200 pt-[env(safe-area-inset-top)]">
       <div className="w-full px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">

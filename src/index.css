@@ -78,8 +78,31 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* App-shell scroll architecture: the DOCUMENT never scrolls — <main>
+     (src/app/layout.tsx) is the scroll container instead. This is what
+     makes the custom pull-to-refresh reliable on a real iPhone: when the
+     document was the scroller, iOS decided gesture ownership on the first
+     touchmove and committed its own root rubber-band before our
+     preventDefault could win (see usePullToRefresh.ts). Login/Reset render
+     outside the app shell and still use min-h-screen — height (not
+     max-height) on #root leaves them free to overflow normally.
+     100dvh after 100vh: plain cascade fallback for browsers without dvh. */
+  html, body {
+    height: 100%;
+  }
   #root {
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* Kill the grey WebKit tap flash + the 300ms double-tap-zoom delay on
+     tappable things — the two most recognizable "this is a website, not an
+     app" tells on mobile. `manipulation` still allows pan + pinch-zoom. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, a, input, select, textarea, [role='button'] {
+    touch-action: manipulation;
   }
 
   /* Suppresses the browser's own native pull-to-refresh/bounce so the
@@ -131,15 +154,6 @@
     transform: scale(0.96);
     opacity: 0.85;
   }
-
-  /* Bottom-tab-bar route crossfade via the View Transitions API (see
-     useViewTransitionNav.ts) — a no-op declaration on browsers that don't
-     support the API at all (they just navigate instantly, same as before). */
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: 180ms;
-    animation-timing-function: ease-out;
-  }
 }
 
 @layer components {
@@ -165,6 +179,20 @@
            transition-colors duration-150 cursor-pointer border-none bg-transparent text-sm min-h-[44px];
   }
 
+  /* Press feedback baked into the shared button/card primitives — the
+     :active scale cue every native control has, without needing every call
+     site to remember .press-feedback. transform is additionally transitioned
+     so the release springs back instead of snapping. */
+  .btn-primary, .btn-secondary, .btn-ghost, .card-interactive {
+    transition-property: color, background-color, border-color, box-shadow, transform;
+  }
+  .btn-primary:active, .btn-secondary:active, .btn-ghost:active {
+    transform: scale(0.97);
+  }
+  .card-interactive:active {
+    transform: scale(0.985);
+  }
+
   .input {
     @apply w-full bg-cream-50 border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900
            placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
@@ -185,4 +213,59 @@
 .recharts-wrapper *:focus,
 .recharts-surface:focus {
   outline: none !important;
+}
+
+/* ── Route transitions (View Transitions API) ──────────────────────────────
+   DELIBERATELY OUTSIDE any @layer for the same reason as the recharts rules
+   above: ::view-transition-* pseudo-elements and html[data-vt-dir] only
+   exist at runtime, never in source files, so Tailwind would tree-shake
+   these out of any @layer block (the original crossfade rule lived in
+   @layer base and was silently purged from every build — the crossfade
+   users saw was just the API's built-in default, not our timing).
+
+   useViewTransitionNav.ts stamps data-vt-dir="forward|back" on <html> for
+   bottom-tab-bar navigation (direction = tab order), giving the incoming
+   page a native-app horizontal slide; navigations without a direction keep
+   a plain quick crossfade. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+  animation-timing-function: ease-out;
+}
+html[data-vt-dir] ::view-transition-old(root) {
+  animation: vt-fade-out 160ms ease-out both;
+}
+html[data-vt-dir='forward'] ::view-transition-new(root) {
+  animation: vt-in-right 220ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+html[data-vt-dir='back'] ::view-transition-new(root) {
+  animation: vt-in-left 220ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+@keyframes vt-fade-out {
+  to { opacity: 0; }
+}
+@keyframes vt-in-right {
+  from { opacity: 0; transform: translateX(28px); }
+}
+@keyframes vt-in-left {
+  from { opacity: 0; transform: translateX(-28px); }
+}
+
+/* The fixed chrome (top header, bottom tab bar) gets its OWN
+   view-transition-name so it's snapshotted separately from the sliding
+   page — identical before/after snapshots crossfade invisibly, i.e. the
+   bars visually stay put while only the content slides, exactly like a
+   native tab switch. (Classes referenced from layout.tsx.) */
+.vt-pin-header { view-transition-name: app-header; }
+.vt-pin-tabbar { view-transition-name: app-tabbar; }
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-old(app-header),
+  ::view-transition-new(app-header),
+  ::view-transition-old(app-tabbar),
+  ::view-transition-new(app-tabbar) {
+    animation: none !important;
+  }
 }
