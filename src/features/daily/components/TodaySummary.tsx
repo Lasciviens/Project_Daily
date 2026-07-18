@@ -26,7 +26,7 @@ export function TodaySummary({ date }: { date: Date }) {
       <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400 mb-2">
         {isToday(date) ? 'Today at a glance' : 'At a glance'}
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 stagger-in">
         <NutritionCard date={dateStr} />
         <TrainingCard date={dateStr} />
         <WatchNextCard date={dateStr} />

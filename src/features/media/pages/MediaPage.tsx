@@ -39,7 +39,7 @@ export function MediaPage() {
       <div className="flex gap-4 items-start">
 
         {/* ── Main content ── */}
-        <div className="flex-1 min-w-0 lg:max-w-[calc(100%-22rem)]">
+        <div className="flex-1 min-w-0 lg:max-w-[calc(100%-22rem)] stagger-in">
 
           {/* Top section with scoped backdrop */}
           <div className="relative overflow-hidden rounded-xl mb-4 p-4 bg-cream-50/40">

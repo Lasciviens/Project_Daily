@@ -78,13 +78,14 @@ export function HomePage() {
           single DOM-ordered stack (Left col → Center col → Right col), which
           buried these two behind Currency/Projects/Training/Games — moved
           here instead of reshuffling the desktop columns themselves. */}
-      <div className="xl:hidden space-y-4">
+      {/* stagger-in: mobile-only card cascade on entry (see index.css) */}
+      <div className="xl:hidden space-y-4 stagger-in">
         <DailyBriefing />
         <WeatherWidget />
       </div>
 
       {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
-      <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-4">
+      <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-4 stagger-in">
         <CurrencyWidget />
         <ProjectsHomeWidget />
         <TrainingHomeWidget />
@@ -92,7 +93,7 @@ export function HomePage() {
       </div>
 
       {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
-      <div className="flex-1 min-w-0 space-y-4">
+      <div className="flex-1 min-w-0 space-y-4 stagger-in">
         {/* AI morning briefing — leads the page on desktop; mobile gets its
             own copy above (see the xl:hidden block) instead of this one. */}
         <div className="hidden xl:block">
@@ -138,7 +139,7 @@ export function HomePage() {
       </div>
 
       {/* ── RIGHT COLUMN ────────────────────────────────────────────────── */}
-      <div className="w-full xl:w-[380px] xl:flex-shrink-0 space-y-4">
+      <div className="w-full xl:w-[380px] xl:flex-shrink-0 space-y-4 stagger-in">
         <NewsWidget />
         <RecentMediaWidget />
       </div>
