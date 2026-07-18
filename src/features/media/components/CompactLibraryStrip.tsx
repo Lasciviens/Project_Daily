@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { posterUrl } from '../../../integrations/tmdb/client'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { UserMovieEntry, UserTVEntry } from '../types'
 
+interface Item { id: number; title: string; poster_path: string | null; date: string | null }
 interface Group {
   label:   string
-  entries: { id: number; title: string; poster_path: string | null }[]
+  entries: Item[]
 }
 
 interface Props {
@@ -14,59 +16,47 @@ interface Props {
   onOpenDetail: (id: number, type: 'movie' | 'tv') => void
 }
 
+// "Coming soon" is a DATE fact (not yet released), not a manual label. Keeping
+// the two apart was the whole point of the user's request: Wishlist = "want to
+// watch, and it's out"; Coming soon = "not out yet". Deriving it from the
+// release/air date also auto-resolves the old `upcoming` movie status — a film
+// tagged upcoming that has since released simply falls back into Wishlist once
+// its date is in the past, instead of staying pinned under a stale label
+// forever (the previous behaviour, since nothing ever migrated the status).
+// yyyy-mm-dd string compare — no Date parsing needed.
+function isUnreleased(date: string | null): boolean {
+  return !!date && date > todayStr()
+}
+
 export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail }: Props) {
   const [collapsed, setCollapsed] = useState(false)
 
   const groups: Group[] = tab === 'movies'
-    ? [
-        {
-          label:   'Upcoming',
-          entries: movieEntries.filter(e => e.status === 'upcoming')
-            .map(e => ({ id: e.movie.tmdb_id, title: e.movie.title, poster_path: e.movie.poster_path })),
-        },
-        {
-          label:   'Wishlist',
-          entries: movieEntries.filter(e => e.status === 'wishlist')
-            .map(e => ({ id: e.movie.tmdb_id, title: e.movie.title, poster_path: e.movie.poster_path })),
-        },
-        {
-          label:   'Watching',
-          entries: movieEntries.filter(e => e.status === 'watching')
-            .map(e => ({ id: e.movie.tmdb_id, title: e.movie.title, poster_path: e.movie.poster_path })),
-        },
-        {
-          label:   'Completed',
-          entries: movieEntries.filter(e => e.status === 'completed')
-            .map(e => ({ id: e.movie.tmdb_id, title: e.movie.title, poster_path: e.movie.poster_path })),
-        },
-        {
-          label:   'Dropped',
-          entries: movieEntries.filter(e => e.status === 'dropped')
-            .map(e => ({ id: e.movie.tmdb_id, title: e.movie.title, poster_path: e.movie.poster_path })),
-        },
-      ]
-    : [
-        {
-          label:   'Wishlist',
-          entries: tvEntries.filter(e => e.status === 'wishlist')
-            .map(e => ({ id: e.tv_series.tmdb_id, title: e.tv_series.title, poster_path: e.tv_series.poster_path })),
-        },
-        {
-          label:   'Watching',
-          entries: tvEntries.filter(e => e.status === 'watching')
-            .map(e => ({ id: e.tv_series.tmdb_id, title: e.tv_series.title, poster_path: e.tv_series.poster_path })),
-        },
-        {
-          label:   'Paused',
-          entries: tvEntries.filter(e => e.status === 'paused')
-            .map(e => ({ id: e.tv_series.tmdb_id, title: e.tv_series.title, poster_path: e.tv_series.poster_path })),
-        },
-        {
-          label:   'Completed',
-          entries: tvEntries.filter(e => e.status === 'completed')
-            .map(e => ({ id: e.tv_series.tmdb_id, title: e.tv_series.title, poster_path: e.tv_series.poster_path })),
-        },
-      ]
+    ? (() => {
+        const toItem = (e: UserMovieEntry): Item => ({ id: e.movie.tmdb_id, title: e.movie.title, poster_path: e.movie.poster_path, date: e.movie.release_date })
+        // wishlist + the legacy manual `upcoming` status share one pool, then
+        // split purely by whether the film is out yet.
+        const wanted = movieEntries.filter(e => e.status === 'wishlist' || e.status === 'upcoming').map(toItem)
+        return [
+          { label: 'Coming soon', entries: wanted.filter(i => isUnreleased(i.date)) },
+          { label: 'Wishlist',    entries: wanted.filter(i => !isUnreleased(i.date)) },
+          { label: 'Watching',    entries: movieEntries.filter(e => e.status === 'watching').map(toItem) },
+          { label: 'Completed',   entries: movieEntries.filter(e => e.status === 'completed').map(toItem) },
+          { label: 'Dropped',     entries: movieEntries.filter(e => e.status === 'dropped').map(toItem) },
+        ]
+      })()
+    : (() => {
+        const toItem = (e: UserTVEntry): Item => ({ id: e.tv_series.tmdb_id, title: e.tv_series.title, poster_path: e.tv_series.poster_path, date: e.tv_series.first_air_date })
+        const wanted = tvEntries.filter(e => e.status === 'wishlist').map(toItem)
+        return [
+          { label: 'Coming soon', entries: wanted.filter(i => isUnreleased(i.date)) },
+          { label: 'Wishlist',    entries: wanted.filter(i => !isUnreleased(i.date)) },
+          { label: 'Watching',    entries: tvEntries.filter(e => e.status === 'watching').map(toItem) },
+          { label: 'Paused',      entries: tvEntries.filter(e => e.status === 'paused').map(toItem) },
+          { label: 'Completed',   entries: tvEntries.filter(e => e.status === 'completed').map(toItem) },
+          { label: 'Dropped',     entries: tvEntries.filter(e => e.status === 'dropped').map(toItem) },
+        ]
+      })()
 
   const filledGroups = groups.filter(g => g.entries.length > 0)
   if (filledGroups.length === 0) return null

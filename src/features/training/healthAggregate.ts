@@ -158,10 +158,21 @@ function sleepNightKey(p: HealthMetric): string {
 }
 
 // "2026-07-17 02:00:51 +0200" (Health Auto Export's local-time format) → ms.
-// JS Date parses this shape correctly (space before offset included).
+// REAL cross-engine bug: V8 (Chrome/desktop) is lenient and parses this
+// space-separated form directly, but Safari/JavaScriptCore (every iPhone,
+// including the installed PWA) returns Invalid Date for it. When it did,
+// sessionMs returned null → overlapping sleep sessions were treated as
+// "untimed" → NOT overlap-merged → summed, so a single night with a duplicate
+// re-report showed as e.g. 14h on mobile while desktop correctly showed 8.6h.
+// Fix: normalize to strict ISO 8601 ("...T..HH:MM:SS+02:00") first, which
+// every engine parses; fall back to the raw string only if that somehow fails.
 function sessionMs(s: unknown): number | null {
   if (typeof s !== 'string') return null
-  const t = new Date(s).getTime()
+  const iso = s.trim()
+    .replace(' ', 'T')                              // date/time separator
+    .replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')   // " +0200" → "+02:00"
+  let t = new Date(iso).getTime()
+  if (!Number.isFinite(t)) t = new Date(s).getTime()
   return Number.isFinite(t) ? t : null
 }
 

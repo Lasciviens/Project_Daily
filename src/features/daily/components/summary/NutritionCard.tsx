@@ -118,6 +118,32 @@ function SlotRow({ date, slot, label, meal }: {
   )
 }
 
+// −/+ stepper for the calorie/protein goals — the goals move in meaningful
+// increments (kcal by 50, protein by 10) instead of the native number
+// spinner's ±1, which is tedious for values in the hundreds. The field stays
+// directly typeable too; the step attribute makes keyboard ↑/↓ match the
+// buttons. Clamped at 0.
+function GoalStepper({ value, step, onChange, suffix }: {
+  value: number; step: number; onChange: (v: number) => void; suffix: string
+}) {
+  const set = (v: number) => onChange(Math.max(0, v))
+  const btn = 'w-9 h-9 min-h-[36px] rounded-lg border border-ink-200 text-ink-600 hover:border-accent-300 hover:text-accent-600 flex items-center justify-center text-lg leading-none transition-colors select-none'
+  return (
+    <div className="flex items-center gap-1">
+      <button type="button" aria-label={`−${step}`} onClick={() => set(value - step)} className={btn}>−</button>
+      <div className="relative">
+        <input
+          type="number" value={value} min={0} step={step}
+          onChange={e => set(Number(e.target.value) || 0)}
+          className="input w-24 text-sm py-1 text-center pr-9 tabular-nums"
+        />
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-ink-400 pointer-events-none">{suffix}</span>
+      </div>
+      <button type="button" aria-label={`+${step}`} onClick={() => set(value + step)} className={btn}>+</button>
+    </div>
+  )
+}
+
 export function NutritionCard({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
   const { targets, update } = useDayTargets()
@@ -152,18 +178,14 @@ export function NutritionCard({ date }: { date: string }) {
 
       {editing ? (
         <div className="flex flex-col gap-2">
-          <label className="flex items-center justify-between gap-2 text-xs text-ink-600">
-            Calorie goal
-            <input type="number" value={targets.calories} min={0}
-              onChange={e => update({ calories: Number(e.target.value) || 0 })}
-              className="input w-24 text-sm py-1 text-right" />
-          </label>
-          <label className="flex items-center justify-between gap-2 text-xs text-ink-600">
-            Protein goal (g)
-            <input type="number" value={targets.protein} min={0}
-              onChange={e => update({ protein: Number(e.target.value) || 0 })}
-              className="input w-24 text-sm py-1 text-right" />
-          </label>
+          <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
+            <span>Calorie goal</span>
+            <GoalStepper value={targets.calories} step={50} onChange={v => update({ calories: v })} suffix="kcal" />
+          </div>
+          <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
+            <span>Protein goal</span>
+            <GoalStepper value={targets.protein} step={10} onChange={v => update({ protein: v })} suffix="g" />
+          </div>
         </div>
       ) : (
         <>

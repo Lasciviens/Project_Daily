@@ -34,7 +34,7 @@ export function StarRating({ value, onChange, disabled }: Props) {
               <span className="absolute inset-0 flex items-center justify-center text-2xl text-ink-300 select-none">★</span>
               {/* Filled overlay clipped to pct */}
               <span
-                className="absolute inset-0 flex items-center justify-center text-2xl text-yellow-400 select-none overflow-hidden"
+                className="absolute inset-0 flex items-center justify-center text-2xl text-accent-500 select-none overflow-hidden"
                 style={{ width: `${pct}%` }}
               >★</span>
               {/* Hover/click zones — left & right halves */}

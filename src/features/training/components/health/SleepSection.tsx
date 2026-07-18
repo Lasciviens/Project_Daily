@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
 import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions, computeSleepScore, computeSleepEfficiency } from '../../healthAggregate'
@@ -260,7 +260,7 @@ export function SleepSection() {
           {efficiency != null && (
             <StatChip
               value={`${efficiency}%`}
-              label="Verim"
+              label="Efficiency"
               cls={effColor(efficiency)}
               title="Sleep efficiency — % of time in bed actually spent asleep (≥85% is generally good)"
             />
@@ -272,7 +272,7 @@ export function SleepSection() {
           )}
         </div>
         {period === 'day' && !detail && !isLoading && (
-          <p className="text-xs text-ink-400 mt-1">Bu gece için veri yok — ‹ › ile başka bir güne geç veya aşağıdan manuel gir.</p>
+          <p className="text-xs text-ink-400 mt-1">No sleep data for this night — use ‹ › to pick another day, or add it manually below.</p>
         )}
       </div>
 
@@ -358,26 +358,26 @@ export function SleepSection() {
         <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
       </div>
 
-      <div className="h-28">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-            {/* pointerEvents:auto is required or the links inside the tooltip
-                never receive their click (recharts sets the tooltip wrapper to
-                pointer-events:none by default). */}
-            <Tooltip cursor={false} wrapperStyle={{ pointerEvents: 'auto' }} content={makeSleepTooltipContent(sourcesByDate, openCorrectForm, viewDay)} />
-            <Bar dataKey="total" radius={[3, 3, 0, 0]} activeBar={false}>
-              {/* In Day mode the anchored night is highlighted so it reads as
-                  "this is the night shown above"; other bars are context. */}
-              {chartData.map(d => (
-                <Cell key={d.date} fill={period === 'day' && d.date === detailDate ? '#4338ca' : '#6366f1'} fillOpacity={period === 'day' && d.date !== detailDate ? 0.4 : 1} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {/* Day mode shows ONE night — the stage breakdown + session timeline
+          above ARE that night's graph. The multi-bar trend chart is only for
+          Week/Month (in Day mode it read as a week, which is exactly what the
+          user flagged). */}
+      {period !== 'day' && (
+        <div className="h-28">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
+              <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
+              {/* pointerEvents:auto is required or the links inside the tooltip
+                  never receive their click (recharts sets the tooltip wrapper to
+                  pointer-events:none by default). */}
+              <Tooltip cursor={false} wrapperStyle={{ pointerEvents: 'auto' }} content={makeSleepTooltipContent(sourcesByDate, openCorrectForm, viewDay)} />
+              <Bar dataKey="total" radius={[3, 3, 0, 0]} activeBar={false} fill="#6366f1" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       <MetricMiniGrid title="Sleep Extras" metrics={SLEEP_EXTRA_METRICS} />
 
