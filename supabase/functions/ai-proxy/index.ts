@@ -397,6 +397,20 @@ const TOOLS = [
         },
       },
       {
+        name: 'create_hevy_routine',
+        description: 'Create a NEW Hevy routine — writes to the REAL Hevy account (Hevy is the source of truth; the local DB copy is synced automatically). RULES: (1) db_query hevy_exercise_templates FIRST to resolve real exercise_template_id values for every exercise (never invent ids; match by title). (2) Exercise shape: {exercise_template_id, superset_id, rest_seconds, notes, sets:[...]} — set shape: {type:"normal"|"warmup"|"dropset"|"failure", weight_kg, reps} — use rep_range:{start,end} INSTEAD of reps only when a range is wanted, never both, never rep_range:null. NO index/rpe/title keys anywhere. (3) folder_id is optional (db_query hevy_routine_folders if the user names a folder). (4) ALWAYS present the full planned routine (title + every exercise with sets/reps/weights) and get the user\'s explicit confirmation in a prior turn before calling this.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            title:     { type: 'STRING', description: 'New routine title' },
+            notes:     { type: 'STRING', description: 'Routine notes (optional)' },
+            folder_id: { type: 'STRING', description: 'hevy_routine_folders.id (optional — omit for no folder)' },
+            exercises: { type: 'STRING', description: 'JSON array of the COMPLETE exercise list in the shape described above.' },
+          },
+          required: ['title', 'exercises'],
+        },
+      },
+      {
         name: 'get_shop_categories',
         description: 'List all shopping-wishlist categories (top categories and their subcategories). ALWAYS call this before create_shop_category or create_shop_item to check for an existing matching subcategory.',
         parameters: { type: 'OBJECT', properties: {}, required: [] },
@@ -830,6 +844,7 @@ async function dispatch(
     case 'save_transit_stop':    return saveTransitStop(supabase, userId, args)
     case 'save_transit_route':   return saveTransitRoute(supabase, userId, args)
     case 'update_hevy_routine':  return updateHevyRoutine(args, authHeader)
+    case 'create_hevy_routine':  return createHevyRoutine(args, authHeader)
     default:                     return { success: false, error: `Unknown function: ${name}` }
   }
 }
@@ -862,6 +877,35 @@ async function updateHevyRoutine(args: AnyRecord, authHeader?: string): Promise<
   const body = await res.json().catch(() => ({}))
   if (!res.ok) return { success: false, error: body?.error ?? `hevy-api ${res.status}` }
   return { success: true, message: 'Routine updated in Hevy and synced locally.' }
+}
+
+// Creates a routine in the REAL Hevy account via hevy-api (which POSTs to
+// Hevy and upserts the local mirror) — same forwarding pattern as
+// updateHevyRoutine so every documented Hevy payload trap stays handled in
+// ONE place (hevy-api strips null rep_range etc.). Hevy remains the source
+// of truth; writing hevy_routines directly would be reverted by the next sync.
+async function createHevyRoutine(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
+  if (!authHeader) return { success: false, error: 'No auth context for hevy-api call' }
+  let exercises: unknown
+  try {
+    exercises = typeof args.exercises === 'string' ? JSON.parse(args.exercises) : args.exercises
+  } catch {
+    return { success: false, error: 'exercises is not valid JSON' }
+  }
+  if (!Array.isArray(exercises) || exercises.length === 0) {
+    return { success: false, error: 'exercises must be a non-empty array' }
+  }
+  const payload: AnyRecord = { title: args.title, exercises }
+  if (args.notes) payload.notes = args.notes
+  if (args.folder_id) payload.folder_id = args.folder_id
+  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hevy-api`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+    body: JSON.stringify({ action: 'create_routine', payload }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) return { success: false, error: body?.error ?? `hevy-api ${res.status}` }
+  return { success: true, routine_id: body?.routine_id, message: 'Routine created in Hevy and synced locally.' }
 }
 
 async function getMedia(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
@@ -1743,6 +1787,36 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     access: 'ro',
     purpose: 'Recent app error logs (last ~2 days). Use to help the user diagnose "why did X fail?" — the context column holds the payload/API error/route.',
     columns: 'id, message, context(jsonb — action, payload, raw API error, route, user_agent, at), created_at',
+  },
+  pt_assessments: {
+    access: 'ro',
+    purpose: "The AI PT coach's own past daily assessments (Training → Coach). Read to reference/compare earlier coaching advice; new rows are written only by the coach flow itself.",
+    columns: 'id, date(date), feeling(text), note(text), snapshot(text — the training data the coach saw), assessment(text — the reply), model, created_at',
+  },
+  work_notes: {
+    access: 'ro',
+    purpose: "The user's freeform Work-page notes (the Notes card in the Work sidebar).",
+    columns: 'id, content(text), updated_at',
+  },
+  work_weekly_goals: {
+    access: 'ro',
+    purpose: 'Weekly goals from the Work page (This Week card).',
+    columns: 'id, week_start(date), title, done(bool), sort_order, created_at',
+  },
+  work_pinned_links: {
+    access: 'ro',
+    purpose: 'Pinned links from the Work page sidebar.',
+    columns: 'id, title, url, sort_order, created_at',
+  },
+  // dev_requests is rw ON PURPOSE: the user treats it as the app's backlog and
+  // explicitly dictates entries in chat ("bunu not al") — the AI writing a
+  // well-structured row here IS the intended workflow. Same guardrails as
+  // every write: announce before insert, never delete without confirmation.
+  dev_requests: {
+    access: 'rw',
+    purpose: "The user's development backlog for THIS app (bugs/features/ideas noted for future coding sessions). When asked to 'note this down' about the app itself, insert here.",
+    columns: "id, title, description, page(route e.g. /training), category(bug|feature|improvement|integration|longterm|question|other), priority(low|medium|high|urgent), status(open|in_progress|done|dismissed — default open), effort(small|medium|large, nullable), sort_order, created_at, updated_at",
+    rules: 'Write title/description in the language the user used. Default status "open". Never mark done/dismissed unless the user says so.',
   },
 }
 

@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useHevyBodyMeasurements, useUpsertBodyMeasurement } from '../hooks/useHevyBodyMeasurements'
-import { todayStr } from '../../../shared/utils/dateUtils'
+import { useHealthMetricSeries } from '../hooks/useHealthExport'
+import { computeDailySeries } from '../healthAggregate'
+import { todayStr, daysAgoStr } from '../../../shared/utils/dateUtils'
 import { DateInput } from '../../../shared/components/DateInput'
 import { formatTrainingDate } from '../dateFormat'
 import type { HevyBodyMeasurement } from '../types.hevy'
@@ -61,6 +63,18 @@ function blankForm(initial?: HevyBodyMeasurement): { date: string; values: FormV
   return { date: initial ? initial.date : todayStr(), values: base }
 }
 
+// Numeric-only text sanitizer: digits + at most one decimal separator (a
+// typed comma becomes a dot). Used on every measurement field so nothing
+// non-numeric can be entered on web either — and paired with
+// inputMode="decimal" so phones open the numeric keypad directly.
+function sanitizeDecimal(raw: string): string {
+  const cleaned = raw.replace(',', '.').replace(/[^0-9.]/g, '')
+  const firstDot = cleaned.indexOf('.')
+  return firstDot === -1
+    ? cleaned
+    : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '')
+}
+
 interface MeasurementModalProps {
   isOpen:   boolean
   onClose:  () => void
@@ -71,15 +85,43 @@ function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
   const upsert = useUpsertBodyMeasurement()
   const [form, setForm] = useState(() => blankForm(initial))
 
+  // Latest known weight/body-fat from Apple Health (Watch/manual scale syncs
+  // arrive there daily) — offered as one-tap suggestion chips so the values
+  // the app already knows don't have to be retyped. 60-day window, newest
+  // day wins; 'latest'-aggregated like the Body health section.
+  const today = todayStr()
+  const { data: weightPts = [] } = useHealthMetricSeries('weight_body_mass', daysAgoStr(59), today)
+  const { data: fatPts = [] }    = useHealthMetricSeries('body_fat_percentage', daysAgoStr(59), today)
+  const suggestions = useMemo(() => {
+    const lastOf = (metric: string, pts: typeof weightPts) => {
+      const series = computeDailySeries(metric, pts)
+      return series.length ? series[series.length - 1] : null
+    }
+    const w = lastOf('weight_body_mass', weightPts)
+    const f = lastOf('body_fat_percentage', fatPts)
+    return {
+      weight: w ? { value: Math.round(w.value * 10) / 10, date: w.date } : null,
+      fat:    f ? { value: Math.round(f.value * 10) / 10, date: f.date } : null,
+    }
+  }, [weightPts, fatPts])
+
   // Reset form when initial changes (opening different row)
   function setVal(key: MeasKey, val: string) {
-    setForm(f => ({ ...f, values: { ...f.values, [key]: val } }))
+    setForm(f => ({ ...f, values: { ...f.values, [key]: sanitizeDecimal(val) } }))
   }
 
   async function handleSave() {
+    // Only the fields actually filled in go into the payload — Hevy 400s on
+    // null fields ("Expected number, received null"), which is why saving
+    // used to fail no matter what was entered. Omitting the blanks makes
+    // partial entry work exactly as intended ("eksik girdiysem eksik
+    // kaydet"). The DB row still gets nulls for the omitted columns.
     const payload: Record<string, unknown> = { date: form.date }
     for (const f of ALL_FIELDS) {
-      payload[f.key] = form.values[f.key] !== '' ? Number(form.values[f.key]) : null
+      const raw = form.values[f.key]
+      if (raw === '' || raw === '.') continue
+      const n = Number(raw)
+      if (Number.isFinite(n)) payload[f.key] = n
     }
     try {
       await upsert.mutateAsync(payload)
@@ -127,6 +169,31 @@ function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
               />
             </div>
 
+            {/* One-tap suggestions from data the app already has (Apple
+                Health) — tap to fill, then adjust/complete the rest. */}
+            {(suggestions.weight || suggestions.fat) && (
+              <div className="flex flex-wrap gap-1.5">
+                {suggestions.weight && (
+                  <button
+                    type="button"
+                    onClick={() => setVal('weight_kg', String(suggestions.weight!.value))}
+                    className="text-xs px-3 min-h-[36px] rounded-full border border-accent-200 bg-accent-50 text-accent-700 hover:bg-accent-100 transition-colors press-feedback"
+                  >
+                    ⚖️ {suggestions.weight.value} kg <span className="opacity-60">({fmtDate(suggestions.weight.date)})</span>
+                  </button>
+                )}
+                {suggestions.fat && (
+                  <button
+                    type="button"
+                    onClick={() => setVal('fat_percent', String(suggestions.fat!.value))}
+                    className="text-xs px-3 min-h-[36px] rounded-full border border-accent-200 bg-accent-50 text-accent-700 hover:bg-accent-100 transition-colors press-feedback"
+                  >
+                    💧 %{suggestions.fat.value} fat <span className="opacity-60">({fmtDate(suggestions.fat.date)})</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Hero fields (weight/fat/lean) */}
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-2">
@@ -137,8 +204,8 @@ function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
                   <div key={f.key}>
                     <label className="text-xs text-ink-600 mb-1 block">{f.label} ({f.unit})</label>
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
+                      inputMode="decimal"
                       value={form.values[f.key]}
                       onChange={e => setVal(f.key, e.target.value)}
                       placeholder="—"
@@ -159,8 +226,8 @@ function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
                   <div key={f.key}>
                     <label className="text-xs text-ink-600 mb-1 block">{f.label}</label>
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
+                      inputMode="decimal"
                       value={form.values[f.key]}
                       onChange={e => setVal(f.key, e.target.value)}
                       placeholder="—"

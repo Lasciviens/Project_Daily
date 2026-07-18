@@ -298,7 +298,19 @@ async function hevyRequest(
     const body = await res.text().catch(() => '')
     throw new Error(`Hevy API ${res.status} ${method} ${path}: ${body}`)
   }
-  return res.json()
+  // Tolerant parse: some Hevy write endpoints return 2xx with an EMPTY body
+  // (live-verified on PUT /v1/body_measurements/{date}) — res.json() on that
+  // throws "Unexpected end of JSON input" AFTER the write already succeeded,
+  // so the UI reported an error for a save that actually worked (and the
+  // local DB upsert after this call never ran). Callers that need a body
+  // (create/update routine) still get real JSON when Hevy sends one.
+  const text = await res.text().catch(() => '')
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
 }
 
 // Hevy responses are inconsistent: an entity may come back directly, wrapped
@@ -397,9 +409,25 @@ async function handleUpsertBodyMeasurement(
   const date = payload.date as string
   if (!date) throw new Error('payload.date is required for upsert_body_measurement')
 
-  // Send measurement fields to Hevy (excluding date from body per API spec)
+  // Send measurement fields to Hevy (excluding date from body per API spec).
+  // Hevy 400s on ANY null field ("Expected number, received null") — the same
+  // strict-payload behavior as rep_range:null — so empty fields must be
+  // OMITTED entirely, not sent as null. Live-verified: this was why every
+  // save from the Body tab failed regardless of what was entered (the form
+  // always sent the full field set with nulls for the blanks). Partial
+  // entry is legitimate — send only what was actually filled in.
   const { date: _date, ...measurementFields } = payload
-  await hevyRequest('PUT', `/v1/body_measurements/${date}`, hevyApiKey, measurementFields)
+  for (const key of Object.keys(measurementFields)) {
+    const v = (measurementFields as Record<string, unknown>)[key]
+    if (v === null || v === undefined || v === '' || Number.isNaN(v)) {
+      delete (measurementFields as Record<string, unknown>)[key]
+    }
+  }
+  // Nothing filled at all → still record the (empty) row locally below, but
+  // there's nothing Hevy would accept; skip the remote call instead of 400ing.
+  if (Object.keys(measurementFields).length > 0) {
+    await hevyRequest('PUT', `/v1/body_measurements/${date}`, hevyApiKey, measurementFields)
+  }
 
   const now = new Date().toISOString()
   const { error: dbErr } = await supabase
