@@ -100,11 +100,66 @@ site — not one silently replacing the other. Design:
   `get_health_stats` (ai-proxy) accepts an optional source arg, else uses the
   stored default.
 
-## 3c. Apple Watch vs Fitbit Air — metric comparison
-(Populated from the dedicated comparison research — see the side-by-side table;
-drives which metrics default to which source. Key shape: Fitbit = 24/7 passive
-+ sleep winner; Apple Watch = richer sensors — ECG, gait/mobility, environmental
-audio, workout GPS — and those stay Apple-default.)
+## 3c. Apple Watch vs Fitbit Air — metric comparison + default map
+
+Guiding rule: **Fitbit Air worn ~24/7** (off ≤1–2h/week) → default for anything
+continuous/passive/overnight. **Apple Watch richer sensors + GPS** but worn
+intermittently → default for workouts, clinical, gait, environmental.
+Confidence: ✅ confirmed · ⚠️/❓ verify against a real API payload.
+
+### UNIQUE to Fitbit Air (Apple Watch can't give these)
+- **Active Zone Minutes** ✅
+- **Daily Readiness Score** ✅ (now FREE, no Premium)
+- **Cardio Load** (cardiovascular strain) ⚠️
+- **Sleep Score + sleep efficiency** as native scores ⚠️❓ (Apple has NO sleep score) — OK to display (native measurement, per the "don't compute our own" rule)
+- First-class **sleeping heart rate** ✅
+- Practical superpower: **24/7 coverage** of every passive metric (fewest gaps)
+
+### UNIQUE to Apple Watch (Fitbit Air can't — no sensor)
+- **ECG** single-lead trace ✅ (Air has no electrodes)
+- **Floors climbed / elevation** ✅ (Air has no barometer)
+- **Full gait & mobility suite**: walking speed, step length, double-support %,
+  asymmetry %, **walking steadiness**, six-minute walk, stair ascent/descent ✅
+- **Running dynamics**: power, ground-contact time, vertical oscillation, stride ✅
+- **Cardio recovery (1-min)**, **walking HR average** ✅
+- **Environmental + headphone audio exposure**, **time in daylight**,
+  **mindful minutes**, **handwashing**, **stand hours** ✅
+- Workout **GPS route/pace** fidelity ✅
+- **EDA/stress**: NEITHER device has it (Air has no EDA; Apple Watch never did)
+
+### BOTH provide — one is clearly better
+| Metric | Better source | Why |
+|---|---|---|
+| Continuous HR | **Apple** fidelity / **Fitbit** coverage | Air PPG accuracy flagged weaker; split: Apple in workouts, Fitbit all-day/overnight |
+| Sleep stages | **Fitbit** | Heritage staging + actually worn to bed (Apple often charging). Note taxonomy: Apple **Core** ≈ Fitbit **Light** |
+| VO₂max | **Apple** | Estimates from many activities; Air only from GPS outdoor runs |
+| SpO₂ / respiratory rate | **Fitbit** | Reliable nightly (always worn; no US-unit SpO₂ hardware caveat) |
+| Basal/active energy | **Fitbit** | 24/7 wear avoids the off-wrist basal under-count (our current gap-fill hack) |
+
+### Default source map (ship these; user can override per metric)
+- **Default → Fitbit Air:** resting HR, HRV, SpO₂, respiratory rate, skin temp,
+  ALL sleep (duration/stages/score/efficiency/sleeping-HR), Daily Readiness,
+  Cardio Load, Active Zone Minutes, all-day steps/distance/calories/active+basal
+  energy, passive AFib monitoring.
+- **Default → Apple Watch:** ECG, floors, full gait/mobility suite, running
+  dynamics, cardio recovery, walking HR avg, VO₂max, environmental/headphone
+  audio, time in daylight, mindful minutes, stand hours, handwashing, and any
+  workout with GPS/route/pace.
+- **Context split:** continuous HR → Fitbit for daily/resting/overnight, Apple
+  during logged workouts.
+- **Neither / single manual source:** EDA-stress (impossible), blood glucose
+  (external CGM), body mass/fat/BMI (scale or manual — keep ONE source).
+
+### New metric_names to add (with METRIC_AGGREGATION class + mini-card/section)
+`active_zone_minutes` (sum), `cardio_load` (latest/sum ❓), `daily_readiness`
+(latest), `vo2max` (latest), `sleeping_heart_rate` (latest), `fitbit_sleep_score`
+(latest), `fitbit_sleep_efficiency` (latest). Apple-side already-modelled ones
+(walking_steadiness, walking_speed, six_minute_walk, etc.) stay as-is.
+
+### ❓ Verify against a live payload before wiring
+Whether Google Health API exposes numeric **Sleep Score / Cardio Load / Daily
+Readiness** as fields (vs app-only); Apple unit's **SpO₂** status; current
+**Premium** gating on deep history. Confirm on first real OAuth pull.
 
 ## 4. Apple ↔ Fitbit dedup ("single winner source per metric per day")
 
