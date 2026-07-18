@@ -74,6 +74,38 @@ NOT write into HealthKit (separate silo). If that still holds for the Air:
     `reconcile` for merged streams. Sleep comes as timestamped stage SEGMENTS
     (`stages[]`) → real hypnogram, no aggregate ambiguity.
 
+## 3b. BOTH sources visible, per-metric DEFAULT, AI reads the default (user req)
+
+The user wants to SEE data from BOTH the Apple Watch and the Fitbit Air on the
+site — not one silently replacing the other. Design:
+
+- **Per-metric default source.** Each metric has a default (some default to
+  Apple Watch, some to Fitbit Air — chosen by which device measures it better;
+  see the comparison table in §3c). A day's headline/chart shows the default
+  source; when the other source also has data, the user can flip to it (a small
+  per-section source switch: `Apple Watch ⇄ Fitbit Air`, or "both" overlay).
+- **Persisted user preference.** The chosen default per metric is stored
+  (localStorage like `useDayTargets`, or a small `health_source_prefs` table if
+  it must be AI-readable server-side). Shipping defaults are sensible
+  (continuous/sleep → Fitbit; ECG/gait/workout-GPS → Apple) and the user can
+  override any metric permanently.
+- **AI reads the DEFAULT unless told otherwise.** The daily briefing, PT Coach,
+  Ask-AI `get_health_stats`, and Daily's HealthCard all resolve each metric to
+  its default source. If the user explicitly asks ("show me Apple Watch steps",
+  "Fitbit'e göre uykum"), the AI/UI reads the requested source instead. So the
+  aggregation layer must be source-aware (filter by `source_family`) and expose
+  a `preferredSource(metric)` resolver that both UI and AI call.
+- Implementation: `healthAggregate` gains an optional `sourceFamily` filter on
+  every compute fn; a `useHealthSourcePrefs` hook holds the per-metric default;
+  `get_health_stats` (ai-proxy) accepts an optional source arg, else uses the
+  stored default.
+
+## 3c. Apple Watch vs Fitbit Air — metric comparison
+(Populated from the dedicated comparison research — see the side-by-side table;
+drives which metrics default to which source. Key shape: Fitbit = 24/7 passive
++ sleep winner; Apple Watch = richer sensors — ECG, gait/mobility, environmental
+audio, workout GPS — and those stay Apple-default.)
+
 ## 4. Apple ↔ Fitbit dedup ("single winner source per metric per day")
 
 Both sources will report overlapping days. Rule:
