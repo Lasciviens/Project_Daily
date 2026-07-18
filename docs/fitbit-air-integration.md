@@ -102,10 +102,43 @@ site — not one silently replacing the other. Design:
 
 ## 3c. Apple Watch vs Fitbit Air — metric comparison + default map
 
+⚠️ **The Apple watch is a Watch SE 2** — NOT a Series 8+/Ultra. SE 2 has **no
+SpO₂ sensor, no ECG electrodes, no skin/wrist-temperature sensor**. So several
+metrics the generic comparison credited to "Apple Watch" are impossible on THIS
+watch. What matters is what it can GIVE US, and the DB confirms it (§3d).
+
 Guiding rule: **Fitbit Air worn ~24/7** (off ≤1–2h/week) → default for anything
-continuous/passive/overnight. **Apple Watch richer sensors + GPS** but worn
-intermittently → default for workouts, clinical, gait, environmental.
-Confidence: ✅ confirmed · ⚠️/❓ verify against a real API payload.
+continuous/passive/overnight. **Apple Watch SE 2** worn intermittently → default
+for the sensors it does have (gait/running dynamics, floors, environmental,
+workout GPS via iPhone). Confidence: ✅ confirmed · ⚠️/❓ verify against payload.
+
+## 3d. What we ACTUALLY receive today (DB-confirmed, Apple SE 2 + Huawei + accessories)
+Live query of `health_metrics` (rows since 2026-06-01) — this is ground truth,
+better than spec sheets:
+- **Energy/activity:** basal_energy_burned, active_energy, step_count,
+  walking_running_distance, apple_stand_time, apple_stand_hour,
+  apple_exercise_time, physical_effort, flights_climbed (SE 2 HAS an altimeter),
+  push_count (misdetected — see CLAUDE.md).
+- **Heart:** heart_rate (dense), resting_heart_rate (SPARSE — 8 rows;
+  SE 2 not worn overnight consistently), heart_rate_variability (sparse, 115),
+  walking_heart_rate_average, vo2_max (1), cardio_recovery (1).
+- **Respiratory:** respiratory_rate (282, from sleep).
+- **Sleep:** sleep_analysis (35 — aggregate sessions, the lossy path).
+- **Running dynamics:** running_speed/power/stride_length/ground_contact_time/
+  vertical_oscillation, stair_speed_up/down.
+- **Environmental/behaviour:** time_in_daylight, environmental_audio_exposure,
+  headphone_audio_exposure, handwashing, toothbrushing (Oral-B).
+- **Body:** weight_body_mass, body_mass_index, body_fat_percentage — all from
+  the **Huawei scale** ("HUAWEI Health: Europe"), NOT the Watch.
+- **NOT PRESENT (SE 2 can't):** ❌ oxygen_saturation (SpO₂), ❌ wrist/skin
+  temperature, ❌ ECG, ❌ the walking gait/steadiness suite.
+
+**So Fitbit Air is not just "better" — it brings genuinely NEW data we have
+zero of today:** SpO₂, skin-temperature variation, reliable NIGHTLY resting HR
++ HRV + respiratory rate (today these are sparse/absent because SE 2 is rarely
+worn asleep), Active Zone Minutes, Daily Readiness, Cardio Load, native Sleep
+Score/efficiency, sleeping HR, and timestamped sleep STAGE segments (real
+hypnogram). ECG stays impossible (neither device has electrodes).
 
 ### UNIQUE to Fitbit Air (Apple Watch can't give these)
 - **Active Zone Minutes** ✅
@@ -115,17 +148,15 @@ Confidence: ✅ confirmed · ⚠️/❓ verify against a real API payload.
 - First-class **sleeping heart rate** ✅
 - Practical superpower: **24/7 coverage** of every passive metric (fewest gaps)
 
-### UNIQUE to Apple Watch (Fitbit Air can't — no sensor)
-- **ECG** single-lead trace ✅ (Air has no electrodes)
-- **Floors climbed / elevation** ✅ (Air has no barometer)
-- **Full gait & mobility suite**: walking speed, step length, double-support %,
-  asymmetry %, **walking steadiness**, six-minute walk, stair ascent/descent ✅
+### UNIQUE to Apple Watch SE 2 (Fitbit Air can't — no sensor) — DB-confirmed present
+- **Floors climbed / elevation** ✅ (SE 2 has an altimeter; Air has no barometer)
 - **Running dynamics**: power, ground-contact time, vertical oscillation, stride ✅
-- **Cardio recovery (1-min)**, **walking HR average** ✅
+- **Stair ascent/descent speed**, **cardio recovery (1-min)**, **walking HR avg** ✅
 - **Environmental + headphone audio exposure**, **time in daylight**,
-  **mindful minutes**, **handwashing**, **stand hours** ✅
-- Workout **GPS route/pace** fidelity ✅
-- **EDA/stress**: NEITHER device has it (Air has no EDA; Apple Watch never did)
+  **handwashing**, **stand hours/time** ✅
+- Workout **GPS route/pace** fidelity (via iPhone) ✅
+- **NOT available on SE 2 (so nobody gives us these):** ECG ❌, EDA/stress ❌,
+  the walking-steadiness/speed/asymmetry mobility suite ❌ (not in our DB).
 
 ### BOTH provide — one is clearly better
 | Metric | Better source | Why |
