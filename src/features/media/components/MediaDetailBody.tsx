@@ -9,6 +9,7 @@ import { SimilarRow } from './SimilarRow'
 import { EpisodesPanel } from './EpisodesPanel'
 import { useAddMovie, useDeleteMovie, useUpdateMovie } from '../hooks/useMovies'
 import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
+import { useNextEpisode } from '../hooks/useNextEpisode'
 import type {
   TMDBMovieFull, TMDBTVFull,
   TMDBCastMember, TMDBWatchProvider,
@@ -24,11 +25,16 @@ interface Props {
   onOpenDetail?: (id: number, type: 'movie' | 'tv') => void
 }
 
+// No manual "Upcoming" button anymore — "coming soon" is derived from the
+// release date (see CompactLibraryStrip), so a future-dated Wishlist item
+// already shows under Coming soon and auto-moves to Wishlist once it releases.
+// "Dropped" is now reachable (it was in the type + rendered as a library group
+// but no button ever set it — a dead end).
 const MOVIE_STATUSES: { value: MediaStatus; label: string }[] = [
   { value: 'wishlist',  label: 'Wishlist' },
-  { value: 'upcoming',  label: 'Upcoming' },
   { value: 'watching',  label: 'Watching' },
   { value: 'completed', label: 'Completed' },
+  { value: 'dropped',   label: 'Dropped' },
 ]
 
 const TV_STATUSES: { value: MediaStatus; label: string }[] = [
@@ -36,6 +42,7 @@ const TV_STATUSES: { value: MediaStatus; label: string }[] = [
   { value: 'watching',  label: 'Watching' },
   { value: 'paused',    label: 'Paused' },
   { value: 'completed', label: 'Completed' },
+  { value: 'dropped',   label: 'Dropped' },
 ]
 
 function formatRuntime(mins: number): string {
@@ -94,8 +101,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
   const movie   = isMovie ? (detail as TMDBMovieFull) : null
   const tv      = !isMovie ? (detail as TMDBTVFull) : null
 
-  const isFutureMovie = isMovie && !!movie?.release_date && new Date(movie.release_date) > new Date()
-  const [selectedStatus, setSelectedStatus] = useState<MediaStatus>(isFutureMovie ? 'upcoming' : 'wishlist')
+  const [selectedStatus, setSelectedStatus] = useState<MediaStatus>('wishlist')
   const [showTrailer,    setShowTrailer]    = useState(false)
 
   const cast          = detail.credits?.cast?.slice(0, 10) ?? []
@@ -125,6 +131,21 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
 
   const tvEntry    = !isMovie && isOwned ? (userEntry as UserTVEntry) : null
   const movieEntry = isMovie && isOwned  ? (userEntry as UserMovieEntry) : null
+
+  // Correct next-episode position (handles season rollover from real watched
+  // rows) — the same source of truth the Daily "Watch next" card uses. Query
+  // is deduped by ['next-episode', tvEntryId], so mounting it here is free.
+  const nextEp = useNextEpisode(tvEntry?.id ?? null, tv?.id ?? null, tv?.number_of_episodes ?? null)
+
+  // Private note — column + update path already existed but had no UI. Reset
+  // when switching between entries via the "adjust state during render" pattern
+  // (React's recommended alternative to a setState-in-effect), saved on blur.
+  const [note, setNote] = useState(userEntry?.personal_note ?? '')
+  const [noteFor, setNoteFor] = useState(entryId)
+  if (entryId !== noteFor) {
+    setNoteFor(entryId)
+    setNote(userEntry?.personal_note ?? '')
+  }
 
   async function handleAdd() {
     const tid = toast.loading('Adding to library…')
@@ -158,9 +179,20 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
     const tid = toast.loading('Updating status…')
     try {
       if (isMovie && movieEntry) {
-        await updateMovie.mutateAsync({ id: movieEntry.id, patch: { status: newStatus as UserMovieEntry['status'] } })
+        // Stamp watched_at on completion via the pill too (not only the
+        // separate "Mark watched" button) — otherwise completing from the
+        // status pill left the date null and watch-hours/stats undercounted.
+        const patch: Parameters<typeof updateMovie.mutateAsync>[0]['patch'] = { status: newStatus as UserMovieEntry['status'] }
+        if (newStatus === 'completed' && !movieEntry.watched_at) patch.watched_at = new Date().toISOString()
+        await updateMovie.mutateAsync({ id: movieEntry.id, patch })
       } else if (tvEntry) {
-        await updateTV.mutateAsync({ id: tvEntry.id, patch: { status: newStatus as UserTVEntry['status'] } })
+        // Same idea for TV: first move to Watching stamps started_at, moving to
+        // Completed stamps finished_at — these columns existed but nothing ever
+        // wrote them, so "recently finished" / duration data was always empty.
+        const patch: Parameters<typeof updateTV.mutateAsync>[0]['patch'] = { status: newStatus as UserTVEntry['status'] }
+        if (newStatus === 'completed' && !tvEntry.finished_at) patch.finished_at = new Date().toISOString()
+        if (newStatus === 'watching' && !tvEntry.started_at)  patch.started_at  = new Date().toISOString()
+        await updateTV.mutateAsync({ id: tvEntry.id, patch })
       }
       toast.dismiss(tid); toast.success('Status updated ✓')
     } catch (err) {
@@ -168,24 +200,39 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
     }
   }
 
-  // "Advance" now records a real watched-episode row instead of bumping the
-  // cached counter directly — the counter is trigger/API-maintained from
-  // user_tv_episodes since migration 050, so writing it here would just get
-  // overwritten and (worse) leave no actual watch record. Real bugs this
-  // replaces: the old wrap check compared a per-season counter against the
-  // SERIES-wide episode total, and on "wrap" reset the episode to 0 without
-  // ever advancing the season.
+  async function saveNote() {
+    if (note.trim() === (userEntry?.personal_note ?? '')) return // no change
+    const value = note.trim() || null
+    try {
+      if (isMovie && movieEntry)   await updateMovie.mutateAsync({ id: movieEntry.id, patch: { personal_note: value } })
+      else if (tvEntry)            await updateTV.mutateAsync({ id: tvEntry.id, patch: { personal_note: value } })
+      toast.success('Note saved ✓')
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Failed to save note')
+    }
+  }
+
+  // "Advance" records a real watched-episode row (the cache columns are
+  // trigger-maintained from user_tv_episodes since migration 050, so writing
+  // them here would just be overwritten). The NEXT episode comes from
+  // useNextEpisode — which resolves season rollover against TMDB season data —
+  // NOT from `current_episode + 1`. Real bug that fixes: at a season's last
+  // episode, naive +1 recorded a nonexistent episode (e.g. S1E11) instead of
+  // rolling into S2E1.
   async function handleNextEpisode() {
     if (!tvEntry) return
-    const season  = Math.max(tvEntry.current_season, 1)
-    const episode = tvEntry.current_episode + 1
+    const info = nextEp.data
+    if (!info || info.caughtUp || info.season == null || info.episode == null) {
+      toast.success('Caught up — no next episode ✓')
+      return
+    }
     const tid = toast.loading('Marking next episode watched…')
     try {
-      await markEpisodeWatched(tvEntry.id, season, episode, new Date().toISOString().slice(0, 10))
+      await markEpisodeWatched(tvEntry.id, info.season, info.episode, new Date().toISOString().slice(0, 10))
       qc.invalidateQueries({ queryKey: ['tv'] })
       qc.invalidateQueries({ queryKey: ['watched-episodes'] })
       qc.invalidateQueries({ queryKey: ['next-episode'] })
-      toast.dismiss(tid); toast.success(`S${season} E${episode} watched ✓`)
+      toast.dismiss(tid); toast.success(`S${info.season} E${info.episode} watched ✓`)
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
     }
@@ -372,6 +419,19 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                   value={(movieEntry ?? tvEntry)?.rating}
                   onChange={handleRatingChange}
                   disabled={updateMovie.isPending || updateTV.isPending}
+                />
+              </div>
+
+              {/* Private note — saves on blur */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">Your note</p>
+                <textarea
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                  onBlur={saveNote}
+                  placeholder="Private note — thoughts, where you left off, why you dropped it…"
+                  rows={2}
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-y"
                 />
               </div>
 
