@@ -94,6 +94,17 @@ function EditRequestForm({ request, onDone }: { request: DevRequest; onDone: () 
     )
   }
 
+  // Mark done straight from the edit form (saves any field edits too) — so
+  // "düzenlerken tamamlandı da işaretleyebilme" is one tap, no separate
+  // status-cycle click needed.
+  const isDone = request.status === 'done'
+  function handleToggleDone() {
+    update.mutate(
+      { id: request.id, patch: { title: title.trim() || request.title, description: description.trim() || null, page, category, priority, effort: effort || null, status: isDone ? 'open' : 'done' } },
+      { onSuccess: onDone },
+    )
+  }
+
   return (
     <div className="flex flex-col gap-2 p-2.5 bg-accent-50/60 border border-accent-200 rounded-xl">
       <input value={title} onChange={e => setTitle(e.target.value)}
@@ -118,12 +129,20 @@ function EditRequestForm({ request, onDone }: { request: DevRequest; onDone: () 
           {EFFORTS.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
       </div>
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 items-center">
         <button type="button" onClick={handleSave} disabled={update.isPending}
-          className="flex-1 min-h-[32px] rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
+          className="min-h-[32px] px-3 rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
           Save
         </button>
-        <button type="button" onClick={onDone} className="min-h-[32px] px-3 rounded-lg text-xs text-ink-500 hover:text-ink-800">
+        <button type="button" onClick={handleToggleDone} disabled={update.isPending}
+          className={`min-h-[32px] px-3 rounded-lg text-xs font-semibold border transition-colors ${
+            isDone
+              ? 'bg-cream-50 border-ink-200 text-ink-500 hover:text-ink-800'
+              : 'bg-green-500 border-green-500 text-white hover:bg-green-600'
+          }`}>
+          {isDone ? '↩ Reopen' : '✓ Done'}
+        </button>
+        <button type="button" onClick={onDone} className="ml-auto min-h-[32px] px-3 rounded-lg text-xs text-ink-500 hover:text-ink-800">
           Close
         </button>
       </div>

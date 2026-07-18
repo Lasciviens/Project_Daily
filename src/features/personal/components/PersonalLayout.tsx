@@ -44,7 +44,10 @@ export function PersonalLayout() {
   return (
     <div className="h-full flex flex-col">
       {showBar && (
-        <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 pt-4">
+        // Right-aligned to match DailyPage's own far-right PersonalTabs, so
+        // the Daily/Shop/Recipes tabs stay in the SAME spot across all three
+        // pages instead of jumping left↔right on navigation.
+        <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 pt-4 flex justify-end">
           <PersonalTabs />
         </div>
       )}

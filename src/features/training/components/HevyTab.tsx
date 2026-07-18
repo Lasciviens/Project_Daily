@@ -7,6 +7,7 @@ import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { HevyWorkoutCard } from './HevyWorkoutCard'
 import { HevyWorkoutDetail } from './HevyWorkoutDetail'
 import { HevyPRList } from './HevyPRList'
+import { ExerciseThumb } from '../exerciseMedia'
 import { RoutinesTab } from './RoutinesTab'
 import { BodyMeasurementsTab } from './BodyMeasurementsTab'
 import { ExerciseTemplatesTab } from './ExerciseTemplatesTab'
@@ -30,6 +31,8 @@ const PAGE_SIZE = 20
 
 function BestLiftsCard() {
   const { data: prs = [], isLoading } = useHevyPRs()
+  // Hover/tap peek — same GIF affordance the user liked on Personal Records.
+  const [peekId, setPeekId] = useState<string | null>(null)
 
   if (isLoading) {
     return <div className="h-24 rounded-xl bg-cream-200 animate-pulse" />
@@ -42,20 +45,43 @@ function BestLiftsCard() {
     .slice(0, 5)
 
   return (
-    <div className="rounded-xl border border-ink-200 bg-cream-50 overflow-hidden mb-3">
-      <div className="px-3 py-2 bg-cream-50 border-b border-ink-100">
+    <div className="rounded-xl border border-ink-200 bg-cream-50 mb-3 max-w-md">
+      <div className="px-3 py-2 border-b border-ink-100">
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Top 5 Lifts by Weight</p>
       </div>
       <div className="divide-y divide-ink-50">
-        {top5.map((pr, i) => (
-          <div key={pr.exercise_template_id} className="flex items-center gap-3 px-3 py-2">
-            <span className="text-xs font-bold text-ink-400 w-4 shrink-0">#{i + 1}</span>
-            <span className="text-sm font-medium text-ink-800 flex-1 truncate">{pr.title}</span>
-            <span className="text-sm font-bold text-accent-700 shrink-0">
-              {pr.max_weight_kg} kg{pr.reps_at_max != null ? ` × ${pr.reps_at_max}` : ''}
-            </span>
-          </div>
-        ))}
+        {top5.map((pr, i) => {
+          const open = peekId === pr.exercise_template_id
+          return (
+            <div
+              key={pr.exercise_template_id}
+              className="relative"
+              onMouseEnter={() => setPeekId(pr.exercise_template_id)}
+              onMouseLeave={() => setPeekId(p => (p === pr.exercise_template_id ? null : p))}
+            >
+              <button
+                type="button"
+                onClick={() => setPeekId(open ? null : pr.exercise_template_id)}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${open ? 'bg-cream-100' : 'hover:bg-cream-50'}`}
+              >
+                <span className="text-xs font-bold text-ink-400 w-4 shrink-0">#{i + 1}</span>
+                <span className="text-sm font-medium text-ink-800 flex-1 truncate">{pr.title}</span>
+                <span className="text-sm font-bold text-accent-700 shrink-0 tabular-nums">
+                  {pr.max_weight_kg} kg{pr.reps_at_max != null ? ` × ${pr.reps_at_max}` : ''}
+                </span>
+              </button>
+              {open && (
+                <div className="absolute z-30 left-0 right-0 top-full mt-1 p-3 rounded-xl border border-ink-200 bg-cream-50 shadow-xl flex items-center gap-3 animate-fadeSlideIn">
+                  <ExerciseThumb title={pr.title} size={72} />
+                  <div className="flex flex-col gap-0.5 text-xs min-w-0">
+                    <span className="font-semibold text-ink-900">{pr.title}</span>
+                    <span className="text-ink-600">Best: <strong>{pr.max_weight_kg} kg{pr.reps_at_max != null ? ` × ${pr.reps_at_max}` : ''}</strong></span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

@@ -4,19 +4,12 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 
-// CRUD audit trail (audit_logs table, written by DB triggers — see migration
-// 037). Shows every insert/update/delete on user-authored tables, whoever
-// made it (web UI, Ask AI, edge functions), grouped by transaction so
-// cascades ("this delete also removed those") read as one connected event.
-//
-// Layout: a 4-column matrix (grid-cols-4 on wide screens) rather than one
-// long vertical list — there's plenty of horizontal room on this page and a
-// flat list buries same-transaction cascades among unrelated entries. A
-// group sharing one tx_id (e.g. deleting a time_block that migration 043's
-// trigger also cascades into deleting its linked task) spans multiple grid
-// columns as a single connected strip with a directional arrow between each
-// step, so "this caused that" reads visually instead of needing to mentally
-// correlate timestamps across separate rows.
+// CRUD audit trail (audit_logs, written by DB triggers — migration 037, +052
+// added dev_requests). Redesigned from a cramped 4-column card matrix into a
+// READABLE TIMELINE: every entry is a plain-language sentence ("You created
+// Task «…»"), same-transaction cascades group into one connected block, and
+// the raw-JSON dump was replaced with a readable key/value snapshot. Range is
+// a preset (incl. 1h) OR an explicit from/to date-time window.
 
 interface AuditLog {
   id:         string
@@ -30,51 +23,74 @@ interface AuditLog {
   created_at: string
 }
 
-const OP_DOT: Record<AuditLog['operation'], string> = {
-  INSERT: 'bg-emerald-400',
-  UPDATE: 'bg-accent-400',
-  DELETE: 'bg-red-400',
+// Friendly, singular labels for the raw table names — "ne olmuş anlıyorum".
+const TABLE_LABEL: Record<string, string> = {
+  tasks: 'Task', time_blocks: 'Schedule block',
+  recipes: 'Recipe', recipe_ingredients: 'Recipe ingredient',
+  recipe_ingredient_library: 'Ingredient', recipe_meal_plans: 'Meal plan',
+  shop_categories: 'Shop category', shop_items: 'Shop item',
+  projects: 'Project', project_phases: 'Project phase', project_items: 'Project item',
+  user_movie_entries: 'Movie', user_tv_entries: 'TV series', user_tv_episodes: 'TV episode',
+  user_transit_stops: 'Transit stop', user_transit_routes: 'Transit route',
+  work_notes: 'Work note', work_weekly_goals: 'Weekly goal', work_pinned_links: 'Pinned link',
+  dev_requests: 'Dev request',
+}
+const friendlyTable = (t: string) => TABLE_LABEL[t] ?? t.replace(/_/g, ' ')
+
+const OP_META: Record<AuditLog['operation'], { verb: string; dot: string; text: string }> = {
+  INSERT: { verb: 'created', dot: 'bg-emerald-400', text: 'text-emerald-600' },
+  UPDATE: { verb: 'updated', dot: 'bg-accent-400',  text: 'text-accent-600' },
+  DELETE: { verb: 'deleted', dot: 'bg-red-400',     text: 'text-red-500' },
 }
 
-const OP_LABEL: Record<AuditLog['operation'], string> = {
-  INSERT: 'created',
-  UPDATE: 'updated',
-  DELETE: 'deleted',
-}
+const RANGES = [
+  { label: 'Last 1h',   hours: 1 },
+  { label: 'Last 24h',  hours: 24 },
+  { label: 'Last 7 days',  hours: 168 },
+  { label: 'Last 30 days', hours: 720 },
+]
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
   })
 }
 
-// Best-effort human label for the affected row.
+// Best-effort human name for the affected row.
 function rowLabel(log: AuditLog): string {
   const d = log.new_data ?? log.old_data ?? {}
-  for (const key of ['title', 'name', 'label', 'message']) {
+  for (const key of ['title', 'name', 'label', 'message', 'content']) {
     const v = d[key]
-    if (typeof v === 'string' && v.trim()) return v
+    if (typeof v === 'string' && v.trim()) return v.length > 60 ? v.slice(0, 60) + '…' : v
   }
   return log.row_id ? `#${log.row_id.slice(0, 8)}` : '—'
 }
 
 function fmtValue(v: unknown): string {
-  if (v === null || v === undefined) return '—'
+  if (v === null || v === undefined || v === '') return '—'
   if (typeof v === 'object') return JSON.stringify(v)
   return String(v)
 }
 
-function useAuditLogs(days: number) {
+// Keys not worth showing in a snapshot (plumbing).
+const HIDDEN_KEYS = new Set(['id', 'user_id', 'created_at', 'updated_at', 'sort_order'])
+
+// Range is resolved INSIDE queryFn (Date.now() there is fine; at render top-
+// level it trips the react-hooks purity rule). Custom window wins when either
+// bound is set; else the preset relative range.
+function useAuditLogs(rangeHours: number, customFrom: string, customTo: string) {
   return useQuery<AuditLog[]>({
-    queryKey: ['audit-logs', days],
+    queryKey: ['audit-logs', rangeHours, customFrom, customTo],
     queryFn: async () => {
-      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .gte('created_at', cutoff)
-        .order('created_at', { ascending: false })
-        .limit(500)
+      const usingCustom = !!(customFrom || customTo)
+      const fromIso = usingCustom
+        ? (customFrom ? new Date(customFrom).toISOString() : new Date(0).toISOString())
+        : new Date(Date.now() - rangeHours * 60 * 60 * 1000).toISOString()
+      const toIso = usingCustom && customTo ? new Date(customTo).toISOString() : null
+      let q = supabase.from('audit_logs').select('*').gte('created_at', fromIso)
+      if (toIso) q = q.lte('created_at', toIso)
+      const { data, error } = await q.order('created_at', { ascending: false }).limit(500)
       if (error) throw error
       return (data ?? []) as AuditLog[]
     },
@@ -96,28 +112,31 @@ function useClearAuditLogs() {
   })
 }
 
-// UPDATE → changed keys side by side; INSERT/DELETE → the full row snapshot.
+// UPDATE → only the fields that changed (before → after). INSERT/DELETE → a
+// readable key/value snapshot of the row (was a raw JSON dump). For a DELETE
+// this snapshot IS the recovery source (migration 037 stores the full old row).
 function DiffView({ log }: { log: AuditLog }) {
   if (log.operation === 'UPDATE') {
-    const keys = [...new Set([
-      ...Object.keys(log.old_data ?? {}),
-      ...Object.keys(log.new_data ?? {}),
-    ])].sort()
+    const keys = [...new Set([...Object.keys(log.old_data ?? {}), ...Object.keys(log.new_data ?? {})])]
+      .filter(k => !HIDDEN_KEYS.has(k))
+      .filter(k => fmtValue(log.old_data?.[k]) !== fmtValue(log.new_data?.[k]))
+      .sort()
+    if (keys.length === 0) return <p className="text-xs text-ink-400">No visible field changes.</p>
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">
-              <th className="text-left py-1 pr-3">Field</th>
-              <th className="text-left py-1 pr-3">Before</th>
+              <th className="text-left py-1 pr-4">Field</th>
+              <th className="text-left py-1 pr-4">Before</th>
               <th className="text-left py-1">After</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ink-100">
             {keys.map(k => (
               <tr key={k}>
-                <td className="py-1 pr-3 font-medium text-ink-600 whitespace-nowrap align-top">{k}</td>
-                <td className="py-1 pr-3 text-red-500 break-all align-top">{fmtValue(log.old_data?.[k])}</td>
+                <td className="py-1 pr-4 font-medium text-ink-600 whitespace-nowrap align-top">{k}</td>
+                <td className="py-1 pr-4 text-red-500 break-all align-top">{fmtValue(log.old_data?.[k])}</td>
                 <td className="py-1 text-emerald-600 break-all align-top">{fmtValue(log.new_data?.[k])}</td>
               </tr>
             ))}
@@ -126,42 +145,48 @@ function DiffView({ log }: { log: AuditLog }) {
       </div>
     )
   }
-  const data = log.operation === 'DELETE' ? log.old_data : log.new_data
+  const data = (log.operation === 'DELETE' ? log.old_data : log.new_data) ?? {}
+  const entries = Object.entries(data).filter(([k, v]) => !HIDDEN_KEYS.has(k) && v !== null && v !== '')
   return (
-    <pre className="text-xs text-ink-700 overflow-x-auto whitespace-pre-wrap break-words">
-      {JSON.stringify(data, null, 2)}
-    </pre>
+    <div className="flex flex-col gap-0.5">
+      {log.operation === 'DELETE' && (
+        <p className="text-[11px] text-ink-400 mb-1">Deleted row snapshot (recoverable within 30 days):</p>
+      )}
+      <dl className="grid grid-cols-[minmax(90px,auto)_1fr] gap-x-3 gap-y-0.5 text-xs">
+        {entries.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className="font-medium text-ink-500">{k}</dt>
+            <dd className="text-ink-800 break-all">{fmtValue(v)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   )
 }
 
-// One compact card — used both standalone (grid cell) and inside a cascade
-// chain (flex item connected by arrows to its neighbors).
-function LogCard({ log, expanded, onToggle }: { log: AuditLog; expanded: boolean; onToggle: () => void }) {
+function LogRow({ log, expanded, onToggle, nested }: { log: AuditLog; expanded: boolean; onToggle: () => void; nested?: boolean }) {
+  const op = OP_META[log.operation]
   return (
-    <div className="rounded-xl border border-ink-100 bg-cream-50 overflow-hidden flex-1 min-w-0">
+    <div className={nested ? '' : 'rounded-xl border border-ink-100 bg-cream-50 overflow-hidden'}>
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex flex-col items-start gap-1 px-3 py-2.5 min-h-[44px] text-left hover:bg-cream-50 transition-colors"
+        className="w-full flex items-center gap-2.5 px-3 py-2 min-h-[44px] text-left hover:bg-cream-100 transition-colors"
       >
-        <div className="flex items-center gap-1.5 w-full">
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${OP_DOT[log.operation]}`} />
-          <span className="text-xs font-medium text-ink-500 truncate">{log.table_name}</span>
-          <span className="text-[10px] text-ink-400 flex-shrink-0">{OP_LABEL[log.operation]}</span>
-          <span className={`ml-auto text-[9px] font-medium rounded-full px-1.5 py-0.5 flex-shrink-0 ${
-            log.actor === 'web' ? 'bg-ink-100 text-ink-500' : 'bg-accent-100 text-accent-700'
-          }`}>
-            {log.actor === 'web' ? 'me' : 'service'}
-          </span>
-        </div>
-        <p className="text-sm text-ink-800 truncate w-full">{rowLabel(log)}</p>
-        <div className="flex items-center justify-between w-full">
-          <span className="text-[10px] text-ink-400">{fmtDate(log.created_at)}</span>
-          <span className="text-[10px] text-ink-300">{expanded ? '▲' : '▼'}</span>
-        </div>
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${op.dot}`} />
+        {/* Plain-language sentence */}
+        <span className="text-sm text-ink-700 min-w-0 flex-1 truncate">
+          <span className="font-medium text-ink-500">{log.actor === 'web' ? 'You' : 'AI / sync'}</span>{' '}
+          <span className={op.text}>{op.verb}</span>{' '}
+          {friendlyTable(log.table_name)}{' '}
+          <span className="font-semibold text-ink-900">«{rowLabel(log)}»</span>
+        </span>
+        <span className="text-[11px] text-ink-400 flex-shrink-0 tabular-nums hidden sm:block">{fmtDate(log.created_at)}</span>
+        <span className="text-[10px] text-ink-300 flex-shrink-0">{expanded ? '▲' : '▼'}</span>
       </button>
       {expanded && (
-        <div className="border-t border-ink-100 bg-ink-50 px-3 py-2">
+        <div className="border-t border-ink-100 bg-ink-50/60 px-3 py-2">
+          <p className="text-[11px] text-ink-400 mb-1.5 sm:hidden">{fmtDate(log.created_at)}</p>
           <DiffView log={log} />
         </div>
       )}
@@ -169,27 +194,18 @@ function LogCard({ log, expanded, onToggle }: { log: AuditLog; expanded: boolean
   )
 }
 
-// A same-transaction group of >1 changes — rendered as a connected chain
-// with a directional arrow between each step (the order they were written
-// in, which for a trigger-caused cascade is "the direct change" first,
-// followed by whatever it triggered).
-function CascadeChain({ group, expandedId, onToggle }: { group: AuditLog[]; expandedId: string | null; onToggle: (id: string) => void }) {
+// Same-transaction group (>1 change) — a cascade. Stacked vertically with a
+// left rail + connector so "this change triggered those" reads top-to-bottom
+// (no more horizontal grid-span cramming).
+function CascadeBlock({ group, expandedId, onToggle }: { group: AuditLog[]; expandedId: string | null; onToggle: (id: string) => void }) {
   return (
-    <div
-      className="rounded-xl border border-accent-200 bg-accent-50/40 p-2 flex flex-col gap-1"
-      style={{ gridColumn: `span ${Math.min(group.length, 4)} / span ${Math.min(group.length, 4)}` }}
-    >
-      <p className="text-[10px] font-semibold text-accent-600 uppercase tracking-wide px-1">
-        Linked — same transaction, {group.length} changes
+    <div className="rounded-xl border border-accent-200 bg-accent-50/40 overflow-hidden">
+      <p className="text-[10px] font-semibold text-accent-600 uppercase tracking-wide px-3 py-1.5 border-b border-accent-100">
+        Linked · same transaction · {group.length} changes
       </p>
-      <div className="flex items-stretch gap-1.5 flex-wrap">
-        {group.map((log, i) => (
-          <div key={log.id} className="flex items-stretch gap-1.5 flex-1 min-w-[160px]">
-            <LogCard log={log} expanded={expandedId === log.id} onToggle={() => onToggle(log.id)} />
-            {i < group.length - 1 && (
-              <span className="flex items-center text-accent-400 text-lg leading-none flex-shrink-0" title="triggered">→</span>
-            )}
-          </div>
+      <div className="pl-3 border-l-2 border-accent-200 ml-3 my-1 divide-y divide-ink-100/70">
+        {group.map(log => (
+          <LogRow key={log.id} log={log} nested expanded={expandedId === log.id} onToggle={() => onToggle(log.id)} />
         ))}
       </div>
     </div>
@@ -197,13 +213,16 @@ function CascadeChain({ group, expandedId, onToggle }: { group: AuditLog[]; expa
 }
 
 export function ActivityLogTab() {
-  const [days, setDays] = useState(7)
+  const [rangeHours, setRangeHours] = useState(168)
+  const [customFrom, setCustomFrom] = useState('')   // datetime-local
+  const [customTo, setCustomTo] = useState('')
   const [tableFilter, setTableFilter] = useState('all')
   const [opFilter, setOpFilter] = useState('all')
   const [actorFilter, setActorFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const { data: logs = [], isLoading, error, refetch } = useAuditLogs(days)
+  const usingCustom = !!(customFrom || customTo)
+  const { data: logs = [], isLoading, error, refetch } = useAuditLogs(rangeHours, customFrom, customTo)
   const clearLogs = useClearAuditLogs()
 
   const tables = useMemo(() => [...new Set(logs.map(l => l.table_name))].sort(), [logs])
@@ -214,8 +233,6 @@ export function ActivityLogTab() {
     (actorFilter === 'all' || l.actor === actorFilter)
   ), [logs, tableFilter, opFilter, actorFilter])
 
-  // Consecutive rows sharing a tx_id changed in the same transaction — render
-  // them as one connected chain so cascades read as a single linked event.
   const groups = useMemo(() => {
     const out: AuditLog[][] = []
     for (const log of filtered) {
@@ -226,16 +243,18 @@ export function ActivityLogTab() {
     return out
   }, [filtered])
 
-  const selectCls = 'min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
+  const selectCls = 'min-h-[40px] text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
+  const dtCls = 'min-h-[40px] text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
   const toggle = (id: string) => setExpanded(e => e === id ? null : id)
 
   return (
     <>
-      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <div className="flex gap-2 flex-wrap">
+      {/* Filter bar */}
+      <div className="flex flex-col gap-2 mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <select value={tableFilter} onChange={e => setTableFilter(e.target.value)} className={selectCls}>
-            <option value="all">All tables</option>
-            {tables.map(t => <option key={t} value={t}>{t}</option>)}
+            <option value="all">All types</option>
+            {tables.map(t => <option key={t} value={t}>{friendlyTable(t)}</option>)}
           </select>
           <select value={opFilter} onChange={e => setOpFilter(e.target.value)} className={selectCls}>
             <option value="all">All operations</option>
@@ -245,66 +264,65 @@ export function ActivityLogTab() {
           </select>
           <select value={actorFilter} onChange={e => setActorFilter(e.target.value)} className={selectCls}>
             <option value="all">All actors</option>
-            <option value="web">Web (me)</option>
-            <option value="service">Service (AI / sync)</option>
+            <option value="web">You</option>
+            <option value="service">AI / sync</option>
           </select>
-          <select value={days} onChange={e => setDays(Number(e.target.value))} className={selectCls}>
-            <option value={1}>Last 24h</option>
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => refetch()}
-            className="text-xs px-3 py-2 rounded-lg border border-ink-200 text-ink-600 hover:border-ink-400 transition-colors duration-150 min-h-[44px]"
+          <select
+            value={rangeHours}
+            onChange={e => { setRangeHours(Number(e.target.value)); setCustomFrom(''); setCustomTo('') }}
+            className={`${selectCls} ${usingCustom ? 'opacity-50' : ''}`}
           >
-            ↻ Refresh
-          </button>
-          {logs.length > 0 && (
-            <button
-              onClick={() => clearLogs.mutate()}
-              disabled={clearLogs.isPending}
-              className="text-xs px-3 py-2 rounded-lg border border-red-200 text-red-500 hover:border-red-400 transition-colors duration-150 min-h-[44px] disabled:opacity-50"
-            >
-              Clear all
-            </button>
+            {RANGES.map(r => <option key={r.hours} value={r.hours}>{r.label}</option>)}
+          </select>
+          <div className="flex items-center gap-1 ml-auto">
+            <button onClick={() => refetch()} className="text-xs px-3 py-2 rounded-lg border border-ink-200 text-ink-600 hover:border-ink-400 transition-colors min-h-[40px]">↻</button>
+            {logs.length > 0 && (
+              <button onClick={() => clearLogs.mutate()} disabled={clearLogs.isPending}
+                className="text-xs px-3 py-2 rounded-lg border border-red-200 text-red-500 hover:border-red-400 transition-colors min-h-[40px] disabled:opacity-50">
+                Clear all
+              </button>
+            )}
+          </div>
+        </div>
+        {/* Explicit from/to window */}
+        <div className="flex items-center gap-2 flex-wrap text-[11px] text-ink-400">
+          <span>Or exact window:</span>
+          <input type="datetime-local" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className={dtCls} aria-label="From" />
+          <span>→</span>
+          <input type="datetime-local" value={customTo} onChange={e => setCustomTo(e.target.value)} className={dtCls} aria-label="To" />
+          {usingCustom && (
+            <button onClick={() => { setCustomFrom(''); setCustomTo('') }} className="text-accent-600 hover:text-accent-700 px-1">clear</button>
           )}
         </div>
       </div>
 
       {isLoading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-20 rounded-xl bg-cream-200 animate-pulse" />
-          ))}
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-11 rounded-xl bg-cream-200 animate-pulse" />)}
         </div>
       )}
 
       {error && (
-        <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl p-3">
-          ⚠ {(error as Error).message}
-        </div>
+        <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl p-3">⚠ {(error as Error).message}</div>
       )}
 
       {!isLoading && filtered.length === 0 && (
         <div className="text-center py-16 text-ink-400">
           <div className="text-3xl mb-3">📜</div>
-          <p className="text-sm">No activity matches this filter</p>
+          <p className="text-sm">No activity in this window</p>
         </div>
       )}
 
-      {/* 4-column matrix — a lone entry occupies one cell; a same-transaction
-          cascade spans (up to 4) columns and renders as a connected chain. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-start">
+      {/* Readable single-column timeline */}
+      <div className="flex flex-col gap-2">
         {groups.map(group => (
           group.length === 1
-            ? <LogCard key={group[0].id} log={group[0]} expanded={expanded === group[0].id} onToggle={() => toggle(group[0].id)} />
-            : <CascadeChain key={group[0].id} group={group} expandedId={expanded} onToggle={toggle} />
+            ? <LogRow key={group[0].id} log={group[0]} expanded={expanded === group[0].id} onToggle={() => toggle(group[0].id)} />
+            : <CascadeBlock key={group[0].id} group={group} expandedId={expanded} onToggle={toggle} />
         ))}
       </div>
 
-      <p className="text-[11px] text-ink-400 mt-2">{filtered.length} / {logs.length} entries · retention 30 days</p>
+      <p className="text-[11px] text-ink-400 mt-3">{filtered.length} / {logs.length} entries · retention 30 days</p>
     </>
   )
 }

@@ -13,7 +13,7 @@ export function DeveloperPage() {
   const [tab, setTab] = useState<Tab>('activity')
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+    <div className="max-w-4xl px-4 sm:px-6 lg:px-8 py-6">
       <div className="flex items-center gap-3 mb-4">
         <h1 className="text-lg font-bold text-ink-900">Developer</h1>
         <div className="flex gap-0.5 p-0.5 bg-cream-50 border border-ink-200 rounded-lg">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { addDays, format, startOfWeek, endOfWeek, isToday, isYesterday, isTomorrow, differenceInCalendarDays } from 'date-fns'
+import { addDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isToday, isYesterday, isTomorrow, isSameDay, differenceInCalendarDays } from 'date-fns'
 import { DayView } from '../components/DayView'
 import { DayAgenda } from '../components/DayAgenda'
 import { WeekWidget } from '../components/WeekWidget'
@@ -8,6 +8,8 @@ import { UpcomingReleasesBanner } from '../components/UpcomingReleasesBanner'
 import { TodaySummary } from '../components/TodaySummary'
 import { PersonalTabs } from '../../personal/components/PersonalLayout'
 import { DateNav } from '../../../shared/components/DateNav'
+import { useTasksByMonth } from '../../todo/hooks/useTodos'
+import { formatLocalDate } from '../../../shared/utils/dateUtils'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DailyPage v2 — one compact header row instead of the old three stacked
@@ -66,17 +68,22 @@ export function DailyPage() {
         />
         {context && <span className="text-xs text-accent-600 font-medium hidden sm:inline">{context}</span>}
 
-        <div className="flex gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl overflow-x-auto scrollbar-none">
-          <button onClick={() => { setViewDate(addDays(new Date(), -1)); setMode('day') }} className={tabBtn(dayTab === 'yesterday')}>Yesterday</button>
-          <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={tabBtn(dayTab === 'today')}>Today</button>
-          <button onClick={() => { setViewDate(addDays(new Date(), 1)); setMode('day') }} className={tabBtn(dayTab === 'tomorrow')}>Tomorrow</button>
-          <button onClick={() => setMode('week')} className={tabBtn(mode === 'week')}>Week</button>
-          <button onClick={() => setMode('month')} className={tabBtn(mode === 'month')}>Month</button>
+        {/* Both tab groups are anchored to the RIGHT as one cluster (ml-auto)
+            so the variable-width date + context text on the left can grow/
+            shrink between periods WITHOUT nudging the tabs sideways (the
+            "sekmeler kayıyor" bug). PersonalTabs sits at the far right and
+            stays there across Daily/Shop/Recipes (PersonalLayout right-aligns
+            its own bar to match — no left↔right jump between pages). */}
+        <div className="ml-auto flex items-center gap-3">
+          <div className="flex gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl overflow-x-auto scrollbar-none">
+            <button onClick={() => { setViewDate(addDays(new Date(), -1)); setMode('day') }} className={tabBtn(dayTab === 'yesterday')}>Yesterday</button>
+            <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={tabBtn(dayTab === 'today')}>Today</button>
+            <button onClick={() => { setViewDate(addDays(new Date(), 1)); setMode('day') }} className={tabBtn(dayTab === 'tomorrow')}>Tomorrow</button>
+            <button onClick={() => setMode('week')} className={tabBtn(mode === 'week')}>Week</button>
+            <button onClick={() => setMode('month')} className={tabBtn(mode === 'month')}>Month</button>
+          </div>
+          <PersonalTabs />
         </div>
-
-        {/* Personal group tabs live in THIS row now (far right) instead of
-            their own row above the page — one header row total. */}
-        <div className="ml-auto"><PersonalTabs /></div>
       </div>
 
       {mode === 'day' && <DaySection date={viewDate} onDayClick={handleDayClick} />}
@@ -102,29 +109,113 @@ function useGreeting() {
 // meals/training/episode from Daily was the whole point of the redesign.
 function DaySection({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
   return (
-    <div>
+    <div className="flex flex-col gap-5">
       {isToday(date) && <UpcomingReleasesBanner />}
-      <TodaySummary date={date} />
-      {/* Content-sized columns, left-aligned (layout rule): the schedule was
-          `1fr` and swallowed all leftover width — an agenda list doesn't need
-          it. Fixed caps now; spare space stays on the right. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_500px_300px] xl:grid-cols-[340px_560px_320px] gap-5 justify-start">
-        <div className="lg:pl-1"><DayView date={date} /></div>
+
+      {/* Schedule at the TOP, CENTERED (explicit request) — the day's timeline
+          is the thing you run the day from, so it leads. Centered + content-
+          width (the one deliberately-centered block; the rest of Daily stays
+          left-aligned per the width standard). */}
+      <div className="w-full max-w-2xl mx-auto">
         <DayAgenda date={date} />
-        <div className="flex flex-col gap-4">
-          <WeekWidget onDayClick={onDayClick} highlightDate={date} />
-        </div>
+      </div>
+
+      {/* At a glance — content-width card grid */}
+      <TodaySummary date={date} />
+
+      {/* To-do + week, side by side, content-sized (left-aligned) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,360px)_minmax(0,320px)] gap-5 justify-start">
+        <DayView date={date} />
+        <WeekWidget onDayClick={onDayClick} highlightDate={date} />
       </div>
     </div>
   )
 }
 
-// Month view (restored per request — the tab was removed in the v2 redesign,
-// now wanted back as its own mode). Clicking a day jumps to its Day view.
-function MonthSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
+// Month view — two panes: a bigger calendar (left) and, on the right, the
+// selected day's schedule IN PLACE (picking a day does NOT navigate away, per
+// request — it loads that day's data here). With no day picked, the right pane
+// lists upcoming activities; tapping one selects its day. onDayClick is kept
+// for the "jump to full Day view" affordance only.
+function MonthSection({ onDayClick }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
+  const [picked, setPicked] = useState<Date | null>(null)
+
   return (
-    <div className="max-w-md">
-      <MonthWidget onDayClick={onDayClick} highlightDate={selectedDate} />
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,460px)_minmax(0,520px)] gap-6 justify-start">
+      <div>
+        <MonthWidget big onDayClick={setPicked} highlightDate={picked ?? undefined} />
+      </div>
+      <div className="min-w-0">
+        {picked ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-ink-900">{format(picked, 'EEEE, d MMMM')}</h2>
+              <div className="flex items-center gap-1">
+                <button onClick={() => onDayClick(picked)}
+                  className="text-[11px] text-accent-600 hover:text-accent-700 min-h-[32px] px-2 rounded-lg">Open day →</button>
+                <button onClick={() => setPicked(null)}
+                  className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[32px] px-2 rounded-lg">✕ Upcoming</button>
+              </div>
+            </div>
+            {/* DayAgenda = the day's editable schedule (add/edit/delete blocks) */}
+            <DayAgenda date={picked} />
+          </div>
+        ) : (
+          <UpcomingActivities onPick={setPicked} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Upcoming dated activities (tasks with a due date, today onward) grouped by
+// day — the Month tab's default right pane. Tapping a day selects it in the
+// calendar (in-place, no navigation).
+function UpcomingActivities({ onPick }: { onPick: (d: Date) => void }) {
+  const today = new Date()
+  const { data: tasks = [] } = useTasksByMonth(startOfMonth(today), endOfMonth(addDays(today, 45)))
+  const todayStr = formatLocalDate(today)
+
+  const upcoming = tasks
+    .filter(t => t.due_date && t.due_date >= todayStr && t.status !== 'done' && t.status !== 'cancelled')
+    .sort((a, b) => (a.due_date! < b.due_date! ? -1 : a.due_date! > b.due_date! ? 1 : (a.due_time ?? '') < (b.due_time ?? '') ? -1 : 1))
+
+  const byDay = new Map<string, typeof upcoming>()
+  for (const t of upcoming) {
+    const arr = byDay.get(t.due_date!) ?? []
+    arr.push(t)
+    byDay.set(t.due_date!, arr)
+  }
+
+  return (
+    <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-3">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">📅 Upcoming</p>
+      {byDay.size === 0 ? (
+        <p className="text-xs text-ink-400 py-2">Nothing scheduled ahead. Tap a day in the calendar to plan it.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {[...byDay.entries()].slice(0, 14).map(([dateStr, items]) => {
+            const d = new Date(dateStr + 'T00:00:00')
+            return (
+              <div key={dateStr}>
+                <button onClick={() => onPick(d)}
+                  className="text-xs font-semibold text-ink-700 hover:text-accent-600 min-h-[28px] flex items-center gap-2">
+                  {format(d, 'EEE, d MMM')}
+                  {isSameDay(d, today) && <span className="text-[9px] font-bold text-accent-600 bg-accent-50 rounded-full px-1.5">TODAY</span>}
+                </button>
+                <ul className="mt-0.5 flex flex-col gap-0.5 pl-1 border-l-2 border-ink-100">
+                  {items.map(t => (
+                    <li key={t.id} className="pl-2 text-xs text-ink-600 flex items-center gap-1.5">
+                      {t.due_time && <span className="text-[10px] text-ink-400 tabular-nums shrink-0">{t.due_time.slice(0, 5)}</span>}
+                      <span className="truncate">{t.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
