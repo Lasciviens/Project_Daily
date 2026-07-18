@@ -76,6 +76,63 @@ function SessionTimeline({ sessions }: { sessions: { startMs: number; endMs: num
   )
 }
 
+// The Day-mode night graph — a real time-axis chart of the night, built from
+// what the export actually contains: session windows (exact start/end) and
+// interruption gaps. Asleep = indigo bands, awake gaps = hatched red, hour
+// ticks along the axis. Deliberately NOT a per-stage hypnogram: the exported
+// sleep data carries whole-night stage TOTALS only (no per-stage timestamps),
+// so stage timing on an axis would be invented precision.
+function NightChart({ sessions }: { sessions: { startMs: number; endMs: number }[] }) {
+  const PAD_MS = 30 * 60_000
+  const min = sessions[0].startMs - PAD_MS
+  const max = sessions[sessions.length - 1].endMs + PAD_MS
+  const span = max - min
+  const W = 640, H = 96, TOP = 18, BAND_H = 40, AXIS_Y = TOP + BAND_H + 14
+  const x = (ms: number) => ((ms - min) / span) * W
+
+  // Hour tick marks across the window
+  const ticks: number[] = []
+  const first = new Date(min); first.setMinutes(0, 0, 0)
+  for (let t = first.getTime(); t <= max; t += 60 * 60_000) if (t >= min) ticks.push(t)
+
+  return (
+    <div className="rounded-xl border border-ink-100 bg-cream-50 px-3 py-3 max-w-2xl">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Night timeline</p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" aria-hidden="true">
+        {/* awake gaps between sessions — hatched red bands */}
+        {sessions.slice(1).map((s, i) => {
+          const gapStart = sessions[i].endMs
+          const gapEnd = s.startMs
+          if (gapEnd <= gapStart) return null
+          return (
+            <g key={`gap-${i}`}>
+              <rect x={x(gapStart)} y={TOP} width={x(gapEnd) - x(gapStart)} height={BAND_H} rx={4} fill="#fecaca" />
+              <text x={(x(gapStart) + x(gapEnd)) / 2} y={TOP - 5} textAnchor="middle" fontSize={9} fill="#dc2626">awake</text>
+            </g>
+          )
+        })}
+        {/* asleep session bands */}
+        {sessions.map((s, i) => (
+          <rect key={i} x={x(s.startMs)} y={TOP} width={Math.max(x(s.endMs) - x(s.startMs), 2)} height={BAND_H} rx={6} fill="#6366f1" fillOpacity={0.9} />
+        ))}
+        {/* sleep start / wake labels */}
+        <text x={x(sessions[0].startMs)} y={TOP - 5} textAnchor="start" fontSize={10} fill="rgb(var(--ink-500))">😴 {fmtClock(sessions[0].startMs)}</text>
+        <text x={x(sessions[sessions.length - 1].endMs)} y={TOP - 5} textAnchor="end" fontSize={10} fill="rgb(var(--ink-500))">⏰ {fmtClock(sessions[sessions.length - 1].endMs)}</text>
+        {/* hour axis */}
+        <line x1={0} y1={AXIS_Y - 8} x2={W} y2={AXIS_Y - 8} stroke="rgb(var(--ink-200))" strokeWidth={1} />
+        {ticks.map(t => (
+          <g key={t}>
+            <line x1={x(t)} y1={AXIS_Y - 11} x2={x(t)} y2={AXIS_Y - 5} stroke="rgb(var(--ink-300))" strokeWidth={1} />
+            <text x={x(t)} y={AXIS_Y + 4} textAnchor="middle" fontSize={8.5} fill="rgb(var(--ink-400))">
+              {new Date(t).getHours().toString().padStart(2, '0')}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
 function scoreColor(score: number): string {
   if (score >= 80) return 'bg-green-100 text-green-700 border-green-200'
   if (score >= 60) return 'bg-amber-100 text-amber-700 border-amber-200'
@@ -99,15 +156,12 @@ function StatChip({ value, label, cls, title }: { value: string; label: string; 
   )
 }
 
-// "Correct manually" + "View this day" links inside the tooltip (not standalone
-// buttons) — clicking a bar (or an empty gap, which still has a date even with
-// no bar to show) can either open the manual-entry form pre-filled for exactly
-// that night, or jump the section to that night's Day view.
-function makeSleepTooltipContent(
-  sourcesByDate: Map<string, Set<string>>,
-  onCorrect: (date: string) => void,
-  onViewDay: (date: string) => void,
-) {
+// Hover tooltip shows VALUES ONLY. Links inside a hover tooltip were
+// unreachable in practice — the tooltip re-anchors/hides the moment the
+// mouse moves toward it ("mouse hareket ettiği anda gidiyor"). Actions now
+// live in a PINNED panel: clicking a bar sets `pinnedDate` and a stable
+// action strip renders under the chart instead.
+function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
   return function TooltipContent({ active, payload, label }: any) {
     if (!active || !payload?.length) return null
@@ -115,32 +169,13 @@ function makeSleepTooltipContent(
     const date: string | undefined = point?.payload?.date
     const sources = date ? sourcesByDate.get(date) : null
     return (
-      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
+      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5 pointer-events-none">
         <p className="text-ink-400 font-medium">{label}</p>
         <p className="font-semibold text-indigo-600">{point.value != null ? `${point.value} hr` : '—'}</p>
         {sources && sources.size > 0 && (
           <p className="text-ink-400">{[...sources].join(', ')}</p>
         )}
-        {date && (
-          <div className="flex flex-col">
-            {point.value != null && (
-              <button
-                type="button"
-                onClick={() => onViewDay(date)}
-                className="text-indigo-600 underline text-xs py-1.5 text-left min-h-[32px]"
-              >
-                View this day →
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => onCorrect(date)}
-              className="text-accent-600 underline text-xs py-1.5 text-left min-h-[32px]"
-            >
-              Correct manually
-            </button>
-          </div>
-        )}
+        <p className="text-[10px] text-ink-300">click bar for actions</p>
       </div>
     )
   }
@@ -205,6 +240,8 @@ export function SleepSection() {
   const [manualHours, setManualHours] = useState('')
   const [isCorrectingExisting, setIsCorrectingExisting] = useState(false)
   const [showRaw, setShowRaw] = useState(false)
+  // Clicked-bar action panel (stable replacement for links-in-tooltip)
+  const [pinnedDate, setPinnedDate] = useState<string | null>(null)
 
   // Existing manual total for a date, if any — read from whatever's already
   // loaded for the currently-displayed range (the clicked bar is always
@@ -358,25 +395,66 @@ export function SleepSection() {
         <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
       </div>
 
-      {/* Day mode shows ONE night — the stage breakdown + session timeline
-          above ARE that night's graph. The multi-bar trend chart is only for
-          Week/Month (in Day mode it read as a week, which is exactly what the
-          user flagged). */}
+      {/* Day mode gets the NIGHT CHART below instead; the multi-bar trend is
+          only for Week/Month. Hover = value tooltip only; CLICK a bar to pin
+          the action panel (links in a hover tooltip were unreachable — it
+          hid the moment the mouse moved toward it). */}
       {period !== 'day' && (
-        <div className="h-28">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-              <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-              {/* pointerEvents:auto is required or the links inside the tooltip
-                  never receive their click (recharts sets the tooltip wrapper to
-                  pointer-events:none by default). */}
-              <Tooltip cursor={false} wrapperStyle={{ pointerEvents: 'auto' }} content={makeSleepTooltipContent(sourcesByDate, openCorrectForm, viewDay)} />
-              <Bar dataKey="total" radius={[3, 3, 0, 0]} activeBar={false} fill="#6366f1" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <>
+          <div className="h-28">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
+                <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
+                <Tooltip cursor={false} content={makeSleepTooltipContent(sourcesByDate)} />
+                {/* Click handled on the Bar itself (its payload carries the
+                    date) — the same proven pattern Steps/Energy use. */}
+                <Bar
+                  dataKey="total"
+                  radius={[3, 3, 0, 0]}
+                  activeBar={false}
+                  fill="#6366f1"
+                  className="cursor-pointer"
+                  onClick={(d) => {
+                    const date = (d as unknown as { payload?: { date?: string } }).payload?.date
+                      ?? (d as unknown as { date?: string }).date
+                    if (date) setPinnedDate(p => (p === date ? null : date))
+                  }}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Pinned action panel — STABLE (doesn't vanish like a tooltip) */}
+          {pinnedDate && (
+            <div className="flex items-center gap-2 flex-wrap rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-2">
+              <span className="text-xs font-semibold text-ink-800">
+                {new Date(pinnedDate + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                {summaryByDate.get(pinnedDate) ? ` · ${fmtHrs(summaryByDate.get(pinnedDate)!.total)}` : ' · no data'}
+              </span>
+              <button type="button" onClick={() => { viewDay(pinnedDate); setPinnedDate(null) }}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 min-h-[32px] px-2 rounded-lg">
+                View this day →
+              </button>
+              <button type="button" onClick={() => { openCorrectForm(pinnedDate); setPinnedDate(null) }}
+                className="text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[32px] px-2 rounded-lg">
+                Correct manually
+              </button>
+              <button type="button" onClick={() => setPinnedDate(null)}
+                className="ml-auto text-ink-400 hover:text-ink-700 min-w-[32px] min-h-[32px]">✕</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* DAY MODE — the night's own graph: a time-axis band chart built from
+          the session windows (asleep blocks + awake gaps + hour ticks). This
+          is the honest maximum for the current export: Health Auto Export
+          sends session start/end + whole-night stage TOTALS, not per-stage
+          timestamps, so a minute-level hypnogram would be invented data. */}
+      {period === 'day' && detailSessions.length > 0 && (
+        <NightChart sessions={detailSessions} />
       )}
 
       <MetricMiniGrid title="Sleep Extras" metrics={SLEEP_EXTRA_METRICS} />
