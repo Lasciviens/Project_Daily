@@ -260,7 +260,7 @@ export function SleepSection() {
           {efficiency != null && (
             <StatChip
               value={`${efficiency}%`}
-              label="Verim"
+              label="Efficiency"
               cls={effColor(efficiency)}
               title="Sleep efficiency — % of time in bed actually spent asleep (≥85% is generally good)"
             />
@@ -272,7 +272,7 @@ export function SleepSection() {
           )}
         </div>
         {period === 'day' && !detail && !isLoading && (
-          <p className="text-xs text-ink-400 mt-1">Bu gece için veri yok — ‹ › ile başka bir güne geç veya aşağıdan manuel gir.</p>
+          <p className="text-xs text-ink-400 mt-1">No sleep data for this night — use ‹ › to pick another day, or add it manually below.</p>
         )}
       </div>
 
