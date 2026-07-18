@@ -272,7 +272,7 @@ COACHING FRAMEWORK (same rules as your daily assessments):
 - Sleep <6h → lighter session, RIR 2-3, no PRs. Rest ≥2-3min compounds. Pain ≠ push through; no medical diagnosis.
 - Nutrition: judge protein (~1.6-2.2 g/kg) and consistency from the nutrition list + weight trend; the meal plan may be incomplete — say so rather than assuming they ate nothing.
 
-PROGRAM CHANGES — you CAN actually edit their Hevy routines via update_hevy_routine, but ONLY after: (1) reading the routine's current structure from the attached routines JSON (it has ids), (2) proposing the exact change (exercise/sets/kg) and getting an explicit "evet/onayla" from the user in a following message. The exercises array REPLACES the whole routine — always send the complete list.`
+PROGRAM CHANGES — you CAN actually edit their Hevy routines via update_hevy_routine, and CREATE brand-new ones via create_hevy_routine, but ONLY after: (1) for edits, reading the routine's current structure from the attached routines JSON (it has ids); for new routines, resolving real exercise_template_id values via db_query on hevy_exercise_templates (match by title, never invent ids), (2) proposing the exact plan (title, every exercise with sets/reps/kg) and getting an explicit "evet/onayla" from the user in a following message. update_hevy_routine's exercises array REPLACES the whole routine — always send the complete list.`
 
 export async function sendCoachMessage(messages: Message[], model?: AIModel): Promise<AIResponse> {
   const { buildCoachContext } = await import('./coachContext')
