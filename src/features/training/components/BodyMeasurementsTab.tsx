@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react'
+import { flushSync } from 'react-dom'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { DensityControl } from './DensityControl'
+import { useDensity, DENSITY_CLASS } from '../density'
 import { useHevyBodyMeasurements, useUpsertBodyMeasurement } from '../hooks/useHevyBodyMeasurements'
 import { useHealthMetricSeries } from '../hooks/useHealthExport'
 import { computeDailySeries } from '../healthAggregate'
@@ -79,11 +82,34 @@ interface MeasurementModalProps {
   isOpen:   boolean
   onClose:  () => void
   initial?: HevyBodyMeasurement
+  /** All known measurements, so picking a date that already has a row
+      prefills its values — the user then sees exactly what a save will
+      keep/replace instead of blindly overlaying a day they can't see. */
+  existing?: HevyBodyMeasurement[]
 }
 
-function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
+function MeasurementModal({ isOpen, onClose, initial, existing = [] }: MeasurementModalProps) {
   const upsert = useUpsertBodyMeasurement()
   const [form, setForm] = useState(() => blankForm(initial))
+
+  // When the selected date has a stored measurement, load its values into
+  // fields the user hasn't typed into (adjust-during-render pattern; typed
+  // values are never clobbered — this only fills blanks). Starts at '' so
+  // the initial date (today) prefills on first open too.
+  const [loadedDate, setLoadedDate] = useState('')
+  if (form.date !== loadedDate) {
+    setLoadedDate(form.date)
+    const row = existing.find(m => m.date === form.date)
+    if (row) {
+      setForm(f => {
+        const values = { ...f.values }
+        for (const fd of ALL_FIELDS) {
+          if (values[fd.key] === '' && row[fd.key] != null) values[fd.key] = String(row[fd.key])
+        }
+        return { ...f, values }
+      })
+    }
+  }
 
   // Latest known weight/body-fat from Apple Health (Watch/manual scale syncs
   // arrive there daily) — offered as one-tap suggestion chips so the values
@@ -265,7 +291,11 @@ function MeasurementModal({ isOpen, onClose, initial }: MeasurementModalProps) {
 
 // ─── Weight Chart ─────────────────────────────────────────────────────────────
 
-function WeightChart({ measurements }: { measurements: HevyBodyMeasurement[] }) {
+function WeightChart({ measurements, expanded, onToggleExpand }: {
+  measurements: HevyBodyMeasurement[]
+  expanded: boolean
+  onToggleExpand: () => void
+}) {
   const chartData = useMemo(() => {
     return [...measurements]
       .filter(m => m.weight_kg != null)
@@ -336,13 +366,44 @@ function WeightChart({ measurements }: { measurements: HevyBodyMeasurement[] }) 
   const firstLabel = chartData[0].date.slice(5).replace('-', '/')
   const lastLabel  = chartData[chartData.length - 1].date.slice(5).replace('-', '/')
 
+  // Headline numbers for the compact (narrow-container) presentation.
+  const lastW  = chartData[chartData.length - 1].weight_kg as number
+  const firstW = chartData[0].weight_kg as number
+  const deltaW = Math.round((lastW - firstW) * 10) / 10
+
+  // DENSITY PILOT (Body = all strategies): this card is itself a @container.
+  // In a narrow grid cell it renders as a HEADLINE + sparkline (number-first,
+  // Tufte-style); once its own box is ≥28rem it becomes the full chart with
+  // axes and legend. Clicking the card zoom-morphs it to full-width via the
+  // View Transitions API (see BodyMeasurementsTab).
   return (
-    <div className="rounded-xl border border-ink-100 bg-cream-50 px-3 py-3 overflow-hidden">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-2">Weight over time</p>
+    <button
+      type="button"
+      onClick={onToggleExpand}
+      style={{ viewTransitionName: 'body-weight-card' }}
+      className="@container w-full text-left rounded-xl border border-ink-100 bg-cream-50 px-3 py-3 overflow-hidden card-interactive cursor-pointer"
+      title={expanded ? 'Shrink chart' : 'Expand chart'}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">Weight over time</p>
+        <span className="text-[10px] text-ink-300">{expanded ? '⤡' : '⤢'}</span>
+      </div>
+
+      {/* Compact tier — shown only while the container is narrow */}
+      <div className="@md:hidden flex items-baseline gap-2">
+        <span className="text-2xl font-black text-ink-900 tabular-nums">{lastW}</span>
+        <span className="text-xs text-ink-400">kg</span>
+        <span className={`text-xs font-semibold ${deltaW > 0 ? 'text-red-500' : deltaW < 0 ? 'text-green-600' : 'text-ink-400'}`}>
+          {deltaW > 0 ? '▲' : deltaW < 0 ? '▼' : '—'} {Math.abs(deltaW)} kg
+        </span>
+      </div>
+
+      <div className={expanded ? '' : '@md:block hidden'}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        style={{ height: H }}
+        className={`w-full ${expanded ? 'h-[320px]' : ''}`}
+        style={expanded ? undefined : { height: H }}
+        preserveAspectRatio="none"
         aria-hidden="true"
       >
         {/* Y-axis labels */}
@@ -388,7 +449,8 @@ function WeightChart({ measurements }: { measurements: HevyBodyMeasurement[] }) 
           </span>
         </div>
       )}
-    </div>
+      </div>
+    </button>
   )
 }
 
@@ -443,19 +505,20 @@ function MeasurementRow({
 
   return (
     <div className="border-b border-ink-100 last:border-0">
-      {/* Summary row */}
-      <div className="flex items-center gap-2 px-3 py-2 min-h-[44px]">
+      {/* Summary row — sizes flow from the density-scope vars (falls back to
+          the original values outside a scope) */}
+      <div className="flex items-center gap-2 px-[var(--dz-pad-x,0.75rem)] py-[var(--dz-pad-y,0.5rem)] min-h-[var(--dz-minh,44px)]">
         <button
           type="button"
           onClick={() => hasDetails && setExpanded(o => !o)}
           disabled={!hasDetails}
           className="flex-1 flex items-center gap-3 text-left min-w-0"
         >
-          <span className="w-28 shrink-0 text-sm font-semibold text-ink-700">{fmtDate(m.date)}</span>
+          <span className="w-28 shrink-0 text-[length:var(--dz-text,0.875rem)] font-semibold text-ink-700">{fmtDate(m.date)}</span>
           <div className="flex flex-1 flex-wrap gap-x-4 gap-y-0.5 min-w-0">
             {mainValues.map(f => (
-              <span key={f.key} className="text-sm text-ink-600">
-                <span className="text-ink-400 text-xs">{f.label}:</span>{' '}
+              <span key={f.key} className="text-[length:var(--dz-text,0.875rem)] text-ink-600">
+                <span className="text-ink-400 text-[length:var(--dz-sub,0.75rem)] dz-hide">{f.label}:</span>{' '}
                 <strong className="text-ink-800">{m[f.key]} {f.unit}</strong>
               </span>
             ))}
@@ -502,6 +565,21 @@ export function BodyMeasurementsTab() {
   const [logKey,       setLogKey]       = useState(0)
   const [editTarget,   setEditTarget]   = useState<HevyBodyMeasurement | null>(null)
 
+  // DENSITY PILOT — Body is the "ALL strategies combined" showcase:
+  // auto-fill bento grid + container-query chart + density tokens +
+  // view-transition zoom from chart card to full width.
+  const [density, setDensity] = useDensity('lasci-density-body')
+  const [chartExpanded, setChartExpanded] = useState(false)
+  function toggleChart() {
+    if (typeof document.startViewTransition === 'function') {
+      // flushSync inside the callback so the "after" snapshot sees the new
+      // layout — the card then MORPHS between its grid cell and full width.
+      document.startViewTransition(() => flushSync(() => setChartExpanded(v => !v)))
+    } else {
+      setChartExpanded(v => !v)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -523,14 +601,17 @@ export function BodyMeasurementsTab() {
           <h3 className="text-base font-bold text-ink-900">Body Measurements</h3>
           <p className="text-xs text-ink-400">{measurements.length} entries</p>
         </div>
-        <button
-          type="button"
-          onClick={() => { setLogKey(k => k + 1); setLogOpen(true) }}
-          className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5"
-        >
-          <span className="text-base leading-none">+</span>
-          <span>Log Measurement</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <DensityControl value={density} onChange={setDensity} />
+          <button
+            type="button"
+            onClick={() => { setLogKey(k => k + 1); setLogOpen(true) }}
+            className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5"
+          >
+            <span className="text-base leading-none">+</span>
+            <span>Log Measurement</span>
+          </button>
+        </div>
       </div>
 
       {measurements.length === 0 ? (
@@ -540,16 +621,20 @@ export function BodyMeasurementsTab() {
           <p className="text-ink-400 text-xs mt-1">Sync from Hevy or log one now</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {/* Latest (compact) + chart beside it on wider screens */}
-          <div className="grid gap-3 sm:grid-cols-[15rem_1fr] items-start">
-            <LatestHeroCard m={latest} onEdit={() => setEditTarget(latest)} />
-            <WeightChart measurements={measurements} />
+        // Bento: auto-fill derives the column count from available width
+        // (monitor 3-4 cells, laptop 2, phone 1 — no breakpoints). The chart
+        // spans the leftover row space; expanded it takes the full row via
+        // the view-transition morph. History always spans full width.
+        <div className={`@container density-scope ${DENSITY_CLASS[density]}`}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 items-start">
+          <LatestHeroCard m={latest} onEdit={() => setEditTarget(latest)} />
+          <div className={chartExpanded ? 'col-span-full' : '@3xl:col-span-2'}>
+            <WeightChart measurements={measurements} expanded={chartExpanded} onToggleExpand={toggleChart} />
           </div>
 
           {/* History */}
           {rest.length > 0 && (
-            <div className="border border-ink-200 rounded-xl overflow-hidden">
+            <div className="col-span-full border border-ink-200 rounded-xl overflow-hidden">
               <p className="px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-ink-400 bg-cream-50 border-b border-ink-100">
                 History
               </p>
@@ -561,6 +646,7 @@ export function BodyMeasurementsTab() {
             </div>
           )}
         </div>
+        </div>
       )}
 
       {/* Log new */}
@@ -568,6 +654,7 @@ export function BodyMeasurementsTab() {
         key={logKey}
         isOpen={logOpen}
         onClose={() => setLogOpen(false)}
+        existing={measurements}
       />
 
       {/* Edit existing */}

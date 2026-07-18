@@ -3,6 +3,7 @@ import { addDays, format, startOfWeek, endOfWeek, isToday, isYesterday, isTomorr
 import { DayView } from '../components/DayView'
 import { DayAgenda } from '../components/DayAgenda'
 import { WeekWidget } from '../components/WeekWidget'
+import { MonthWidget } from '../components/MonthWidget'
 import { UpcomingReleasesBanner } from '../components/UpcomingReleasesBanner'
 import { TodaySummary } from '../components/TodaySummary'
 import { PersonalTabs } from '../../personal/components/PersonalLayout'
@@ -11,13 +12,13 @@ import { DateNav } from '../../../shared/components/DateNav'
 // ─────────────────────────────────────────────────────────────────────────────
 //  DailyPage v2 — one compact header row instead of the old three stacked
 //  rows (Personal tab bar + 5-tab bar + big date heading):
-//    ‹ [date] › · context — [Yesterday|Today|Tomorrow|Week] ——— [Daily|Shop|Recipes]
-//  The monthly calendar is gone (weekly is enough, per explicit request);
+//    ‹ [date] › · context — [Yesterday|Today|Tomorrow|Week|Month] ——— [Daily|Shop|Recipes]
 //  Yesterday/Today/Tomorrow were three near-identical view components — now
 //  one DaySection whose tab highlight is DERIVED from the viewed date.
+//  Month was removed in v2, then restored as its own tab per request.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Mode = 'day' | 'week'
+type Mode = 'day' | 'week' | 'month'
 
 export function DailyPage() {
   const [mode,     setMode]     = useState<Mode>('day')
@@ -70,6 +71,7 @@ export function DailyPage() {
           <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={tabBtn(dayTab === 'today')}>Today</button>
           <button onClick={() => { setViewDate(addDays(new Date(), 1)); setMode('day') }} className={tabBtn(dayTab === 'tomorrow')}>Tomorrow</button>
           <button onClick={() => setMode('week')} className={tabBtn(mode === 'week')}>Week</button>
+          <button onClick={() => setMode('month')} className={tabBtn(mode === 'month')}>Month</button>
         </div>
 
         {/* Personal group tabs live in THIS row now (far right) instead of
@@ -77,7 +79,9 @@ export function DailyPage() {
         <div className="ml-auto"><PersonalTabs /></div>
       </div>
 
-      {mode === 'day' ? <DaySection date={viewDate} onDayClick={handleDayClick} /> : <WeekSection onDayClick={handleDayClick} selectedDate={viewDate} />}
+      {mode === 'day' && <DaySection date={viewDate} onDayClick={handleDayClick} />}
+      {mode === 'week' && <WeekSection onDayClick={handleDayClick} selectedDate={viewDate} />}
+      {mode === 'month' && <MonthSection onDayClick={handleDayClick} selectedDate={viewDate} />}
     </div>
   )
 }
@@ -111,6 +115,16 @@ function DaySection({ date, onDayClick }: { date: Date; onDayClick: (d: Date) =>
           <WeekWidget onDayClick={onDayClick} highlightDate={date} />
         </div>
       </div>
+    </div>
+  )
+}
+
+// Month view (restored per request — the tab was removed in the v2 redesign,
+// now wanted back as its own mode). Clicking a day jumps to its Day view.
+function MonthSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
+  return (
+    <div className="max-w-md">
+      <MonthWidget onDayClick={onDayClick} highlightDate={selectedDate} />
     </div>
   )
 }
