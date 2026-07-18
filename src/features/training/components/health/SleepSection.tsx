@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
@@ -158,9 +158,10 @@ function StatChip({ value, label, cls, title }: { value: string; label: string; 
 
 // Hover tooltip shows VALUES ONLY. Links inside a hover tooltip were
 // unreachable in practice — the tooltip re-anchors/hides the moment the
-// mouse moves toward it ("mouse hareket ettiği anda gidiyor"). Actions now
-// live in a PINNED panel: clicking a bar sets `pinnedDate` and a stable
-// action strip renders under the chart instead.
+// mouse moves toward it ("mouse hareket ettiği anda gidiyor"). Actions live
+// in a PINNED POPOVER anchored AT the clicked bar (looks and sits like the
+// info box itself, per explicit request — NOT a separate strip below the
+// chart): clicking a bar pins it, ✕ or clicking the bar again closes it.
 function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
   return function TooltipContent({ active, payload, label }: any) {
@@ -196,21 +197,54 @@ export function SleepSection() {
   const summary = computeSleepSummary(points)
   const summaryByDate = new Map(summary.map(s => [s.date, s]))
 
-  // The night whose full detail (stages, timeline, score, efficiency) is shown:
-  // Day mode → the anchored night; Week/Month → the most recent night WITH data
-  // in range (so "Last Night's Sleep" is never a blank today-not-synced-yet).
-  const detailDate = period === 'day'
-    ? anchor
-    : (summary.length ? summary[summary.length - 1].date : anchor)
-  const detail = summaryByDate.get(detailDate) ?? null
-  const detailSessions = detail ? extractSleepSessions(points, detailDate) : []
-  const sleepScore = detail ? computeSleepScore(detail, Math.max(detailSessions.length, 1)) : null
-  const efficiency = detail ? computeSleepEfficiency(detail, detailSessions) : null
+  // Day mode → the anchored night's own detail. Week/Month → PERIOD AVERAGES
+  // across every night with data in range (avg duration, avg stage split,
+  // avg score/efficiency) — never "last night" pretending to be the period.
+  const isDay = period === 'day'
+  const dayDetail = isDay ? (summaryByDate.get(anchor) ?? null) : null
+  const daySessions = dayDetail ? extractSleepSessions(points, anchor) : []
 
-  const detailIsToday = detailDate === today
-  const headline = period === 'day'
-    ? (detailIsToday ? "Today's Sleep" : `Sleep · ${fmtDayLong(detailDate)}`)
-    : "Last Night's Sleep"
+  const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length
+  let periodDetail: (typeof summary)[number] | null = null
+  let avgScore: number | null = null
+  let avgEff: number | null = null
+  let bestNight: (typeof summary)[number] | null = null
+  let worstNight: (typeof summary)[number] | null = null
+  if (!isDay && summary.length > 0) {
+    periodDetail = {
+      ...summary[summary.length - 1],
+      total: mean(summary.map(n => n.total)),
+      deep:  mean(summary.map(n => n.deep)),
+      core:  mean(summary.map(n => n.core)),
+      rem:   mean(summary.map(n => n.rem)),
+      awake: mean(summary.map(n => n.awake)),
+    }
+    const scores: number[] = []
+    const effs: number[] = []
+    for (const n of summary) {
+      const sess = extractSleepSessions(points, n.date)
+      scores.push(computeSleepScore(n, Math.max(sess.length, 1)))
+      const e = computeSleepEfficiency(n, sess)
+      if (e != null) effs.push(e)
+    }
+    avgScore = Math.round(mean(scores))
+    avgEff = effs.length ? Math.round(mean(effs)) : null
+    bestNight = summary.reduce((a, b) => (a.total >= b.total ? a : b))
+    worstNight = summary.reduce((a, b) => (a.total <= b.total ? a : b))
+  }
+
+  const detail = isDay ? dayDetail : periodDetail
+  const detailSessions = daySessions
+  const sleepScore = isDay
+    ? (dayDetail ? computeSleepScore(dayDetail, Math.max(daySessions.length, 1)) : null)
+    : avgScore
+  const efficiency = isDay
+    ? (dayDetail ? computeSleepEfficiency(dayDetail, daySessions) : null)
+    : avgEff
+
+  const headline = isDay
+    ? (anchor === today ? "Today's Sleep" : `Sleep · ${fmtDayLong(anchor)}`)
+    : period === 'week' ? 'Sleep · Weekly Average' : 'Sleep · Monthly Average'
 
   // Left-join onto every date in range so a night with no synced data still
   // shows as a gap on the axis instead of silently disappearing.
@@ -240,8 +274,10 @@ export function SleepSection() {
   const [manualHours, setManualHours] = useState('')
   const [isCorrectingExisting, setIsCorrectingExisting] = useState(false)
   const [showRaw, setShowRaw] = useState(false)
-  // Clicked-bar action panel (stable replacement for links-in-tooltip)
-  const [pinnedDate, setPinnedDate] = useState<string | null>(null)
+  // Clicked-bar pinned popover — anchored at the bar's own position so the
+  // actions live "in the info box", not in a separate strip below the chart.
+  const [pinned, setPinned] = useState<{ date: string; x: number; y: number } | null>(null)
+  const chartWrapRef = useRef<HTMLDivElement>(null)
 
   // Existing manual total for a date, if any — read from whatever's already
   // loaded for the currently-displayed range (the clicked bar is always
@@ -285,11 +321,12 @@ export function SleepSection() {
         <div className="flex items-center gap-2 flex-wrap mt-1">
           <p className="text-3xl font-bold text-ink-900 leading-tight">
             {isLoading ? '…' : detail ? fmtHrs(detail.total) : '—'}
+            {!isDay && detail && <span className="text-sm font-normal text-ink-400"> /night</span>}
           </p>
           {sleepScore != null && (
             <StatChip
               value={String(sleepScore)}
-              label="Score · est"
+              label={isDay ? 'Score · est' : 'Avg score · est'}
               cls={scoreColor(sleepScore)}
               title="Estimated 0–100 score from duration (vs 8h), deep/REM share and interruptions — not a medical metric"
             />
@@ -297,19 +334,27 @@ export function SleepSection() {
           {efficiency != null && (
             <StatChip
               value={`${efficiency}%`}
-              label="Efficiency"
+              label={isDay ? 'Efficiency' : 'Avg efficiency'}
               cls={effColor(efficiency)}
               title="Sleep efficiency — % of time in bed actually spent asleep (≥85% is generally good)"
             />
           )}
-          {detail && (sourcesByDate.get(detailDate)?.has('Manual') ?? false) && (
+          {isDay && detail && (sourcesByDate.get(anchor)?.has('Manual') ?? false) && (
             <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5">
               Manual
             </span>
           )}
         </div>
-        {period === 'day' && !detail && !isLoading && (
+        {isDay && !detail && !isLoading && (
           <p className="text-xs text-ink-400 mt-1">No sleep data for this night — use ‹ › to pick another day, or add it manually below.</p>
+        )}
+        {!isDay && summary.length > 0 && bestNight && worstNight && (
+          <p className="text-xs text-ink-400 mt-1">
+            {summary.length} night{summary.length !== 1 ? 's' : ''} tracked · best {fmtHrs(bestNight.total)} ({fmtDay(bestNight.date)}) · lowest {fmtHrs(worstNight.total)} ({fmtDay(worstNight.date)})
+          </p>
+        )}
+        {!isDay && summary.length === 0 && !isLoading && (
+          <p className="text-xs text-ink-400 mt-1">No sleep data in this {period}.</p>
         )}
       </div>
 
@@ -386,21 +431,22 @@ export function SleepSection() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <DateNav
           label={labelForAnchor(period, anchor)}
-          onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
-          onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
+          onPrev={() => { setPinned(null); setAnchor(a => stepAnchor(period, a, -1)) }}
+          onNext={() => { setPinned(null); setAnchor(a => stepAnchor(period, a, 1)) }}
           canGoNext={anchor !== today}
           value={anchor}
-          onPick={setAnchor}
+          onPick={a => { setPinned(null); setAnchor(a) }}
         />
-        <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
+        <PeriodToggle value={period} onChange={p => { setPinned(null); setPeriod(p); setAnchor(today) }} />
       </div>
 
       {/* Day mode gets the NIGHT CHART below instead; the multi-bar trend is
-          only for Week/Month. Hover = value tooltip only; CLICK a bar to pin
-          the action panel (links in a hover tooltip were unreachable — it
-          hid the moment the mouse moved toward it). */}
+          only for Week/Month. Hover = value tooltip only; CLICK a bar pins a
+          popover AT the bar (looks like the tooltip, but stable) carrying the
+          actions — links in a hover tooltip were unreachable, and a separate
+          strip below the chart was explicitly rejected. */}
       {period !== 'day' && (
-        <>
+        <div className="relative" ref={chartWrapRef}>
           <div className="h-28">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -408,8 +454,9 @@ export function SleepSection() {
                 <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip cursor={false} content={makeSleepTooltipContent(sourcesByDate)} />
-                {/* Click handled on the Bar itself (its payload carries the
-                    date) — the same proven pattern Steps/Energy use. */}
+                {/* Click handled on the Bar itself — its handler receives the
+                    rendered bar's own x/y/width, which is what lets the
+                    popover anchor exactly at the clicked bar. */}
                 <Bar
                   dataKey="total"
                   radius={[3, 3, 0, 0]}
@@ -417,35 +464,50 @@ export function SleepSection() {
                   fill="#6366f1"
                   className="cursor-pointer"
                   onClick={(d) => {
-                    const date = (d as unknown as { payload?: { date?: string } }).payload?.date
-                      ?? (d as unknown as { date?: string }).date
-                    if (date) setPinnedDate(p => (p === date ? null : date))
+                    const bar = d as unknown as { x?: number; y?: number; width?: number; payload?: { date?: string }; date?: string }
+                    const date = bar.payload?.date ?? bar.date
+                    if (!date || typeof bar.x !== 'number') return
+                    // Clamp here (event time — refs must not be read during
+                    // render) so the popover never sticks out of the card.
+                    const wrapW = chartWrapRef.current?.offsetWidth ?? 600
+                    const x = Math.min(Math.max(bar.x + (bar.width ?? 0) / 2, 100), wrapW - 100)
+                    setPinned(p => (p?.date === date ? null : { date, x, y: bar.y ?? 0 }))
                   }}
                 />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Pinned action panel — STABLE (doesn't vanish like a tooltip) */}
-          {pinnedDate && (
-            <div className="flex items-center gap-2 flex-wrap rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-2">
-              <span className="text-xs font-semibold text-ink-800">
-                {new Date(pinnedDate + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
-                {summaryByDate.get(pinnedDate) ? ` · ${fmtHrs(summaryByDate.get(pinnedDate)!.total)}` : ' · no data'}
-              </span>
-              <button type="button" onClick={() => { viewDay(pinnedDate); setPinnedDate(null) }}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 min-h-[32px] px-2 rounded-lg">
-                View this day →
-              </button>
-              <button type="button" onClick={() => { openCorrectForm(pinnedDate); setPinnedDate(null) }}
-                className="text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[32px] px-2 rounded-lg">
-                Correct manually
-              </button>
-              <button type="button" onClick={() => setPinnedDate(null)}
-                className="ml-auto text-ink-400 hover:text-ink-700 min-w-[32px] min-h-[32px]">✕</button>
-            </div>
-          )}
-        </>
+          {/* Pinned popover — the "info box" itself, anchored at the bar */}
+          {pinned && (() => {
+            const night = summaryByDate.get(pinned.date)
+            return (
+              <div
+                className="absolute z-20 w-[200px] bg-cream-50 border border-ink-200 rounded-lg shadow-lg px-2.5 py-2 text-xs"
+                style={{ left: pinned.x, top: pinned.y, transform: 'translate(-50%, calc(-100% - 6px))' }}
+              >
+                <div className="flex items-start justify-between gap-1">
+                  <div>
+                    <p className="text-ink-400 font-medium">{fmtDayLong(pinned.date)}</p>
+                    <p className="font-semibold text-indigo-600">{night ? fmtHrs(night.total) : 'no data'}</p>
+                  </div>
+                  <button type="button" onClick={() => setPinned(null)} aria-label="Close"
+                    className="min-w-[28px] min-h-[28px] -mr-1 -mt-1 flex items-center justify-center text-ink-400 hover:text-ink-700">✕</button>
+                </div>
+                <div className="flex flex-col items-start mt-0.5">
+                  <button type="button" onClick={() => { viewDay(pinned.date); setPinned(null) }}
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 min-h-[30px]">
+                    View this day →
+                  </button>
+                  <button type="button" onClick={() => { openCorrectForm(pinned.date); setPinned(null) }}
+                    className="text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[30px]">
+                    Correct manually
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
       )}
 
       {/* DAY MODE — the night's own graph: a time-axis band chart built from

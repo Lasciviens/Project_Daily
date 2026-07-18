@@ -19,9 +19,10 @@ export function EnergySection() {
   const [period, setPeriod] = useState<Period>('week')
   const [anchor, setAnchor] = useAnchorDate()
 
-  // Headline follows the anchor (whichever day is selected), not always the
-  // literal calendar today — basal fetches extra buffer days before it so
-  // computeBasalEnergyDailySeries has a per-hour reference for gap-filling.
+  const isDay = period === 'day'
+  // Day-mode headline figures — basal fetches extra buffer days before the
+  // anchor so computeBasalEnergyDailySeries has a per-hour gap-filling
+  // reference. Week/Month headline figures come from chartData below instead.
   const { data: anchorActive = [], isLoading } = useHealthMetricSeries('active_energy', anchor, anchor)
   const { data: anchorBasalBuffered = [] } = useHealthMetricSeries('basal_energy_burned', shiftDateStr(anchor, -BASAL_REFERENCE_WINDOW_DAYS), anchor)
   const activeToday = Math.round(computeDailySeries('active_energy', anchorActive)[0]?.value ?? 0)
@@ -79,25 +80,36 @@ export function EnergySection() {
     )
   }
 
+  // Week/Month headline = daily averages over days that actually have data,
+  // straight from chartData (same numbers the bars show, no extra queries).
+  const dataDays = !isDay ? chartData.filter(d => d.active + d.basal > 0) : []
+  const avgActive = dataDays.length ? Math.round(dataDays.reduce((s, d) => s + d.active, 0) / dataDays.length) : 0
+  const avgBasal = dataDays.length ? Math.round(dataDays.reduce((s, d) => s + d.basal, 0) / dataDays.length) : 0
+
+  const headActive = isDay ? activeToday : avgActive
+  const headBasal = isDay ? basalToday : avgBasal
+
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
-            🔥 Energy {anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`}
+            🔥 Energy {isDay
+              ? (anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`)
+              : period === 'week' ? '· Weekly Average' : '· Monthly Average'}
           </p>
           <p className="text-3xl font-bold text-ink-900 leading-tight">
-            {isLoading ? '…' : (activeToday + basalToday).toLocaleString('en-GB')} <span className="text-sm font-normal text-ink-400">kcal</span>
+            {isLoading ? '…' : (headActive + headBasal).toLocaleString('en-GB')} <span className="text-sm font-normal text-ink-400">kcal{!isDay && ' /day'}</span>
           </p>
         </div>
         <div className="flex gap-4 text-center">
           <div>
-            <p className="text-lg font-bold text-rose-500">{activeToday}</p>
-            <p className="text-[10px] text-ink-400">active</p>
+            <p className="text-lg font-bold text-rose-500">{headActive}</p>
+            <p className="text-[10px] text-ink-400">{isDay ? 'active' : 'avg active'}</p>
           </div>
           <div>
-            <p className="text-lg font-bold text-ink-500">{basalToday}</p>
-            <p className="text-[10px] text-ink-400">basal</p>
+            <p className="text-lg font-bold text-ink-500">{headBasal}</p>
+            <p className="text-[10px] text-ink-400">{isDay ? 'basal' : 'avg basal'}</p>
           </div>
         </div>
       </div>
