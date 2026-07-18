@@ -298,3 +298,42 @@ html[data-vt-dir='back'] ::view-transition-new(root) {
     animation: none !important;
   }
 }
+
+/* ── Entrance animations (all engines) ─────────────────────────────────────
+   The View Transitions slides above only exist on Chromium + Safari 18+.
+   On anything older (incl. iOS 17 Safari/PWA) route changes were INSTANT —
+   "the animations aren't there". .page-in is the universal fallback: the
+   Layout keys a wrapper by pathname when startViewTransition is missing, so
+   every navigation replays this spring-ish rise. .stagger-in gives a page's
+   cards a quick one-by-one cascade on mobile — the single most recognisable
+   "polished native app" entrance pattern. Kept OUTSIDE @layer alongside the
+   view-transition rules (same purge reasoning); class names do appear in
+   source, but keeping every animation rule in one block beats splitting. */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.992); }
+}
+.page-in {
+  animation: page-in 300ms cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(12px); }
+}
+@media (max-width: 639px) {
+  .stagger-in > * { animation: card-in 340ms cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+  .stagger-in > :nth-child(1) { animation-delay: 25ms; }
+  .stagger-in > :nth-child(2) { animation-delay: 60ms; }
+  .stagger-in > :nth-child(3) { animation-delay: 95ms; }
+  .stagger-in > :nth-child(4) { animation-delay: 130ms; }
+  .stagger-in > :nth-child(5) { animation-delay: 165ms; }
+  .stagger-in > :nth-child(6) { animation-delay: 200ms; }
+  .stagger-in > :nth-child(7) { animation-delay: 235ms; }
+  .stagger-in > :nth-child(n+8) { animation-delay: 270ms; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-in,
+  .stagger-in > * {
+    animation: none !important;
+  }
+}

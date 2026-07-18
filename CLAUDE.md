@@ -79,7 +79,20 @@ accent = "release to refresh"). Route changes reset `main.scrollTop` (useLayoutE
 Layout, pre-paint so view-transition snapshots are already at top). **Tab navigation slides
 directionally**: BottomTabBar passes `forward`/`back` (tab order) → `useViewTransitionNav`
 stamps `data-vt-dir` on `<html>` → slide keyframes in index.css; header/tab-bar have their own
-`view-transition-name` so the bars stay put while content slides. ALL view-transition CSS
+`view-transition-name` so the bars stay put while content slides. **View Transitions don't
+exist on pre-18 iOS Safari** — there, Layout keys the Outlet wrapper by pathname and plays a
+`.page-in` rise (universal fallback, else navigation is INSTANT = "animations aren't there"
+on the primary device); with VT support the key stays constant (no double animation). That
+wrapper is `h-full` ONLY on /daily|/shop|/recipes (PersonalLayout's percentage height chain) —
+everywhere else it must stay auto-height or tall pages overflow the fixed box and swallow
+main's bottom padding (last card pinned under the tab bar; real regression, caught by E2E).
+`.stagger-in` (index.css, mobile-only ≤639px) cascades a container's children in with
+30ms-stepped delays — applied to HomePage's columns, TodaySummary's grid, MediaPage's main
+column. **BottomTabBar is a floating glass capsule** (left-3 right-3, rounded-[26px],
+safe-area offset, active icon in an accent chip) — `<main>` reserves
+`pb-[calc(5.5rem+env(safe-area-inset-bottom))]` for it. Header gains a shadow once
+`main.scrollTop > 8` (scroll depth cue); AIPanel's mobile sheet has a grab handle +
+rounded-t-3xl. ALL view-transition CSS
 lives OUTSIDE `@layer` (same Tailwind purge gotcha as the recharts rules — the original
 crossfade rule inside `@layer base` was silently purged from every build). Touch polish:
 `-webkit-tap-highlight-color: transparent` + `touch-action: manipulation` on interactive

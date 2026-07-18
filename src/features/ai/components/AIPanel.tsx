@@ -134,7 +134,7 @@ export function AIPanel() {
       <div
         className={[
           'fixed z-50 bg-cream-50 flex flex-col border-ink-200',
-          'bottom-0 left-0 right-0 h-[88vh] rounded-t-2xl border-t',
+          'bottom-0 left-0 right-0 h-[88vh] rounded-t-3xl border-t',
           'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-[520px] xl:w-[620px] lg:rounded-none lg:border-t-0 lg:border-l',
           isAIOpen
             ? 'translate-y-0 lg:translate-x-0'
@@ -142,6 +142,12 @@ export function AIPanel() {
           'transition-transform duration-200',
         ].join(' ')}
       >
+        {/* Grab handle — bottom-sheet affordance (mobile only; the panel is a
+            side drawer from lg up where a handle would be meaningless). */}
+        <div className="lg:hidden flex-shrink-0 pt-2.5 pb-0.5 flex justify-center">
+          <div className="w-9 h-1 rounded-full bg-ink-300/70" />
+        </div>
+
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 flex-shrink-0">
           <div className="flex items-center gap-2">

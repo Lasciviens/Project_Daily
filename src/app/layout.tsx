@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
@@ -47,11 +47,26 @@ export function Layout() {
     pullToRefresh.containerProps.ref.current?.scrollTo({ top: 0 })
   }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Header lifts off the page with a shadow once content scrolls under it —
+  // the standard native-app depth cue. State flips only across the 8px
+  // boundary, so the scroll handler is effectively free (React bails out on
+  // same-value setState).
+  const [scrolled, setScrolled] = useState(false)
+
+  // View Transitions (the directional tab slide) don't exist on pre-18 iOS
+  // Safari — there, navigation was INSTANT, i.e. "no animations at all" on
+  // exactly the device this app is used on most. Keying this wrapper by
+  // pathname replays the .page-in rise on every route change as a universal
+  // fallback. When VT IS supported the key stays constant (no double
+  // animation — the VT slide owns the transition instead).
+  const supportsVT = typeof document.startViewTransition === 'function'
+
   return (
     <div className="h-full flex flex-col bg-canvas overflow-hidden">
-      <Nav />
+      <Nav scrolled={scrolled} />
       <main
-        className="flex-1 min-h-0 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
+        className="flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
+        onScroll={e => setScrolled((e.target as HTMLElement).scrollTop > 8)}
         {...pullToRefresh.containerProps}
       >
         <PullToRefreshIndicator
@@ -59,7 +74,23 @@ export function Layout() {
           isRefreshing={pullToRefresh.isRefreshing}
           isReady={pullToRefresh.isReady}
         />
-        <Outlet />
+        {/* h-full ONLY on the Personal group — PersonalLayout/Shop size
+            against main's content box via a percentage chain that needs a
+            definite-height parent. Everywhere else the wrapper must stay
+            auto-height: a fixed h-full box that tall pages overflow would
+            swallow main's bottom padding (content runs over the padding
+            zone), leaving the last card pinned under the floating tab bar.
+            page-in only animates on non-VT engines, so its transform never
+            disturbs fixed-position children on modern browsers. */}
+        <div
+          key={supportsVT ? 'static' : pathname}
+          className={[
+            ['/daily', '/shop', '/recipes'].includes(pathname) ? 'h-full' : '',
+            supportsVT ? '' : 'page-in',
+          ].filter(Boolean).join(' ') || undefined}
+        >
+          <Outlet />
+        </div>
       </main>
       <BottomTabBar />
       <DevRequestsDrawer />
@@ -128,8 +159,12 @@ function BottomTabBar() {
   const navigateWithTransition = useViewTransitionNav()
   const activeIndex = TABS.findIndex(tab => tab.match.includes(location.pathname))
 
+  // Floating glass capsule (detached from the screen edge, heavy blur, big
+  // soft shadow) — the current-gen iOS tab-bar look, visibly more "app" than
+  // a full-width bar glued to the bottom. Sits above the home indicator via
+  // the safe-area offset; <main> reserves matching bottom padding.
   return (
-    <nav className="vt-pin-tabbar glass-chrome sm:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch border-t border-ink-200/60 pb-[env(safe-area-inset-bottom)] select-none shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.10)]">
+    <nav className="vt-pin-tabbar glass-chrome sm:hidden fixed z-40 left-3 right-3 bottom-[calc(env(safe-area-inset-bottom)+0.625rem)] flex items-stretch rounded-[26px] border border-ink-200/60 select-none overflow-hidden shadow-[0_10px_32px_-6px_rgba(0,0,0,0.28)]">
       {TABS.map((tab, index) => {
         const isActive = index === activeIndex
         const Icon = tab.icon
@@ -139,25 +174,26 @@ function BottomTabBar() {
             to={tab.to}
             onClick={e => {
               // View Transitions API slides the page toward the tapped tab
-              // (see useViewTransitionNav + index.css) — no-ops to a plain
-              // navigation on browsers without the API (pre-iOS-18 Safari).
-              // Direction = tab order: tapping a tab to the RIGHT of the
-              // current one slides content in from the right, and vice
-              // versa, matching how native tab bars communicate direction.
+              // (see useViewTransitionNav + index.css) — falls back to the
+              // keyed .page-in rise on browsers without the API (pre-iOS-18
+              // Safari). Direction = tab order: tapping a tab to the RIGHT
+              // of the current one slides content in from the right, and
+              // vice versa, matching how native tab bars communicate it.
               e.preventDefault()
               navigateWithTransition(tab.to, activeIndex >= 0 && index < activeIndex ? 'back' : 'forward')
             }}
-            className={`flex-1 min-h-[56px] flex flex-col items-center justify-center gap-0.5 transition-colors duration-150 press-feedback ${
+            className={`flex-1 min-h-[58px] flex flex-col items-center justify-center gap-0.5 py-1.5 transition-colors duration-150 press-feedback ${
               isActive ? 'text-accent-600' : 'text-ink-400'
             }`}
           >
-            {/* animate-tabPop replays its once-off scale bounce each time
-                this wrapper (re)gains the class — i.e. whenever this tab
-                becomes the active one. */}
-            <span className={isActive ? 'animate-tabPop inline-flex' : 'inline-flex'}>
-              <Icon size={22} strokeWidth={isActive ? 2.25 : 1.75} fill={isActive ? 'currentColor' : 'none'} fillOpacity={isActive ? 0.15 : 0} />
+            {/* Active icon sits in a soft accent chip; animate-tabPop replays
+                its once-off bounce each time this tab becomes the active one. */}
+            <span className={`inline-flex items-center justify-center rounded-full px-2.5 py-0.5 transition-colors duration-200 ${
+              isActive ? 'bg-accent-500/15 animate-tabPop' : ''
+            }`}>
+              <Icon size={21} strokeWidth={isActive ? 2.25 : 1.75} fill={isActive ? 'currentColor' : 'none'} fillOpacity={isActive ? 0.15 : 0} />
             </span>
-            <span className={`text-[10px] leading-none ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
+            <span className={`text-[9.5px] leading-none ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
           </NavLink>
         )
       })}
@@ -185,7 +221,7 @@ function PersonalNavLink() {
   )
 }
 
-function Nav() {
+function Nav({ scrolled }: { scrolled: boolean }) {
   const { isDevRequestsOpen, toggleDevRequests, isAIOpen, toggleAI, openCommandBar } = useUIStore()
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -201,7 +237,9 @@ function Nav() {
     // under the iOS status bar — this padding keeps the header's content below
     // the clock/battery while the header's own background fills the gap, the
     // standard native-app look. 0 everywhere else (browser tabs, desktop).
-    <header className="vt-pin-header glass-chrome sticky top-0 z-40 border-b border-ink-200/60 pt-[env(safe-area-inset-top)]">
+    <header className={`vt-pin-header glass-chrome sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] transition-[box-shadow,border-color] duration-300 ${
+      scrolled ? 'border-ink-200/80 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.28)]' : 'border-ink-200/40'
+    }`}>
       <div className="w-full px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
