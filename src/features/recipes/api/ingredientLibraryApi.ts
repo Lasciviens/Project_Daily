@@ -40,17 +40,44 @@ function libraryRow(input: CreateIngredientLibraryItemInput) {
     serving_label: input.serving_label?.trim() || null,
     serving_grams: input.serving_grams ?? null,
   }
-  if (input.food_group?.trim()) row.food_group = input.food_group.trim()
+  // Included only when set → editing a food's macros still works before the
+  // enrichment columns exist (graceful degradation). food_group needs mig 057;
+  // image_url needs mig 059; source/source_ref need mig 055.
+  if (input.food_group?.trim())    row.food_group    = input.food_group.trim()
+  if (input.food_group_id?.trim()) row.food_group_id = input.food_group_id.trim()
+  if (input.image_url?.trim())     row.image_url     = input.image_url.trim()
+  if (input.source?.trim())        row.source        = input.source.trim()
+  if (input.source_ref?.trim())    row.source_ref    = input.source_ref.trim()
   return row
+}
+
+// Add-to-library-on-first-use: upsert an external food (barcode/branded/generic
+// search result) keyed by its provenance id (source_ref = EAN/foodId), so the
+// same product never creates a duplicate. Returns the surviving library row.
+export async function upsertExternalFood(input: CreateIngredientLibraryItemInput): Promise<IngredientLibraryItem> {
+  const user = await requireUser()
+  if (input.source_ref?.trim()) {
+    const { data: existing } = await supabase
+      .from('recipe_ingredient_library')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('source_ref', input.source_ref.trim())
+      .maybeSingle()
+    if (existing) return existing as IngredientLibraryItem
+  }
+  return createIngredientLibraryItem(input)
 }
 
 export async function createIngredientLibraryItem(input: CreateIngredientLibraryItemInput): Promise<IngredientLibraryItem> {
   const user = await requireUser()
-  const { data, error } = await supabase
-    .from('recipe_ingredient_library')
-    .insert({ user_id: user.id, ...libraryRow(input) })
-    .select()
-    .single()
+  const row: Record<string, unknown> = { user_id: user.id, ...libraryRow(input) }
+  let { data, error } = await supabase.from('recipe_ingredient_library').insert(row).select().single()
+  // Graceful pre-migration-059 fallback: image_url column may not exist yet —
+  // drop it and retry so a barcode save still works (image just isn't stored).
+  if (error && 'image_url' in row && /image_url/i.test(error.message)) {
+    delete row.image_url
+    ;({ data, error } = await supabase.from('recipe_ingredient_library').insert(row).select().single())
+  }
   if (error) throw error
   return data
 }

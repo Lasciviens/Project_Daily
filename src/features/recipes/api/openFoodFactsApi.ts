@@ -15,6 +15,7 @@ export interface BarcodeProduct {
   fiber_g:       number | null
   serving_label: string | null
   serving_grams: number | null
+  image_url:     string | null   // product photo (image_front then generic)
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 10) / 10 : null)
@@ -22,7 +23,7 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 export async function lookupBarcode(code: string): Promise<BarcodeProduct | null> {
   const clean = code.replace(/\D/g, '')
   if (!clean) return null
-  const fields = 'product_name,product_name_en,brands,nutriments,serving_size,serving_quantity'
+  const fields = 'product_name,product_name_en,brands,nutriments,serving_size,serving_quantity,image_front_url,image_url'
   const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(clean)}.json?fields=${fields}`, {
     headers: { 'User-Agent': 'LascisBoard/1.0 (personal food tracker)' },
   })
@@ -51,5 +52,6 @@ export async function lookupBarcode(code: string): Promise<BarcodeProduct | null
     fiber_g:   num(n['fiber_100g']),
     serving_label: (p.serving_size as string) || null,
     serving_grams: servingGrams,
+    image_url: (p.image_front_url as string) || (p.image_url as string) || null,
   }
 }

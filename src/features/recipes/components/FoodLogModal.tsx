@@ -5,6 +5,7 @@ import { useAddFoodLogEntries, useRecentFoods } from '../hooks/useFoodLog'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRecipes, useCreateRecipe } from '../hooks/useRecipes'
 import { ingredientSnapshot, recipeSnapshot, addFoodLogEntries, type RecentFood } from '../api/foodLogApi'
+import { upsertExternalFood } from '../api/ingredientLibraryApi'
 import { lookupBarcode } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
@@ -97,6 +98,9 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
 
   const [scanOpen, setScanOpen] = useState(false)
   const [scanning, setScanning] = useState(false)
+  // Provenance of a barcode-scanned product being reviewed → persisted on save
+  // so the food carries source='openfoodfacts' + EAN + photo (add-on-first-use).
+  const [scanMeta, setScanMeta] = useState<{ source_ref: string; image_url: string | null } | null>(null)
 
   // Barcode → Open Food Facts → prefill the new-ingredient form for review.
   // If the product already exists in the library by name, add it straight to
@@ -119,6 +123,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       setNFiber(p.fiber_g != null ? String(p.fiber_g) : '')
       setNServLabel(p.serving_grams != null ? '1 serving' : '')
       setNServGrams(p.serving_grams != null ? String(p.serving_grams) : '')
+      setScanMeta({ source_ref: p.code, image_url: p.image_url })
       setShowNew(true)
       toast.success(`Found: ${p.name} — review & add`)
     } catch {
@@ -172,13 +177,22 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
   async function handleNewIngredient() {
     if (!nName.trim()) return
     const num = (s: string) => (s === '' ? null : Number(s))
-    const created = await createIngredient.mutateAsync({
+    const input = {
       name: nName, calories: num(nKcal), protein_g: num(nProt), carbs_g: num(nCarb),
       fat_g: num(nFat), fiber_g: num(nFiber),
       serving_label: nServLabel || null, serving_grams: num(nServGrams),
-    })
+    }
+    // A barcode-scanned product becomes a real, reusable, de-duped branded row
+    // (source='openfoodfacts' + EAN + photo) — add-to-library-on-first-use.
+    let created
+    if (scanMeta) {
+      created = await upsertExternalFood({ ...input, source: 'openfoodfacts', source_ref: scanMeta.source_ref, image_url: scanMeta.image_url })
+      qc.invalidateQueries({ queryKey: ['recipe-ingredient-library'] })
+    } else {
+      created = await createIngredient.mutateAsync(input)
+    }
     addToBasket(created)
-    setShowNew(false)
+    setShowNew(false); setScanMeta(null)
     setNName(''); setNKcal(''); setNProt(''); setNCarb(''); setNFat(''); setNFiber(''); setNServLabel(''); setNServGrams('')
   }
 
