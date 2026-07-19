@@ -25,11 +25,14 @@ export function OnlineFoodSearch({ initialQuery = '', onPick }: {
     if (!q) return
     setLoading(true); setSearched(true)
     try {
-      // Kassalapp (Norwegian branded) first if enabled, then Open Food Facts —
-      // both normalized to the same per-100g shape; dedupe by name.
+      // Kassalapp (Norwegian branded) + Open Food Facts, both normalized to the
+      // same per-100g shape; dedupe by name. Only surface an error if BOTH fail
+      // and nothing came back — one source erroring while the other returns
+      // results must NOT toast (that was the "works but shows fetch failed" bug).
+      let lastErr: unknown = null
       const [branded, off] = await Promise.all([
-        isKassalappEnabled() ? searchBrandedFoods(q).catch(() => []) : Promise.resolve([]),
-        searchFoodsByName(q).catch(e => { toast.error((e as Error).message); return [] as BarcodeProduct[] }),
+        (isKassalappEnabled() ? searchBrandedFoods(q) : Promise.resolve([])).catch((e: unknown) => { lastErr = e; return [] as BarcodeProduct[] }),
+        searchFoodsByName(q).catch((e: unknown) => { lastErr = e; return [] as BarcodeProduct[] }),
       ])
       const seen = new Set<string>()
       const merged = [...branded, ...off].filter(p => {
@@ -38,6 +41,7 @@ export function OnlineFoodSearch({ initialQuery = '', onPick }: {
         seen.add(k); return true
       }).slice(0, 20)
       setResults(merged)
+      if (merged.length === 0 && lastErr) toast.error((lastErr as Error).message ?? 'Search failed')
     } finally { setLoading(false) }
   }
 
