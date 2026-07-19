@@ -154,10 +154,11 @@ export function FoodLogModal({ open, onClose, date, defaultSlot }: Props) {
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {matches.map(ing => (
                     <button key={ing.id} type="button" onClick={() => addToBasket(ing)}
-                      className="text-xs px-2.5 min-h-[36px] rounded-full border border-ink-200 bg-cream-100 text-ink-700 hover:border-accent-400 transition-colors press-feedback"
-                      title={ing.calories != null ? `${ing.calories} kcal /100g` : undefined}>
+                      className="text-xs px-2.5 min-h-[36px] rounded-full border border-ink-200 bg-cream-100 text-ink-700 hover:border-accent-400 transition-colors press-feedback">
                       + {ing.name}
-                      {ing.serving_label && <span className="text-ink-400 ml-1">({ing.serving_label})</span>}
+                      {/* per-100g basis visible (was hidden in a title tooltip = invisible on mobile) */}
+                      {ing.calories != null && <span className="text-ink-400 ml-1">{Math.round(ing.calories)}kcal/100g</span>}
+                      {ing.serving_label && <span className="text-ink-400 ml-1">· {ing.serving_label}</span>}
                     </button>
                   ))}
                   {q && matches.length === 0 && (
@@ -200,14 +201,20 @@ export function FoodLogModal({ open, onClose, date, defaultSlot }: Props) {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">This meal</p>
                 {basket.map((it, i) => {
                   const s = ingredientSnapshot(it.ingredient, it.grams)
+                  const sg = it.ingredient.serving_grams
+                  const count = sg ? Math.max(1, Math.round(it.grams / sg)) : 1
                   return (
                     <div key={`${it.ingredient.id}-${i}`} className="flex items-center gap-2">
                       <span className="text-sm text-ink-800 flex-1 min-w-0 truncate">{it.ingredient.name}</span>
-                      {it.ingredient.serving_label && it.ingredient.serving_grams != null && (
-                        <button type="button" onClick={() => setGrams(i, String(it.ingredient.serving_grams))}
-                          className="text-[10px] px-1.5 min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300 shrink-0">
-                          {it.ingredient.serving_label}
-                        </button>
+                      {/* Portion stepper — "2 eggs" in one tap (×N of the preset). */}
+                      {it.ingredient.serving_label && sg != null && (
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button type="button" aria-label="one less" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}
+                            className="min-w-[28px] min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300 leading-none">−</button>
+                          <span className="text-[10px] text-ink-500 tabular-nums w-14 text-center">{count}× {it.ingredient.serving_label.replace(/^1\s*/, '')}</span>
+                          <button type="button" aria-label="one more" onClick={() => setGrams(i, String((count + 1) * sg))}
+                            className="min-w-[28px] min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300 leading-none">+</button>
+                        </div>
                       )}
                       <input
                         value={it.grams || ''}

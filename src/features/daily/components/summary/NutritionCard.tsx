@@ -229,6 +229,9 @@ export function NutritionCard({ date }: { date: string }) {
               {(nut && nut.calories > 0) && (
                 <div className="mt-2">
                   <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} />
+                  {nut.fiber_g > 0 && (
+                    <p className="text-[10px] text-ink-400 mt-1">🌾 Fiber {nut.fiber_g}g <span className="text-ink-300">/ ~{Math.round((targets.calories / 1000) * 14)}g goal</span></p>
+                  )}
                 </div>
               )}
             </div>
