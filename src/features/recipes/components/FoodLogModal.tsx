@@ -3,6 +3,11 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { useAddFoodLogEntries } from '../hooks/useFoodLog'
 import { ingredientSnapshot } from '../api/foodLogApi'
+import { lookupBarcode } from '../api/openFoodFactsApi'
+import { BarcodeScanner } from './BarcodeScanner'
+import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
+import { useDayTargets } from '../../daily/hooks/useDayTargets'
+import { toast } from '../../../app/store'
 import type { IngredientLibraryItem, FoodLogEntryInput, MealSlot } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,19 +48,36 @@ function sanitizeDecimal(raw: string): string {
 }
 
 interface Props {
-  open:        boolean
-  onClose:     () => void
-  date:        string
+  open:         boolean
+  onClose:      () => void
+  date:         string
   defaultSlot?: MealSlot
+  /** Prefill the search box (e.g. free text typed on the Daily card). */
+  defaultQuery?: string
 }
 
-export function FoodLogModal({ open, onClose, date, defaultSlot }: Props) {
+export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }: Props) {
   const { data: library = [] } = useIngredientLibrary()
   const createIngredient = useCreateIngredientLibraryItem()
   const addEntries = useAddFoodLogEntries()
+  const { data: nut } = useDayNutrition(date)
+  const { targets } = useDayTargets()
 
   const [slot, setSlot] = useState<MealSlot>(defaultSlot ?? slotForNow())
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(defaultQuery ?? '')
+
+  // Re-seed slot/query each time the modal transitions closed→open (the
+  // instance is reused across opens). Adjusting state during render on a
+  // prop change is React's recommended pattern over a setState-in-effect.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) {
+      setSlot(defaultSlot ?? slotForNow())
+      setQuery(defaultQuery ?? '')
+    }
+  }
+
   const [basket, setBasket] = useState<BasketItem[]>([])
   const [showNew, setShowNew] = useState(false)
   // Inline new-ingredient form (one-time cost per new food)
@@ -64,6 +86,37 @@ export function FoodLogModal({ open, onClose, date, defaultSlot }: Props) {
   const [nCarb, setNCarb] = useState(''); const [nFat, setNFat] = useState('')
   const [nFiber, setNFiber] = useState('')
   const [nServLabel, setNServLabel] = useState(''); const [nServGrams, setNServGrams] = useState('')
+
+  const [scanOpen, setScanOpen] = useState(false)
+  const [scanning, setScanning] = useState(false)
+
+  // Barcode → Open Food Facts → prefill the new-ingredient form for review.
+  // If the product already exists in the library by name, add it straight to
+  // the basket instead. Nothing is auto-saved — the user confirms per-100g.
+  async function handleBarcode(code: string) {
+    setScanOpen(false); setScanning(true)
+    const tid = toast.loading('Looking up barcode…')
+    try {
+      const p = await lookupBarcode(code)
+      toast.dismiss(tid)
+      if (!p) { toast.error('Product not found in Open Food Facts'); return }
+      const existing = library.find(i => i.name.toLowerCase() === p.name.toLowerCase())
+      if (existing) { addToBasket(existing); toast.success(`${p.name} — already in your library ✓`); return }
+      // Prefill + reveal the new-ingredient form (per-100g, editable).
+      setNName(p.name)
+      setNKcal(p.calories != null ? String(p.calories) : '')
+      setNProt(p.protein_g != null ? String(p.protein_g) : '')
+      setNCarb(p.carbs_g != null ? String(p.carbs_g) : '')
+      setNFat(p.fat_g != null ? String(p.fat_g) : '')
+      setNFiber(p.fiber_g != null ? String(p.fiber_g) : '')
+      setNServLabel(p.serving_grams != null ? '1 serving' : '')
+      setNServGrams(p.serving_grams != null ? String(p.serving_grams) : '')
+      setShowNew(true)
+      toast.success(`Found: ${p.name} — review & add`)
+    } catch {
+      toast.dismiss(tid); toast.error('Barcode lookup failed')
+    } finally { setScanning(false) }
+  }
 
   const q = query.trim().toLowerCase()
   const matches = useMemo(
@@ -144,12 +197,20 @@ export function FoodLogModal({ open, onClose, date, defaultSlot }: Props) {
 
             {/* Search + pick */}
             <div>
-              <input
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Search your ingredients… (e.g. tavuk, pirinç)"
-                className={`w-full ${inputCls}`}
-              />
+              <div className="flex gap-1.5">
+                <input
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="Search your ingredients… (e.g. tavuk, pirinç)"
+                  className={`flex-1 min-w-0 ${inputCls}`}
+                />
+                {/* Barcode scan → Open Food Facts */}
+                <button type="button" onClick={() => setScanOpen(true)} disabled={scanning}
+                  className="shrink-0 min-w-[44px] min-h-[40px] px-2 rounded-lg border border-ink-200 bg-cream-100 text-ink-600 hover:border-accent-400 disabled:opacity-50 flex items-center justify-center text-lg"
+                  title="Scan a barcode (Open Food Facts)" aria-label="Scan barcode">
+                  📷
+                </button>
+              </div>
               {(q || library.length > 0) && (
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {matches.map(ing => (
@@ -233,13 +294,28 @@ export function FoodLogModal({ open, onClose, date, defaultSlot }: Props) {
             )}
           </div>
 
-          {/* Footer — live totals + save */}
+          {/* Footer — live totals + how this meal closes the day's gap + save */}
           <div className="px-5 py-3.5 border-t border-ink-100 flex items-center gap-3 sticky bottom-0 bg-cream-50">
-            <p className="text-sm text-ink-700 flex-1 tabular-nums">
-              <strong className="text-ink-900">{Math.round(totals.kcal)}</strong> kcal
-              <span className="text-ink-300"> · </span>
-              <strong className="text-ink-900">{Math.round(totals.prot)}</strong> g protein
-            </p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-ink-700 tabular-nums">
+                <strong className="text-ink-900">{Math.round(totals.kcal)}</strong> kcal
+                <span className="text-ink-300"> · </span>
+                <strong className="text-ink-900">{Math.round(totals.prot)}</strong> g protein
+              </p>
+              {/* Remaining for the day AFTER logging this meal — the number a
+                  cutting/bulking user actually steers by (dietitian ask). */}
+              {(targets.protein > 0 || targets.calories > 0) && (() => {
+                const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.prot)
+                const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal)
+                return (
+                  <p className="text-[11px] text-ink-400 tabular-nums mt-0.5">
+                    After this: <span className={protLeft < 0 ? 'text-red-500' : 'text-ink-600'}>{protLeft >= 0 ? `${protLeft}g protein left` : `${-protLeft}g protein over`}</span>
+                    <span className="text-ink-300"> · </span>
+                    <span className={kcalLeft < 0 ? 'text-red-500' : 'text-ink-600'}>{kcalLeft >= 0 ? `${kcalLeft} kcal left` : `${-kcalLeft} over`}</span>
+                  </p>
+                )
+              })()}
+            </div>
             <button type="button" onClick={handleSave} disabled={basket.length === 0 || addEntries.isPending}
               className="min-h-[44px] px-5 rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 transition-colors">
               {addEntries.isPending ? 'Saving…' : `Log ${basket.length || ''} item${basket.length === 1 ? '' : 's'}`}
@@ -247,6 +323,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot }: Props) {
           </div>
         </DialogPanel>
       </div>
+      <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcode} />
     </Dialog>
   )
 }

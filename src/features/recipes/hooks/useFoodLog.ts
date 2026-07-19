@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import { fetchFoodLog, addFoodLogEntries, deleteFoodLogEntry } from '../api/foodLogApi'
+import { fetchFoodLog, addFoodLogEntries, deleteFoodLogEntry, fetchRecentFoods } from '../api/foodLogApi'
+import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import type { FoodLogEntryInput } from '../types'
 
 export function useFoodLog(date: string) {
@@ -11,11 +12,25 @@ export function useFoodLog(date: string) {
   })
 }
 
+// Most-eaten distinct foods over the last 30 days (from the DIARY), each ready
+// to re-log with its own snapshot macros. Feeds the Daily card's recent chips.
+export function useRecentFoods() {
+  return useQuery({
+    queryKey: ['food-log', 'recent-foods'],
+    queryFn:  () => fetchRecentFoods(shiftDateStr(new Date().toISOString().slice(0, 10), -30)),
+    staleTime: 5 * 60_000,
+  })
+}
+
 function useInvalidateNutrition() {
   const qc = useQueryClient()
-  return (date: string) => {
-    qc.invalidateQueries({ queryKey: ['food-log', date] })
-    qc.invalidateQueries({ queryKey: ['day-nutrition'] })
+  return () => {
+    qc.invalidateQueries({ queryKey: ['food-log'] })
+    // NutritionCard reads under ['meal-plan','day-nutrition',date] — a plain
+    // ['day-nutrition'] key does NOT prefix-match it, so the card would go
+    // stale after a log/delete. Invalidate the whole ['meal-plan'] namespace
+    // (same one the Recipes meal planner uses) so every nutrition view refreshes.
+    qc.invalidateQueries({ queryKey: ['meal-plan'] })
   }
 }
 
@@ -25,7 +40,7 @@ export function useAddFoodLogEntries() {
     action:         'add_food_log_entries',
     successMessage: 'Logged ✓',
     mutationFn:     (entries: FoodLogEntryInput[]) => addFoodLogEntries(entries),
-    onSuccess:      (_d, entries) => { if (entries[0]) invalidate(entries[0].date) },
+    onSuccess:      () => invalidate(),
   })
 }
 
@@ -34,6 +49,6 @@ export function useDeleteFoodLogEntry() {
   return useMutationWithFeedback({
     action:     'delete_food_log_entry',
     mutationFn: ({ id }: { id: string; date: string }) => deleteFoodLogEntry(id),
-    onSuccess:  (_d, vars) => invalidate(vars.date),
+    onSuccess:  () => invalidate(),
   })
 }

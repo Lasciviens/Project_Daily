@@ -1,14 +1,36 @@
 import { useState } from 'react'
 import { Cell, CellHeader } from './cellKit'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
-import { useDayTargets } from '../../hooks/useDayTargets'
-import { useRecentMeals, useSetQuickMeal, useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
+import { useDayTargets, type NutritionGoal } from '../../hooks/useDayTargets'
+import { useNutritionCoach } from '../../hooks/useNutritionCoach'
+import { useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
 import { AssignMealModal } from '../../../recipes/components/AssignMealModal'
 import { FoodLogModal } from '../../../recipes/components/FoodLogModal'
-import { useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
-import type { MealSlot } from '../../../recipes/types'
+import { useRecentFoods, useAddFoodLogEntries, useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
+import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrary'
+import { ingredientSnapshot, type RecentFood } from '../../../recipes/api/foodLogApi'
+import type { MealSlot, FoodLogEntryInput } from '../../../recipes/types'
 import type { DayMeal } from '../../api/dayNutritionApi'
+
+// Re-log a previously-eaten food into a given slot, carrying its ORIGINAL
+// snapshot macros forward (no re-computation — that's the diary contract).
+function reLogEntry(r: RecentFood, date: string, slot: MealSlot): FoodLogEntryInput {
+  return {
+    date, meal_slot: slot,
+    library_ingredient_id: r.library_ingredient_id,
+    recipe_id:             r.recipe_id,
+    custom_title:          r.custom_title,
+    quantity:              r.quantity,
+    unit:                  r.unit,
+    calories:              r.calories,
+    protein_g:             r.protein_g,
+    carbs_g:               r.carbs_g,
+    fat_g:                 r.fat_g,
+    fiber_g:               r.fiber_g,
+    sugar_g:               r.sugar_g,
+  }
+}
 
 const SLOTS: { slot: MealSlot; label: string }[] = [
   { slot: 'breakfast',  label: 'Breakfast' },
@@ -39,23 +61,45 @@ function CalorieRing({ consumed, target }: { consumed: number; target: number })
 }
 
 // One slot row: filled → title + kcal + remove; empty → inline quick-add with
-// recent-meal chips. The whole point is adding a meal in 1-2 taps without
-// leaving Daily (the old card was read-only and linked out to /recipes).
+// recent-food chips. Every fast-path add now writes a REAL-macro diary row
+// (food_log_entries), not a macro-less plan title — a recent chip re-logs its
+// own snapshot; free text that matches your library logs that ingredient;
+// anything else opens the full logger prefilled (so it still gets macros).
 function SlotRow({ date, slot, label, meals }: {
   date: string; slot: MealSlot; label: string
   meals: DayMeal[]
 }) {
   const [adding, setAdding] = useState(false)
-  const [detail, setDetail] = useState(false)
+  const [editPlan, setEditPlan] = useState(false)   // ✎ on an existing PLAN row
+  const [logOpen, setLogOpen] = useState(false)      // full logger (diary)
+  const [logQuery, setLogQuery] = useState('')
   const [text, setText] = useState('')
-  const { data: recent = [] } = useRecentMeals()
-  const setMeal = useSetQuickMeal()
+  const { data: recent = [] } = useRecentFoods()
+  const { data: library = [] } = useIngredientLibrary()
+  const addEntries = useAddFoodLogEntries()
   const delMeal = useDeleteQuickMeal()
   const delLog  = useDeleteFoodLogEntry()
 
-  function save(title: string, recipeId?: string | null) {
-    if (!title.trim()) return
-    setMeal.mutate({ date, slot, title: title.trim(), recipeId }, { onSuccess: () => { setAdding(false); setText('') } })
+  function reset() { setAdding(false); setText('') }
+
+  // Free text → log the matching library ingredient (default portion), else
+  // hand off to the full logger so a new food gets real macros once.
+  function save(title: string) {
+    const t = title.trim()
+    if (!t) return
+    const lc = t.toLowerCase()
+    const match = library.find(i => i.name.toLowerCase() === lc)
+             ?? library.find(i => i.name.toLowerCase().includes(lc))
+    if (match) {
+      const grams = match.serving_grams ?? 100
+      addEntries.mutate([{ date, meal_slot: slot, library_ingredient_id: match.id, quantity: grams, unit: 'g', ...ingredientSnapshot(match, grams) }], { onSuccess: reset })
+    } else {
+      setLogQuery(t); setLogOpen(true); reset()
+    }
+  }
+
+  function reLog(r: RecentFood) {
+    addEntries.mutate([reLogEntry(r, date, slot)], { onSuccess: reset })
   }
 
   return (
@@ -69,9 +113,9 @@ function SlotRow({ date, slot, label, meals }: {
               {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
               {meal.source === 'plan' && (
                 <button
-                  onClick={() => setDetail(true)}
+                  onClick={() => setEditPlan(true)}
                   className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
-                  title="Edit in detail (recipe/ingredient/servings)"
+                  title="Edit planned meal (recipe/ingredient/servings)"
                 >✎</button>
               )}
               <button
@@ -89,9 +133,9 @@ function SlotRow({ date, slot, label, meals }: {
             {adding ? (
               <input
                 autoFocus value={text} onChange={e => setText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') save(text); if (e.key === 'Escape') setAdding(false) }}
-                onBlur={() => { if (!text.trim()) setAdding(false) }}
-                placeholder="What did/will you eat?"
+                onKeyDown={e => { if (e.key === 'Enter') save(text); if (e.key === 'Escape') reset() }}
+                onBlur={() => { if (!text.trim()) reset() }}
+                placeholder="Type a food…"
                 className="flex-1 min-w-0 px-2 py-1 rounded-md border border-accent-300 bg-cream-50 focus:outline-none focus:ring-1 focus:ring-accent-400 min-h-[28px]"
               />
             ) : (
@@ -102,29 +146,30 @@ function SlotRow({ date, slot, label, meals }: {
             )}
             {adding && (
               <button
-                onClick={() => { setAdding(false); setDetail(true) }}
+                onClick={() => { setLogQuery(text.trim()); setLogOpen(true); reset() }}
                 className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] shrink-0"
-                title="Detailed entry (recipe / ingredient / servings)"
+                title="Build a meal (pick ingredients, grams, macros)"
               >⋯</button>
             )}
           </div>
           {adding && recent.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1 pl-[4.5rem]">
               {recent.slice(0, 5).map(r => (
-                <button key={r.title} onClick={() => save(r.title, r.recipeId)}
+                <button key={r.key} onClick={() => reLog(r)}
                   className="px-2 py-0.5 rounded-full border border-ink-200 text-[10px] text-ink-600 hover:border-accent-300 min-h-[24px]">
-                  {r.title}
+                  {r.title}{r.protein_g != null && r.protein_g > 0 && <span className="text-ink-400"> · {Math.round(r.protein_g)}p</span>}
                 </button>
               ))}
             </div>
           )}
         </>
       )}
-      {/* Detailed manual entry — the SAME full modal Recipes' meal planner
-          uses (recipe picker / library ingredient / servings / notes), so the
-          "detailed" path exists on Daily too, not just the fast path. */}
-      {detail && (
-        <AssignMealModal open onClose={() => setDetail(false)} date={date} mealSlot={slot} />
+      {/* Full diary logger, prefilled to this slot (and any typed text). */}
+      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={date} defaultSlot={slot} defaultQuery={logQuery} />
+      {/* ✎ edits an existing PLANNED entry (recipe_meal_plans) in the full
+          planner — planning a future day still lives here. */}
+      {editPlan && (
+        <AssignMealModal open onClose={() => setEditPlan(false)} date={date} mealSlot={slot} />
       )}
     </li>
   )
@@ -156,9 +201,12 @@ function GoalStepper({ value, step, onChange, suffix }: {
   )
 }
 
+const GOAL_LABEL: Record<NutritionGoal, string> = { maintain: 'Maintain', cut: 'Cut', gain: 'Gain' }
+
 export function NutritionCard({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
   const { targets, update } = useDayTargets()
+  const coach = useNutritionCoach(date, targets.goal)
   const [editing, setEditing] = useState(false)
   const copyYesterday = useCopyYesterdayMeals()
 
@@ -195,6 +243,18 @@ export function NutritionCard({ date }: { date: string }) {
 
       {editing ? (
         <div className="flex flex-col gap-2">
+          {/* Goal — steers the protein g/kg suggestion + calorie coaching */}
+          <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
+            <span>Goal</span>
+            <div className="flex gap-1">
+              {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
+                <button key={g} onClick={() => update({ goal: g })}
+                  className={`text-[11px] px-2 min-h-[28px] rounded-full border transition-colors ${
+                    targets.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
+                  }`}>{GOAL_LABEL[g]}</button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
             <span>Calorie goal</span>
             <GoalStepper value={targets.calories} step={50} onChange={v => update({ calories: v })} suffix="kcal" />
@@ -203,6 +263,33 @@ export function NutritionCard({ date }: { date: string }) {
             <span>Protein goal</span>
             <GoalStepper value={targets.protein} step={10} onChange={v => update({ protein: v })} suffix="g" />
           </div>
+
+          {/* Bodyweight-based protein suggestion (real latest weight) */}
+          {coach.proteinForGoal != null && coach.weightKg != null && coach.proteinForGoal !== targets.protein && (
+            <button onClick={() => update({ protein: coach.proteinForGoal! })}
+              className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
+              <span className="text-ink-600">
+                Suggested <strong className="text-accent-700">{coach.proteinForGoal}g</strong> protein
+                <span className="text-ink-400"> · {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span>
+              </span>
+              <span className="text-accent-600 font-semibold shrink-0">Apply</span>
+            </button>
+          )}
+
+          {/* Adaptive calorie nudge — gated on logging consistency */}
+          {coach.calorieAdvice ? (
+            <button onClick={() => update({ calories: Math.max(0, targets.calories + coach.calorieAdvice!.delta) })}
+              className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
+              <span className="text-ink-600">
+                <strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong>
+                <span className="text-ink-400"> · {coach.calorieAdvice.reason}</span>
+              </span>
+              <span className="text-accent-600 font-semibold shrink-0">Apply</span>
+            </button>
+          ) : coach.weightKg != null && !coach.consistent ? (
+            <p className="text-[10px] text-ink-400 px-0.5">Log {coach.loggedDays7}/4 recent days to unlock calorie coaching from your weight trend.</p>
+          ) : null}
+
           <button onClick={() => setEditing(false)}
             className="self-end text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[28px] px-1.5 rounded transition-colors">
             Done
