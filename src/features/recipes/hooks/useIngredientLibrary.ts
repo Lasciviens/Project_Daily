@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchIngredientLibrary, createIngredientLibraryItem, deleteIngredientLibraryItem } from '../api/ingredientLibraryApi'
+import { fetchIngredientLibrary, createIngredientLibraryItem, updateIngredientLibraryItem, deleteIngredientLibraryItem } from '../api/ingredientLibraryApi'
 import type { CreateIngredientLibraryItemInput } from '../types'
 
 export function useIngredientLibrary() {
@@ -15,6 +15,18 @@ export function useCreateIngredientLibraryItem() {
   return useMutation({
     mutationFn: (input: CreateIngredientLibraryItemInput) => createIngredientLibraryItem(input),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['recipe-ingredient-library'] }),
+  })
+}
+
+export function useUpdateIngredientLibraryItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: CreateIngredientLibraryItemInput }) => updateIngredientLibraryItem(id, input),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: ['recipe-ingredient-library'] })
+      // A macro edit changes future logs' snapshots; refresh nutrition views.
+      qc.invalidateQueries({ queryKey: ['meal-plan'] })
+    },
   })
 }
 
