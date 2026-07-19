@@ -121,7 +121,7 @@ export function IngredientManager() {
   }
 
   const inputCls = 'min-h-[40px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
-  const pill = (active: boolean) => `text-[11px] px-2.5 min-h-[32px] rounded-full border transition-colors ${active ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'}`
+  const pill = (active: boolean) => `press-feedback text-[11px] px-3 min-h-[40px] rounded-full border transition-colors ${active ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'}`
   const busy = create.isPending || update.isPending
 
   return (
@@ -134,9 +134,9 @@ export function IngredientManager() {
             {!editingId && (
               <>
                 <button type="button" onClick={() => setScanOpen(true)} title="Scan a barcode"
-                  className="min-w-[36px] min-h-[32px] px-1.5 rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-400 text-base">📷</button>
+                  className="press-feedback min-w-[40px] min-h-[40px] px-1.5 rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-400 text-base">📷</button>
                 <button type="button" onClick={() => setOnlineOpen(o => !o)} title="Search online (no barcode)"
-                  className={`min-w-[36px] min-h-[32px] px-1.5 rounded-lg border text-base ${onlineOpen ? 'border-accent-400 bg-accent-50 text-accent-700' : 'border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-400'}`}>🔎</button>
+                  className={`press-feedback min-w-[40px] min-h-[40px] px-1.5 rounded-lg border text-base ${onlineOpen ? 'border-accent-400 bg-accent-50 text-accent-700' : 'border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-400'}`}>🔎</button>
               </>
             )}
             {editingId && <button type="button" onClick={reset} className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[28px] px-1">Cancel</button>}
@@ -215,9 +215,9 @@ export function IngredientManager() {
                 <span className="text-ink-400 tabular-nums shrink-0 w-10 text-right hidden sm:block">{ing.carbs_g ?? '—'}C</span>
                 <span className="text-ink-400 tabular-nums shrink-0 w-10 text-right hidden sm:block">{ing.fat_g ?? '—'}F</span>
                 <button onClick={() => startEdit(ing)} aria-label={`Edit ${ing.name}`}
-                  className="min-w-[28px] min-h-[28px] text-ink-300 hover:text-accent-600 shrink-0">✎</button>
+                  className="press-feedback min-w-[40px] min-h-[40px] flex items-center justify-center text-ink-300 hover:text-accent-600 shrink-0">✎</button>
                 <button onClick={() => { if (confirm(`Delete "${ing.name}"?`)) remove.mutate(ing.id) }} aria-label={`Delete ${ing.name}`}
-                  className="min-w-[28px] min-h-[28px] text-ink-300 hover:text-red-500 shrink-0">×</button>
+                  className="press-feedback min-w-[40px] min-h-[40px] flex items-center justify-center text-ink-300 hover:text-red-500 shrink-0">×</button>
               </li>
             ))}
           </ul>

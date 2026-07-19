@@ -67,7 +67,7 @@ export function OnlineFoodSearch({ initialQuery = '', onPick }: {
         <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
           {results.map((p, i) => (
             <button key={`${p.code}-${i}`} type="button" onClick={() => onPick(p)}
-              className="flex items-center gap-2 text-left px-2.5 py-1.5 min-h-[40px] rounded-lg border border-ink-200 bg-cream-100 hover:border-accent-400 transition-colors">
+              className="press-feedback flex items-center gap-2 text-left px-2.5 py-1.5 min-h-[44px] rounded-lg border border-ink-200 bg-cream-100 hover:border-accent-400 transition-colors">
               {p.image_url && <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" onError={e => { e.currentTarget.style.display = 'none' }} />}
               <span className="flex-1 min-w-0">
                 <span className="text-sm text-ink-800 truncate block">{p.name}</span>

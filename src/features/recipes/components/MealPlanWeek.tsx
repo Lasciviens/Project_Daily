@@ -30,6 +30,9 @@ export function MealPlanWeek() {
   const [weekOffset, setWeekOffset] = useState(0)
   const [target, setTarget] = useState<CellTarget | null>(null)
   const [editLog, setEditLog] = useState<LoggedFood | null>(null)
+  // Mobile shows ONE day at a time (the 7×5 grid is unusable at 393px). Default
+  // to today's weekday (Mon-based index).
+  const [dayIdx, setDayIdx] = useState(() => (new Date().getDay() + 6) % 7)
   const eat = useEatPlannedEntry()
 
   const baseStart = startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -70,9 +73,68 @@ export function MealPlanWeek() {
           shown together so a logged day no longer looks empty here. */}
       <p className="text-[11px] text-ink-400 mb-3">📋 planned · <span className="text-green-600">✓ eaten</span> (from Today) — tap to edit</p>
 
-      {/* Grid — meal slots as rows, days as columns (min-w-[720px] → scrolls
-          on narrow screens; scroll-fade-x hints it). */}
-      <div className="overflow-x-auto scrollbar-none scroll-fade-x">
+      {/* ── MOBILE: one day at a time (the 720px grid is unusable at 393px) ── */}
+      <div className="md:hidden">
+        {/* Day picker */}
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 mb-3">
+          {days.map((day, i) => (
+            <button key={day.toISOString()} onClick={() => setDayIdx(i)}
+              className={`press-feedback shrink-0 min-w-[46px] rounded-xl px-2 py-1.5 border text-center transition-colors ${
+                i === dayIdx ? 'bg-accent-500 border-accent-500 text-white'
+                  : `bg-cream-50 text-ink-600 ${isToday(day) ? 'border-accent-300' : 'border-ink-200'}`
+              }`}>
+              <div className="text-[9px] font-semibold uppercase opacity-80">{format(day, 'EEE')}</div>
+              <div className="text-sm font-bold leading-tight">{format(day, 'd')}</div>
+            </button>
+          ))}
+        </div>
+        {/* Selected day's slots as stacked cards (same style as Food → Today) */}
+        <div className="flex flex-col gap-2.5 stagger-in">
+          {SLOTS.map(slot => {
+            const dateStr = format(days[dayIdx], 'yyyy-MM-dd')
+            const entry = entryFor(dateStr, slot)
+            const eaten = eatenBy.get(`${dateStr}|${slot}`) ?? []
+            const planLabel = entry?.recipe?.title ?? entry?.custom_title
+              ?? (entry?.ingredient?.name ? `${entry.ingredient_quantity ?? ''}${entry.ingredient_unit ?? ''} ${entry.ingredient.name}`.trim() : null)
+            const openPlan = () => setTarget({ date: dateStr, slot, entry })
+            return (
+              <div key={slot} className="rounded-2xl border border-ink-200 bg-cream-50 overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ink-100">
+                  <span className="text-sm font-semibold text-ink-800 flex-1">{SLOT_LABEL[slot]}</span>
+                  <button onClick={openPlan} className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[32px] px-2 rounded-lg">+ Add</button>
+                </div>
+                {planLabel || eaten.length > 0 ? (
+                  <ul className="divide-y divide-ink-50">
+                    {planLabel && (
+                      <li className="flex items-center gap-1.5 px-4 py-1.5 min-h-[44px] text-sm">
+                        <button onClick={openPlan} className="flex items-center gap-2 flex-1 min-w-0 text-left min-h-[40px]">
+                          <span className="flex-1 min-w-0 truncate text-ink-400 italic">📋 {planLabel}{entry!.servings !== 1 ? ` ×${entry!.servings}` : ''}</span>
+                          <span className="text-[9px] uppercase tracking-wide text-ink-300 border border-ink-200 rounded px-1 shrink-0">planned</span>
+                        </button>
+                        <button onClick={() => eat.mutate(entry!)} disabled={eat.isPending} aria-label="Mark eaten" title="I ate this — count it"
+                          className="min-w-[28px] min-h-[28px] rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
+                      </li>
+                    )}
+                    {eaten.map(l => (
+                      <li key={l.id}>
+                        <button onClick={() => setEditLog(l)} className="w-full flex items-center gap-2 px-4 py-1.5 min-h-[44px] text-sm text-left hover:bg-green-50/40 transition-colors">
+                          <span className="flex-1 min-w-0 truncate text-ink-800">✓ {l.title}</span>
+                          {l.calories ? <span className="text-xs text-ink-500 tabular-nums shrink-0">{Math.round(l.calories)} kcal</span> : null}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <button onClick={openPlan} className="w-full text-left px-4 py-2.5 text-xs text-ink-300 hover:text-accent-600 transition-colors">+ Plan a meal</button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── DESKTOP: the full 7-day × 5-slot grid ── */}
+      <div className="hidden md:block overflow-x-auto scrollbar-none scroll-fade-x">
         <div className="grid gap-1.5 min-w-[720px]" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
           {/* Header row */}
           <div />

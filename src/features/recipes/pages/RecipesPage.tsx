@@ -52,34 +52,37 @@ export function RecipesPage() {
       <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-5 w-full min-h-[92px]">
         <RecipeBackdrop recipes={recipes} />
         <div className="absolute inset-0 bg-gradient-to-r from-cream-50/90 via-cream-50/60 to-cream-50/10" aria-hidden />
-        {/* Everything on ONE row (user request): title · sub-tabs · day-nav ·
-            actions · PersonalTabs. Never wraps — scrolls horizontally inside the
-            banner on narrow screens (the page itself never overflows). */}
-        <div className="relative z-10 flex items-center gap-3 px-4 py-3 sm:px-5 overflow-x-auto scrollbar-none">
-          <div className="shrink-0">
-            <h1 className="text-xl font-bold text-ink-900 leading-tight">Food</h1>
-            <p className="text-xs text-ink-500 whitespace-nowrap">Your meals & ingredients — log, scale, track macros</p>
+        {/* Single row on desktop; on mobile it stacks into short rows (title /
+            tabs+day-nav / actions) so the sub-tabs are never pushed off-screen. */}
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center gap-2.5 lg:gap-3 px-4 py-3 sm:px-5">
+          <div className="min-w-0 shrink-0">
+            <h1 className="text-lg sm:text-xl font-bold text-ink-900 leading-tight">Food</h1>
+            <p className="hidden sm:block text-xs text-ink-500 lg:whitespace-nowrap">Your meals & ingredients — log, scale, track macros</p>
           </div>
 
-          {/* Sub-tabs */}
-          <div className="shrink-0 flex gap-1 bg-cream-50/70 border border-ink-200 p-1 rounded-xl backdrop-blur-sm">
-            {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
-                  tab === t ? 'bg-accent-500 text-white' : 'text-ink-600 hover:text-ink-900 hover:bg-ink-100'
-                }`}
-              >
-                {t === 'today' ? 'Today' : t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
-              </button>
-            ))}
+          {/* Sub-tabs — their own scrollable row on mobile, inline on desktop. */}
+          <div className="flex items-center min-w-0 overflow-x-auto scrollbar-none -mx-1 px-1 lg:mx-0 lg:px-0">
+            <div className="shrink-0 flex gap-1 bg-cream-50/70 border border-ink-200 p-1 rounded-xl backdrop-blur-sm">
+              {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`press-feedback shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
+                    tab === t ? 'bg-accent-500 text-white' : 'text-ink-600 hover:text-ink-900 hover:bg-ink-100'
+                  }`}
+                >
+                  {t === 'today' ? 'Today' : t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Day nav (Today only) */}
+          {/* Day nav (Today only) — its OWN row on mobile so it's never scrolled
+              off; sits inline between tabs and actions on desktop. */}
           {tab === 'today' && (
-            <div className="shrink-0 bg-cream-50/70 border border-ink-200 rounded-xl px-1 backdrop-blur-sm">
+            <div className="shrink-0 self-start lg:self-auto bg-cream-50/70 border border-ink-200 rounded-xl px-1 backdrop-blur-sm">
               <DateNav
+                size="md"
                 label={foodIsToday ? 'Today' : format(new Date(foodDate + 'T00:00:00'), 'EEE, d MMM')}
                 labelClassName="text-sm font-bold text-ink-900 min-w-[104px] text-center"
                 onPrev={() => setFoodDate(s => shiftDateStr(s, -1))}
@@ -90,11 +93,11 @@ export function RecipesPage() {
             </div>
           )}
 
-          {/* Actions + Personal tabs (pushed right) */}
-          <div className="shrink-0 flex items-center gap-2 ml-auto">
+          {/* Actions + Personal tabs (mobile: own wrapping row; desktop: right). */}
+          <div className="flex items-center gap-2 flex-wrap lg:flex-nowrap shrink-0 lg:ml-auto">
             <button
               onClick={() => setLogOpen(true)}
-              className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm whitespace-nowrap"
+              className="press-feedback min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm whitespace-nowrap"
             >
               🍽️ Log food
             </button>
@@ -102,14 +105,14 @@ export function RecipesPage() {
               onClick={() => setSuppOpen(true)}
               title="Log a supplement (creatine, protein, pre-workout)"
               aria-label="Log a supplement"
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 text-ink-600 bg-cream-50 text-lg rounded-xl hover:border-accent-300 hover:text-accent-700 transition-colors"
+              className="press-feedback min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 text-ink-600 bg-cream-50 text-lg rounded-xl hover:border-accent-300 hover:text-accent-700 transition-colors"
             >
               💊
             </button>
             {tab === 'library' && (
               <button
                 onClick={() => setAddOpen(true)}
-                className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors whitespace-nowrap"
+                className="press-feedback min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors whitespace-nowrap"
               >
                 + Add recipe
               </button>
@@ -136,7 +139,7 @@ export function RecipesPage() {
         <div className="flex flex-wrap gap-1.5 mb-4">
           {(['all', 'breakfast', 'lunch', 'dinner', 'snack', 'supplement'] as const).map(c => (
             <button key={c} onClick={() => setCategory(c)}
-              className={`text-xs px-3 min-h-[36px] rounded-full border font-medium capitalize transition-colors ${
+              className={`press-feedback text-xs px-3.5 min-h-[40px] rounded-full border font-medium capitalize transition-colors ${
                 category === c ? 'bg-accent-500 text-white border-accent-500' : 'border-ink-200 text-ink-600 hover:border-accent-300'
               }`}>
               {c === 'all' ? 'All' : c}
@@ -172,7 +175,7 @@ export function RecipesPage() {
           )}
 
           {/* Dense small cards — fixed-width auto-fill columns (width standard) */}
-          <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,12rem))] justify-start gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,12rem))] justify-start gap-2.5 stagger-in">
             {filteredRecipes.map(r => (
               <RecipeCard key={r.id} recipe={r} onClick={() => setDetail(r)} />
             ))}

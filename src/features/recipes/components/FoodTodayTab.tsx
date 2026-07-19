@@ -106,7 +106,7 @@ export function FoodTodayTab({ date }: { date: string }) {
             <div className="h-1 bg-accent-500" />
             {/* ⚙ Goals — bottom-right corner of the nutrition widget. */}
             <button onClick={() => setGoalsOpen(o => !o)} title="Goals" aria-label="Goals"
-              className={`absolute bottom-2 right-2 min-w-[32px] min-h-[32px] rounded-lg flex items-center justify-center text-sm transition-colors ${goalsOpen ? 'text-accent-700 bg-accent-50' : 'text-ink-400 hover:text-accent-600 hover:bg-cream-100'}`}>⚙</button>
+              className={`press-feedback absolute bottom-2 right-2 min-w-[40px] min-h-[40px] rounded-lg flex items-center justify-center text-base transition-colors ${goalsOpen ? 'text-accent-700 bg-accent-50' : 'text-ink-400 hover:text-accent-600 hover:bg-cream-100/90 bg-cream-50/70'}`}>⚙</button>
             <div className="p-6 flex items-center gap-5 flex-wrap">
               <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color="rgb(var(--accent-500))" label="kcal left" />
               {/* Small, tasteful protein ring — "kalan protein" as a graphic. */}
@@ -125,7 +125,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                   <div className="mt-2.5">
                     <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} />
                     {/* P · C · F · Fiber — the four side by side (fiber green). */}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] tabular-nums">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 pr-10 text-[11px] tabular-nums">
                       <span className="text-ink-600">{nut.protein_g}g <span className="text-ink-400">P</span></span>
                       <span className="text-ink-600">{nut.carbs_g}g <span className="text-ink-400">C</span></span>
                       <span className="text-ink-600">{nut.fat_g}g <span className="text-ink-400">F</span></span>
@@ -212,8 +212,8 @@ export function FoodTodayTab({ date }: { date: string }) {
           </div>
         </div>
 
-        {/* Meal slots — fill the right column on wide screens. */}
-        <div className="flex-1 min-w-0 grid grid-cols-1 2xl:grid-cols-2 gap-2.5 content-start">
+        {/* Meal slots — fill the right column on wide screens. Cascade in on mobile. */}
+        <div className="flex-1 min-w-0 grid grid-cols-1 2xl:grid-cols-2 gap-2.5 content-start stagger-in">
           {SLOTS.map(({ slot, label, icon }) => {
             const meals = bySlot.get(slot) ?? []
             const kcal = meals.filter(m => m.source === 'log').reduce((a, m) => a + m.calories, 0)
@@ -224,7 +224,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                   <span className="text-sm font-semibold text-ink-800 flex-1">{label}</span>
                   {kcal > 0 && <span className="text-xs text-ink-400 tabular-nums">{kcal} kcal</span>}
                   <button onClick={() => setLogSlot(slot)}
-                    className="text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[32px] px-2 rounded-lg transition-colors">+ Log</button>
+                    className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[40px] px-2.5 rounded-lg transition-colors">+ Log</button>
                 </div>
                 {meals.length > 0 ? (
                   <ul className="divide-y divide-ink-50">
@@ -247,12 +247,12 @@ export function FoodTodayTab({ date }: { date: string }) {
                               onClick={() => eatPlan.mutate(meal.planEntry!)}
                               disabled={eatPlan.isPending}
                               aria-label={`Mark ${meal.title} eaten`} title="I ate this — count it"
-                              className="min-w-[28px] min-h-[28px] rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
+                              className="press-feedback min-w-[40px] min-h-[40px] rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
                           )}
                           <button
                             onClick={() => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)}
                             aria-label={`Remove ${meal.title}`}
-                            className="min-w-[28px] min-h-[28px] text-ink-300 hover:text-red-500 shrink-0">✕</button>
+                            className="press-feedback min-w-[40px] min-h-[40px] flex items-center justify-center text-ink-300 hover:text-red-500 shrink-0">✕</button>
                         </li>
                       )
                     })}
