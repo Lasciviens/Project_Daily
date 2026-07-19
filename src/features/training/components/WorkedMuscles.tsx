@@ -71,7 +71,7 @@ function RatioRow({ label, a, b, warn, verdict, bubble }: { label: string; a: nu
 function bandGuidance(band: number, L?: { mev: number; mav: number; mrv: number }): string {
   if (!L) return ''
   switch (band) {
-    case 1: return `Below the level needed even to hold this muscle. Aim for at least ${L.mev} sets a week to start growing it.`
+    case 1: return `Likely too little to build this muscle — and maybe to hold it long-term. Aim for at least ${L.mev} sets a week to grow it.`
     case 2: return `Enough to maintain, but not to grow. Aim for ${L.mev}–${L.mav} sets a week to build it.`
     case 3: return `In the growth sweet spot (${L.mev}–${L.mav} sets a week). Keep it here.`
     case 4: return `High volume — near the most people recover from (~${L.mrv}/week). Fine short-term; watch fatigue.`
@@ -85,6 +85,10 @@ const ROLE_BADGE: Record<MuscleRole, string> = {
   secondary: 'bg-cream-200 text-ink-500',
   tertiary:  'bg-cream-100 text-ink-400',
 }
+
+// One-word band status for the naked-number chips (a number alone doesn't tell
+// a consumer if it's good).
+const BAND_WORD = ['—', 'low', 'maintain', 'good', 'high', 'over'] as const
 
 // Aggregate credited working sets per slug from one window's volume rows.
 function aggregate(volume: VolumeRow[], tplById: Map<string, Tpl>) {
@@ -133,6 +137,9 @@ export function WorkedMuscles() {
   const [customTo, setCustomTo]     = useState('')
   const [selected, setSelected] = useState<Set<Slug>>(new Set())
   const [peek, setPeek] = useState<string | null>(null)   // exercise-row GIF peek
+  // Hover devices open the GIF peek on hover; touch devices on tap. Binding
+  // both fired a synthetic mouseenter+click on touch → open-then-close flicker.
+  const hoverCapable = useMemo(() => typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover)').matches, [])
 
   const anchorDay = format(new Date(), 'yyyy-MM-dd')
   const customValid = period === 'custom' && !!customFrom && !!customTo && customFrom <= customTo
@@ -192,8 +199,12 @@ export function WorkedMuscles() {
 
   const { perSlug, unattributed, totalWorkingSets, workoutCount } = useMemo(
     () => aggregate(volume as VolumeRow[], tplById), [volume, tplById])
-  const priorPerSlug = useMemo(
-    () => aggregate(priorVolume as VolumeRow[], tplById).perSlug, [priorVolume, tplById])
+  const priorAgg = useMemo(() => aggregate(priorVolume as VolumeRow[], tplById), [priorVolume, tplById])
+  const priorPerSlug = priorAgg.perSlug
+  // No trend without a real baseline: if the prior equal window predates the
+  // user's training history (0 workouts in it), comparing against ~0 would flag
+  // almost every muscle "up" — misleading for newer lifters. Show "new" instead.
+  const priorHasData = priorAgg.workoutCount > 0
 
   const weeklyOf = (slug: string) => (perSlug[slug]?.credited ?? 0) / weeks
   const bandOf   = (slug: string) => bandForWeeklySets(slug, weeklyOf(slug))
@@ -235,31 +246,32 @@ export function WorkedMuscles() {
 
   // Actionable problem lists — under-dosed limited to MAJOR muscles so we never
   // nag about neck/adductors sitting near zero.
-  const { underMajors, overMrv, optimalCount } = useMemo(() => {
+  const { underMajors, untrainedMajors, overMrv, optimalCount, buckets } = useMemo(() => {
     const under: { slug: string; wk: number }[] = []
+    const untrained: string[] = []
     const over:  { slug: string; wk: number }[] = []
-    let optimal = 0
-    for (const slug of Object.keys(perSlug)) {
-      const wk = (perSlug[slug]!.credited) / weeks
+    let optimal = 0, inGrowth = 0, close = 0, needWork = 0
+    // Major-muscle buckets (for the coverage readout + the verdict). A ZERO-set
+    // major is band 0 and would otherwise be invisible to the "under" list —
+    // an entirely skipped muscle is the most important thing to surface, so it
+    // gets its own list and out-ranks a merely-low one.
+    for (const slug of MAJOR_MUSCLES) {
+      const wk = (perSlug[slug]?.credited ?? 0) / weeks
       const b = bandForWeeklySets(slug, wk)
+      if (b >= 3) inGrowth++
+      else if (b === 2) close++
+      else needWork++
+      if (b === 0) untrained.push(slug)
+      else if (b === 1 || b === 2) under.push({ slug, wk })
+    }
+    for (const slug of Object.keys(perSlug)) {
+      const b = bandForWeeklySets(slug, (perSlug[slug]!.credited) / weeks)
       if (b === 3) optimal++
-      if ((b === 1 || b === 2) && MAJOR_MUSCLES.has(slug as Slug)) under.push({ slug, wk })
-      if (b === 5) over.push({ slug, wk })
+      if (b === 5) over.push({ slug, wk: (perSlug[slug]!.credited) / weeks })
     }
     under.sort((a, b) => a.wk - b.wk)
     over.sort((a, b) => b.wk - a.wk)
-    return { underMajors: under, overMrv: over, optimalCount: optimal }
-  }, [perSlug, weeks])
-
-  // Coverage: major groups getting at least their growth-minimum (MEV).
-  const coverage = useMemo(() => {
-    let atOrAbove = 0
-    for (const slug of MAJOR_MUSCLES) {
-      const L = MUSCLE_LANDMARKS[slug]
-      if (L && weeklyOf(slug) >= L.mev) atOrAbove++
-    }
-    return { atOrAbove, total: MAJOR_MUSCLES.size }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return { underMajors: under, untrainedMajors: untrained, overMrv: over, optimalCount: optimal, buckets: { inGrowth, close, needWork } }
   }, [perSlug, weeks])
 
   const balance = useMemo(() => {
@@ -274,10 +286,21 @@ export function WorkedMuscles() {
   // ── Verdict banner: headline + up to 3 prioritised fixes ──
   const verdict = useMemo(() => {
     if (!workoutCount) return null
+    // Over-MRV is a multi-week concept — don't alarm on a muscle that's already
+    // trending DOWN (a deliberate deload). Only persistent highs make the banner.
+    const persistentOver = overMrv.filter(o => {
+      if (!priorHasData) return true
+      const priorWk = (priorPerSlug[o.slug]?.credited ?? 0) / weeks
+      return !(priorWk > 0 && o.wk / priorWk < 0.75)
+    })
     const bullets: { icon: string; text: string }[] = []
-    for (const o of overMrv.slice(0, 2)) {
+    for (const o of persistentOver.slice(0, 2)) {
       const d = setDeltaToRange(o.slug, o.wk)
-      bullets.push({ icon: '⬇', text: `Ease off ${labelForSlug(o.slug)} — ${o.wk.toFixed(0)}/wk is more than most recover from${d?.kind === 'cut' ? `; try dropping ~${d.sets} sets` : ''}.` })
+      bullets.push({ icon: '⬇', text: `Ease off ${labelForSlug(o.slug)} — ${o.wk.toFixed(0)}/wk is more than most recover from${d?.kind === 'cut' ? `; if recovery's suffering, drop ~${d.sets} sets` : ''}.` })
+    }
+    // Skipped-entirely majors out-rank merely-low ones.
+    for (const slug of untrainedMajors.slice(0, 2)) {
+      bullets.push({ icon: '➕', text: `Start training ${labelForSlug(slug)} — nothing logged this ${windowDays === 7 ? 'week' : 'period'}. Even one session helps.` })
     }
     for (const u of underMajors.slice(0, 3)) {
       const d = setDeltaToRange(u.slug, u.wk)
@@ -286,20 +309,21 @@ export function WorkedMuscles() {
         : `Train ${labelForSlug(u.slug)} more — ${u.wk.toFixed(1)}/wk.` })
     }
     if (balance.pushPull != null && (balance.pushPull > 1.25 || balance.pushPull < 0.8)) {
-      bullets.push({ icon: '⚖', text: balance.pushPull > 1.25
-        ? `You're push-heavy — add back & biceps (pull) work.`
-        : `You're pull-heavy — add chest/shoulder (push) work.` })
+      bullets.push({ icon: '⚖', text: balance.pushPull > 1.25 ? `You're push-heavy — add back & biceps (pull) work.` : `You're pull-heavy — add chest/shoulder (push) work.` })
     }
     const top = bullets.slice(0, 3)
+    const needCount = untrainedMajors.length + underMajors.length
+    const needNames = [...untrainedMajors, ...underMajors.map(u => u.slug)].map(labelForSlug)
     let headline: string
     if (smallSample) headline = `Light snapshot — here's your last ${windowDays} days per muscle.`
-    else if (overMrv.length) headline = `Solid work — but you're overcooking ${overMrv.slice(0, 2).map(o => labelForSlug(o.slug)).join(' & ')}.`
-    else if (underMajors.length >= 3) headline = `Decent base, but ${underMajors.length} muscles are under-trained for growth.`
-    else if (underMajors.length) headline = `Mostly on track — just ${underMajors.map(u => labelForSlug(u.slug)).join(' & ')} needs more.`
+    else if (persistentOver.length) headline = `Solid work — but you're overcooking ${persistentOver.slice(0, 2).map(o => labelForSlug(o.slug)).join(' & ')}.`
+    else if (buckets.inGrowth <= 1 && needCount >= 3) headline = `Just getting started — ${buckets.inGrowth} muscle${buckets.inGrowth !== 1 ? 's' : ''} in the growth range so far. Build from here.`
+    else if (needCount >= 3) headline = `Decent base, but ${needCount} muscles need more for growth.`
+    else if (needCount) headline = `Mostly on track — just ${needNames.join(' & ')} needs more.`
     else if (optimalCount >= 4) headline = `Dialled in — most muscles are in the growth sweet spot. Keep it up.`
     else headline = `Here's how your last ${windowDays} days stack up per muscle.`
     return { headline, bullets: top, extra: bullets.length - top.length }
-  }, [workoutCount, overMrv, underMajors, balance.pushPull, optimalCount, smallSample, windowDays])
+  }, [workoutCount, overMrv, underMajors, untrainedMajors, buckets, balance.pushPull, optimalCount, smallSample, windowDays, priorHasData, priorPerSlug, weeks])
 
   function toggle(slug: Slug | null | undefined) {
     if (!slug) return
@@ -442,11 +466,15 @@ export function WorkedMuscles() {
           </p>
         )}
 
-        <p className="text-sm text-ink-500">
+        <p className="text-sm text-ink-500 flex items-center gap-1 flex-wrap">
           {!enabled ? 'Pick a start and end date.'
             : isLoading ? 'Loading…'
             : workoutCount > 0
-              ? <><strong className="text-ink-800">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · <strong className="text-ink-800">{totalWorkingSets}</strong> working sets · last {windowDays} days · <strong className="text-ink-800">{coverage.atOrAbove}/{coverage.total}</strong> major muscles getting enough to grow</>
+              ? <>
+                  <strong className="text-ink-800">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · last {windowDays} days ·
+                  {' '}<strong className="text-green-700">{buckets.inGrowth}</strong> in growth range · <span className="text-ink-500">{buckets.close} close</span> · <span className="text-amber-700">{buckets.needWork} need work</span>
+                  <InfoBubble><p>Of the {buckets.inGrowth + buckets.close + buckets.needWork} major muscle groups: <strong>in growth range</strong> = at/above the growth-minimum (MEV); <strong>close</strong> = maintenance, just under; <strong>need work</strong> = below or untrained. Not everyone needs all in range at once. ({totalWorkingSets} working sets total.)</p></InfoBubble>
+                </>
               : `No workouts logged in the last ${windowDays} days.`}
         </p>
 
@@ -478,7 +506,7 @@ export function WorkedMuscles() {
                 <button key={m.slug} onClick={() => toggle(m.slug)}
                   className={`px-3 min-h-[36px] rounded-full text-xs font-medium transition-colors border flex items-center gap-1.5 ${selected.has(m.slug) ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'}`}>
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: BANDS_META[m.band].color }} />
-                  {labelForSlug(m.slug)} · {m.wk.toFixed(1)}/wk
+                  {labelForSlug(m.slug)} · {m.wk.toFixed(1)}/wk · {BAND_WORD[m.band]}
                 </button>
               ))}
             </div>
@@ -498,6 +526,7 @@ export function WorkedMuscles() {
               const exercises = agg ? [...agg.exercises.entries()].sort((a, b) => b[1].credited - a[1].credited) : []
               const dates = agg ? [...agg.dates].sort((a, b) => (a < b ? 1 : -1)) : []
               const freq = freqOf(slug)
+              const sessions = agg?.directDates.size ?? 0
               const since = daysSinceOf(slug)
               const trend = trendOf(slug)
               const delta = setDeltaToRange(slug, wk)
@@ -515,34 +544,44 @@ export function WorkedMuscles() {
                   </div>
 
                   <div className="p-4 flex flex-col gap-3">
-                    {/* At-a-glance stat row: frequency · trend · last trained */}
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                      <span className="flex items-center gap-1 text-ink-600">
-                        <strong className="text-ink-800">{freq.toFixed(1)}×</strong>/wk
-                        <InfoBubble><p>Separate days a week you directly trained this muscle. Same weekly sets usually feel better split over 2 days than crammed into 1 — frequency distributes volume, it isn't a growth multiplier by itself.</p></InfoBubble>
-                      </span>
-                      {trend && (
-                        <span className={`flex items-center gap-1 ${trendCls(trend)}`}>
-                          {trendIcon(trend)} {trend === 'up' ? 'more than usual' : trend === 'down' ? 'less than usual' : 'steady'}
-                          <InfoBubble><p>This window's volume vs the previous {windowDays} days. Descriptive only — it shows you're doing more/less lately, not that you're growing faster. A drop may just be a lighter week.</p></InfoBubble>
-                        </span>
-                      )}
-                      {since != null && (
-                        <span className={`flex items-center gap-1 ${since > 7 ? 'text-amber-600' : 'text-ink-500'}`}>
-                          last trained {since === 0 ? 'today' : `${since}d ago`}
-                          {since > 7 && ' ⏳'}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Plain-language guidance + concrete "what to do" */}
-                    <p className="text-sm text-ink-600 flex items-start gap-1">
+                    {/* Action first — plain-language guidance + concrete "what to do" */}
+                    <p className="text-sm text-ink-700 flex items-start gap-1">
                       <span>
                         {bandGuidance(band, L)}
                         {delta?.kind === 'add' && ` That's about ${delta.sets} more sets a week — roughly ${delta.sessions === 1 ? 'one more session' : `${delta.sessions} more sessions`}.`}
                         {delta?.kind === 'cut' && ` If you're not recovering well, drop about ${delta.sets} sets.`}
                       </span>
-                      <InfoBubble>{meta.desc}{L && <><br /><br />Weekly-set landmarks — maintain {L.mv} · start growing (MEV) {L.mev} · best range up to (MAV) {L.mav} · usual ceiling (MRV) {L.mrv}. Population guidance, not personalised.</>}</InfoBubble>
+                      <InfoBubble>{meta.desc}{L && <><br /><br />Weekly-set landmarks — maintain {L.mv} · start growing (MEV) {L.mev} · best range up to (MAV) {L.mav} · usual ceiling (MRV) {L.mrv}. Population guidance, not personalised. Assumes your sets were reasonably hard.</>}</InfoBubble>
+                    </p>
+
+                    {/* Descriptive cues, second */}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                      <span className="flex items-center gap-1 text-ink-600">
+                        trained <strong className="text-ink-800">{sessions}×</strong> in {windowDays}d
+                        <InfoBubble><p>Days you <strong>directly</strong> trained this muscle (~{freq.toFixed(1)}/week). Days it only assisted another lift aren't counted here. Same weekly sets usually feel better split over 2 days — frequency distributes volume, it isn't a growth multiplier by itself.</p></InfoBubble>
+                      </span>
+                      {priorHasData ? (trend && (
+                        <span className={`flex items-center gap-1 ${trendCls(trend)}`}>
+                          {trendIcon(trend)} {trend === 'up' ? 'more than usual' : trend === 'down' ? 'less than usual' : 'steady'}
+                          <InfoBubble><p>This window's volume vs the previous {windowDays} days. Descriptive only — more/less lately, not "growing faster". A drop may just be a lighter week.</p></InfoBubble>
+                        </span>
+                      )) : (
+                        <span className="text-ink-400">new — no baseline yet</span>
+                      )}
+                      {since != null && (
+                        <span className={`flex items-center gap-1 ${since > 7 ? 'text-amber-600' : 'text-ink-500'}`}>
+                          last trained {since === 0 ? 'today' : `${since}d ago`}{since > 7 ? ' ⏳' : ''}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Bottom line — one closing imperative (mirrors the AI coach) */}
+                    <p className="text-xs font-semibold text-ink-800 bg-cream-100 rounded-lg px-2.5 py-1.5">
+                      Bottom line: {delta?.kind === 'add'
+                        ? `add ~${delta.sets} sets of ${labelForSlug(slug)} work (≈ ${delta.sessions === 1 ? 'one more session' : `${delta.sessions} sessions`}).`
+                        : delta?.kind === 'cut'
+                          ? `hold volume here; only trim if recovery's suffering.`
+                          : `keep it here — progress load (reps then weight), not more sets.`}
                     </p>
 
                     {exercises.length > 0 && (
@@ -557,15 +596,19 @@ export function WorkedMuscles() {
                             const open = peek === key
                             return (
                               <li key={name}
-                                onMouseEnter={() => setPeek(key)} onMouseLeave={() => setPeek(p => p === key ? null : p)}
-                                onClick={() => setPeek(p => p === key ? null : key)}
+                                {...(hoverCapable
+                                  ? { onMouseEnter: () => setPeek(key), onMouseLeave: () => setPeek(p => (p === key ? null : p)) }
+                                  : { onClick: () => setPeek(p => (p === key ? null : key)) })}
                                 className="rounded-lg hover:bg-cream-100 transition-colors cursor-pointer">
                                 <div className="flex items-center justify-between gap-2 text-sm px-1 py-1 min-h-[36px]">
                                   <span className="flex items-center gap-1.5 min-w-0">
                                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${ROLE_BADGE[hit.role]}`}>{ROLE_LABEL[hit.role]}</span>
                                     <span className="text-ink-700 truncate">{name}</span>
                                   </span>
-                                  <span className="text-ink-400 shrink-0 text-xs">{hit.sets} set{hit.sets !== 1 ? 's' : ''}</span>
+                                  <span className="flex items-center gap-1.5 shrink-0 text-xs text-ink-400">
+                                    {hit.sets} set{hit.sets !== 1 ? 's' : ''}
+                                    <span className="text-ink-300" aria-hidden>{open ? '▾' : '▸'}</span>
+                                  </span>
                                 </div>
                                 {open && (
                                   <div className="flex items-center gap-3 px-2 pb-2 pt-0.5">
