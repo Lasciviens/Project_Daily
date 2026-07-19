@@ -7,14 +7,15 @@ import { MealPlanWeek } from '../components/MealPlanWeek'
 import { RecipeBackdrop } from '../components/RecipeBackdrop'
 import { IngredientManager } from '../components/IngredientManager'
 import { FoodLogModal } from '../components/FoodLogModal'
+import { FoodTodayTab } from '../components/FoodTodayTab'
 import type { RecipeWithIngredients, FoodCategory } from '../types'
 import { PersonalTabs } from '../../personal/components/PersonalLayout'
 
-type Tab = 'library' | 'ingredients' | 'plan'
+type Tab = 'today' | 'library' | 'ingredients' | 'plan'
 
 export function RecipesPage() {
   const { data: recipes = [], isLoading } = useRecipes()
-  const [tab,       setTab]       = useState<Tab>('library')
+  const [tab,       setTab]       = useState<Tab>('today')
   const [addOpen,   setAddOpen]   = useState(false)
   const [detail,    setDetail]    = useState<RecipeWithIngredients | null>(null)
   const [editing,   setEditing]   = useState<RecipeWithIngredients | null>(null)
@@ -74,8 +75,8 @@ export function RecipesPage() {
 
       {/* Tab toggle */}
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-        <div className="flex gap-1 bg-cream-50 border border-ink-200 p-1 rounded-xl w-fit">
-          {(['library', 'ingredients', 'plan'] as Tab[]).map(t => (
+        <div className="flex gap-1 bg-cream-50 border border-ink-200 p-1 rounded-xl w-fit flex-wrap">
+          {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -83,7 +84,7 @@ export function RecipesPage() {
                 tab === t ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
               }`}
             >
-              {t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
+              {t === 'today' ? 'Today' : t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
             </button>
           ))}
         </div>
@@ -114,6 +115,7 @@ export function RecipesPage() {
         </div>
       )}
 
+      {tab === 'today' && <FoodTodayTab />}
       {tab === 'ingredients' && <IngredientManager />}
       {tab === 'plan' && <MealPlanWeek />}
 
