@@ -206,7 +206,7 @@ const GOAL_LABEL: Record<NutritionGoal, string> = { maintain: 'Maintain', cut: '
 export function NutritionCard({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
   const { targets, update } = useDayTargets()
-  const coach = useNutritionCoach(date, targets.goal)
+  const coach = useNutritionCoach(date, targets)
   const [editing, setEditing] = useState(false)
   const copyYesterday = useCopyYesterdayMeals()
 
@@ -259,13 +259,19 @@ export function NutritionCard({ date }: { date: string }) {
             <span>Calorie goal</span>
             <GoalStepper value={targets.calories} step={50} onChange={v => update({ calories: v })} suffix="kcal" />
           </div>
+          {/* Safety floor — a target below RMR-protecting intake is flagged, not silently allowed */}
+          {targets.calories < coach.calorieFloor && (
+            <p className="text-[10px] text-red-500 px-0.5 -mt-1">⚠ Below a safe floor (~{coach.calorieFloor} kcal). Don't cut lower — take a diet break instead.</p>
+          )}
           <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
             <span>Protein goal</span>
             <GoalStepper value={targets.protein} step={10} onChange={v => update({ protein: v })} suffix="g" />
           </div>
 
           {/* Bodyweight-based protein suggestion (real latest weight) */}
-          {coach.proteinForGoal != null && coach.weightKg != null && coach.proteinForGoal !== targets.protein && (
+          {coach.weightKg == null ? (
+            <p className="text-[10px] text-ink-400 px-0.5">Sync or add a bodyweight (Training → Body) to get protein &amp; calorie suggestions.</p>
+          ) : coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? (
             <button onClick={() => update({ protein: coach.proteinForGoal! })}
               className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
               <span className="text-ink-600">
@@ -274,21 +280,39 @@ export function NutritionCard({ date }: { date: string }) {
               </span>
               <span className="text-accent-600 font-semibold shrink-0">Apply</span>
             </button>
+          ) : coach.proteinForGoal != null ? (
+            <p className="text-[10px] text-ink-400 px-0.5">✓ Protein on target ({(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg).</p>
+          ) : null}
+
+          {/* Fat floor — only on a cut (hormonal-health minimum) */}
+          {coach.fatFloorG != null && (
+            <p className="text-[10px] text-ink-400 px-0.5">Keep fat ≥ ~{coach.fatFloorG}g/day on a cut (hormonal health).</p>
           )}
 
-          {/* Adaptive calorie nudge — gated on logging consistency */}
-          {coach.calorieAdvice ? (
-            <button onClick={() => update({ calories: Math.max(0, targets.calories + coach.calorieAdvice!.delta) })}
-              className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
-              <span className="text-ink-600">
-                <strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong>
-                <span className="text-ink-400"> · {coach.calorieAdvice.reason}</span>
-              </span>
-              <span className="text-accent-600 font-semibold shrink-0">Apply</span>
-            </button>
-          ) : coach.weightKg != null && !coach.consistent ? (
-            <p className="text-[10px] text-ink-400 px-0.5">Log {coach.loggedDays7}/4 recent days to unlock calorie coaching from your weight trend.</p>
-          ) : null}
+          {/* Adaptive calorie coaching — gated on intake logging AND weight-signal
+              quality AND a cooldown; shows an honest 'on track' / floor / gate state */}
+          {coach.weightKg != null && (
+            coach.calorieAdvice ? (
+              <button onClick={() => update({ calories: Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), lastCalorieAdjust: new Date().toISOString().slice(0, 10) })}
+                className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
+                <span className="text-ink-600">
+                  <strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong>
+                  <span className="text-ink-400"> · {coach.calorieAdvice.reason}</span>
+                </span>
+                <span className="text-accent-600 font-semibold shrink-0">Apply</span>
+              </button>
+            ) : coach.onTrack ? (
+              <p className="text-[10px] text-green-600 px-0.5">✓ {coach.onTrack}</p>
+            ) : coach.atFloor ? (
+              <p className="text-[10px] text-ink-500 px-0.5">You're at your calorie floor (~{coach.calorieFloor}) but not losing — take a diet break rather than cutting lower.</p>
+            ) : coach.inCooldown ? (
+              <p className="text-[10px] text-ink-400 px-0.5">Calorie adjusted recently — hold {coach.cooldownDaysLeft} more day{coach.cooldownDaysLeft === 1 ? '' : 's'} so the trend can catch up.</p>
+            ) : !coach.consistent ? (
+              <p className="text-[10px] text-ink-400 px-0.5">Logged {coach.loggedDays7} of the last 7 days — log {Math.max(1, 4 - coach.loggedDays7)} more to unlock calorie coaching.</p>
+            ) : !coach.weighInsOk ? (
+              <p className="text-[10px] text-ink-400 px-0.5">Weigh in more often ({coach.weighIns} readings) — a couple of weeks of regular weigh-ins lets me read your trend.</p>
+            ) : null
+          )}
 
           <button onClick={() => setEditing(false)}
             className="self-end text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[28px] px-1.5 rounded transition-colors">
@@ -312,6 +336,9 @@ export function NutritionCard({ date }: { date: string }) {
                 <div className="h-2 rounded-full bg-ink-100 overflow-hidden">
                   <div className="h-full bg-blue-400 rounded-full transition-all" style={{ width: `${proteinPct}%` }} />
                 </div>
+                {coach.proteinPerMealG != null && (
+                  <p className="text-[10px] text-ink-400 mt-1">≈{coach.proteinPerMealG}g protein per meal spreads it best</p>
+                )}
               </div>
               {(nut && nut.calories > 0) && (
                 <div className="mt-2">
