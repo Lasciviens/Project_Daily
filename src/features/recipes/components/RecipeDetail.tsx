@@ -3,9 +3,20 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { toast } from '../../../app/store'
 import { useDeleteRecipe, useIncrementTimesCooked } from '../hooks/useRecipes'
 import { useAddMissingIngredientsToShop } from '../hooks/useShopIntegration'
+import { useAddFoodLogEntries } from '../hooks/useFoodLog'
+import { recipeSnapshot } from '../api/foodLogApi'
+import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MacroBar } from './MacroBar'
 import { CookMode } from './CookMode'
-import type { RecipeWithIngredients } from '../types'
+import type { RecipeWithIngredients, MealSlot } from '../types'
+
+function slotForNow(): MealSlot {
+  const h = new Date().getHours()
+  if (h < 11) return 'breakfast'
+  if (h < 15) return 'lunch'
+  if (h < 21) return 'dinner'
+  return 'snack'
+}
 
 interface Props {
   recipe: RecipeWithIngredients
@@ -29,6 +40,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const remove       = useDeleteRecipe()
   const addToShop    = useAddMissingIngredientsToShop()
   const cooked        = useIncrementTimesCooked()
+  const logFood       = useAddFoodLogEntries()
   const factor = recipe.servings > 0 ? servings / recipe.servings : 1
 
   function handleMadeThis() {
@@ -38,10 +50,25 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
     })
   }
 
+  // Log this recipe to TODAY's diary as ONE named line (recipe_id + a macro
+  // snapshot at the selected servings) — this is what finally connects the
+  // recipe library to calorie tracking. Slot picked from the time of day.
+  function handleLog() {
+    const slot = slotForNow()
+    logFood.mutate([{
+      date: formatLocalDate(new Date()), meal_slot: slot,
+      recipe_id: recipe.id, quantity: servings, unit: 'serving',
+      ...recipeSnapshot(recipe, servings),
+    }], {
+      onSuccess: () => toast.success(`Logged ${servings}× to ${slot} ✓`),
+      onError:   e  => toast.error((e as Error).message),
+    })
+  }
+
   function toggleHave(id: string) {
     setHave(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }
@@ -121,12 +148,16 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                 <button onClick={() => setServings(recipe.servings)} className="text-[11px] text-accent-600 hover:text-accent-700">reset</button>
               )}
               <div className="flex items-center gap-1.5 ml-auto">
+                <button onClick={handleLog} disabled={logFood.isPending} title="Log this to today's diary"
+                  className="min-h-[44px] px-3 text-xs font-semibold bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors disabled:opacity-50">
+                  🍽️ {logFood.isPending ? 'Logging…' : 'I ate this'}
+                </button>
                 {steps.length > 0 && (
                   <button onClick={() => setCookMode(true)} className="min-h-[44px] px-3 text-xs font-semibold bg-ink-950 text-white rounded-lg hover:bg-ink-800 transition-colors">
                     👨‍🍳 Cook Mode
                   </button>
                 )}
-                <button onClick={handleMadeThis} disabled={cooked.isPending} title="I made this!" className="min-h-[44px] min-w-[44px] flex items-center justify-center text-base bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors disabled:opacity-50">
+                <button onClick={handleMadeThis} disabled={cooked.isPending} title="I made this (counter only)" className="min-h-[44px] min-w-[44px] flex items-center justify-center text-base bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors disabled:opacity-50">
                   🔥
                 </button>
               </div>
