@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Cell, CellHeader } from './cellKit'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
-import { useDayTargets } from '../../hooks/useDayTargets'
+import { useDayTargets, type NutritionGoal } from '../../hooks/useDayTargets'
+import { useNutritionCoach } from '../../hooks/useNutritionCoach'
 import { useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
 import { AssignMealModal } from '../../../recipes/components/AssignMealModal'
@@ -200,9 +201,12 @@ function GoalStepper({ value, step, onChange, suffix }: {
   )
 }
 
+const GOAL_LABEL: Record<NutritionGoal, string> = { maintain: 'Maintain', cut: 'Cut', gain: 'Gain' }
+
 export function NutritionCard({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
   const { targets, update } = useDayTargets()
+  const coach = useNutritionCoach(date, targets.goal)
   const [editing, setEditing] = useState(false)
   const copyYesterday = useCopyYesterdayMeals()
 
@@ -239,6 +243,18 @@ export function NutritionCard({ date }: { date: string }) {
 
       {editing ? (
         <div className="flex flex-col gap-2">
+          {/* Goal — steers the protein g/kg suggestion + calorie coaching */}
+          <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
+            <span>Goal</span>
+            <div className="flex gap-1">
+              {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
+                <button key={g} onClick={() => update({ goal: g })}
+                  className={`text-[11px] px-2 min-h-[28px] rounded-full border transition-colors ${
+                    targets.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
+                  }`}>{GOAL_LABEL[g]}</button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
             <span>Calorie goal</span>
             <GoalStepper value={targets.calories} step={50} onChange={v => update({ calories: v })} suffix="kcal" />
@@ -247,6 +263,33 @@ export function NutritionCard({ date }: { date: string }) {
             <span>Protein goal</span>
             <GoalStepper value={targets.protein} step={10} onChange={v => update({ protein: v })} suffix="g" />
           </div>
+
+          {/* Bodyweight-based protein suggestion (real latest weight) */}
+          {coach.proteinForGoal != null && coach.weightKg != null && coach.proteinForGoal !== targets.protein && (
+            <button onClick={() => update({ protein: coach.proteinForGoal! })}
+              className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
+              <span className="text-ink-600">
+                Suggested <strong className="text-accent-700">{coach.proteinForGoal}g</strong> protein
+                <span className="text-ink-400"> · {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span>
+              </span>
+              <span className="text-accent-600 font-semibold shrink-0">Apply</span>
+            </button>
+          )}
+
+          {/* Adaptive calorie nudge — gated on logging consistency */}
+          {coach.calorieAdvice ? (
+            <button onClick={() => update({ calories: Math.max(0, targets.calories + coach.calorieAdvice!.delta) })}
+              className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
+              <span className="text-ink-600">
+                <strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong>
+                <span className="text-ink-400"> · {coach.calorieAdvice.reason}</span>
+              </span>
+              <span className="text-accent-600 font-semibold shrink-0">Apply</span>
+            </button>
+          ) : coach.weightKg != null && !coach.consistent ? (
+            <p className="text-[10px] text-ink-400 px-0.5">Log {coach.loggedDays7}/4 recent days to unlock calorie coaching from your weight trend.</p>
+          ) : null}
+
           <button onClick={() => setEditing(false)}
             className="self-end text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[28px] px-1.5 rounded transition-colors">
             Done

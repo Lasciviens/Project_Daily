@@ -85,6 +85,19 @@ export async function fetchRecentFoods(fromDate: string): Promise<RecentFood[]> 
   return [...byKey.values()].sort((a, b) => b.count - a.count).slice(0, 8)
 }
 
+// Distinct dates (yyyy-MM-dd) with ≥1 diary row in [fromDate, toDate] — the
+// logging-consistency signal that gates the adaptive-calorie coaching (a
+// calorie recommendation off partial intake data would be misleading).
+export async function fetchLoggedDates(fromDate: string, toDate: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('food_log_entries')
+    .select('date')
+    .gte('date', fromDate)
+    .lte('date', toDate)
+  if (error) throw error
+  return [...new Set((data ?? []).map(r => (r as { date: string }).date))]
+}
+
 // Snapshot builders — per-100g × grams for ingredients, per-serving ×
 // servings for recipes. Grams path only for weight/volume amounts.
 const per = (v: number | null | undefined, grams: number) => (v == null ? null : Math.round(v * grams) / 100)
