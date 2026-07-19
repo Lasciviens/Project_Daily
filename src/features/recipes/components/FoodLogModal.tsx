@@ -251,11 +251,12 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-4">
-            {/* Slot */}
-            <div className="flex flex-wrap gap-1.5">
+            {/* Slot — single non-wrapping row (was flex-wrap → "Supplement"
+                dropped to a 2nd line at 393px); scrolls if ever too narrow. */}
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1">
               {SLOTS.map(s => (
                 <button key={s.id} type="button" onClick={() => setSlot(s.id)}
-                  className={`text-xs px-2.5 min-h-[36px] rounded-full border transition-colors ${
+                  className={`shrink-0 whitespace-nowrap text-xs px-2.5 min-h-[36px] rounded-full border transition-colors ${
                     slot === s.id ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
                   }`}>
                   {s.label}

@@ -152,8 +152,13 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
 
   const allMeals = [...meals, ...logMeals].sort((a, b) => SLOT_ORDER[a.meal_slot] - SLOT_ORDER[b.meal_slot])
 
+  // CONSUMED = the DIARY only (source==='log'). recipe_meal_plans rows are the
+  // PLAN (intent), still written by the Meal Plan tab — summing them into the
+  // ring double-counted energy on any day that was both planned AND logged
+  // (Faz 9 must-fix). Plan rows are still returned in meals[] so a planned dish
+  // can render as a ghost, but only eaten food feeds the totals.
   const sum = (k: keyof Pick<DayMeal, 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'>) =>
-    allMeals.reduce((acc, m) => acc + m[k], 0)
+    allMeals.reduce((acc, m) => acc + (m.source === 'log' ? m[k] : 0), 0)
 
   return {
     meals: allMeals,

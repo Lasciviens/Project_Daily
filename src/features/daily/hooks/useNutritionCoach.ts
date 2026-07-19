@@ -94,7 +94,11 @@ export function useNutritionCoach(date: string, targets: DayTargets): NutritionC
   })
 
   const wSeries = computeDailySeries('weight_body_mass', wPts)
-  let weightKg = wSeries.length ? wSeries[wSeries.length - 1].value : null
+  // Use a SMOOTHED weight (mean of the last up-to-7 daily points), not a single
+  // latest reading — day-to-day water/glycogen swings (1-2kg) otherwise make the
+  // protein suggestion and calorie floor jump around (Faz 9 fix).
+  const recent = wSeries.slice(-7)
+  let weightKg = recent.length ? Math.round((recent.reduce((a, d) => a + d.value, 0) / recent.length) * 10) / 10 : null
   // Sanity guard: weight_body_mass is assumed kg (Health Auto Export can emit
   // imperial by locale — same class as the documented kJ/kcal bug). A value
   // this large can't be a human weight in kg, so don't derive targets from it.

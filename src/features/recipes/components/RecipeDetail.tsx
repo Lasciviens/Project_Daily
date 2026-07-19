@@ -34,6 +34,7 @@ function scaledQty(q: number | null, factor: number): string {
 
 export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const [servings, setServings] = useState(recipe.servings)
+  const [ate, setAte] = useState(1)   // portions EATEN (≠ recipe base yield)
   const [have,      setHave]     = useState<Set<string>>(new Set())
   const [cookMode,  setCookMode] = useState(false)
   const [imgError,  setImgError] = useState(false)
@@ -57,10 +58,10 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
     const slot = slotForNow()
     logFood.mutate([{
       date: formatLocalDate(new Date()), meal_slot: slot,
-      recipe_id: recipe.id, quantity: servings, unit: 'serving',
-      ...recipeSnapshot(recipe, servings),
+      recipe_id: recipe.id, quantity: ate, unit: 'serving',
+      ...recipeSnapshot(recipe, ate),
     }], {
-      onSuccess: () => toast.success(`Logged ${servings}× to ${slot} ✓`),
+      onSuccess: () => toast.success(`Logged ${ate}× to ${slot} ✓`),
       onError:   e  => toast.error((e as Error).message),
     })
   }
@@ -148,7 +149,16 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                 <button onClick={() => setServings(recipe.servings)} className="text-[11px] text-accent-600 hover:text-accent-700">reset</button>
               )}
               <div className="flex items-center gap-1.5 ml-auto">
-                <button onClick={handleLog} disabled={logFood.isPending} title="Log this to today's diary"
+                {/* Portions EATEN — defaults to 1, independent of the recipe's
+                    base yield (logging the whole batch was a Faz 9 must-fix). */}
+                <div className="flex items-center rounded-lg border border-accent-300 overflow-hidden">
+                  <button onClick={() => setAte(a => Math.max(0.5, Math.round((a - 0.5) * 2) / 2))} aria-label="less"
+                    className="min-w-[36px] min-h-[44px] text-accent-700 hover:bg-accent-50 leading-none">−</button>
+                  <span className="w-8 text-center text-xs font-bold text-ink-900 tabular-nums">{ate}</span>
+                  <button onClick={() => setAte(a => Math.round((a + 0.5) * 2) / 2)} aria-label="more"
+                    className="min-w-[36px] min-h-[44px] text-accent-700 hover:bg-accent-50 leading-none">+</button>
+                </div>
+                <button onClick={handleLog} disabled={logFood.isPending} title="Log the eaten portions to today's diary"
                   className="min-h-[44px] px-3 text-xs font-semibold bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors disabled:opacity-50">
                   🍽️ {logFood.isPending ? 'Logging…' : 'I ate this'}
                 </button>

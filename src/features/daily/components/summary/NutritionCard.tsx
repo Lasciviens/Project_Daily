@@ -88,8 +88,11 @@ function SlotRow({ date, slot, label, meals }: {
     const t = title.trim()
     if (!t) return
     const lc = t.toLowerCase()
+    // Auto-log ONLY on an exact or start-of-name match; a loose substring match
+    // silently logged the wrong food ("egg" → "eggplant"), so fall through to
+    // the full logger (prefilled) for anything less certain (Faz 9 fix).
     const match = library.find(i => i.name.toLowerCase() === lc)
-             ?? library.find(i => i.name.toLowerCase().includes(lc))
+             ?? library.find(i => i.name.toLowerCase().startsWith(lc))
     if (match) {
       const grams = match.serving_grams ?? 100
       addEntries.mutate([{ date, meal_slot: slot, library_ingredient_id: match.id, quantity: grams, unit: 'g', ...ingredientSnapshot(match, grams) }], { onSuccess: reset })
