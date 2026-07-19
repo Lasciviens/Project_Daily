@@ -37,77 +37,54 @@ const fmtClock = (ms: number) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// Night timeline at SESSION granularity — when you fell asleep, woke up, and
-// any interruption gap between distinct sessions. Deliberately NOT a
-// per-stage hypnogram: the exported data carries only whole-session stage
-// TOTALS (verified against every live row), so exact stage start/end times
-// simply don't exist — drawing them would be invented precision.
-function SessionTimeline({ sessions }: { sessions: { startMs: number; endMs: number }[] }) {
-  if (sessions.length === 0) return null
-  const pad = 20 * 60_000
-  const min = sessions[0].startMs - pad
-  const max = sessions[sessions.length - 1].endMs + pad
-  const span = max - min
-  const pct = (ms: number) => ((ms - min) / span) * 100
-
-  return (
-    <div>
-      <div className="relative h-6 rounded-lg bg-ink-100 overflow-hidden">
-        {sessions.map((s, i) => (
-          <div
-            key={i}
-            className="absolute top-0.5 bottom-0.5 rounded-md bg-indigo-500/85"
-            style={{ left: `${pct(s.startMs)}%`, width: `${pct(s.endMs) - pct(s.startMs)}%` }}
-            title={`${fmtClock(s.startMs)} – ${fmtClock(s.endMs)}`}
-          />
-        ))}
-      </div>
-      <div className="flex items-center justify-between mt-0.5 text-[10px] text-ink-400 tabular-nums">
-        <span>😴 {fmtClock(sessions[0].startMs)}</span>
-        {sessions.length > 1 && (
-          <span className="text-amber-600">
-            {sessions.length - 1} interruption{sessions.length > 2 ? 's' : ''}
-            {' '}({sessions.slice(1).map((s, i) => `${fmtClock(sessions[i].endMs)}–${fmtClock(s.startMs)}`).join(', ')})
-          </span>
-        )}
-        <span>⏰ {fmtClock(sessions[sessions.length - 1].endMs)}</span>
-      </div>
-    </div>
-  )
-}
-
-// The Day-mode night graph — a real time-axis chart of the night, built from
-// what the export actually contains: session windows (exact start/end) and
-// interruption gaps. Asleep = indigo bands, awake gaps = hatched red, hour
-// ticks along the axis. Deliberately NOT a per-stage hypnogram: the exported
-// sleep data carries whole-night stage TOTALS only (no per-stage timestamps),
-// so stage timing on an axis would be invented precision.
+// The Day-mode "WHEN YOU SLEPT" clock — one clear, self-explanatory timeline:
+// a prominent bedtime → wake header plus a real hour-axis band showing the
+// asleep window(s) and any awake interruption between them. This is the SINGLE
+// timeline for a night (the old separate SessionTimeline was redundant and
+// removed). Deliberately NOT a per-stage hypnogram — the export carries
+// whole-night stage TOTALS only (no per-stage timestamps), so stage timing on
+// an axis would be invented precision; the stage split is shown separately as
+// its own labelled bar.
 function NightChart({ sessions }: { sessions: { startMs: number; endMs: number }[] }) {
-  const PAD_MS = 30 * 60_000
-  const min = sessions[0].startMs - PAD_MS
-  const max = sessions[sessions.length - 1].endMs + PAD_MS
-  const span = max - min
-  const W = 640, H = 96, TOP = 18, BAND_H = 40, AXIS_Y = TOP + BAND_H + 14
+  const bedtime = sessions[0].startMs
+  const wake    = sessions[sessions.length - 1].endMs
+  const inBedH  = (wake - bedtime) / 3_600_000
+
+  const PAD_MS = 20 * 60_000
+  const min = bedtime - PAD_MS
+  const max = wake + PAD_MS
+  const span = Math.max(max - min, 60_000)
+  const W = 640, H = 70, TOP = 8, BAND_H = 34, AXIS_Y = TOP + BAND_H + 15
   const x = (ms: number) => ((ms - min) / span) * W
 
-  // Hour tick marks across the window
+  // Hour ticks — every 2h for long windows so labels don't crowd/overlap.
+  const stepH = span > 11 * 3_600_000 ? 2 : 1
   const ticks: number[] = []
   const first = new Date(min); first.setMinutes(0, 0, 0)
-  for (let t = first.getTime(); t <= max; t += 60 * 60_000) if (t >= min) ticks.push(t)
+  for (let t = first.getTime(); t <= max; t += stepH * 3_600_000) if (t >= min) ticks.push(t)
 
   return (
     <div className="rounded-xl border border-ink-100 bg-cream-50 px-3 py-3 max-w-2xl">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Night timeline</p>
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">🕐 When you slept</p>
+        <p className="text-xs text-ink-600 tabular-nums">
+          <span className="font-semibold">😴 {fmtClock(bedtime)}</span>
+          <span className="text-ink-300"> → </span>
+          <span className="font-semibold">⏰ {fmtClock(wake)}</span>
+          <span className="text-ink-400"> · {fmtHrs(inBedH)} in bed</span>
+        </p>
+      </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" aria-hidden="true">
-        {/* awake gaps between sessions — hatched red bands */}
+        {/* awake gaps between sessions */}
         {sessions.slice(1).map((s, i) => {
           const gapStart = sessions[i].endMs
           const gapEnd = s.startMs
           if (gapEnd <= gapStart) return null
+          const w = x(gapEnd) - x(gapStart)
           return (
             <g key={`gap-${i}`}>
-              <rect x={x(gapStart)} y={TOP} width={x(gapEnd) - x(gapStart)} height={BAND_H} rx={4} fill="#fecaca" />
-              <text x={(x(gapStart) + x(gapEnd)) / 2} y={TOP - 5} textAnchor="middle" fontSize={9} fill="#dc2626">awake</text>
+              <rect x={x(gapStart)} y={TOP} width={w} height={BAND_H} rx={4} fill="#fecaca" />
+              {w > 26 && <text x={(x(gapStart) + x(gapEnd)) / 2} y={TOP + BAND_H / 2 + 3} textAnchor="middle" fontSize={8} fill="#dc2626">awake</text>}
             </g>
           )
         })}
@@ -115,9 +92,6 @@ function NightChart({ sessions }: { sessions: { startMs: number; endMs: number }
         {sessions.map((s, i) => (
           <rect key={i} x={x(s.startMs)} y={TOP} width={Math.max(x(s.endMs) - x(s.startMs), 2)} height={BAND_H} rx={6} fill="#6366f1" fillOpacity={0.9} />
         ))}
-        {/* sleep start / wake labels */}
-        <text x={x(sessions[0].startMs)} y={TOP - 5} textAnchor="start" fontSize={10} fill="rgb(var(--ink-500))">😴 {fmtClock(sessions[0].startMs)}</text>
-        <text x={x(sessions[sessions.length - 1].endMs)} y={TOP - 5} textAnchor="end" fontSize={10} fill="rgb(var(--ink-500))">⏰ {fmtClock(sessions[sessions.length - 1].endMs)}</text>
         {/* hour axis */}
         <line x1={0} y1={AXIS_Y - 8} x2={W} y2={AXIS_Y - 8} stroke="rgb(var(--ink-200))" strokeWidth={1} />
         {ticks.map(t => (
@@ -129,6 +103,9 @@ function NightChart({ sessions }: { sessions: { startMs: number; endMs: number }
           </g>
         ))}
       </svg>
+      {sessions.length > 1 && (
+        <p className="text-[10px] text-amber-600 mt-1">{sessions.length - 1} interruption{sessions.length > 2 ? 's' : ''} overnight (woke up, then back to sleep)</p>
+      )}
     </div>
   )
 }
@@ -305,8 +282,9 @@ export function SleepSection() {
         )}
       </div>
 
-      {/* Night timeline — session windows + interruption gaps */}
-      {detailSessions.length > 0 && <SessionTimeline sessions={detailSessions} />}
+      {/* Day mode: the ONE "when you slept" clock timeline, right under the
+          headline (period modes show the multi-night trend chart lower down). */}
+      {isDay && detailSessions.length > 0 && <NightChart sessions={detailSessions} />}
 
       {showManualForm && (
         <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 relative">
@@ -354,6 +332,9 @@ export function SleepSection() {
 
       {detail && (
         <>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
+            🛏️ Sleep stages{!isDay && ' · avg/night'}
+          </p>
           <div className="h-4 rounded-full overflow-hidden flex w-full bg-ink-100">
             {STAGES.map(s => {
               const val = detail[s.key]
@@ -459,15 +440,6 @@ export function SleepSection() {
             )
           })()}
         </div>
-      )}
-
-      {/* DAY MODE — the night's own graph: a time-axis band chart built from
-          the session windows (asleep blocks + awake gaps + hour ticks). This
-          is the honest maximum for the current export: Health Auto Export
-          sends session start/end + whole-night stage TOTALS, not per-stage
-          timestamps, so a minute-level hypnogram would be invented data. */}
-      {period === 'day' && detailSessions.length > 0 && (
-        <NightChart sessions={detailSessions} />
       )}
 
       <MetricMiniGrid title="Sleep Extras" metrics={SLEEP_EXTRA_METRICS} />
