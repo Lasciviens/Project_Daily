@@ -90,7 +90,6 @@ export function FoodTodayTab() {
   const protein  = nut?.protein_g ?? 0
   const proteinLeft = Math.round(targets.protein - protein)
   const proteinHit  = targets.protein > 0 && proteinLeft <= 0
-  const fiberGoal   = Math.round((targets.calories / 1000) * 14)
 
   const bySlot = new Map<string, DayMeal[]>()
   for (const m of nut?.meals ?? []) {
@@ -102,29 +101,26 @@ export function FoodTodayTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Date nav + Goals toggle */}
-      <div className="flex items-center gap-2 flex-wrap max-w-2xl">
-        <DateNav
-          label={isToday ? 'Today' : format(d, 'EEE, d MMM')}
-          labelClassName="text-sm font-bold text-ink-900 min-w-[110px] text-center"
-          onPrev={() => setDate(s => shiftDateStr(s, -1))}
-          onNext={() => setDate(s => shiftDateStr(s, 1))}
-          onToday={() => setDate(formatLocalDate(new Date()))}
-          isToday={isToday}
-        />
-        <button onClick={() => setGoalsOpen(o => !o)}
-          className="ml-auto text-xs font-medium text-ink-500 hover:text-accent-600 min-h-[36px] px-2.5 rounded-lg border border-ink-200 hover:border-accent-300 transition-colors">
-          ⚙ Goals
-        </button>
-      </div>
+      {/* Day navigation — at the very top (⚙ Goals now lives in the widget). */}
+      <DateNav
+        label={isToday ? 'Today' : format(d, 'EEE, d MMM')}
+        labelClassName="text-sm font-bold text-ink-900 min-w-[110px] text-center"
+        onPrev={() => setDate(s => shiftDateStr(s, -1))}
+        onNext={() => setDate(s => shiftDateStr(s, 1))}
+        onToday={() => setDate(formatLocalDate(new Date()))}
+        isToday={isToday}
+      />
 
       {/* Two columns on xl+: summary+goals+coach (left, wider) · meal slots
           (right, narrower). Nutrition & Goals stack same-width in the left col. */}
       <div className="flex flex-col xl:flex-row xl:items-start gap-4">
         <div className="flex flex-col gap-4 w-full xl:w-[30rem] xl:shrink-0">
           {/* Hero — calorie + protein rings + macro chips */}
-          <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden">
+          <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden relative">
             <div className="h-1 bg-accent-500" />
+            {/* ⚙ Goals — bottom-right corner of the nutrition widget. */}
+            <button onClick={() => setGoalsOpen(o => !o)} title="Goals" aria-label="Goals"
+              className={`absolute bottom-2 right-2 min-w-[32px] min-h-[32px] rounded-lg flex items-center justify-center text-sm transition-colors ${goalsOpen ? 'text-accent-700 bg-accent-50' : 'text-ink-400 hover:text-accent-600 hover:bg-cream-100'}`}>⚙</button>
             <div className="p-5 flex items-center gap-4 flex-wrap">
               <Ring consumed={consumed} target={targets.calories} size={116} stroke={10} color="rgb(var(--accent-500))" label="kcal left" />
               {/* Small, tasteful protein ring — "kalan protein" as a graphic. */}
@@ -142,15 +138,12 @@ export function FoodTodayTab() {
                 {nut && nut.calories > 0 && (
                   <div className="mt-2.5">
                     <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} />
-                    {/* Macro chips — fiber is fused into the Fat chip (green
-                        dot), right beside it, never wrapping to its own spot. */}
+                    {/* P · C · F · Fiber — the four side by side (fiber green). */}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] tabular-nums">
                       <span className="text-ink-600">{nut.protein_g}g <span className="text-ink-400">P</span></span>
                       <span className="text-ink-600">{nut.carbs_g}g <span className="text-ink-400">C</span></span>
-                      <span className="text-ink-600 whitespace-nowrap">
-                        {nut.fat_g}g <span className="text-ink-400">F</span>
-                        <span className="text-green-600"> · <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 align-middle" /> {nut.fiber_g}g <span className="text-green-600/70">fiber</span><span className="text-ink-300"> /{fiberGoal}</span></span>
-                      </span>
+                      <span className="text-ink-600">{nut.fat_g}g <span className="text-ink-400">F</span></span>
+                      <span className="text-green-600 whitespace-nowrap"><span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 align-middle mr-1" />{nut.fiber_g}g <span className="text-green-600/70">fiber</span></span>
                       {nut.sugar_g > 0 && <span className="text-ink-500">{nut.sugar_g}g <span className="text-ink-400">sugar</span></span>}
                     </div>
                   </div>
