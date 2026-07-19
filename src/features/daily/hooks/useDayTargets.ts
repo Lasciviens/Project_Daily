@@ -8,10 +8,13 @@ export interface DayTargets {
   calories: number
   protein:  number        // grams
   goal:     NutritionGoal // steers protein g/kg + adaptive-calorie coaching
+  /** yyyy-MM-dd of the last applied adaptive-calorie adjustment — enforces the
+      cooldown so a user can't stack nudges before the weight trend catches up. */
+  lastCalorieAdjust: string | null
 }
 
 const STORAGE_KEY = 'lasci.dayTargets'
-const DEFAULTS: DayTargets = { calories: 2200, protein: 150, goal: 'maintain' }
+const DEFAULTS: DayTargets = { calories: 2200, protein: 150, goal: 'maintain', lastCalorieAdjust: null }
 
 const GOALS: NutritionGoal[] = ['maintain', 'cut', 'gain']
 
@@ -24,6 +27,7 @@ function read(): DayTargets {
       calories: Number(parsed.calories) || DEFAULTS.calories,
       protein:  Number(parsed.protein)  || DEFAULTS.protein,
       goal:     GOALS.includes(parsed.goal as NutritionGoal) ? (parsed.goal as NutritionGoal) : DEFAULTS.goal,
+      lastCalorieAdjust: typeof parsed.lastCalorieAdjust === 'string' ? parsed.lastCalorieAdjust : null,
     }
   } catch {
     return DEFAULTS
