@@ -1,6 +1,6 @@
 import { useState, Fragment } from 'react'
 import { format, addDays, addWeeks, startOfWeek, endOfWeek, isToday, getISOWeek } from 'date-fns'
-import { useMealPlan } from '../hooks/useMealPlan'
+import { useMealPlan, useEatPlannedEntry } from '../hooks/useMealPlan'
 import { useFoodLogRange } from '../hooks/useFoodLog'
 import { AssignMealModal } from './AssignMealModal'
 import { EditFoodLogModal } from './EditFoodLogModal'
@@ -30,6 +30,7 @@ export function MealPlanWeek() {
   const [weekOffset, setWeekOffset] = useState(0)
   const [target, setTarget] = useState<CellTarget | null>(null)
   const [editLog, setEditLog] = useState<LoggedFood | null>(null)
+  const eat = useEatPlannedEntry()
 
   const baseStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   const weekStart = weekOffset === 0 ? baseStart : addWeeks(baseStart, weekOffset)
@@ -94,38 +95,47 @@ export function MealPlanWeek() {
                 const eaten = eatenBy.get(`${dateStr}|${slot}`) ?? []
                 const planLabel = entry?.recipe?.title ?? entry?.custom_title
                   ?? (entry?.ingredient?.name ? `${entry.ingredient_quantity ?? ''}${entry.ingredient_unit ?? ''} ${entry.ingredient.name}`.trim() : null)
-                const filled = planLabel || eaten.length > 0
+                const filled = !!planLabel || eaten.length > 0
+                const openPlan = () => setTarget({ date: dateStr, slot, entry })
                 // A div (not a button) so plan / eaten / add can each be their
                 // own control without nesting buttons.
                 return (
                   <div
                     key={`${slot}-${dateStr}`}
-                    className={`min-h-[52px] rounded-lg border p-1 flex flex-col gap-0.5 ${
+                    className={`min-h-[60px] rounded-lg border flex flex-col overflow-hidden ${
                       filled ? 'bg-cream-50 border-ink-200' : 'bg-cream-50 border-dashed border-ink-200'
                     }`}
                   >
-                    {planLabel && (
-                      <button
-                        onClick={() => setTarget({ date: dateStr, slot, entry })}
-                        className="text-left rounded px-1 py-0.5 hover:bg-accent-50 transition-colors">
-                        <span className="text-[11px] font-medium text-ink-800 leading-tight line-clamp-2">📋 {planLabel}</span>
-                        {entry!.servings !== 1 && <span className="text-[9px] text-ink-400 block">×{entry!.servings}</span>}
-                      </button>
+                    {!filled ? (
+                      // Empty → the WHOLE cell is a big centered + (per request).
+                      <button onClick={openPlan}
+                        className="flex-1 min-h-[60px] w-full flex items-center justify-center text-xl text-ink-300 hover:text-accent-600 hover:bg-accent-50/40 transition-colors">+</button>
+                    ) : (
+                      <>
+                        <div className="flex flex-col gap-0.5 p-1 flex-1">
+                          {planLabel && (
+                            <div className="flex items-center gap-0.5 rounded hover:bg-accent-50 transition-colors">
+                              <button onClick={openPlan} className="flex-1 min-w-0 text-left px-1 py-0.5">
+                                <span className="text-[11px] font-medium text-ink-800 leading-tight line-clamp-2">📋 {planLabel}{entry!.servings !== 1 ? ` ×${entry!.servings}` : ''}</span>
+                              </button>
+                              {/* Confirm planned → eaten (starts counting). */}
+                              <button onClick={() => eat.mutate(entry!)} disabled={eat.isPending}
+                                aria-label="Mark eaten" title="I ate this — count it"
+                                className="min-w-[24px] min-h-[24px] rounded-full text-green-600 hover:bg-green-100 shrink-0 text-xs disabled:opacity-50">✓</button>
+                            </div>
+                          )}
+                          {eaten.map(l => (
+                            <button key={l.id} onClick={() => setEditLog(l)}
+                              className="text-left rounded px-1 py-0.5 hover:bg-green-50 transition-colors">
+                              <span className="text-[10px] text-green-700 leading-tight line-clamp-1">✓ {l.title}{l.calories ? ` · ${Math.round(l.calories)}` : ''}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {/* Filled → a full-width bottom row to add more (clickable). */}
+                        <button onClick={openPlan}
+                          className="w-full text-left px-2 py-1 text-[10px] text-ink-300 hover:text-accent-600 hover:bg-accent-50/40 border-t border-ink-100 transition-colors">＋ add</button>
+                      </>
                     )}
-                    {eaten.map(l => (
-                      <button
-                        key={l.id}
-                        onClick={() => setEditLog(l)}
-                        className="text-left rounded px-1 py-0.5 hover:bg-green-50 transition-colors">
-                        <span className="text-[10px] text-green-700 leading-tight line-clamp-1">✓ {l.title}{l.calories ? ` · ${Math.round(l.calories)}` : ''}</span>
-                      </button>
-                    ))}
-                    {/* Always allow adding a plan to the cell. */}
-                    <button
-                      onClick={() => setTarget({ date: dateStr, slot, entry })}
-                      className="text-left rounded px-1 min-h-[20px] text-ink-300 hover:text-accent-600 transition-colors text-xs">
-                      {filled ? '+ plan' : '+'}
-                    </button>
                   </div>
                 )
               })}

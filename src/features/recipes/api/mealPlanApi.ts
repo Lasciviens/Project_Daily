@@ -1,6 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import type { MealPlanEntry, CreateMealPlanEntryInput } from '../types'
+import { ingredientSnapshot, recipeSnapshot } from './foodLogApi'
+import type { MealPlanEntry, CreateMealPlanEntryInput, Recipe, IngredientLibraryItem } from '../types'
 
 // The PLAN now lives in `food_log_entries` as status='planned' rows (migration
 // 061 merged the old `recipe_meal_plans` table in). This module is the adapter
@@ -101,4 +102,38 @@ export async function deleteMealPlanEntry(id: string): Promise<void> {
   const a = await supabase.from('food_log_entries').delete().eq('id', id)
   await supabase.from('recipe_meal_plans').delete().eq('id', id)
   if (a.error) throw a.error
+}
+
+type Snap = { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null }
+const EMPTY_SNAP: Snap = { calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null }
+
+// Confirm a PLANNED entry as EATEN — the "nasıl onaylıcam?" flip. Computes a
+// fresh macro snapshot from the source (recipe/ingredient) so it now counts in
+// the day's ring, then post-061 flips the SAME row's status; pre-061 it moves
+// the row from recipe_meal_plans into food_log_entries.
+export async function eatPlannedEntry(entry: MealPlanEntry): Promise<void> {
+  let snap: Snap = EMPTY_SNAP
+  let quantity: number | null = null
+  let unit: string | null = null
+  if (entry.recipe_id) {
+    const { data } = await supabase.from('recipes').select('*').eq('id', entry.recipe_id).maybeSingle()
+    if (data) { snap = recipeSnapshot(data as Recipe, entry.servings || 1); quantity = entry.servings || 1; unit = 'serving' }
+  } else if (entry.library_ingredient_id) {
+    const { data } = await supabase.from('recipe_ingredient_library').select('*').eq('id', entry.library_ingredient_id).maybeSingle()
+    const grams = entry.ingredient_quantity ?? 0
+    if (data) { snap = ingredientSnapshot(data as IngredientLibraryItem, grams); quantity = grams; unit = entry.ingredient_unit ?? 'g' }
+  }
+  // Post-061: flip this row planned → eaten with the snapshot.
+  const upd = await supabase.from('food_log_entries').update({ status: 'eaten', quantity, unit, ...snap }).eq('id', entry.id)
+  if (!upd.error) return
+  if (!isMissingStatus(upd.error)) throw upd.error
+  // Pre-061: the planned row is in recipe_meal_plans → move it to the diary.
+  const user = await requireUser()
+  await supabase.from('recipe_meal_plans').delete().eq('id', entry.id)
+  const ins = await supabase.from('food_log_entries').insert({
+    user_id: user.id, date: entry.date, meal_slot: entry.meal_slot,
+    recipe_id: entry.recipe_id, library_ingredient_id: entry.library_ingredient_id, custom_title: entry.custom_title,
+    quantity, unit, ...snap,
+  })
+  if (ins.error) throw ins.error
 }

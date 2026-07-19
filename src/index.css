@@ -145,16 +145,11 @@
     display: none;              /* Chrome/Safari */
   }
 
-  /* Edge-fade affordance for horizontal scroll strips (nav pills, tab bars,
-     card carousels) — a hidden scrollbar with no other hint gives no clue
-     that a strip scrolls at all. Fades content near both edges so a user
-     can see there's more to reveal, independent of scroll position (a
-     scroll-position-aware gradient would need JS; this static fade is the
-     zero-JS approximation and is the standard mobile-web pattern for it). */
-  .scroll-fade-x {
-    mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
-  }
+  /* NO-OP (user request): the edge-fade mask made every horizontal scroll
+     strip's left/right edge look faded/blurry ("her ekranda silik sol baş").
+     Removed. Kept as an empty class so the ~12 call sites don't need to change;
+     horizontal strips still scroll (overflow-x-auto), just without the fade. */
+  .scroll-fade-x { /* intentionally empty */ }
 
   /* Native-feeling snap points for horizontal scroll strips — pairs with
      `snap-start`/`snap-center` on each child. */
