@@ -2,26 +2,16 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type { IngredientLibraryItem, CreateIngredientLibraryItemInput } from '../types'
 
-function sortPortions(item: IngredientLibraryItem): IngredientLibraryItem {
-  if (item.portions) item.portions.sort((a, b) => a.sort_order - b.sort_order)
-  return item
-}
-
 export async function fetchIngredientLibrary(): Promise<IngredientLibraryItem[]> {
-  // Hydrate the portion presets (migration 057). If that table doesn't exist
-  // yet (pre-057), the embed errors the whole query — fall back to a plain read.
+  // Per-100g food catalog. The old recipe_ingredient_portions preset table was
+  // dead (never written, empty) and is dropped in migration 061 — the food's
+  // single serving_label/serving_grams covers the "1 scoop = 30g" case.
   const { data, error } = await supabase
-    .from('recipe_ingredient_library')
-    .select('*, portions:recipe_ingredient_portions(id, library_ingredient_id, label, grams, sort_order)')
-    .order('name', { ascending: true })
-  if (!error) return ((data ?? []) as IngredientLibraryItem[]).map(sortPortions)
-
-  const { data: plain, error: e2 } = await supabase
     .from('recipe_ingredient_library')
     .select('*')
     .order('name', { ascending: true })
-  if (e2) throw e2
-  return plain ?? []
+  if (error) throw error
+  return data ?? []
 }
 
 // Shared column payload. `food_group` is included ONLY when set — so editing a

@@ -15,16 +15,6 @@ export const FOOD_GROUPS = [
 ] as const
 export type FoodGroup = typeof FOOD_GROUPS[number]
 
-// One-tap portion preset for a library food (recipe_ingredient_portions,
-// migration 057). Matvaretabellen ships up to 5 per food; user can add own.
-export interface IngredientPortion {
-  id:                    string
-  library_ingredient_id: string
-  label:                 string
-  grams:                 number
-  sort_order:            number
-}
-
 export interface IngredientLibraryItem {
   id:            string
   user_id:       string
@@ -42,7 +32,6 @@ export interface IngredientLibraryItem {
   food_group:    string | null   // denormalized top-level group name
   image_url:     string | null   // branded product photo (OFF/Kassalapp), migration 059
   created_at:    string
-  portions?:     IngredientPortion[]   // hydrated on fetch (migration 057)
 }
 
 export interface CreateIngredientLibraryItemInput {

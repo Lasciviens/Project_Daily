@@ -170,7 +170,7 @@ function SlotRow({ date, slot, label, meals }: {
       )}
       {/* Full diary logger, prefilled to this slot (and any typed text). */}
       <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={date} defaultSlot={slot} defaultQuery={logQuery} />
-      {/* ✎ edits an existing PLANNED entry (recipe_meal_plans) in the full
+      {/* ✎ edits an existing PLANNED entry (status='planned') in the full
           planner — planning a future day still lives here. */}
       {editPlan && (
         <AssignMealModal open onClose={() => setEditPlan(null)} date={date} mealSlot={slot} existing={editPlan} />

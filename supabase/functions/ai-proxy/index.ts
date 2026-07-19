@@ -1700,15 +1700,9 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   },
   food_log_entries: {
     access: 'rw',
-    purpose: "The FOOD DIARY — what the user ACTUALLY ate (vs recipe_meal_plans = the plan). When the user says they ate something ('100g tavuk yedim'), insert here with macros resolved from recipe_ingredient_library (per-100g × grams/100) as a SNAPSHOT. Multiple rows per slot are normal.",
-    columns: "id, date(date), meal_slot(breakfast|lunch|dinner|snack|supplement), library_ingredient_id(uuid nullable), recipe_id(uuid nullable), custom_title(text nullable), quantity(numeric — grams for ingredients), unit(text, usually 'g'), calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g (numeric snapshot at log time), created_at",
-    rules: 'At least one of library_ingredient_id/recipe_id/custom_title must be set. Compute and store the macro snapshot at insert time — never leave macros null when the ingredient has per-100g values.',
-  },
-  recipe_meal_plans: {
-    access: 'rw',
-    purpose: 'Weekly meal plan — one entry per (date, meal_slot).',
-    columns: 'id, date(date), meal_slot(breakfast|lunch|dinner|snack), recipe_id(uuid, nullable), custom_title(text, nullable), library_ingredient_id(uuid, nullable), ingredient_quantity(numeric), ingredient_unit(text), servings(numeric>0), notes, created_at',
-    rules: 'At least one of recipe_id / custom_title / library_ingredient_id must be set. Unique on (user_id, date, meal_slot): to fill an occupied slot, db_query it first then db_update the existing row.',
+    purpose: "The unified FOOD JOURNAL — both what the user ATE (status='eaten', macros snapshotted) and what they PLAN to eat (status='planned', macros computed live, so leave macro columns null on planned rows). The old recipe_meal_plans table was merged in here (migration 061). When the user says they ate something ('100g tavuk yedim'), insert status='eaten' with macros resolved from recipe_ingredient_library (per-100g × grams/100) as a SNAPSHOT. Multiple rows per slot are normal.",
+    columns: "id, date(date), meal_slot(breakfast|lunch|dinner|snack|supplement), status('planned'|'eaten', default 'eaten'), library_ingredient_id(uuid nullable), recipe_id(uuid nullable), custom_title(text nullable), quantity(numeric — grams for ingredients, servings for recipes), unit(text, e.g. 'g' or 'serving'), calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g (numeric — a snapshot for eaten rows, null for planned), created_at",
+    rules: "At least one of library_ingredient_id/recipe_id/custom_title must be set. For status='eaten' compute+store the macro snapshot at insert (never null when the ingredient has per-100g values). For status='planned' leave macros null (computed live on read). 'How much did I eat today?' → sum status='eaten' rows for the date.",
   },
   shop_categories: {
     access: 'rw',

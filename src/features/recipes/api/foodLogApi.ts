@@ -6,12 +6,19 @@ import type { FoodLogEntry, FoodLogEntryInput, IngredientLibraryItem, Recipe } f
 // Distinct from recipe_meal_plans (the plan). Macros are snapshotted here at
 // log time so later library edits never rewrite history.
 
+// food_log_entries.status (migration 061) discriminates 'planned' vs 'eaten' —
+// the plan and the diary now share this one table. Until 061 is applied the
+// column is absent (a filter on it 42703s); pre-061 EVERY row here is eaten
+// (planned lived in recipe_meal_plans), so we simply retry without the filter.
+function isMissingStatus(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /status/i.test(x?.message ?? '')
+}
+
 export async function fetchFoodLog(date: string): Promise<FoodLogEntry[]> {
-  const { data, error } = await supabase
-    .from('food_log_entries')
-    .select('*')
-    .eq('date', date)
-    .order('created_at', { ascending: true })
+  const q = () => supabase.from('food_log_entries').select('*').eq('date', date).order('created_at', { ascending: true })
+  let { data, error } = await q().eq('status', 'eaten')
+  if (error && isMissingStatus(error)) ({ data, error } = await q())
   if (error) throw error
   return data ?? []
 }
@@ -19,9 +26,11 @@ export async function fetchFoodLog(date: string): Promise<FoodLogEntry[]> {
 export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<void> {
   if (entries.length === 0) return
   const user = await requireUser()
-  const { error } = await supabase
-    .from('food_log_entries')
-    .insert(entries.map(e => ({ ...e, user_id: user.id })))
+  const base = entries.map(e => ({ ...e, user_id: user.id }))
+  let { error } = await supabase.from('food_log_entries').insert(base.map(r => ({ ...r, status: 'eaten' })))
+  if (error && isMissingStatus(error)) {
+    error = (await supabase.from('food_log_entries').insert(base)).error   // pre-061: no status column
+  }
   if (error) throw error
 }
 
@@ -49,12 +58,14 @@ export type LoggedFood = FoodLogEntry & { title: string }
 // (recipe_meal_plans), instead of the grid looking empty. Same name-joins as
 // fetchFoodLog so titles resolve without a second round-trip.
 export async function fetchFoodLogRange(fromDate: string, toDate: string): Promise<LoggedFood[]> {
-  const { data, error } = await supabase
+  const q = () => supabase
     .from('food_log_entries')
     .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
     .gte('date', fromDate)
     .lte('date', toDate)
     .order('created_at', { ascending: true })
+  let { data, error } = await q().eq('status', 'eaten')
+  if (error && isMissingStatus(error)) ({ data, error } = await q())
   if (error) throw error
   const rows = (data ?? []) as unknown as (FoodLogEntry & { ingredient: { name: string } | null; recipe: { title: string } | null })[]
   return rows.map(({ ingredient, recipe, ...row }) => ({
@@ -85,13 +96,19 @@ export interface RecentFood {
 }
 
 export async function fetchRecentFoods(fromDate: string, slot?: string): Promise<RecentFood[]> {
-  let query = supabase
-    .from('food_log_entries')
-    .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
-    .gte('date', fromDate)
-    .order('created_at', { ascending: false })
-  if (slot) query = query.eq('meal_slot', slot)
-  const { data, error } = await query
+  // Recents = what was actually EATEN (status='eaten'), never planned rows.
+  const build = (withStatus: boolean) => {
+    let q = supabase
+      .from('food_log_entries')
+      .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
+      .gte('date', fromDate)
+      .order('created_at', { ascending: false })
+    if (slot) q = q.eq('meal_slot', slot)
+    if (withStatus) q = q.eq('status', 'eaten')
+    return q
+  }
+  let { data, error } = await build(true)
+  if (error && isMissingStatus(error)) ({ data, error } = await build(false))
   if (error) throw error
   // Ordered newest-first, so the FIRST row seen per key is the most recent
   // snapshot — that's the one we keep (re-log the way you last ate it).
@@ -124,11 +141,10 @@ export async function fetchRecentFoods(fromDate: string, slot?: string): Promise
 // logging-consistency signal that gates the adaptive-calorie coaching (a
 // calorie recommendation off partial intake data would be misleading).
 export async function fetchLoggedDates(fromDate: string, toDate: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('food_log_entries')
-    .select('date')
-    .gte('date', fromDate)
-    .lte('date', toDate)
+  // Consistency gate = days you actually ATE something (status='eaten').
+  const q = () => supabase.from('food_log_entries').select('date').gte('date', fromDate).lte('date', toDate)
+  let { data, error } = await q().eq('status', 'eaten')
+  if (error && isMissingStatus(error)) ({ data, error } = await q())
   if (error) throw error
   return [...new Set((data ?? []).map(r => (r as { date: string }).date))]
 }

@@ -9,8 +9,8 @@ import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
 //   • a full ADD *and* EDIT form matching the DB (name, unit, all 6 macros incl
 //     sugar, primary portion, category) — editing was previously impossible
 //     (updateIngredientLibraryItem was dead code; you had to delete + recreate).
-//   • category filter pills (16 Norwegian Matvaretabellen food groups).
-//   • the food's portion presets shown as chips (migration 057).
+//   • category filter pills (Matvaretabellen food groups + Supplements).
+//   • the food's serving preset (serving_label + grams) shown as a chip.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function sanitizeDecimal(raw: string): string {
@@ -152,12 +152,12 @@ export function IngredientManager() {
               <li key={ing.id} className="flex items-center gap-2 px-4 py-1.5 min-h-[44px] text-xs">
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-ink-800 truncate block">{ing.name}</span>
-                  {(ing.food_group || (ing.portions && ing.portions.length > 0)) && (
+                  {(ing.food_group || ing.serving_label) && (
                     <span className="flex flex-wrap items-center gap-1 mt-0.5">
                       {ing.food_group && <span className="text-[9px] text-ink-400 bg-ink-100/60 rounded px-1">{ing.food_group}</span>}
-                      {(ing.portions ?? []).slice(0, 3).map(p => (
-                        <span key={p.id} className="text-[9px] text-ink-400 border border-ink-100 rounded-full px-1">{p.label} {Math.round(p.grams)}g</span>
-                      ))}
+                      {ing.serving_label && ing.serving_grams != null && (
+                        <span className="text-[9px] text-ink-400 border border-ink-100 rounded-full px-1">{ing.serving_label} {Math.round(ing.serving_grams)}g</span>
+                      )}
                     </span>
                   )}
                 </div>
