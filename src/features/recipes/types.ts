@@ -124,6 +124,7 @@ export interface Recipe {
   protein_g:    number | null
   carbs_g:      number | null
   fat_g:        number | null
+  fiber_g:      number | null
   sugar_g:      number | null
   image_url:    string | null
   source_url:   string | null
@@ -186,6 +187,7 @@ export interface RecipeInput {
   protein_g?:    number | null
   carbs_g?:      number | null
   fat_g?:        number | null
+  fiber_g?:      number | null
   sugar_g?:      number | null
   image_url?:    string | null
   source_url?:   string | null

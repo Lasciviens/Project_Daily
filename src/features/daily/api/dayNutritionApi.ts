@@ -15,6 +15,7 @@ export interface DayMeal {
   carbs_g:   number
   fat_g:     number
   fiber_g:   number
+  sugar_g:   number
   /** 'plan' = recipe_meal_plans row; 'log' = food_log_entries row (what was
       actually eaten, macros snapshotted at log time — migration 053). */
   source:    'plan' | 'log'
@@ -29,6 +30,7 @@ export interface DayNutrition {
   carbs_g:   number
   fat_g:     number
   fiber_g:   number
+  sugar_g:   number
 }
 
 // Only weight/volume units let a per-100g library macro be scaled to a real
@@ -45,8 +47,8 @@ interface MealRow {
   ingredient_quantity:   number | null
   ingredient_unit:       string | null
   servings:              number | null
-  recipe:                { title: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null } | null
-  ingredient:            { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null } | null
+  recipe:                { title: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null } | null
+  ingredient:            { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null } | null
 }
 
 const SLOT_ORDER: Record<DayMeal['meal_slot'], number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3, supplement: 4 }
@@ -62,6 +64,7 @@ interface LogRow {
   carbs_g: number | null
   fat_g: number | null
   fiber_g: number | null
+  sugar_g: number | null
   ingredient: { name: string } | null
   recipe: { title: string } | null
 }
@@ -71,13 +74,17 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
     supabase
       .from('recipe_meal_plans')
       .select(
-        '*, recipe:recipes(title, calories, protein_g, carbs_g, fat_g), ' +
-        'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g, fiber_g)'
+        // recipes.fiber_g is deliberately NOT selected — it needs migration 060,
+        // and a missing column would error this (thrown) plan query and break the
+        // whole card. Plan-recipe rows don't feed the totals anyway (ring = diary
+        // only), so recipe fiber stays 0 here; sugar_g is a pre-existing column.
+        '*, recipe:recipes(title, calories, protein_g, carbs_g, fat_g, sugar_g), ' +
+        'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g)'
       )
       .eq('date', date),
     supabase
       .from('food_log_entries')
-      .select('id, meal_slot, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, ' +
+      .select('id, meal_slot, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, ' +
         'ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
       .eq('date', date),
   ])
@@ -90,7 +97,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   const meals: DayMeal[] = ((data ?? []) as unknown as MealRow[]).map(row => {
     const servings = row.servings ?? 1
     let title = row.custom_title ?? '—'
-    let calories = 0, protein_g = 0, carbs_g = 0, fat_g = 0, fiber_g = 0
+    let calories = 0, protein_g = 0, carbs_g = 0, fat_g = 0, fiber_g = 0, sugar_g = 0
 
     if (row.recipe) {
       title = row.recipe.title
@@ -98,7 +105,8 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       protein_g = (row.recipe.protein_g ?? 0) * servings
       carbs_g   = (row.recipe.carbs_g   ?? 0) * servings
       fat_g     = (row.recipe.fat_g     ?? 0) * servings
-      // recipes carry no fiber column (only ingredients do) → fiber stays 0.
+      sugar_g   = (row.recipe.sugar_g   ?? 0) * servings
+      // recipe fiber isn't selected pre-migration-060 → fiber stays 0 for plans.
     } else if (row.ingredient) {
       const qty  = row.ingredient_quantity ?? 0
       const unit = (row.ingredient_unit ?? '').toLowerCase()
@@ -110,6 +118,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       carbs_g   = (row.ingredient.carbs_g   ?? 0) * factor
       fat_g     = (row.ingredient.fat_g     ?? 0) * factor
       fiber_g   = (row.ingredient.fiber_g   ?? 0) * factor
+      sugar_g   = (row.ingredient.sugar_g   ?? 0) * factor
     }
 
     return {
@@ -122,6 +131,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       carbs_g:   Math.round(carbs_g),
       fat_g:     Math.round(fat_g),
       fiber_g:   Math.round(fiber_g),
+      sugar_g:   Math.round(sugar_g),
       source:    'plan' as const,
       planEntry: {
         id: row.id, date, meal_slot: row.meal_slot,
@@ -146,6 +156,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       carbs_g:   Math.round(row.carbs_g   ?? 0),
       fat_g:     Math.round(row.fat_g     ?? 0),
       fiber_g:   Math.round(row.fiber_g   ?? 0),
+      sugar_g:   Math.round(row.sugar_g   ?? 0),
       source:    'log' as const,
     }
   })
@@ -157,7 +168,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   // ring double-counted energy on any day that was both planned AND logged
   // (Faz 9 must-fix). Plan rows are still returned in meals[] so a planned dish
   // can render as a ghost, but only eaten food feeds the totals.
-  const sum = (k: keyof Pick<DayMeal, 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'>) =>
+  const sum = (k: keyof Pick<DayMeal, 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g'>) =>
     allMeals.reduce((acc, m) => acc + (m.source === 'log' ? m[k] : 0), 0)
 
   return {
@@ -167,5 +178,6 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
     carbs_g:   sum('carbs_g'),
     fat_g:     sum('fat_g'),
     fiber_g:   sum('fiber_g'),
+    sugar_g:   sum('sugar_g'),
   }
 }

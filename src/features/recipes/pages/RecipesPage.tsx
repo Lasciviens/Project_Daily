@@ -7,6 +7,7 @@ import { MealPlanWeek } from '../components/MealPlanWeek'
 import { RecipeBackdrop } from '../components/RecipeBackdrop'
 import { IngredientManager } from '../components/IngredientManager'
 import { FoodLogModal } from '../components/FoodLogModal'
+import { SupplementModal } from '../components/SupplementModal'
 import { FoodTodayTab } from '../components/FoodTodayTab'
 import type { RecipeWithIngredients, FoodCategory } from '../types'
 import { PersonalTabs } from '../../personal/components/PersonalLayout'
@@ -22,6 +23,7 @@ export function RecipesPage() {
   const [query,     setQuery]     = useState('')
   const [category,  setCategory]  = useState<FoodCategory | 'all'>('all')
   const [logOpen,   setLogOpen]   = useState(false)
+  const [suppOpen,  setSuppOpen]  = useState(false)
 
   // Keep the open detail/edit view in sync with refreshed query data.
   const liveDetail  = detail  ? recipes.find(r => r.id === detail.id)  ?? null : null
@@ -59,6 +61,12 @@ export function RecipesPage() {
               className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm whitespace-nowrap"
             >
               🍽️ Log food
+            </button>
+            <button
+              onClick={() => setSuppOpen(true)}
+              className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors whitespace-nowrap"
+            >
+              💊 Supplement
             </button>
             {tab === 'library' && (
               <button
@@ -154,6 +162,9 @@ export function RecipesPage() {
 
       {/* Log food (today) */}
       <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={new Date().toISOString().slice(0, 10)} />
+
+      {/* Log supplement (today) */}
+      <SupplementModal open={suppOpen} onClose={() => setSuppOpen(false)} date={new Date().toISOString().slice(0, 10)} />
 
       {/* Create */}
       <RecipeModal open={addOpen} onClose={() => setAddOpen(false)} />

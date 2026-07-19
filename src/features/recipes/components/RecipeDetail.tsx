@@ -102,6 +102,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
     { label: 'Protein', v: macro(recipe.protein_g), suffix: 'g' },
     { label: 'Carbs', v: macro(recipe.carbs_g), suffix: 'g' },
     { label: 'Fat', v: macro(recipe.fat_g), suffix: 'g' },
+    { label: 'Fiber', v: macro(recipe.fiber_g), suffix: 'g' },
     { label: 'Sugar', v: macro(recipe.sugar_g), suffix: 'g' },
   ].filter(t => t.v != null)
 
@@ -149,16 +150,17 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                 <button onClick={() => setServings(recipe.servings)} className="text-[11px] text-accent-600 hover:text-accent-700">reset</button>
               )}
               <div className="flex items-center gap-1.5 ml-auto">
-                {/* Portions EATEN — defaults to 1, independent of the recipe's
-                    base yield (logging the whole batch was a Faz 9 must-fix). */}
+                {/* Portions EATEN — free entry (type 0.3, 1.5, 2…), not just
+                    ±0.5 steps; a batch's portion is a free % of its yield. */}
                 <div className="flex items-center rounded-lg border border-accent-300 overflow-hidden">
-                  <button onClick={() => setAte(a => Math.max(0.5, Math.round((a - 0.5) * 2) / 2))} aria-label="less"
+                  <button onClick={() => setAte(a => Math.max(0.1, Math.round((a - 0.5) * 10) / 10))} aria-label="less"
                     className="min-w-[36px] min-h-[44px] text-accent-700 hover:bg-accent-50 leading-none">−</button>
-                  <span className="w-8 text-center text-xs font-bold text-ink-900 tabular-nums">{ate}</span>
-                  <button onClick={() => setAte(a => Math.round((a + 0.5) * 2) / 2)} aria-label="more"
+                  <input value={ate} onChange={e => { const n = Number(e.target.value.replace(',', '.')); setAte(Number.isFinite(n) && n > 0 ? n : 0) }} inputMode="decimal"
+                    className="w-10 text-center text-xs font-bold text-ink-900 tabular-nums bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px]" />
+                  <button onClick={() => setAte(a => Math.round((a + 0.5) * 10) / 10)} aria-label="more"
                     className="min-w-[36px] min-h-[44px] text-accent-700 hover:bg-accent-50 leading-none">+</button>
                 </div>
-                <button onClick={handleLog} disabled={logFood.isPending} title="Log the eaten portions to today's diary"
+                <button onClick={handleLog} disabled={logFood.isPending || ate <= 0} title="Log the eaten portions to today's diary"
                   className="min-h-[44px] px-3 text-xs font-semibold bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors disabled:opacity-50">
                   🍽️ {logFood.isPending ? 'Logging…' : 'I ate this'}
                 </button>
@@ -172,6 +174,15 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                 </button>
               </div>
             </div>
+
+            {/* What "I ate this" will log — portion as a % of the batch + kcal. */}
+            {ate > 0 && (recipe.calories != null || recipe.servings > 1) && (
+              <p className="text-[11px] text-ink-400 tabular-nums -mt-2">
+                Eating <strong className="text-ink-600">{ate}</strong> of {recipe.servings} portion{recipe.servings === 1 ? '' : 's'}
+                {recipe.servings > 0 && <span> · {Math.round((ate / recipe.servings) * 100)}% of the batch</span>}
+                {recipe.calories != null && <span> · logs <strong className="text-ink-600">{Math.round(recipe.calories * ate)}</strong> kcal</span>}
+              </p>
+            )}
 
             {/* Macros (scaled to selected servings) */}
             {totals.length > 0 && (

@@ -22,6 +22,16 @@ export function useRecentFoods() {
   })
 }
 
+// Same, but scoped to the 'supplement' slot — the fast re-log chips in the
+// dedicated Supplements modal (creatine/whey/etc. you already take).
+export function useRecentSupplements() {
+  return useQuery({
+    queryKey: ['food-log', 'recent-supplements'],
+    queryFn:  () => fetchRecentFoods(shiftDateStr(new Date().toISOString().slice(0, 10), -60), 'supplement'),
+    staleTime: 5 * 60_000,
+  })
+}
+
 function useInvalidateNutrition() {
   const qc = useQueryClient()
   return () => {
