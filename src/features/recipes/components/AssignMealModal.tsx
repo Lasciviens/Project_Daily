@@ -100,7 +100,8 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
     <Dialog open={open} onClose={onClose} className="relative z-[70]">
       <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-sm bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-sm max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+          <div className="sm:hidden flex justify-center pt-2 -mb-1"><span className="h-1 w-10 rounded-full bg-ink-200" /></div>
           <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-ink-100">
             <h2 className="text-base font-bold text-ink-900 capitalize">{mealSlot}</h2>
             <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl">×</button>

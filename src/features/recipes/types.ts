@@ -31,6 +31,8 @@ export interface IngredientLibraryItem {
   food_group_id: string | null   // raw Matvaretabellen group id (e.g. '4.1.2')
   food_group:    string | null   // denormalized top-level group name
   image_url:     string | null   // branded product photo (OFF/Kassalapp), migration 059
+  source:        string | null   // provenance: 'dsld' | 'openfoodfacts' | 'kassalapp' | null (migration 055)
+  source_ref:    string | null   // EAN / DSLD id (migration 055)
   created_at:    string
 }
 

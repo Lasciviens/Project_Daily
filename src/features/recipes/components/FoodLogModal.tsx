@@ -266,6 +266,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-xl lg:max-w-3xl max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+          <div className="sm:hidden flex justify-center pt-2 -mb-1"><span className="h-1 w-10 rounded-full bg-ink-200" /></div>
           <div className="px-5 pt-5 pb-3 border-b border-ink-100 flex items-center justify-between sticky top-0 bg-cream-50 z-10">
             <h2 className="text-base font-bold text-ink-900">🍽️ Log food</h2>
             <button type="button" onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none">×</button>
@@ -410,7 +411,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">This meal</p>
                 {basket.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-ink-200 px-4 py-6 text-center text-xs text-ink-400">
-                    Tap ingredients on the left to build a meal — or scan a barcode. Grams total live below.
+                    Tap ingredients to build a meal — or scan a barcode. Live totals below.
                   </div>
                 ) : (
                   <div className="flex flex-col gap-1.5">
