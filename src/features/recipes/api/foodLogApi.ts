@@ -51,12 +51,14 @@ export interface RecentFood {
   count:                 number
 }
 
-export async function fetchRecentFoods(fromDate: string): Promise<RecentFood[]> {
-  const { data, error } = await supabase
+export async function fetchRecentFoods(fromDate: string, slot?: string): Promise<RecentFood[]> {
+  let query = supabase
     .from('food_log_entries')
     .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
     .gte('date', fromDate)
     .order('created_at', { ascending: false })
+  if (slot) query = query.eq('meal_slot', slot)
+  const { data, error } = await query
   if (error) throw error
   // Ordered newest-first, so the FIRST row seen per key is the most recent
   // snapshot — that's the one we keep (re-log the way you last ate it).
@@ -120,7 +122,7 @@ export function recipeSnapshot(recipe: Recipe, servings: number) {
     protein_g: times(recipe.protein_g),
     carbs_g:   times(recipe.carbs_g),
     fat_g:     times(recipe.fat_g),
-    fiber_g:   null,
+    fiber_g:   times(recipe.fiber_g),
     sugar_g:   times(recipe.sugar_g),
   }
 }

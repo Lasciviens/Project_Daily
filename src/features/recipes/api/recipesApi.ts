@@ -9,14 +9,15 @@ export interface ComputedMacros {
   protein_g: number | null
   carbs_g:   number | null
   fat_g:     number | null
+  fiber_g:   number | null
   sugar_g:   number | null
   /** Ingredients that couldn't contribute (no library link, or a non-weight
    *  unit we can't convert against the library's per-100g basis). */
   skippedCount: number
 }
 
-interface MacroTotals { calories: number; protein_g: number; carbs_g: number; fat_g: number; sugar_g: number }
-interface MacroSource { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null }
+interface MacroTotals { calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; sugar_g: number }
+interface MacroSource { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null }
 
 // Sums each linked ingredient's per-100g macros × quantity/100. Library
 // macros are always "per 100g" — see migration 033 — so an ingredient only
@@ -28,7 +29,7 @@ export function sumMacros(
   ingredients: Array<{ library_ingredient_id: string | null; unit: string | null; quantity: number | null }>,
   libraryMap: Map<string, MacroSource>,
 ): { contributed: boolean; skippedCount: number; totals: MacroTotals } {
-  const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sugar_g: 0 }
+  const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0 }
   let contributed = false
   let skippedCount = 0
 
@@ -42,6 +43,7 @@ export function sumMacros(
     totals.protein_g += (lib.protein_g ?? 0) * factor
     totals.carbs_g   += (lib.carbs_g   ?? 0) * factor
     totals.fat_g     += (lib.fat_g     ?? 0) * factor
+    totals.fiber_g   += (lib.fiber_g   ?? 0) * factor
     totals.sugar_g   += (lib.sugar_g   ?? 0) * factor
     contributed = true
   }
@@ -69,10 +71,11 @@ export async function computeMacrosFromIngredients(
         protein_g: perServing(totals.protein_g),
         carbs_g:   perServing(totals.carbs_g),
         fat_g:     perServing(totals.fat_g),
+        fiber_g:   perServing(totals.fiber_g),
         sugar_g:   perServing(totals.sugar_g),
         skippedCount,
       }
-    : { calories: null, protein_g: null, carbs_g: null, fat_g: null, sugar_g: null, skippedCount }
+    : { calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null, skippedCount }
 }
 
 export async function fetchRecipes(): Promise<RecipeWithIngredients[]> {
@@ -117,37 +120,53 @@ async function resolveMacros(input: RecipeInput) {
   if (input.macro_mode !== 'from_ingredients') {
     return {
       calories: input.calories ?? null, protein_g: input.protein_g ?? null,
-      carbs_g: input.carbs_g ?? null, fat_g: input.fat_g ?? null, sugar_g: input.sugar_g ?? null,
+      carbs_g: input.carbs_g ?? null, fat_g: input.fat_g ?? null,
+      fiber_g: input.fiber_g ?? null, sugar_g: input.sugar_g ?? null,
     }
   }
   const computed = await computeMacrosFromIngredients(input.ingredients, input.servings)
   return {
     calories: computed.calories, protein_g: computed.protein_g,
-    carbs_g: computed.carbs_g, fat_g: computed.fat_g, sugar_g: computed.sugar_g,
+    carbs_g: computed.carbs_g, fat_g: computed.fat_g,
+    fiber_g: computed.fiber_g, sugar_g: computed.sugar_g,
   }
+}
+
+// recipes.fiber_g arrives in migration 060 — until it's applied, an insert/
+// update carrying fiber_g 400s with a "column not found" (PGRST204 / 42703).
+// Detect that one case and retry once without fiber_g so a pre-migration
+// browser still saves the recipe (matches the ingredient-library image_url
+// graceful-degradation pattern). Every other error propagates unchanged.
+function isFiberColumnMissing(err: unknown): boolean {
+  const e = err as { code?: string; message?: string }
+  const msg = (e?.message ?? '').toLowerCase()
+  return (e?.code === 'PGRST204' || e?.code === '42703') && msg.includes('fiber_g')
 }
 
 export async function createRecipe(input: RecipeInput): Promise<string> {
   const user = await requireUser()
 
   const macros = await resolveMacros(input)
-  const { data, error } = await supabase
-    .from('recipes')
-    .insert({
-      user_id:      user.id,
-      title:        input.title.trim(),
-      description:  input.description ?? null,
-      servings:     input.servings,
-      instructions: input.instructions ?? null,
-      macro_mode:   input.macro_mode,
-      ...macros,
-      image_url:    input.image_url ?? null,
-      source_url:   input.source_url ?? null,
-      category:     input.category ?? null,
-    })
-    .select('id')
-    .single()
+  const row = {
+    user_id:      user.id,
+    title:        input.title.trim(),
+    description:  input.description ?? null,
+    servings:     input.servings,
+    instructions: input.instructions ?? null,
+    macro_mode:   input.macro_mode,
+    ...macros,
+    image_url:    input.image_url ?? null,
+    source_url:   input.source_url ?? null,
+    category:     input.category ?? null,
+  }
+  let { data, error } = await supabase.from('recipes').insert(row).select('id').single()
+  if (error && isFiberColumnMissing(error)) {
+    const noFiber: Record<string, unknown> = { ...row }
+    delete noFiber.fiber_g
+    ;({ data, error } = await supabase.from('recipes').insert(noFiber).select('id').single())
+  }
   if (error) throw error
+  if (!data) throw new Error('Recipe insert returned no row')
 
   await replaceIngredients(user.id, data.id, input.ingredients)
   return data.id
@@ -157,21 +176,24 @@ export async function updateRecipe(id: string, input: RecipeInput): Promise<void
   const user = await requireUser()
 
   const macros = await resolveMacros(input)
-  const { error } = await supabase
-    .from('recipes')
-    .update({
-      title:        input.title.trim(),
-      description:  input.description ?? null,
-      servings:     input.servings,
-      instructions: input.instructions ?? null,
-      macro_mode:   input.macro_mode,
-      ...macros,
-      image_url:    input.image_url ?? null,
-      source_url:   input.source_url ?? null,
-      category:     input.category ?? null,
-      updated_at:   new Date().toISOString(),
-    })
-    .eq('id', id)
+  const row = {
+    title:        input.title.trim(),
+    description:  input.description ?? null,
+    servings:     input.servings,
+    instructions: input.instructions ?? null,
+    macro_mode:   input.macro_mode,
+    ...macros,
+    image_url:    input.image_url ?? null,
+    source_url:   input.source_url ?? null,
+    category:     input.category ?? null,
+    updated_at:   new Date().toISOString(),
+  }
+  let { error } = await supabase.from('recipes').update(row).eq('id', id)
+  if (error && isFiberColumnMissing(error)) {
+    const noFiber: Record<string, unknown> = { ...row }
+    delete noFiber.fiber_g
+    ;({ error } = await supabase.from('recipes').update(noFiber).eq('id', id))
+  }
   if (error) throw error
 
   await replaceIngredients(user.id, id, input.ingredients)

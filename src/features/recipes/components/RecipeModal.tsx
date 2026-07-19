@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { toast } from '../../../app/store'
 import { useCreateRecipe, useUpdateRecipe } from '../hooks/useRecipes'
@@ -30,7 +30,7 @@ function previewMacros(ingredients: IngredientDraft[], servings: number, library
   const { contributed, skippedCount, totals } = sumMacros(ingredients, byId)
   const per = (v: number) => Math.round((v / Math.max(1, servings)) * 10) / 10
   return { contributed, skipped: skippedCount, ...Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, per(v)])) } as
-    { contributed: boolean; skipped: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; sugar_g: number }
+    { contributed: boolean; skipped: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; sugar_g: number }
 }
 
 export function RecipeModal({ open, onClose, recipe }: Props) {
@@ -51,6 +51,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
   const [protein,      setProtein]      = useState('')
   const [carbs,        setCarbs]        = useState('')
   const [fat,          setFat]          = useState('')
+  const [fiber,        setFiber]        = useState('')
   const [sugar,        setSugar]        = useState('')
   const [sourceUrl,    setSourceUrl]    = useState('')
   const [imageUrl,     setImageUrl]     = useState('')
@@ -63,33 +64,40 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
   const [parsing,      setParsing]      = useState(false)
   const [estimating,   setEstimating]   = useState(false)
 
-  useEffect(() => {
-    if (!open) return
-    if (recipe) {
-      setTitle(recipe.title)
-      setServings(String(recipe.servings))
-      setIngredients(recipe.ingredients.length
-        ? recipe.ingredients.map(i => ({ name: i.name, quantity: i.quantity, unit: i.unit, note: i.note, library_ingredient_id: i.library_ingredient_id }))
-        : [{ ...EMPTY_ROW }])
-      setInstructions(recipe.instructions ?? '')
-      setDescription(recipe.description ?? '')
-      setMacroMode(recipe.macro_mode)
-      setCategory(recipe.category ?? '')
-      setCalories(recipe.calories?.toString() ?? '')
-      setProtein(recipe.protein_g?.toString() ?? '')
-      setCarbs(recipe.carbs_g?.toString() ?? '')
-      setFat(recipe.fat_g?.toString() ?? '')
-      setSugar(recipe.sugar_g?.toString() ?? '')
-      setSourceUrl(recipe.source_url ?? '')
-      setImageUrl(recipe.image_url ?? '')
-    } else {
-      setTitle(''); setServings('1'); setIngredients([{ ...EMPTY_ROW }])
-      setInstructions(''); setDescription(''); setMacroMode('manual')
-      setCalories(''); setProtein(''); setCarbs(''); setSugar(''); setFat(''); setSourceUrl(''); setImageUrl('')
+  // Prefill when the modal opens or the edited recipe changes. Adjusting state
+  // during render on a prop change is React's recommended pattern over a
+  // setState-in-effect (matches FoodLogModal/AssignMealModal).
+  const [seed, setSeed] = useState<{ open: boolean; recipe: RecipeWithIngredients | undefined }>({ open, recipe })
+  if (open !== seed.open || recipe !== seed.recipe) {
+    setSeed({ open, recipe })
+    if (open) {
+      if (recipe) {
+        setTitle(recipe.title)
+        setServings(String(recipe.servings))
+        setIngredients(recipe.ingredients.length
+          ? recipe.ingredients.map(i => ({ name: i.name, quantity: i.quantity, unit: i.unit, note: i.note, library_ingredient_id: i.library_ingredient_id }))
+          : [{ ...EMPTY_ROW }])
+        setInstructions(recipe.instructions ?? '')
+        setDescription(recipe.description ?? '')
+        setMacroMode(recipe.macro_mode)
+        setCategory(recipe.category ?? '')
+        setCalories(recipe.calories?.toString() ?? '')
+        setProtein(recipe.protein_g?.toString() ?? '')
+        setCarbs(recipe.carbs_g?.toString() ?? '')
+        setFat(recipe.fat_g?.toString() ?? '')
+        setFiber(recipe.fiber_g?.toString() ?? '')
+        setSugar(recipe.sugar_g?.toString() ?? '')
+        setSourceUrl(recipe.source_url ?? '')
+        setImageUrl(recipe.image_url ?? '')
+      } else {
+        setTitle(''); setServings('1'); setIngredients([{ ...EMPTY_ROW }])
+        setInstructions(''); setDescription(''); setMacroMode('manual')
+        setCalories(''); setProtein(''); setCarbs(''); setFiber(''); setSugar(''); setFat(''); setSourceUrl(''); setImageUrl('')
+      }
+      setNewIngredientRow(null)
+      setPasteOpen(false); setPasteMode('text'); setPasteText(''); setUrlInput('')
     }
-    setNewIngredientRow(null)
-    setPasteOpen(false); setPasteMode('text'); setPasteText(''); setUrlInput('')
-  }, [open, recipe])
+  }
 
   function setRow(idx: number, patch: Partial<IngredientDraft>) {
     setIngredients(rows => rows.map((r, i) => i === idx ? { ...r, ...patch } : r))
@@ -118,6 +126,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
       setProtein(parsed.macro_estimate.protein_g?.toString() ?? '')
       setCarbs(parsed.macro_estimate.carbs_g?.toString() ?? '')
       setFat(parsed.macro_estimate.fat_g?.toString() ?? '')
+      setFiber('')   // AI estimate doesn't include fiber — reset, don't carry a stale value
       setSugar(parsed.macro_estimate.sugar_g?.toString() ?? '')
     }
   }
@@ -180,7 +189,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
       instructions: instructions.trim() || null,
       macro_mode: macroMode,
       calories: numOrNull(calories), protein_g: numOrNull(protein), carbs_g: numOrNull(carbs),
-      fat_g: numOrNull(fat), sugar_g: numOrNull(sugar),
+      fat_g: numOrNull(fat), fiber_g: numOrNull(fiber), sugar_g: numOrNull(sugar),
       source_url: sourceUrl.trim() || null,
       image_url: imageUrl.trim() || null,
       category: category || null,
@@ -351,6 +360,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                       { v: protein,  set: setProtein,  label: 'Protein (g)' },
                       { v: carbs,    set: setCarbs,    label: 'Carbs (g)' },
                       { v: fat,      set: setFat,      label: 'Fat (g)' },
+                      { v: fiber,    set: setFiber,    label: 'Fiber (g)' },
                       { v: sugar,    set: setSugar,    label: 'Sugar (g)' },
                     ].map(m => (
                       <div key={m.label}>
@@ -373,6 +383,7 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                       { label: 'Protein (g)',     v: preview?.protein_g },
                       { label: 'Carbs (g)',       v: preview?.carbs_g },
                       { label: 'Fat (g)',         v: preview?.fat_g },
+                      { label: 'Fiber (g)',       v: preview?.fiber_g },
                       { label: 'Sugar (g)',       v: preview?.sugar_g },
                     ].map(m => (
                       <div key={m.label} className="text-center bg-ink-50 rounded-lg py-2">
