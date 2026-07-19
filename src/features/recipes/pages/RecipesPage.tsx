@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react'
+import { format } from 'date-fns'
 import { useRecipes } from '../hooks/useRecipes'
+import { DateNav } from '../../../shared/components/DateNav'
+import { formatLocalDate, shiftDateStr } from '../../../shared/utils/dateUtils'
 import { RecipeCard } from '../components/RecipeCard'
 import { RecipeModal } from '../components/RecipeModal'
 import { RecipeDetail } from '../components/RecipeDetail'
@@ -24,6 +27,8 @@ export function RecipesPage() {
   const [category,  setCategory]  = useState<FoodCategory | 'all'>('all')
   const [logOpen,   setLogOpen]   = useState(false)
   const [suppOpen,  setSuppOpen]  = useState(false)
+  const [foodDate,  setFoodDate]  = useState(() => formatLocalDate(new Date()))   // Today tab's day (nav lives in the banner)
+  const foodIsToday = foodDate === formatLocalDate(new Date())
 
   // Keep the open detail/edit view in sync with refreshed query data.
   const liveDetail  = detail  ? recipes.find(r => r.id === detail.id)  ?? null : null
@@ -79,20 +84,34 @@ export function RecipesPage() {
               <PersonalTabs />
             </div>
           </div>
-          {/* Sub-tabs live INSIDE the banner (user request) — glassy chip row
-              over the backdrop. Single non-wrapping row; scrolls if too narrow. */}
-          <div className="flex gap-1 bg-cream-50/70 border border-ink-200 p-1 rounded-xl w-fit max-w-full overflow-x-auto scrollbar-none backdrop-blur-sm">
-            {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
-                  tab === t ? 'bg-accent-500 text-white' : 'text-ink-600 hover:text-ink-900 hover:bg-ink-100'
-                }`}
-              >
-                {t === 'today' ? 'Today' : t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
-              </button>
-            ))}
+          {/* Sub-tabs + (on Today) the day navigation — both INSIDE the banner
+              (user request), glassy over the backdrop. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-1 bg-cream-50/70 border border-ink-200 p-1 rounded-xl w-fit max-w-full overflow-x-auto scrollbar-none backdrop-blur-sm">
+              {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
+                    tab === t ? 'bg-accent-500 text-white' : 'text-ink-600 hover:text-ink-900 hover:bg-ink-100'
+                  }`}
+                >
+                  {t === 'today' ? 'Today' : t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
+                </button>
+              ))}
+            </div>
+            {tab === 'today' && (
+              <div className="bg-cream-50/70 border border-ink-200 rounded-xl px-1 backdrop-blur-sm">
+                <DateNav
+                  label={foodIsToday ? 'Today' : format(new Date(foodDate + 'T00:00:00'), 'EEE, d MMM')}
+                  labelClassName="text-sm font-bold text-ink-900 min-w-[104px] text-center"
+                  onPrev={() => setFoodDate(s => shiftDateStr(s, -1))}
+                  onNext={() => setFoodDate(s => shiftDateStr(s, 1))}
+                  onToday={() => setFoodDate(formatLocalDate(new Date()))}
+                  isToday={foodIsToday}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -123,7 +142,7 @@ export function RecipesPage() {
         </div>
       )}
 
-      {tab === 'today' && <FoodTodayTab />}
+      {tab === 'today' && <FoodTodayTab date={foodDate} />}
       {tab === 'ingredients' && <IngredientManager />}
       {tab === 'plan' && <MealPlanWeek />}
 

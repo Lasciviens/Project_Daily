@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { format } from 'date-fns'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets, type NutritionGoal } from '../../daily/hooks/useDayTargets'
 import { useNutritionCoach } from '../../daily/hooks/useNutritionCoach'
@@ -10,8 +9,7 @@ import { MacroBar } from './MacroBar'
 import { FoodLogModal } from './FoodLogModal'
 import { EditFoodLogModal } from './EditFoodLogModal'
 import { AssignMealModal } from './AssignMealModal'
-import { DateNav } from '../../../shared/components/DateNav'
-import { formatLocalDate, shiftDateStr } from '../../../shared/utils/dateUtils'
+import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import type { MealSlot, MealPlanEntry } from '../types'
 import type { DayMeal } from '../../daily/api/dayNutritionApi'
 
@@ -73,8 +71,7 @@ function GoalStepper({ value, step, suffix, onChange }: { value: number; step: n
   )
 }
 
-export function FoodTodayTab() {
-  const [date, setDate] = useState(() => formatLocalDate(new Date()))
+export function FoodTodayTab({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
   const { targets, update } = useDayTargets()
   const coach = useNutritionCoach(date, targets)
@@ -96,36 +93,25 @@ export function FoodTodayTab() {
     const arr = bySlot.get(m.meal_slot) ?? []; arr.push(m); bySlot.set(m.meal_slot, arr)
   }
 
-  const d = new Date(date + 'T00:00:00')
-  const isToday = date === formatLocalDate(new Date())
-
   return (
     <div className="flex flex-col gap-4">
-      {/* Day navigation — at the very top (⚙ Goals now lives in the widget). */}
-      <DateNav
-        label={isToday ? 'Today' : format(d, 'EEE, d MMM')}
-        labelClassName="text-sm font-bold text-ink-900 min-w-[110px] text-center"
-        onPrev={() => setDate(s => shiftDateStr(s, -1))}
-        onNext={() => setDate(s => shiftDateStr(s, 1))}
-        onToday={() => setDate(formatLocalDate(new Date()))}
-        isToday={isToday}
-      />
+      {/* Day navigation now lives in the header banner (RecipesPage). */}
 
       {/* Two columns on xl+: summary+goals+coach (left, wider) · meal slots
           (right, narrower). Nutrition & Goals stack same-width in the left col. */}
       <div className="flex flex-col xl:flex-row xl:items-start gap-4">
-        <div className="flex flex-col gap-4 w-full xl:w-[30rem] xl:shrink-0">
+        <div className="flex flex-col gap-4 w-full xl:w-[34rem] xl:shrink-0">
           {/* Hero — calorie + protein rings + macro chips */}
           <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden relative">
             <div className="h-1 bg-accent-500" />
             {/* ⚙ Goals — bottom-right corner of the nutrition widget. */}
             <button onClick={() => setGoalsOpen(o => !o)} title="Goals" aria-label="Goals"
               className={`absolute bottom-2 right-2 min-w-[32px] min-h-[32px] rounded-lg flex items-center justify-center text-sm transition-colors ${goalsOpen ? 'text-accent-700 bg-accent-50' : 'text-ink-400 hover:text-accent-600 hover:bg-cream-100'}`}>⚙</button>
-            <div className="p-5 flex items-center gap-4 flex-wrap">
-              <Ring consumed={consumed} target={targets.calories} size={116} stroke={10} color="rgb(var(--accent-500))" label="kcal left" />
+            <div className="p-6 flex items-center gap-5 flex-wrap">
+              <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color="rgb(var(--accent-500))" label="kcal left" />
               {/* Small, tasteful protein ring — "kalan protein" as a graphic. */}
-              <Ring consumed={protein} target={targets.protein} size={80} stroke={8} color="#60a5fa" label="prot left" />
-              <div className="flex-1 min-w-[150px]">
+              <Ring consumed={protein} target={targets.protein} size={92} stroke={9} color="#60a5fa" label="prot left" />
+              <div className="flex-1 min-w-[160px]">
                 <p className="text-sm text-ink-700">
                   <strong className="text-lg text-ink-900 tabular-nums">{consumed}</strong>
                   <span className="text-ink-400"> / {targets.calories} kcal</span>
@@ -143,7 +129,7 @@ export function FoodTodayTab() {
                       <span className="text-ink-600">{nut.protein_g}g <span className="text-ink-400">P</span></span>
                       <span className="text-ink-600">{nut.carbs_g}g <span className="text-ink-400">C</span></span>
                       <span className="text-ink-600">{nut.fat_g}g <span className="text-ink-400">F</span></span>
-                      <span className="text-green-600 whitespace-nowrap"><span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 align-middle mr-1" />{nut.fiber_g}g <span className="text-green-600/70">fiber</span></span>
+                      <span className="text-ink-600">{nut.fiber_g}g <span className="text-ink-400">fiber</span></span>
                       {nut.sugar_g > 0 && <span className="text-ink-500">{nut.sugar_g}g <span className="text-ink-400">sugar</span></span>}
                     </div>
                   </div>
