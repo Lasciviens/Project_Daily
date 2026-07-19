@@ -11,18 +11,9 @@ export const FOOD_GROUPS = [
   'Cereals, bread and cakes', 'Vegetables', 'Sugar and sweet products', 'Cooking fat',
   'Beverages', 'Other foods and dishes', 'Infant food', 'Legumes',
   'Fruit and berries', 'Nuts and seeds', 'Potatoes', 'Herbs and spices',
+  'Supplements',   // not a Matvaretabellen group — our own bucket for DSLD/creatine/whey rows
 ] as const
 export type FoodGroup = typeof FOOD_GROUPS[number]
-
-// One-tap portion preset for a library food (recipe_ingredient_portions,
-// migration 057). Matvaretabellen ships up to 5 per food; user can add own.
-export interface IngredientPortion {
-  id:                    string
-  library_ingredient_id: string
-  label:                 string
-  grams:                 number
-  sort_order:            number
-}
 
 export interface IngredientLibraryItem {
   id:            string
@@ -41,7 +32,6 @@ export interface IngredientLibraryItem {
   food_group:    string | null   // denormalized top-level group name
   image_url:     string | null   // branded product photo (OFF/Kassalapp), migration 059
   created_at:    string
-  portions?:     IngredientPortion[]   // hydrated on fetch (migration 057)
 }
 
 export interface CreateIngredientLibraryItemInput {

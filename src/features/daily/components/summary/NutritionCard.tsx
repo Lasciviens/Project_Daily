@@ -7,6 +7,7 @@ import { useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickM
 import { MacroBar } from '../../../recipes/components/MacroBar'
 import { AssignMealModal } from '../../../recipes/components/AssignMealModal'
 import { FoodLogModal } from '../../../recipes/components/FoodLogModal'
+import { EditFoodLogModal } from '../../../recipes/components/EditFoodLogModal'
 import { SupplementModal } from '../../../recipes/components/SupplementModal'
 import { useRecentFoods, useAddFoodLogEntries, useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
 import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrary'
@@ -72,6 +73,7 @@ function SlotRow({ date, slot, label, meals }: {
 }) {
   const [adding, setAdding] = useState(false)
   const [editPlan, setEditPlan] = useState<MealPlanEntry | null>(null)   // ✎ on an existing PLAN row
+  const [editLog, setEditLog]   = useState<DayMeal | null>(null)         // ✎ on a logged (diary) row
   const [logOpen, setLogOpen] = useState(false)      // full logger (diary)
   const [logQuery, setLogQuery] = useState('')
   const [text, setText] = useState('')
@@ -115,13 +117,11 @@ function SlotRow({ date, slot, label, meals }: {
               <span className="text-ink-400 w-16 shrink-0">{i === 0 ? label : ''}</span>
               <span className="text-ink-700 flex-1 truncate">{meal.title}</span>
               {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
-              {meal.source === 'plan' && meal.planEntry && (
-                <button
-                  onClick={() => setEditPlan(meal.planEntry!)}
-                  className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
-                  title="Edit planned meal (recipe/ingredient/servings)"
-                >✎</button>
-              )}
+              <button
+                onClick={() => meal.source === 'plan' ? setEditPlan(meal.planEntry!) : setEditLog(meal)}
+                className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
+                title={meal.source === 'plan' ? 'Edit planned meal' : 'Edit logged food (amount / macros)'}
+              >✎</button>
               <button
                 onClick={() => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)}
                 className="text-ink-300 hover:text-red-500 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
@@ -170,10 +170,13 @@ function SlotRow({ date, slot, label, meals }: {
       )}
       {/* Full diary logger, prefilled to this slot (and any typed text). */}
       <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={date} defaultSlot={slot} defaultQuery={logQuery} />
-      {/* ✎ edits an existing PLANNED entry (recipe_meal_plans) in the full
+      {/* ✎ edits an existing PLANNED entry (status='planned') in the full
           planner — planning a future day still lives here. */}
       {editPlan && (
         <AssignMealModal open onClose={() => setEditPlan(null)} date={date} mealSlot={slot} existing={editPlan} />
+      )}
+      {editLog && (
+        <EditFoodLogModal meal={editLog} date={date} onClose={() => setEditLog(null)} />
       )}
     </li>
   )

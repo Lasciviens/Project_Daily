@@ -1,13 +1,23 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import { fetchFoodLog, addFoodLogEntries, deleteFoodLogEntry, fetchRecentFoods } from '../api/foodLogApi'
+import { fetchFoodLog, addFoodLogEntries, deleteFoodLogEntry, updateFoodLogEntry, fetchRecentFoods, fetchFoodLogRange, type LoggedFood } from '../api/foodLogApi'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
-import type { FoodLogEntryInput } from '../types'
+import type { FoodLogEntry, FoodLogEntryInput } from '../types'
 
 export function useFoodLog(date: string) {
   return useQuery({
     queryKey: ['food-log', date],
     queryFn:  () => fetchFoodLog(date),
+    staleTime: 30_000,
+  })
+}
+
+// The diary over a date range (Meal Plan week view). Same ['food-log'] key
+// prefix so the existing invalidation refreshes it after any log/edit/delete.
+export function useFoodLogRange(from: string, to: string) {
+  return useQuery({
+    queryKey: ['food-log', 'range', from, to],
+    queryFn:  () => fetchFoodLogRange(from, to),
     staleTime: 30_000,
   })
 }
@@ -62,3 +72,16 @@ export function useDeleteFoodLogEntry() {
     onSuccess:  () => invalidate(),
   })
 }
+
+export function useUpdateFoodLogEntry() {
+  const invalidate = useInvalidateNutrition()
+  return useMutationWithFeedback({
+    action:         'update_food_log_entry',
+    successMessage: 'Updated ✓',
+    mutationFn:     ({ id, patch }: { id: string; patch: Parameters<typeof updateFoodLogEntry>[1] }) => updateFoodLogEntry(id, patch),
+    onSuccess:      () => invalidate(),
+  })
+}
+
+export type { LoggedFood }
+export type { FoodLogEntry }
