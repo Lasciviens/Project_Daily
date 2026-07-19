@@ -144,8 +144,11 @@ export function TierEditorTab() {
         )
       })}
 
+      {/* z-50 + lifted above the floating bottom tab bar on mobile: it's
+          fixed z-40 at the bottom, so the old z-auto bottom-6 pill rendered
+          BEHIND it and was invisible mid-save on a phone. */}
       {isPending && (
-        <div className="fixed bottom-6 right-6 bg-ink-950 text-white text-xs px-4 py-2 rounded-full shadow-lg">
+        <div className="fixed z-50 right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6 sm:right-6 bg-ink-950 text-white text-xs px-4 py-2 rounded-full shadow-lg">
           Saving…
         </div>
       )}

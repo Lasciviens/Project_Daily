@@ -130,7 +130,7 @@ export function CurrencyWidget() {
         <button
           key={m}
           onClick={() => setMode(m)}
-          className={`text-[10px] px-2 rounded-md font-medium transition-colors duration-150 capitalize min-h-[36px] ${
+          className={`text-[10px] px-2.5 rounded-md font-medium transition-colors duration-150 capitalize min-h-[44px] inline-flex items-center justify-center ${
             mode === m ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
           }`}
         >

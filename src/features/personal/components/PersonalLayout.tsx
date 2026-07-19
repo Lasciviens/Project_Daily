@@ -20,7 +20,7 @@ export function PersonalTabs() {
           key={tab.to}
           to={tab.to}
           className={({ isActive }) => [
-            'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors min-h-[36px] flex items-center whitespace-nowrap',
+            'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors min-h-[44px] flex items-center whitespace-nowrap',
             isActive ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-700',
           ].join(' ')}
         >
