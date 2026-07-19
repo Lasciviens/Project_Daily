@@ -45,8 +45,15 @@ export function slugForHevyGroup(group: string | null | undefined): Slug | null 
 
 // ── Contribution seam (future-proofing) ─────────────────────────────────────
 // The fraction of a working set a muscle earns for a given exercise, by role.
-// PRIMARY 1.0, SECONDARY 0.5, TERTIARY 0.25 (synergists receive real but
-// sub-maximal stimulus vs the prime mover — EMG/hypertrophy evidence).
+// PRIMARY 1.0, SECONDARY 0.5, TERTIARY 0.25.
+// ⚠️ These fractions are a PRACTITIONER CONVENTION, not a measured constant.
+// Per the sports-science review: no validated %MVIC / fractional-set value
+// generalises across exercises (surface EMG amplitude does NOT predict
+// hypertrophy — Vigotsky 2022), and the largest meta to date found the *choice*
+// of fractional counting materially changes the dose-response while the correct
+// fraction stays unresolved (Pelland 2025). So 0.5 is a sane default, not truth
+// — surface it as such in the UI and never present credited-set decimals as
+// precise. The CONTRIBUTION_OVERRIDES seam is where a real per-exercise % goes.
 //
 // FUTURE: we'll store a per-(exercise, muscle) contribution PERCENTAGE in the
 // DB (primary/secondary/tertiary as explicit numbers). `contribution()` already
@@ -96,11 +103,14 @@ export const MUSCLE_LANDMARKS: Record<string, Landmarks> = {
 export interface BandMeta { idx: number; label: string; color: string; desc: string }
 export const BANDS_META: BandMeta[] = [
   { idx: 0, label: 'Not trained',       color: '#4b5563', desc: 'No working sets for this muscle in the period.' },
-  { idx: 1, label: 'Below maintenance', color: '#3b82f6', desc: 'Under the volume needed even to hold muscle — likely losing ground here.' },
+  // Labels softened to conditional language per the science review: a low
+  // 30-day average can just be a deload, and "over MRV" depends on unmeasured
+  // recovery/effort — so neither asserts loss or wasted work as fact.
+  { idx: 1, label: 'Below maintenance', color: '#3b82f6', desc: 'Probably not enough to build or hold this muscle over time. (A low number can also just reflect a recent light/rest week — check the trend.)' },
   { idx: 2, label: 'Maintenance',       color: '#14b8a6', desc: 'Enough to maintain, but below the minimum that reliably drives growth (MEV).' },
   { idx: 3, label: 'Optimal growth',    color: '#22c55e', desc: 'Inside the productive hypertrophy range (MEV–MAV) — the sweet spot.' },
-  { idx: 4, label: 'High',              color: '#f59e0b', desc: 'Above the adaptive range (MAV) — near your recoverable ceiling.' },
-  { idx: 5, label: 'Over MRV',          color: '#ef4444', desc: 'Beyond maximum recoverable volume — likely junk volume / overreaching.' },
+  { idx: 4, label: 'High',              color: '#f59e0b', desc: 'Above the typical adaptive range (MAV) — near the usual recoverable ceiling.' },
+  { idx: 5, label: 'Over MRV',          color: '#ef4444', desc: 'More than typical recovery guidelines suggest. Whether it is actually "too much" depends on your effort, sleep and recovery — none of which this measures. If you are recovering fine, no need to cut.' },
 ]
 
 export function bandForWeeklySets(slug: string, weeklySets: number): number {
@@ -134,4 +144,34 @@ const SLUG_LABEL: Record<string, string> = {
 
 export function labelForSlug(slug: string): string {
   return SLUG_LABEL[slug] ?? slug.replace(/-/g, ' ')
+}
+
+// ── Consumer-facing helpers (expert review) ─────────────────────────────────
+// The muscles a normal lifter actually trains/intends to — used to filter the
+// verdict banner so it never nags about neck/adductors sitting at 0 sets
+// ("you're neglecting your neck!" destroys trust). An unlisted muscle at low
+// volume is simply not flagged as a problem.
+export const MAJOR_MUSCLES: ReadonlySet<Slug> = new Set<Slug>([
+  'chest', 'upper-back', 'deltoids', 'biceps', 'triceps',
+  'quadriceps', 'hamstring', 'gluteal', 'abs', 'trapezius',
+])
+
+// "What to do next" for a muscle: how far its weekly sets are from the nearest
+// edge of the growth sweet spot, translated to whole sets and rough sessions
+// (≈4 added sets ≈ one more session). Returns null when it's in range / no
+// landmark. Numbers are rounded — landmark integers aren't precise (see notes).
+export function setDeltaToRange(slug: string, weeklySets: number):
+  | { kind: 'add'; sets: number; sessions: number; mev: number; mav: number }
+  | { kind: 'cut'; sets: number; mrv: number }
+  | null {
+  const L = MUSCLE_LANDMARKS[slug]
+  if (!L) return null
+  if (weeklySets < L.mev) {
+    const deficit = Math.max(1, Math.round(L.mev - weeklySets))
+    return { kind: 'add', sets: deficit, sessions: Math.max(1, Math.ceil(deficit / 4)), mev: L.mev, mav: L.mav }
+  }
+  if (weeklySets > L.mrv) {
+    return { kind: 'cut', sets: Math.max(1, Math.round(weeklySets - L.mrv)), mrv: L.mrv }
+  }
+  return null
 }
