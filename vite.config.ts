@@ -55,6 +55,12 @@ export default defineConfig({
         // in main.tsx, updates are detected and applied automatically.
         skipWaiting: true,
         clientsClaim: true,
+        // The main app bundle grew past workbox's default 2 MiB precache ceiling
+        // (the app is feature-dense — recharts, the food library, etc.), which
+        // FAILS the CI build ("Configure workbox.maximumFileSizeToCacheInBytes").
+        // Raise the ceiling so the main chunk is precached with headroom; the
+        // real long-term fix is code-splitting, tracked separately.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // Cache static assets indefinitely
         runtimeCaching: [
           {

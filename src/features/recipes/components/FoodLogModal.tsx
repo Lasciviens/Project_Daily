@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { useAddFoodLogEntries, useRecentFoods } from '../hooks/useFoodLog'
-import { useRecipes } from '../hooks/useRecipes'
-import { ingredientSnapshot, recipeSnapshot, type RecentFood } from '../api/foodLogApi'
+import { useQueryClient } from '@tanstack/react-query'
+import { useRecipes, useCreateRecipe } from '../hooks/useRecipes'
+import { ingredientSnapshot, recipeSnapshot, addFoodLogEntries, type RecentFood } from '../api/foodLogApi'
 import { lookupBarcode } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
@@ -62,12 +63,15 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
   const { data: recents = [] } = useRecentFoods()
   const { data: recipes = [] } = useRecipes()
   const createIngredient = useCreateIngredientLibraryItem()
+  const createRecipe = useCreateRecipe()
   const addEntries = useAddFoodLogEntries()
+  const qc = useQueryClient()
   const { data: nut } = useDayNutrition(date)
   const { targets } = useDayTargets()
 
   const [slot, setSlot] = useState<MealSlot>(defaultSlot ?? slotForNow())
   const [query, setQuery] = useState(defaultQuery ?? '')
+  const [mealName, setMealName] = useState('')
 
   // Re-seed slot/query each time the modal transitions closed→open (the
   // instance is reused across opens). Adjusting state during render on a
@@ -78,6 +82,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
     if (open) {
       setSlot(defaultSlot ?? slotForNow())
       setQuery(defaultQuery ?? '')
+      setMealName('')
     }
   }
 
@@ -190,6 +195,33 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
     await addEntries.mutateAsync(entries)
     setBasket([])
     onClose()
+  }
+
+  // Save the basket as a reusable NAMED meal (a recipe) AND log it as one line.
+  // recipes carries no fiber column, so fiber is snapshotted onto the diary row
+  // straight from the basket. This is the "build a meal from ingredients, name
+  // it, eat it" flow — reusable forever after via 'Log a saved meal'.
+  async function handleSaveAsMeal() {
+    if (basket.length === 0 || !mealName.trim()) return
+    const r1 = (n: number) => Math.round(n * 10) / 10
+    const m = basket.reduce((a, it) => {
+      const s = ingredientSnapshot(it.ingredient, it.grams)
+      return { calories: a.calories + (s.calories ?? 0), protein_g: a.protein_g + (s.protein_g ?? 0), carbs_g: a.carbs_g + (s.carbs_g ?? 0), fat_g: a.fat_g + (s.fat_g ?? 0), fiber_g: a.fiber_g + (s.fiber_g ?? 0), sugar_g: a.sugar_g + (s.sugar_g ?? 0) }
+    }, { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0 })
+    const tid = toast.loading('Saving meal…')
+    try {
+      const recipeId = await createRecipe.mutateAsync({
+        title: mealName.trim(), servings: 1, macro_mode: 'manual',
+        calories: r1(m.calories), protein_g: r1(m.protein_g), carbs_g: r1(m.carbs_g), fat_g: r1(m.fat_g), sugar_g: r1(m.sugar_g),
+        ingredients: basket.map(it => ({ name: it.ingredient.name, quantity: it.grams, unit: 'g', note: null, library_ingredient_id: it.ingredient.id })),
+      })
+      // Raw insert (not the toasting hook) so we show ONE clear toast, then
+      // invalidate the nutrition views ourselves.
+      await addFoodLogEntries([{ date, meal_slot: slot, recipe_id: recipeId, quantity: 1, unit: 'serving', calories: r1(m.calories), protein_g: r1(m.protein_g), carbs_g: r1(m.carbs_g), fat_g: r1(m.fat_g), fiber_g: r1(m.fiber_g), sugar_g: r1(m.sugar_g) }])
+      qc.invalidateQueries({ queryKey: ['food-log'] }); qc.invalidateQueries({ queryKey: ['meal-plan'] })
+      toast.dismiss(tid); toast.success(`Saved & logged "${mealName.trim()}" ✓`)
+      setBasket([]); setMealName(''); onClose()
+    } catch (e) { toast.dismiss(tid); toast.error((e as Error).message ?? 'Failed') }
   }
 
   const inputCls = 'min-h-[40px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
@@ -343,6 +375,17 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
                     </div>
                   )
                 })}
+
+                {/* Save the whole basket as a reusable NAMED meal (a recipe). */}
+                <div className="flex items-center gap-1.5 pt-1.5 mt-0.5 border-t border-ink-100">
+                  <input value={mealName} onChange={e => setMealName(e.target.value)}
+                    placeholder="Name this meal to save it (optional)"
+                    className="flex-1 min-w-0 min-h-[36px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                  <button type="button" onClick={handleSaveAsMeal} disabled={!mealName.trim() || createRecipe.isPending}
+                    className="shrink-0 min-h-[36px] px-3 rounded-lg text-xs font-semibold border border-accent-300 text-accent-700 bg-accent-50/50 hover:bg-accent-50 disabled:opacity-50 transition-colors">
+                    💾 Save as meal
+                  </button>
+                </div>
               </div>
             )}
           </div>
