@@ -33,44 +33,46 @@ function toNum(v: unknown): number | null {
   return null
 }
 
-// nutrition[] = { code, display_name, amount, unit } (verified). Probe a row by
-// its display_name/code, return its amount.
-function macro(nutrition: unknown, keys: string[]): number | null {
+// nutrition[] = { code, display_name, amount, unit } (verified live, per 100g).
+// Real codes: energi_kcal, energi_kj, protein, karbohydrater, fett_totalt,
+// mettet_fett/enumettet_fett/flerumettet_fett, sukkerarter, kostfiber, salt.
+// Match by EXACT code first (so fett_totalt ≠ mettet_fett), display-name
+// substring as a resilient fallback (with an exclude list).
+type NRow = Record<string, unknown>
+function pick(nutrition: unknown, codes: string[], subs: string[], exclude: string[] = []): number | null {
   if (!Array.isArray(nutrition)) return null
-  const row = nutrition.find((n: Record<string, unknown>) => {
+  let row = (nutrition as NRow[]).find(n => codes.includes(String(n?.code ?? '').toLowerCase()))
+  if (!row) row = (nutrition as NRow[]).find(n => {
     const label = String(n?.display_name ?? n?.code ?? '').toLowerCase()
-    return keys.some(k => label.includes(k))
-  }) as Record<string, unknown> | undefined
+    return subs.some(s => label.includes(s)) && !exclude.some(x => label.includes(x))
+  })
   return row ? toNum(row.amount) : null
 }
 
-// Energy is disambiguated by unit: a kcal row is used as-is; a kJ row is
-// converted. Prevents mistaking a kJ "Energi" row for kcal.
+// Energy → kcal. Prefer the energi_kcal / kcal-unit row; convert a kJ row only
+// if that's all there is.
 function energyKcal(nutrition: unknown): number | null {
   if (!Array.isArray(nutrition)) return null
-  const rows = nutrition.filter((n: Record<string, unknown>) =>
-    /energi|energy|kcal|kj/i.test(String(n?.display_name ?? n?.code ?? '')))
-  const isKcal = (n: Record<string, unknown>) => /kcal/i.test(String(n?.unit ?? '')) || /kcal/i.test(String(n?.display_name ?? n?.code ?? ''))
-  const kcalRow = rows.find(isKcal)
-  if (kcalRow) return toNum((kcalRow as Record<string, unknown>).amount)
-  const kjRow = rows[0]
-  const kj = kjRow ? toNum((kjRow as Record<string, unknown>).amount) : null
-  return kj == null ? null : Math.round((kj / 4.184) * 10) / 10
+  const rows = nutrition as NRow[]
+  const kcal = rows.find(n => String(n?.code ?? '').toLowerCase() === 'energi_kcal' || /kcal/i.test(String(n?.unit ?? '')))
+  if (kcal) return toNum(kcal.amount)
+  const kj = rows.find(n => String(n?.code ?? '').toLowerCase() === 'energi_kj' || /kj/i.test(String(n?.unit ?? '')))
+  const v = kj ? toNum(kj.amount) : null
+  return v == null ? null : Math.round((v / 4.184) * 10) / 10
 }
 
 function normalize(item: Record<string, unknown>) {
   const nutr = item.nutrition
-  const calories = energyKcal(nutr)
   return {
     code: String(item.ean ?? item.gtin ?? '') || '',
     name: String(item.name ?? '').trim(),
     brand: (item.brand as string) ?? (item.vendor as string) ?? null,
-    calories,
-    protein_g: macro(nutr, ['protein']),
-    carbs_g:   macro(nutr, ['karbohydra', 'carbohydr']),
-    fat_g:     macro(nutr, ['fett', 'fat']),
-    sugar_g:   macro(nutr, ['sukker', 'sugar']),
-    fiber_g:   macro(nutr, ['fiber', 'kostfiber']),
+    calories:  energyKcal(nutr),
+    protein_g: pick(nutr, ['protein'], ['protein']),
+    carbs_g:   pick(nutr, ['karbohydrater'], ['karbohydr', 'carbohydr']),
+    fat_g:     pick(nutr, ['fett_totalt'], ['fett', 'fat'], ['mettet', 'umettet', 'saturat']),
+    sugar_g:   pick(nutr, ['sukkerarter'], ['sukker', 'sugar']),
+    fiber_g:   pick(nutr, ['kostfiber', 'fiber'], ['fiber', 'kostfiber']),
     serving_label: null,
     serving_grams: null,
     image_url: (item.image as string) ?? null,

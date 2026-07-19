@@ -47,72 +47,68 @@ export function RecipesPage() {
       <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-5 w-full min-h-[92px]">
         <RecipeBackdrop recipes={recipes} />
         <div className="absolute inset-0 bg-gradient-to-r from-cream-50/90 via-cream-50/60 to-cream-50/10" aria-hidden />
-        <div className="relative z-10 flex items-center justify-between gap-2 flex-wrap min-h-[92px] px-4 py-4 sm:px-5">
-          <div>
-            <h1 className="text-xl font-bold text-ink-900">Food</h1>
-            <p className="text-xs text-ink-500 mt-0.5">Your meals & ingredients — log, scale, track macros</p>
-          </div>
-          {/* flex-wrap + whitespace-nowrap: at 393px the labels used to break
-              mid-word ("Log/food", "+ Add/recipe"). Now each button stays on
-              one line and the cluster wraps as whole chips. */}
-          <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
-            <button
-              onClick={() => setLogOpen(true)}
-              className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm whitespace-nowrap"
-            >
-              🍽️ Log food
-            </button>
-            <button
-              onClick={() => setSuppOpen(true)}
-              title="Log a supplement (creatine, protein, pre-workout)"
-              aria-label="Log a supplement"
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 text-ink-600 bg-cream-50 text-lg rounded-xl hover:border-accent-300 hover:text-accent-700 transition-colors"
-            >
-              💊
-            </button>
-            {tab === 'library' && (
+        <div className="relative z-10 flex flex-col gap-3 px-4 py-4 sm:px-5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h1 className="text-xl font-bold text-ink-900">Food</h1>
+              <p className="text-xs text-ink-500 mt-0.5">Your meals & ingredients — log, scale, track macros</p>
+            </div>
+            <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
               <button
-                onClick={() => setAddOpen(true)}
-                className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors whitespace-nowrap"
+                onClick={() => setLogOpen(true)}
+                className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm whitespace-nowrap"
               >
-                + Add recipe
+                🍽️ Log food
               </button>
-            )}
-            <PersonalTabs />
+              <button
+                onClick={() => setSuppOpen(true)}
+                title="Log a supplement (creatine, protein, pre-workout)"
+                aria-label="Log a supplement"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 text-ink-600 bg-cream-50 text-lg rounded-xl hover:border-accent-300 hover:text-accent-700 transition-colors"
+              >
+                💊
+              </button>
+              {tab === 'library' && (
+                <button
+                  onClick={() => setAddOpen(true)}
+                  className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors whitespace-nowrap"
+                >
+                  + Add recipe
+                </button>
+              )}
+              <PersonalTabs />
+            </div>
+          </div>
+          {/* Sub-tabs live INSIDE the banner (user request) — glassy chip row
+              over the backdrop. Single non-wrapping row; scrolls if too narrow. */}
+          <div className="flex gap-1 bg-cream-50/70 border border-ink-200 p-1 rounded-xl w-fit max-w-full overflow-x-auto scrollbar-none backdrop-blur-sm">
+            {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
+                  tab === t ? 'bg-accent-500 text-white' : 'text-ink-600 hover:text-ink-900 hover:bg-ink-100'
+                }`}
+              >
+                {t === 'today' ? 'Today' : t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Tab toggle */}
-      <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-        {/* Single non-wrapping row (was flex-wrap → "Meal Plan" dropped to a
-            2nd line at 393px, looking broken); scrolls if ever too narrow. */}
-        <div className="flex gap-1 bg-cream-50 border border-ink-200 p-1 rounded-xl w-fit max-w-full overflow-x-auto scrollbar-none">
-          {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
-                tab === t ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
-              }`}
-            >
-              {t === 'today' ? 'Today' : t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
-            </button>
-          ))}
+      {/* Library search (only where it applies) */}
+      {tab === 'library' && recipes.length > 0 && (
+        <div className="relative max-w-xs min-w-[180px] mb-4">
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search recipes or ingredients…"
+            className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-xl pl-8 pr-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
+          />
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-300 text-sm">🔍</span>
         </div>
-
-        {tab === 'library' && recipes.length > 0 && (
-          <div className="relative flex-1 max-w-xs min-w-[180px]">
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Search recipes or ingredients…"
-              className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-xl pl-8 pr-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
-            />
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-300 text-sm">🔍</span>
-          </div>
-        )}
-      </div>
+      )}
 
       {tab === 'library' && recipes.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-4">

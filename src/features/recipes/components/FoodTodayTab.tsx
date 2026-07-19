@@ -118,40 +118,10 @@ export function FoodTodayTab() {
         </button>
       </div>
 
-      {/* Goals editor — set the targets by hand + apply coach suggestions. */}
-      {goalsOpen && (
-        <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-3 max-w-2xl text-sm">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-ink-600">Goal</span>
-            <div className="flex gap-1">
-              {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
-                <button key={g} onClick={() => update({ goal: g })}
-                  className={`text-[11px] px-2.5 min-h-[32px] rounded-full border transition-colors ${
-                    targets.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
-                  }`}>{GOAL_LABEL[g]}</button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-ink-600">Calories</span>
-            <GoalStepper value={targets.calories} step={50} suffix="kcal" onChange={v => update({ calories: v })} />
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-ink-600">Protein</span>
-            <GoalStepper value={targets.protein} step={10} suffix="g" onChange={v => update({ protein: v })} />
-          </div>
-          {/* How the numbers are derived — the "neye göre?" answer. */}
-          <p className="text-[11px] text-ink-400 leading-relaxed">
-            These are YOUR targets (saved on this device). The 🧠 Coach suggests a protein target from your bodyweight
-            ({coach.weightKg ? `~${coach.proteinForGoal}g for ${targets.goal}` : 'add a bodyweight to enable'}) and nudges
-            calories from your 4-week weight trend — apply those from the Coach card below. Fiber goal ≈ 14g per 1000 kcal.
-          </p>
-        </div>
-      )}
-
-      {/* Two columns on xl+: summary+coach (left, capped) · meal slots (right). */}
+      {/* Two columns on xl+: summary+goals+coach (left, wider) · meal slots
+          (right, narrower). Nutrition & Goals stack same-width in the left col. */}
       <div className="flex flex-col xl:flex-row xl:items-start gap-4">
-        <div className="flex flex-col gap-4 w-full xl:max-w-md xl:shrink-0">
+        <div className="flex flex-col gap-4 w-full xl:w-[30rem] xl:shrink-0">
           {/* Hero — calorie + protein rings + macro chips */}
           <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden">
             <div className="h-1 bg-accent-500" />
@@ -172,16 +142,14 @@ export function FoodTodayTab() {
                 {nut && nut.calories > 0 && (
                   <div className="mt-2.5">
                     <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} />
-                    {/* Macro chips — fiber sits right after fat with a green dot
-                        (per request: not a separate fiber line). */}
+                    {/* Macro chips — fiber is fused into the Fat chip (green
+                        dot), right beside it, never wrapping to its own spot. */}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] tabular-nums">
                       <span className="text-ink-600">{nut.protein_g}g <span className="text-ink-400">P</span></span>
                       <span className="text-ink-600">{nut.carbs_g}g <span className="text-ink-400">C</span></span>
-                      <span className="text-ink-600">{nut.fat_g}g <span className="text-ink-400">F</span></span>
-                      <span className="text-green-600">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 align-middle mr-1" />
-                        {nut.fiber_g}g <span className="text-green-600/70">fiber</span>
-                        <span className="text-ink-300"> / ~{fiberGoal}</span>
+                      <span className="text-ink-600 whitespace-nowrap">
+                        {nut.fat_g}g <span className="text-ink-400">F</span>
+                        <span className="text-green-600"> · <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 align-middle" /> {nut.fiber_g}g <span className="text-green-600/70">fiber</span><span className="text-ink-300"> /{fiberGoal}</span></span>
                       </span>
                       {nut.sugar_g > 0 && <span className="text-ink-500">{nut.sugar_g}g <span className="text-ink-400">sugar</span></span>}
                     </div>
@@ -190,6 +158,37 @@ export function FoodTodayTab() {
               </div>
             </div>
           </div>
+
+          {/* Goals editor — under the nutrition widget, same width (user
+              request). Set targets by hand + apply coach suggestions. */}
+          {goalsOpen && (
+            <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-3 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink-600">Goal</span>
+                <div className="flex gap-1">
+                  {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
+                    <button key={g} onClick={() => update({ goal: g })}
+                      className={`text-[11px] px-2.5 min-h-[32px] rounded-full border transition-colors ${
+                        targets.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
+                      }`}>{GOAL_LABEL[g]}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink-600">Calories</span>
+                <GoalStepper value={targets.calories} step={50} suffix="kcal" onChange={v => update({ calories: v })} />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink-600">Protein</span>
+                <GoalStepper value={targets.protein} step={10} suffix="g" onChange={v => update({ protein: v })} />
+              </div>
+              <p className="text-[11px] text-ink-400 leading-relaxed">
+                These are YOUR targets (saved on this device). The 🧠 Coach suggests a protein target from your bodyweight
+                ({coach.weightKg ? `~${coach.proteinForGoal}g for ${targets.goal}` : 'add a bodyweight to enable'}) and nudges
+                calories from your 4-week weight trend — apply those from the Coach card below. Fiber goal ≈ 14g per 1000 kcal.
+              </p>
+            </div>
+          )}
 
           {/* Coach — always visible so it's discoverable. */}
           <div className="rounded-2xl border border-accent-200 bg-accent-50/40 px-4 py-3 flex flex-col gap-1.5 text-xs">
