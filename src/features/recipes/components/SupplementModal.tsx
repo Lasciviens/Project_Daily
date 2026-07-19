@@ -212,7 +212,7 @@ export function SupplementModal({ open, onClose, date }: Props) {
                   {(['library', 'online'] as const).map(m => (
                     <button key={m} type="button" onClick={() => setMode(m)}
                       className={`text-[11px] px-2.5 min-h-[32px] rounded-md font-medium transition-colors ${mode === m ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'}`}>
-                      {m === 'library' ? 'My library' : '🔎 Online'}
+                      {m === 'library' ? 'My library' : '🔎 Search supplement'}
                     </button>
                   ))}
                 </div>

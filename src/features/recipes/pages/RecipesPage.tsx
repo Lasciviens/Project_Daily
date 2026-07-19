@@ -64,9 +64,11 @@ export function RecipesPage() {
             </button>
             <button
               onClick={() => setSuppOpen(true)}
-              className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors whitespace-nowrap"
+              title="Log a supplement (creatine, protein, pre-workout)"
+              aria-label="Log a supplement"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 text-ink-600 bg-cream-50 text-lg rounded-xl hover:border-accent-300 hover:text-accent-700 transition-colors"
             >
-              💊 Supplement
+              💊
             </button>
             {tab === 'library' && (
               <button
