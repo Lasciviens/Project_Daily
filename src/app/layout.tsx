@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
@@ -35,6 +35,21 @@ export function Layout() {
     predicate: query => query.queryKey[0] !== 'dailyBriefing',
   }))
 
+  // Header lifts off the page with a shadow once content scrolls under it —
+  // the standard native-app depth cue. State flips only across the 8px
+  // boundary, so the scroll handler is effectively free (React bails out on
+  // same-value setState).
+  const [scrolled, setScrolled] = useState(false)
+
+  // Native-app hide-on-scroll header (mobile only): slide the top chrome away
+  // when scrolling DOWN, bring it straight back on the first upward flick. The
+  // header is a flex sibling above <main>, so "hidden" = translateY(-100%) plus
+  // a matching negative margin-bottom so <main> grows into the vacated space
+  // (no reflow gap). The max-sm: variants no-op on desktop, so sm+ keeps the
+  // header permanently pinned. Reset to visible on every route change below.
+  const [headerHidden, setHeaderHidden] = useState(false)
+  const lastScrollY = useRef(0)
+
   // <main> is the app's scroll container (not the document — see the
   // app-shell notes in index.css/usePullToRefresh.ts), so react-router no
   // longer gets even the browser's default anywhere near scroll reset:
@@ -43,15 +58,19 @@ export function Layout() {
   // before paint) so a view transition's "new" snapshot is taken already
   // scrolled to top — no visible jump inside the animation.
   const { pathname } = useLocation()
+  // Reset the hide-on-scroll header to visible on every route change — done in
+  // render (React's "adjust state during render" pattern, bails after one pass
+  // via prevPath) because calling setState synchronously inside the effect
+  // below trips the cascading-render lint rule.
+  const [prevPath, setPrevPath] = useState(pathname)
+  if (pathname !== prevPath) {
+    setPrevPath(pathname)
+    setHeaderHidden(false)
+  }
   useLayoutEffect(() => {
     pullToRefresh.containerProps.ref.current?.scrollTo({ top: 0 })
+    lastScrollY.current = 0
   }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Header lifts off the page with a shadow once content scrolls under it —
-  // the standard native-app depth cue. State flips only across the 8px
-  // boundary, so the scroll handler is effectively free (React bails out on
-  // same-value setState).
-  const [scrolled, setScrolled] = useState(false)
 
   // View Transitions (the directional tab slide) don't exist on pre-18 iOS
   // Safari — there, navigation was INSTANT, i.e. "no animations at all" on
@@ -63,10 +82,19 @@ export function Layout() {
 
   return (
     <div className="h-full flex flex-col bg-canvas overflow-hidden">
-      <Nav scrolled={scrolled} />
+      <Nav scrolled={scrolled} collapsed={headerHidden} />
       <main
         className="flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
-        onScroll={e => setScrolled((e.target as HTMLElement).scrollTop > 8)}
+        onScroll={e => {
+          const y = (e.target as HTMLElement).scrollTop
+          setScrolled(y > 8)
+          // Direction + a small dead-zone so tiny jitters don't flap the header;
+          // only hide once past a threshold, show on any real upward move.
+          const last = lastScrollY.current
+          if (y > last + 6 && y > 64) setHeaderHidden(true)
+          else if (y < last - 6) setHeaderHidden(false)
+          lastScrollY.current = y
+        }}
         {...pullToRefresh.containerProps}
       >
         <PullToRefreshIndicator
@@ -221,7 +249,7 @@ function PersonalNavLink() {
   )
 }
 
-function Nav({ scrolled }: { scrolled: boolean }) {
+function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean }) {
   const { isDevRequestsOpen, toggleDevRequests, isAIOpen, toggleAI, openCommandBar } = useUIStore()
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -237,9 +265,9 @@ function Nav({ scrolled }: { scrolled: boolean }) {
     // under the iOS status bar — this padding keeps the header's content below
     // the clock/battery while the header's own background fills the gap, the
     // standard native-app look. 0 everywhere else (browser tabs, desktop).
-    <header className={`vt-pin-header glass-chrome sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] transition-[box-shadow,border-color] duration-300 ${
+    <header className={`vt-pin-header glass-chrome sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] transition-[box-shadow,border-color,transform,margin] duration-300 will-change-transform ${
       scrolled ? 'border-ink-200/80 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.28)]' : 'border-ink-200/40'
-    }`}>
+    } ${collapsed ? 'max-sm:-translate-y-full max-sm:mb-[calc(-3.5rem_-_env(safe-area-inset-top))]' : ''}`}>
       <div className="w-full px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
