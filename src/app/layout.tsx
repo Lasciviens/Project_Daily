@@ -205,7 +205,7 @@ function BottomTabBar() {
             }`}>
               <Icon size={21} strokeWidth={isActive ? 2.25 : 1.75} fill={isActive ? 'currentColor' : 'none'} fillOpacity={isActive ? 0.15 : 0} />
             </span>
-            <span className={`text-[9.5px] leading-none ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
+            <span className={`text-[10px] leading-none ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
           </NavLink>
         )
       })}

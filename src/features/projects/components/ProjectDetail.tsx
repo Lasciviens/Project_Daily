@@ -304,10 +304,10 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                           <span className="text-[10px] text-ink-400 truncate">{phaseName(item.phase_id)}</span>
                           <div className="ml-auto flex items-center gap-0.5">
                             {colIdx > 0 && (
-                              <button onClick={() => moveItem(item, -1)} className="min-h-[44px] min-w-[28px] lg:min-h-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 rounded" title="Move left">←</button>
+                              <button onClick={() => moveItem(item, -1)} className="min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 rounded" title="Move left">←</button>
                             )}
                             {colIdx < BOARD_COLUMNS.length - 1 && (
-                              <button onClick={() => moveItem(item, 1)} className="min-h-[44px] min-w-[28px] lg:min-h-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-accent-600 rounded" title="Move right">→</button>
+                              <button onClick={() => moveItem(item, 1)} className="min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-accent-600 rounded" title="Move right">→</button>
                             )}
                           </div>
                         </div>

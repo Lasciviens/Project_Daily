@@ -136,7 +136,7 @@ export function SettingsMenu() {
                   <button
                     onClick={() => { setAppearance(opt.value); close() }}
                     title={opt.label}
-                    className={`flex-1 min-h-[32px] rounded-md text-xs font-medium transition-colors duration-150 ${
+                    className={`flex-1 min-h-[44px] rounded-md text-xs font-medium transition-colors duration-150 ${
                       appearance === opt.value ? 'bg-cream-50 text-ink-900 shadow-card' : 'text-ink-500 hover:text-ink-800'
                     }`}
                   >

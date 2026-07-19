@@ -142,7 +142,7 @@ export function ProjectItemModal({ open, onClose, projectId, phases, defaultPhas
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-ink-500">Type</label>
                 <select value={type} onChange={e => setType(e.target.value as ItemType)} className={inputCls}>

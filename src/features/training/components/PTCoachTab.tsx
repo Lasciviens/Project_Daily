@@ -89,7 +89,7 @@ export function PTCoachTab() {
               <button
                 key={f.id}
                 onClick={() => setFeeling(f.id)}
-                className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[40px] ${
+                className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${
                   feeling === f.id
                     ? 'bg-accent-500 text-white border-accent-500'
                     : 'text-ink-600 border-ink-200 hover:border-accent-300'
@@ -139,7 +139,7 @@ export function PTCoachTab() {
               <li key={a.id} className="border border-ink-100 rounded-lg">
                 <button
                   onClick={() => setOpenHistoryId(openHistoryId === a.id ? null : a.id)}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left min-h-[40px]"
+                  className="w-full flex items-center gap-2 px-2.5 py-2 text-left min-h-[44px]"
                 >
                   <span className="text-xs font-semibold text-ink-800 shrink-0">{fmtDate(a.date)}</span>
                   <span className="text-[11px] text-ink-400 truncate flex-1">{a.feeling}{a.note ? ` · ${a.note}` : ''}</span>

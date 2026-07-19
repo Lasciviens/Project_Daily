@@ -504,7 +504,7 @@ export function WorkedMuscles() {
             <div className="flex flex-wrap gap-1.5">
               {sideChips.map(m => (
                 <button key={m.slug} onClick={() => toggle(m.slug)}
-                  className={`px-3 min-h-[36px] rounded-full text-xs font-medium transition-colors border flex items-center gap-1.5 ${selected.has(m.slug) ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'}`}>
+                  className={`px-3 min-h-[44px] rounded-full text-xs font-medium transition-colors border flex items-center gap-1.5 ${selected.has(m.slug) ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'}`}>
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: BANDS_META[m.band].color }} />
                   {labelForSlug(m.slug)} · {m.wk.toFixed(1)}/wk · {BAND_WORD[m.band]}
                 </button>

@@ -139,8 +139,8 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
 
       {/* Selection action bar — plan or mark watched the selected episodes */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-accent-50 rounded-lg border border-accent-200">
-          <span className="text-xs text-accent-700 font-medium flex-1">
+        <div className="flex flex-wrap items-center gap-2 mb-2 px-2 py-1.5 bg-accent-50 rounded-lg border border-accent-200">
+          <span className="text-xs text-accent-700 font-medium flex-1 min-w-0">
             {selected.size} episode{selected.size > 1 ? 's' : ''} selected
           </span>
           <button

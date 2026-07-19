@@ -35,7 +35,7 @@ export default function FocusStrip({ tasks, onMarkDone, onClearFocus, onEdit }: 
               <button
                 onClick={() => onClearFocus(task.id)}
                 title="Remove focus"
-                className="text-[10px] text-ink-300 hover:text-red-400 transition-colors min-h-[44px] md:min-h-0 px-1"
+                className="text-[10px] text-ink-300 hover:text-red-400 transition-colors min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center md:inline px-1"
               >
                 ✕
               </button>

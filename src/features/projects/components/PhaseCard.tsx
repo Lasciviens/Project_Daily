@@ -61,7 +61,7 @@ export function PhaseCard({
         <InlineText
           value={phase.name}
           onSave={name => onUpdatePhase({ name })}
-          className="text-sm font-semibold text-ink-800 flex-1"
+          className="text-sm font-semibold text-ink-800 flex-1 min-w-0 truncate"
           inputClass="text-sm font-semibold text-ink-800 flex-1 min-w-0 max-w-[12rem]"
         />
 
