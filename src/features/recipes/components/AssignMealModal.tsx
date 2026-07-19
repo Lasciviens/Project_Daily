@@ -141,7 +141,7 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
                   {library.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
                 {library.length === 0 && (
-                  <p className="text-[11px] text-ink-400">No library ingredients yet — add one via a recipe's "From ingredients" macro mode first.</p>
+                  <p className="text-[11px] text-ink-400">No library foods yet — add one in the Food → Ingredients tab, or scan a barcode from "Log food".</p>
                 )}
                 <div className="flex gap-2">
                   <input type="number" min="0" step="any" value={ingredientQty} onChange={e => setIngredientQty(e.target.value)} placeholder="Qty"

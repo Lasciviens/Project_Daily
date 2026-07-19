@@ -61,7 +61,6 @@ export function FoodTodayTab() {
   const protein  = nut?.protein_g ?? 0
   const proteinPct = targets.protein > 0 ? Math.min(Math.round((protein / targets.protein) * 100), 100) : 0
   const proteinLeft = Math.round(targets.protein - protein)
-  const kcalLeft = Math.round(targets.calories - consumed)
 
   const bySlot = new Map<string, DayMeal[]>()
   for (const m of nut?.meals ?? []) {
@@ -105,10 +104,10 @@ export function FoodTodayTab() {
             {nut && nut.calories > 0 && (
               <div className="mt-3"><MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} /></div>
             )}
+            {/* The ring already shows kcal-left; here lead with protein (the #1
+                adherence metric) + the bodyweight target, no kcal duplicate. */}
             <p className="text-[11px] text-ink-400 mt-2.5 tabular-nums">
-              <span className={proteinLeft < 0 ? 'text-red-500' : 'text-ink-600'}>{proteinLeft >= 0 ? `${proteinLeft}g protein left` : `${-proteinLeft}g over`}</span>
-              <span className="text-ink-300"> · </span>
-              <span className={kcalLeft < 0 ? 'text-red-500' : 'text-ink-600'}>{kcalLeft >= 0 ? `${kcalLeft} kcal left` : `${-kcalLeft} over`}</span>
+              <span className={proteinLeft < 0 ? 'text-red-500' : 'text-ink-600'}>{proteinLeft >= 0 ? `${proteinLeft}g protein left` : `${-proteinLeft}g protein over`}</span>
               {coach.weightKg != null && coach.proteinForGoal != null && (
                 <span className="text-ink-300"> · target {coach.proteinForGoal}g ({targets.goal})</span>
               )}

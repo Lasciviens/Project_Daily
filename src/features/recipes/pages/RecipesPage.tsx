@@ -75,12 +75,14 @@ export function RecipesPage() {
 
       {/* Tab toggle */}
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-        <div className="flex gap-1 bg-cream-50 border border-ink-200 p-1 rounded-xl w-fit flex-wrap">
+        {/* Single non-wrapping row (was flex-wrap → "Meal Plan" dropped to a
+            2nd line at 393px, looking broken); scrolls if ever too narrow. */}
+        <div className="flex gap-1 bg-cream-50 border border-ink-200 p-1 rounded-xl w-fit max-w-full overflow-x-auto scrollbar-none">
           {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
+              className={`shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
                 tab === t ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
               }`}
             >
