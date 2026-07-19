@@ -3,6 +3,27 @@ export type MacroMode = 'manual' | 'from_ingredients'
 export type FoodCategory = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'supplement'
 export type MealSlot = FoodCategory
 
+// The 16 top-level Matvaretabellen food groups (drives the Foods filter pills
+// + the category select). Matvaretabellen rows are auto-categorized (migration
+// 058); hand-made / barcode rows default to null → "Other".
+export const FOOD_GROUPS = [
+  'Dairy products', 'Egg', 'Meat and poultry', 'Fish and shellfish',
+  'Cereals, bread and cakes', 'Vegetables', 'Sugar and sweet products', 'Cooking fat',
+  'Beverages', 'Other foods and dishes', 'Infant food', 'Legumes',
+  'Fruit and berries', 'Nuts and seeds', 'Potatoes', 'Herbs and spices',
+] as const
+export type FoodGroup = typeof FOOD_GROUPS[number]
+
+// One-tap portion preset for a library food (recipe_ingredient_portions,
+// migration 057). Matvaretabellen ships up to 5 per food; user can add own.
+export interface IngredientPortion {
+  id:                    string
+  library_ingredient_id: string
+  label:                 string
+  grams:                 number
+  sort_order:            number
+}
+
 export interface IngredientLibraryItem {
   id:            string
   user_id:       string
@@ -16,7 +37,10 @@ export interface IngredientLibraryItem {
   sugar_g:       number | null   // per 100g
   serving_label: string | null   // e.g. '1 scoop'
   serving_grams: number | null   // grams that label equals
+  food_group_id: string | null   // raw Matvaretabellen group id (e.g. '4.1.2')
+  food_group:    string | null   // denormalized top-level group name
   created_at:    string
+  portions?:     IngredientPortion[]   // hydrated on fetch (migration 057)
 }
 
 export interface CreateIngredientLibraryItemInput {
@@ -30,6 +54,7 @@ export interface CreateIngredientLibraryItemInput {
   sugar_g?:       number | null
   serving_label?: string | null
   serving_grams?: number | null
+  food_group?:    string | null
 }
 
 // One diary row — what was ACTUALLY eaten (vs recipe_meal_plans = the plan).
