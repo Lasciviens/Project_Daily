@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { toast } from '../../../app/store'
 import { useRecipes } from '../hooks/useRecipes'
@@ -31,25 +31,29 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
   const [servings,    setServings]    = useState('1')
   const [saving,      setSaving]      = useState(false)
 
-  useEffect(() => {
-    if (!open) return
-    if (existing?.library_ingredient_id) {
-      setMode('ingredient')
-      setIngredientId(existing.library_ingredient_id)
-      setIngredientQty(existing.ingredient_quantity != null ? String(existing.ingredient_quantity) : '')
-      setIngredientUnit(existing.ingredient_unit ?? 'g')
-    } else if (existing?.recipe_id) {
-      setMode('recipe')
-      setRecipeId(existing.recipe_id)
-    } else if (existing?.custom_title) {
-      setMode('custom')
-      setCustomTitle(existing.custom_title)
-    } else {
-      setMode('recipe'); setRecipeId(''); setCustomTitle('')
-      setIngredientId(''); setIngredientQty(''); setIngredientUnit('g')
+  // Prefill when the modal opens (or the edited entry changes). Adjusting
+  // state during render on a prop change is React's recommended pattern over
+  // a setState-in-effect (matches FoodLogModal).
+  const [seed, setSeed] = useState<{ open: boolean; existing: MealPlanEntry | null }>({ open: false, existing: null })
+  if (open !== seed.open || existing !== seed.existing) {
+    setSeed({ open, existing: existing ?? null })
+    if (open) {
+      if (existing?.library_ingredient_id) {
+        setMode('ingredient')
+        setIngredientId(existing.library_ingredient_id)
+        setIngredientQty(existing.ingredient_quantity != null ? String(existing.ingredient_quantity) : '')
+        setIngredientUnit(existing.ingredient_unit ?? 'g')
+      } else if (existing?.recipe_id) {
+        setMode('recipe'); setRecipeId(existing.recipe_id)
+      } else if (existing?.custom_title) {
+        setMode('custom'); setCustomTitle(existing.custom_title)
+      } else {
+        setMode('recipe'); setRecipeId(''); setCustomTitle('')
+        setIngredientId(''); setIngredientQty(''); setIngredientUnit('g')
+      }
+      setServings(String(existing?.servings ?? 1))
     }
-    setServings(String(existing?.servings ?? 1))
-  }, [open, existing])
+  }
 
   async function handleSave() {
     if (mode === 'recipe' && !recipeId)       { toast.error('Pick a recipe'); return }
@@ -60,6 +64,7 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
     const tid = toast.loading('Saving…')
     try {
       await setEntry.mutateAsync({
+        id: existing?.id,   // edit-in-place when present (was a broken upsert → 42P10)
         date, meal_slot: mealSlot,
         recipe_id:             mode === 'recipe'     ? recipeId : null,
         custom_title:          mode === 'custom'     ? customTitle.trim() : null,

@@ -10,7 +10,7 @@ import { FoodLogModal } from '../../../recipes/components/FoodLogModal'
 import { useRecentFoods, useAddFoodLogEntries, useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
 import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrary'
 import { ingredientSnapshot, type RecentFood } from '../../../recipes/api/foodLogApi'
-import type { MealSlot, FoodLogEntryInput } from '../../../recipes/types'
+import type { MealSlot, FoodLogEntryInput, MealPlanEntry } from '../../../recipes/types'
 import type { DayMeal } from '../../api/dayNutritionApi'
 
 // Re-log a previously-eaten food into a given slot, carrying its ORIGINAL
@@ -70,7 +70,7 @@ function SlotRow({ date, slot, label, meals }: {
   meals: DayMeal[]
 }) {
   const [adding, setAdding] = useState(false)
-  const [editPlan, setEditPlan] = useState(false)   // ✎ on an existing PLAN row
+  const [editPlan, setEditPlan] = useState<MealPlanEntry | null>(null)   // ✎ on an existing PLAN row
   const [logOpen, setLogOpen] = useState(false)      // full logger (diary)
   const [logQuery, setLogQuery] = useState('')
   const [text, setText] = useState('')
@@ -111,9 +111,9 @@ function SlotRow({ date, slot, label, meals }: {
               <span className="text-ink-400 w-16 shrink-0">{i === 0 ? label : ''}</span>
               <span className="text-ink-700 flex-1 truncate">{meal.title}</span>
               {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
-              {meal.source === 'plan' && (
+              {meal.source === 'plan' && meal.planEntry && (
                 <button
-                  onClick={() => setEditPlan(true)}
+                  onClick={() => setEditPlan(meal.planEntry!)}
                   className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
                   title="Edit planned meal (recipe/ingredient/servings)"
                 >✎</button>
@@ -169,7 +169,7 @@ function SlotRow({ date, slot, label, meals }: {
       {/* ✎ edits an existing PLANNED entry (recipe_meal_plans) in the full
           planner — planning a future day still lives here. */}
       {editPlan && (
-        <AssignMealModal open onClose={() => setEditPlan(false)} date={date} mealSlot={slot} />
+        <AssignMealModal open onClose={() => setEditPlan(null)} date={date} mealSlot={slot} existing={editPlan} />
       )}
     </li>
   )

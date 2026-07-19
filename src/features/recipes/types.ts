@@ -134,6 +134,7 @@ export interface MealPlanEntry {
 }
 
 export interface CreateMealPlanEntryInput {
+  id?:                    string   // present → update that plan row; absent → insert
   date:                   string
   meal_slot:              MealSlot
   recipe_id?:             string | null
