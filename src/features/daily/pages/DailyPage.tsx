@@ -54,6 +54,12 @@ export function DailyPage() {
       active ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
     }`
 
+  // Full-width segmented-control cell for the mobile period selector.
+  const segBtn = (active: boolean) =>
+    `min-h-[44px] flex items-center justify-center text-xs font-semibold rounded-lg transition-colors duration-150 ${
+      active ? 'bg-accent-500 text-white' : 'text-ink-600 hover:bg-ink-100'
+    }`
+
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
       {/* ── Single compact header row ──
@@ -63,7 +69,34 @@ export function DailyPage() {
           right-anchored. Because neither slot's width depends on its text,
           NOTHING can shift when switching Yesterday/Today/Tomorrow — the
           row geometry is fixed by construction. */}
-      <div className="flex items-center gap-x-3 gap-y-2 flex-wrap mb-4">
+      {/* ── Mobile header: two tight rows (date + group tabs, then a full-width
+          Today/Week/Month segmented control). Yesterday/Tomorrow are reachable
+          via the ‹ › DateNav, so the phone drops those two redundant tabs that
+          used to crush the selector off-screen. ── */}
+      <div className="sm:hidden mb-3 flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <DateNav
+              size="md"
+              label={format(viewDate, 'EEE, d MMM')}
+              labelClassName="text-base font-bold text-ink-900 truncate"
+              onPrev={() => { setViewDate(d => addDays(d, -1)); setMode('day') }}
+              onNext={() => { setViewDate(d => addDays(d,  1)); setMode('day') }}
+              onToday={() => { setViewDate(new Date()); setMode('day') }}
+              isToday={mode === 'day' && isToday(viewDate)}
+            />
+          </div>
+          <div className="shrink-0"><PersonalTabs /></div>
+        </div>
+        <div className="grid grid-cols-3 gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl">
+          <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={segBtn(mode === 'day' && isToday(viewDate))}>Today</button>
+          <button onClick={() => setMode('week')} className={segBtn(mode === 'week')}>Week</button>
+          <button onClick={() => setMode('month')} className={segBtn(mode === 'month')}>Month</button>
+        </div>
+      </div>
+
+      {/* ── Desktop header: the original single compact row ── */}
+      <div className="hidden sm:flex items-center gap-x-3 gap-y-2 flex-wrap mb-4">
         <div className="flex items-center gap-3 min-w-0 sm:w-[400px] sm:flex-shrink-0">
           <DateNav
             size="md"

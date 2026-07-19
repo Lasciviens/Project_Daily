@@ -35,19 +35,20 @@ export function MediaPage() {
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
 
   return (
-    <div className="w-full px-4 sm:px-6 py-6">
+    <div className="w-full px-4 sm:px-6 py-4 sm:py-6">
       <div className="flex gap-4 items-start">
 
         {/* ── Main content ── */}
         <div className="flex-1 min-w-0 lg:max-w-[calc(100%-22rem)] stagger-in">
 
           {/* Top section with scoped backdrop */}
-          <div className="relative overflow-hidden rounded-xl mb-4 p-4 bg-cream-50/40">
+          <div className="relative overflow-hidden rounded-xl mb-3 sm:mb-4 p-3 sm:p-4 bg-cream-50/40">
             <MediaBackdrop />
             <div className="relative z-10">
-              <h1 className="text-lg font-semibold text-ink-900 mb-4">Media</h1>
+              {/* Redundant on mobile — the bottom tab bar already labels Media. */}
+              <h1 className="hidden sm:block text-lg font-semibold text-ink-900 mb-4">Media</h1>
 
-              <div className="mb-4">
+              <div className="mb-3 sm:mb-4">
                 <MediaSearch onSelectResult={(id, type) => openDetail(id, type)} />
               </div>
 

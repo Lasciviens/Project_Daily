@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
@@ -35,20 +35,15 @@ export function Layout() {
     predicate: query => query.queryKey[0] !== 'dailyBriefing',
   }))
 
-  // Header lifts off the page with a shadow once content scrolls under it —
-  // the standard native-app depth cue. State flips only across the 8px
-  // boundary, so the scroll handler is effectively free (React bails out on
-  // same-value setState).
-  const [scrolled, setScrolled] = useState(false)
-
-  // Native-app hide-on-scroll header (mobile only): slide the top chrome away
-  // when scrolling DOWN, bring it straight back on the first upward flick. The
-  // header is a flex sibling above <main>, so "hidden" = translateY(-100%) plus
-  // a matching negative margin-bottom so <main> grows into the vacated space
-  // (no reflow gap). The max-sm: variants no-op on desktop, so sm+ keeps the
-  // header permanently pinned. Reset to visible on every route change below.
-  const [headerHidden, setHeaderHidden] = useState(false)
-  const lastScrollY = useRef(0)
+  // Header depth-shadow (scrolled) + native hide-on-scroll (headerHidden) both
+  // live in the UI store, fed by whichever container actually scrolls: <main>
+  // here, OR PersonalLayout's inner scroller on /daily,/shop,/recipes (main
+  // never scrolls there). The header slides up (translateY(-100%)) with a
+  // matching negative margin so <main> fills the gap; max-sm: no-ops on desktop.
+  const scrolled = useUIStore(s => s.chromeScrolled)
+  const headerHidden = useUIStore(s => s.chromeHidden)
+  const reportScroll = useUIStore(s => s.reportScroll)
+  const resetChrome = useUIStore(s => s.resetChrome)
 
   // <main> is the app's scroll container (not the document — see the
   // app-shell notes in index.css/usePullToRefresh.ts), so react-router no
@@ -58,18 +53,9 @@ export function Layout() {
   // before paint) so a view transition's "new" snapshot is taken already
   // scrolled to top — no visible jump inside the animation.
   const { pathname } = useLocation()
-  // Reset the hide-on-scroll header to visible on every route change — done in
-  // render (React's "adjust state during render" pattern, bails after one pass
-  // via prevPath) because calling setState synchronously inside the effect
-  // below trips the cascading-render lint rule.
-  const [prevPath, setPrevPath] = useState(pathname)
-  if (pathname !== prevPath) {
-    setPrevPath(pathname)
-    setHeaderHidden(false)
-  }
   useLayoutEffect(() => {
     pullToRefresh.containerProps.ref.current?.scrollTo({ top: 0 })
-    lastScrollY.current = 0
+    resetChrome() // header visible + shadow cleared on each new route (store action, not setState)
   }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // View Transitions (the directional tab slide) don't exist on pre-18 iOS
@@ -85,16 +71,7 @@ export function Layout() {
       <Nav scrolled={scrolled} collapsed={headerHidden} />
       <main
         className="flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
-        onScroll={e => {
-          const y = (e.target as HTMLElement).scrollTop
-          setScrolled(y > 8)
-          // Direction + a small dead-zone so tiny jitters don't flap the header;
-          // only hide once past a threshold, show on any real upward move.
-          const last = lastScrollY.current
-          if (y > last + 6 && y > 64) setHeaderHidden(true)
-          else if (y < last - 6) setHeaderHidden(false)
-          lastScrollY.current = y
-        }}
+        onScroll={e => reportScroll((e.target as HTMLElement).scrollTop)}
         {...pullToRefresh.containerProps}
       >
         <PullToRefreshIndicator
