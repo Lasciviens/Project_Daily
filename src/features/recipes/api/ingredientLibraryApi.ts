@@ -83,12 +83,13 @@ export async function createIngredientLibraryItem(input: CreateIngredientLibrary
 }
 
 export async function updateIngredientLibraryItem(id: string, input: CreateIngredientLibraryItemInput): Promise<IngredientLibraryItem> {
-  const { data, error } = await supabase
-    .from('recipe_ingredient_library')
-    .update(libraryRow(input))
-    .eq('id', id)
-    .select()
-    .single()
+  const row: Record<string, unknown> = libraryRow(input)
+  let { data, error } = await supabase.from('recipe_ingredient_library').update(row).eq('id', id).select().single()
+  // Same graceful pre-059 fallback as create: image_url column may not exist yet.
+  if (error && 'image_url' in row && /image_url/i.test(error.message)) {
+    delete row.image_url
+    ;({ data, error } = await supabase.from('recipe_ingredient_library').update(row).eq('id', id).select().single())
+  }
   if (error) throw error
   return data
 }

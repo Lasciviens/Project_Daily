@@ -1,7 +1,7 @@
 import { fetchHevyWorkouts, fetchHevyWorkoutDetail, fetchHevyRoutines } from '../../training/api/hevyApi'
 import { fetchHealthMetricSeries } from '../../training/api/healthApi'
 import { computeSleepSummary, computeDailySeries } from '../../training/healthAggregate'
-import { fetchMealPlan } from '../../recipes/api/mealPlanApi'
+import { fetchFoodLogRange } from '../../recipes/api/foodLogApi'
 import { fetchAssessments } from '../../training/api/ptCoachApi'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import type { HevySet } from '../../training/types.hevy'
@@ -83,13 +83,14 @@ export async function buildCoachContext(): Promise<string> {
     if (fatSeries.length) ctx.bodyfat_pct = fatSeries.map(d => ({ d: d.date, v: r1(d.value) }))
   } catch { /* optional */ }
 
-  // ── Nutrition: planned meals (titles + recipe kcal where known) ──
+  // ── Nutrition: what was ACTUALLY eaten (the diary), not the plan — the coach
+  //    must ground advice on real intake (food_log_entries), which is what the
+  //    Today/Log-food flow fills. Macros are the at-log-time snapshot. ──
   try {
-    const meals = await fetchMealPlan(from, today)
-    ctx.nutrition = meals.map(m => ({
-      d: m.date, slot: m.meal_slot,
-      t: m.custom_title ?? m.recipe?.title ?? m.ingredient?.name ?? '?',
-      kcal: m.recipe?.calories ?? null,
+    const diary = await fetchFoodLogRange(from, today)
+    ctx.nutrition = diary.map(m => ({
+      d: m.date, slot: m.meal_slot, t: m.title,
+      kcal: m.calories ?? null, p: m.protein_g ?? null,
     }))
   } catch { /* optional */ }
 

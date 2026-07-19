@@ -30,6 +30,39 @@ export async function deleteFoodLogEntry(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Edit an existing diary row — a fresh snapshot at edit time (the diary
+// contract: editing THIS row re-snapshots it; other rows/history untouched).
+// Callers pass a partial patch of the columns they changed.
+export async function updateFoodLogEntry(
+  id: string,
+  patch: Partial<Pick<FoodLogEntry, 'meal_slot' | 'date' | 'custom_title' | 'quantity' | 'unit' | 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g'>>,
+): Promise<void> {
+  const { error } = await supabase.from('food_log_entries').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+// A diary row with its display title resolved (library/recipe/custom).
+export type LoggedFood = FoodLogEntry & { title: string }
+
+// The DIARY over a date range — feeds the Meal Plan week view so a day you
+// actually LOGGED (food_log_entries) shows up next to what you PLANNED
+// (recipe_meal_plans), instead of the grid looking empty. Same name-joins as
+// fetchFoodLog so titles resolve without a second round-trip.
+export async function fetchFoodLogRange(fromDate: string, toDate: string): Promise<LoggedFood[]> {
+  const { data, error } = await supabase
+    .from('food_log_entries')
+    .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
+    .gte('date', fromDate)
+    .lte('date', toDate)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  const rows = (data ?? []) as unknown as (FoodLogEntry & { ingredient: { name: string } | null; recipe: { title: string } | null })[]
+  return rows.map(({ ingredient, recipe, ...row }) => ({
+    ...row,
+    title: ingredient?.name ?? recipe?.title ?? row.custom_title ?? '—',
+  }))
+}
+
 // A distinct food the user has eaten before, ready to re-log in one tap with
 // its ORIGINAL snapshot macros (the whole point of unifying the log paths — a
 // recent chip must carry real macros, not a macro-less title). Sourced from the

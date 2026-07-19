@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { WEIGHT_UNITS } from '../../recipes/api/recipesApi'
 import type { MealPlanEntry } from '../../recipes/types'
 
 // A single planned meal for a day, resolved to its display title + macro
@@ -21,6 +22,15 @@ export interface DayMeal {
   source:    'plan' | 'log'
   /** For plan rows only — the raw entry so the Daily ✎ can edit it in place. */
   planEntry?: MealPlanEntry
+  /** For log rows only — the raw diary fields so a ✎ can edit the entry in
+      place (kind is inferable: library / recipe / custom). */
+  logEntry?: {
+    library_ingredient_id: string | null
+    recipe_id:             string | null
+    custom_title:          string | null
+    quantity:              number | null
+    unit:                  string | null
+  }
 }
 
 export interface DayNutrition {
@@ -34,9 +44,10 @@ export interface DayNutrition {
 }
 
 // Only weight/volume units let a per-100g library macro be scaled to a real
-// amount; a "piece"/"clove"/etc. quantity can't be converted, so it's skipped
-// (same rule the recipe macro compute uses).
-const SCALABLE_UNITS = new Set(['g', 'gram', 'grams', 'ml'])
+// amount; a "piece"/"clove"/etc. quantity can't be converted, so it's skipped.
+// Shares recipesApi's WEIGHT_UNITS so the two paths never drift (was a local
+// narrower set that dropped 'milliliter(s)'/'millilitre(s)').
+const SCALABLE_UNITS = WEIGHT_UNITS
 
 interface MealRow {
   id:                    string
@@ -56,6 +67,8 @@ const SLOT_ORDER: Record<DayMeal['meal_slot'], number> = { breakfast: 0, lunch: 
 interface LogRow {
   id: string
   meal_slot: DayMeal['meal_slot']
+  library_ingredient_id: string | null
+  recipe_id: string | null
   custom_title: string | null
   quantity: number | null
   unit: string | null
@@ -84,7 +97,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       .eq('date', date),
     supabase
       .from('food_log_entries')
-      .select('id, meal_slot, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, ' +
+      .select('id, meal_slot, library_ingredient_id, recipe_id, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, ' +
         'ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
       .eq('date', date),
   ])
@@ -158,6 +171,13 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       fiber_g:   Math.round(row.fiber_g   ?? 0),
       sugar_g:   Math.round(row.sugar_g   ?? 0),
       source:    'log' as const,
+      logEntry: {
+        library_ingredient_id: row.library_ingredient_id,
+        recipe_id:             row.recipe_id,
+        custom_title:          row.custom_title,
+        quantity:              row.quantity,
+        unit:                  row.unit,
+      },
     }
   })
 
