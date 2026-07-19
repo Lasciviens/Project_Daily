@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
-import { useAddFoodLogEntries } from '../hooks/useFoodLog'
-import { ingredientSnapshot } from '../api/foodLogApi'
+import { useAddFoodLogEntries, useRecentFoods } from '../hooks/useFoodLog'
+import { useRecipes } from '../hooks/useRecipes'
+import { ingredientSnapshot, recipeSnapshot, type RecentFood } from '../api/foodLogApi'
 import { lookupBarcode } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
@@ -58,6 +59,8 @@ interface Props {
 
 export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }: Props) {
   const { data: library = [] } = useIngredientLibrary()
+  const { data: recents = [] } = useRecentFoods()
+  const { data: recipes = [] } = useRecipes()
   const createIngredient = useCreateIngredientLibraryItem()
   const addEntries = useAddFoodLogEntries()
   const { data: nut } = useDayNutrition(date)
@@ -116,6 +119,25 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
     } catch {
       toast.dismiss(tid); toast.error('Barcode lookup failed')
     } finally { setScanning(false) }
+  }
+
+  // Recent/frequent food (from the diary) → add to the basket if it's a library
+  // ingredient; a recipe/custom recent re-logs its own snapshot directly.
+  function addRecent(r: RecentFood) {
+    const lib = r.library_ingredient_id ? library.find(l => l.id === r.library_ingredient_id) : null
+    if (lib) { addToBasket(lib); return }
+    addEntries.mutate([{
+      date, meal_slot: slot,
+      library_ingredient_id: r.library_ingredient_id, recipe_id: r.recipe_id, custom_title: r.custom_title,
+      quantity: r.quantity, unit: r.unit,
+      calories: r.calories, protein_g: r.protein_g, carbs_g: r.carbs_g, fat_g: r.fat_g, fiber_g: r.fiber_g, sugar_g: r.sugar_g,
+    }], { onSuccess: onClose })
+  }
+
+  // Log a saved recipe as ONE named diary line (recipe_id + snapshot) — the
+  // "I ate <dish>" path. Servings default 1; adjust from the recipe detail.
+  function logRecipe(rec: typeof recipes[number]) {
+    addEntries.mutate([{ date, meal_slot: slot, recipe_id: rec.id, quantity: 1, unit: 'serving', ...recipeSnapshot(rec, 1) }], { onSuccess: onClose })
   }
 
   const q = query.trim().toLowerCase()
@@ -194,6 +216,37 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
                 </button>
               ))}
             </div>
+
+            {/* Recent / frequent first (from the diary) — the fast path: what
+                you actually eat, before the 2000-row alphabetical library. */}
+            {!q && recents.length > 0 && (
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1">🕒 Recent</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {recents.slice(0, 8).map(r => (
+                    <button key={r.key} type="button" onClick={() => addRecent(r)}
+                      className="text-xs px-2.5 min-h-[36px] rounded-full border border-ink-200 bg-cream-100 text-ink-700 hover:border-accent-400 transition-colors press-feedback">
+                      + {r.title}{r.protein_g != null && r.protein_g > 0 && <span className="text-ink-400 ml-1">{Math.round(r.protein_g)}p</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Log a saved meal as ONE named line (recipe → diary). */}
+            {recipes.length > 0 && recipes.some(r => !q || r.title.toLowerCase().includes(q)) && (
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1">🍲 Log a saved meal</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {recipes.filter(r => !q || r.title.toLowerCase().includes(q)).slice(0, 6).map(r => (
+                    <button key={r.id} type="button" onClick={() => logRecipe(r)}
+                      className="text-xs px-2.5 min-h-[36px] rounded-full border border-accent-200 bg-accent-50/50 text-accent-700 hover:border-accent-400 transition-colors">
+                      🍲 {r.title}{r.calories != null && <span className="text-accent-500/70 ml-1">{Math.round(r.calories)}kcal</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Search + pick */}
             <div>
