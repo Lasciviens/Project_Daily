@@ -208,6 +208,13 @@ function BottomTabBar() {
               // of the current one slides content in from the right, and
               // vice versa, matching how native tab bars communicate it.
               e.preventDefault()
+              // Re-tapping the ALREADY-active tab scrolls its page back to the
+              // top (and the hide-on-scroll header slides back in) — the
+              // standard iOS/Android tab-bar gesture — instead of a no-op nav.
+              if (isActive) {
+                document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
+                return
+              }
               navigateWithTransition(tab.to, activeIndex >= 0 && index < activeIndex ? 'back' : 'forward')
             }}
             className={`flex-1 min-h-[58px] flex flex-col items-center justify-center gap-0.5 py-1.5 transition-colors duration-150 press-feedback ${
