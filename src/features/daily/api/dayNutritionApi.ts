@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import type { MealPlanEntry } from '../../recipes/types'
 
 // A single planned meal for a day, resolved to its display title + macro
 // contribution. Macros are the TOTAL for that entry (recipe per-serving ×
@@ -17,6 +18,8 @@ export interface DayMeal {
   /** 'plan' = recipe_meal_plans row; 'log' = food_log_entries row (what was
       actually eaten, macros snapshotted at log time — migration 053). */
   source:    'plan' | 'log'
+  /** For plan rows only — the raw entry so the Daily ✎ can edit it in place. */
+  planEntry?: MealPlanEntry
 }
 
 export interface DayNutrition {
@@ -120,6 +123,13 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       fat_g:     Math.round(fat_g),
       fiber_g:   Math.round(fiber_g),
       source:    'plan' as const,
+      planEntry: {
+        id: row.id, date, meal_slot: row.meal_slot,
+        recipe_id: row.recipe_id, custom_title: row.custom_title,
+        library_ingredient_id: row.library_ingredient_id,
+        ingredient_quantity: row.ingredient_quantity, ingredient_unit: row.ingredient_unit,
+        servings,
+      } as MealPlanEntry,
     }
   })
 
