@@ -13,6 +13,7 @@ export interface DayMeal {
   protein_g: number
   carbs_g:   number
   fat_g:     number
+  fiber_g:   number
   /** 'plan' = recipe_meal_plans row; 'log' = food_log_entries row (what was
       actually eaten, macros snapshotted at log time — migration 053). */
   source:    'plan' | 'log'
@@ -24,6 +25,7 @@ export interface DayNutrition {
   protein_g: number
   carbs_g:   number
   fat_g:     number
+  fiber_g:   number
 }
 
 // Only weight/volume units let a per-100g library macro be scaled to a real
@@ -41,7 +43,7 @@ interface MealRow {
   ingredient_unit:       string | null
   servings:              number | null
   recipe:                { title: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null } | null
-  ingredient:            { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null } | null
+  ingredient:            { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null } | null
 }
 
 const SLOT_ORDER: Record<DayMeal['meal_slot'], number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3, supplement: 4 }
@@ -56,6 +58,7 @@ interface LogRow {
   protein_g: number | null
   carbs_g: number | null
   fat_g: number | null
+  fiber_g: number | null
   ingredient: { name: string } | null
   recipe: { title: string } | null
 }
@@ -66,12 +69,12 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       .from('recipe_meal_plans')
       .select(
         '*, recipe:recipes(title, calories, protein_g, carbs_g, fat_g), ' +
-        'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g)'
+        'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g, fiber_g)'
       )
       .eq('date', date),
     supabase
       .from('food_log_entries')
-      .select('id, meal_slot, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, ' +
+      .select('id, meal_slot, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, ' +
         'ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
       .eq('date', date),
   ])
@@ -84,7 +87,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   const meals: DayMeal[] = ((data ?? []) as unknown as MealRow[]).map(row => {
     const servings = row.servings ?? 1
     let title = row.custom_title ?? '—'
-    let calories = 0, protein_g = 0, carbs_g = 0, fat_g = 0
+    let calories = 0, protein_g = 0, carbs_g = 0, fat_g = 0, fiber_g = 0
 
     if (row.recipe) {
       title = row.recipe.title
@@ -92,6 +95,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       protein_g = (row.recipe.protein_g ?? 0) * servings
       carbs_g   = (row.recipe.carbs_g   ?? 0) * servings
       fat_g     = (row.recipe.fat_g     ?? 0) * servings
+      // recipes carry no fiber column (only ingredients do) → fiber stays 0.
     } else if (row.ingredient) {
       const qty  = row.ingredient_quantity ?? 0
       const unit = (row.ingredient_unit ?? '').toLowerCase()
@@ -102,6 +106,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       protein_g = (row.ingredient.protein_g ?? 0) * factor
       carbs_g   = (row.ingredient.carbs_g   ?? 0) * factor
       fat_g     = (row.ingredient.fat_g     ?? 0) * factor
+      fiber_g   = (row.ingredient.fiber_g   ?? 0) * factor
     }
 
     return {
@@ -113,6 +118,7 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       protein_g: Math.round(protein_g),
       carbs_g:   Math.round(carbs_g),
       fat_g:     Math.round(fat_g),
+      fiber_g:   Math.round(fiber_g),
       source:    'plan' as const,
     }
   })
@@ -129,13 +135,14 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
       protein_g: Math.round(row.protein_g ?? 0),
       carbs_g:   Math.round(row.carbs_g   ?? 0),
       fat_g:     Math.round(row.fat_g     ?? 0),
+      fiber_g:   Math.round(row.fiber_g   ?? 0),
       source:    'log' as const,
     }
   })
 
   const allMeals = [...meals, ...logMeals].sort((a, b) => SLOT_ORDER[a.meal_slot] - SLOT_ORDER[b.meal_slot])
 
-  const sum = (k: keyof Pick<DayMeal, 'calories' | 'protein_g' | 'carbs_g' | 'fat_g'>) =>
+  const sum = (k: keyof Pick<DayMeal, 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g'>) =>
     allMeals.reduce((acc, m) => acc + m[k], 0)
 
   return {
@@ -144,5 +151,6 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
     protein_g: sum('protein_g'),
     carbs_g:   sum('carbs_g'),
     fat_g:     sum('fat_g'),
+    fiber_g:   sum('fiber_g'),
   }
 }
