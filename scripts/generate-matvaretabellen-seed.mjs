@@ -1,3 +1,11 @@
+// ⚠️ DEPRECATED as a BULK SEED. The app moved to an ON-DEMAND food model
+// (barcode + branded/generic search add a food to the library on first use —
+// see migration 059 + the food-search edge function). Migration 056 (the 2121-
+// row bulk seed) was DELETED and 058 is a dead no-op. DO NOT run this to
+// regenerate those seeds. It is retained ONLY for its foodId→food-group map +
+// per-100g normalization, which the on-demand Matvaretabellen path reuses at
+// runtime. (If you resurrect a bulk seed later, that's a deliberate decision.)
+//
 // Generates supabase/migrations/056_seed_matvaretabellen.sql from the official
 // Norwegian Food Composition Table (Matvaretabellen) open JSON API.
 //

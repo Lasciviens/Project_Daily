@@ -39,6 +39,7 @@ export interface IngredientLibraryItem {
   serving_grams: number | null   // grams that label equals
   food_group_id: string | null   // raw Matvaretabellen group id (e.g. '4.1.2')
   food_group:    string | null   // denormalized top-level group name
+  image_url:     string | null   // branded product photo (OFF/Kassalapp), migration 059
   created_at:    string
   portions?:     IngredientPortion[]   // hydrated on fetch (migration 057)
 }
@@ -55,6 +56,10 @@ export interface CreateIngredientLibraryItemInput {
   serving_label?: string | null
   serving_grams?: number | null
   food_group?:    string | null
+  food_group_id?: string | null
+  image_url?:     string | null
+  source?:        string | null
+  source_ref?:    string | null
 }
 
 // One diary row — what was ACTUALLY eaten (vs recipe_meal_plans = the plan).
