@@ -50,8 +50,8 @@ export function RecipesPage() {
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
       {/* Header banner — rotating recipe-photo backdrop, Media/Training-style */}
       <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-5 w-full min-h-[92px]">
-        <RecipeBackdrop recipes={recipes} />
-        <div className="absolute inset-0 bg-gradient-to-r from-cream-50/90 via-cream-50/60 to-cream-50/10" aria-hidden />
+        <RecipeBackdrop />
+        <div className="absolute inset-0 bg-gradient-to-r from-cream-50/92 via-cream-50/70 to-cream-50/20 dark:from-cream-50/90 dark:via-cream-50/70 dark:to-cream-50/30" aria-hidden />
         {/* Single row on desktop; on mobile it stacks into short rows (title /
             tabs+day-nav / actions) so the sub-tabs are never pushed off-screen. */}
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center gap-2.5 lg:gap-3 px-4 py-3 sm:px-5">

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { Dialog, DialogPanel, DialogBackdrop, Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { useAddFoodLogEntries, useRecentFoods } from '../hooks/useFoodLog'
 import { useQueryClient } from '@tanstack/react-query'
@@ -291,38 +291,47 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
               {/* ── LEFT: recent · saved meals · search · new ingredient ── */}
               <div className="flex flex-col gap-4 min-w-0">
-                {/* Recent / frequent first (from the diary) — the fast path:
-                    what you ACTUALLY eat. No alphabetical library dump. */}
-                {!q && recents.length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1">🕒 Recent</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {recents.slice(0, 6).map(r => (
-                        <button key={r.key} type="button" onClick={() => addRecent(r)}
-                          className="text-xs px-2.5 min-h-[36px] rounded-full border border-ink-200 bg-cream-100 text-ink-700 hover:border-accent-400 transition-colors press-feedback">
-                          + {r.title}{r.protein_g != null && r.protein_g > 0 && <span className="text-ink-400 ml-1">{Math.round(r.protein_g)}p</span>}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Log a saved meal — tap opens the portion picker (free %). */}
-                {savedMeals.length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1">🍲 Saved meal</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {savedMeals.map(r => (
-                        <button key={r.id} type="button" onClick={() => setPortionRecipe(r)}
-                          className={`text-xs px-2.5 min-h-[36px] rounded-full border transition-colors ${
-                            portionRecipe?.id === r.id
-                              ? 'border-accent-500 bg-accent-500 text-white font-semibold'
-                              : 'border-accent-200 bg-accent-50/50 text-accent-700 hover:border-accent-400'
-                          }`}>
-                          🍲 {r.title}{r.calories != null && <span className={`ml-1 ${portionRecipe?.id === r.id ? 'text-white/70' : 'text-accent-500/70'}`}>{Math.round(r.calories)}kcal{r.servings > 1 ? `·${r.servings}p` : ''}</span>}
-                        </button>
-                      ))}
-                    </div>
+                {/* Recent + Saved meal as compact dropdowns — the chip walls ate
+                    a lot of vertical space on a phone; collapsed menus keep the
+                    fast paths one tap away without the clutter. */}
+                {(recents.length > 0 || savedMeals.length > 0) && (
+                  <div className="flex flex-wrap gap-2">
+                    {recents.length > 0 && (
+                      <Menu as="div" className="relative">
+                        <MenuButton className="press-feedback inline-flex items-center gap-1 min-h-[40px] px-3 rounded-xl border border-ink-200 bg-cream-100 text-sm text-ink-700 hover:border-accent-400 transition-colors">
+                          🕒 Recent <span className="text-ink-400">({recents.length})</span> <span className="text-ink-300 text-xs">▾</span>
+                        </MenuButton>
+                        <MenuItems anchor="bottom start" className="z-[70] mt-1 w-64 max-h-72 overflow-y-auto rounded-xl border border-ink-200 bg-cream-50 shadow-lg p-1 focus:outline-none">
+                          {recents.map(r => (
+                            <MenuItem key={r.key}>
+                              <button type="button" onClick={() => addRecent(r)}
+                                className="w-full flex items-center gap-2 text-left px-3 min-h-[40px] rounded-lg text-sm text-ink-700 data-[focus]:bg-accent-50">
+                                <span className="flex-1 min-w-0 truncate">+ {r.title}</span>
+                                {r.protein_g != null && r.protein_g > 0 && <span className="text-ink-400 text-xs shrink-0 tabular-nums">{Math.round(r.protein_g)}p</span>}
+                              </button>
+                            </MenuItem>
+                          ))}
+                        </MenuItems>
+                      </Menu>
+                    )}
+                    {savedMeals.length > 0 && (
+                      <Menu as="div" className="relative">
+                        <MenuButton className="press-feedback inline-flex items-center gap-1 min-h-[40px] px-3 rounded-xl border border-accent-200 bg-accent-50/50 text-sm text-accent-700 hover:border-accent-400 transition-colors">
+                          🍲 Saved meal <span className="text-accent-500/70">({savedMeals.length})</span> <span className="text-accent-400 text-xs">▾</span>
+                        </MenuButton>
+                        <MenuItems anchor="bottom start" className="z-[70] mt-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-ink-200 bg-cream-50 shadow-lg p-1 focus:outline-none">
+                          {savedMeals.map(r => (
+                            <MenuItem key={r.id}>
+                              <button type="button" onClick={() => setPortionRecipe(r)}
+                                className={`w-full flex items-center gap-2 text-left px-3 min-h-[40px] rounded-lg text-sm data-[focus]:bg-accent-50 ${portionRecipe?.id === r.id ? 'text-accent-700 font-semibold' : 'text-ink-700'}`}>
+                                <span className="flex-1 min-w-0 truncate">🍲 {r.title}</span>
+                                {r.calories != null && <span className="text-accent-500/70 text-xs shrink-0 tabular-nums">{Math.round(r.calories)}kcal{r.servings > 1 ? `·${r.servings}p` : ''}</span>}
+                              </button>
+                            </MenuItem>
+                          ))}
+                        </MenuItems>
+                      </Menu>
+                    )}
                   </div>
                 )}
 
