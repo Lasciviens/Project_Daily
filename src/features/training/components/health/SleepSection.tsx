@@ -400,7 +400,11 @@ export function SleepSection() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
                 <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
-                <Tooltip cursor={false} content={makeSleepTooltipContent(sourcesByDate)} />
+                {/* Hide the hover tooltip while a bar is pinned — otherwise the
+                    pinned popover AND the hover tooltip both render = two info
+                    boxes at once (user-reported). The popover already shows the
+                    date + hours, so nothing is lost. */}
+                {!pinned && <Tooltip cursor={false} content={makeSleepTooltipContent(sourcesByDate)} />}
                 {/* Click handled on the Bar itself — its handler receives the
                     rendered bar's own x/y/width, which is what lets the
                     popover anchor exactly at the clicked bar. */}

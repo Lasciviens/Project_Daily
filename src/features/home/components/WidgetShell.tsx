@@ -45,8 +45,11 @@ export function WidgetShell({ title, ws, onManualSync, headerRight, children }: 
           {ws.collapsed ? '▶' : '▼'}
         </button>
 
-        {/* Title */}
-        <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wide flex-1 truncate">
+        {/* Title — min-w-[5rem] so it can't shrink-and-truncate to "CU…"; that
+            keeps the full title AND forces a wide headerRight (e.g. Currency's
+            Rates/Convert/Change tabs) to wrap onto the second row of this
+            flex-wrap header instead of crushing the title (real mobile bug). */}
+        <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wide flex-1 min-w-[5rem] truncate">
           {title}
         </h3>
 

@@ -49,7 +49,7 @@ export function DailyPage() {
     : `${Math.abs(diff)} day${Math.abs(diff) !== 1 ? 's' : ''} ago`
 
   const tabBtn = (active: boolean) =>
-    `px-2.5 min-h-[36px] flex-shrink-0 text-xs font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
+    `px-2.5 min-h-[44px] flex-shrink-0 text-xs font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
       active ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
     }`
 
@@ -76,15 +76,20 @@ export function DailyPage() {
           {context && <span className="text-xs text-accent-600 font-medium hidden sm:inline truncate min-w-0">{context}</span>}
         </div>
 
-        <div className="ml-auto flex items-center gap-3">
-          <div className="flex gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl overflow-x-auto scrollbar-none">
+        {/* min-w-0 lets the period bar shrink and scroll internally instead of
+            pushing PersonalTabs (Daily/Shop/Food) off-screen — real mobile bug:
+            at 393px Shop/Food were clipped to x=402+/458+ and unreachable (no
+            page horizontal scroll to reveal them). PersonalTabs is now shrink-0
+            so it always stays visible; the period tabs scroll if they don't fit. */}
+        <div className="ml-auto flex items-center gap-2 min-w-0 max-w-full">
+          <div className="flex gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl overflow-x-auto scrollbar-none min-w-0">
             <button onClick={() => { setViewDate(addDays(new Date(), -1)); setMode('day') }} className={tabBtn(dayTab === 'yesterday')}>Yesterday</button>
             <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={tabBtn(dayTab === 'today')}>Today</button>
             <button onClick={() => { setViewDate(addDays(new Date(), 1)); setMode('day') }} className={tabBtn(dayTab === 'tomorrow')}>Tomorrow</button>
             <button onClick={() => setMode('week')} className={tabBtn(mode === 'week')}>Week</button>
             <button onClick={() => setMode('month')} className={tabBtn(mode === 'month')}>Month</button>
           </div>
-          <PersonalTabs />
+          <div className="shrink-0"><PersonalTabs /></div>
         </div>
       </div>
 

@@ -243,8 +243,10 @@ export function ActivityLogTab() {
     return out
   }, [filtered])
 
-  const selectCls = 'min-h-[40px] text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
-  const dtCls = 'min-h-[40px] text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
+  const selectCls = 'min-h-[44px] text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
+  // max-w caps the datetime-local so it doesn't stretch full-width (width
+  // standard W3) and the from→to pair reads as one control row on mobile.
+  const dtCls = 'min-h-[44px] max-w-[11rem] min-w-0 text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
   const toggle = (id: string) => setExpanded(e => e === id ? null : id)
 
   return (
@@ -275,10 +277,10 @@ export function ActivityLogTab() {
             {RANGES.map(r => <option key={r.hours} value={r.hours}>{r.label}</option>)}
           </select>
           <div className="flex items-center gap-1 ml-auto">
-            <button onClick={() => refetch()} className="text-xs px-3 py-2 rounded-lg border border-ink-200 text-ink-600 hover:border-ink-400 transition-colors min-h-[40px]">↻</button>
+            <button onClick={() => refetch()} title="Refresh" aria-label="Refresh" className="text-xs px-3 py-2 rounded-lg border border-ink-200 text-ink-600 hover:border-ink-400 transition-colors min-h-[44px] whitespace-nowrap">↻ Refresh</button>
             {logs.length > 0 && (
               <button onClick={() => clearLogs.mutate()} disabled={clearLogs.isPending}
-                className="text-xs px-3 py-2 rounded-lg border border-red-200 text-red-500 hover:border-red-400 transition-colors min-h-[40px] disabled:opacity-50">
+                className="text-xs px-3 py-2 rounded-lg border border-red-200 text-red-500 hover:border-red-400 transition-colors min-h-[44px] disabled:opacity-50 whitespace-nowrap">
                 Clear all
               </button>
             )}
@@ -291,7 +293,7 @@ export function ActivityLogTab() {
           <span>→</span>
           <input type="datetime-local" value={customTo} onChange={e => setCustomTo(e.target.value)} className={dtCls} aria-label="To" />
           {usingCustom && (
-            <button onClick={() => { setCustomFrom(''); setCustomTo('') }} className="text-accent-600 hover:text-accent-700 px-1">clear</button>
+            <button onClick={() => { setCustomFrom(''); setCustomTo('') }} className="text-accent-600 hover:text-accent-700 px-2 min-h-[44px] inline-flex items-center">clear</button>
           )}
         </div>
       </div>

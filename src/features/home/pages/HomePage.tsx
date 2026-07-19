@@ -85,7 +85,11 @@ export function HomePage() {
       </div>
 
       {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
-      <div className="w-full xl:w-[280px] xl:flex-shrink-0 space-y-4 stagger-in">
+      {/* order-last below xl (per request): on mobile these four reference
+          widgets drop to the very BOTTOM of the stack in this fixed order, so
+          the actionable content (summary/schedule/tasks/news/media) rises
+          above them. On xl they reset to the leftmost column. */}
+      <div className="order-last xl:order-none w-full xl:w-[280px] xl:flex-shrink-0 space-y-4 stagger-in">
         <CurrencyWidget />
         <ProjectsHomeWidget />
         <TrainingHomeWidget />

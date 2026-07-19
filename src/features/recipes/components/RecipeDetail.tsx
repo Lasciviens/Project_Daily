@@ -81,7 +81,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
 
   return (
     <Dialog open onClose={onClose} className="relative z-[65]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 transition duration-200 data-[closed]:opacity-0" />
+      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
           {/* Cover image banner */}

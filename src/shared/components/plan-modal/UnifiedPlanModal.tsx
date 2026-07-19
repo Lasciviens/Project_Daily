@@ -354,7 +354,7 @@ export function UnifiedPlanModal({
     <Dialog open={open} onClose={onClose} className="relative" style={{ zIndex }}>
       <DialogBackdrop
         transition
-        className="fixed inset-0 bg-ink-950/30 transition duration-200 data-[closed]:opacity-0"
+        className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0"
       />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel
