@@ -52,66 +52,69 @@ export function RecipesPage() {
       <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-5 w-full min-h-[92px]">
         <RecipeBackdrop recipes={recipes} />
         <div className="absolute inset-0 bg-gradient-to-r from-cream-50/90 via-cream-50/60 to-cream-50/10" aria-hidden />
-        <div className="relative z-10 flex flex-col gap-3 px-4 py-4 sm:px-5">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div>
-              <h1 className="text-xl font-bold text-ink-900">Food</h1>
-              <p className="text-xs text-ink-500 mt-0.5">Your meals & ingredients — log, scale, track macros</p>
-            </div>
-            <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
-              <button
-                onClick={() => setLogOpen(true)}
-                className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm whitespace-nowrap"
-              >
-                🍽️ Log food
-              </button>
-              <button
-                onClick={() => setSuppOpen(true)}
-                title="Log a supplement (creatine, protein, pre-workout)"
-                aria-label="Log a supplement"
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 text-ink-600 bg-cream-50 text-lg rounded-xl hover:border-accent-300 hover:text-accent-700 transition-colors"
-              >
-                💊
-              </button>
-              {tab === 'library' && (
-                <button
-                  onClick={() => setAddOpen(true)}
-                  className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors whitespace-nowrap"
-                >
-                  + Add recipe
-                </button>
-              )}
-              <PersonalTabs />
-            </div>
+        {/* Everything on ONE row (user request): title · sub-tabs · day-nav ·
+            actions · PersonalTabs. Never wraps — scrolls horizontally inside the
+            banner on narrow screens (the page itself never overflows). */}
+        <div className="relative z-10 flex items-center gap-3 px-4 py-3 sm:px-5 overflow-x-auto scrollbar-none">
+          <div className="shrink-0">
+            <h1 className="text-xl font-bold text-ink-900 leading-tight">Food</h1>
+            <p className="text-xs text-ink-500 whitespace-nowrap">Your meals & ingredients — log, scale, track macros</p>
           </div>
-          {/* Sub-tabs + (on Today) the day navigation — both INSIDE the banner
-              (user request), glassy over the backdrop. */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex gap-1 bg-cream-50/70 border border-ink-200 p-1 rounded-xl w-fit max-w-full overflow-x-auto scrollbar-none backdrop-blur-sm">
-              {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
-                    tab === t ? 'bg-accent-500 text-white' : 'text-ink-600 hover:text-ink-900 hover:bg-ink-100'
-                  }`}
-                >
-                  {t === 'today' ? 'Today' : t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
-                </button>
-              ))}
+
+          {/* Sub-tabs */}
+          <div className="shrink-0 flex gap-1 bg-cream-50/70 border border-ink-200 p-1 rounded-xl backdrop-blur-sm">
+            {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
+                  tab === t ? 'bg-accent-500 text-white' : 'text-ink-600 hover:text-ink-900 hover:bg-ink-100'
+                }`}
+              >
+                {t === 'today' ? 'Today' : t === 'library' ? 'Library' : t === 'ingredients' ? 'Ingredients' : 'Meal Plan'}
+              </button>
+            ))}
+          </div>
+
+          {/* Day nav (Today only) */}
+          {tab === 'today' && (
+            <div className="shrink-0 bg-cream-50/70 border border-ink-200 rounded-xl px-1 backdrop-blur-sm">
+              <DateNav
+                label={foodIsToday ? 'Today' : format(new Date(foodDate + 'T00:00:00'), 'EEE, d MMM')}
+                labelClassName="text-sm font-bold text-ink-900 min-w-[104px] text-center"
+                onPrev={() => setFoodDate(s => shiftDateStr(s, -1))}
+                onNext={() => setFoodDate(s => shiftDateStr(s, 1))}
+                onToday={() => setFoodDate(formatLocalDate(new Date()))}
+                isToday={foodIsToday}
+              />
             </div>
-            {tab === 'today' && (
-              <div className="bg-cream-50/70 border border-ink-200 rounded-xl px-1 backdrop-blur-sm">
-                <DateNav
-                  label={foodIsToday ? 'Today' : format(new Date(foodDate + 'T00:00:00'), 'EEE, d MMM')}
-                  labelClassName="text-sm font-bold text-ink-900 min-w-[104px] text-center"
-                  onPrev={() => setFoodDate(s => shiftDateStr(s, -1))}
-                  onNext={() => setFoodDate(s => shiftDateStr(s, 1))}
-                  onToday={() => setFoodDate(formatLocalDate(new Date()))}
-                  isToday={foodIsToday}
-                />
-              </div>
+          )}
+
+          {/* Actions + Personal tabs (pushed right) */}
+          <div className="shrink-0 flex items-center gap-2 ml-auto">
+            <button
+              onClick={() => setLogOpen(true)}
+              className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm whitespace-nowrap"
+            >
+              🍽️ Log food
+            </button>
+            <button
+              onClick={() => setSuppOpen(true)}
+              title="Log a supplement (creatine, protein, pre-workout)"
+              aria-label="Log a supplement"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 text-ink-600 bg-cream-50 text-lg rounded-xl hover:border-accent-300 hover:text-accent-700 transition-colors"
+            >
+              💊
+            </button>
+            {tab === 'library' && (
+              <button
+                onClick={() => setAddOpen(true)}
+                className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors whitespace-nowrap"
+              >
+                + Add recipe
+              </button>
             )}
+            <PersonalTabs />
           </div>
         </div>
       </div>
