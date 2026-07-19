@@ -3,6 +3,7 @@ import { addDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isTo
 import { DayView } from '../components/DayView'
 import { DayAgenda } from '../components/DayAgenda'
 import { WeekStrip } from '../components/WeekStrip'
+import { DayQuickRail } from '../components/DayQuickRail'
 import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
 import { TodaySummary } from '../components/TodaySummary'
@@ -115,25 +116,30 @@ function useGreeting() {
 // dashboard board (TodaySummary) shows for EVERY day — planning tomorrow's
 // meals/training/episode from Daily was the whole point of the redesign.
 //
-// TWO fixed surfaces instead of nine boxes ("professional website look" +
-// "boxes must never change position" — both explicit requests):
-//   1. HERO — the day itself: week strip band on top, then Schedule (left
-//      pane) + Tasks (right rail) inside ONE card, divided by hairlines.
-//      The page's single accent bar marks it as the primary surface.
-//   2. GLANCE BOARD — the six life modules as fixed cells of one panel.
-// On 2xl monitors the two surfaces sit side by side; below that they stack.
-// Every slot is explicit per breakpoint — no auto-fill, nothing reflows.
+// TWO stacked bands ("Day Schedule on its own row, the summary cells below" —
+// explicit request). Boxes still never change position (no auto-fill anywhere):
+//   ROW 1 — the SCHEDULE HERO (week strip + Schedule + Tasks in one card, the
+//     page's single accent bar). On wide viewports (xl+, covers laptop 1469 and
+//     monitor 2450) a companion rail fills the freed horizontal band beside it
+//     (quick actions / next-up / jump-to) instead of stretching the timeline;
+//     below xl the hero is full width and the rail is hidden (no gap to fill).
+//   ROW 2 — the GLANCE BOARD: the life modules as fixed cells of one panel,
+//     full width now (up to 4 cols on 2xl), Nutrition given a double slot.
 function DaySection({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
   return (
-    <div className="flex flex-col gap-5 2xl:grid 2xl:grid-cols-[minmax(0,58rem)_minmax(0,58rem)] 2xl:gap-6 2xl:items-start">
-      <section className="max-w-[58rem] w-full bg-cream-50 border border-ink-200 rounded-2xl shadow-card overflow-hidden">
-        <div className="h-0.5 bg-accent-500" />
-        <WeekStrip viewDate={date} onDayClick={onDayClick} />
-        <div className="lg:grid lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:divide-x lg:divide-ink-100 divide-y divide-ink-100 lg:divide-y-0">
-          <DayAgenda date={date} bare />
-          <DayView date={date} />
-        </div>
-      </section>
+    <div className="flex flex-col gap-6">
+      <div className="xl:grid xl:grid-cols-[minmax(0,60rem)_minmax(0,1fr)] xl:gap-6 xl:items-start">
+        <section className="w-full bg-cream-50 border border-ink-200 rounded-2xl shadow-card overflow-hidden">
+          <div className="h-0.5 bg-accent-500" />
+          <WeekStrip viewDate={date} onDayClick={onDayClick} />
+          <div className="lg:grid lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:divide-x lg:divide-ink-100 divide-y divide-ink-100 lg:divide-y-0">
+            <DayAgenda date={date} bare />
+            <DayView date={date} />
+          </div>
+        </section>
+
+        <DayQuickRail date={date} />
+      </div>
 
       <TodaySummary date={date} />
     </div>
