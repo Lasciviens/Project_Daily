@@ -117,7 +117,7 @@ function PullToRefreshIndicator({ pullDistance, isRefreshing, isReady }: {
       className={`sm:hidden fixed left-1/2 -translate-x-1/2 z-30 flex items-center justify-center w-9 h-9 rounded-full shadow-md border transition-[transform,background-color,color] duration-150 ${
         isReady || isRefreshing
           ? 'bg-accent-500 border-accent-500 text-white'
-          : 'bg-cream-50 border-ink-200 text-accent-600'
+          : 'glass-chrome border-ink-200/60 text-accent-600'
       }`}
       style={{
         top: 'calc(56px + env(safe-area-inset-top))',
