@@ -114,20 +114,30 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
                   className={`flex-1 text-[11px] min-h-[32px] rounded-md font-medium transition-colors ${
                     mode === m ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
                   }`}>
-                  {m === 'recipe' ? 'Recipe' : m === 'ingredient' ? 'Ingredient' : 'Custom'}
+                  {m === 'recipe' ? '🍲 Recipe' : m === 'ingredient' ? '🥚 Ingredient' : '✏️ Type it'}
                 </button>
               ))}
             </div>
 
             {mode === 'recipe' && (
-              <select value={recipeId} onChange={e => setRecipeId(e.target.value)} className={inputCls}>
-                <option value="">Pick a recipe…</option>
-                {recipes.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
-              </select>
+              <>
+                <select value={recipeId} onChange={e => setRecipeId(e.target.value)} className={inputCls}>
+                  <option value="">Pick a recipe…</option>
+                  {recipes.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                </select>
+                <p className="text-[11px] text-ink-400">
+                  Not in the list? Use <button type="button" onClick={() => setMode('custom')} className="text-accent-600 hover:text-accent-700 font-medium">✏️ Type it</button> for a quick one-off, or build it in Food → Library.
+                </p>
+              </>
             )}
 
             {mode === 'custom' && (
-              <input value={customTitle} onChange={e => setCustomTitle(e.target.value)} placeholder="e.g. Eating out, Leftovers" className={inputCls} />
+              <>
+                <input autoFocus value={customTitle} onChange={e => setCustomTitle(e.target.value)}
+                  placeholder="Type any meal — e.g. Restaurant, mom's köfte…"
+                  className={inputCls} />
+                <p className="text-[11px] text-ink-400">Free text — plan anything, even if it's not a saved recipe. Confirm it as eaten later with ✓.</p>
+              </>
             )}
 
             {mode === 'ingredient' && (

@@ -1,6 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem, useUpdateIngredientLibraryItem, useDeleteIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { toast } from '../../../app/store'
+import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
+import { BarcodeScanner } from './BarcodeScanner'
+import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,9 +34,37 @@ export function IngredientManager() {
   const [catFilter, setCatFilter] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [f, setF] = useState({ ...EMPTY })
+  const [scanOpen, setScanOpen] = useState(false)
+  const [onlineOpen, setOnlineOpen] = useState(false)
+  const [meta, setMeta] = useState<{ source: string; source_ref: string; image_url: string | null } | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
 
   const set = (k: keyof typeof EMPTY, v: string) => setF(prev => ({ ...prev, [k]: v }))
+
+  // Prefill the add-form from a scanned/searched product (per-100g, editable).
+  function prefillFromProduct(p: BarcodeProduct) {
+    const s = (n: number | null) => (n == null ? '' : String(n))
+    setEditingId(null)
+    setF({
+      name: p.name, unit: 'g',
+      kcal: s(p.calories), prot: s(p.protein_g), carb: s(p.carbs_g), fat: s(p.fat_g), fiber: s(p.fiber_g), sugar: s(p.sugar_g),
+      servLabel: p.serving_grams != null ? '1 serving' : '', servGrams: s(p.serving_grams), group: '',
+    })
+    setMeta({ source: p.source ?? 'openfoodfacts', source_ref: p.code, image_url: p.image_url })
+    setOnlineOpen(false)
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  async function handleBarcode(code: string) {
+    setScanOpen(false)
+    const tid = toast.loading('Looking up barcode…')
+    try {
+      const p = await lookupBarcode(code)
+      toast.dismiss(tid)
+      if (!p) { toast.error('Product not found'); return }
+      prefillFromProduct(p); toast.success(`Found: ${p.name}`)
+    } catch { toast.dismiss(tid); toast.error('Barcode lookup failed') }
+  }
 
   // Which of the 16 groups actually appear (+ an "Other" bucket for null).
   const presentGroups = useMemo(() => {
@@ -52,7 +83,7 @@ export function IngredientManager() {
     return true
   }), [library, q, catFilter])
 
-  function reset() { setF({ ...EMPTY }); setEditingId(null) }
+  function reset() { setF({ ...EMPTY }); setEditingId(null); setMeta(null); setOnlineOpen(false) }
 
   function startEdit(ing: IngredientLibraryItem) {
     setEditingId(ing.id)
@@ -76,6 +107,7 @@ export function IngredientManager() {
       fat_g: num(f.fat), fiber_g: num(f.fiber), sugar_g: num(f.sugar),
       serving_label: f.servLabel || null, serving_grams: num(f.servGrams),
       food_group: f.group || null,
+      ...(meta && !editingId ? { source: meta.source, source_ref: meta.source_ref, image_url: meta.image_url } : {}),
     }
     const tid = toast.loading(editingId ? 'Saving…' : 'Adding…')
     try {
@@ -96,10 +128,25 @@ export function IngredientManager() {
     <div className="flex flex-col gap-4 max-w-3xl">
       {/* Add / edit form */}
       <div ref={formRef} className={`rounded-2xl border p-4 flex flex-col gap-2 ${editingId ? 'border-accent-300 bg-accent-50/40' : 'border-ink-200 bg-cream-50'}`}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">{editingId ? '✎ Edit ingredient · per 100g' : '➕ New ingredient · macros per 100g'}</p>
-          {editingId && <button type="button" onClick={reset} className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[28px] px-1">Cancel</button>}
+          <div className="flex items-center gap-1.5">
+            {!editingId && (
+              <>
+                <button type="button" onClick={() => setScanOpen(true)} title="Scan a barcode"
+                  className="min-w-[36px] min-h-[32px] px-1.5 rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-400 text-base">📷</button>
+                <button type="button" onClick={() => setOnlineOpen(o => !o)} title="Search online (no barcode)"
+                  className={`min-w-[36px] min-h-[32px] px-1.5 rounded-lg border text-base ${onlineOpen ? 'border-accent-400 bg-accent-50 text-accent-700' : 'border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-400'}`}>🔎</button>
+              </>
+            )}
+            {editingId && <button type="button" onClick={reset} className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[28px] px-1">Cancel</button>}
+          </div>
         </div>
+        {onlineOpen && !editingId && (
+          <div className="rounded-xl border border-accent-200 bg-accent-50/40 p-2.5">
+            <OnlineFoodSearch initialQuery={f.name} onPick={prefillFromProduct} />
+          </div>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
           <input value={f.name} onChange={e => set('name', e.target.value)} placeholder="Name (Tavuk göğsü)" className={`${inputCls} col-span-2 sm:col-span-1`} />
           <input value={f.kcal} onChange={e => set('kcal', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Calories" className={inputCls} />
@@ -123,6 +170,8 @@ export function IngredientManager() {
           {busy ? 'Saving…' : editingId ? 'Save changes' : 'Add ingredient'}
         </button>
       </div>
+
+      <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcode} />
 
       {/* Category filter pills */}
       {(presentGroups.ordered.length > 0 || presentGroups.hasOther) && (

@@ -7,8 +7,9 @@ import { useRecipes, useCreateRecipe } from '../hooks/useRecipes'
 import { ingredientSnapshot, recipeSnapshot, type RecentFood } from '../api/foodLogApi'
 import { WEIGHT_UNITS } from '../api/recipesApi'
 import { upsertExternalFood } from '../api/ingredientLibraryApi'
-import { lookupBarcode } from '../api/openFoodFactsApi'
+import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
+import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { toast } from '../../../app/store'
@@ -102,9 +103,26 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
 
   const [scanOpen, setScanOpen] = useState(false)
   const [scanning, setScanning] = useState(false)
-  // Provenance of a barcode-scanned product being reviewed → persisted on save
-  // so the food carries source='openfoodfacts' + EAN + photo (add-on-first-use).
-  const [scanMeta, setScanMeta] = useState<{ source_ref: string; image_url: string | null } | null>(null)
+  const [onlineOpen, setOnlineOpen] = useState(false)   // 🔎 online name search (PC / no barcode)
+  // Provenance of a scanned/online product being reviewed → persisted on save
+  // so the food carries its source + EAN + photo (add-on-first-use).
+  const [scanMeta, setScanMeta] = useState<{ source: string; source_ref: string; image_url: string | null } | null>(null)
+
+  // Prefill + reveal the new-ingredient form from a scanned/searched product
+  // (per-100g, editable — nothing auto-saved).
+  function prefillFromProduct(p: BarcodeProduct) {
+    setNName(p.name)
+    setNKcal(p.calories != null ? String(p.calories) : '')
+    setNProt(p.protein_g != null ? String(p.protein_g) : '')
+    setNCarb(p.carbs_g != null ? String(p.carbs_g) : '')
+    setNFat(p.fat_g != null ? String(p.fat_g) : '')
+    setNFiber(p.fiber_g != null ? String(p.fiber_g) : '')
+    setNServLabel(p.serving_grams != null ? '1 serving' : '')
+    setNServGrams(p.serving_grams != null ? String(p.serving_grams) : '')
+    setScanMeta({ source: p.source ?? 'openfoodfacts', source_ref: p.code, image_url: p.image_url })
+    setShowNew(true)
+    setOnlineOpen(false)
+  }
 
   // Barcode → Open Food Facts → prefill the new-ingredient form for review.
   // If the product already exists in the library by name, add it straight to
@@ -118,17 +136,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       if (!p) { toast.error('Product not found in Open Food Facts'); return }
       const existing = library.find(i => i.name.toLowerCase() === p.name.toLowerCase())
       if (existing) { addToBasket(existing); toast.success(`${p.name} — already in your library ✓`); return }
-      // Prefill + reveal the new-ingredient form (per-100g, editable).
-      setNName(p.name)
-      setNKcal(p.calories != null ? String(p.calories) : '')
-      setNProt(p.protein_g != null ? String(p.protein_g) : '')
-      setNCarb(p.carbs_g != null ? String(p.carbs_g) : '')
-      setNFat(p.fat_g != null ? String(p.fat_g) : '')
-      setNFiber(p.fiber_g != null ? String(p.fiber_g) : '')
-      setNServLabel(p.serving_grams != null ? '1 serving' : '')
-      setNServGrams(p.serving_grams != null ? String(p.serving_grams) : '')
-      setScanMeta({ source_ref: p.code, image_url: p.image_url })
-      setShowNew(true)
+      prefillFromProduct(p)
       toast.success(`Found: ${p.name} — review & add`)
     } catch {
       toast.dismiss(tid); toast.error('Barcode lookup failed')
@@ -194,7 +202,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
     // (source='openfoodfacts' + EAN + photo) — add-to-library-on-first-use.
     let created
     if (scanMeta) {
-      created = await upsertExternalFood({ ...input, source: 'openfoodfacts', source_ref: scanMeta.source_ref, image_url: scanMeta.image_url })
+      created = await upsertExternalFood({ ...input, source: scanMeta.source, source_ref: scanMeta.source_ref, image_url: scanMeta.image_url })
       qc.invalidateQueries({ queryKey: ['recipe-ingredient-library'] })
     } else {
       created = await createIngredient.mutateAsync(input)
@@ -342,7 +350,18 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
                       title="Scan a barcode (Open Food Facts)" aria-label="Scan barcode">
                       📷
                     </button>
+                    {/* Online name search — the desktop / no-barcode path. */}
+                    <button type="button" onClick={() => setOnlineOpen(o => !o)}
+                      className={`shrink-0 min-w-[44px] min-h-[40px] px-2 rounded-lg border flex items-center justify-center text-lg ${onlineOpen ? 'border-accent-400 bg-accent-50 text-accent-700' : 'border-ink-200 bg-cream-100 text-ink-600 hover:border-accent-400'}`}
+                      title="Search online (no barcode needed)" aria-label="Search online">
+                      🔎
+                    </button>
                   </div>
+                  {onlineOpen && (
+                    <div className="mt-2 rounded-xl border border-accent-200 bg-accent-50/40 p-2.5">
+                      <OnlineFoodSearch initialQuery={query} onPick={prefillFromProduct} />
+                    </div>
+                  )}
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {q && matches.map(ing => (
                       <button key={ing.id} type="button" onClick={() => addToBasket(ing)}

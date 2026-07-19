@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchMealPlan, setMealPlanEntry, deleteMealPlanEntry } from '../api/mealPlanApi'
-import type { CreateMealPlanEntryInput } from '../types'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { fetchMealPlan, setMealPlanEntry, deleteMealPlanEntry, eatPlannedEntry } from '../api/mealPlanApi'
+import type { CreateMealPlanEntryInput, MealPlanEntry } from '../types'
 
 export function useMealPlan(weekStart: string, weekEnd: string) {
   return useQuery({
@@ -23,5 +24,16 @@ export function useDeleteMealPlanEntry() {
   return useMutation({
     mutationFn: (id: string) => deleteMealPlanEntry(id),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['meal-plan'] }),
+  })
+}
+
+// Confirm a planned meal as eaten → it starts counting in the day's totals.
+export function useEatPlannedEntry() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'eat_planned_entry',
+    successMessage: 'Logged as eaten ✓',
+    mutationFn:     (entry: MealPlanEntry) => eatPlannedEntry(entry),
+    onSuccess:      () => { qc.invalidateQueries({ queryKey: ['meal-plan'] }); qc.invalidateQueries({ queryKey: ['food-log'] }) },
   })
 }
