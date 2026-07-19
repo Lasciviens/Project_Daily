@@ -49,17 +49,20 @@ export function RecipesPage() {
             <h1 className="text-xl font-bold text-ink-900">Food</h1>
             <p className="text-xs text-ink-500 mt-0.5">Your meals & ingredients — log, scale, track macros</p>
           </div>
-          <div className="flex items-center gap-2 ml-auto">
+          {/* flex-wrap + whitespace-nowrap: at 393px the labels used to break
+              mid-word ("Log/food", "+ Add/recipe"). Now each button stays on
+              one line and the cluster wraps as whole chips. */}
+          <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
             <button
               onClick={() => setLogOpen(true)}
-              className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm"
+              className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm whitespace-nowrap"
             >
               🍽️ Log food
             </button>
             {tab === 'library' && (
               <button
                 onClick={() => setAddOpen(true)}
-                className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors"
+                className="min-h-[44px] px-4 border border-accent-300 text-accent-700 bg-cream-50 text-sm font-semibold rounded-xl hover:bg-accent-50 transition-colors whitespace-nowrap"
               >
                 + Add recipe
               </button>

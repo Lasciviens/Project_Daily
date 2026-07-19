@@ -110,15 +110,19 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
       </button>
 
       {!collapsed && (
-        // grid-cols-1 on mobile — the fixed 86px-wide posters in a 2-column
-        // split left each column only ~159px wide at 390px viewports (barely
-        // over one poster), which risked overflow at narrower devices too.
-        // Single column below sm gives posters the full card width to wrap
-        // multiple per row instead.
-        <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-4">{leftGroups.map(renderGroup)}</div>
-          <div className="space-y-4">{rightGroups.map(renderGroup)}</div>
-        </div>
+        <>
+          {/* Mobile: ONE column in logical status order. The 2-column
+              even/odd split below stacked left-column-then-right-column on a
+              phone, scrambling the reading order (Coming soon → Watching →
+              Completed → Wishlist…); a single ordered flow fixes it. Posters
+              get the full card width to wrap several per row. */}
+          <div className="px-3 pb-3 space-y-4 sm:hidden">{filledGroups.map(renderGroup)}</div>
+          {/* ≥sm: two balanced columns (even/odd split reads down-then-across). */}
+          <div className="px-3 pb-3 hidden sm:grid grid-cols-2 gap-4">
+            <div className="space-y-4">{leftGroups.map(renderGroup)}</div>
+            <div className="space-y-4">{rightGroups.map(renderGroup)}</div>
+          </div>
+        </>
       )}
     </div>
   )
