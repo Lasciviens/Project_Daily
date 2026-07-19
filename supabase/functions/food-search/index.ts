@@ -4,11 +4,18 @@
 // shape. If the key isn't set it returns an empty list (the client falls back
 // to Open Food Facts), so it's safe to deploy before the secret exists.
 //
-// ⚠️ NUTRITION FIELD MAPPING IS DEFENSIVE / UNVERIFIED: Kassalapp's public docs
-// are Cloudflare-gated and its exact nutrition JSON shape couldn't be confirmed
-// without the token. `normalize()` probes several plausible shapes and falls
-// back to null (never crashes). After deploying with the key, log ONE sample
-// product JSON and lock the field names — do NOT trust the macros until then.
+// Response STRUCTURE verified from the kassalappy Python client's Pydantic
+// models (github.com/bendikrb/kassalappy): the search/ean endpoints return
+// { data: Product | Product[] } where
+//   Product = { name, brand, image, ean, current_price, nutrition: NutritionItem[] }
+//   NutritionItem = { code: str, display_name: str, amount: float, unit: str }
+// So `normalize()` reads nutrition[].{display_name/code, amount, unit} — that
+// part is CONFIRMED. What remains to verify against ONE live sample: the exact
+// display_name/code VALUES (assumed Norwegian: Energi/Protein/Karbohydrater/
+// Fett/Sukker(-arter)/Kostfiber) and that amounts are per 100g. Energy is
+// disambiguated by unit (kcal vs kJ) so a kJ row can't be mistaken for kcal.
+// Name-search results may omit nutrition (lighter projection) → macros null,
+// the user fills/scans; the ean endpoint carries full nutrition.
 
 const KASSAL = 'https://kassal.app/api/v1'
 
@@ -26,22 +33,34 @@ function toNum(v: unknown): number | null {
   return null
 }
 
-// Defensive nutrition extraction — Kassalapp returns a `nutrition` array of
-// { code?/display_name?, amount?/value?, unit? } (per 100g). Probe by name.
+// nutrition[] = { code, display_name, amount, unit } (verified). Probe a row by
+// its display_name/code, return its amount.
 function macro(nutrition: unknown, keys: string[]): number | null {
   if (!Array.isArray(nutrition)) return null
   const row = nutrition.find((n: Record<string, unknown>) => {
-    const label = String(n?.code ?? n?.display_name ?? n?.name ?? '').toLowerCase()
+    const label = String(n?.display_name ?? n?.code ?? '').toLowerCase()
     return keys.some(k => label.includes(k))
   }) as Record<string, unknown> | undefined
-  return row ? toNum(row.amount ?? row.value ?? row.quantity) : null
+  return row ? toNum(row.amount) : null
+}
+
+// Energy is disambiguated by unit: a kcal row is used as-is; a kJ row is
+// converted. Prevents mistaking a kJ "Energi" row for kcal.
+function energyKcal(nutrition: unknown): number | null {
+  if (!Array.isArray(nutrition)) return null
+  const rows = nutrition.filter((n: Record<string, unknown>) =>
+    /energi|energy|kcal|kj/i.test(String(n?.display_name ?? n?.code ?? '')))
+  const isKcal = (n: Record<string, unknown>) => /kcal/i.test(String(n?.unit ?? '')) || /kcal/i.test(String(n?.display_name ?? n?.code ?? ''))
+  const kcalRow = rows.find(isKcal)
+  if (kcalRow) return toNum((kcalRow as Record<string, unknown>).amount)
+  const kjRow = rows[0]
+  const kj = kjRow ? toNum((kjRow as Record<string, unknown>).amount) : null
+  return kj == null ? null : Math.round((kj / 4.184) * 10) / 10
 }
 
 function normalize(item: Record<string, unknown>) {
   const nutr = item.nutrition
-  let calories = macro(nutr, ['kcal', 'kalori'])
-  const kj = macro(nutr, ['kj', 'energi', 'energy'])
-  if (calories == null && kj != null) calories = Math.round((kj / 4.184) * 10) / 10   // kJ→kcal fallback
+  const calories = energyKcal(nutr)
   return {
     code: String(item.ean ?? item.gtin ?? '') || '',
     name: String(item.name ?? '').trim(),
