@@ -30,6 +30,61 @@ export async function deleteFoodLogEntry(id: string): Promise<void> {
   if (error) throw error
 }
 
+// A distinct food the user has eaten before, ready to re-log in one tap with
+// its ORIGINAL snapshot macros (the whole point of unifying the log paths — a
+// recent chip must carry real macros, not a macro-less title). Sourced from the
+// diary (food_log_entries), NOT the plan (recipe_meal_plans).
+export interface RecentFood {
+  key:                   string
+  title:                 string
+  library_ingredient_id: string | null
+  recipe_id:             string | null
+  custom_title:          string | null
+  quantity:              number | null
+  unit:                  string | null
+  calories:              number | null
+  protein_g:             number | null
+  carbs_g:               number | null
+  fat_g:                 number | null
+  fiber_g:               number | null
+  sugar_g:               number | null
+  count:                 number
+}
+
+export async function fetchRecentFoods(fromDate: string): Promise<RecentFood[]> {
+  const { data, error } = await supabase
+    .from('food_log_entries')
+    .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
+    .gte('date', fromDate)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  // Ordered newest-first, so the FIRST row seen per key is the most recent
+  // snapshot — that's the one we keep (re-log the way you last ate it).
+  const byKey = new Map<string, RecentFood>()
+  for (const row of (data ?? []) as unknown as (FoodLogEntry & { ingredient: { name: string } | null; recipe: { title: string } | null })[]) {
+    const title = row.ingredient?.name ?? row.recipe?.title ?? row.custom_title ?? '—'
+    const key = row.library_ingredient_id ?? row.recipe_id ?? `c:${title.toLowerCase()}`
+    const existing = byKey.get(key)
+    if (existing) { existing.count++; continue }
+    byKey.set(key, {
+      key, title,
+      library_ingredient_id: row.library_ingredient_id,
+      recipe_id:             row.recipe_id,
+      custom_title:          row.custom_title,
+      quantity:              row.quantity,
+      unit:                  row.unit,
+      calories:              row.calories,
+      protein_g:             row.protein_g,
+      carbs_g:               row.carbs_g,
+      fat_g:                 row.fat_g,
+      fiber_g:               row.fiber_g,
+      sugar_g:               row.sugar_g,
+      count:                 1,
+    })
+  }
+  return [...byKey.values()].sort((a, b) => b.count - a.count).slice(0, 8)
+}
+
 // Snapshot builders — per-100g × grams for ingredients, per-serving ×
 // servings for recipes. Grams path only for weight/volume amounts.
 const per = (v: number | null | undefined, grams: number) => (v == null ? null : Math.round(v * grams) / 100)

@@ -2,13 +2,34 @@ import { useState } from 'react'
 import { Cell, CellHeader } from './cellKit'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
 import { useDayTargets } from '../../hooks/useDayTargets'
-import { useRecentMeals, useSetQuickMeal, useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
+import { useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
 import { AssignMealModal } from '../../../recipes/components/AssignMealModal'
 import { FoodLogModal } from '../../../recipes/components/FoodLogModal'
-import { useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
-import type { MealSlot } from '../../../recipes/types'
+import { useRecentFoods, useAddFoodLogEntries, useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
+import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrary'
+import { ingredientSnapshot, type RecentFood } from '../../../recipes/api/foodLogApi'
+import type { MealSlot, FoodLogEntryInput } from '../../../recipes/types'
 import type { DayMeal } from '../../api/dayNutritionApi'
+
+// Re-log a previously-eaten food into a given slot, carrying its ORIGINAL
+// snapshot macros forward (no re-computation — that's the diary contract).
+function reLogEntry(r: RecentFood, date: string, slot: MealSlot): FoodLogEntryInput {
+  return {
+    date, meal_slot: slot,
+    library_ingredient_id: r.library_ingredient_id,
+    recipe_id:             r.recipe_id,
+    custom_title:          r.custom_title,
+    quantity:              r.quantity,
+    unit:                  r.unit,
+    calories:              r.calories,
+    protein_g:             r.protein_g,
+    carbs_g:               r.carbs_g,
+    fat_g:                 r.fat_g,
+    fiber_g:               r.fiber_g,
+    sugar_g:               r.sugar_g,
+  }
+}
 
 const SLOTS: { slot: MealSlot; label: string }[] = [
   { slot: 'breakfast',  label: 'Breakfast' },
@@ -39,23 +60,45 @@ function CalorieRing({ consumed, target }: { consumed: number; target: number })
 }
 
 // One slot row: filled → title + kcal + remove; empty → inline quick-add with
-// recent-meal chips. The whole point is adding a meal in 1-2 taps without
-// leaving Daily (the old card was read-only and linked out to /recipes).
+// recent-food chips. Every fast-path add now writes a REAL-macro diary row
+// (food_log_entries), not a macro-less plan title — a recent chip re-logs its
+// own snapshot; free text that matches your library logs that ingredient;
+// anything else opens the full logger prefilled (so it still gets macros).
 function SlotRow({ date, slot, label, meals }: {
   date: string; slot: MealSlot; label: string
   meals: DayMeal[]
 }) {
   const [adding, setAdding] = useState(false)
-  const [detail, setDetail] = useState(false)
+  const [editPlan, setEditPlan] = useState(false)   // ✎ on an existing PLAN row
+  const [logOpen, setLogOpen] = useState(false)      // full logger (diary)
+  const [logQuery, setLogQuery] = useState('')
   const [text, setText] = useState('')
-  const { data: recent = [] } = useRecentMeals()
-  const setMeal = useSetQuickMeal()
+  const { data: recent = [] } = useRecentFoods()
+  const { data: library = [] } = useIngredientLibrary()
+  const addEntries = useAddFoodLogEntries()
   const delMeal = useDeleteQuickMeal()
   const delLog  = useDeleteFoodLogEntry()
 
-  function save(title: string, recipeId?: string | null) {
-    if (!title.trim()) return
-    setMeal.mutate({ date, slot, title: title.trim(), recipeId }, { onSuccess: () => { setAdding(false); setText('') } })
+  function reset() { setAdding(false); setText('') }
+
+  // Free text → log the matching library ingredient (default portion), else
+  // hand off to the full logger so a new food gets real macros once.
+  function save(title: string) {
+    const t = title.trim()
+    if (!t) return
+    const lc = t.toLowerCase()
+    const match = library.find(i => i.name.toLowerCase() === lc)
+             ?? library.find(i => i.name.toLowerCase().includes(lc))
+    if (match) {
+      const grams = match.serving_grams ?? 100
+      addEntries.mutate([{ date, meal_slot: slot, library_ingredient_id: match.id, quantity: grams, unit: 'g', ...ingredientSnapshot(match, grams) }], { onSuccess: reset })
+    } else {
+      setLogQuery(t); setLogOpen(true); reset()
+    }
+  }
+
+  function reLog(r: RecentFood) {
+    addEntries.mutate([reLogEntry(r, date, slot)], { onSuccess: reset })
   }
 
   return (
@@ -69,9 +112,9 @@ function SlotRow({ date, slot, label, meals }: {
               {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
               {meal.source === 'plan' && (
                 <button
-                  onClick={() => setDetail(true)}
+                  onClick={() => setEditPlan(true)}
                   className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
-                  title="Edit in detail (recipe/ingredient/servings)"
+                  title="Edit planned meal (recipe/ingredient/servings)"
                 >✎</button>
               )}
               <button
@@ -89,9 +132,9 @@ function SlotRow({ date, slot, label, meals }: {
             {adding ? (
               <input
                 autoFocus value={text} onChange={e => setText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') save(text); if (e.key === 'Escape') setAdding(false) }}
-                onBlur={() => { if (!text.trim()) setAdding(false) }}
-                placeholder="What did/will you eat?"
+                onKeyDown={e => { if (e.key === 'Enter') save(text); if (e.key === 'Escape') reset() }}
+                onBlur={() => { if (!text.trim()) reset() }}
+                placeholder="Type a food…"
                 className="flex-1 min-w-0 px-2 py-1 rounded-md border border-accent-300 bg-cream-50 focus:outline-none focus:ring-1 focus:ring-accent-400 min-h-[28px]"
               />
             ) : (
@@ -102,29 +145,30 @@ function SlotRow({ date, slot, label, meals }: {
             )}
             {adding && (
               <button
-                onClick={() => { setAdding(false); setDetail(true) }}
+                onClick={() => { setLogQuery(text.trim()); setLogOpen(true); reset() }}
                 className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] shrink-0"
-                title="Detailed entry (recipe / ingredient / servings)"
+                title="Build a meal (pick ingredients, grams, macros)"
               >⋯</button>
             )}
           </div>
           {adding && recent.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1 pl-[4.5rem]">
               {recent.slice(0, 5).map(r => (
-                <button key={r.title} onClick={() => save(r.title, r.recipeId)}
+                <button key={r.key} onClick={() => reLog(r)}
                   className="px-2 py-0.5 rounded-full border border-ink-200 text-[10px] text-ink-600 hover:border-accent-300 min-h-[24px]">
-                  {r.title}
+                  {r.title}{r.protein_g != null && r.protein_g > 0 && <span className="text-ink-400"> · {Math.round(r.protein_g)}p</span>}
                 </button>
               ))}
             </div>
           )}
         </>
       )}
-      {/* Detailed manual entry — the SAME full modal Recipes' meal planner
-          uses (recipe picker / library ingredient / servings / notes), so the
-          "detailed" path exists on Daily too, not just the fast path. */}
-      {detail && (
-        <AssignMealModal open onClose={() => setDetail(false)} date={date} mealSlot={slot} />
+      {/* Full diary logger, prefilled to this slot (and any typed text). */}
+      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={date} defaultSlot={slot} defaultQuery={logQuery} />
+      {/* ✎ edits an existing PLANNED entry (recipe_meal_plans) in the full
+          planner — planning a future day still lives here. */}
+      {editPlan && (
+        <AssignMealModal open onClose={() => setEditPlan(false)} date={date} mealSlot={slot} />
       )}
     </li>
   )
