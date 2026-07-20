@@ -231,7 +231,7 @@ export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => v
           (mobile only — all sub-tabs fit on desktop). */}
       <div className="flex items-center gap-2 -mx-1 px-1">
         <div className="relative flex-1 min-w-0">
-          <div className="flex gap-0 overflow-x-auto scrollbar-none snap-x-mandatory border-b border-ink-100">
+          <div className="flex gap-0 overflow-x-auto scrollbar-none snap-x snap-mandatory touch-pan-x overscroll-x-contain border-b border-ink-100">
             {SUB_TABS.map(tab => (
               <button
                 key={tab.id}
