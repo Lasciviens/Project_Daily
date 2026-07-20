@@ -50,10 +50,15 @@ const FITBIT_DEFAULT: ReadonlySet<string> = new Set([
   'respiratory_rate',
   'oxygen_saturation',
   'skin_temperature',
-  // Cumulative daily activity/energy (complete only with 24/7 wear)
+  // Cumulative daily activity/energy (complete only with 24/7 wear).
+  // NOT flights_climbed — the Air has no altimeter/barometer and cannot
+  // produce this metric at all (design doc §2/§8: HIGH-confidence hardware
+  // fact, not a coverage judgment call like the metrics above). Harmless to
+  // leave listed here today (Fitbit will never write it, so the resolver's
+  // presence-based fallback always resolves to Apple regardless) but wrong
+  // as documented policy — don't re-add it.
   'step_count',
   'walking_running_distance',
-  'flights_climbed',
   'active_energy',
   'basal_energy_burned',
   'active_zone_minutes',

@@ -16,8 +16,8 @@
 
 | # | Phase | Status | Device needed? | Gated on |
 |---|---|---|---|---|
-| 0 | Source-aware foundation (schema + aggregation) | 🟡 **code complete — awaiting migration apply + PM GO** | No | — |
-| 1 | OAuth token-lifetime spike (H6) | 🟢 **GO — not started** | No | — (parallel with 0) |
+| 0 | Source-aware foundation (schema + aggregation) | 🟡 **PM GO to merge — one fix needs committing, then migration apply + webhook redeploy (user)** | No | — |
+| 1 | OAuth token-lifetime spike (H6) | 🟡 **GO — checklist being relayed to user now, clock not yet started** | No | — (parallel with 0) |
 | 2 | OAuth production wiring | ⏸ Blocked | No | Phase 1 PASS |
 | 3 | Poller + first live pull | ⏸ Blocked | **Yes** | Phase 0 merged, Phase 2 merged, device in hand |
 | 4 | UI + AI wiring (source switch, Sleep, mini-cards, coach) | ⏸ Blocked | Yes (real data to show) | Phase 3 producing real rows |
@@ -52,27 +52,31 @@ no OAuth, no touching `docs/fitbit-air-integration.md`'s locked content (PM owns
 that doc's single cross-reference line, added separately).
 
 **Engineer (code):**
-- Branch `claude/fitbit-phase0-source-foundation`
-- Items 1–6 above
-- `npm run build` green
-- Draft PR against `main`
+- ~~Branch `claude/fitbit-phase0-source-foundation`~~ → actually shipped on `claude/charming-newton-yhk8i` / **PR #351**, which already carries the design-doc commits — PM verified this is the correct continuation, not a scope miss (see Log).
+- Items 1–6 above — **shipped**, commit `85b2a67`
+- `npm run build` green — **reported by coordinator, not independently executed by PM** (no code-execution tool available this session) — re-confirm after the fix below
+- Draft PR against `main` — done (#351)
 
 **User (manual):**
 - Apply migration `062` (Supabase Dashboard → SQL Editor, or `supabase db push`)
 - Redeploy `health-export-webhook` after the `source_family` stamp lands (Dashboard or CLI — "Enforce JWT Verification" stays OFF, unchanged)
 - Optional: explicitly opt in this turn if you want the "zero drift" check run against live prod data instead of only synthetic fixtures + your own read of the Health tab (per CLAUDE.md: direct DB access is opt-in per request, not assumed for the whole project)
-- Review + merge the PR only after PM's GO on the phase report
+- Review + merge the PR only after PM's GO on the phase report — **PM GO issued 2026-07-20**, conditional on the coordinator committing PM's `flights_climbed` fix first (see Log)
 
 **Definition of done:**
-- [ ] Migration applied, `npm run build` passes
-- [ ] `health-export-webhook` redeployed with the explicit stamp
-- [ ] Verification script run, output attached/pasted (fixture PASS + real-data byte-identical PASS)
-- [ ] Manual click-through of Health tab (Day/Week/Month — Steps/Energy/Heart/Sleep/Body) shows **zero numeric change** from before this branch
-- [ ] New metric names present in `METRIC_AGGREGATION` and don't crash `getAggregationType` (inert, no caller uses them yet)
-- [ ] No UI/route/component changed
+- [ ] Migration applied (pending — user), `npm run build` passes (reported green; re-confirm after committing PM's fix)
+- [ ] `health-export-webhook` redeployed with the explicit stamp (pending — user)
+- [x] Verification script run — PM hand-traced all 17 assertions in `scripts/verify-health-source-resolver.cjs` against the actual shipped resolver code (not just the report's word); all correct. `sucrase` confirmed present in `package-lock.json` so the script is genuinely runnable.
+- [ ] Manual click-through of Health tab (Day/Week/Month — Steps/Energy/Heart/Sleep/Body) shows **zero numeric change** from before this branch — blocked on migration apply, this is the true "Phase 0 fully done" closer, not a merge blocker
+- [x] New metric names present in `METRIC_AGGREGATION` and don't crash `getAggregationType` (confirmed by reading the file — inert, no caller uses them yet)
+- [x] No UI/route/component changed (confirmed by reading the diff)
 
 **Log:**
 - 2026-07-20 — PM: scope locked, GO issued. See Decision Log below for the 5 adjustments made to the design doc's candidate scope.
+- 2026-07-20 — **Phase 0 gate report received** (branch `claude/charming-newton-yhk8i`, PR #351, head `85b2a67`). PM independently verified against the actual diff (not taken on the report's word alone): confirmed via `.git/logs/HEAD` that this branch/head is genuinely PR #351 continuing directly from the 3 design-doc commits — the "didn't open a new branch" deviation is correct, not a scope miss, PR #351 already *is* the design doc's home. Read migration `062` in full: matches locked scope, `(select auth.uid())` RLS pattern confirmed against migrations `046`+`051` (claim was accurate). Read `healthAggregate.ts`/`healthSourceDefaults.ts`/`healthMetrics.ts`/`healthApi.ts`/the webhook diff in full and hand-traced all 17 assertions in `scripts/verify-health-source-resolver.cjs` against the actual shipped resolver code — every one checks out (dual-source non-double-count, presence-aware fallback, per-day independence, HR never cross-sources min/max, sleep never sums two sessions). Confirmed `sucrase` really is in `package-lock.json` (script is actually runnable, not just plausible). The scope-expansion deviation (resolver also wired into `computeHourlyBuckets`/`computeHeartRateHourlySeries`/`extractSleepSessions`, `computeBasalEnergyDailySeries` covered transitively) is verified real and **welcomed** — it closes a gap in PM's own original Phase 0 spec, which only named the 3 daily-series functions; without it, hourly Day-view charts would have stayed unresolved while daily/weekly views were correct, a real Phase-4-discovered inconsistency avoided.
+  **One real finding, fixed directly by PM (not just flagged):** `healthSourceDefaults.ts`'s `FITBIT_DEFAULT` set incorrectly included `flights_climbed`. The design doc is explicit and HIGH-confidence that the Air has no altimeter/barometer and cannot produce this metric at all (§2/§8, "Stays Apple SE2 — Air can't produce") — `flights_climbed` is not in H3's reversal list either, so nothing supersedes that. **Zero runtime impact** (Fitbit will never write this metric, so the resolver's presence-based fallback always resolves to Apple regardless — this was a documentation/policy-correctness bug, not a data bug), but left uncorrected it contradicts the locked design doc for anyone reading this file fresh in a future session. PM removed it from the Set directly (one line + a "don't re-add it" comment) since it was unambiguous, doc-mandated, and zero-risk. **This edit is currently UNCOMMITTED in the working tree — coordinator must commit it (e.g. folded into the existing Phase 0 commit or as a small follow-up) before this branch is considered final.**
+  **What PM could NOT independently verify:** the `npm run build` "green, 6.04s" result — no code-execution tool available in this session, so that claim is taken on trust pending the coordinator's own re-confirmation after committing the fix above (the fix is a one-line Set-literal change with no type implications, so it should not affect the build result, but re-run it after committing regardless).
+  **Verdict: GO to merge**, once (a) the flights_climbed fix above is committed, (b) build is re-confirmed green after that commit. Migration apply + webhook redeploy remain the user's manual steps and can happen before or after merge — the code is inert/safe either way (verified by the fast-path identity proof). Final "Health tab shows zero drift" click-through happens after the user applies 062 + redeploys — that's the true closing check for calling Phase 0 fully done in this tracker, not a merge blocker.
 - 2026-07-20 — Engineer: all six code items complete. Migration `062` written; webhook `source_family:'apple'` stamp added; 4 metric names registered; `healthSourceDefaults.ts` + the C1/H2 resolver landed (applied via one shared helper in every raw-point consumer); `fetchHealthMetricSeries` gained the optional filter. `npm run build` (tsc -b + vite) **green**. Verification script `scripts/verify-health-source-resolver.cjs` runs against the REAL module (via sucrase) — **17/17 PASS**, incl. array-identity zero-drift proof + dual-source no-double-count. Two DoD items are user-gated (migration apply, webhook redeploy) and the Health-tab click-through waits on the apply. **Deviation:** shipped on the existing `claude/charming-newton-yhk8i` branch (PR #351), not a new `claude/fitbit-phase0-*` branch — the harness pins this session to that branch; noted for PM. Awaiting PM GO for Phase 1 (which is already GO in parallel).
 
 ---
