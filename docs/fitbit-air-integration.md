@@ -1,242 +1,271 @@
-# Fitbit Air → Lasci's Board — integration design
+# Fitbit Air → Lasci's Board — Google Health API integration
 
-> Status: **PLAN / not yet built.** Device (Google Fitbit Air) on the way.
+> Status: **DESIGN / not yet built.** Device (Google Fitbit Air) inbound.
 > This doc is the durable memory for the integration (git is the only memory
-> across sessions). Update it as decisions are made.
+> across sessions). Update it as decisions are made and as the first live OAuth
+> pull confirms/refutes the flagged items in §11.
+> Research + adversarial verification completed 2026-07-20 against primary
+> Google sources (developers.google.com/health, store.google.com). Non-obvious
+> claims carry a confidence tag; anything MEDIUM/LOW must be confirmed on the
+> first real pull.
 
-## 0. Why this exists
-The user bought a **Google Fitbit Air** (announced 2026-05-07, screenless
-$99 WHOOP-style tracker; sensors: PPG heart-rate, red/IR SpO2, skin-temp,
-accelerometer, gyroscope). It will be worn 24/7 except ~1–2h/week for
-charging (7-day battery, 5-min→1-day fast charge). It becomes the **primary**
-source for sleep and most passive health metrics; the Apple Watch + Huawei
-Health → Apple HealthKit → Health Auto Export pipeline stays as a **gap-filler**.
+## 0. Decision (locked)
+Pull Fitbit Air data **directly from the new Google Health API** — NOT the
+deprecated Fitbit Web API, NOT via Apple HealthKit, NOT Health Connect. **Free
+tier, no Premium. No historical backfill** (fresh from first wear). Sleep is
+**always** sourced from Fitbit (Google). Every other metric follows a
+per-metric default: **Apple if it already has the field, else Fitbit** — the
+two sources are never mixed/summed for the same metric on the same day.
 
-## 1. Hard sensor reality (metrics follow the hardware)
-Air is a stripped-down tracker. Confirmed from Google Store / DC Rainmaker /
-9to5Google (2026-05):
+## 1. Why the Google Health API (and why now)
+- Google's own words: *"The Fitbit Web API has been improved and modernized …
+  and is now called the Google Health API."* It is the **only** successor.
+  (HIGH)
+- Legacy Fitbit Web API is **turned down September 2026** (third parties:
+  Sept 30, 2026; MEDIUM on the exact day) and stops syncing. Google Health API
+  reached **GA / read access end of May 2026**. They run side-by-side until
+  turndown, but **OAuth tokens do NOT transfer** — a re-consent is required.
+  For a fresh build the sunset is moot: build straight on the new API. (HIGH)
+- It is **not** Health Connect (on-device Android) — it is a cloud REST API at
+  `https://health.googleapis.com/v4/` over **Google OAuth 2.0**, which is the
+  same OAuth family we already use for Google Calendar. That makes the existing
+  `calendar-oauth` / `calendar-token` edge-function pattern directly reusable,
+  and the webhook-subscription model mirrors our `hevy-sync` /
+  `health-export-webhook` receivers. (HIGH)
+
+## 2. Hard sensor reality (metrics follow the hardware)
+Fitbit Air ($99, screenless, ~7-day battery, 5 ATM, iOS+Android via the Google
+Health app). Sensors: **optical PPG HR (~2s), red+IR (SpO2 + breathing rate),
+skin-temperature sensor, 3-axis accelerometer, gyroscope, vibration motor.**
 
 | We GAIN / keep | We LOSE vs a Charge-class device |
 |---|---|
-| PPG heart-rate (~2s sampling), resting HR | **ECG** — no electrodes (AFib is passive PPG only) |
-| SpO2 (red+IR, continuous overnight) | **EDA / stress scans / Stress Management Score** — no EDA sensor |
-| HRV (sleep), respiratory rate (sleep) | **Floors climbed** — no altimeter/barometer |
-| Skin-temperature variation (overnight) | **Built-in GPS** — Connected-GPS (phone) only |
-| Sleep + stages (deep/light/REM/wake) + Sleep Score | |
-| Steps, distance, calories/BMR | |
-| Active Zone Minutes, Cardio Load | |
-| **Daily Readiness Score** (Google made it free) | |
-| VO2max / Cardio fitness (basic) | |
+| PPG HR (~2s), resting HR, HRV (nightly) | **ECG** — no electrodes (AFib is passive PPG only) |
+| SpO2 (red+IR, continuous overnight) | **EDA / stress scans / Stress Mgmt Score** — no EDA sensor |
+| Respiratory/breathing rate (nightly) | **Floors** — no altimeter/barometer |
+| Skin-temperature variation (overnight, relative) | **Built-in GPS** — Connected-GPS (phone) only |
+| Sleep + stage segments, sleeping HR | |
+| Steps, distance, calories, Active Zone Minutes | |
+| VO2max (best w/ Connected-GPS runs) | |
 | AFib / irregular-rhythm notifications (passive) | |
 
-**Premium ($9.99/mo, 3mo free w/ Air):** only the Gemini AI Health Coach +
-adaptive plans + deeper analytics. All raw metrics above are FREE. We build
-our own coaching (PT Coach) so Premium is not required for our features.
+**Two dead-ends worth stating twice:** *stress* is impossible (no EDA sensor
+**and** no stress data type in the API), and *Daily Readiness / Sleep Score*
+are free **in-app** but are **not API data types** (§11) — recompute our own
+from HRV/RHR/sleep if we want them.
 
-## 2. Metric inventory vs what we store today
+## 3. Why the Air is genuinely additive (our watch is a Watch SE 2)
+Our Apple unit is a **Watch SE 2** — **no SpO2, no ECG, no wrist-temp** sensor,
+and rarely worn asleep. So the Air brings data we have **zero** of today:
+**SpO2, skin-temperature variation, and reliable NIGHTLY resting HR + HRV +
+respiratory rate + sleeping HR + real sleep-stage segments**, plus **Active
+Zone Minutes**. Conversely the SE 2 keeps sole ownership of **floors, running
+dynamics, stair speed, cardio recovery, walking-HR-avg, environmental/headphone
+audio, time-in-daylight, handwashing**, and **workout GPS** — the Air can't
+produce any of those. See the full matrix in §8.
 
-Today `health_metrics` (point-grain, migration 041) + `health_workouts` hold,
-from Apple: steps, active/basal energy, heart_rate, resting HR, HRV, SpO2,
-respiratory rate, sleep_analysis (aggregate sessions), weight/body-fat/BMI,
-misc mini-metrics.
+## 4. Architecture (Supabase edge-fn + PWA)
+```
+Fitbit Air ──BLE ~15min──▶ Google Health app (phone) ──▶ Google Health cloud
+                                                              │
+                        Google OAuth 2.0 (refresh token in Vault)
+                                                              │
+        ┌─────────────────────────────────────────────────────────────┐
+        │ Supabase edge functions (Deno, self-contained, manual deploy) │
+        │  • google-health-oauth   – auth-code exchange + refresh       │
+        │  • google-health-sync    – ~3h cron poll + on-demand fetch    │
+        │       reads: dailyRollUp/rollUp (summaries), list (intraday), │
+        │             reconcile (deduped multi-source stream)           │
+        │       writes: health_metrics + health_sleep_segments          │
+        │  • (later) google-health-webhook – push subscriber, verify_jwt off │
+        └─────────────────────────────────────────────────────────────┘
+                                                              │
+                                      health_metrics / health_sleep_segments
+                                                              │
+   PWA (TrainingPage → HealthTab) + AI (briefing, PT Coach, get_health_stats)
+   read via a SOURCE-AWARE aggregation layer (healthAggregate.ts)
+```
+- **Manual deploy** (Dashboard/CLI), each function self-contained (no
+  `_shared/` imports) — same constraint as the Hevy functions.
+- Freshness ceiling: data is only as new as the last **device→phone BLE sync
+  (~15 min)** — a manual "Fetch now" cannot beat that. Best-effort, by design
+  (same caveat as the Apple / Health-Auto-Export path).
 
-- **Already have, Fitbit will improve granularity:** heart_rate (Fitbit ~2s vs
-  Apple ~1/min — finer), steps, distance, active/basal energy, resting HR, HRV,
-  respiratory rate, SpO2, skin temp, weight (if logged).
-- **New from Fitbit (not tracked today):** Active Zone Minutes, Cardio Load,
-  **Daily Readiness Score**, VO2max/Cardio fitness, AFib notifications,
-  Fitbit-native **Sleep Score + efficiency** (their value, measured — OK to
-  DISPLAY per the "don't compute our own, showing a native one is fine" rule).
-- **Won't exist (don't build UI expecting them):** floors, ECG waveform,
-  EDA/stress. Remove/hide any reliance once Fitbit is the sole source.
+## 5. Binary source model — the two sources are NEVER mixed
+The user wants to **see both** the Apple Watch and the Fitbit Air on the site —
+one never silently replaces the other — but a single metric on a single day is
+resolved to **exactly one source**, never summed.
+- **Sleep → Google/Fitbit, always.** (Air is worn to bed; SE 2 usually isn't.)
+- **Everything else → Apple-if-the-field-is-already-populated, else Fitbit.**
+  Concretely: metrics currently GREEN (Apple fills them) default to Apple;
+  metrics currently RED/empty or net-new default to Fitbit.
+- **Per-metric override, persisted.** A per-metric default map lives in
+  `useHealthSourcePrefs` (localStorage like `useDayTargets`, or a small
+  `health_source_prefs` table if it must be AI-readable). Shipping defaults per
+  §8; the user can flip any metric permanently, and a per-section
+  `Apple ⇄ Fitbit` switch lets them peek the non-default source.
+- **AI reads the default** unless explicitly told otherwise ("Fitbit'e göre
+  uykum"). `healthAggregate` gains an optional `sourceFamily` filter on every
+  compute fn; `get_health_stats` (ai-proxy) accepts an optional source arg,
+  else uses the stored default.
+- **Charge-window dedup:** Apple may splice in only the ~1–2h/week the Air is
+  off charging; never show both summed. The resolver keys off a stable
+  `source_family` (`apple`/`fitbit`/`manual`), not the raw per-device string
+  (Apple already varies: "Furkan's Apple Watch" vs "…|Lasci"). A ~1–2h/week
+  hole is expected — do NOT alarm on it.
 
-## 3. THE architecture fork (decide first — cheap empirical test)
+## 6. Auth / OAuth flow (single-user, free, no CASA)
+Standard Google **authorization-code** flow (PKCE S256 recommended; our edge fn
+is a confidential client so the web-server flow with `client_secret` applies).
+```
+1. Authorize:
+   GET https://accounts.google.com/o/oauth2/v2/auth
+       ?client_id=...&redirect_uri=...&response_type=code
+       &access_type=offline&prompt=consent
+       &code_challenge=...&code_challenge_method=S256
+       &scope=<space-separated googlehealth.*.readonly bundles>
+2. Exchange (edge fn):
+   POST https://oauth2.googleapis.com/token
+       grant_type=authorization_code, code, code_verifier, client_id, client_secret, redirect_uri
+   → { access_token, expires_in: 3599, refresh_token }
+3. Refresh (edge fn, every ~1h or on 401):
+   POST https://oauth2.googleapis.com/token
+       grant_type=refresh_token, refresh_token, client_id, client_secret
+```
+**Token-lifetime rule (the single most important operational fact):**
+| Consent-screen status | Refresh-token lifetime |
+|---|---|
+| **Testing** | expires after **7 days** → poller dies weekly ❌ |
+| **In Production** | effectively **non-expiring** (unless revoked / unused ~6 mo) ✅ |
+So the project **must be published to "In Production."** All `googlehealth`
+scopes are **Restricted**, but an **unverified** app is fully usable up to a
+hard **100-user cap** — for one user you click through the one-time
+"unverified app → Advanced → continue" warning as yourself. **No OAuth
+verification and no annual CASA security assessment** are required at that
+scale (those only kick in to exceed 100 users / launch publicly; CASA is
+$500–$4,500/yr, 2–6 wks). ⚠️ MEDIUM: confirm hands-on that Google surfaces the
+click-through for **Restricted** health scopes in Production-unverified (rather
+than blocking until verification) — validate in a throwaway Cloud project
+before wiring the poller. Worst case = stay in Testing and re-consent weekly.
 
-**Does Fitbit Air data reach Apple HealthKit?** Fitbit devices historically do
-NOT write into HealthKit (separate silo). If that still holds for the Air:
+## 7. Scopes (read-only, minimal set)
+All prefixed `https://www.googleapis.com/auth/googlehealth.`:
+- `activity_and_fitness.readonly` — steps, distance, active/total calories,
+  Active Zone Minutes, VO2 Max, floors (unused for Air), activity level.
+- `health_metrics_and_measurements.readonly` — HR, HRV, SpO2, skin-temp
+  derivations, resting HR, respiratory rate, weight, body fat.
+- `sleep.readonly` — sleep sessions + stage segments.
+- (Do **NOT** request `ecg`/`irn` unless §11 confirms the Air surfaces them;
+  `nutrition`/`location` not needed — the app owns nutrition, no GPS on Air.)
 
-- **Branch A — Air writes to HealthKit** (unlikely, but TEST it): then the
-  EXISTING Health Auto Export pipeline already carries Air data — near-zero new
-  code, just source-tagging + dedup (§4). **Test the moment the device arrives:**
-  wear it a night, then check iPhone → Health app → does Fitbit sleep/HR appear?
-  If yes, Branch A.
-- **Branch B — Air data stays in Google Health only** (expected): build a
-  **Google Health API** integration (the confirmed Fitbit Web API successor,
-  `health.googleapis.com/v4`, legacy Fitbit API dies Sept 2026):
-  - Google OAuth 2.0, scopes `googlehealth.*.readonly` (sleep, activity,
-    metrics). **Unverified-app path = ≤100 users, no CASA needed** → perfect
-    for single-user personal use. Rate limits ample (300 req/min/user).
-  - **Webhook push** (`projects.subscribers`): Google POSTs to our HTTPS
-    endpoint with OUR secret in the Authorization header — SAME Bearer-secret
-    pattern as `health-export-webhook`/`hevy-sync`. New edge function
-    `google-health-webhook` (verify_jwt off, secret in Vault).
-  - Read methods: `dailyRollUp`/`rollUp` for summaries, `list` for intraday,
-    `reconcile` for merged streams. Sleep comes as timestamped stage SEGMENTS
-    (`stages[]`) → real hypnogram, no aggregate ambiguity.
+## 8. Metric mapping + default source (ship these)
+Legend for the API column: **INTRADAY** = `list` Sample/Interval available ·
+**DAILY** = rollUp/dailyRollUp (or daily-by-nature) · **NO** = not obtainable
+(API lacks it OR the Air can't produce it) · **NA** = manual-log only.
 
-## 3b. BOTH sources visible, per-metric DEFAULT, AI reads the default (user req)
+### Net-new from the Air (default → Fitbit)
+| DB metric_name | Google Health type | API | Note |
+|---|---|---|---|
+| `oxygen_saturation` (spo2) | Oxygen Saturation + Daily | INTRADAY | red/IR; overnight continuous |
+| `skin_temperature` | Daily Sleep Temperature Derivations | DAILY | nightly **variation** (relative, 3-night baseline) |
+| `active_zone_minutes` | Active Zone Minutes | INTRADAY | flagship intensity metric (sum) |
+| `respiratory_rate` (nightly) | Daily Respiratory Rate + Sleep Summary | DAILY | reliable nightly (SE2 sparse) |
+| `heart_rate_variability` (nightly) | HRV + Daily HRV | INTRADAY | nightly RMSSD; SE2 barely worn asleep |
+| `resting_heart_rate` | Daily Resting Heart Rate | DAILY | SE2 only 8 rows today |
+| `sleeping_heart_rate` | (from HR during sleep session) | DAILY | first-class on Fitbit |
 
-The user wants to SEE data from BOTH the Apple Watch and the Fitbit Air on the
-site — not one silently replacing the other. Design:
+### Improved granularity (Apple keeps default unless flagged)
+`heart_rate` (INTRADAY, 14-day cap; Apple in workouts / Fitbit overnight),
+`step_count` (INTRADAY), `walking_running_distance` (INTRADAY), `active_energy`
+(INTRADAY), `basal_energy_burned` (DAILY, derive = Total − Active),
+`vo2_max` (DAILY; keep Apple — Air needs GPS runs), `calories`/Total Calories
+(DAILY, rollUp only).
 
-- **Per-metric default source.** Each metric has a default (some default to
-  Apple Watch, some to Fitbit Air — chosen by which device measures it better;
-  see the comparison table in §3c). A day's headline/chart shows the default
-  source; when the other source also has data, the user can flip to it (a small
-  per-section source switch: `Apple Watch ⇄ Fitbit Air`, or "both" overlay).
-- **Persisted user preference.** The chosen default per metric is stored
-  (localStorage like `useDayTargets`, or a small `health_source_prefs` table if
-  it must be AI-readable server-side). Shipping defaults are sensible
-  (continuous/sleep → Fitbit; ECG/gait/workout-GPS → Apple) and the user can
-  override any metric permanently.
-- **AI reads the DEFAULT unless told otherwise.** The daily briefing, PT Coach,
-  Ask-AI `get_health_stats`, and Daily's HealthCard all resolve each metric to
-  its default source. If the user explicitly asks ("show me Apple Watch steps",
-  "Fitbit'e göre uykum"), the AI/UI reads the requested source instead. So the
-  aggregation layer must be source-aware (filter by `source_family`) and expose
-  a `preferredSource(metric)` resolver that both UI and AI call.
-- Implementation: `healthAggregate` gains an optional `sourceFamily` filter on
-  every compute fn; a `useHealthSourcePrefs` hook holds the per-metric default;
-  `get_health_stats` (ai-proxy) accepts an optional source arg, else uses the
-  stored default.
+### Sleep (default → Fitbit, always)
+`sleep_analysis` → **Sleep (Session: Classic + Stages)**, `sleep.readonly`.
+Ingest timestamped stage segments into **`health_sleep_segments`** — a real
+hypnogram, no aggregate-overlap ambiguity. Apple `Core` ≈ Fitbit `Light`.
 
-## 3c. Apple Watch vs Fitbit Air — metric comparison + default map
+### Stays Apple SE 2 (Air can't produce — keep Apple as source)
+`flights_climbed` (no altimeter), all running dynamics
+(`running_speed/power/stride_length/vertical_oscillation/ground_contact_time`),
+`stair_speed_up/down`, `cardio_recovery`, `walking_heart_rate_average`,
+`environmental_audio_exposure`, `headphone_audio_exposure`, `time_in_daylight`,
+`handwashing`, `toothbrushing`, `apple_stand_time/hour`, `push_count`, and any
+workout GPS/route/pace.
 
-⚠️ **The Apple watch is a Watch SE 2** — NOT a Series 8+/Ultra. SE 2 has **no
-SpO₂ sensor, no ECG electrodes, no skin/wrist-temperature sensor**. So several
-metrics the generic comparison credited to "Apple Watch" are impossible on THIS
-watch. What matters is what it can GIVE US, and the DB confirms it (§3d).
+### Not obtainable at all from the Air
+`ecg` (no electrodes — API type exists, Air produces nothing),
+`stress`/`EDA`/`stress_management_score` (no sensor **and** no API type),
+`daily_readiness_score` (free in-app, **not** an API type → recompute),
+`sleep_score` (app-computed, not an API field → derive from stages),
+`cardio_load` (Fitbit app metric, not an API type), `floors` (no altimeter).
 
-Guiding rule: **Fitbit Air worn ~24/7** (off ≤1–2h/week) → default for anything
-continuous/passive/overnight. **Apple Watch SE 2** worn intermittently → default
-for the sensors it does have (gait/running dynamics, floors, environmental,
-workout GPS via iPhone). Confidence: ✅ confirmed · ⚠️/❓ verify against payload.
+### RED nutrition fields
+`dietary_*` / `protein` / `carbohydrates` / `fiber` / `caffeine` /
+`total_fat` / `vitamin_d` / `magnesium` / `dietary_water` map to Fitbit
+Nutrition/Hydration logs (`nutrition` scope) but are **manual-entry**, and the
+app already owns food logging (`food_log_entries`) — **skip**, don't pull.
 
-## 3d. What we ACTUALLY receive today (DB-confirmed, Apple SE 2 + Huawei + accessories)
-Live query of `health_metrics` (rows since 2026-06-01) — this is ground truth,
-better than spec sheets:
-- **Energy/activity:** basal_energy_burned, active_energy, step_count,
-  walking_running_distance, apple_stand_time, apple_stand_hour,
-  apple_exercise_time, physical_effort, flights_climbed (SE 2 HAS an altimeter),
-  push_count (misdetected — see CLAUDE.md).
-- **Heart:** heart_rate (dense), resting_heart_rate (SPARSE — 8 rows;
-  SE 2 not worn overnight consistently), heart_rate_variability (sparse, 115),
-  walking_heart_rate_average, vo2_max (1), cardio_recovery (1).
-- **Respiratory:** respiratory_rate (282, from sleep).
-- **Sleep:** sleep_analysis (35 — aggregate sessions, the lossy path).
-- **Running dynamics:** running_speed/power/stride_length/ground_contact_time/
-  vertical_oscillation, stair_speed_up/down.
-- **Environmental/behaviour:** time_in_daylight, environmental_audio_exposure,
-  headphone_audio_exposure, handwashing, toothbrushing (Oral-B).
-- **Body:** weight_body_mass, body_mass_index, body_fat_percentage — all from
-  the **Huawei scale** ("HUAWEI Health: Europe"), NOT the Watch.
-- **NOT PRESENT (SE 2 can't):** ❌ oxygen_saturation (SpO₂), ❌ wrist/skin
-  temperature, ❌ ECG, ❌ the walking gait/steadiness suite.
+## 9. DB schema changes
+`health_metrics` (point-in-time grain since migration 041; columns
+`user_id, metric_name, date, unit, source, value jsonb, recorded_at, …`) needs
+**no structural change** — new Fitbit metrics slot in as new `metric_name`s
+with the same shape, upserted on `(user_id, metric_name, recorded_at, source)`.
 
-**So Fitbit Air is not just "better" — it brings genuinely NEW data we have
-zero of today:** SpO₂, skin-temperature variation, reliable NIGHTLY resting HR
-+ HRV + respiratory rate (today these are sparse/absent because SE 2 is rarely
-worn asleep), Active Zone Minutes, Daily Readiness, Cardio Load, native Sleep
-Score/efficiency, sleeping HR, and timestamped sleep STAGE segments (real
-hypnogram). ECG stays impossible (neither device has electrodes).
+New migration (call it `062_health_source_and_sleep_segments.sql`):
+1. **`ADD COLUMN source_family text`** to `health_metrics` and
+   `health_workouts` (`'apple' | 'fitbit' | 'manual'`), backfilled from the
+   existing `source` string, so the source-resolver keys off a stable family.
+2. **`CREATE TABLE health_sleep_segments`** — one row per timestamped stage
+   segment: `(id, user_id, start_at timestamptz, end_at timestamptz, stage
+   text, source text, source_family text, created_at)`, owner-only RLS +
+   audit-exempt (bulk-synced, like the other health tables). Enables a true
+   hypnogram; `sleep_analysis` aggregate rows stay for Apple back-compat.
+3. New `metric_name`s + their `METRIC_AGGREGATION` class in
+   `healthMetrics.ts`: `oxygen_saturation` (latest/minmaxavg),
+   `skin_temperature` (latest, delta), `active_zone_minutes` (sum),
+   `sleeping_heart_rate` (latest), plus mini-cards/sections per the Health tab
+   pattern.
+4. (Optional) `health_source_prefs` only if the per-metric default must be
+   AI-readable server-side; otherwise localStorage via `useHealthSourcePrefs`.
 
-### UNIQUE to Fitbit Air (Apple Watch can't give these)
-- **Active Zone Minutes** ✅
-- **Daily Readiness Score** ✅ (now FREE, no Premium)
-- **Cardio Load** (cardiovascular strain) ⚠️
-- **Sleep Score + sleep efficiency** as native scores ⚠️❓ (Apple has NO sleep score) — OK to display (native measurement, per the "don't compute our own" rule)
-- First-class **sleeping heart rate** ✅
-- Practical superpower: **24/7 coverage** of every passive metric (fewest gaps)
+## 10. Rate limits + poll math
+Per user **300 req/min** (unverified ~150/min); per project **120k/min** and
+**86.4M/day**; 429 on overrun → backoff. No per-user hourly/daily cap.
+- **Poll every ~3h** (8/day). Worst-case ~40 requests/poll (one per type;
+  reconcile/rollUp consolidate many). 40 in one burst « 150/min → never trips
+  the only binding cap; send sequentially to respect 2.5 QPS unverified.
+- Per day: 8×40 + ~20 manual×40 ≈ **1,120 req/day = 0.0013%** of the project
+  cap. ~4 orders of magnitude of headroom.
+- Query-range caps: **14 days** for HR/active-minutes/total-calories; 90 days
+  otherwise (we do no backfill, so windows are tiny anyway).
+- **Push subscriptions** exist (`projects.subscribers`) — near-real-time, but
+  bounded by the same ~15-min BLE sync and requiring Tink signature
+  verification. Start with polling; add webhooks later as an upgrade.
 
-### UNIQUE to Apple Watch SE 2 (Fitbit Air can't — no sensor) — DB-confirmed present
-- **Floors climbed / elevation** ✅ (SE 2 has an altimeter; Air has no barometer)
-- **Running dynamics**: power, ground-contact time, vertical oscillation, stride ✅
-- **Stair ascent/descent speed**, **cardio recovery (1-min)**, **walking HR avg** ✅
-- **Environmental + headphone audio exposure**, **time in daylight**,
-  **handwashing**, **stand hours/time** ✅
-- Workout **GPS route/pace** fidelity (via iPhone) ✅
-- **NOT available on SE 2 (so nobody gives us these):** ECG ❌, EDA/stress ❌,
-  the walking-steadiness/speed/asymmetry mobility suite ❌ (not in our DB).
+## 11. Open items to confirm on the FIRST live pull (do not trust blind)
+- ⚠️ Does Google let a **Restricted**-scope app sit **In Production while
+  unverified** with a click-through (→ non-expiring refresh token)? MEDIUM —
+  the linchpin of the whole background-sync design. Verify before building.
+- ⚠️ Does the Air's passive **AFib** surface as `irregular_rhythm_notification`
+  via the API? MEDIUM (and possibly region-gated for Norway). If yes, add the
+  `irn` scope.
+- ⚠️ `daily_readiness_score` / `sleep_score` confirmed **absent** from the API
+  data-type list (recompute) — re-check the live data-types reference in case
+  the roadmap adds them.
+- ⚠️ Does the Air compute **VO2 Max** without built-in GPS? MEDIUM — keep Apple
+  default until observed.
+- ⚠️ Confirm **no raw metric or deep-history depth is quietly Premium-gated**
+  on the API side (couldn't read Google's Premium comparison page). MEDIUM.
+- ⚠️ `store.google.com` specs is a JS SPA that couldn't be parsed; sensor list
+  (no ECG/EDA/GPS/altimeter) is cross-checked across reviews — HIGH for those
+  four absences, MEDIUM on fine details.
 
-### BOTH provide — one is clearly better
-| Metric | Better source | Why |
-|---|---|---|
-| Continuous HR | **Apple** fidelity / **Fitbit** coverage | Air PPG accuracy flagged weaker; split: Apple in workouts, Fitbit all-day/overnight |
-| Sleep stages | **Fitbit** | Heritage staging + actually worn to bed (Apple often charging). Note taxonomy: Apple **Core** ≈ Fitbit **Light** |
-| VO₂max | **Apple** | Estimates from many activities; Air only from GPS outdoor runs |
-| SpO₂ / respiratory rate | **Fitbit** | Reliable nightly (always worn; no US-unit SpO₂ hardware caveat) |
-| Basal/active energy | **Fitbit** | 24/7 wear avoids the off-wrist basal under-count (our current gap-fill hack) |
-
-### Default source map (ship these; user can override per metric)
-- **Default → Fitbit Air:** resting HR, HRV, SpO₂, respiratory rate, skin temp,
-  ALL sleep (duration/stages/score/efficiency/sleeping-HR), Daily Readiness,
-  Cardio Load, Active Zone Minutes, all-day steps/distance/calories/active+basal
-  energy, passive AFib monitoring.
-- **Default → Apple Watch:** ECG, floors, full gait/mobility suite, running
-  dynamics, cardio recovery, walking HR avg, VO₂max, environmental/headphone
-  audio, time in daylight, mindful minutes, stand hours, handwashing, and any
-  workout with GPS/route/pace.
-- **Context split:** continuous HR → Fitbit for daily/resting/overnight, Apple
-  during logged workouts.
-- **Neither / single manual source:** EDA-stress (impossible), blood glucose
-  (external CGM), body mass/fat/BMI (scale or manual — keep ONE source).
-
-### New metric_names to add (with METRIC_AGGREGATION class + mini-card/section)
-`active_zone_minutes` (sum), `cardio_load` (latest/sum ❓), `daily_readiness`
-(latest), `vo2max` (latest), `sleeping_heart_rate` (latest), `fitbit_sleep_score`
-(latest), `fitbit_sleep_efficiency` (latest). Apple-side already-modelled ones
-(walking_steadiness, walking_speed, six_minute_walk, etc.) stay as-is.
-
-### ❓ Verify against a live payload before wiring
-Whether Google Health API exposes numeric **Sleep Score / Cardio Load / Daily
-Readiness** as fields (vs app-only); Apple unit's **SpO₂** status; current
-**Premium** gating on deep history. Confirm on first real OAuth pull.
-
-## 4. Apple ↔ Fitbit dedup ("single winner source per metric per day")
-
-Both sources will report overlapping days. Rule:
-- **Fitbit = primary** for the metrics it tracks (worn 24/7). Apple = fallback
-  ONLY for the window Fitbit was off (the weekly ~1–2h charge, or a not-yet-
-  synced gap). Never show both summed.
-- Implement as a **source-priority resolver** in `healthAggregate.ts`: when a
-  day/metric has both sources, take Fitbit; splice Apple only for time ranges
-  with no Fitbit sample (so a charge-window nap from the Watch still counts).
-- **Charge window is NOT a data gap to alarm on** — expect one ~1–2h hole/week;
-  don't flag it as missing.
-- Tag every row's `source` clearly (already a column). Add a stable source
-  family tag (`fitbit` vs `apple`) so the resolver keys off family, not the
-  raw per-device string (Apple already varies: "Furkan's Apple Watch" vs
-  "…|Lasci").
-
-## 5. Schema additions
-
-- **`health_sleep_segments`** (NEW) — the real fix for sleep: one row per
-  timestamped stage segment (`user_id, start, end, stage, source, source_family`).
-  Enables an actual hypnogram and makes overlapping-aggregate ambiguity (the
-  2026-07-17 bug) impossible — the true night = union of non-overlapping
-  segments. `sleep_analysis` aggregate rows stay for back-compat / Apple.
-- **`health_metrics`** — no schema change needed; new metric names
-  (`active_zone_minutes`, `cardio_load`, `daily_readiness`, `vo2max`,
-  `fitbit_sleep_score`, `fitbit_sleep_efficiency`) slot in as new
-  `metric_name`s with the same point-grain shape. Add their aggregation class
-  to `METRIC_AGGREGATION` + a mini-metric card each.
-- Add `source_family` (text, `apple`|`fitbit`|`manual`) to `health_metrics`
-  and `health_workouts` for clean dedup keying.
-
-## 6. Prep achievable BEFORE the device arrives (no Fitbit data needed)
-1. ✅ This design doc (committed).
-2. Sleep-segment table migration (write now, apply when building Branch B).
-3. Source-priority resolver scaffolding in `healthAggregate.ts` (testable
-   against existing multi-source Apple rows).
-4. Google Cloud project + OAuth client creation is a USER step (console);
-   document the exact steps + scopes here when starting Branch B.
-5. Interim Apple sleep fix (user, on phone): add the **"Previous 7 Days"
-   reconciliation** Health Auto Export automation so fragmented nights
-   (like 2026-07-17, which lost its early ~3h session) get re-sent whole.
-
-## 7. Open decisions (need user)
-- Confirm Branch A vs B with the arrival test (§3).
-- Poll vs webhook for Branch B (webhook preferred; poll simpler to start).
-- Which new metrics get a full section vs a mini-card.
-- Keep Apple pipeline running in parallel indefinitely, or retire it once
-  Fitbit is trusted?
+## 12. Prep achievable BEFORE the device arrives
+1. This doc (committed).
+2. `062` migration written (apply when building).
+3. Source-aware `healthAggregate` scaffolding + `useHealthSourcePrefs`
+   (testable against existing multi-source Apple rows).
+4. Google Cloud project + OAuth client is a **USER** step (§ phases) — document
+   exact scopes here (§7) so it's a copy-paste.
