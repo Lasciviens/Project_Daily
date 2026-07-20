@@ -269,3 +269,106 @@ Per user **300 req/min** (unverified ~150/min); per project **120k/min** and
    (testable against existing multi-source Apple rows).
 4. Google Cloud project + OAuth client is a **USER** step (§ phases) — document
    exact scopes here (§7) so it's a copy-paste.
+---
+
+## 13. Red-team corrections (LOCKED — these SUPERSEDE any conflicting text above)
+
+A 4-lens adversarial review (OAuth/security · API-correctness · architecture ·
+product-scope) + author adjudication produced 31 findings (2 critical, 8 high,
+11 medium, 10 low; 26 valid / 4 partly / 1 live-check). Verdict: **sound
+direction, NOT buildable as-locked** — fix the criticals + highs before writing
+the poller. Corrections:
+
+### Critical (design bugs — must fix before any code)
+- **C1 · Single-source resolution is MANDATORY, not optional.** Resolve the
+  winning `source_family` per `(metric, day)` and filter points BEFORE
+  `aggregateGroup`, in ONE place (`fetchHealthMetricSeries`/a resolver) — never
+  a default-off filter at 15 call sites. Otherwise every `sum` metric
+  double-counts on any day both devices reported. Add a regression test for a
+  both-sources day.
+- **C2 · Kill the source-model self-contradiction.** Commit to per-day
+  single-winner grain and DELETE the "Apple splices in the ~1-2h/week off-charge
+  window" sub-day merge. Accept the small hole; never blend two families for one
+  metric/day.
+
+### High
+- **H1 · `source_family` must never be NULL.** Stamp `'apple'` in
+  `health-export-webhook` on every NEW insert AND `COALESCE(source_family,'apple')`
+  in the resolver; migration backfills HUAWEI/Apple/Watch source strings → `apple`.
+  (Backfill alone leaves post-migration rows NULL → dashboard blanks on strict reads.)
+- **H2 · Resolver is per-day + presence-aware.** Use the preferred family IF it
+  has data that day, else fall back to the other (never blend). For `latest`
+  metrics, filter to the resolved family first, then take latest.
+- **H3 · REVERSE the defaults for continuity/cumulative metrics.** Once the Air
+  is live (24/7 wear), default steps / distance / active_energy / active_zone_minutes /
+  all-day heart_rate → **Fitbit**. Apple-default silently UNDERCOUNTS daily totals
+  (SE2 is daytime-only). Keep Apple only where SE2 owns the sensor: running
+  dynamics, mobility (walking/stair speed), audio exposure, cardio_recovery,
+  and VO2max (until the Air's Connected-GPS estimate is observed). Weight/BMI/
+  body-fat stay on the Huawei scale. Sleep stays Fitbit. → The per-metric default
+  map is a CURATED table = the single source of truth for both the resolver and
+  the AI layer; "Apple if populated" is demoted to a fallback only.
+- **H4 · Sleep storage resolved.** Write Fitbit sleep as `health_sleep_segments`
+  rows; add a segments→per-night-summary fn feeding SleepSection;
+  `computeSleepSummary` filters to `source_family='fitbit'` when a Fitbit night
+  exists, falling back to Apple `sleep_analysis` only when none. Never let both
+  contribute to one night.
+- **H5 · Do NOT reuse "Sleep Score" / "Readiness Score" names** for home-grown
+  recomputes — that violates the prior explicit "no derived sleep metrics"
+  decision. They are in-app-only, NOT API types. Show an honest "not in API"
+  note; any derived recovery metric must be distinctly named + user-approved.
+- **H6 · OAuth token lifetime = ASSUMPTION pending a hands-on test.** Before the
+  poller: in a throwaway Cloud project, publish Production-unverified, self-consent
+  with the REAL restricted `googlehealth.*` scopes, capture the refresh token,
+  and confirm it survives >7 days AND a fresh access-token refresh. Author's
+  defense: Google's OAuth docs DO support "Production = durable / Testing = 7-day",
+  so the residual risk is narrowly whether the restricted-scope consent
+  *click-through* is allowed unverified — not the token model itself. If the test
+  fails, pivot to an **Internal** Workspace app (if power.no qualifies; no cap /
+  no 7-day / no verification) or accept a "reconnect" UX. Ship a monitored
+  refresh-failure path (app_error_logs + a HealthTab reconnect banner) regardless.
+- **H7 · Reframe the Calendar analogy.** Token plumbing is reusable, but
+  `googlehealth.*` are **RESTRICTED** (stricter than Calendar's SENSITIVE): the
+  ≤100-user unverified click-through is unproven for restricted scopes and, if
+  blocked, forces OAuth verification + annual CASA. State this as risk, not fact.
+
+### Medium (fix in the doc / design before build)
+- Refresh token lives in a **token table** (extend `user_calendar_tokens` with a
+  provider column, or a sibling table) — NOT Vault; mint access tokens per call.
+  Only `CLIENT_ID`/`CLIENT_SECRET` go in Vault.
+- OAuth callback: add a **`state`** (CSRF) param bound to the session; keep
+  `verify_jwt` ON for the callback (it's not a public webhook); confidential
+  client → PKCE optional (drop it, or persist `code_verifier` server-side keyed
+  by `state`). This is a NEW redirect flow, not the calendar popup.
+- **Timezone/date:** convert UTC dataPoints → Europe/Oslo (DST-aware) before
+  slicing the `date` column; keep `recorded_at` as the true UTC instant (mirrors
+  migration 041). Derive DAILY-rollup `recorded_at` from the value's OWN civil
+  day, not poll time — else every 3h poll inserts duplicate daily rows.
+- **Read-method table fix:** `list` for all daily-* + Session types (HRV, RHR,
+  respiratory, SpO2, skin-temp, VO2max, sleep, IRN, ECG). `rollUp`/`dailyRollUp`
+  ONLY for interval activity (steps, distance, active-energy, AZM, heart-rate,
+  total-calories). HRV is DAILY, not intraday.
+- **Reliability surface:** persist `last_successful_sync` + `last_error`; a
+  HealthTab "stale" banner; a daily reconciliation pull inside the 14-day window
+  (an outage >14 days is otherwise permanently unrecoverable — no backfill).
+- Consider **Internal** user type if power.no is a Workspace org (removes
+  verification/cap/7-day; weigh employer-identity tradeoff — document decision).
+- A static **privacy-policy URL + homepage** is often required to save restricted
+  scopes on the consent screen.
+- Confirm **source-toggle granularity** with the user (global vs per-section vs
+  per-metric); the default is a stable one-time curated choice, NOT a live
+  "is it populated now" test (which would flip a metric's source retroactively).
+
+### Confirmed strengths (survived scrutiny)
+API choice (Google Health API = Fitbit-Web-API successor), scope inventory,
+data-type/metric availability, DB point-grain, "no premium", "no backfill", and
+the huge rate-limit headroom (3h poll trivial) are all correct. Endpoints
+(`dataPoints.list/reconcile/rollUp/dailyRollUp`, `pairedDevices`,
+`projects.subscribers`) verified real.
+
+### Prep that is SAFE to start now (before the device / before OAuth test)
+Commit this doc; draft migration `062` (with the H1 `source_family` stamping +
+backfill); build the source-aware aggregation scaffolding (C1/H2 resolver +
+curated default map, testable against existing Apple rows); add the new
+`metric_name`s. Do NOT write the poller until the OAuth token test (H6) passes
+and §4/§5/§8 resolver semantics are rewritten per C1/C2/H2/H3.
