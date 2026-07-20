@@ -26,7 +26,16 @@ function ToastItem({ toast }: { toast: Toast }) {
       <span className={`text-base leading-none flex-shrink-0 ${toast.type === 'loading' ? 'animate-spin inline-block' : ''}`}>
         {ICON[toast.type]}
       </span>
-      <span className="leading-snug">{toast.message}</span>
+      <span className="leading-snug flex-1">{toast.message}</span>
+      {toast.action && (
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); toast.action!.onClick() }}
+          className="flex-shrink-0 -my-1 ml-1 min-h-[40px] px-3 rounded-lg font-semibold underline underline-offset-2 hover:bg-white/15"
+        >
+          {toast.action.label}
+        </button>
+      )}
     </div>
   )
 }
