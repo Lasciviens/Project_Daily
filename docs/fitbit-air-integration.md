@@ -16,6 +16,10 @@
 > This doc is the durable memory for the integration (git is the only memory
 > across sessions). Update it as decisions are made and as the first live OAuth
 > pull confirms/refutes the flagged items in §11.
+> **Execution tracking (phase status, DoD, decisions-as-they're-made) lives in
+> `docs/fitbit-integration-tracker.md` — this doc stays the frozen design, that
+> one is the living log.** Phase 0 (source-aware schema/aggregation
+> foundation) is GO as of 2026-07-20.
 > Research + adversarial verification completed 2026-07-20 against primary
 > Google sources (developers.google.com/health, store.google.com). Non-obvious
 > claims carry a confidence tag; anything MEDIUM/LOW must be confirmed on the
