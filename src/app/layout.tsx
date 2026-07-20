@@ -13,6 +13,7 @@ import { AIPanel } from '../features/ai/components/AIPanel'
 import { CommandBar } from '../shared/components/CommandBar'
 import { SettingsMenu } from '../shared/components/SettingsMenu'
 import { Toaster } from '../shared/components/Toaster'
+import { OfflineBanner } from '../shared/components/OfflineBanner'
 import { Sheet } from '../shared/components/Sheet'
 import { ListRow } from '../shared/components/ListRow'
 import { useUIStore } from './store'
@@ -122,6 +123,7 @@ export function Layout() {
       <AIPanel />
       <CommandBar />
       <Toaster />
+      <OfflineBanner />
     </div>
   )
 }
