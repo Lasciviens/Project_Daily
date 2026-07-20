@@ -384,3 +384,23 @@ select,
 .overscroll-contain {
   overscroll-behavior: contain;
 }
+
+/* #46 — visible keyboard-focus ring (a11y). :focus-visible only triggers for
+   keyboard/AT users, not pointer taps, so it doesn't reintroduce the chart
+   click "frame". Uses the accent token; recharts surfaces stay ring-less. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgb(var(--accent-500));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.recharts-surface:focus-visible,
+.recharts-wrapper :focus-visible {
+  outline: none;
+}
