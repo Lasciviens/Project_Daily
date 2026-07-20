@@ -1,5 +1,17 @@
 # Fitbit Air → Lasci's Board — Google Health API integration
 
+> ## ⚖️ CARDINAL RULE (absolute — non-negotiable, supersedes everything below)
+> **BOTH sources' data ALWAYS flows into the database in FULL** — Apple (via
+> Health Auto Export) **and** Google (Fitbit Air via the Google Health API) —
+> **regardless of which source is the default** for any metric. Nothing is ever
+> dropped, downsampled, or filtered at INGEST. Every metric is stored tagged by
+> `source_family` (`apple` | `google`) so both complete streams coexist.
+> **The UI must let us view ANY metric from ANY source (apple / google) at any
+> time** via a source switch. "Default" ONLY decides which source is shown first
+> (the headline) and which one an "All/summary" view uses so `sum` metrics are
+> never double-counted — it NEVER limits what is stored or what can be displayed.
+> Storage = always both, complete. Display = any source, on demand.
+
 > Status: **DESIGN / not yet built.** Device (Google Fitbit Air) inbound.
 > This doc is the durable memory for the integration (git is the only memory
 > across sessions). Update it as decisions are made and as the first live OAuth
