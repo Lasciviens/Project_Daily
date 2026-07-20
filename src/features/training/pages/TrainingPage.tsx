@@ -43,7 +43,9 @@ export function TrainingPage() {
         <div className="hidden sm:block absolute inset-0 bg-gradient-to-r from-cream-50/85 via-cream-50/55 to-cream-50/20" aria-hidden />
 
         <div className="relative z-10 flex items-center gap-2 px-3 py-2.5 sm:px-5 sm:py-4">
-          <h1 className="text-lg font-bold text-ink-900 shrink-0">Training</h1>
+          {/* Redundant on mobile — the global header already shows "Training".
+              Desktop keeps it (no per-page title in the top bar there). */}
+          <h1 className="hidden sm:block text-lg font-bold text-ink-900 shrink-0">Training</h1>
 
           {/* Hevy / Strava / Health / Coach pills — horizontal-scroll so they
               never wrap under the title on a narrow phone. */}
