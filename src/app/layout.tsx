@@ -1,10 +1,10 @@
-import { useLayoutEffect } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Home as HomeIcon, CalendarDays, Clapperboard, Briefcase, Dumbbell, FolderKanban, Gamepad2,
-  type LucideIcon,
+  MoreHorizontal, Code2, Search, Sparkles, ClipboardList, type LucideIcon,
 } from 'lucide-react'
 import { useViewTransitionNav } from '../shared/hooks/useViewTransitionNav'
 import { usePullToRefresh } from '../shared/hooks/usePullToRefresh'
@@ -13,6 +13,8 @@ import { AIPanel } from '../features/ai/components/AIPanel'
 import { CommandBar } from '../shared/components/CommandBar'
 import { SettingsMenu } from '../shared/components/SettingsMenu'
 import { Toaster } from '../shared/components/Toaster'
+import { Sheet } from '../shared/components/Sheet'
+import { ListRow } from '../shared/components/ListRow'
 import { useUIStore } from './store'
 
 export function Layout() {
@@ -70,7 +72,7 @@ export function Layout() {
     <div className="h-full flex flex-col bg-canvas overflow-hidden">
       <Nav scrolled={scrolled} collapsed={headerHidden} />
       <main
-        className="flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
+        className="flex-1 min-h-0 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
         onScroll={e => reportScroll((e.target as HTMLElement).scrollTop)}
         {...pullToRefresh.containerProps}
       >
@@ -125,7 +127,7 @@ function PullToRefreshIndicator({ pullDistance, isRefreshing, isReady }: {
           : 'glass-chrome border-ink-200/60 text-accent-600'
       }`}
       style={{
-        top: 'calc(56px + env(safe-area-inset-top))',
+        top: 'calc(48px + env(safe-area-inset-top))',
         opacity: pullDistance > 4 || isRefreshing ? 1 : 0,
         transform: `translate(-50%, ${Math.max(pullDistance, isRefreshing ? 44 : 0) - 36}px) scale(${isRefreshing ? 1 : Math.min(0.6 + pullDistance / 88, 1.05)})`,
       }}
@@ -149,26 +151,36 @@ function PullToRefreshIndicator({ pullDistance, isRefreshing, isReady }: {
 // across OS/browser font versions and read as dated rather than "native app"
 // polish; a single crisp icon set that recolors/fills on the active tab is
 // the modern-iOS-tab-bar look this is going for.
+// Mobile bottom bar: 4 PRIMARY tabs (user-chosen) + a "More" cell. The rest
+// (Work/Projects/Games/Developer) live in a bottom-sheet — iOS/Material cap
+// primary tabs at ~5, and a scannable 4-up bar reads far more app-like than 7
+// cramped ~50px cells with sub-legible labels.
 const TABS: { to: string; label: string; icon: LucideIcon; match: string[] }[] = [
   { to: '/home',     label: 'Home',     icon: HomeIcon,     match: ['/home'] },
   { to: '/daily',    label: 'Personal', icon: CalendarDays, match: ['/daily', '/shop', '/recipes'] },
   { to: '/media',    label: 'Media',    icon: Clapperboard, match: ['/media'] },
-  { to: '/work',     label: 'Work',     icon: Briefcase,    match: ['/work'] },
   { to: '/training', label: 'Training', icon: Dumbbell,     match: ['/training'] },
-  { to: '/projects', label: 'Projects', icon: FolderKanban, match: ['/projects'] },
-  { to: '/games',    label: 'Games',    icon: Gamepad2,      match: ['/games'] },
+]
+const MORE_TABS: { to: string; label: string; icon: LucideIcon; match: string[] }[] = [
+  { to: '/work',      label: 'Work',      icon: Briefcase,    match: ['/work'] },
+  { to: '/projects',  label: 'Projects',  icon: FolderKanban, match: ['/projects'] },
+  { to: '/games',     label: 'Games',     icon: Gamepad2,     match: ['/games'] },
+  { to: '/developer', label: 'Developer', icon: Code2,        match: ['/developer'] },
 ]
 
 function BottomTabBar() {
   const location = useLocation()
   const navigateWithTransition = useViewTransitionNav()
+  const [moreOpen, setMoreOpen] = useState(false)
   const activeIndex = TABS.findIndex(tab => tab.match.includes(location.pathname))
+  const moreActive = MORE_TABS.some(t => t.match.includes(location.pathname))
 
   // Floating glass capsule (detached from the screen edge, heavy blur, big
   // soft shadow) — the current-gen iOS tab-bar look, visibly more "app" than
   // a full-width bar glued to the bottom. Sits above the home indicator via
   // the safe-area offset; <main> reserves matching bottom padding.
   return (
+    <>
     <nav className="vt-pin-tabbar glass-chrome sm:hidden fixed z-40 left-3 right-3 bottom-[calc(env(safe-area-inset-bottom)+0.625rem)] flex items-stretch rounded-[26px] border border-ink-200/60 select-none overflow-hidden shadow-[0_10px_32px_-6px_rgba(0,0,0,0.28)]">
       {TABS.map((tab, index) => {
         const isActive = index === activeIndex
@@ -194,7 +206,7 @@ function BottomTabBar() {
               }
               navigateWithTransition(tab.to, activeIndex >= 0 && index < activeIndex ? 'back' : 'forward')
             }}
-            className={`flex-1 min-h-[58px] flex flex-col items-center justify-center gap-0.5 py-1.5 transition-colors duration-150 press-feedback ${
+            className={`flex-1 min-h-[52px] flex flex-col items-center justify-center gap-0.5 py-1.5 transition-colors duration-150 press-feedback ${
               isActive ? 'text-accent-600' : 'text-ink-400'
             }`}
           >
@@ -209,7 +221,37 @@ function BottomTabBar() {
           </NavLink>
         )
       })}
+      {/* "More" — opens a bottom sheet with the secondary destinations
+          (Work / Projects / Games / Developer) so the primary bar stays 4-up. */}
+      <button
+        type="button"
+        onClick={() => setMoreOpen(true)}
+        className={`flex-1 min-h-[52px] flex flex-col items-center justify-center gap-0.5 py-1.5 transition-colors duration-150 press-feedback ${moreActive ? 'text-accent-600' : 'text-ink-400'}`}
+      >
+        <span className={`inline-flex items-center justify-center rounded-full px-2.5 py-0.5 transition-colors duration-200 ${moreActive ? 'bg-accent-500/15' : ''}`}>
+          <MoreHorizontal size={21} strokeWidth={moreActive ? 2.25 : 1.75} />
+        </span>
+        <span className={`text-[10px] leading-none ${moreActive ? 'font-semibold' : 'font-medium'}`}>Daha fazla</span>
+      </button>
     </nav>
+    <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="Daha fazla" size="sm">
+      <div className="p-2 flex flex-col gap-0.5">
+        {MORE_TABS.map(tab => {
+          const Icon = tab.icon
+          const active = tab.match.includes(location.pathname)
+          return (
+            <NavLink key={tab.to} to={tab.to} onClick={() => setMoreOpen(false)}>
+              <ListRow
+                leading={<Icon size={20} className={active ? 'text-accent-600' : 'text-ink-500'} />}
+                title={<span className={active ? 'text-accent-700 font-semibold' : 'text-ink-800'}>{tab.label}</span>}
+                trailing={active ? <span className="text-accent-500 text-xs">●</span> : undefined}
+              />
+            </NavLink>
+          )
+        })}
+      </div>
+    </Sheet>
+    </>
   )
 }
 
@@ -251,8 +293,8 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
     // standard native-app look. 0 everywhere else (browser tabs, desktop).
     <header className={`vt-pin-header glass-chrome sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] transition-[box-shadow,border-color,transform,margin] duration-300 will-change-transform ${
       scrolled ? 'border-ink-200/80 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.28)]' : 'border-ink-200/40'
-    } ${collapsed ? 'max-sm:-translate-y-full max-sm:mb-[calc(-3.5rem_-_env(safe-area-inset-top))]' : ''}`}>
-      <div className="w-full px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2">
+    } ${collapsed ? 'max-sm:-translate-y-full max-sm:mb-[calc(-3rem_-_env(safe-area-inset-top))]' : ''}`}>
+      <div className="w-full px-4 sm:px-6 lg:px-8 h-12 sm:h-14 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
           <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Lasci's Board" className="w-7 h-7" />
@@ -289,7 +331,7 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
             aria-label="Search"
             className="min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100 transition-colors duration-150 flex items-center gap-1.5 md:border md:border-ink-200 flex-shrink-0"
           >
-            <span className="md:hidden text-base leading-none">🔍</span>
+            <Search size={18} className="md:hidden" />
             <span className="hidden md:inline">Search</span>
             <kbd className="hidden md:inline text-[10px] bg-ink-100 px-1 py-0.5 rounded">⌘K</kbd>
           </button>
@@ -302,7 +344,7 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
                 : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
             }`}
           >
-            <span className="sm:hidden">✦</span>
+            <Sparkles size={18} className="sm:hidden" />
             <span className="hidden sm:inline">✦ Ask AI</span>
           </button>
 
@@ -314,7 +356,7 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
                 : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
             }`}
           >
-            <span className="sm:hidden">🗒️</span>
+            <ClipboardList size={18} className="sm:hidden" />
             <span className="hidden sm:inline">🗒️ Requests</span>
           </button>
 
