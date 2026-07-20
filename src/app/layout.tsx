@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState } from 'react'
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigationType } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -16,6 +16,19 @@ import { Toaster } from '../shared/components/Toaster'
 import { Sheet } from '../shared/components/Sheet'
 import { ListRow } from '../shared/components/ListRow'
 import { useUIStore } from './store'
+
+// Per-route mobile header title (#3) — the header shows the active page's name
+// on phones (the logo wordmark is desktop-only), so hiding redundant in-page
+// <h1>s on mobile doesn't lose the "where am I" cue.
+const ROUTE_TITLES: Record<string, string> = {
+  '/home': 'Home', '/daily': 'Personal', '/shop': 'Shop', '/recipes': 'Food',
+  '/media': 'Media', '/work': 'Work', '/projects': 'Projects', '/training': 'Training',
+  '/games': 'Games', '/developer': 'Developer',
+}
+
+// Remembered scroll offsets per route (#7) — restored on a Back (POP) nav so
+// returning to a list lands where you left it; forward navs still start at top.
+const scrollPositions = new Map<string, number>()
 
 export function Layout() {
   // Lives here (the shell every route renders inside), not on individual
@@ -55,8 +68,13 @@ export function Layout() {
   // before paint) so a view transition's "new" snapshot is taken already
   // scrolled to top — no visible jump inside the animation.
   const { pathname } = useLocation()
+  const navType = useNavigationType()
   useLayoutEffect(() => {
-    pullToRefresh.containerProps.ref.current?.scrollTo({ top: 0 })
+    // Restore the remembered offset on Back; otherwise start the new page at top.
+    const el = pullToRefresh.containerProps.ref.current
+    const saved = scrollPositions.get(pathname)
+    if (navType === 'POP' && saved != null && el) el.scrollTo({ top: saved })
+    else el?.scrollTo({ top: 0 })
     resetChrome() // header visible + shadow cleared on each new route (store action, not setState)
   }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -73,7 +91,7 @@ export function Layout() {
       <Nav scrolled={scrolled} collapsed={headerHidden} />
       <main
         className="flex-1 min-h-0 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
-        onScroll={e => reportScroll((e.target as HTMLElement).scrollTop)}
+        onScroll={e => { const y = (e.target as HTMLElement).scrollTop; reportScroll(y); scrollPositions.set(pathname, y) }}
         {...pullToRefresh.containerProps}
       >
         <PullToRefreshIndicator
@@ -277,6 +295,8 @@ function PersonalNavLink() {
 
 function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean }) {
   const { isDevRequestsOpen, toggleDevRequests, isAIOpen, toggleAI, openCommandBar } = useUIStore()
+  const { pathname } = useLocation()
+  const pageTitle = ROUTE_TITLES[pathname] ?? ''
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-2.5 min-h-[44px] inline-flex items-center text-sm font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
@@ -299,6 +319,8 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
         <div className="flex items-center gap-2.5 flex-shrink-0">
           <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Lasci's Board" className="w-7 h-7" />
           <span className="font-semibold text-ink-900 text-sm hidden sm:block">Lasci's Board</span>
+          {/* #3 — active page name on mobile (logo wordmark is desktop-only) */}
+          <span className="sm:hidden font-semibold text-ink-900 text-[15px] truncate">{pageTitle}</span>
         </div>
 
         {/* Nav links — below sm, this is replaced entirely by BottomTabBar

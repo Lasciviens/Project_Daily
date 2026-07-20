@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
+import { useHistoryDismiss } from '../hooks/useHistoryDismiss'
 
 type SheetSize = 'sm' | 'md' | 'lg'
 
@@ -33,6 +34,9 @@ export function Sheet({
   footer,
   size = 'md',
 }: SheetProps) {
+  // Hardware/browser Back (and iOS edge-swipe) closes the sheet instead of
+  // leaving the page (#6).
+  useHistoryDismiss(open, onClose)
   return (
     <Dialog open={open} onClose={onClose} className="relative z-[60]">
       <DialogBackdrop
