@@ -45,7 +45,7 @@ export function MediaStats({ movieEntries, tvEntries }: Props) {
 
               {/* Ratings comparison */}
               {s.avgMyRating !== null && (
-                <div className="flex items-center gap-4 text-sm">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                   <div>
                     <p className="text-[10px] text-ink-400 mb-0.5">Your avg rating</p>
                     <p className="text-base font-bold text-accent-600">⭐ {s.avgMyRating}/10</p>

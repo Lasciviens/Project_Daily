@@ -1,67 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
-import type { RecipeWithIngredients } from '../types'
-
-const ROTATE_MS = 30000
-const FADE_MS   = 1500
+import nutritionBg from '../../../assets/nutrition-bg.jpg'
 
 /**
- * Header backdrop for RecipesPage — mirrors MediaBackdrop's rotating-image
- * treatment, but sourced from the user's own recipe cover images instead of
- * an external feed (falls back to a single static food photo, Training-style,
- * until at least one recipe has an image).
+ * Header backdrop for the Food page — a bundled nutrition flat-lay (shipped in
+ * the repo under src/assets, NOT hotlinked). Static and always present so the
+ * header reads as a proper food banner; RecipesPage overlays a cream gradient
+ * on top for text contrast. Replaced the old rotating recipe-cover-image
+ * treatment (sparse / low-quality for users with few recipe photos) with one
+ * consistent, always-good image per user request.
  */
-export function RecipeBackdrop({ recipes }: { recipes: RecipeWithIngredients[] }) {
-  const images = [...new Set(recipes.map(r => r.image_url).filter((u): u is string => !!u))].slice(0, 12)
-
-  const [currentIdx, setCurrentIdx] = useState(0)
-  const [nextIdx,    setNextIdx]    = useState<number | null>(null)
-  const [fading,     setFading]     = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // The interval effect only re-runs on [images.length], so it closes over
-  // currentIdx's value at mount time (0) forever. A ref always has the live
-  // value, so rotation doesn't get stuck re-fading image 1 onto itself.
-  const currentIdxRef = useRef(currentIdx)
-  useEffect(() => { currentIdxRef.current = currentIdx }, [currentIdx])
-
-  useEffect(() => {
-    if (images.length < 2) return
-    timerRef.current = setInterval(() => {
-      setNextIdx(prev => ((prev ?? currentIdxRef.current) + 1) % images.length)
-      setFading(true)
-    }, ROTATE_MS)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [images.length])
-
-  useEffect(() => {
-    if (!fading || nextIdx === null) return
-    const t = setTimeout(() => { setCurrentIdx(nextIdx); setNextIdx(null); setFading(false) }, FADE_MS)
-    return () => clearTimeout(t)
-  }, [fading, nextIdx])
-
-  // No recipe photos yet — a warm food-toned gradient + oversized decorative
-  // emoji instead of hotlinking an external stock photo we can't verify.
-  if (images.length === 0) {
-    return (
-      <div className="absolute inset-0 bg-gradient-to-br from-orange-100 via-cream-100 to-accent-100" aria-hidden>
-        <span className="absolute -right-4 -bottom-6 text-[7rem] opacity-25 select-none rotate-[-8deg]">🍲</span>
-      </div>
-    )
-  }
-
-  const currentSrc = images[currentIdx]
-  const nextSrc     = nextIdx !== null ? images[nextIdx] : null
-
+export function RecipeBackdrop() {
   return (
-    <div className="absolute inset-0 overflow-hidden">
-      <img key={currentSrc} src={currentSrc} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover opacity-20" />
-      {nextSrc && (
-        <img
-          key={nextSrc} src={nextSrc} alt="" aria-hidden
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ opacity: fading ? 0.2 : 0, transition: fading ? `opacity ${FADE_MS}ms ease-in-out` : 'none' }}
-        />
-      )}
+    <div className="absolute inset-0 overflow-hidden" aria-hidden>
+      <img src={nutritionBg} alt="" className="absolute inset-0 w-full h-full object-cover object-center opacity-70" />
     </div>
   )
 }

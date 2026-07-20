@@ -49,11 +49,11 @@ export function WeatherWidget() {
           {/* Current conditions */}
           <div className="flex items-end gap-3 mb-3">
             <span className="text-5xl leading-none">{weatherIcon(data.current.symbol)}</span>
-            <div>
+            <div className="min-w-0">
               <div className="text-3xl font-bold text-ink-900">{data.current.temp}°C</div>
-              <div className="text-sm text-ink-500">{weatherLabel(data.current.symbol)}</div>
+              <div className="text-sm text-ink-500 truncate">{weatherLabel(data.current.symbol)}</div>
             </div>
-            <div className="ml-auto text-right text-xs text-ink-400 space-y-1">
+            <div className="ml-auto text-right text-xs text-ink-400 space-y-1 shrink-0">
               <div>💨 {data.current.windSpeed} m/s {data.current.windDirection}</div>
               <div>💧 {data.current.humidity}%</div>
               {data.current.precip1h > 0 && (

@@ -6,6 +6,13 @@ interface UIState {
   isDevRequestsOpen: boolean
   isAIOpen:        boolean
   isCommandBarOpen:boolean
+  // Global chrome scroll cues (mobile hide-on-scroll header + scroll-depth
+  // shadow). Lives in the store so BOTH the app's <main> scroller AND the
+  // Personal group's own inner scroll container (PersonalLayout) can drive the
+  // same header — on /daily,/shop,/recipes <main> never scrolls, so a header
+  // that only watched <main> stayed permanently pinned there.
+  chromeHidden:    boolean
+  chromeScrolled:  boolean
   toggleDevRequests: () => void
   closeDevRequests:  () => void
   toggleAI:      () => void
@@ -13,12 +20,20 @@ interface UIState {
   closeAI:       () => void
   openCommandBar:  () => void
   closeCommandBar: () => void
+  reportScroll:  (y: number) => void
+  resetChrome:   () => void
 }
+
+// Last observed scrollTop — module-scoped (not reactive state; only the derived
+// hidden/scrolled booleans need to trigger re-renders).
+let lastChromeY = 0
 
 export const useUIStore = create<UIState>((set) => ({
   isDevRequestsOpen: false,
   isAIOpen:         false,
   isCommandBarOpen: false,
+  chromeHidden:     false,
+  chromeScrolled:   false,
   toggleDevRequests: () => set(s => ({ isDevRequestsOpen: !s.isDevRequestsOpen, isAIOpen: false })),
   closeDevRequests:  () => set({ isDevRequestsOpen: false }),
   toggleAI:      () => set(s => ({ isAIOpen: !s.isAIOpen, isDevRequestsOpen: false })),
@@ -26,6 +41,19 @@ export const useUIStore = create<UIState>((set) => ({
   closeAI:       () => set({ isAIOpen: false }),
   openCommandBar:  () => set({ isCommandBarOpen: true }),
   closeCommandBar: () => set({ isCommandBarOpen: false }),
+  reportScroll: (y) => set(s => {
+    const last = lastChromeY
+    lastChromeY = y
+    const scrolled = y > 8
+    // Hide once past a threshold scrolling down; show on any real upward move.
+    // Small dead-zone so scroll jitter can't flap the header.
+    let hidden = s.chromeHidden
+    if (y > last + 6 && y > 64) hidden = true
+    else if (y < last - 6) hidden = false
+    if (scrolled === s.chromeScrolled && hidden === s.chromeHidden) return s
+    return { chromeScrolled: scrolled, chromeHidden: hidden }
+  }),
+  resetChrome: () => { lastChromeY = 0; set({ chromeHidden: false, chromeScrolled: false }) },
 }))
 
 // ─── Toast ────────────────────────────────────────────────────────────────────

@@ -183,7 +183,7 @@ function TodayScheduleWidget() {
             <span className="text-[11px] text-ink-400 w-10 flex-shrink-0 font-mono">{fmtTime(b.start_time!)}</span>
             <span className="flex-1 text-sm text-ink-700 truncate">{b.title}</span>
             {b.duration_minutes >= 30 && (
-              <span className="text-[10px] text-ink-300 flex-shrink-0">
+              <span className="text-[10px] text-ink-400 flex-shrink-0">
                 {b.duration_minutes >= 60
                   ? `${Math.floor(b.duration_minutes / 60)}h${b.duration_minutes % 60 ? `${b.duration_minutes % 60}m` : ''}`
                   : `${b.duration_minutes}m`}

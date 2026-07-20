@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { useUIStore } from '../../../app/store'
 
 // Shared shell for the Personal nav group (Daily/Shop/Recipes). Routes are
 // unchanged (/daily, /shop, /recipes) so every existing deep link keeps
@@ -42,12 +43,17 @@ export function PersonalLayout() {
   // computed flex height, which already accounts for the mobile bottom tab
   // bar's reserved padding — a hardcoded vh subtraction here would ignore
   // that reservation and run this content's tail under the fixed tab bar.
+  // This inner div is the ACTUAL scroll container for /daily,/shop,/recipes
+  // (the app's <main> never scrolls on these routes), so it must feed the same
+  // hide-on-scroll header the rest of the app drives from <main>. Without this
+  // the top header stayed permanently pinned on the whole Personal group.
+  const reportScroll = useUIStore(s => s.reportScroll)
   return (
     <div className="h-full flex flex-col">
       {/* overflow-y-auto (not hidden): Daily/Recipes are plain page-flow content
           that need the wrapper to scroll; Shop manages its own fixed h-full
           two-pane layout internally and fits exactly, so this never double-scrolls. */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto" onScroll={e => reportScroll((e.target as HTMLElement).scrollTop)}>
         <Outlet />
       </div>
     </div>

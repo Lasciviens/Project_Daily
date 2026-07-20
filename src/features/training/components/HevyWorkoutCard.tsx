@@ -58,7 +58,7 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
       <button
         type="button"
         onClick={onClick}
-        className="w-full text-left min-h-[60px] cursor-pointer hover:bg-cream-50/60 transition-colors duration-150 flex overflow-hidden"
+        className="press-feedback w-full text-left min-h-[60px] cursor-pointer hover:bg-cream-50/60 transition-colors duration-150 flex overflow-hidden"
       >
         {/* Left accent bar */}
         <div className={`w-1 shrink-0 ${accentBar}`} />

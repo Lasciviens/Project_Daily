@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { format, getISOWeek } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
@@ -35,6 +35,16 @@ export function Layout() {
     predicate: query => query.queryKey[0] !== 'dailyBriefing',
   }))
 
+  // Header depth-shadow (scrolled) + native hide-on-scroll (headerHidden) both
+  // live in the UI store, fed by whichever container actually scrolls: <main>
+  // here, OR PersonalLayout's inner scroller on /daily,/shop,/recipes (main
+  // never scrolls there). The header slides up (translateY(-100%)) with a
+  // matching negative margin so <main> fills the gap; max-sm: no-ops on desktop.
+  const scrolled = useUIStore(s => s.chromeScrolled)
+  const headerHidden = useUIStore(s => s.chromeHidden)
+  const reportScroll = useUIStore(s => s.reportScroll)
+  const resetChrome = useUIStore(s => s.resetChrome)
+
   // <main> is the app's scroll container (not the document — see the
   // app-shell notes in index.css/usePullToRefresh.ts), so react-router no
   // longer gets even the browser's default anywhere near scroll reset:
@@ -45,13 +55,8 @@ export function Layout() {
   const { pathname } = useLocation()
   useLayoutEffect(() => {
     pullToRefresh.containerProps.ref.current?.scrollTo({ top: 0 })
+    resetChrome() // header visible + shadow cleared on each new route (store action, not setState)
   }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Header lifts off the page with a shadow once content scrolls under it —
-  // the standard native-app depth cue. State flips only across the 8px
-  // boundary, so the scroll handler is effectively free (React bails out on
-  // same-value setState).
-  const [scrolled, setScrolled] = useState(false)
 
   // View Transitions (the directional tab slide) don't exist on pre-18 iOS
   // Safari — there, navigation was INSTANT, i.e. "no animations at all" on
@@ -63,10 +68,10 @@ export function Layout() {
 
   return (
     <div className="h-full flex flex-col bg-canvas overflow-hidden">
-      <Nav scrolled={scrolled} />
+      <Nav scrolled={scrolled} collapsed={headerHidden} />
       <main
         className="flex-1 min-h-0 overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
-        onScroll={e => setScrolled((e.target as HTMLElement).scrollTop > 8)}
+        onScroll={e => reportScroll((e.target as HTMLElement).scrollTop)}
         {...pullToRefresh.containerProps}
       >
         <PullToRefreshIndicator
@@ -180,6 +185,13 @@ function BottomTabBar() {
               // of the current one slides content in from the right, and
               // vice versa, matching how native tab bars communicate it.
               e.preventDefault()
+              // Re-tapping the ALREADY-active tab scrolls its page back to the
+              // top (and the hide-on-scroll header slides back in) — the
+              // standard iOS/Android tab-bar gesture — instead of a no-op nav.
+              if (isActive) {
+                document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
+                return
+              }
               navigateWithTransition(tab.to, activeIndex >= 0 && index < activeIndex ? 'back' : 'forward')
             }}
             className={`flex-1 min-h-[58px] flex flex-col items-center justify-center gap-0.5 py-1.5 transition-colors duration-150 press-feedback ${
@@ -193,7 +205,7 @@ function BottomTabBar() {
             }`}>
               <Icon size={21} strokeWidth={isActive ? 2.25 : 1.75} fill={isActive ? 'currentColor' : 'none'} fillOpacity={isActive ? 0.15 : 0} />
             </span>
-            <span className={`text-[9.5px] leading-none ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
+            <span className={`text-[10px] leading-none ${isActive ? 'font-semibold' : 'font-medium'}`}>{tab.label}</span>
           </NavLink>
         )
       })}
@@ -221,7 +233,7 @@ function PersonalNavLink() {
   )
 }
 
-function Nav({ scrolled }: { scrolled: boolean }) {
+function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean }) {
   const { isDevRequestsOpen, toggleDevRequests, isAIOpen, toggleAI, openCommandBar } = useUIStore()
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -237,9 +249,9 @@ function Nav({ scrolled }: { scrolled: boolean }) {
     // under the iOS status bar — this padding keeps the header's content below
     // the clock/battery while the header's own background fills the gap, the
     // standard native-app look. 0 everywhere else (browser tabs, desktop).
-    <header className={`vt-pin-header glass-chrome sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] transition-[box-shadow,border-color] duration-300 ${
+    <header className={`vt-pin-header glass-chrome sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] transition-[box-shadow,border-color,transform,margin] duration-300 will-change-transform ${
       scrolled ? 'border-ink-200/80 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.28)]' : 'border-ink-200/40'
-    }`}>
+    } ${collapsed ? 'max-sm:-translate-y-full max-sm:mb-[calc(-3.5rem_-_env(safe-area-inset-top))]' : ''}`}>
       <div className="w-full px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">

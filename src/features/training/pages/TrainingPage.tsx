@@ -29,38 +29,44 @@ export function TrainingPage() {
   const wide = tab === 'health' || tab === 'hevy'
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-      {/* Full-width header banner with faint training backdrop */}
-      <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-6 w-full min-h-[88px] sm:min-h-[96px]">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+      {/* Header — ONE compact row on every size (title · scrollable tab pills ·
+          sync). The faint training photo backdrop is desktop-only; on mobile
+          it's dropped and the tall min-height removed to reclaim vertical space
+          (the banner used to stack 2-3 rows tall on a phone). */}
+      <div className="relative overflow-hidden rounded-2xl border border-ink-200 mb-4 w-full">
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-20"
+          className="hidden sm:block absolute inset-0 bg-cover bg-center opacity-20"
           style={{ backgroundImage: `url(${HEADER_BG})` }}
           aria-hidden
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-cream-50/85 via-cream-50/55 to-cream-50/20" aria-hidden />
+        <div className="hidden sm:block absolute inset-0 bg-gradient-to-r from-cream-50/85 via-cream-50/55 to-cream-50/20" aria-hidden />
 
-        <div className="relative z-10 flex min-h-[88px] sm:min-h-[96px] items-center gap-2 flex-wrap px-4 py-4 sm:px-5">
-          <h1 className="text-lg font-bold text-ink-900">Training</h1>
+        <div className="relative z-10 flex items-center gap-2 px-3 py-2.5 sm:px-5 sm:py-4">
+          <h1 className="text-lg font-bold text-ink-900 shrink-0">Training</h1>
 
-          {/* Hevy / Strava / Health pills */}
-          <div className="flex gap-0.5 p-0.5 bg-cream-50/70 backdrop-blur rounded-lg border border-ink-200">
-            {(['hevy', 'strava', 'health', 'coach'] as Tab[]).map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors duration-150 min-h-[44px] ${
-                  tab === t
-                    ? 'bg-ink-950 text-white'
-                    : 'bg-transparent text-ink-600 hover:text-ink-900'
-                }`}
-              >
-                {TAB_LABELS[t]}
-              </button>
-            ))}
+          {/* Hevy / Strava / Health / Coach pills — horizontal-scroll so they
+              never wrap under the title on a narrow phone. */}
+          <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
+            <div className="inline-flex gap-0.5 p-0.5 bg-cream-50/70 backdrop-blur rounded-lg border border-ink-200">
+              {(['hevy', 'strava', 'health', 'coach'] as Tab[]).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`shrink-0 whitespace-nowrap px-3 rounded-md text-xs font-semibold capitalize transition-colors duration-150 min-h-[44px] ${
+                    tab === t
+                      ? 'bg-ink-950 text-white'
+                      : 'bg-transparent text-ink-600 hover:text-ink-900'
+                  }`}
+                >
+                  {TAB_LABELS[t]}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Sync + settings — left, beside the tabs (Hevy only) */}
-          {tab === 'hevy' && <HevySyncButton iconOnly />}
+          {/* Sync (Hevy only) — pinned right, never wraps */}
+          {tab === 'hevy' && <span className="shrink-0"><HevySyncButton iconOnly /></span>}
         </div>
       </div>
 

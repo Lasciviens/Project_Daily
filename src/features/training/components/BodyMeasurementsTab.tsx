@@ -223,7 +223,7 @@ function MeasurementModal({ isOpen, onClose, initial, existing = [] }: Measureme
               <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-2">
                 Main measurements
               </p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {HERO_FIELDS.map(f => (
                   <div key={f.key}>
                     <label className="text-xs text-ink-600 mb-1 block">{f.label} ({f.unit})</label>

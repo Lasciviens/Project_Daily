@@ -79,7 +79,7 @@ export function MealPlanWeek() {
         <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 mb-3">
           {days.map((day, i) => (
             <button key={day.toISOString()} onClick={() => setDayIdx(i)}
-              className={`press-feedback shrink-0 min-w-[46px] rounded-xl px-2 py-1.5 border text-center transition-colors ${
+              className={`press-feedback shrink-0 min-w-[46px] min-h-[44px] rounded-xl px-2 py-1.5 border text-center transition-colors ${
                 i === dayIdx ? 'bg-accent-500 border-accent-500 text-white'
                   : `bg-cream-50 text-ink-600 ${isToday(day) ? 'border-accent-300' : 'border-ink-200'}`
               }`}>
@@ -112,7 +112,7 @@ export function MealPlanWeek() {
                           <span className="text-[9px] uppercase tracking-wide text-ink-300 border border-ink-200 rounded px-1 shrink-0">planned</span>
                         </button>
                         <button onClick={() => eat.mutate(entry!)} disabled={eat.isPending} aria-label="Mark eaten" title="I ate this — count it"
-                          className="min-w-[28px] min-h-[28px] rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
+                          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
                       </li>
                     )}
                     {eaten.map(l => (

@@ -140,9 +140,10 @@ export function WorkPage() {
   return (
     <div className="flex flex-col h-full">
       {/* ── Command bar ── */}
-      <div className="flex items-center gap-3 flex-wrap px-4 sm:px-6 py-3 border-b border-ink-100 bg-cream-50 sticky top-0 z-10">
+      <div className="flex items-center gap-3 flex-wrap px-4 sm:px-6 py-2.5 sm:py-3 border-b border-ink-100 bg-cream-50 sticky top-0 z-10">
         <div className="flex items-baseline gap-3 min-w-0">
-          <h1 className="text-xl font-bold text-ink-900">Work</h1>
+          {/* Redundant on mobile — the bottom tab bar already labels Work. */}
+          <h1 className="hidden sm:block text-xl font-bold text-ink-900">Work</h1>
           <LiveClock />
           <span className="hidden sm:inline text-xs text-ink-400">{format(new Date(), 'EEE, d MMM')}</span>
         </div>

@@ -56,7 +56,7 @@ export function ShopAIBox() {
       <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 flex-shrink-0">
         <p className="text-sm font-semibold text-accent-700">✦ Shopping Assistant</p>
         {thread.length > 0 && (
-          <button onClick={reset} className="text-[11px] text-ink-400 hover:text-ink-600 min-h-[28px]">Clear</button>
+          <button onClick={reset} className="text-[11px] text-ink-400 hover:text-ink-600 min-h-[44px] px-2">Clear</button>
         )}
       </div>
 
