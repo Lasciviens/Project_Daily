@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
+  fetchAllTasks,
   fetchTasksBySection,
   fetchTasksForDay,
   fetchTasksByWeek,
@@ -29,6 +30,16 @@ import { useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
+
+// Aggregated overview of every active task (+ recently done) — the Daily "Tasks"
+// tab groups these into Overdue / Today / Upcoming / No date / Done.
+export function useAllTasks() {
+  return useQuery({
+    queryKey: ['tasks', 'all'],
+    queryFn: fetchAllTasks,
+    staleTime: 30_000,
+  })
+}
 
 export function useTasksBySection(section: string, enabled = true) {
   return useQuery({

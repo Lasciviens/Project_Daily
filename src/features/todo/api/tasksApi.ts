@@ -5,6 +5,20 @@ import { deleteCalendarEvent } from '../../calendar/api/calendarApi'
 import { logError } from '../../../shared/utils/logError'
 import type { Task, CreateTaskInput, UpdateTaskInput } from '../types'
 
+// All active tasks (+ done, so the UI can show a "recently done" group) for the
+// aggregated Tasks overview on Daily — grouped client-side into Overdue / Today
+// / Upcoming / No date / Done. Cancelled excluded (app-wide convention).
+export async function fetchAllTasks(): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .neq('status', 'cancelled')
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('sort_order', { ascending: true, nullsFirst: false })
+  if (error) throw error
+  return data ?? []
+}
+
 export async function fetchTasksBySection(section: string): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')
