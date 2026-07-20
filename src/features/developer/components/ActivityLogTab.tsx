@@ -5,6 +5,7 @@ import { requireUser } from '../../../shared/utils/requireUser'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { Sheet } from '../../../shared/components/Sheet'
 import { haptic } from '../../../shared/utils/haptics'
+import { relativeTime } from '../../../shared/utils/relativeTime'
 
 // CRUD audit trail (audit_logs, written by DB triggers — migration 037, +052
 // added dev_requests). Redesigned from a cramped 4-column card matrix into a
@@ -188,7 +189,7 @@ function LogRow({ log, expanded, onToggle, nested }: { log: AuditLog; expanded: 
       </button>
       {expanded && (
         <div className="border-t border-ink-100 bg-ink-50/60 px-3 py-2">
-          <p className="text-[11px] text-ink-400 mb-1.5 sm:hidden">{fmtDate(log.created_at)}</p>
+          <p className="text-[11px] text-ink-400 mb-1.5 sm:hidden">{relativeTime(log.created_at)}</p>
           <DiffView log={log} />
         </div>
       )}

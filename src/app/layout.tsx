@@ -13,6 +13,7 @@ import { AIPanel } from '../features/ai/components/AIPanel'
 import { CommandBar } from '../shared/components/CommandBar'
 import { SettingsMenu } from '../shared/components/SettingsMenu'
 import { Toaster } from '../shared/components/Toaster'
+import { OfflineBanner } from '../shared/components/OfflineBanner'
 import { Sheet } from '../shared/components/Sheet'
 import { ListRow } from '../shared/components/ListRow'
 import { useUIStore } from './store'
@@ -122,6 +123,7 @@ export function Layout() {
       <AIPanel />
       <CommandBar />
       <Toaster />
+      <OfflineBanner />
     </div>
   )
 }
@@ -360,6 +362,7 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
 
           <button
             onClick={toggleAI}
+            aria-label="Ask AI"
             className={`min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 flex items-center flex-shrink-0 ${
               isAIOpen
                 ? 'bg-accent-50 text-accent-600'
@@ -372,6 +375,7 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
 
           <button
             onClick={toggleDevRequests}
+            aria-label="Dev requests"
             className={`min-h-[44px] px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-150 flex items-center flex-shrink-0 ${
               isDevRequestsOpen
                 ? 'bg-accent-50 text-accent-600'
