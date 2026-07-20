@@ -8,6 +8,7 @@ import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
 import { TodaySummary } from '../components/TodaySummary'
 import { PersonalTabs } from '../../personal/components/PersonalLayout'
+import { TasksPanel } from '../components/TasksPanel'
 import { DateNav } from '../../../shared/components/DateNav'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
@@ -21,7 +22,7 @@ import { formatLocalDate } from '../../../shared/utils/dateUtils'
 //  Month was removed in v2, then restored as its own tab per request.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Mode = 'day' | 'week' | 'month'
+type Mode = 'day' | 'week' | 'month' | 'tasks'
 
 export function DailyPage() {
   const [mode,     setMode]     = useState<Mode>('day')
@@ -88,10 +89,11 @@ export function DailyPage() {
           </div>
           <div className="shrink-0"><PersonalTabs /></div>
         </div>
-        <div className="grid grid-cols-3 gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl">
+        <div className="grid grid-cols-4 gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl">
           <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={segBtn(mode === 'day' && isToday(viewDate))}>Today</button>
           <button onClick={() => setMode('week')} className={segBtn(mode === 'week')}>Week</button>
           <button onClick={() => setMode('month')} className={segBtn(mode === 'month')}>Month</button>
+          <button onClick={() => setMode('tasks')} className={segBtn(mode === 'tasks')}>Tasks</button>
         </div>
       </div>
 
@@ -122,6 +124,7 @@ export function DailyPage() {
             <button onClick={() => { setViewDate(addDays(new Date(), 1)); setMode('day') }} className={tabBtn(dayTab === 'tomorrow')}>Tomorrow</button>
             <button onClick={() => setMode('week')} className={tabBtn(mode === 'week')}>Week</button>
             <button onClick={() => setMode('month')} className={tabBtn(mode === 'month')}>Month</button>
+            <button onClick={() => setMode('tasks')} className={tabBtn(mode === 'tasks')}>Tasks</button>
           </div>
           <div className="shrink-0"><PersonalTabs /></div>
         </div>
@@ -130,6 +133,7 @@ export function DailyPage() {
       {mode === 'day' && <DaySection date={viewDate} onDayClick={handleDayClick} />}
       {mode === 'week' && <WeekSection onDayClick={handleDayClick} selectedDate={viewDate} />}
       {mode === 'month' && <MonthSection onDayClick={handleDayClick} selectedDate={viewDate} />}
+      {mode === 'tasks' && <TasksPanel />}
     </div>
   )
 }
