@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../../integrations/supabase/client'
 import { posterUrl } from '../../../integrations/tmdb/client'
+import { haptic } from '../../../shared/utils/haptics'
 
 interface RecentItem {
   id:          string
@@ -64,6 +66,8 @@ export function RecentMediaWidget() {
     queryFn:   fetchRecentlyWatched,
     staleTime: 5 * 60_000,
   })
+  // Reference widget — collapsed by default on a phone (desktop always shows).
+  const [collapsed, setCollapsed] = useState(true)
 
   if (isLoading) return null
   if (!data || data.length === 0) return null
@@ -71,12 +75,24 @@ export function RecentMediaWidget() {
   return (
     <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Recently Watched</h3>
+        <div className="flex items-center min-w-0">
+          <button
+            type="button"
+            onClick={() => { haptic('light'); setCollapsed(c => !c) }}
+            aria-label={collapsed ? 'Expand' : 'Collapse'}
+            className="sm:hidden text-ink-400 hover:text-ink-700 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+          >
+            {collapsed ? '▶' : '▼'}
+          </button>
+          <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide truncate">Recently Watched</h3>
+        </div>
         <Link to="/media" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
       </div>
       {/* grid-cols-3 on mobile — 6 columns at ~390px squeezed posters down to
           ~60px with 9px titles, too cramped to read; 6 columns is kept from
-          sm: up where there's actual room for it. */}
+          sm: up where there's actual room for it. Plain wrapper toggles mobile
+          visibility so the inner grid's display type is untouched. */}
+      <div className={collapsed ? 'hidden sm:block' : undefined}>
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
         {data.map(item => (
           <Link key={item.id} to="/media" className="flex flex-col group press-feedback">
@@ -94,6 +110,7 @@ export function RecentMediaWidget() {
             <p className="text-[10px] sm:text-[9px] text-ink-600 truncate mt-0.5 leading-tight">{item.title}</p>
           </Link>
         ))}
+      </div>
       </div>
     </div>
   )

@@ -429,28 +429,34 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
                       const sg = it.ingredient.serving_grams
                       const count = sg ? Math.max(1, Math.round(it.grams / sg)) : 1
                       return (
-                        <div key={`${it.ingredient.id}-${i}`} className="flex items-center gap-2">
+                        // Mobile: the name reads on its own line, controls
+                        // (stepper·grams·kcal·delete) beneath it — the single
+                        // row was too cramped to read the name at 393px.
+                        <div key={`${it.ingredient.id}-${i}`} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                           <span className="text-sm text-ink-800 flex-1 min-w-0 truncate">{it.ingredient.name}</span>
-                          {/* Portion stepper — "2 eggs" in one tap (×N of the preset). */}
-                          {it.ingredient.serving_label && sg != null && (
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              <button type="button" aria-label="one less" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}
-                                className="min-w-[28px] min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300 leading-none">−</button>
-                              <span className="text-[10px] text-ink-500 tabular-nums w-14 text-center">{count}× {it.ingredient.serving_label.replace(/^1\s*/, '')}</span>
-                              <button type="button" aria-label="one more" onClick={() => setGrams(i, String((count + 1) * sg))}
-                                className="min-w-[28px] min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300 leading-none">+</button>
-                            </div>
-                          )}
-                          <input
-                            value={it.grams || ''}
-                            onChange={e => setGrams(i, e.target.value)}
-                            inputMode="decimal"
-                            className="w-16 min-h-[36px] px-2 text-sm text-right border border-ink-200 rounded-lg bg-cream-50 tabular-nums"
-                          />
-                          <span className="text-[11px] text-ink-400 w-4">g</span>
-                          <span className="text-[11px] text-ink-500 tabular-nums w-16 text-right shrink-0">{Math.round(s.calories ?? 0)} kcal</span>
-                          <button type="button" onClick={() => setBasket(b => b.filter((_, j) => j !== i))}
-                            className="min-w-[32px] min-h-[32px] text-ink-300 hover:text-red-500">×</button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {/* Portion stepper — "2 eggs" in one tap (×N of the preset). */}
+                            {it.ingredient.serving_label && sg != null && (
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                <button type="button" aria-label="one less" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}
+                                  className="min-w-[28px] min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300 leading-none">−</button>
+                                <span className="text-[10px] text-ink-500 tabular-nums w-14 text-center">{count}× {it.ingredient.serving_label.replace(/^1\s*/, '')}</span>
+                                <button type="button" aria-label="one more" onClick={() => setGrams(i, String((count + 1) * sg))}
+                                  className="min-w-[28px] min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300 leading-none">+</button>
+                              </div>
+                            )}
+                            <input
+                              value={it.grams || ''}
+                              onChange={e => setGrams(i, e.target.value)}
+                              inputMode="decimal"
+                              className="w-16 min-h-[36px] px-2 text-sm text-right border border-ink-200 rounded-lg bg-cream-50 tabular-nums"
+                            />
+                            <span className="text-[11px] text-ink-400 w-4">g</span>
+                            <span className="text-[11px] text-ink-500 tabular-nums w-16 text-right shrink-0">{Math.round(s.calories ?? 0)} kcal</span>
+                            <button type="button" onClick={() => setBasket(b => b.filter((_, j) => j !== i))}
+                              aria-label={`Remove ${it.ingredient.name}`}
+                              className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-300 hover:text-red-500 ml-auto sm:ml-0">×</button>
+                          </div>
                         </div>
                       )
                     })}

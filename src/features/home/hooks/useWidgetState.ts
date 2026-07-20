@@ -37,12 +37,24 @@ function storageKey(widgetId: string) {
   return `widget_state_${widgetId}`
 }
 
-function loadPersistedState(widgetId: string, defaults: Partial<PersistedState>): PersistedState {
+function loadPersistedState(
+  widgetId: string,
+  defaults: Partial<PersistedState>,
+  mobileCollapsed: boolean,
+): PersistedState {
   try {
     const raw = localStorage.getItem(storageKey(widgetId))
     if (raw) return { ...buildDefaults(defaults), ...JSON.parse(raw) }
   } catch { /* corrupt localStorage — fall through to defaults */ }
-  return buildDefaults(defaults)
+  const base = buildDefaults(defaults)
+  // First visit only (no persisted entry): collapse read-only reference widgets
+  // on a phone-width viewport so Home leads with the actionable cards. NOT
+  // persisted here — persistence happens on an explicit toggle — so desktop
+  // keeps its own (expanded) default independently.
+  if (mobileCollapsed && typeof window !== 'undefined' && window.innerWidth < 640) {
+    base.collapsed = true
+  }
+  return base
 }
 
 function buildDefaults(overrides: Partial<PersistedState>): PersistedState {
@@ -64,13 +76,18 @@ function buildDefaults(overrides: Partial<PersistedState>): PersistedState {
  * Usage:
  *   const ws = useWidgetState('weather', { collapsed: false, intervalMs: 10 * 60_000 })
  *   // Pass ws.syncEnabled to TanStack Query's `enabled` + `refetchInterval`
+ *
+ * `mobileCollapsed`: when there's no persisted state yet, start collapsed on a
+ * phone-width viewport (desktop keeps `defaults.collapsed`). Used for read-only
+ * reference widgets so Home leads with the actionable cards on mobile.
  */
 export function useWidgetState(
   widgetId: string,
-  defaults?: Partial<PersistedState>
+  defaults?: Partial<PersistedState>,
+  mobileCollapsed = false,
 ): WidgetStateResult {
   const [state, setState] = useState<PersistedState>(() =>
-    loadPersistedState(widgetId, defaults ?? {})
+    loadPersistedState(widgetId, defaults ?? {}, mobileCollapsed)
   )
 
   // Persist a partial update and return next state

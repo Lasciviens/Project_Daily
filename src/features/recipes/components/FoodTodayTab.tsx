@@ -30,8 +30,11 @@ const SLOTS: { slot: MealSlot; label: string; icon: string }[] = [
 ]
 const GOAL_LABEL: Record<NutritionGoal, string> = { maintain: 'Maintain', cut: 'Cut', gain: 'Gain' }
 
-function Ring({ consumed, target, size, stroke, color, label }: {
-  consumed: number; target: number; size: number; stroke: number; color: string; label: string
+// `size` is the SVG coordinate/geometry basis; `sizeClass` sets the DISPLAYED
+// box (responsive so the ring can shrink on a phone) — the viewBox scales the
+// stroke proportionally, so geometry stays correct at any rendered size.
+function Ring({ consumed, target, size, stroke, color, label, sizeClass }: {
+  consumed: number; target: number; size: number; stroke: number; color: string; label: string; sizeClass: string
 }) {
   const R = (size - stroke) / 2 - 1
   const C = 2 * Math.PI * R
@@ -40,14 +43,14 @@ function Ring({ consumed, target, size, stroke, color, label }: {
   const over = consumed > target
   const cx = size / 2
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
+    <div className={`relative shrink-0 ${sizeClass}`}>
       <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full -rotate-90">
         <circle cx={cx} cy={cx} r={R} fill="none" stroke="rgb(var(--ink-100))" strokeWidth={stroke} />
         <circle cx={cx} cy={cx} r={R} fill="none" stroke={over ? '#f87171' : color}
           strokeWidth={stroke} strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct)} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`font-bold text-ink-900 leading-none tabular-nums ${size > 100 ? 'text-2xl' : 'text-base'}`}>{remaining}</span>
+        <span className={`font-bold text-ink-900 leading-none tabular-nums ${size > 100 ? 'text-xl sm:text-2xl' : 'text-sm sm:text-base'}`}>{remaining}</span>
         <span className="text-[9px] text-ink-400 mt-0.5">{over ? 'over' : label}</span>
       </div>
     </div>
@@ -82,11 +85,20 @@ export function FoodTodayTab({ date }: { date: string }) {
   const [editMeal, setEditMeal] = useState<DayMeal | null>(null)
   const [planMeal, setPlanMeal] = useState<MealPlanEntry | null>(null)
   const [goalsOpen, setGoalsOpen] = useState(false)
+  const [coachOpen, setCoachOpen] = useState(false)   // mobile-only collapse
 
   const consumed = nut?.calories ?? 0
   const protein  = nut?.protein_g ?? 0
   const proteinLeft = Math.round(targets.protein - protein)
   const proteinHit  = targets.protein > 0 && proteinLeft <= 0
+
+  // One-line status shown in the collapsed (mobile) Coach header.
+  const coachSummary =
+    coach.weightKg == null ? 'Set up →'
+    : coach.calorieAdvice ? `${coach.calorieAdvice.delta > 0 ? '+' : ''}${coach.calorieAdvice.delta} kcal suggested`
+    : coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? `${coach.proteinForGoal}g protein`
+    : coach.onTrack ? '✓ On track'
+    : '✓ Looking good'
 
   const bySlot = new Map<string, DayMeal[]>()
   for (const m of nut?.meals ?? []) {
@@ -107,10 +119,10 @@ export function FoodTodayTab({ date }: { date: string }) {
             {/* ⚙ Goals — bottom-right corner of the nutrition widget. */}
             <button onClick={() => setGoalsOpen(o => !o)} title="Goals" aria-label="Goals"
               className={`press-feedback absolute bottom-2 right-2 min-w-[40px] min-h-[40px] rounded-lg flex items-center justify-center text-base transition-colors ${goalsOpen ? 'text-accent-700 bg-accent-50' : 'text-ink-400 hover:text-accent-600 hover:bg-cream-100/90 bg-cream-50/70'}`}>⚙</button>
-            <div className="p-6 flex items-center gap-5 flex-wrap">
-              <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color="rgb(var(--accent-500))" label="kcal left" />
+            <div className="p-4 sm:p-6 flex items-center gap-4 sm:gap-5 flex-wrap">
+              <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color="rgb(var(--accent-500))" label="kcal left" sizeClass="w-[108px] h-[108px] sm:w-[134px] sm:h-[134px]" />
               {/* Small, tasteful protein ring — "kalan protein" as a graphic. */}
-              <Ring consumed={protein} target={targets.protein} size={92} stroke={9} color="#60a5fa" label="prot left" />
+              <Ring consumed={protein} target={targets.protein} size={92} stroke={9} color="#60a5fa" label="prot left" sizeClass="w-[76px] h-[76px] sm:w-[92px] sm:h-[92px]" />
               <div className="flex-1 min-w-[160px]">
                 <p className="text-sm text-ink-700">
                   <strong className="text-lg text-ink-900 tabular-nums">{consumed}</strong>
@@ -169,9 +181,19 @@ export function FoodTodayTab({ date }: { date: string }) {
             </div>
           )}
 
-          {/* Coach — always visible so it's discoverable. */}
-          <div className="rounded-2xl border border-accent-200 bg-accent-50/40 px-4 py-3 flex flex-col gap-1.5 text-xs">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-accent-700">🧠 Coach</p>
+          {/* Coach — always visible; collapsible on mobile (summary + expand)
+              so the meal slots below stay reachable. Expanded by default on sm+. */}
+          <div className="rounded-2xl border border-accent-200 bg-accent-50/40 px-4 py-2.5 sm:py-3 flex flex-col gap-1.5 text-xs">
+            <button type="button" onClick={() => setCoachOpen(o => !o)}
+              className="sm:hidden flex items-center justify-between gap-2 min-h-[44px] -my-1 text-left">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-accent-700">🧠 Coach</span>
+              <span className="flex items-center gap-1.5 text-ink-500 tabular-nums">
+                <span className="truncate max-w-[11rem]">{coachSummary}</span>
+                <span className="text-ink-400">{coachOpen ? '▴' : '▾'}</span>
+              </span>
+            </button>
+            <p className="hidden sm:block text-[11px] font-semibold uppercase tracking-wide text-accent-700">🧠 Coach</p>
+            <div className={`${coachOpen ? 'flex' : 'hidden'} sm:flex flex-col gap-1.5`}>
             {coach.weightKg == null ? (
               <p className="text-ink-500">Add a bodyweight in <strong className="text-ink-700">Training → Body</strong> (or sync Apple Health) to unlock protein &amp; calorie coaching from your real weight trend.</p>
             ) : (
@@ -209,6 +231,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                 )}
               </>
             )}
+            </div>
           </div>
         </div>
 
@@ -247,12 +270,12 @@ export function FoodTodayTab({ date }: { date: string }) {
                               onClick={() => eatPlan.mutate(meal.planEntry!)}
                               disabled={eatPlan.isPending}
                               aria-label={`Mark ${meal.title} eaten`} title="I ate this — count it"
-                              className="press-feedback min-w-[40px] min-h-[40px] rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
+                              className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
                           )}
                           <button
                             onClick={() => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)}
                             aria-label={`Remove ${meal.title}`}
-                            className="press-feedback min-w-[40px] min-h-[40px] flex items-center justify-center text-ink-300 hover:text-red-500 shrink-0">✕</button>
+                            className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-500 shrink-0">✕</button>
                         </li>
                       )
                     })}

@@ -1,4 +1,5 @@
 import { posterUrl } from '../../../integrations/tmdb/client'
+import { haptic } from '../../../shared/utils/haptics'
 import type { TMDBSearchMovie, TMDBSearchTV } from '../types'
 
 interface Props {
@@ -18,9 +19,9 @@ export function TMDBCard({ item, type, onOpenDetail }: Props) {
   return (
     <div
       className="flex flex-col cursor-pointer"
-      onClick={() => onOpenDetail(item.id)}
+      onClick={() => { haptic('light'); onOpenDetail(item.id) }}
     >
-      <div className={`relative rounded-lg overflow-hidden aspect-[2/3] hover:brightness-90 transition-all duration-150 ${upcoming ? 'grayscale' : ''}`}>
+      <div className={`press-feedback relative rounded-lg overflow-hidden aspect-[2/3] hover:brightness-90 transition-all duration-150 ${upcoming ? 'grayscale' : ''}`}>
         <img
           src={posterUrl(item.poster_path)}
           alt={title}

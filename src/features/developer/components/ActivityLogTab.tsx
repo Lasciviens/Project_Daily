@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { Sheet } from '../../../shared/components/Sheet'
+import { haptic } from '../../../shared/utils/haptics'
 
 // CRUD audit trail (audit_logs, written by DB triggers — migration 037, +052
 // added dev_requests). Redesigned from a cramped 4-column card matrix into a
@@ -220,6 +222,7 @@ export function ActivityLogTab() {
   const [opFilter, setOpFilter] = useState('all')
   const [actorFilter, setActorFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const usingCustom = !!(customFrom || customTo)
   const { data: logs = [], isLoading, error, refetch } = useAuditLogs(rangeHours, customFrom, customTo)
@@ -247,12 +250,19 @@ export function ActivityLogTab() {
   // max-w caps the datetime-local so it doesn't stretch full-width (width
   // standard W3) and the from→to pair reads as one control row on mobile.
   const dtCls = 'min-h-[44px] max-w-[11rem] min-w-0 text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
+  // Full-width stacked variant for the mobile Filtreler sheet.
+  const sheetFieldCls = 'min-h-[44px] w-full border border-ink-200 rounded-lg px-3 bg-cream-50 text-sm text-ink-700'
+  const activeFilterCount =
+    (tableFilter !== 'all' ? 1 : 0) +
+    (opFilter !== 'all' ? 1 : 0) +
+    (actorFilter !== 'all' ? 1 : 0) +
+    (usingCustom ? 1 : 0)
   const toggle = (id: string) => setExpanded(e => e === id ? null : id)
 
   return (
     <>
-      {/* Filter bar */}
-      <div className="flex flex-col gap-2 mb-3">
+      {/* Filter bar — desktop (sm+): everything inline, unchanged */}
+      <div className="hidden sm:flex sm:flex-col gap-2 mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <select value={tableFilter} onChange={e => setTableFilter(e.target.value)} className={selectCls}>
             <option value="all">All types</option>
@@ -297,6 +307,100 @@ export function ActivityLogTab() {
           )}
         </div>
       </div>
+
+      {/* Filter bar — mobile (<sm): only range + Filtreler + Refresh; the rest lives in a Sheet */}
+      <div className="flex sm:hidden items-center gap-2 mb-3">
+        <select
+          value={rangeHours}
+          onChange={e => { setRangeHours(Number(e.target.value)); setCustomFrom(''); setCustomTo('') }}
+          className={`${selectCls} flex-1 min-w-0 ${usingCustom ? 'opacity-50' : ''}`}
+        >
+          {RANGES.map(r => <option key={r.hours} value={r.hours}>{r.label}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={() => { haptic('light'); setFiltersOpen(true) }}
+          className="press-feedback relative inline-flex items-center gap-1.5 text-xs px-3 rounded-lg border border-ink-200 text-ink-600 min-h-[44px] whitespace-nowrap"
+        >
+          Filtreler
+          {activeFilterCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent-500 text-white text-[10px] font-semibold tabular-nums">{activeFilterCount}</span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          title="Refresh"
+          aria-label="Refresh"
+          className="press-feedback inline-flex items-center justify-center text-sm rounded-lg border border-ink-200 text-ink-600 min-h-[44px] min-w-[44px]"
+        >
+          ↻
+        </button>
+      </div>
+
+      {/* Mobile Filtreler sheet — type/op/actor + exact window + Clear all */}
+      <Sheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Filtreler"
+        size="sm"
+        footer={
+          <div className="flex items-center gap-2">
+            {logs.length > 0 && (
+              <button
+                type="button"
+                onClick={() => clearLogs.mutate()}
+                disabled={clearLogs.isPending}
+                className="press-feedback text-xs px-3 rounded-lg border border-red-200 text-red-500 min-h-[44px] disabled:opacity-50"
+              >
+                Clear all
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setFiltersOpen(false)}
+              className="press-feedback ml-auto text-sm font-semibold px-5 rounded-lg bg-accent-500 text-white min-h-[44px]"
+            >
+              Done
+            </button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4 p-5">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink-500">Type</span>
+            <select value={tableFilter} onChange={e => setTableFilter(e.target.value)} className={sheetFieldCls}>
+              <option value="all">All types</option>
+              {tables.map(t => <option key={t} value={t}>{friendlyTable(t)}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink-500">Operation</span>
+            <select value={opFilter} onChange={e => setOpFilter(e.target.value)} className={sheetFieldCls}>
+              <option value="all">All operations</option>
+              <option value="INSERT">Created</option>
+              <option value="UPDATE">Updated</option>
+              <option value="DELETE">Deleted</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink-500">Actor</span>
+            <select value={actorFilter} onChange={e => setActorFilter(e.target.value)} className={sheetFieldCls}>
+              <option value="all">All actors</option>
+              <option value="web">You</option>
+              <option value="service">AI / sync</option>
+            </select>
+          </label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink-500">Exact window</span>
+            <input type="datetime-local" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className={sheetFieldCls} aria-label="From" />
+            <input type="datetime-local" value={customTo} onChange={e => setCustomTo(e.target.value)} className={sheetFieldCls} aria-label="To" />
+            {usingCustom && (
+              <button type="button" onClick={() => { setCustomFrom(''); setCustomTo('') }} className="self-start text-accent-600 hover:text-accent-700 text-xs min-h-[44px] inline-flex items-center">Clear window</button>
+            )}
+          </div>
+        </div>
+      </Sheet>
 
       {isLoading && (
         <div className="flex flex-col gap-2">

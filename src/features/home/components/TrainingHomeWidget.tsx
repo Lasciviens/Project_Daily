@@ -1,13 +1,17 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { startOfWeek, isAfter, parseISO } from 'date-fns'
 import { useHevyWorkouts } from '../../training/hooks/useHevyWorkouts'
 import { useStravaActivities } from '../../training/hooks/useStravaActivities'
 import { formatDurationSeconds as formatDuration } from '../../../shared/utils/formatDuration'
+import { haptic } from '../../../shared/utils/haptics'
 
 export function TrainingHomeWidget() {
   const { data: workouts = [], isLoading: loadingWorkouts } = useHevyWorkouts({ limit: 50 })
   const { data: stravaActivities = [], isLoading: loadingStrava } = useStravaActivities({ limit: 20 })
   const isLoading = loadingWorkouts || loadingStrava
+  // Reference widget — collapsed by default on a phone (desktop always shows).
+  const [collapsed, setCollapsed] = useState(true)
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
 
@@ -33,10 +37,21 @@ export function TrainingHomeWidget() {
   return (
     <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Training</h3>
+        <div className="flex items-center min-w-0">
+          <button
+            type="button"
+            onClick={() => { haptic('light'); setCollapsed(c => !c) }}
+            aria-label={collapsed ? 'Expand' : 'Collapse'}
+            className="sm:hidden text-ink-400 hover:text-ink-700 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+          >
+            {collapsed ? '▶' : '▼'}
+          </button>
+          <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide truncate">Training</h3>
+        </div>
         <Link to="/training" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
       </div>
 
+      <div className={collapsed ? 'hidden sm:block' : undefined}>
       {isLoading && (
         <div className="flex gap-3">
           <div className="h-14 flex-1 rounded-lg bg-cream-200 animate-pulse" />
@@ -88,6 +103,7 @@ export function TrainingHomeWidget() {
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }

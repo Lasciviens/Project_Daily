@@ -71,7 +71,7 @@ export function HomePage() {
      * On <1280px: right panel drops below center
      * On <768px : all single column
      */
-    <div className="min-h-full flex flex-col xl:flex-row xl:items-start gap-4 p-4 xl:p-5">
+    <div className="min-h-full flex flex-col xl:flex-row xl:items-start gap-3 xl:gap-4 p-3 xl:p-5">
 
       {/* Mobile-only lead: morning briefing + weather, in that order, ahead
           of everything else. Below xl the 3-column layout drops to a
@@ -107,8 +107,9 @@ export function HomePage() {
         {/* Overview summary */}
         <TodaySummary />
 
-        {/* Quick nav — compact pills, all six fit on one row from sm+ */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        {/* Quick nav — sm+ only; on mobile the bottom tab bar already covers
+            this, so it's dropped to reduce first-screen clutter. */}
+        <div className="hidden sm:grid sm:grid-cols-6 gap-2">
           {NAV_CARDS.map(card => (
             <Link
               key={card.to}

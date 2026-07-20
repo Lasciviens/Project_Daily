@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { useWorkTasks, useUpdateTask, useDeleteTask, useToggleTask, useCreateTask } from '../../todo/hooks/useTodos'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { Sheet } from '../../../shared/components/Sheet'
+import { SegmentedControl } from '../../../shared/components/SegmentedControl'
 import WorkBoard from '../components/WorkBoard'
 import WorkListView from '../components/WorkListView'
 import WorkTaskCard from '../components/WorkTaskCard'
@@ -25,21 +27,6 @@ function usePersisted<T extends string>(key: string, initial: T): [T, (v: T) => 
   return [value, set]
 }
 
-// Ticking clock — isolated so the 1s re-render stays inside this tiny component.
-function LiveClock() {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(id)
-  }, [])
-  return (
-    <span className="text-xl font-bold text-ink-900 tabular-nums" title={format(now, 'EEEE, d MMMM yyyy')}>
-      {format(now, 'HH:mm')}
-      <span className="text-ink-300">:{format(now, 'ss')}</span>
-    </span>
-  )
-}
-
 export function WorkPage() {
   const { data: tasks = [], isLoading } = useWorkTasks()
   const updateTask = useUpdateTask()
@@ -51,7 +38,10 @@ export function WorkPage() {
   const [editTask,  setEditTask] = useState<Task | null>(null)
   const [search,    setSearch]   = useState('')
   const [prioFilter, setPrioFilter] = useState<'all' | TaskPriority>('all')
+  const [filterOpen, setFilterOpen] = useState(false)
   const [quickTitle, setQuickTitle] = useState('')
+
+  const filtersActive = search.trim() !== '' || prioFilter !== 'all'
   const [overdueOpen, setOverdueOpen] = useState(true)
   const [view, setView]         = usePersisted<ViewMode>('work_view', 'board')
   const [rail, setRail]         = usePersisted<'open' | 'closed'>('work_rail', 'open')
@@ -144,7 +134,6 @@ export function WorkPage() {
         <div className="flex items-baseline gap-3 min-w-0">
           {/* Redundant on mobile — the bottom tab bar already labels Work. */}
           <h1 className="hidden sm:block text-xl font-bold text-ink-900">Work</h1>
-          <LiveClock />
           <span className="hidden sm:inline text-xs text-ink-400">{format(new Date(), 'EEE, d MMM')}</span>
         </div>
 
@@ -219,45 +208,66 @@ export function WorkPage() {
               </div>
             )}
 
-            {/* Board controls: view toggle + quick add + filters */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex gap-0.5 p-0.5 bg-cream-50 border border-ink-200 rounded-lg">
-                {(['board', 'list'] as ViewMode[]).map(v => (
-                  <button
-                    key={v}
-                    onClick={() => setView(v)}
-                    className={`px-3 min-h-[44px] rounded-md text-xs font-semibold capitalize transition-colors ${
-                      view === v ? 'bg-ink-950 text-white' : 'text-ink-500 hover:text-ink-900'
-                    }`}
-                  >
-                    {v}
-                  </button>
-                ))}
+            {/* Board controls: view toggle + filters. Quick-add sits on its own
+                full-width row below so the two inputs no longer fight for space;
+                search + priority collapse into a filter sheet on mobile. */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex gap-0.5 p-0.5 bg-cream-50 border border-ink-200 rounded-lg">
+                  {(['board', 'list'] as ViewMode[]).map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setView(v)}
+                      className={`px-3 min-h-[44px] rounded-md text-xs font-semibold capitalize transition-colors ${
+                        view === v ? 'bg-ink-950 text-white' : 'text-ink-500 hover:text-ink-900'
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Desktop: inline search + priority (intact). */}
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="🔍 Search…"
+                  className="hidden sm:block flex-1 min-w-[120px] max-w-[200px] text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300"
+                />
+                <select
+                  value={prioFilter}
+                  onChange={e => setPrioFilter(e.target.value as 'all' | TaskPriority)}
+                  className="hidden sm:block min-h-[44px] text-xs border border-ink-200 rounded-xl px-2 bg-cream-50 text-ink-700"
+                >
+                  <option value="all">All priorities</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+
+                {/* Mobile: single filter trigger (search + priority live in the sheet). */}
+                <button
+                  type="button"
+                  onClick={() => setFilterOpen(true)}
+                  aria-label="Filter tasks"
+                  className="press-feedback sm:hidden ml-auto relative flex items-center justify-center min-h-[44px] min-w-[44px] rounded-xl border border-ink-200 bg-cream-50 text-ink-600 hover:text-ink-900 transition-colors"
+                >
+                  <span aria-hidden className="text-base">🔍</span>
+                  {filtersActive && (
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent-500" />
+                  )}
+                </button>
               </div>
+
+              {/* Quick add — its own full-width row (capped on desktop). */}
               <input
                 value={quickTitle}
                 onChange={e => setQuickTitle(e.target.value)}
                 onKeyDown={handleQuickAdd}
                 placeholder="Quick add task… (Enter)"
                 disabled={createTask.isPending}
-                className="flex-1 min-w-[140px] max-w-xs text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300 disabled:opacity-50"
+                className="w-full sm:max-w-md text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300 disabled:opacity-50"
               />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="🔍 Search…"
-                className="flex-1 min-w-[120px] max-w-[200px] text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300"
-              />
-              <select
-                value={prioFilter}
-                onChange={e => setPrioFilter(e.target.value as 'all' | TaskPriority)}
-                className="min-h-[44px] text-xs border border-ink-200 rounded-xl px-2 bg-cream-50 text-ink-700"
-              >
-                <option value="all">All priorities</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
             </div>
           </div>
 
@@ -316,6 +326,60 @@ export function WorkPage() {
         defaults={{ domain: 'work', section: 'today' }}
         task={editTask ?? undefined}
       />
+
+      {/* Mobile filter sheet — search + priority (inline on desktop). */}
+      <Sheet
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        title="Filter tasks"
+        size="sm"
+        footer={
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => { setSearch(''); setPrioFilter('all') }}
+              disabled={!filtersActive}
+              className="press-feedback min-h-[44px] px-4 rounded-xl text-sm font-medium text-ink-500 hover:text-ink-900 disabled:opacity-40"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterOpen(false)}
+              className="press-feedback min-h-[44px] px-5 rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        }
+      >
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 mb-1.5">Search</label>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search tasks…"
+              className="w-full text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-500 mb-1.5">Priority</label>
+            <SegmentedControl<'all' | TaskPriority>
+              fullWidth
+              size="sm"
+              value={prioFilter}
+              onChange={setPrioFilter}
+              options={[
+                { value: 'all',    label: 'All' },
+                { value: 'high',   label: 'High' },
+                { value: 'medium', label: 'Med' },
+                { value: 'low',    label: 'Low' },
+              ]}
+            />
+          </div>
+        </div>
+      </Sheet>
     </div>
   )
 }

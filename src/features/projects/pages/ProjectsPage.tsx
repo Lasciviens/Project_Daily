@@ -20,7 +20,7 @@ export function ProjectsPage() {
   // ─── Detail view ──────────────────────────────────────────────────────────
   if (selected) {
     return (
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
         <ProjectDetail
           key={selected.id}
           project={selected}
@@ -33,7 +33,7 @@ export function ProjectsPage() {
 
   // ─── Grid (landing) ───────────────────────────────────────────────────────
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
       <div className="flex items-center gap-3 flex-wrap mb-5">
         <h1 className="text-lg font-bold text-ink-900">Projects</h1>
         {projects.length > 0 && (

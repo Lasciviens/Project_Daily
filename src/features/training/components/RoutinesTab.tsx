@@ -206,7 +206,7 @@ export function RoutinesTab() {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2 sm:mb-3">
         <div>
           <h3 className="text-base font-bold text-ink-900">Routines</h3>
           <p className="text-xs text-ink-400">{routines.length} routine{routines.length !== 1 ? 's' : ''}</p>

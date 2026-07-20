@@ -1,3 +1,5 @@
+import { haptic } from '../../../shared/utils/haptics'
+
 interface Props<T extends string> {
   value:   T
   options: readonly T[]
@@ -27,6 +29,7 @@ export function StatusCycleChip<T extends string>({ value, options, labels, colo
     e.stopPropagation()
     const idx = options.indexOf(value)
     if (idx === -1) return
+    haptic('light')
     const next = options[(idx + 1) % options.length]
     onCycle(next)
   }
@@ -37,13 +40,17 @@ export function StatusCycleChip<T extends string>({ value, options, labels, colo
   const idx       = options.indexOf(value)
   const nextLabel = idx !== -1 ? (labels?.[options[(idx + 1) % options.length]] ?? options[(idx + 1) % options.length].replace('_', ' ')) : ''
 
+  // Compact coloured pill inside a transparent 44px tap target on mobile; the
+  // pill itself stays small so it never balloons into a big coloured block.
   return (
     <button
       onClick={handleClick}
       title={nextLabel ? `Next: ${nextLabel}` : undefined}
-      className={`text-[10px] px-2 py-0.5 rounded-full font-medium capitalize cursor-pointer hover:opacity-80 transition-opacity min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 ${colorCls}`}
+      className="flex items-center justify-center flex-shrink-0 cursor-pointer min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0"
     >
-      {label}
+      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium capitalize whitespace-nowrap hover:opacity-80 transition-opacity ${colorCls}`}>
+        {label}
+      </span>
     </button>
   )
 }

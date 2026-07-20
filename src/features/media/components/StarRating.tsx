@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { haptic } from '../../../shared/utils/haptics'
 
 interface Props {
   /** Stored rating 1–10 (2 points per star). 0/undefined = unrated. */
@@ -29,7 +30,10 @@ export function StarRating({ value, onChange, disabled }: Props) {
           const portion = Math.max(0, Math.min(2, fill - (i - 1) * 2))
           const pct = (portion / 2) * 100
           return (
-            <span key={i} className="relative inline-block w-7 h-9 leading-none">
+            // Cell is a full 44px-tall tap target (h-11) while the ★ glyph stays
+            // visually small (text-2xl, centred via inset-0). Each half is a real
+            // hit zone spanning the full height.
+            <span key={i} className="relative inline-block w-9 h-11 leading-none">
               {/* Base (empty) star */}
               <span className="absolute inset-0 flex items-center justify-center text-2xl text-ink-300 select-none">★</span>
               {/* Filled overlay clipped to pct */}
@@ -44,14 +48,14 @@ export function StarRating({ value, onChange, disabled }: Props) {
                     type="button"
                     aria-label={`Rate ${i * 2 - 1}`}
                     onMouseEnter={() => setHover(i * 2 - 1)}
-                    onClick={() => onChange(i * 2 - 1)}
+                    onClick={() => { haptic('light'); onChange(i * 2 - 1) }}
                     className="absolute inset-y-0 left-0 w-1/2 cursor-pointer"
                   />
                   <button
                     type="button"
                     aria-label={`Rate ${i * 2}`}
                     onMouseEnter={() => setHover(i * 2)}
-                    onClick={() => onChange(i * 2)}
+                    onClick={() => { haptic('light'); onChange(i * 2) }}
                     className="absolute inset-y-0 right-0 w-1/2 cursor-pointer"
                   />
                 </>
