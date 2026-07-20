@@ -138,18 +138,22 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-4">
-            {/* Serving scaler + Cook actions */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Servings</span>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setServings(s => Math.max(1, s - 1))} className="min-w-[44px] min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">−</button>
-                <span className="w-10 text-center text-sm font-bold text-ink-900 tabular-nums">{servings}</span>
-                <button onClick={() => setServings(s => s + 1)} className="min-w-[44px] min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">+</button>
+            {/* Serving scaler + Cook actions. Mobile: the action cluster drops
+                to its OWN row (the single wrapping row was cramped); Cook Mode
+                is icon-only below sm to keep the cluster on one line. */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Servings</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setServings(s => Math.max(1, s - 1))} className="min-w-[44px] min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">−</button>
+                  <span className="w-10 text-center text-sm font-bold text-ink-900 tabular-nums">{servings}</span>
+                  <button onClick={() => setServings(s => s + 1)} className="min-w-[44px] min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">+</button>
+                </div>
+                {servings !== recipe.servings && (
+                  <button onClick={() => setServings(recipe.servings)} className="min-h-[44px] px-1 text-[11px] text-accent-600 hover:text-accent-700">reset</button>
+                )}
               </div>
-              {servings !== recipe.servings && (
-                <button onClick={() => setServings(recipe.servings)} className="text-[11px] text-accent-600 hover:text-accent-700">reset</button>
-              )}
-              <div className="flex items-center gap-1.5 ml-auto">
+              <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap sm:ml-auto">
                 {/* Portions EATEN — free entry (type 0.3, 1.5, 2…), not just
                     ±0.5 steps; a batch's portion is a free % of its yield. */}
                 <div className="flex items-center rounded-lg border border-accent-300 overflow-hidden">
@@ -161,12 +165,13 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                     className="min-w-[36px] min-h-[44px] text-accent-700 hover:bg-accent-50 leading-none">+</button>
                 </div>
                 <button onClick={handleLog} disabled={logFood.isPending || ate <= 0} title="Log the eaten portions to today's diary"
-                  className="min-h-[44px] px-3 text-xs font-semibold bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors disabled:opacity-50">
+                  className="min-h-[44px] px-3 text-xs font-semibold bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors disabled:opacity-50 whitespace-nowrap">
                   🍽️ {logFood.isPending ? 'Logging…' : 'I ate this'}
                 </button>
                 {steps.length > 0 && (
-                  <button onClick={() => setCookMode(true)} className="min-h-[44px] px-3 text-xs font-semibold bg-ink-950 text-white rounded-lg hover:bg-ink-800 transition-colors">
-                    👨‍🍳 Cook Mode
+                  <button onClick={() => setCookMode(true)} title="Cook Mode" aria-label="Cook Mode"
+                    className="min-h-[44px] min-w-[44px] px-3 flex items-center justify-center gap-1 text-xs font-semibold bg-ink-950 text-white rounded-lg hover:bg-ink-800 transition-colors">
+                    👨‍🍳 <span className="hidden sm:inline">Cook Mode</span>
                   </button>
                 )}
                 <button onClick={handleMadeThis} disabled={cooked.isPending} title="I made this (counter only)" className="min-h-[44px] min-w-[44px] flex items-center justify-center text-base bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors disabled:opacity-50">

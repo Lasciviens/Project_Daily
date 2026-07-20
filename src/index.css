@@ -349,3 +349,38 @@ html[data-vt-dir='back'] ::view-transition-new(root) {
     animation: none !important;
   }
 }
+
+/* ── Native-app touch feel (mobile app-feel round) ─────────────────────────
+   Kept outside @layer alongside the other runtime/utility rules. */
+
+/* #49 — Suppress the iOS long-press callout + text selection on CHROME
+   (buttons, links, nav, tab bars, interactive rows). Text CONTENT stays
+   selectable; form controls are explicitly re-enabled below so typing/copy
+   still works. Removes the "select this UI label" web tell. */
+button,
+a,
+[role="button"],
+[role="tab"],
+nav,
+summary,
+.glass-chrome,
+.press-feedback {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* #50 — Contain overscroll so a modal/sheet or inner scroller's rubber-band
+   never chains to the page behind it (native sheets don't leak scroll, and it
+   also disables the browser's own pull-to-refresh in favour of the app's). */
+[role="dialog"],
+.overscroll-contain {
+  overscroll-behavior: contain;
+}

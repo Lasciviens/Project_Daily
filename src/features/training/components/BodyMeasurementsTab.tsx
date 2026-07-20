@@ -594,7 +594,7 @@ export function BodyMeasurementsTab() {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2 sm:mb-3">
         <div>
           <h3 className="text-base font-bold text-ink-900">Body Measurements</h3>
           <p className="text-xs text-ink-400">{measurements.length} entries</p>

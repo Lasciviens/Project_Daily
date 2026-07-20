@@ -58,9 +58,11 @@ export function WidgetShell({ title, ws, onManualSync, headerRight, children }: 
           <div className="flex items-center">{headerRight}</div>
         )}
 
-        {/* Sync controls — only visible when expanded */}
+        {/* Sync controls — only visible when expanded. Hidden below sm: PTR
+            already re-syncs on mobile, and these buttons + timestamp made the
+            News/Currency header tabs wrap to a second row on a phone. */}
         {!ws.collapsed && (
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5 flex-shrink-0">
             {/* Last sync timestamp */}
             <span className="text-[10px] text-ink-300 hidden sm:block">
               {ws.lastSyncLabel}

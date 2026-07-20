@@ -60,25 +60,29 @@ export const useUIStore = create<UIState>((set) => ({
 
 export type ToastType = 'success' | 'error' | 'loading' | 'info' | 'warning'
 
+export interface ToastAction { label: string; onClick: () => void }
+
 export interface Toast {
   id:      string
   type:    ToastType
   message: string
+  action?: ToastAction   // e.g. an "Undo" button on a destructive-action snackbar
 }
 
 interface ToastState {
   toasts: Toast[]
-  show:   (message: string, type?: ToastType, durationMs?: number) => string
+  show:   (message: string, type?: ToastType, durationMs?: number, action?: ToastAction) => string
   dismiss:(id: string) => void
 }
 
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
-  show: (message, type = 'info', durationMs) => {
+  show: (message, type = 'info', durationMs, action) => {
     const id = Math.random().toString(36).slice(2)
-    set(s => ({ toasts: [...s.toasts, { id, type, message }] }))
-    // loading toasts stay until manually dismissed; others auto-dismiss
-    const ms = durationMs ?? (type === 'error' ? 5000 : type === 'loading' ? 0 : 3000)
+    set(s => ({ toasts: [...s.toasts, { id, type, message, action }] }))
+    // loading toasts stay until manually dismissed; action snackbars linger
+    // longer (you need time to hit Undo); others auto-dismiss.
+    const ms = durationMs ?? (type === 'loading' ? 0 : action ? 6000 : type === 'error' ? 5000 : 3000)
     if (ms > 0) setTimeout(() => get().dismiss(id), ms)
     return id
   },
@@ -93,6 +97,15 @@ export const toast = {
   info:    (msg: string) => useToastStore.getState().show(msg, 'info'),
   warning: (msg: string) => useToastStore.getState().show(msg, 'warning'),
   dismiss: (id: string)  => useToastStore.getState().dismiss(id),
+  // Undo snackbar — show after a destructive action instead of a blocking
+  // confirm dialog. onUndo runs if the user taps "Geri al" before it expires.
+  undo: (msg: string, onUndo: () => void, durationMs = 6000) => {
+    const id = useToastStore.getState().show(msg, 'info', durationMs, {
+      label: 'Geri al',
+      onClick: () => { onUndo(); useToastStore.getState().dismiss(id) },
+    })
+    return id
+  },
 }
 
 // ─── Calendar ─────────────────────────────────────────────────────────────────

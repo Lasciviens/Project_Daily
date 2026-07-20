@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { rp5 } from '../../../integrations/rp5-library/client'
 import { useGameStats, usePlayQueue } from '../hooks/useGames'
 import type { Game } from '../api/gamesApi'
+import { haptic } from '../../../shared/utils/haptics'
 
 const STATUS_COLOR: Record<string, string> = {
   playing:   'bg-orange-400',
@@ -34,6 +35,8 @@ export function GamesHomeWidget() {
   const { data: stats, isLoading: statsLoading, error: statsError } = useGameStats()
   const { data: queue  = [] } = usePlayQueue()
   const playingGames = queue.filter(g => g.play_status === 'playing')
+  // Reference widget — collapsed by default on a phone (desktop always shows).
+  const [collapsed, setCollapsed] = useState(true)
 
   if (!rp5) {
     return (
@@ -56,10 +59,21 @@ export function GamesHomeWidget() {
   return (
     <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Games</h3>
+        <div className="flex items-center min-w-0">
+          <button
+            type="button"
+            onClick={() => { haptic('light'); setCollapsed(c => !c) }}
+            aria-label={collapsed ? 'Expand' : 'Collapse'}
+            className="sm:hidden text-ink-400 hover:text-ink-700 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+          >
+            {collapsed ? '▶' : '▼'}
+          </button>
+          <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide truncate">Games</h3>
+        </div>
         <Link to="/games" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
       </div>
 
+      <div className={collapsed ? 'hidden sm:block' : undefined}>
       {statsLoading && (
         <div className="flex gap-2">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -104,6 +118,7 @@ export function GamesHomeWidget() {
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }

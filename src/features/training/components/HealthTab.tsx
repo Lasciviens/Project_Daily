@@ -124,20 +124,27 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Section pills */}
-      <div className="flex gap-1.5 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory pb-1">
-        {SECTIONS.map(s => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setSection(s.id)}
-            className={`min-h-[44px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors press-feedback snap-start ${
-              section === s.id ? 'bg-ink-950 text-white' : 'bg-cream-50 border border-ink-200 text-ink-600 hover:bg-ink-50'
-            }`}
-          >
-            <span>{s.icon}</span>{s.label}
-          </button>
-        ))}
+      {/* Section pills — a right-edge fade cues the strip scrolls on a phone
+          (mobile only; all pills fit on desktop). */}
+      <div className="relative">
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none snap-x-mandatory pb-1">
+          {SECTIONS.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSection(s.id)}
+              className={`min-h-[44px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors press-feedback snap-start ${
+                section === s.id ? 'bg-ink-950 text-white' : 'bg-cream-50 border border-ink-200 text-ink-600 hover:bg-ink-50'
+              }`}
+            >
+              <span>{s.icon}</span>{s.label}
+            </button>
+          ))}
+        </div>
+        <div
+          className="sm:hidden pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas to-transparent"
+          aria-hidden
+        />
       </div>
 
       {section === 'overview' && (

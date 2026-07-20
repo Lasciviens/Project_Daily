@@ -76,7 +76,7 @@ export default function WorkDayTimeline({ workTasks }: Props) {
 
   return (
     <div className="rounded-xl border border-ink-200 bg-cream-50 px-4 py-3 w-full">
-      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+      <div className="flex items-center justify-between gap-3 mb-0 sm:mb-3 flex-wrap">
         <p className="text-[10px] font-bold uppercase tracking-widest text-ink-400">
           Today's Schedule
         </p>
@@ -96,6 +96,9 @@ export default function WorkDayTimeline({ workTasks }: Props) {
         </div>
       </div>
 
+      {/* Full timeline bar + hour labels — hidden on mobile so the board is
+          visible on load; the Now/Next header summary above is the mobile view. */}
+      <div className="hidden sm:block">
       {/* Timeline bar — overflow visible so now-marker dot isn't clipped */}
       <div className="relative h-12 bg-ink-50 rounded-lg w-full" style={{ overflow: 'visible' }}>
         {/* Clipped inner for the bar background */}
@@ -162,6 +165,7 @@ export default function WorkDayTimeline({ workTasks }: Props) {
             </span>
           )
         })}
+      </div>
       </div>
 
       {timedBlocks.length === 0 && (

@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useProjects, useProjectStats } from '../../projects/hooks/useProjects'
+import { haptic } from '../../../shared/utils/haptics'
 
 const COLOR_DOT: Record<string, string> = {
   slate: 'bg-slate-400', blue: 'bg-blue-400', violet: 'bg-violet-400',
@@ -9,6 +11,9 @@ const COLOR_DOT: Record<string, string> = {
 export function ProjectsHomeWidget() {
   const { data: projects = [], isLoading } = useProjects()
   const { data: stats = {} }               = useProjectStats()
+  // Reference widget — collapsed by default on a phone so Home leads with the
+  // actionable cards. Desktop ignores this (body is always `sm:block`).
+  const [collapsed, setCollapsed] = useState(true)
 
   if (isLoading) return null
 
@@ -18,11 +23,21 @@ export function ProjectsHomeWidget() {
   return (
     <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Active Projects</h3>
+        <div className="flex items-center min-w-0">
+          <button
+            type="button"
+            onClick={() => { haptic('light'); setCollapsed(c => !c) }}
+            aria-label={collapsed ? 'Expand' : 'Collapse'}
+            className="sm:hidden text-ink-400 hover:text-ink-700 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+          >
+            {collapsed ? '▶' : '▼'}
+          </button>
+          <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide truncate">Active Projects</h3>
+        </div>
         <Link to="/projects" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
       </div>
 
-      <div className="space-y-2.5">
+      <div className={`space-y-2.5 ${collapsed ? 'hidden sm:block' : ''}`}>
         {active.map(p => {
           const s = stats[p.id]
           const total = s?.total ?? 0

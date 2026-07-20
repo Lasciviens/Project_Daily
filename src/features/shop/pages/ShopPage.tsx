@@ -4,6 +4,8 @@ import { ShopAIBox } from '../components/ShopAIBox'
 import { ShopItemCard } from '../components/ShopItemCard'
 import { AddShopItemModal } from '../components/AddShopItemModal'
 import { PersonalTabs } from '../../personal/components/PersonalLayout'
+import { Sheet } from '../../../shared/components/Sheet'
+import { haptic } from '../../../shared/utils/haptics'
 
 // Rendered inside PersonalLayout's flex-1 Outlet slot — h-full (not a
 // viewport calc) so it exactly fills whatever height that slot has left
@@ -14,6 +16,7 @@ export function ShopPage() {
   const { data: items = [],      isLoading: itemsLoading } = useShopItems()
   const [activeTop, setActiveTop] = useState<string | null>(null)
   const [addOpen,   setAddOpen]   = useState(false)
+  const [aiOpen,    setAiOpen]    = useState(false)
 
   const tops = categories.filter(c => !c.parent_id)
   const subs = categories.filter(c => c.parent_id)
@@ -33,31 +36,32 @@ export function ShopPage() {
 
   return (
     <div className="w-full h-full flex flex-col sm:flex-row overflow-hidden">
-      {/* Left pane — AI chat, fixed width on desktop, fixed height on mobile.
-          order-2 on mobile (sm:order-none restores DOM order side-by-side):
-          this pane renders mostly blank until a conversation starts, and
-          being first in DOM meant it was the entire first screenful on
-          mobile — the actual wishlist content below looked like it didn't
-          exist until scrolling past ~42vh of empty chat. */}
-      <div className="order-2 sm:order-none h-[42vh] sm:h-full w-full sm:w-[380px] sm:flex-shrink-0 border-t sm:border-t-0 sm:border-b-0 sm:border-r border-ink-200 bg-cream-50">
+      {/* Left pane — AI chat, fixed width, desktop-only. On mobile the chat
+          used to be a permanent ~42vh block that ate the first screenful even
+          when empty; it's now collapsed behind a compact "✦ Sor" bar that
+          opens the box in a bottom sheet (below), so the wishlist owns the
+          full screen by default. */}
+      <div className="hidden sm:block sm:h-full sm:w-[380px] sm:flex-shrink-0 sm:border-r border-ink-200 bg-cream-50">
         <ShopAIBox />
       </div>
 
       {/* Right pane — categories + wishlist, its own scroll */}
-      <div className="order-1 sm:order-none flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
+      <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
         <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
           <div>
             <h1 className="text-xl font-bold text-ink-900">Shop</h1>
-            <p className="text-xs text-ink-400 mt-0.5">Wishlist — things you're planning to buy</p>
+            <p className="hidden sm:block text-xs text-ink-400 mt-0.5">Wishlist — things you're planning to buy</p>
           </div>
           {/* PersonalTabs live in each page's FIRST header row, far right —
               same spot on Daily/Shop/Food, no extra row, no jumping. */}
           <div className="flex items-center gap-2 ml-auto">
             <button
               onClick={() => setAddOpen(true)}
-              className="min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors flex-shrink-0"
+              aria-label="Add item"
+              className="min-h-[44px] min-w-[44px] px-0 sm:px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors flex-shrink-0 flex items-center justify-center gap-1"
             >
-              + Add item
+              <span aria-hidden className="text-lg leading-none sm:hidden">＋</span>
+              <span className="hidden sm:inline">+ Add item</span>
             </button>
             <PersonalTabs />
           </div>
@@ -127,7 +131,24 @@ export function ShopPage() {
         </div>
       </div>
 
+      {/* Mobile-only docked bar that opens the chat as a bottom sheet */}
+      <button
+        onClick={() => { haptic('light'); setAiOpen(true) }}
+        className="press-feedback sm:hidden flex-shrink-0 flex items-center gap-2 min-h-[48px] px-4 border-t border-ink-200 bg-cream-50 text-accent-700 text-sm font-semibold"
+      >
+        <span aria-hidden>✦</span>
+        <span>Sor</span>
+        <span className="ml-auto text-xs font-normal text-ink-400">Alışveriş asistanı</span>
+      </button>
+
       <AddShopItemModal open={addOpen} onClose={() => setAddOpen(false)} />
+
+      {/* The AIBox lives here only for mobile — desktop keeps the left pane. */}
+      <Sheet open={aiOpen} onClose={() => setAiOpen(false)} size="lg">
+        <div className="h-[75vh]">
+          <ShopAIBox onClose={() => setAiOpen(false)} />
+        </div>
+      </Sheet>
     </div>
   )
 }

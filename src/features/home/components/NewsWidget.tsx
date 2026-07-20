@@ -10,7 +10,7 @@ export function NewsWidget() {
   // Mobile audit: 2026-06-15 — thumbnail w-20 h-16 flex-shrink-0 verified no clip; absolute initials fallback OK; category tabs raised to min-h-[44px] min-w-[40px]; title text flex-1 min-w-0 prevents overflow
   const [category, setCategory] = useState<FeedCategory>('no')
   // News updates infrequently — 15m is the right default
-  const ws = useWidgetState('news', { collapsed: false, intervalMs: 15 * 60_000 })
+  const ws = useWidgetState('news', { collapsed: false, intervalMs: 15 * 60_000 }, true)
 
   const activeFeed = NEWS_FEEDS.find(f => f.category === category) ?? NEWS_FEEDS[0]
 

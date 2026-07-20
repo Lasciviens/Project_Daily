@@ -15,8 +15,12 @@ interface ThreadEntry extends Message {
  * Renders ask_clarifying_question's options as tappable buttons (real Gemini
  * function call, not a text-parsed convention) so common yes/no/pick-one
  * answers are a tap, not a retype.
+ *
+ * `onClose` is supplied only when hosted in the mobile bottom-sheet (see
+ * ShopPage) — it renders a dismiss button in the header. On desktop the box is
+ * a permanent pane, so no close affordance is shown.
  */
-export function ShopAIBox() {
+export function ShopAIBox({ onClose }: { onClose?: () => void } = {}) {
   const [thread, setThread]   = useState<ThreadEntry[]>([])
   const [input,  setInput]    = useState('')
   const [sending, setSending] = useState(false)
@@ -55,9 +59,20 @@ export function ShopAIBox() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 flex-shrink-0">
         <p className="text-sm font-semibold text-accent-700">✦ Shopping Assistant</p>
-        {thread.length > 0 && (
-          <button onClick={reset} className="text-[11px] text-ink-400 hover:text-ink-600 min-h-[44px] px-2">Clear</button>
-        )}
+        <div className="flex items-center gap-1">
+          {thread.length > 0 && (
+            <button onClick={reset} className="text-[11px] text-ink-400 hover:text-ink-600 min-h-[44px] px-2">Clear</button>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="press-feedback flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-ink-500 hover:bg-cream-100 hover:text-ink-800"
+            >
+              <span aria-hidden className="text-lg">&times;</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Message list — the only scrollable area */}

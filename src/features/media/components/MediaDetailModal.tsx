@@ -1,6 +1,6 @@
-import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 import { useMovieFull, useTVFull } from '../hooks/useTMDB'
 import { MediaDetailBody } from './MediaDetailBody'
+import { Sheet } from '../../../shared/components/Sheet'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import type { UserMovieEntry, UserTVEntry } from '../types'
 
@@ -47,64 +47,60 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
     ? `https://image.tmdb.org/t/p/w780${detail.backdrop_path}`
     : null
 
+  // Bottom-sheet on mobile (grab handle, slides up), centered dialog on desktop —
+  // via the shared Sheet primitive. No `title` prop: the backdrop hero below is
+  // the header, carrying the poster/title/rating overlay + its own close button.
   return (
-    <Dialog open={tmdbId !== null} onClose={onClose} className="relative z-[60]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-start justify-center overflow-y-auto py-4 px-2 sm:py-8 sm:px-4">
-        <DialogPanel transition className="max-w-3xl w-full rounded-2xl overflow-hidden bg-cream-50 max-h-[92vh] sm:max-h-[88vh] flex flex-col transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          {/* Backdrop header */}
-          <div className="relative h-36 sm:h-48 flex-shrink-0 bg-ink-200">
-            {backdrop && (
+    <Sheet open={tmdbId !== null} onClose={onClose} size="lg">
+      {/* Backdrop hero (shrunk on mobile so the overview clears the fold) */}
+      <div className="relative h-28 sm:h-48 flex-shrink-0 bg-ink-200">
+        {backdrop && (
+          <img
+            src={backdrop}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+        <button
+          onClick={onClose}
+          className="press-feedback absolute top-3 right-3 w-11 h-11 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors duration-150 text-lg"
+          aria-label="Close"
+        >
+          ×
+        </button>
+        <div className="absolute bottom-0 left-0 p-4">
+          <div className="flex items-end gap-3">
+            {detail && (
               <img
-                src={backdrop}
-                alt=""
-                className="w-full h-full object-cover"
+                src={posterUrl(detail.poster_path, 'w92')}
+                alt={title}
+                className="w-10 rounded-md flex-shrink-0"
               />
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-            <button
-              onClick={onClose}
-              className="absolute top-3 right-3 w-11 h-11 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors duration-150 text-sm"
-              aria-label="Close"
-            >
-              ×
-            </button>
-            <div className="absolute bottom-0 left-0 p-4">
-              <div className="flex items-end gap-3">
-                {detail && (
-                  <img
-                    src={posterUrl(detail.poster_path, 'w92')}
-                    alt={title}
-                    className="w-10 rounded-md flex-shrink-0"
-                  />
-                )}
-                <div>
-                  {title && <h2 className="text-white font-semibold text-lg leading-tight">{title}</h2>}
-                  <div className="flex items-center gap-2 text-white/70 text-xs">
-                    {year && <span>{year}</span>}
-                    {detail?.vote_average ? <span>★ {detail.vote_average.toFixed(1)}</span> : null}
-                  </div>
-                </div>
+            <div>
+              {title && <h2 className="text-white font-semibold text-lg leading-tight">{title}</h2>}
+              <div className="flex items-center gap-2 text-white/70 text-xs">
+                {year && <span>{year}</span>}
+                {detail?.vote_average ? <span>★ {detail.vote_average.toFixed(1)}</span> : null}
               </div>
             </div>
           </div>
-
-          {/* Body */}
-          <div className="overflow-y-auto flex-1">
-            {loading || !detail ? (
-              <Skeleton />
-            ) : (
-              <MediaDetailBody
-                detail={detail}
-                mediaType={mediaType}
-                userEntry={userEntry}
-                onAdded={onAdded}
-                onOpenDetail={onOpenDetail}
-              />
-            )}
-          </div>
-        </DialogPanel>
+        </div>
       </div>
-    </Dialog>
+
+      {/* Body */}
+      {loading || !detail ? (
+        <Skeleton />
+      ) : (
+        <MediaDetailBody
+          detail={detail}
+          mediaType={mediaType}
+          userEntry={userEntry}
+          onAdded={onAdded}
+          onOpenDetail={onOpenDetail}
+        />
+      )}
+    </Sheet>
   )
 }

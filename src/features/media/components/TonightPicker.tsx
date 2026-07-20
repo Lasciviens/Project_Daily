@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { posterUrl } from '../../../integrations/tmdb/client'
+import { haptic } from '../../../shared/utils/haptics'
 import {
   useTrendingMovies, useTrendingTV,
   usePopularMovies, usePopularTV,
@@ -43,8 +44,8 @@ function PickRow({ type, pick, shaking, onRoll, onOpenDetail }: {
         <img
           src={posterUrl(pick.poster_path, 'w92')}
           alt={pick.title}
-          onClick={() => onOpenDetail(pick.id, type)}
-          className={`w-9 h-[52px] rounded object-cover cursor-pointer flex-shrink-0 hover:opacity-90 ${shaking ? 'animate-[wiggle_0.3s_ease-in-out]' : ''}`}
+          onClick={() => { haptic('light'); onOpenDetail(pick.id, type) }}
+          className={`press-feedback w-9 h-[52px] rounded object-cover cursor-pointer flex-shrink-0 hover:opacity-90 ${shaking ? 'animate-[wiggle_0.3s_ease-in-out]' : ''}`}
         />
         <div className="flex-1 min-w-0">
           <p className="text-[11px] font-semibold text-ink-900 truncate leading-tight">{pick.title}</p>
@@ -52,16 +53,17 @@ function PickRow({ type, pick, shaking, onRoll, onOpenDetail }: {
             <p className="text-[9px] text-ink-400 capitalize mt-0.5">{pick.status}</p>
           )}
         </div>
-        <div className="flex flex-col gap-0.5 flex-shrink-0">
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
-            onClick={() => onOpenDetail(pick.id, type)}
-            className="text-[9px] px-1.5 py-1 rounded bg-accent-500 text-white hover:bg-accent-600 min-h-[24px] transition-colors"
+            onClick={() => { haptic('light'); onOpenDetail(pick.id, type) }}
+            className="press-feedback text-[11px] font-medium px-3 min-h-[44px] rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors"
           >
             View
           </button>
           <button
-            onClick={onRoll}
-            className="text-[9px] px-1.5 py-1 rounded border border-ink-200 text-ink-500 hover:bg-ink-50 min-h-[24px] transition-colors"
+            onClick={() => { haptic('light'); onRoll() }}
+            aria-label="Re-roll"
+            className="press-feedback text-base min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-ink-200 text-ink-500 hover:bg-ink-50 transition-colors"
           >
             ↺
           </button>
@@ -72,8 +74,8 @@ function PickRow({ type, pick, shaking, onRoll, onOpenDetail }: {
 
   return (
     <button
-      onClick={onRoll}
-      className="w-full flex items-center justify-center gap-1.5 min-h-[44px] rounded-lg border border-dashed border-ink-300 text-xs text-ink-500 hover:bg-ink-50 hover:border-accent-400 hover:text-accent-600 transition-colors"
+      onClick={() => { haptic('light'); onRoll() }}
+      className="press-feedback w-full flex items-center justify-center gap-1.5 min-h-[44px] rounded-lg border border-dashed border-ink-300 text-xs text-ink-500 hover:bg-ink-50 hover:border-accent-400 hover:text-accent-600 transition-colors"
     >
       {type === 'movie' ? '🎬 Random Movie' : '📺 Random Series'}
     </button>
@@ -147,15 +149,21 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
         <h3 className="text-[10px] font-bold uppercase tracking-wider text-ink-400">🎲 What to Watch?</h3>
         <div className="flex gap-0.5">
           {(['mylist', 'trending', 'popular'] as Source[]).map(s => (
+            // 44px tap wrapper; the visible chip inside stays compact.
             <button
               key={s}
-              onClick={() => { setSource(s); setMoviePick(null); setTvPick(null) }}
-              className={[
-                'text-[9px] font-medium px-1.5 py-0.5 rounded transition-colors min-h-[24px]',
-                source === s ? 'bg-accent-500 text-white' : 'text-ink-400 hover:bg-ink-100',
-              ].join(' ')}
+              onClick={() => { haptic('light'); setSource(s); setMoviePick(null); setTvPick(null) }}
+              aria-pressed={source === s}
+              className="press-feedback flex min-h-[44px] items-center px-1"
             >
-              {s === 'mylist' ? 'My List' : s === 'trending' ? 'Trending' : 'Popular'}
+              <span
+                className={[
+                  'text-[10px] font-medium px-2 py-1 rounded transition-colors',
+                  source === s ? 'bg-accent-500 text-white' : 'text-ink-400',
+                ].join(' ')}
+              >
+                {s === 'mylist' ? 'My List' : s === 'trending' ? 'Trending' : 'Popular'}
+              </span>
             </button>
           ))}
         </div>

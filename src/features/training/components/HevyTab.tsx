@@ -92,7 +92,6 @@ function BestLiftsCard() {
 function WorkoutsSubTab() {
   const [page, setPage] = useState(0)
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
-  const [logOpen, setLogOpen] = useState(false)
 
   const { data: workouts = [], isLoading } = useHevyWorkouts({
     limit:  PAGE_SIZE,
@@ -132,26 +131,15 @@ function WorkoutsSubTab() {
 
   return (
     <>
-      {/* Summary + Log button row */}
-      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <div className="flex gap-3 text-sm text-ink-500">
-          {allRecent.length > 0 && (
-            <>
-              <span><strong className="text-ink-800">{weekCount}</strong> this week</span>
-              <span className="text-ink-200">·</span>
-              <span><strong className="text-ink-800">{monthCount}</strong> in {monthLabel}</span>
-            </>
-          )}
+      {/* Summary line — compact. The Log button lives in the sub-tab row now
+          (HevyTab), so this no longer needs its own full-height button row. */}
+      {allRecent.length > 0 && (
+        <div className="flex gap-3 text-xs text-ink-500 mb-2 -mt-0.5 flex-wrap">
+          <span><strong className="text-ink-800">{weekCount}</strong> this week</span>
+          <span className="text-ink-200">·</span>
+          <span><strong className="text-ink-800">{monthCount}</strong> in {monthLabel}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setLogOpen(true)}
-          className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5 shrink-0"
-        >
-          <span className="text-base leading-none">+</span>
-          <span>Log Workout</span>
-        </button>
-      </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-3">
@@ -210,11 +198,6 @@ function WorkoutsSubTab() {
         workoutId={selectedWorkoutId}
         onClose={() => setSelectedWorkoutId(null)}
       />
-
-      <LogHevyWorkoutModal
-        isOpen={logOpen}
-        onClose={() => setLogOpen(false)}
-      />
     </>
   )
 }
@@ -234,6 +217,7 @@ function PRsSubTab() {
 
 export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => void } = {}) {
   const [activeTab, setActiveTab] = useState<SubTab>('workouts')
+  const [logOpen, setLogOpen] = useState(false)
 
   // Report the active sub-tab up so the page can widen for the data-dense ones
   // (Exercises grid, Muscles two-column) on large monitors.
@@ -241,22 +225,44 @@ export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => v
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Sub-tab bar — pill underline style */}
-      <div className="flex gap-0 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory border-b border-ink-100 -mx-1 px-1">
-        {SUB_TABS.map(tab => (
+      {/* Sub-tab bar — pill underline style. The Workouts "Log" action is
+          pinned right of the scroll strip so it no longer costs a second
+          stacked row on mobile; a right-edge fade cues that the strip scrolls
+          (mobile only — all sub-tabs fit on desktop). */}
+      <div className="flex items-center gap-2 -mx-1 px-1">
+        <div className="relative flex-1 min-w-0">
+          <div className="flex gap-0 overflow-x-auto scrollbar-none snap-x-mandatory border-b border-ink-100">
+            {SUB_TABS.map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`min-h-[44px] px-3 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px press-feedback snap-start ${
+                  activeTab === tab.id
+                    ? 'border-accent-500 text-accent-600 font-semibold'
+                    : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div
+            className="sm:hidden pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas to-transparent"
+            aria-hidden
+          />
+        </div>
+        {activeTab === 'workouts' && (
           <button
-            key={tab.id}
             type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`min-h-[44px] px-3 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px press-feedback snap-start ${
-              activeTab === tab.id
-                ? 'border-accent-500 text-accent-600 font-semibold'
-                : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-200'
-            }`}
+            onClick={() => setLogOpen(true)}
+            className="shrink-0 min-h-[44px] px-3 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1 press-feedback"
           >
-            {tab.label}
+            <span className="text-base leading-none">+</span>
+            <span className="sm:hidden">Log</span>
+            <span className="hidden sm:inline">Log Workout</span>
           </button>
-        ))}
+        )}
       </div>
 
       {/* Sub-tab content — width is managed by the page (calendar lives there) */}
@@ -268,6 +274,8 @@ export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => v
         {activeTab === 'body'      && <BodyMeasurementsTab />}
         {activeTab === 'exercises' && <ExerciseTemplatesTab />}
       </div>
+
+      <LogHevyWorkoutModal isOpen={logOpen} onClose={() => setLogOpen(false)} />
     </div>
   )
 }

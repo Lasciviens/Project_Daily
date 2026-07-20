@@ -12,6 +12,7 @@ import {
   useCreatePhase, useUpdatePhase, useDeletePhase,
   useUpdateItem, useDeleteItem,
 } from '../hooks/useProjects'
+import { haptic } from '../../../shared/utils/haptics'
 import type { Project, ProjectStatus, ItemType, ItemStatus, ProjectItem } from '../types'
 
 const PROJECT_STATUSES: ProjectStatus[] = ['active', 'on_hold', 'completed', 'archived']
@@ -164,7 +165,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
           {COLORS.map(c => (
             <button
               key={c}
-              onClick={() => updateProject.mutate({ id: project.id, patch: { color: c } })}
+              onClick={() => { haptic('light'); updateProject.mutate({ id: project.id, patch: { color: c } }) }}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center lg:min-w-0 lg:min-h-0 lg:w-6 lg:h-6"
               title={c}
             >
@@ -197,10 +198,10 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
             </div>
 
             {view === 'phases' && total > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1.5 w-full sm:w-auto flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible">
                 <button
                   onClick={() => setTypeFilter(null)}
-                  className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
+                  className={`flex-shrink-0 whitespace-nowrap text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
                     typeFilter === null ? 'bg-ink-800 text-white border-ink-800' : 'bg-cream-50 text-ink-500 border-ink-200 hover:border-ink-400'
                   }`}
                 >
@@ -213,7 +214,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                     <button
                       key={f.type}
                       onClick={() => setTypeFilter(t => t === f.type ? null : f.type)}
-                      className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
+                      className={`flex-shrink-0 whitespace-nowrap text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
                         typeFilter === f.type ? f.cls + ' font-semibold' : 'bg-cream-50 text-ink-500 border-ink-200 hover:border-ink-400'
                       }`}
                     >
@@ -260,9 +261,10 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
             </div>
           )}
 
-          {/* ─── Board view ─── */}
+          {/* ─── Board view — horizontal snap-scroll on mobile (peeks the next
+              column), true 3-col grid from sm up ─── */}
           {view === 'board' && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
+            <div className="flex sm:grid sm:grid-cols-3 gap-3 items-start overflow-x-auto snap-x snap-mandatory sm:overflow-visible pb-1">
               {BOARD_COLUMNS.map((col, colIdx) => {
                 const items = allItems.filter(i => i.status === col.key)
                 const isDropTarget = dragOverCol === col.key
@@ -272,7 +274,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                     onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverCol(col.key) }}
                     onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null) }}
                     onDrop={e => handleDrop(e, col.key)}
-                    className={`border rounded-2xl p-2.5 flex flex-col gap-2 min-h-[80px] transition-colors ${
+                    className={`snap-start shrink-0 w-[78%] sm:w-auto border rounded-2xl p-2.5 flex flex-col gap-2 min-h-[80px] transition-colors ${
                       isDropTarget ? 'border-accent-400 border-dashed bg-accent-50/60' : 'bg-cream-50/60 border-ink-200'
                     }`}
                   >
@@ -304,10 +306,14 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                           <span className="text-[10px] text-ink-400 truncate">{phaseName(item.phase_id)}</span>
                           <div className="ml-auto flex items-center gap-0.5">
                             {colIdx > 0 && (
-                              <button onClick={() => moveItem(item, -1)} className="min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-ink-700 rounded" title="Move left">←</button>
+                              <button onClick={() => { haptic('light'); moveItem(item, -1) }} className="min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:w-6 lg:h-6 flex items-center justify-center flex-shrink-0" title="Move left">
+                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-ink-100 text-ink-500 text-xs active:bg-ink-200 lg:bg-transparent lg:hover:text-ink-700">←</span>
+                              </button>
                             )}
                             {colIdx < BOARD_COLUMNS.length - 1 && (
-                              <button onClick={() => moveItem(item, 1)} className="min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:w-6 lg:h-6 flex items-center justify-center text-ink-400 hover:text-accent-600 rounded" title="Move right">→</button>
+                              <button onClick={() => { haptic('light'); moveItem(item, 1) }} className="min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:w-6 lg:h-6 flex items-center justify-center flex-shrink-0" title="Move right">
+                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-ink-100 text-ink-500 text-xs active:bg-ink-200 lg:bg-transparent lg:hover:text-accent-600">→</span>
+                              </button>
                             )}
                           </div>
                         </div>

@@ -49,10 +49,12 @@ export function ActivityRings() {
   const gap = 3
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex items-center gap-5 flex-wrap">
-      <div className="relative shrink-0" style={{ width: size, height: size }}>
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex items-center gap-4 sm:gap-5 flex-wrap">
+      {/* Ring shrinks on a phone (viewBox keeps the geometry; only the rendered
+          box size changes) so it doesn't dominate the mobile viewport. */}
+      <div className="relative shrink-0 w-[132px] h-[132px] sm:w-[176px] sm:h-[176px]">
         {loading && <div className="absolute inset-0 rounded-full bg-cream-100 animate-pulse" />}
-        <svg width={size} height={size} className="-rotate-0">
+        <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full">
           {RINGS.map((ring, i) => {
             const r = center - strokeWidth / 2 - i * (strokeWidth + gap)
             return (

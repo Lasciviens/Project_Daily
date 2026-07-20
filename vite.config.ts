@@ -41,6 +41,13 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
+        // #43 — home-screen long-press quick actions (Android; harmless on iOS).
+        shortcuts: [
+          { name: 'Personal', short_name: 'Personal', url: '/Project_Daily/#/daily',    icons: [{ src: '/Project_Daily/favicon.svg', sizes: 'any', type: 'image/svg+xml' }] },
+          { name: 'Log food', short_name: 'Food',     url: '/Project_Daily/#/recipes',  icons: [{ src: '/Project_Daily/favicon.svg', sizes: 'any', type: 'image/svg+xml' }] },
+          { name: 'Work',     short_name: 'Work',     url: '/Project_Daily/#/work',     icons: [{ src: '/Project_Daily/favicon.svg', sizes: 'any', type: 'image/svg+xml' }] },
+          { name: 'Training', short_name: 'Training', url: '/Project_Daily/#/training', icons: [{ src: '/Project_Daily/favicon.svg', sizes: 'any', type: 'image/svg+xml' }] },
+        ],
       },
       workbox: {
         // Without these, a new service worker installs but sits "waiting"

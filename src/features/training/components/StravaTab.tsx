@@ -113,7 +113,7 @@ export function StravaTab() {
   const totalDurationSec = activities.reduce((sum, a) => sum + (a.duration_seconds ?? 0), 0)
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 sm:space-y-5">
       {/* Strava connection widget */}
       <StravaWidget />
 

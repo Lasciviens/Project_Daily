@@ -46,7 +46,7 @@ export function HeartSection() {
     : hrDaily.map(r => ({ label: fmtDay(r.date), date: r.date, avg: Math.round(r.avg) }))
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
@@ -54,7 +54,7 @@ export function HeartSection() {
               ? (anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`)
               : period === 'week' ? '· Weekly Average' : '· Monthly Average'}
           </p>
-          <p className="text-3xl font-bold text-ink-900 leading-tight">
+          <p className="text-2xl sm:text-3xl font-bold text-ink-900 leading-tight">
             {isLoading ? '…'
               : isDay ? (dayRange ? `${Math.round(dayRange.min)}–${Math.round(dayRange.max)}` : '—')
               : (avgBpm != null ? Math.round(avgBpm) : '—')}

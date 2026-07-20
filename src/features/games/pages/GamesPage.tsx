@@ -5,6 +5,8 @@ import { GameDetailModal } from '../components/GameDetailModal'
 import { TierEditorTab }   from '../components/TierEditorTab'
 import { PlayQueueTab }    from '../components/PlayQueueTab'
 import { STATUS_LABEL, STATUS_COLOR, STATUS_BORDER, TIER_COLOR, TIERS, STATUSES } from '../gamesMeta'
+import { Sheet } from '../../../shared/components/Sheet'
+import { haptic } from '../../../shared/utils/haptics'
 import type { Game } from '../../home/api/gamesApi'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -276,6 +278,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
   const [iconicOnly,     setIconicOnly]     = useState(false)
   const [sort,           setSort]           = useState<SortKey>('az')
   const [view,           setView]           = useState<LibView>('grid')
+  const [filtersOpen,    setFiltersOpen]    = useState(false)
 
   const { data: allGames = [], isLoading } = useAllGames()
 
@@ -305,8 +308,10 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
     setCoopOnly(false); setIconicOnly(false)
   }, [])
 
-  return (
-    <div>
+  const activeFilterCount = [search.trim(), statusFilter, tierFilter, genreFilter, platformFilter, seriesFilter, coopOnly, iconicOnly].filter(Boolean).length
+
+  const filterControls = (
+    <>
       {/* Search */}
       <div className="relative mb-3">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search games, series…"
@@ -381,12 +386,59 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
           ))}
         </div>
       </div>
+    </>
+  )
 
-      {/* Count + clear */}
-      <div className="flex items-center gap-3 mb-3">
-        <p className="text-xs text-ink-400">{filtered.length} game{filtered.length !== 1 ? 's' : ''}{hasFilters && ' (filtered)'}</p>
-        {hasFilters && <button onClick={clearFilters} className="text-xs text-accent-600 hover:text-accent-800 transition-colors">Clear filters</button>}
+  return (
+    <div>
+      {/* Mobile: filters collapsed behind one trigger so the poster grid leads */}
+      <div className="sm:hidden flex items-center gap-2 mb-3">
+        <button
+          type="button"
+          onClick={() => { haptic('light'); setFiltersOpen(true) }}
+          className="press-feedback relative inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-xl border border-ink-200 bg-cream-50 text-sm font-medium text-ink-700"
+        >
+          <span aria-hidden>⚙</span> Filtreler
+          {activeFilterCount > 0 && (
+            <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent-500 text-white text-[10px] font-bold leading-none">{activeFilterCount}</span>
+          )}
+        </button>
+        <p className="text-xs text-ink-400 ml-auto">{filtered.length} game{filtered.length !== 1 ? 's' : ''}</p>
+        {hasFilters && <button onClick={clearFilters} className="text-xs text-accent-600 min-h-[44px] px-1">Clear</button>}
       </div>
+
+      {/* Desktop: full inline toolbar */}
+      <div className="hidden sm:block">
+        {filterControls}
+        <div className="flex items-center gap-3 mb-3">
+          <p className="text-xs text-ink-400">{filtered.length} game{filtered.length !== 1 ? 's' : ''}{hasFilters && ' (filtered)'}</p>
+          {hasFilters && <button onClick={clearFilters} className="text-xs text-accent-600 hover:text-accent-800 transition-colors">Clear filters</button>}
+        </div>
+      </div>
+
+      {/* Mobile filter sheet */}
+      <Sheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Filtreler"
+        footer={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!hasFilters}
+              className="press-feedback flex-1 min-h-[44px] rounded-xl border border-ink-200 text-sm font-medium text-ink-600 disabled:opacity-40"
+            >Temizle</button>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen(false)}
+              className="press-feedback flex-1 min-h-[44px] rounded-xl bg-accent-500 text-white text-sm font-semibold"
+            >{filtered.length} oyun göster</button>
+          </div>
+        }
+      >
+        <div className="p-4">{filterControls}</div>
+      </Sheet>
 
       {isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading games…</div>}
 
@@ -483,13 +535,16 @@ function RetroidSection() {
       {/* Sub-tab bar */}
       <div className="flex items-center gap-1 mb-5 bg-cream-50 rounded-xl border border-ink-200 p-1 shadow-sm">
         {([
-          { t: 'library' as RetroidTab, label: '📚 Library' },
-          { t: 'tiers'   as RetroidTab, label: '🏆 Tier Editor' },
-          { t: 'queue'   as RetroidTab, label: '▶ Play Queue' },
-        ]).map(({ t, label }) => (
+          { t: 'library' as RetroidTab, full: '📚 Library',     short: '📚 Library' },
+          { t: 'tiers'   as RetroidTab, full: '🏆 Tier Editor', short: '🏆 Tiers'   },
+          { t: 'queue'   as RetroidTab, full: '▶ Play Queue',   short: '▶ Queue'    },
+        ]).map(({ t, full, short }) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 min-h-[44px] py-2.5 text-xs font-semibold rounded-lg transition-colors ${tab === t ? 'bg-accent-500 text-white shadow-sm' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
-          >{label}</button>
+            className={`flex-1 min-h-[44px] py-2.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${tab === t ? 'bg-accent-500 text-white shadow-sm' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
+          >
+            <span className="sm:hidden">{short}</span>
+            <span className="hidden sm:inline">{full}</span>
+          </button>
         ))}
         <button onClick={pickRandom}
           className="ml-2 text-xs px-3 py-2.5 rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors min-h-[44px] flex-shrink-0"
@@ -539,18 +594,18 @@ export function GamesPage() {
 
   return (
     <div className="min-h-full bg-cream-50">
-      <div className="max-w-7xl mx-auto px-4 py-5">
+      <div className="max-w-7xl mx-auto px-4 py-4 sm:py-5">
 
         {/* Top-level platform tabs */}
-        <div className="flex items-center gap-3 mb-6">
-          <h1 className="text-xl font-bold text-ink-900 mr-2">🎮 Games</h1>
+        <div className="flex items-center gap-3 mb-4 sm:mb-6">
+          <h1 className="text-lg font-bold text-ink-900 mr-2">🎮 Games</h1>
           <div className="flex flex-1 gap-1 bg-cream-50 rounded-xl border border-ink-200 p-1 shadow-sm">
             {([
-              { t: 'retroid'     as PlatformTab, label: '📱 Retroid',      color: platform === 'retroid'     ? 'bg-accent-500 text-white' : '' },
-              { t: 'playstation' as PlatformTab, label: '🎮 PlayStation',  color: platform === 'playstation' ? 'bg-accent-500 text-white' : '' },
-            ]).map(({ t, label, color }) => (
+              { t: 'retroid'     as PlatformTab, label: '📱 Retroid',      hideOnMobile: false, color: platform === 'retroid'     ? 'bg-accent-500 text-white' : '' },
+              { t: 'playstation' as PlatformTab, label: '🎮 PlayStation',  hideOnMobile: true,  color: platform === 'playstation' ? 'bg-accent-500 text-white' : '' },
+            ]).map(({ t, label, hideOnMobile, color }) => (
               <button key={t} onClick={() => setPlatform(t)}
-                className={`flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${color || 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
+                className={`flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${hideOnMobile ? 'hidden sm:block' : ''} ${color || 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
               >{label}</button>
             ))}
           </div>

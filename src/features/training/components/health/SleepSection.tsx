@@ -255,11 +255,11 @@ export function SleepSection() {
   }
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
+    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
       <div>
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 {headline}</p>
         <div className="flex items-center gap-2 flex-wrap mt-1">
-          <p className="text-3xl font-bold text-ink-900 leading-tight">
+          <p className="text-2xl sm:text-3xl font-bold text-ink-900 leading-tight">
             {isLoading ? '…' : detail ? fmtHrs(detail.total) : '—'}
             {!isDay && detail && <span className="text-sm font-normal text-ink-400"> /night</span>}
           </p>

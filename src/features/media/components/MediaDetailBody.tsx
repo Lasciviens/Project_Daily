@@ -4,6 +4,7 @@ import { toast } from '../../../app/store'
 import { markEpisodeWatched } from '../api/watchedEpisodesApi'
 import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { PlanThisButton } from './PlanThisButton'
+import { haptic } from '../../../shared/utils/haptics'
 import { StarRating } from './StarRating'
 import { SimilarRow } from './SimilarRow'
 import { EpisodesPanel } from './EpisodesPanel'
@@ -435,15 +436,16 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                 />
               </div>
 
-              {/* Clickable status buttons for owned items */}
-              <div className="flex flex-wrap gap-1.5">
+              {/* Clickable status buttons for owned items — stable grid on mobile
+                  (2 rows for both 4 & 5 statuses), flex-wrap pills on desktop */}
+              <div className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap">
                 {statuses.map(s => (
                   <button
                     key={s.value}
-                    onClick={() => handleStatusChange(s.value)}
+                    onClick={() => { haptic('light'); handleStatusChange(s.value) }}
                     disabled={updateMovie.isPending || updateTV.isPending}
                     className={[
-                      'text-xs px-3 min-h-[44px] rounded-full border transition-colors',
+                      'press-feedback text-xs px-3 min-h-[44px] rounded-full border transition-colors',
                       userEntry!.status === s.value
                         ? 'bg-accent-500 border-accent-500 text-white'
                         : 'border-ink-200 text-ink-600 hover:border-accent-400',
@@ -453,7 +455,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
                   </button>
                 ))}
                 {tvEntry && (
-                  <span className="text-xs text-ink-500 self-center ml-1">
+                  <span className="col-span-full flex items-center text-xs text-ink-500 self-center sm:col-auto sm:ml-1">
                     S{tvEntry.current_season} E{tvEntry.current_episode}
                   </span>
                 )}
@@ -504,12 +506,12 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
             </>
           ) : (
             <>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap">
                 {statuses.map(s => (
                   <button
                     key={s.value}
-                    onClick={() => setSelectedStatus(s.value)}
-                    className={`text-xs px-3 min-h-[44px] rounded-full border transition-colors duration-150 ${
+                    onClick={() => { haptic('light'); setSelectedStatus(s.value) }}
+                    className={`press-feedback text-xs px-3 min-h-[44px] rounded-full border transition-colors duration-150 ${
                       selectedStatus === s.value
                         ? 'bg-accent-500 border-accent-500 text-white'
                         : 'border-ink-200 text-ink-600 hover:border-accent-400'
