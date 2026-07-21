@@ -153,7 +153,9 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       library_ingredient_id: r.library_ingredient_id, recipe_id: r.recipe_id, custom_title: r.custom_title,
       quantity: r.quantity, unit: r.unit,
       calories: r.calories, protein_g: r.protein_g, carbs_g: r.carbs_g, fat_g: r.fat_g, fiber_g: r.fiber_g, sugar_g: r.sugar_g,
-    }], { onSuccess: onClose })
+    }], { onSuccess: () => toast.success(`${r.title ?? 'Food'} logged ✓`) })
+    // Stays OPEN (was onClose): the two recent kinds now behave alike — keep
+    // adding to the same meal; close when done.
   }
 
   // Log a saved recipe as ONE named diary line (recipe_id + snapshot) — the
@@ -198,18 +200,25 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       fat_g: num(nFat), fiber_g: num(nFiber),
       serving_label: nServLabel || null, serving_grams: num(nServGrams),
     }
-    // A barcode-scanned product becomes a real, reusable, de-duped branded row
-    // (source='openfoodfacts' + EAN + photo) — add-to-library-on-first-use.
-    let created
-    if (scanMeta) {
-      created = await upsertExternalFood({ ...input, source: scanMeta.source, source_ref: scanMeta.source_ref, image_url: scanMeta.image_url })
-      qc.invalidateQueries({ queryKey: ['recipe-ingredient-library'] })
-    } else {
-      created = await createIngredient.mutateAsync(input)
+    try {
+      // A barcode-scanned product becomes a real, reusable, de-duped branded
+      // row (source='openfoodfacts' + EAN + photo) — add-to-library-on-first-
+      // use. upsertExternalFood is a raw API call, so failures must be caught
+      // here (the create path's hook toasts on its own, but the await still
+      // needs the catch).
+      let created
+      if (scanMeta) {
+        created = await upsertExternalFood({ ...input, source: scanMeta.source, source_ref: scanMeta.source_ref, image_url: scanMeta.image_url })
+        qc.invalidateQueries({ queryKey: ['recipe-ingredient-library'] })
+      } else {
+        created = await createIngredient.mutateAsync(input)
+      }
+      addToBasket(created)
+      setShowNew(false); setScanMeta(null)
+      setNName(''); setNKcal(''); setNProt(''); setNCarb(''); setNFat(''); setNFiber(''); setNServLabel(''); setNServGrams('')
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Could not save the ingredient')
     }
-    addToBasket(created)
-    setShowNew(false); setScanMeta(null)
-    setNName(''); setNKcal(''); setNProt(''); setNCarb(''); setNFat(''); setNFiber(''); setNServLabel(''); setNServGrams('')
   }
 
   async function handleSave() {

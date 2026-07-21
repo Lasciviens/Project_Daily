@@ -315,7 +315,7 @@ export function SupplementModal({ open, onClose, date }: Props) {
           </div>
 
           <div className="px-5 py-3.5 border-t border-ink-100 flex items-center gap-3 sticky bottom-0 bg-cream-50">
-            <p className="text-[11px] text-ink-400 flex-1">Logs to today's <strong className="text-ink-600">supplement</strong> slot.</p>
+            <p className="text-[11px] text-ink-400 flex-1">Logs to this day's <strong className="text-ink-600">supplement</strong> slot.</p>
             <button type="button" onClick={handleLog} disabled={!selected || amt <= 0 || saving || addEntries.isPending}
               className="min-h-[44px] px-5 rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 transition-colors">
               {saving ? 'Logging…' : 'Log supplement'}

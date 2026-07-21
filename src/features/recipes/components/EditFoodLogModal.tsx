@@ -54,6 +54,9 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
   const [prot, setProt] = useState(String(meal.protein_g ?? ''))
   const [carb, setCarb] = useState(String(meal.carbs_g ?? ''))
   const [fat, setFat] = useState(String(meal.fat_g ?? ''))
+  const mExtra = meal as typeof meal & { fiber_g?: number | null; sugar_g?: number | null }
+  const [fiber, setFiber] = useState(String(mExtra.fiber_g ?? ''))
+  const [sugar, setSugar] = useState(String(mExtra.sugar_g ?? ''))
 
   const amt = Math.max(0, Number(sanitizeDecimal(amount)) || 0)
   const preview = kind === 'library' && lib ? ingredientSnapshot(lib, amt)
@@ -71,7 +74,7 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
     } else {
       if (!title.trim()) { toast.error('Enter a name'); return }
       const n = (s: string) => (s.trim() === '' ? null : Number(sanitizeDecimal(s)))
-      patch = { meal_slot: slot, custom_title: title.trim(), calories: n(kcal), protein_g: n(prot), carbs_g: n(carb), fat_g: n(fat) }
+      patch = { meal_slot: slot, custom_title: title.trim(), calories: n(kcal), protein_g: n(prot), carbs_g: n(carb), fat_g: n(fat), fiber_g: n(fiber), sugar_g: n(sugar) }
     }
     await update.mutateAsync({ id: meal.id, patch })
     onClose()
@@ -131,6 +134,8 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
                     { v: prot, set: setProt, ph: 'Prot' },
                     { v: carb, set: setCarb, ph: 'Carb' },
                     { v: fat, set: setFat, ph: 'Fat' },
+                    { v: fiber, set: setFiber, ph: 'Fiber' },
+                    { v: sugar, set: setSugar, ph: 'Sugar' },
                   ].map((m, i) => (
                     <input key={i} value={m.v} onChange={e => m.set(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder={m.ph}
                       className="min-h-[44px] px-2 text-sm text-center border border-ink-200 rounded-xl bg-cream-50 tabular-nums" />
@@ -147,7 +152,7 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
           </div>
 
           <div className="px-5 py-4 border-t border-ink-100 flex gap-3">
-            <button onClick={() => { del.mutate({ id: meal.id, date }); onClose() }}
+            <button onClick={() => del.mutate({ id: meal.id, date }, { onSuccess: onClose })}
               className="min-h-[44px] px-4 text-sm font-medium text-red-500 hover:bg-red-50 rounded-xl">Delete</button>
             <button onClick={handleSave} disabled={update.isPending}
               className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 disabled:opacity-50">

@@ -12,23 +12,17 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
   const remove  = useDeleteShopItem()
   const isBought = item.status === 'bought'
 
+  // Hooks are useMutationWithFeedback now — errors toast + log there; only the
+  // contextual success message stays at this call site.
   function toggleBought() {
-    const tid = toast.loading(isBought ? 'Reopening…' : 'Marking bought…')
     update.mutate(
       { id: item.id, patch: { status: isBought ? 'wishlist' : 'bought' } },
-      {
-        onSuccess: () => { toast.dismiss(tid); toast.success(isBought ? 'Back on wishlist' : 'Marked bought ✓') },
-        onError:   e  => { toast.dismiss(tid); toast.error((e as Error).message) },
-      }
+      { onSuccess: () => toast.success(isBought ? 'Back on wishlist' : 'Marked bought ✓') }
     )
   }
 
   function handleDelete() {
-    const tid = toast.loading('Deleting…')
-    remove.mutate(item.id, {
-      onSuccess: () => { toast.dismiss(tid); toast.success('Deleted') },
-      onError:   e  => { toast.dismiss(tid); toast.error((e as Error).message) },
-    })
+    remove.mutate(item.id)
   }
 
   return (

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { fetchFoodLog, addFoodLogEntries, deleteFoodLogEntry, updateFoodLogEntry, fetchRecentFoods, fetchFoodLogRange, type LoggedFood } from '../api/foodLogApi'
-import { shiftDateStr } from '../../../shared/utils/dateUtils'
+import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import type { FoodLogEntry, FoodLogEntryInput } from '../types'
 
 export function useFoodLog(date: string) {
@@ -27,7 +27,7 @@ export function useFoodLogRange(from: string, to: string) {
 export function useRecentFoods() {
   return useQuery({
     queryKey: ['food-log', 'recent-foods'],
-    queryFn:  () => fetchRecentFoods(shiftDateStr(new Date().toISOString().slice(0, 10), -30)),
+    queryFn:  () => fetchRecentFoods(shiftDateStr(todayStr(), -30)),
     staleTime: 5 * 60_000,
   })
 }
@@ -37,7 +37,7 @@ export function useRecentFoods() {
 export function useRecentSupplements() {
   return useQuery({
     queryKey: ['food-log', 'recent-supplements'],
-    queryFn:  () => fetchRecentFoods(shiftDateStr(new Date().toISOString().slice(0, 10), -60), 'supplement'),
+    queryFn:  () => fetchRecentFoods(shiftDateStr(todayStr(), -60), 'supplement'),
     staleTime: 5 * 60_000,
   })
 }

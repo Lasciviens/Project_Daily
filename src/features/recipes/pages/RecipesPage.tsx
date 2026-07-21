@@ -186,11 +186,11 @@ export function RecipesPage() {
         </>
       )}
 
-      {/* Log food (today) */}
-      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={new Date().toISOString().slice(0, 10)} />
-
-      {/* Log supplement (today) */}
-      <SupplementModal open={suppOpen} onClose={() => setSuppOpen(false)} date={new Date().toISOString().slice(0, 10)} />
+      {/* Log food / supplement — into the VIEWED day (foodDate follows the
+          Today tab's DateNav; the old hardcoded UTC-today wrote to the wrong
+          day when browsing and even to yesterday between 00:00–02:00 local). */}
+      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={foodDate} />
+      <SupplementModal open={suppOpen} onClose={() => setSuppOpen(false)} date={foodDate} />
 
       {/* Create */}
       <RecipeModal open={addOpen} onClose={() => setAddOpen(false)} />

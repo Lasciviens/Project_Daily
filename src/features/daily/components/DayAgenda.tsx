@@ -196,7 +196,10 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         const dow = d.getDay()
         const section = dow === 0 || dow === 6 ? 'this_week'
           : newDate === format(new Date(), 'yyyy-MM-dd') ? 'today' : 'tomorrow'
-        updateTask.mutate({ id: block.sourceId, patch: { due_date: newDate, section } })
+        updateTask.mutate(
+          { id: block.sourceId, patch: { due_date: newDate, section } },
+          { onError: e => toast.error(`Block moved but its task's date didn't update: ${(e as Error).message}`) }
+        )
       }
       setSelectedId(null)
     }

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import {
   fetchShopCategories, createShopCategory, deleteShopCategory,
   fetchShopItems, createShopItem, updateShopItem, deleteShopItem,
@@ -47,7 +48,12 @@ export function useCreateShopItem() {
 
 export function useUpdateShopItem() {
   const qc = useQueryClient()
-  return useMutation({
+  // Feedback-hook migration (CLAUDE.md known-gap rule): errors always toast +
+  // logError; success stays silent — call sites add their own contextual
+  // success toast where one is wanted (ShopItemCard) and must NOT add error
+  // handling anymore.
+  return useMutationWithFeedback({
+    action:     'update_shop_item',
     mutationFn: ({ id, patch }: { id: string; patch: UpdateShopItemInput }) => updateShopItem(id, patch),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['shop', 'items'] }),
   })
@@ -55,7 +61,9 @@ export function useUpdateShopItem() {
 
 export function useDeleteShopItem() {
   const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action:     'delete_shop_item',
+    successMessage: 'Deleted',
     mutationFn: (id: string) => deleteShopItem(id),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['shop', 'items'] }),
   })

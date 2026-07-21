@@ -29,8 +29,8 @@ export function ShopCard({ date }: { date: string }) {
               <button
                 onClick={() => update.mutate({ id: i.id, patch: { status: 'bought' } })}
                 title="Mark bought"
-                className="w-4 h-4 rounded border-2 border-ink-300 hover:border-green-500 hover:bg-green-100 transition-colors shrink-0"
-              />
+                className="w-7 h-7 grid place-items-center shrink-0 rounded-md hover:bg-green-50 transition-colors group"
+              ><span className="w-4 h-4 rounded border-2 border-ink-300 group-hover:border-green-500 group-hover:bg-green-100 transition-colors" /></button>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-ink-800 truncate leading-snug">
                   {i.region && <span className="mr-1">{REGION_FLAG[i.region]}</span>}{i.title}

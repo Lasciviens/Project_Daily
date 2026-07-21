@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { isToday, format } from 'date-fns'
 import { useTimeBlocks } from '../hooks/useSchedule'
 import { useDayData } from '../hooks/useDayData'
@@ -36,12 +36,14 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
 
   // Next scheduled block: on today, the next one starting at/after now; on any
   // other day, simply the first block of the day.
-  const nextBlock = useMemo(() => {
-    const timed = blocks.filter(b => b.start_time).sort((a, b) => (a.start_time! < b.start_time! ? -1 : 1))
-    if (!today) return timed[0] ?? null
-    const nowHM = format(new Date(), 'HH:mm:ss')
-    return timed.find(b => (b.start_time ?? '') >= nowHM) ?? null
-  }, [blocks, today])
+  // Recomputed every render on purpose (no memo): the page re-renders each
+  // minute via the header clock, and a memo keyed on [blocks] kept showing a
+  // block long after it had started.
+  const timedBlocks = blocks.filter(b => b.start_time).sort((a, b) => (a.start_time! < b.start_time! ? -1 : 1))
+  const nowHM = format(new Date(), 'HH:mm:ss')
+  const nextBlock = today
+    ? (timedBlocks.find(b => (b.start_time ?? '') >= nowHM) ?? null)
+    : (timedBlocks[0] ?? null)
 
   const openTaskList = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled')
   const openTasks = openTaskList.length

@@ -1,4 +1,6 @@
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useState } from 'react'
+import { useEatPlannedEntry } from '../../../recipes/hooks/useMealPlan'
 import { Cell, CellHeader } from './cellKit'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
 import { useDayTargets, type NutritionGoal } from '../../hooks/useDayTargets'
@@ -82,6 +84,7 @@ function SlotRow({ date, slot, label, meals }: {
   const addEntries = useAddFoodLogEntries()
   const delMeal = useDeleteQuickMeal()
   const delLog  = useDeleteFoodLogEntry()
+  const eatPlan = useEatPlannedEntry()
 
   function reset() { setAdding(false); setText('') }
 
@@ -117,6 +120,11 @@ function SlotRow({ date, slot, label, meals }: {
               <span className="text-ink-400 w-16 shrink-0">{i === 0 ? label : ''}</span>
               <span className="text-ink-700 flex-1 truncate">{meal.title}</span>
               {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
+              {meal.source === 'plan' && meal.planEntry && (
+                <button onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
+                  title="I ate this — count it" aria-label="Mark eaten"
+                  className="text-green-600 hover:bg-green-50 rounded-full min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0 disabled:opacity-50">✓</button>
+              )}
               <button
                 onClick={() => meal.source === 'plan' ? setEditPlan(meal.planEntry!) : setEditLog(meal)}
                 className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
@@ -169,7 +177,7 @@ function SlotRow({ date, slot, label, meals }: {
         </>
       )}
       {/* Full diary logger, prefilled to this slot (and any typed text). */}
-      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={date} defaultSlot={slot} defaultQuery={logQuery} />
+      {logOpen && <FoodLogModal open onClose={() => setLogOpen(false)} date={date} defaultSlot={slot} defaultQuery={logQuery} />}
       {/* ✎ edits an existing PLANNED entry (status='planned') in the full
           planner — planning a future day still lives here. */}
       {editPlan && (
@@ -308,7 +316,7 @@ export function NutritionCard({ date }: { date: string }) {
               quality AND a cooldown; shows an honest 'on track' / floor / gate state */}
           {coach.weightKg != null && (
             coach.calorieAdvice ? (
-              <button onClick={() => update({ calories: Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), lastCalorieAdjust: new Date().toISOString().slice(0, 10) })}
+              <button onClick={() => update({ calories: Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), lastCalorieAdjust: todayStr() })}
                 className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
                 <span className="text-ink-600">
                   <strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong>
@@ -403,8 +411,8 @@ export function NutritionCard({ date }: { date: string }) {
           </div>
         </div>
       )}
-      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={date} />
-      <SupplementModal open={suppOpen} onClose={() => setSuppOpen(false)} date={date} />
+      {logOpen && <FoodLogModal open onClose={() => setLogOpen(false)} date={date} />}
+      {suppOpen && <SupplementModal open onClose={() => setSuppOpen(false)} date={date} />}
     </Cell>
   )
 }
