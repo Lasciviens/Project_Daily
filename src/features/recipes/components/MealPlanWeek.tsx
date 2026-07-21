@@ -97,11 +97,15 @@ export function MealPlanWeek() {
             const planLabel = entry?.recipe?.title ?? entry?.custom_title
               ?? (entry?.ingredient?.name ? `${entry.ingredient_quantity ?? ''}${entry.ingredient_unit ?? ''} ${entry.ingredient.name}`.trim() : null)
             const openPlan = () => setTarget({ date: dateStr, slot, entry })
+            // "+ add" always CREATES (entry: null) — passing the existing row
+            // made AssignMealModal save with its id, silently OVERWRITING the
+            // planned meal (multiple planned rows per slot are legal post-061).
+            const openAdd = () => setTarget({ date: dateStr, slot, entry: null })
             return (
               <div key={slot} className="rounded-2xl border border-ink-200 bg-cream-50 overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ink-100">
                   <span className="text-sm font-semibold text-ink-800 flex-1">{SLOT_LABEL[slot]}</span>
-                  <button onClick={openPlan} className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[32px] px-2 rounded-lg">+ Add</button>
+                  <button onClick={openAdd} className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[32px] px-2 rounded-lg">+ Add</button>
                 </div>
                 {planLabel || eaten.length > 0 ? (
                   <ul className="divide-y divide-ink-50">
@@ -159,6 +163,10 @@ export function MealPlanWeek() {
                   ?? (entry?.ingredient?.name ? `${entry.ingredient_quantity ?? ''}${entry.ingredient_unit ?? ''} ${entry.ingredient.name}`.trim() : null)
                 const filled = !!planLabel || eaten.length > 0
                 const openPlan = () => setTarget({ date: dateStr, slot, entry })
+            // "+ add" always CREATES (entry: null) — passing the existing row
+            // made AssignMealModal save with its id, silently OVERWRITING the
+            // planned meal (multiple planned rows per slot are legal post-061).
+            const openAdd = () => setTarget({ date: dateStr, slot, entry: null })
                 // A div (not a button) so plan / eaten / add can each be their
                 // own control without nesting buttons.
                 return (
@@ -170,7 +178,7 @@ export function MealPlanWeek() {
                   >
                     {!filled ? (
                       // Empty → the WHOLE cell is a big centered + (per request).
-                      <button onClick={openPlan}
+                      <button onClick={openAdd}
                         className="flex-1 min-h-[60px] w-full flex items-center justify-center text-xl text-ink-300 hover:text-accent-600 hover:bg-accent-50/40 transition-colors">+</button>
                     ) : (
                       <>
@@ -194,7 +202,7 @@ export function MealPlanWeek() {
                           ))}
                         </div>
                         {/* Filled → a full-width bottom row to add more (clickable). */}
-                        <button onClick={openPlan}
+                        <button onClick={openAdd}
                           className="w-full text-left px-2 py-1 text-[10px] text-ink-300 hover:text-accent-600 hover:bg-accent-50/40 border-t border-ink-100 transition-colors">＋ add</button>
                       </>
                     )}

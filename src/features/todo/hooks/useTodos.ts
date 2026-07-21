@@ -70,7 +70,7 @@ export function useTasksByWeek(weekStart: Date, weekEnd: Date) {
   const startStr = format(weekStart, 'yyyy-MM-dd')
   const endStr   = format(weekEnd,   'yyyy-MM-dd')
   return useQuery({
-    queryKey: ['tasks', 'week', startStr],
+    queryKey: ['tasks', 'week', startStr, endStr],
     queryFn: () => fetchTasksByWeek(startStr, endStr),
   })
 }
@@ -79,7 +79,7 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
   const startStr = format(monthStart, 'yyyy-MM-dd')
   const endStr   = format(monthEnd,   'yyyy-MM-dd')
   return useQuery({
-    queryKey: ['tasks', 'month', startStr],
+    queryKey: ['tasks', 'month', startStr, endStr],
     queryFn: () => fetchTasksByMonth(startStr, endStr),
   })
 }

@@ -165,7 +165,7 @@ function useGreeting() {
 function DaySection({ date, onDayClick, onOpenTasks }: { date: Date; onDayClick: (d: Date) => void; onOpenTasks?: () => void }) {
   return (
     <div className="flex flex-col gap-6">
-      <div className="xl:grid xl:grid-cols-[minmax(0,60rem)_minmax(0,1fr)] xl:gap-6 xl:items-start">
+      <div className="xl:grid xl:grid-cols-[minmax(0,60rem)_minmax(0,1fr)] xl:gap-6 xl:items-stretch">
         <section className="w-full bg-cream-50 border border-ink-200 rounded-2xl shadow-card overflow-hidden">
           <div className="h-0.5 bg-accent-500" />
           <WeekStrip viewDate={date} onDayClick={onDayClick} />
@@ -188,8 +188,10 @@ function DaySection({ date, onDayClick, onOpenTasks }: { date: Date; onDayClick:
 // request — it loads that day's data here). With no day picked, the right pane
 // lists upcoming activities; tapping one selects its day. onDayClick is kept
 // for the "jump to full Day view" affordance only.
-function MonthSection({ onDayClick }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
-  const [picked, setPicked] = useState<Date | null>(null)
+function MonthSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
+  // Preselect the day the user was viewing (the prop was passed but dropped
+  // during a refactor — switching to Month lost the context entirely).
+  const [picked, setPicked] = useState<Date | null>(isToday(selectedDate) ? null : selectedDate)
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,460px)_minmax(0,520px)] gap-6 justify-start">

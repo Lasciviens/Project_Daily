@@ -35,13 +35,13 @@ export function TodaySummary({ date }: { date: Date }) {
           auto-fill), but each module is its own bordered card with real
           gaps, so the board reads as distinct modules at a glance. */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 stagger-in">
-        <div className="sm:col-span-2 rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><NutritionCard date={dateStr} /></div>
-        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><MealsCard date={dateStr} /></div>
-        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><TrainingCard date={dateStr} /></div>
-        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><WatchNextCard date={dateStr} /></div>
-        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><HealthCard date={dateStr} /></div>
-        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><GamesCard date={dateStr} /></div>
-        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><ShopCard date={dateStr} /></div>
+        <div className="sm:col-span-2 h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><NutritionCard date={dateStr} /></div>
+        <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><MealsCard date={dateStr} /></div>
+        <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><TrainingCard date={dateStr} /></div>
+        <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><WatchNextCard date={dateStr} /></div>
+        <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><HealthCard date={dateStr} /></div>
+        <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><GamesCard date={dateStr} /></div>
+        <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><ShopCard date={dateStr} /></div>
       </section>
     </div>
   )

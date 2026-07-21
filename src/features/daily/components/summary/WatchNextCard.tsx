@@ -43,10 +43,12 @@ export function WatchNextCard({ date }: { date: string }) {
   const markWatched = useMutation({
     mutationFn: async () => {
       const n = next.data
-      if (!entry || !n || n.caughtUp || n.season == null || n.episode == null) return
+      if (!entry || !n || n.caughtUp || n.season == null || n.episode == null) return false
       await markEpisodeWatched(entry.id, n.season, n.episode, date)
+      return true
     },
-    onSuccess: () => {
+    onSuccess: (written) => {
+      if (!written) return // guard no-op (refetch race) — don't claim success
       toast.success('Marked watched ✓')
       qc.invalidateQueries({ queryKey: ['next-episode'] })
       qc.invalidateQueries({ queryKey: ['watched-episodes'] })

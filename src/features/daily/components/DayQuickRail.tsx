@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { isToday, format } from 'date-fns'
 import { useTimeBlocks } from '../hooks/useSchedule'
 import { useDayData } from '../hooks/useDayData'
@@ -36,12 +36,14 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
 
   // Next scheduled block: on today, the next one starting at/after now; on any
   // other day, simply the first block of the day.
-  const nextBlock = useMemo(() => {
-    const timed = blocks.filter(b => b.start_time).sort((a, b) => (a.start_time! < b.start_time! ? -1 : 1))
-    if (!today) return timed[0] ?? null
-    const nowHM = format(new Date(), 'HH:mm:ss')
-    return timed.find(b => (b.start_time ?? '') >= nowHM) ?? null
-  }, [blocks, today])
+  // Recomputed every render on purpose (no memo): the page re-renders each
+  // minute via the header clock, and a memo keyed on [blocks] kept showing a
+  // block long after it had started.
+  const timedBlocks = blocks.filter(b => b.start_time).sort((a, b) => (a.start_time! < b.start_time! ? -1 : 1))
+  const nowHM = format(new Date(), 'HH:mm:ss')
+  const nextBlock = today
+    ? (timedBlocks.find(b => (b.start_time ?? '') >= nowHM) ?? null)
+    : (timedBlocks[0] ?? null)
 
   const openTaskList = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled')
   const openTasks = openTaskList.length
@@ -87,8 +89,10 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
 
       {/* Open tasks — the day's actionable list, visible without switching
           tabs (was the "Jump to" nav grid, removed on user request: tasks are
-          worth this space, duplicate navigation wasn't). */}
-      <div>
+          worth this space, duplicate navigation wasn't). flex-1 makes this the
+          elastic block, so the rail always matches the hero's height instead
+          of ending short (equal-height aesthetics). */}
+      <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400">Open tasks</p>
           {onOpenTasks && (
@@ -100,7 +104,7 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
         {openTaskList.length === 0 ? (
           <p className="text-xs text-ink-400 px-1">Nothing open for this day.</p>
         ) : (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 overflow-y-auto">
             {openTaskList.slice(0, 5).map(t => <ToDoItem key={t.id} task={t} />)}
             {openTaskList.length > 5 && (
               <button onClick={onOpenTasks} className="text-[11px] text-ink-400 hover:text-ink-700 text-left px-1 min-h-[32px]">
