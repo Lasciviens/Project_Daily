@@ -22,7 +22,17 @@ export function FitbitSyncButton() {
       const { data, error } = await supabase.functions.invoke<SyncResult>('google-health-sync', {
         body: { days: 2 },
       })
-      if (error) throw new Error(error.message)
+      if (error) {
+        // FunctionsHttpError carries the server's real JSON body in context —
+        // surface it instead of the generic "non-2xx" message (real case: a
+        // stale Calendar-only token produced "disallowed OAuth scope(s)" and
+        // the toast said nothing useful).
+        const ctx = (error as { context?: Response }).context
+        const body = ctx ? await ctx.json().catch(() => null) as SyncResult | null : null
+        if (body?.reconnect_required) throw new Error('Google bağlantısı gerekli — Ayarlar → Google → Disconnect → Connect (5 izin)')
+        if (body?.error?.includes('disallowed OAuth scope')) throw new Error('Token eski izinlerde — Ayarlar → Google → Disconnect → Connect ile 5 izni yeniden onayla')
+        throw new Error(body?.error ?? error.message)
+      }
       if (data?.error) {
         throw new Error(data.reconnect_required
           ? 'Google bağlantısı gerekli — Ayarlar → Google → Connect'
