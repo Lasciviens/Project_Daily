@@ -130,7 +130,7 @@ export function DailyPage() {
         </div>
       </div>
 
-      {mode === 'day' && <DaySection date={viewDate} onDayClick={handleDayClick} />}
+      {mode === 'day' && <DaySection date={viewDate} onDayClick={handleDayClick} onOpenTasks={() => setMode('tasks')} />}
       {mode === 'week' && <WeekSection onDayClick={handleDayClick} selectedDate={viewDate} />}
       {mode === 'month' && <MonthSection onDayClick={handleDayClick} selectedDate={viewDate} />}
       {mode === 'tasks' && <TasksPanel />}
@@ -162,7 +162,7 @@ function useGreeting() {
 //     below xl the hero is full width and the rail is hidden (no gap to fill).
 //   ROW 2 — the GLANCE BOARD: the life modules as fixed cells of one panel,
 //     full width now (up to 4 cols on 2xl), Nutrition given a double slot.
-function DaySection({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => void }) {
+function DaySection({ date, onDayClick, onOpenTasks }: { date: Date; onDayClick: (d: Date) => void; onOpenTasks?: () => void }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="xl:grid xl:grid-cols-[minmax(0,60rem)_minmax(0,1fr)] xl:gap-6 xl:items-start">
@@ -175,7 +175,7 @@ function DaySection({ date, onDayClick }: { date: Date; onDayClick: (d: Date) =>
           </div>
         </section>
 
-        <DayQuickRail date={date} />
+        <DayQuickRail date={date} onOpenTasks={onOpenTasks} />
       </div>
 
       <TodaySummary date={date} />

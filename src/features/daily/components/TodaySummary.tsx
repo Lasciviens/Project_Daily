@@ -30,19 +30,18 @@ export function TodaySummary({ date }: { date: Date }) {
       {/* Full-width board now (schedule moved to its own row). Explicit column
           counts per breakpoint — NO auto-fill; Nutrition gets a DOUBLE slot
           (wider, as requested) from sm up so its position stays deterministic. */}
-      <section className="rounded-2xl border border-ink-200 bg-ink-100 overflow-hidden shadow-card">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-px stagger-in">
-          <div className="sm:col-span-2"><NutritionCard date={dateStr} /></div>
-          <MealsCard date={dateStr} />
-          <TrainingCard date={dateStr} />
-          <WatchNextCard date={dateStr} />
-          <HealthCard date={dateStr} />
-          <GamesCard date={dateStr} />
-          <ShopCard date={dateStr} />
-          {/* lg (3-col) flow leaves one trailing slot; a cream filler keeps the
-              panel visually complete there (sm/2xl already tile evenly). */}
-          <div className="hidden lg:block 2xl:hidden bg-cream-50" />
-        </div>
+      {/* Spaced cards instead of the old hairline-separated slab ("dip dibe"
+          feedback): same FIXED slots and explicit column counts (never
+          auto-fill), but each module is its own bordered card with real
+          gaps, so the board reads as distinct modules at a glance. */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 stagger-in">
+        <div className="sm:col-span-2 rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><NutritionCard date={dateStr} /></div>
+        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><MealsCard date={dateStr} /></div>
+        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><TrainingCard date={dateStr} /></div>
+        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><WatchNextCard date={dateStr} /></div>
+        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><HealthCard date={dateStr} /></div>
+        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><GamesCard date={dateStr} /></div>
+        <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><ShopCard date={dateStr} /></div>
       </section>
     </div>
   )
