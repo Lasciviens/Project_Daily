@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { SlotSelect } from './foodLogKit'
 import { toast } from '../../../app/store'
 import { useUpdateFoodLogEntry, useDeleteFoodLogEntry } from '../hooks/useFoodLog'
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
@@ -17,14 +18,6 @@ import type { DayMeal } from '../../daily/api/dayNutritionApi'
 //   • custom            → edit title + macros directly
 //  All kinds can move meal slot. Delete is available too.
 // ─────────────────────────────────────────────────────────────────────────────
-
-const SLOTS: { id: MealSlot; label: string }[] = [
-  { id: 'breakfast', label: '🌅 Breakfast' },
-  { id: 'lunch', label: '☀️ Lunch' },
-  { id: 'dinner', label: '🌙 Dinner' },
-  { id: 'snack', label: '🍎 Snack' },
-  { id: 'supplement', label: '💊 Supplement' },
-]
 
 function sanitizeDecimal(raw: string): string {
   const cleaned = raw.replace(',', '.').replace(/[^0-9.]/g, '')
@@ -94,17 +87,10 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
           </div>
 
           <div className="px-5 py-4 flex flex-col gap-3">
-            {/* Slot */}
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1 block">Meal</label>
-              <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1">
-                {SLOTS.map(s => (
-                  <button key={s.id} type="button" onClick={() => setSlot(s.id)}
-                    className={`shrink-0 whitespace-nowrap text-xs px-2.5 min-h-[36px] rounded-full border transition-colors ${
-                      slot === s.id ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
-                    }`}>{s.label}</button>
-                ))}
-              </div>
+            {/* Slot — same compact dropdown as the Log Food screen */}
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Meal</label>
+              <SlotSelect value={slot} onChange={setSlot} />
             </div>
 
             {kind === 'library' && lib ? (

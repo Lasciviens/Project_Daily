@@ -1,38 +1,38 @@
 import { useMemo, useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop, Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
+import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { useAddFoodLogEntries, useRecentFoods } from '../hooks/useFoodLog'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRecipes, useCreateRecipe } from '../hooks/useRecipes'
 import { ingredientSnapshot, recipeSnapshot, type RecentFood } from '../api/foodLogApi'
-import { WEIGHT_UNITS } from '../api/recipesApi'
 import { upsertExternalFood } from '../api/ingredientLibraryApi'
 import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
+import { MealPortionPicker } from './MealPortionPicker'
+import { SlotSelect, FoodThumb } from './foodLogKit'
+import { sanitizeDecimal } from './foodLogUtils'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { toast } from '../../../app/store'
 import type { IngredientLibraryItem, FoodLogEntryInput, MealSlot, RecipeWithIngredients } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  BUILD-A-MEAL logger — the core "lazy athlete" flow the expert panel
-//  designed: pick ingredients from YOUR library, type grams (or tap the
-//  portion preset like "1 scoop"), watch kcal/protein total live, save once.
-//  Saves into food_log_entries (the diary — macros snapshotted at log time).
-//  A brand-new food is added to the library inline ONCE (name + per-100g
-//  macros) and is a 3-tap food forever after.
+//  LOG FOOD — full-screen, calm, visual (2026-07-21 redesign, user brief:
+//  "baştan sona mükemmel bir UI/UX; basit, sade, şık; tam ekran; görselli").
+//
+//  Structure (fixed rows, only the middle scrolls — nothing ever jumps):
+//    HEADER  one row: ✕ · title+date · slot DROPDOWN (was a 5-pill row)
+//    SEARCH  one row: big input with 📷 / 🌐 inline
+//    BODY    (scroll) idle → Recents photo-grid + Saved-meals strip
+//                     typing → clean result rows (+ create row)
+//    BASKET  (own scroll, appears when items exist) — compact editable rows
+//    FOOTER  one row: totals + remaining · Log button
+//
+//  Saves into food_log_entries (macros snapshotted at log time). A brand-new
+//  food is added to the library inline ONCE and is a 3-tap food forever after.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SLOTS: { id: MealSlot; label: string }[] = [
-  { id: 'breakfast',  label: '🌅 Breakfast' },
-  { id: 'lunch',      label: '☀️ Lunch' },
-  { id: 'dinner',     label: '🌙 Dinner' },
-  { id: 'snack',      label: '🍎 Snack' },
-  { id: 'supplement', label: '💊 Supplement' },
-]
-
-// Sensible default slot from the time of day.
 function slotForNow(): MealSlot {
   const h = new Date().getHours()
   if (h < 11) return 'breakfast'
@@ -41,23 +41,13 @@ function slotForNow(): MealSlot {
   return 'snack'
 }
 
-interface BasketItem {
-  ingredient: IngredientLibraryItem
-  grams:      number
-}
-
-function sanitizeDecimal(raw: string): string {
-  const cleaned = raw.replace(',', '.').replace(/[^0-9.]/g, '')
-  const firstDot = cleaned.indexOf('.')
-  return firstDot === -1 ? cleaned : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '')
-}
+interface BasketItem { ingredient: IngredientLibraryItem; grams: number }
 
 interface Props {
-  open:         boolean
-  onClose:      () => void
-  date:         string
-  defaultSlot?: MealSlot
-  /** Prefill the search box (e.g. free text typed on the Daily card). */
+  open:          boolean
+  onClose:       () => void
+  date:          string
+  defaultSlot?:  MealSlot
   defaultQuery?: string
 }
 
@@ -76,25 +66,22 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
   const [query, setQuery] = useState(defaultQuery ?? '')
   const [mealName, setMealName] = useState('')
   const [mealServings, setMealServings] = useState('1')
-  // A saved meal being logged as a portion (free %), instead of always 1 serving.
+  const [saveMealOpen, setSaveMealOpen] = useState(false)
   const [portionRecipe, setPortionRecipe] = useState<RecipeWithIngredients | null>(null)
 
-  // Re-seed slot/query each time the modal transitions closed→open (the
-  // instance is reused across opens). Adjusting state during render on a
-  // prop change is React's recommended pattern over a setState-in-effect.
+  // Re-seed per open (instance is reused) — sanctioned adjust-during-render.
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
     setWasOpen(open)
     if (open) {
       setSlot(defaultSlot ?? slotForNow())
       setQuery(defaultQuery ?? '')
-      setMealName(''); setMealServings('1'); setPortionRecipe(null)
+      setMealName(''); setMealServings('1'); setPortionRecipe(null); setSaveMealOpen(false)
     }
   }
 
   const [basket, setBasket] = useState<BasketItem[]>([])
   const [showNew, setShowNew] = useState(false)
-  // Inline new-ingredient form (one-time cost per new food)
   const [nName, setNName] = useState('')
   const [nKcal, setNKcal] = useState(''); const [nProt, setNProt] = useState('')
   const [nCarb, setNCarb] = useState(''); const [nFat, setNFat] = useState('')
@@ -103,13 +90,9 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
 
   const [scanOpen, setScanOpen] = useState(false)
   const [scanning, setScanning] = useState(false)
-  const [onlineOpen, setOnlineOpen] = useState(false)   // 🔎 online name search (PC / no barcode)
-  // Provenance of a scanned/online product being reviewed → persisted on save
-  // so the food carries its source + EAN + photo (add-on-first-use).
+  const [onlineOpen, setOnlineOpen] = useState(false)
   const [scanMeta, setScanMeta] = useState<{ source: string; source_ref: string; image_url: string | null } | null>(null)
 
-  // Prefill + reveal the new-ingredient form from a scanned/searched product
-  // (per-100g, editable — nothing auto-saved).
   function prefillFromProduct(p: BarcodeProduct) {
     setNName(p.name)
     setNKcal(p.calories != null ? String(p.calories) : '')
@@ -124,9 +107,6 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
     setOnlineOpen(false)
   }
 
-  // Barcode → Open Food Facts → prefill the new-ingredient form for review.
-  // If the product already exists in the library by name, add it straight to
-  // the basket instead. Nothing is auto-saved — the user confirms per-100g.
   async function handleBarcode(code: string) {
     setScanOpen(false); setScanning(true)
     const tid = toast.loading('Looking up barcode…')
@@ -143,8 +123,6 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
     } finally { setScanning(false) }
   }
 
-  // Recent/frequent food (from the diary) → add to the basket if it's a library
-  // ingredient; a recipe/custom recent re-logs its own snapshot directly.
   function addRecent(r: RecentFood) {
     const lib = r.library_ingredient_id ? library.find(l => l.id === r.library_ingredient_id) : null
     if (lib) { addToBasket(lib); return }
@@ -154,13 +132,8 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       quantity: r.quantity, unit: r.unit,
       calories: r.calories, protein_g: r.protein_g, carbs_g: r.carbs_g, fat_g: r.fat_g, fiber_g: r.fiber_g, sugar_g: r.sugar_g,
     }], { onSuccess: () => toast.success(`${r.title ?? 'Food'} logged ✓`) })
-    // Stays OPEN (was onClose): the two recent kinds now behave alike — keep
-    // adding to the same meal; close when done.
   }
 
-  // Log a saved recipe as ONE named diary line (recipe_id + snapshot) — the
-  // "I ate <dish>" path. `servingsEaten` comes from the portion picker (a free
-  // % of the whole meal), so a 2-portion batch can be logged as e.g. 50%.
   function logRecipe(rec: RecipeWithIngredients, servingsEaten: number) {
     addEntries.mutate(
       [{ date, meal_slot: slot, recipe_id: rec.id, quantity: servingsEaten, unit: 'serving', ...recipeSnapshot(rec, servingsEaten) }],
@@ -170,15 +143,25 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
 
   const q = query.trim().toLowerCase()
   const matches = useMemo(
-    () => (q ? library.filter(i => i.name.toLowerCase().includes(q)) : library).slice(0, 12),
+    () => (q ? library.filter(i => i.name.toLowerCase().includes(q)) : []).slice(0, 20),
     [library, q],
+  )
+  // Recents enriched with their library row (photo / group / serving preset).
+  const recentTiles = useMemo(
+    () => recents.slice(0, 12).map(r => ({
+      r, lib: r.library_ingredient_id ? library.find(l => l.id === r.library_ingredient_id) ?? null : null,
+    })),
+    [recents, library],
+  )
+  const savedMeals = useMemo(
+    () => recipes.filter(r => !q || r.title.toLowerCase().includes(q)).slice(0, 8),
+    [recipes, q],
   )
 
   function addToBasket(ing: IngredientLibraryItem, grams?: number) {
     setBasket(b => [...b, { ingredient: ing, grams: grams ?? ing.serving_grams ?? 100 }])
     setQuery('')
   }
-
   function setGrams(idx: number, raw: string) {
     const n = Number(sanitizeDecimal(raw))
     setBasket(b => b.map((it, i) => (i === idx ? { ...it, grams: Number.isFinite(n) ? n : 0 } : it)))
@@ -201,11 +184,6 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       serving_label: nServLabel || null, serving_grams: num(nServGrams),
     }
     try {
-      // A barcode-scanned product becomes a real, reusable, de-duped branded
-      // row (source='openfoodfacts' + EAN + photo) — add-to-library-on-first-
-      // use. upsertExternalFood is a raw API call, so failures must be caught
-      // here (the create path's hook toasts on its own, but the await still
-      // needs the catch).
       let created
       if (scanMeta) {
         created = await upsertExternalFood({ ...input, source: scanMeta.source, source_ref: scanMeta.source_ref, image_url: scanMeta.image_url })
@@ -224,23 +202,14 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
   async function handleSave() {
     if (basket.length === 0) return
     const entries: FoodLogEntryInput[] = basket.map(it => ({
-      date,
-      meal_slot: slot,
-      library_ingredient_id: it.ingredient.id,
-      quantity: it.grams,
-      unit: 'g',
-      ...ingredientSnapshot(it.ingredient, it.grams),
+      date, meal_slot: slot, library_ingredient_id: it.ingredient.id,
+      quantity: it.grams, unit: 'g', ...ingredientSnapshot(it.ingredient, it.grams),
     }))
     await addEntries.mutateAsync(entries)
     setBasket([])
     onClose()
   }
 
-  // Save the basket as a reusable NAMED meal (a recipe) — the whole batch, in
-  // its full form. `servings` says how many portions the batch makes, so a
-  // 2-day / 2-person batch stores correct PER-SERVING macros; you then log
-  // your own portion (a free %) later via 'Log a saved meal'. Save-only (no
-  // auto-log): the meal is saved "ana haliyle" and eaten in portions.
   async function handleSaveMeal() {
     if (basket.length === 0 || !mealName.trim()) return
     const servingsN = Math.max(1, Number(sanitizeDecimal(mealServings)) || 1)
@@ -259,345 +228,270 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       })
       qc.invalidateQueries({ queryKey: ['recipes'] })
       toast.dismiss(tid)
-      toast.success(servingsN > 1
-        ? `Saved "${mealName.trim()}" (${servingsN} portions) ✓ — log your portion from "Saved meal"`
-        : `Saved "${mealName.trim()}" ✓ — log it anytime from "Saved meal"`)
-      setBasket([]); setMealName(''); setMealServings('1')
+      toast.success(`Saved "${mealName.trim()}" ✓ — log it anytime from Saved meals`)
+      setMealName(''); setMealServings('1'); setSaveMealOpen(false)
     } catch (e) { toast.dismiss(tid); toast.error((e as Error).message ?? 'Failed') }
   }
 
-  const inputCls = 'min-h-[40px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
-
-  const savedMeals = recipes.filter(r => !q || r.title.toLowerCase().includes(q)).slice(0, 6)
+  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  const inputCls = 'min-h-[44px] px-3 text-sm border border-ink-200 rounded-xl bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
+  const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.prot)
+  const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal)
 
   return (
     <Dialog open={open} onClose={onClose} className="relative z-[60]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-xl lg:max-w-3xl max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          <div className="sm:hidden flex justify-center pt-2 -mb-1"><span className="h-1 w-10 rounded-full bg-ink-200" /></div>
-          <div className="px-5 pt-5 pb-3 border-b border-ink-100 flex items-center justify-between sticky top-0 bg-cream-50 z-10">
-            <h2 className="text-base font-bold text-ink-900">🍽️ Log food</h2>
-            <button type="button" onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none">×</button>
+      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/40 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
+      <div className="fixed inset-0 flex items-stretch sm:items-center justify-center sm:p-4">
+        {/* FULL-SCREEN on phones; a tall fixed-height sheet on desktop. The
+            panel is a flex COLUMN of fixed bands — only the body scrolls. */}
+        <DialogPanel transition className="w-full h-full sm:h-[min(780px,94vh)] sm:max-w-2xl sm:rounded-3xl bg-cream-50 sm:border border-ink-200 sm:shadow-card-hover flex flex-col overflow-hidden transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-6 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+
+          {/* ── HEADER — one calm row ── */}
+          <div className="shrink-0 h-14 px-2 sm:px-3 flex items-center gap-1 border-b border-ink-100">
+            <button type="button" onClick={onClose} aria-label="Close"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-ink-400 hover:text-ink-700 hover:bg-ink-100 text-xl leading-none">×</button>
+            <div className="flex-1 min-w-0 px-1">
+              <p className="text-[15px] font-bold text-ink-900 leading-tight">Log food</p>
+              <p className="text-[11px] text-ink-400 leading-tight">{dateLabel}</p>
+            </div>
+            <SlotSelect value={slot} onChange={setSlot} />
           </div>
 
-          <div className="px-5 py-4 flex flex-col gap-4">
-            {/* Slot — single non-wrapping row (was flex-wrap → "Supplement"
-                dropped to a 2nd line at 393px); scrolls if ever too narrow. */}
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1">
-              {SLOTS.map(s => (
-                <button key={s.id} type="button" onClick={() => setSlot(s.id)}
-                  className={`shrink-0 whitespace-nowrap text-xs px-2.5 min-h-[36px] rounded-full border transition-colors ${
-                    slot === s.id ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
-                  }`}>
-                  {s.label}
-                </button>
-              ))}
+          {/* ── SEARCH — one row, tools inline ── */}
+          <div className="shrink-0 px-4 pt-3 pb-2">
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300 pointer-events-none">🔍</span>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search food…"
+                className="w-full min-h-[48px] pl-10 pr-24 text-sm border border-ink-200 rounded-2xl bg-cream-100/70 focus:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors"
+              />
+              <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-0.5">
+                <button type="button" onClick={() => setScanOpen(true)} disabled={scanning}
+                  className="min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100 disabled:opacity-50"
+                  title="Scan barcode" aria-label="Scan barcode">📷</button>
+                <button type="button" onClick={() => setOnlineOpen(o => !o)}
+                  className={`min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-lg ${onlineOpen ? 'bg-accent-100 text-accent-700' : 'text-ink-400 hover:text-ink-700 hover:bg-ink-100'}`}
+                  title="Search online" aria-label="Search online">🌐</button>
+              </div>
             </div>
+          </div>
 
-            {/* Two columns on wide screens: discover/search (left) · this meal
-                (right). Single column on phones (mobile-first order preserved). */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
-              {/* ── LEFT: recent · saved meals · search · new ingredient ── */}
-              <div className="flex flex-col gap-4 min-w-0">
-                {/* Recent + Saved meal as compact dropdowns — the chip walls ate
-                    a lot of vertical space on a phone; collapsed menus keep the
-                    fast paths one tap away without the clutter. */}
-                {(recents.length > 0 || savedMeals.length > 0) && (
-                  <div className="flex flex-wrap gap-2">
-                    {recents.length > 0 && (
-                      <Menu as="div" className="relative">
-                        <MenuButton className="press-feedback inline-flex items-center gap-1 min-h-[40px] px-3 rounded-xl border border-ink-200 bg-cream-100 text-sm text-ink-700 hover:border-accent-400 transition-colors">
-                          🕒 Recent <span className="text-ink-400">({recents.length})</span> <span className="text-ink-300 text-xs">▾</span>
-                        </MenuButton>
-                        <MenuItems anchor="bottom start" className="z-[70] mt-1 w-64 max-h-72 overflow-y-auto rounded-xl border border-ink-200 bg-cream-50 shadow-lg p-1 focus:outline-none">
-                          {recents.map(r => (
-                            <MenuItem key={r.key}>
-                              <button type="button" onClick={() => addRecent(r)}
-                                className="w-full flex items-center gap-2 text-left px-3 min-h-[40px] rounded-lg text-sm text-ink-700 data-[focus]:bg-accent-50">
-                                <span className="flex-1 min-w-0 truncate">+ {r.title}</span>
-                                {r.protein_g != null && r.protein_g > 0 && <span className="text-ink-400 text-xs shrink-0 tabular-nums">{Math.round(r.protein_g)}p</span>}
-                              </button>
-                            </MenuItem>
-                          ))}
-                        </MenuItems>
-                      </Menu>
-                    )}
-                    {savedMeals.length > 0 && (
-                      <Menu as="div" className="relative">
-                        <MenuButton className="press-feedback inline-flex items-center gap-1 min-h-[40px] px-3 rounded-xl border border-accent-200 bg-accent-50/50 text-sm text-accent-700 hover:border-accent-400 transition-colors">
-                          🍲 Saved meal <span className="text-accent-500/70">({savedMeals.length})</span> <span className="text-accent-400 text-xs">▾</span>
-                        </MenuButton>
-                        <MenuItems anchor="bottom start" className="z-[70] mt-1 w-72 max-h-72 overflow-y-auto rounded-xl border border-ink-200 bg-cream-50 shadow-lg p-1 focus:outline-none">
-                          {savedMeals.map(r => (
-                            <MenuItem key={r.id}>
-                              <button type="button" onClick={() => setPortionRecipe(r)}
-                                className={`w-full flex items-center gap-2 text-left px-3 min-h-[40px] rounded-lg text-sm data-[focus]:bg-accent-50 ${portionRecipe?.id === r.id ? 'text-accent-700 font-semibold' : 'text-ink-700'}`}>
-                                <span className="flex-1 min-w-0 truncate">🍲 {r.title}</span>
-                                {r.calories != null && <span className="text-accent-500/70 text-xs shrink-0 tabular-nums">{Math.round(r.calories)}kcal{r.servings > 1 ? `·${r.servings}p` : ''}</span>}
-                              </button>
-                            </MenuItem>
-                          ))}
-                        </MenuItems>
-                      </Menu>
-                    )}
-                  </div>
-                )}
+          {/* ── BODY — the only scrolling band ── */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 flex flex-col gap-4">
 
-                {/* Portion picker for the selected saved meal (free %/grams). */}
-                {portionRecipe && (
-                  <MealPortionPicker
-                    recipe={portionRecipe}
-                    busy={addEntries.isPending}
-                    onCancel={() => setPortionRecipe(null)}
-                    onLog={servingsEaten => logRecipe(portionRecipe, servingsEaten)}
-                  />
-                )}
+            {onlineOpen && (
+              <div className="rounded-2xl border border-accent-200 bg-accent-50/40 p-3">
+                <OnlineFoodSearch initialQuery={query} onPick={prefillFromProduct} />
+              </div>
+            )}
 
-                {/* Search + pick — chips appear only WHEN SEARCHING (no random
-                    library dump). Barcode → Open Food Facts. */}
-                <div>
-                  <div className="flex gap-1.5">
-                    <input
-                      value={query}
-                      onChange={e => setQuery(e.target.value)}
-                      placeholder="Search your ingredients… (e.g. tavuk, pirinç)"
-                      className={`flex-1 min-w-0 ${inputCls}`}
-                    />
-                    <button type="button" onClick={() => setScanOpen(true)} disabled={scanning}
-                      className="shrink-0 min-w-[44px] min-h-[40px] px-2 rounded-lg border border-ink-200 bg-cream-100 text-ink-600 hover:border-accent-400 disabled:opacity-50 flex items-center justify-center text-lg"
-                      title="Scan a barcode (Open Food Facts)" aria-label="Scan barcode">
-                      📷
-                    </button>
-                    {/* Online name search — the desktop / no-barcode path. */}
-                    <button type="button" onClick={() => setOnlineOpen(o => !o)}
-                      className={`shrink-0 min-w-[44px] min-h-[40px] px-2 rounded-lg border flex items-center justify-center text-lg ${onlineOpen ? 'border-accent-400 bg-accent-50 text-accent-700' : 'border-ink-200 bg-cream-100 text-ink-600 hover:border-accent-400'}`}
-                      title="Search online (no barcode needed)" aria-label="Search online">
-                      🔎
-                    </button>
-                  </div>
-                  {onlineOpen && (
-                    <div className="mt-2 rounded-xl border border-accent-200 bg-accent-50/40 p-2.5">
-                      <OnlineFoodSearch initialQuery={query} onPick={prefillFromProduct} />
-                    </div>
-                  )}
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {q && matches.map(ing => (
-                      <button key={ing.id} type="button" onClick={() => addToBasket(ing)}
-                        className="text-xs px-2.5 min-h-[36px] rounded-full border border-ink-200 bg-cream-100 text-ink-700 hover:border-accent-400 transition-colors press-feedback">
-                        + {ing.name}
-                        {ing.calories != null && <span className="text-ink-400 ml-1">{Math.round(ing.calories)}kcal/100g</span>}
-                        {ing.serving_label && <span className="text-ink-400 ml-1">· {ing.serving_label}</span>}
-                      </button>
-                    ))}
-                    {q && matches.length === 0 && (
-                      <p className="text-xs text-ink-400 py-1 w-full">Not in your library yet — add it below.</p>
-                    )}
-                    <button type="button" onClick={() => { setShowNew(v => !v); setNName(query.trim()) }}
-                      className="text-xs px-2.5 min-h-[36px] rounded-full border border-dashed border-accent-300 text-accent-600 hover:bg-accent-50 transition-colors">
-                      ✨ New ingredient…
-                    </button>
-                  </div>
+            {portionRecipe && (
+              <MealPortionPicker
+                recipe={portionRecipe}
+                busy={addEntries.isPending}
+                onCancel={() => setPortionRecipe(null)}
+                onLog={servingsEaten => logRecipe(portionRecipe, servingsEaten)}
+              />
+            )}
+
+            {showNew && (
+              <div className="rounded-2xl border border-accent-200 bg-accent-50/40 p-3.5 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  {scanMeta?.image_url && <FoodThumb name={nName} imageUrl={scanMeta.image_url} size={36} />}
+                  <p className="text-xs font-semibold text-accent-700">New ingredient · per 100g (one-time — reusable forever)</p>
                 </div>
+                <input value={nName} onChange={e => setNName(e.target.value)} placeholder="Name" className={inputCls} />
+                <div className="grid grid-cols-3 gap-1.5">
+                  <input value={nKcal}  onChange={e => setNKcal(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="kcal" className={inputCls} />
+                  <input value={nProt}  onChange={e => setNProt(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="Protein" className={inputCls} />
+                  <input value={nCarb}  onChange={e => setNCarb(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="Carbs" className={inputCls} />
+                  <input value={nFat}   onChange={e => setNFat(sanitizeDecimal(e.target.value))}   inputMode="decimal" placeholder="Fat" className={inputCls} />
+                  <input value={nFiber} onChange={e => setNFiber(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Fiber" className={inputCls} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={nServLabel} onChange={e => setNServLabel(e.target.value)} placeholder="Portion label (1 scoop)" className={inputCls} />
+                  <input value={nServGrams} onChange={e => setNServGrams(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams" className={inputCls} />
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setShowNew(false); setScanMeta(null) }}
+                    className="min-h-[44px] px-3 rounded-xl text-xs text-ink-500 hover:bg-ink-100">Cancel</button>
+                  <button type="button" onClick={handleNewIngredient} disabled={createIngredient.isPending || !nName.trim()}
+                    className="flex-1 min-h-[44px] rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
+                    {createIngredient.isPending ? 'Adding…' : 'Add to meal'}
+                  </button>
+                </div>
+              </div>
+            )}
 
-                {/* Inline new-ingredient form (per-100g) */}
-                {showNew && (
-                  <div className="rounded-xl border border-accent-200 bg-accent-50/50 p-3 flex flex-col gap-2">
-                    <p className="text-[11px] font-semibold text-accent-700">New library ingredient — macros per 100g (one-time; reusable forever)</p>
-                    <input value={nName} onChange={e => setNName(e.target.value)} placeholder="Name (e.g. Tavuk göğsü)" className={inputCls} />
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <input value={nKcal}  onChange={e => setNKcal(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="Calories" className={inputCls} />
-                      <input value={nProt}  onChange={e => setNProt(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="Protein g" className={inputCls} />
-                      <input value={nCarb}  onChange={e => setNCarb(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="Carbs g" className={inputCls} />
-                      <input value={nFat}   onChange={e => setNFat(sanitizeDecimal(e.target.value))}   inputMode="decimal" placeholder="Fat g" className={inputCls} />
-                      <input value={nFiber} onChange={e => setNFiber(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Fiber g" className={inputCls} />
+            {q ? (
+              /* ── SEARCHING → clean result rows ── */
+              <div className="flex flex-col">
+                {matches.map(ing => (
+                  <button key={ing.id} type="button" onClick={() => addToBasket(ing)}
+                    className="flex items-center gap-3 min-h-[56px] px-1 rounded-xl hover:bg-cream-100 active:bg-cream-100 transition-colors text-left">
+                    <FoodThumb name={ing.name} group={ing.food_group} imageUrl={ing.image_url} size={40} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium text-ink-800 truncate">{ing.name}</span>
+                      <span className="block text-[11px] text-ink-400">
+                        {ing.calories != null && `${Math.round(ing.calories)} kcal · 100g`}
+                        {ing.serving_label && ` · ${ing.serving_label}`}
+                      </span>
+                    </span>
+                    <span className="min-w-[36px] min-h-[36px] rounded-full bg-accent-50 text-accent-600 grid place-items-center text-lg shrink-0">+</span>
+                  </button>
+                ))}
+                {savedMeals.length > 0 && matches.length === 0 && savedMeals.map(r => (
+                  <button key={r.id} type="button" onClick={() => setPortionRecipe(r)}
+                    className="flex items-center gap-3 min-h-[56px] px-1 rounded-xl hover:bg-cream-100 transition-colors text-left">
+                    <FoodThumb name={r.title} imageUrl={r.image_url} size={40} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium text-ink-800 truncate">🍲 {r.title}</span>
+                      <span className="block text-[11px] text-ink-400">{r.calories != null && `${Math.round(r.calories)} kcal / portion`}</span>
+                    </span>
+                    <span className="text-[11px] text-accent-600 shrink-0">portion →</span>
+                  </button>
+                ))}
+                <button type="button" onClick={() => { setShowNew(true); setNName(query.trim()) }}
+                  className="flex items-center gap-3 min-h-[52px] px-1 rounded-xl hover:bg-accent-50/60 transition-colors text-left">
+                  <span className="w-10 h-10 rounded-lg border border-dashed border-accent-300 grid place-items-center text-accent-500 text-lg shrink-0">＋</span>
+                  <span className="text-sm text-accent-700">Create “{query.trim()}”…</span>
+                </button>
+              </div>
+            ) : (
+              /* ── IDLE → visual recents grid + saved meals strip ── */
+              <>
+                {recentTiles.length > 0 && (
+                  <section>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Recent</p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      {recentTiles.map(({ r, lib }) => (
+                        <button key={r.key} type="button" onClick={() => addRecent(r)}
+                          className="rounded-2xl border border-ink-100 bg-cream-100/50 hover:border-accent-300 hover:bg-cream-100 transition-colors p-2 flex flex-col items-center gap-1.5 min-h-[96px] press-feedback">
+                          <FoodThumb name={r.title} group={lib?.food_group} imageUrl={lib?.image_url} size={44} />
+                          <span className="text-[11px] font-medium text-ink-700 leading-tight text-center line-clamp-2 w-full">{r.title}</span>
+                          {r.calories != null && r.calories > 0 && (
+                            <span className="text-[10px] text-ink-400 tabular-nums">{Math.round(r.calories)} kcal</span>
+                          )}
+                        </button>
+                      ))}
                     </div>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <input value={nServLabel} onChange={e => setNServLabel(e.target.value)} placeholder="Portion label (1 scoop)" className={inputCls} />
-                      <input value={nServGrams} onChange={e => setNServGrams(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams (30)" className={inputCls} />
+                  </section>
+                )}
+
+                {savedMeals.length > 0 && (
+                  <section>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Saved meals</p>
+                    <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1 pb-1 snap-x">
+                      {savedMeals.map(r => (
+                        <button key={r.id} type="button" onClick={() => setPortionRecipe(r)}
+                          className={`snap-start shrink-0 w-36 rounded-2xl border p-2.5 flex flex-col items-start gap-1 text-left transition-colors press-feedback ${
+                            portionRecipe?.id === r.id ? 'border-accent-400 bg-accent-50/60' : 'border-ink-100 bg-cream-100/50 hover:border-accent-300'
+                          }`}>
+                          <FoodThumb name={r.title} imageUrl={r.image_url} size={36} />
+                          <span className="text-[12px] font-medium text-ink-800 leading-tight line-clamp-2">{r.title}</span>
+                          <span className="text-[10px] text-ink-400 tabular-nums">
+                            {r.calories != null && `${Math.round(r.calories)} kcal`}{r.servings > 1 && ` · ${r.servings} portions`}
+                          </span>
+                        </button>
+                      ))}
                     </div>
-                    <button type="button" onClick={handleNewIngredient} disabled={createIngredient.isPending || !nName.trim()}
-                      className="self-start min-h-[36px] px-3 rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
-                      {createIngredient.isPending ? 'Adding…' : 'Add & put in meal'}
-                    </button>
+                  </section>
+                )}
+
+                {recentTiles.length === 0 && savedMeals.length === 0 && (
+                  <div className="flex-1 grid place-items-center text-center py-10">
+                    <div>
+                      <p className="text-3xl mb-2">🍽️</p>
+                      <p className="text-sm text-ink-500">Search a food above, scan a barcode,</p>
+                      <p className="text-sm text-ink-500">or create your first ingredient.</p>
+                    </div>
                   </div>
                 )}
-              </div>
+              </>
+            )}
+          </div>
 
-              {/* ── RIGHT: this meal (the basket) ── */}
-              <div className="flex flex-col gap-2 min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">This meal</p>
-                {basket.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-ink-200 px-4 py-6 text-center text-xs text-ink-400">
-                    Tap ingredients to build a meal — or scan a barcode. Live totals below.
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {basket.map((it, i) => {
-                      const s = ingredientSnapshot(it.ingredient, it.grams)
-                      const sg = it.ingredient.serving_grams
-                      const count = sg ? Math.max(1, Math.round(it.grams / sg)) : 1
-                      return (
-                        // Mobile: the name reads on its own line, controls
-                        // (stepper·grams·kcal·delete) beneath it — the single
-                        // row was too cramped to read the name at 393px.
-                        <div key={`${it.ingredient.id}-${i}`} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                          <span className="text-sm text-ink-800 flex-1 min-w-0 truncate">{it.ingredient.name}</span>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {/* Portion stepper — "2 eggs" in one tap (×N of the preset). */}
-                            {it.ingredient.serving_label && sg != null && (
-                              <div className="flex items-center gap-0.5 shrink-0">
-                                <button type="button" aria-label="one less" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}
-                                  className="min-w-[28px] min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300 leading-none">−</button>
-                                <span className="text-[10px] text-ink-500 tabular-nums w-14 text-center">{count}× {it.ingredient.serving_label.replace(/^1\s*/, '')}</span>
-                                <button type="button" aria-label="one more" onClick={() => setGrams(i, String((count + 1) * sg))}
-                                  className="min-w-[28px] min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300 leading-none">+</button>
-                              </div>
-                            )}
-                            <input
-                              value={it.grams || ''}
-                              onChange={e => setGrams(i, e.target.value)}
-                              inputMode="decimal"
-                              className="w-16 min-h-[36px] px-2 text-sm text-right border border-ink-200 rounded-lg bg-cream-50 tabular-nums"
-                            />
-                            <span className="text-[11px] text-ink-400 w-4">g</span>
-                            <span className="text-[11px] text-ink-500 tabular-nums w-16 text-right shrink-0">{Math.round(s.calories ?? 0)} kcal</span>
-                            <button type="button" onClick={() => setBasket(b => b.filter((_, j) => j !== i))}
-                              aria-label={`Remove ${it.ingredient.name}`}
-                              className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-300 hover:text-red-500 ml-auto sm:ml-0">×</button>
-                          </div>
+          {/* ── BASKET — appears with items; its own scroll, body stays put ── */}
+          {basket.length > 0 && (
+            <div className="shrink-0 border-t border-ink-100 bg-cream-100/40">
+              <div className="max-h-56 overflow-y-auto px-4 py-2 flex flex-col gap-0.5">
+                <div className="flex items-center justify-between min-h-[28px]">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">This meal · {basket.length}</p>
+                  <button type="button" onClick={() => setSaveMealOpen(v => !v)}
+                    className="text-[11px] text-ink-400 hover:text-accent-600 min-h-[28px] px-1">💾 Save as meal</button>
+                </div>
+                {basket.map((it, i) => {
+                  const s = ingredientSnapshot(it.ingredient, it.grams)
+                  const sg = it.ingredient.serving_grams
+                  const count = sg ? Math.max(1, Math.round(it.grams / sg)) : 1
+                  return (
+                    <div key={`${it.ingredient.id}-${i}`} className="flex items-center gap-2 min-h-[48px]">
+                      <FoodThumb name={it.ingredient.name} group={it.ingredient.food_group} imageUrl={it.ingredient.image_url} size={32} />
+                      <span className="text-sm text-ink-800 flex-1 min-w-0 truncate">{it.ingredient.name}</span>
+                      {it.ingredient.serving_label && sg != null && (
+                        <div className="flex items-center shrink-0">
+                          <button type="button" aria-label="one less" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}
+                            className="min-w-[32px] min-h-[32px] rounded-lg text-ink-400 hover:bg-ink-100 leading-none">−</button>
+                          <span className="text-[10px] text-ink-500 tabular-nums w-12 text-center">{count}×{it.ingredient.serving_label.replace(/^1\s*/, '')}</span>
+                          <button type="button" aria-label="one more" onClick={() => setGrams(i, String((count + 1) * sg))}
+                            className="min-w-[32px] min-h-[32px] rounded-lg text-ink-400 hover:bg-ink-100 leading-none">+</button>
                         </div>
-                      )
-                    })}
-
-                    {/* Save the whole batch as a reusable NAMED meal (a recipe),
-                        in its full form + how many portions it makes. Save-only
-                        — log your portion later via "Saved meal". */}
-                    <div className="flex flex-col gap-1.5 pt-2 mt-0.5 border-t border-ink-100">
-                      <input value={mealName} onChange={e => setMealName(e.target.value)}
-                        placeholder="Name this batch to reuse it (optional)"
-                        className="w-full min-h-[36px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                      <div className="flex items-center gap-1.5">
-                        <label className="text-[11px] text-ink-400 shrink-0">Makes</label>
-                        <input value={mealServings} onChange={e => setMealServings(sanitizeDecimal(e.target.value))} inputMode="decimal"
-                          className="w-14 min-h-[36px] px-2 text-sm text-center border border-ink-200 rounded-lg bg-cream-50 tabular-nums" />
-                        <span className="text-[11px] text-ink-400 shrink-0">portion(s)</span>
-                        <button type="button" onClick={handleSaveMeal} disabled={!mealName.trim() || createRecipe.isPending}
-                          className="ml-auto shrink-0 min-h-[36px] px-3 rounded-lg text-xs font-semibold border border-accent-300 text-accent-700 bg-accent-50/50 hover:bg-accent-50 disabled:opacity-50 transition-colors">
-                          💾 Save meal
-                        </button>
+                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input value={it.grams || ''} onChange={e => setGrams(i, e.target.value)} inputMode="decimal"
+                          className="w-14 min-h-[36px] px-1.5 text-sm text-right border border-ink-200 rounded-lg bg-cream-50 tabular-nums" />
+                        <span className="text-[10px] text-ink-400">g</span>
                       </div>
+                      <span className="text-[11px] text-ink-500 tabular-nums w-14 text-right shrink-0">{Math.round(s.calories ?? 0)} kcal</span>
+                      <button type="button" onClick={() => setBasket(b => b.filter((_, j) => j !== i))}
+                        aria-label={`Remove ${it.ingredient.name}`}
+                        className="min-w-[32px] min-h-[32px] rounded-lg flex items-center justify-center text-ink-300 hover:text-red-500 hover:bg-red-50 shrink-0">×</button>
                     </div>
+                  )
+                })}
+                {saveMealOpen && (
+                  <div className="flex items-center gap-1.5 pt-1.5 pb-1 border-t border-ink-100 mt-1">
+                    <input value={mealName} onChange={e => setMealName(e.target.value)} placeholder="Meal name…"
+                      className="flex-1 min-w-0 min-h-[40px] px-2.5 text-sm border border-ink-200 rounded-xl bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
+                    <input value={mealServings} onChange={e => setMealServings(sanitizeDecimal(e.target.value))} inputMode="decimal"
+                      title="How many portions this batch makes"
+                      className="w-12 min-h-[40px] px-1 text-sm text-center border border-ink-200 rounded-xl bg-cream-50 tabular-nums" />
+                    <span className="text-[10px] text-ink-400 shrink-0">portions</span>
+                    <button type="button" onClick={handleSaveMeal} disabled={!mealName.trim() || createRecipe.isPending}
+                      className="shrink-0 min-h-[40px] px-3 rounded-xl text-xs font-semibold border border-accent-300 text-accent-700 bg-accent-50/50 hover:bg-accent-50 disabled:opacity-50">Save</button>
                   </div>
                 )}
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Footer — live totals + how this meal closes the day's gap + save */}
-          <div className="px-5 py-3.5 border-t border-ink-100 flex items-center gap-3 sticky bottom-0 bg-cream-50">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-ink-700 tabular-nums">
-                <strong className="text-ink-900">{Math.round(totals.kcal)}</strong> kcal
-                <span className="text-ink-300"> · </span>
-                <strong className="text-ink-900">{Math.round(totals.prot)}</strong> g protein
+          {/* ── FOOTER — one tight row ── */}
+          <div className="shrink-0 h-[68px] px-4 border-t border-ink-100 bg-cream-50 flex items-center gap-3"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            <div className="flex-1 min-w-0 leading-tight">
+              <p className="text-sm text-ink-900 tabular-nums font-bold">
+                {Math.round(totals.kcal)} <span className="font-normal text-ink-400">kcal</span>
+                <span className="text-ink-300 font-normal"> · </span>
+                {Math.round(totals.prot)}<span className="font-normal text-ink-400">g protein</span>
               </p>
-              {/* Remaining for the day AFTER logging this meal — the number a
-                  cutting/bulking user actually steers by (dietitian ask). */}
-              {(targets.protein > 0 || targets.calories > 0) && (() => {
-                const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.prot)
-                const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal)
-                return (
-                  <p className="text-[11px] text-ink-400 tabular-nums mt-0.5">
-                    After this: <span className={protLeft < 0 ? 'text-red-500' : 'text-ink-600'}>{protLeft >= 0 ? `${protLeft}g protein left` : `${-protLeft}g protein over`}</span>
-                    <span className="text-ink-300"> · </span>
-                    <span className={kcalLeft < 0 ? 'text-red-500' : 'text-ink-600'}>{kcalLeft >= 0 ? `${kcalLeft} kcal left` : `${-kcalLeft} over`}</span>
-                  </p>
-                )
-              })()}
+              {(targets.protein > 0 || targets.calories > 0) && (
+                <p className="text-[11px] text-ink-400 tabular-nums truncate">
+                  after: <span className={protLeft < 0 ? 'text-red-500' : ''}>{protLeft >= 0 ? `${protLeft}g P left` : `${-protLeft}g P over`}</span>
+                  {' · '}
+                  <span className={kcalLeft < 0 ? 'text-red-500' : ''}>{kcalLeft >= 0 ? `${kcalLeft} kcal left` : `${-kcalLeft} over`}</span>
+                </p>
+              )}
             </div>
             <button type="button" onClick={handleSave} disabled={basket.length === 0 || addEntries.isPending}
-              className="min-h-[44px] px-5 rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 transition-colors">
-              {addEntries.isPending ? 'Saving…' : `Log ${basket.length || ''} item${basket.length === 1 ? '' : 's'}`}
+              className="min-h-[48px] px-6 rounded-2xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-40 transition-colors shrink-0">
+              {addEntries.isPending ? 'Saving…' : basket.length > 0 ? `Log ${basket.length}` : 'Log'}
             </button>
           </div>
         </DialogPanel>
       </div>
       <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcode} />
     </Dialog>
-  )
-}
-
-// Portion picker for a saved meal — the "I made a 2-portion batch, I ate 50%"
-// flow. Free % of the WHOLE meal (not just 1/4·1/2); when the recipe's total
-// weight is computable (all ingredients in g/ml) grams is offered too and kept
-// in sync. servingsEaten = pct/100 × recipe.servings.
-function MealPortionPicker({ recipe, busy, onLog, onCancel }: {
-  recipe: RecipeWithIngredients
-  busy:   boolean
-  onLog:  (servingsEaten: number) => void
-  onCancel: () => void
-}) {
-  const totalG = useMemo(
-    () => recipe.ingredients.reduce(
-      (a, i) => a + (i.unit && WEIGHT_UNITS.has(i.unit.trim().toLowerCase()) && i.quantity ? i.quantity : 0),
-      0,
-    ),
-    [recipe],
-  )
-  const [pct, setPct] = useState('100')
-  const p = Math.max(0, Number(sanitizeDecimal(pct)) || 0)
-  const servingsEaten = Math.round((p / 100) * recipe.servings * 100) / 100
-  const kcal = Math.round((recipe.calories ?? 0) * servingsEaten)
-  const prot = Math.round((recipe.protein_g ?? 0) * servingsEaten)
-  const grams = totalG > 0 ? Math.round((p / 100) * totalG) : null
-
-  return (
-    <div className="rounded-xl border border-accent-200 bg-accent-50/50 p-3 flex flex-col gap-2">
-      <p className="text-[11px] font-semibold text-accent-700 truncate">How much of “{recipe.title}” did you eat?</p>
-      {/* Quick shortcuts — free entry stays the primary control below. */}
-      <div className="flex gap-1.5 flex-wrap">
-        {[25, 50, 75, 100].map(v => (
-          <button key={v} type="button" onClick={() => setPct(String(v))}
-            className={`text-xs px-2.5 min-h-[32px] rounded-full border transition-colors ${
-              p === v ? 'border-accent-500 bg-accent-500 text-white' : 'border-accent-200 text-accent-700 hover:border-accent-400'
-            }`}>
-            {v}%
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        <label className="text-[11px] text-ink-500 shrink-0">Portion</label>
-        <div className="flex items-center gap-1">
-          <input value={pct} onChange={e => setPct(sanitizeDecimal(e.target.value))} inputMode="decimal"
-            className="w-16 min-h-[36px] px-2 text-sm text-right border border-ink-200 rounded-lg bg-cream-50 tabular-nums" />
-          <span className="text-[11px] text-ink-400">%</span>
-        </div>
-        {grams != null && (
-          <div className="flex items-center gap-1">
-            <span className="text-ink-300 text-xs">·</span>
-            <input
-              value={grams}
-              onChange={e => {
-                const g = Number(sanitizeDecimal(e.target.value)) || 0
-                setPct(totalG > 0 ? String(Math.round((g / totalG) * 1000) / 10) : '0')
-              }}
-              inputMode="decimal"
-              className="w-16 min-h-[36px] px-2 text-sm text-right border border-ink-200 rounded-lg bg-cream-50 tabular-nums" />
-            <span className="text-[11px] text-ink-400">g</span>
-          </div>
-        )}
-        <span className="text-[11px] text-ink-500 tabular-nums ml-auto">
-          {servingsEaten}× · <strong className="text-ink-800">{kcal}</strong> kcal · {prot}g P
-        </span>
-      </div>
-      <div className="flex gap-1.5">
-        <button type="button" onClick={onCancel} className="flex-1 min-h-[36px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
-        <button type="button" onClick={() => onLog(servingsEaten)} disabled={busy || servingsEaten <= 0}
-          className="flex-1 min-h-[36px] text-xs font-semibold bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
-          {busy ? 'Logging…' : `Log ${p}%`}
-        </button>
-      </div>
-    </div>
   )
 }
