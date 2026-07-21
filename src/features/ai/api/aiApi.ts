@@ -282,18 +282,25 @@ export async function invokeAI(messages: Message[], systemPrompt: string, model?
 //  docs/ai-cost-capability-analysis.md P1). It rides as the first conversation
 //  turn instead, where it never poisons the cacheable prefix.
 
-const CONTEXT_ACK = 'OK, güncel verilere göz attım.'
+// Neutral + language-agnostic on purpose: a hardcoded Turkish ack could nudge
+// the model to answer an English-writing user in Turkish (the system prompts
+// already say "answer in the user's language"), and repo artifacts stay English.
+const CONTEXT_ACK = 'OK.'
 
 function lastUserText(messages: Message[]): string {
   for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'user') return messages[i].content
   return ''
 }
 
-// Conservative gate: skip the full live-data dump ONLY for clearly transit-
-// routing questions (the AI can always pull anything it needs via db_query, so
-// a miss just costs one tool call, never correctness). Everything else gets the
-// full context. Tunable — see the analysis doc's context-gating note.
-const TRANSIT_RE = /(nas[ıi]l\s+(gid|ula[şs])|ka[çc]ta\s+([çc][ıi]k|kalk)|ne\s+zaman\s+[çc][ıi]k|aktarma|otob[üu]s|tramvay|\bmetro\b|\bdurak|\bsefer\b|\bbus\b|\btram\b|depart|how (do|can) i get|when should i leave)/i
+// VERY conservative gate: skip the full live-data dump ONLY for unambiguous
+// transit-ROUTING phrasings (explicit "how do I get / when should I leave /
+// transfer" intent). Deliberately does NOT match bare transit nouns
+// (metro/durak/sefer/otobüs/bus/depart…) — those false-matched everyday phrases
+// ("bir sefer daha", "departman") and silently stripped context a general
+// question needed. A miss here is harmless (the AI just pulls what it needs via
+// db_query); a false strip is the real harm, so we bias hard toward keeping
+// context. Tunable — see the analysis doc's context-gating note.
+const TRANSIT_RE = /nas[ıi]l\s+(gid|ula[şs])|ka[çc]ta\s+([çc][ıi]k|kalk)|ne\s+zaman\s+(yola\s+)?[çc][ıi]k|\baktarma\b|how (do|can|should) i (get|go) to|when should i leave/i
 
 function prependContext(messages: Message[], context: string): Message[] {
   return [

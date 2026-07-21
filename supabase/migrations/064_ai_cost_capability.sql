@@ -94,12 +94,20 @@ create or replace function public.ai_run_read_query(query_text text)
 returns jsonb
 language plpgsql
 security invoker
+set statement_timeout = '5000'
 as $$
 declare
   result jsonb;
 begin
-  perform set_config('transaction_read_only', 'on', true);   -- local to this txn
-  perform set_config('statement_timeout',     '5000', true); -- 5s cap
+  -- HARD guarantees: read-only (any write raises, even if the edge-side text
+  -- guard is bypassed) + a 500-row cap. transaction_read_only ON mid-txn is
+  -- always allowed (it only tightens) and applies to the EXECUTE below.
+  -- NOTE on the wall-clock cap: the `set statement_timeout` clause above is
+  -- applied on function entry, but Postgres does not re-arm the timer for an
+  -- already-running top-level statement (the RPC call), so the ultimate bound
+  -- is the caller role's own statement_timeout default (Supabase sets one for
+  -- `authenticated`). The 500-row cap is the reliable bound.
+  perform set_config('transaction_read_only', 'on', true);
   execute format(
     'select coalesce(jsonb_agg(x), ''[]''::jsonb) from (select * from (%s) _q limit 500) x',
     query_text

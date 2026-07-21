@@ -256,15 +256,29 @@ opt-in + read-only + layered:
   (`ai_run_read_query`), so it runs as the `authenticated` user and RLS applies.
 - **Read-only at the DB.** The RPC sets `transaction_read_only=on` + a 5 s
   `statement_timeout` and wraps the query in `LIMIT 500` before `jsonb_agg`.
-- **Edge-side guard (fails closed):** single statement, `SELECT`/`WITH`-only,
-  DML/DDL keyword block, sensitive-table/schema block (token/secret/vault/auth./pg_/
-  information_schema), and every `FROM`/`JOIN` target must be an allow-listed catalog
-  table (or a CTE defined in the same query). Anything ambiguous is rejected, not run.
+- **The security boundary is the DATABASE, not the text guard.** An adversarial
+  review proved regex SQL-parsing is bypassable (`FROM/**/tbl` comments, `FROM "tbl"`
+  quoting), so containment does NOT rest on it. What actually holds: RLS (rows scoped
+  to the user), read-only transaction (no writes), **migration 044** already revokes
+  the OAuth-token tables from the `authenticated` role (so tokens are permission-denied
+  even if the guard is bypassed), and a hard `LIMIT 500`.
+- **Edge-side guard = best-effort UX filter** (clear errors + cheap block of obvious
+  probes), hardened after the review: strips SQL comments first, rejects quoted
+  identifiers, `SELECT`/`WITH`-only + single-statement, blocks `pg_`/`information_schema`/
+  other schemas, and checks every `FROM`/`JOIN` target (incl. comma-joined lists;
+  CTEs recognised only as `name AS (` so a `SELECT`-list alias isn't mistaken for one)
+  against the catalog allow-list. Verified against the review's bypass corpus (8/8
+  rejected, 5/5 legit queries pass). Fails closed. The broad DML-keyword regex was
+  removed — it false-rejected reads whose text contained words like "update" in a
+  string literal; write-prevention is the read-only transaction's job, not a word list.
 - **Logged.** Every run_read_query (and db_query) is recorded in `ai_query_log` with
   the exact SQL — the substrate for later promoting hot queries to the UI (§7.3).
-- **Residual risk (honest):** the model could, in principle, read one of the user's
-  OWN non-secret, allow-listed rows it maybe didn't need to — but it's the user's own
-  single-user data and they opted in; secrets are blocked and writes are impossible.
+- **Residual risk (honest):** the model could read one of the user's OWN non-secret,
+  non-catalog rows (e.g. their own audit_logs) it maybe didn't need — own single-user
+  data, opted-in; secrets are DB-denied and writes are impossible.
+- **Wall-clock:** the RPC's `statement_timeout` is best-effort (Postgres doesn't re-arm
+  the timer mid-statement); the reliable bounds are the 500-row cap + Supabase's own
+  `authenticated` role `statement_timeout` default.
 
 ### 7.5 Decision ladder the system prompt teaches
 

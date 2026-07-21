@@ -2072,36 +2072,60 @@ async function logQuery(
   } catch { /* pre-migration / never break the response */ }
 }
 
-// Live read-only SQL escape hatch (explicit user opt-in only). Layered safety:
-//  (1) runs via a USER-JWT client → the ai_run_read_query RPC is SECURITY
-//      INVOKER, so RLS applies (service-role would bypass it — see analysis doc);
-//  (2) the RPC itself is read-only + row-capped + statement-timed-out;
-//  (3) here: single-statement, SELECT/WITH-only, DML/DDL keyword block,
-//      sensitive-table/schema block, and every FROM/JOIN target must be an
-//      allow-listed catalog table (or a CTE defined in the same query).
-// Fails CLOSED — an ambiguous query is rejected, not run.
+// Live read-only SQL escape hatch (explicit user opt-in only).
+//
+// THE SECURITY BOUNDARY IS THE DATABASE, NOT THIS TEXT GUARD (an adversarial
+// review proved regex SQL-parsing is bypassable via comments/quoting). What
+// actually contains this:
+//   • the ai_run_read_query RPC is SECURITY INVOKER, called via a USER-JWT
+//     client → RLS applies (rows scoped to the user; a service-role call would
+//     bypass RLS, which is why we build a dedicated user client here);
+//   • the RPC runs the query read-only (transaction_read_only) → no writes;
+//   • the OAuth-token tables are already revoked from the `authenticated` role
+//     (migration 044), so even if the text guard were bypassed the secrets are
+//     permission-denied at the DB; result rows are hard-capped (LIMIT 500).
+// The text guard below is a best-effort UX filter (clear errors, cheap block of
+// obvious system-catalog probes) layered on top — it is NOT relied on for
+// containment. It fails CLOSED: anything it can't vet is rejected.
 async function runReadQuery(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
   try {
     if (!authHeader) return { success: false, error: 'No auth context for live query.' }
-    const raw = typeof args.sql === 'string' ? args.sql.trim() : ''
-    if (!raw) return { success: false, error: 'sql is required.' }
+    let sql = typeof args.sql === 'string' ? args.sql.trim() : ''
+    if (!sql) return { success: false, error: 'sql is required.' }
 
-    const sql = raw.replace(/;\s*$/, '')
-    if (sql.includes(';')) return { success: false, error: 'Only a single statement is allowed (no ";").' }
+    // Strip SQL comments FIRST — otherwise every check below is bypassable by
+    // hiding a table/keyword behind /* */ or -- (a real bypass the review found:
+    // `FROM/**/pg_proc`). Then drop a single trailing ';'.
+    sql = sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ').replace(/;\s*$/, '').trim()
+
+    if (sql.includes(';'))   return { success: false, error: 'Only a single statement is allowed (no ";").' }
+    if (/["`]/.test(sql))    return { success: false, error: 'Quoted identifiers are not allowed — reference tables by their plain lowercase names.' }
     if (!/^(select|with)\b/i.test(sql)) return { success: false, error: 'Only SELECT / WITH … SELECT queries are allowed.' }
-    if (/\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|comment|copy|call|do|merge|vacuum|analyze|reindex|lock|set|reset|listen|notify|prepare|execute|into)\b/i.test(sql)) {
-      return { success: false, error: 'Only read-only SELECT queries are allowed (no data-changing statements).' }
+    // Cheap explicit block of system catalogs / other schemas (the pg_ form is
+    // anchored only on a leading word-boundary — a trailing \b never matched
+    // pg_class/pg_proc, the review's dead-regex finding).
+    if (/\bpg_/i.test(sql) || /\binformation_schema\b/i.test(sql) || /\b(auth|vault|storage|extensions)\s*\./i.test(sql)) {
+      return { success: false, error: 'That query references a restricted schema/table.' }
     }
-    if (/\b(user_calendar_tokens|token|secret|credential|password|vault|pg_|information_schema)\b/i.test(sql) || /auth\./i.test(sql)) {
-      return { success: false, error: 'That query references a restricted table/schema.' }
-    }
-    // FROM/JOIN targets ⊆ catalog tables ∪ CTE names. A subquery target [a FROM
-    // opening a parenthesis] is not matched by the identifier regex, so skipped.
+
+    // Best-effort: every table reference must be an allow-listed catalog table
+    // (or a CTE defined IN this query). CTE names are recognised ONLY as
+    // `name AS (` so a SELECT-list `expr AS alias` is not mistaken for one;
+    // comma-joined FROM lists (`FROM a, b`) are covered.
     const catalog  = new Set(Object.keys(DB_CATALOG))
     const cteNames = new Set<string>()
-    for (const m of sql.matchAll(/\b(?:with|,)\s+([a-z_][a-z0-9_]*)\s+as\b/gi)) cteNames.add(m[1].toLowerCase())
-    for (const m of sql.matchAll(/\b(?:from|join)\s+([a-z_][a-z0-9_]*)/gi)) {
-      const t = m[1].toLowerCase()
+    for (const m of sql.matchAll(/\b([a-z_][a-z0-9_]*)\s+as\s*\(/gi)) cteNames.add(m[1].toLowerCase())
+    const refs = new Set<string>()
+    // capture the whole FROM/JOIN table list up to the next clause keyword,
+    // then split on commas and take each entry's first token (drops aliases +
+    // schema qualifiers).
+    for (const m of sql.matchAll(/\b(?:from|join)\s+([a-z0-9_,.\s]+?)(?=\b(?:where|group|order|limit|having|join|on|union|except|intersect|offset|fetch)\b|$)/gi)) {
+      for (const part of m[1].split(',')) {
+        const id = part.trim().split(/\s+/)[0].split('.')[0].toLowerCase()
+        if (id && !/^\d/.test(id)) refs.add(id)
+      }
+    }
+    for (const t of refs) {
       if (!catalog.has(t) && !cteNames.has(t)) {
         return { success: false, error: `Table "${t}" is not accessible — only allow-listed tables can be queried (call describe_database for the list).` }
       }
