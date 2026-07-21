@@ -309,3 +309,24 @@ get closed out as the project actually proceeds.
   mid-investigation. A phase report that wants to diff against the real
   59,973-row dataset must have that asked for in that turn, not assumed because
   the project is "in progress."
+- **2026-07-21 — HAE Time Grouping MUST be "Hours" (root-cause of intra-stream
+  twins found and fixed).** User-reported: 2026-07-20 showed 15,362 steps vs
+  Apple's own 5,731. Diagnosis (live DB): starting a Fitness-app workout makes
+  HealthKit hold overlapping step samples; with the automation's Time Grouping
+  on "Default" HAE exported raw overlapping samples (88/94 minutes as
+  float-noise twins in ONE stream). Fixes: (1) display backstop — same-stream
+  same-minute keeps max, sum metrics only (PR #352, permanent); (2) source
+  config — Health Metrics automation set to Summarize ON + **Time Grouping:
+  Hours** (CLAUDE.md's old "HAE ignores Summarize" note corrected: Hours DOES
+  aggregate); (3) user-approved wipe of ALL July health_metrics (67,626 rows
+  across three passes) + hourly re-export 01–21 Jul → DB now uniform hourly,
+  single-stream, zero mixed grain. Cross-validation: Apple's own dedup produced
+  5,721 for Jul-10 — identical to resolveSourcePoints' output from the dirty
+  data. 20 Jul = 5,732 (user expected 5,731).
+- **2026-07-21 — Phase 1 click-through risk RESOLVED (the plan's #1 unknown).**
+  Restricted googlehealth.* scopes on a Production, unverified app DO surface
+  the "Google hasn't verified this app → Gelişmiş → continue" path. Remaining
+  Phase 1 gate is only the ≥7-day refresh-token survival test (due 28 Jul+).
+  Bonus: full live API sweep completed same day (kebab-case ids, FITBIT
+  platform filter requirement, real payload shapes) — Phase 3's poller spec is
+  now observation-backed, zero guessed endpoints.
