@@ -16,8 +16,8 @@
 
 | # | Phase | Status | Device needed? | Gated on |
 |---|---|---|---|---|
-| 0 | Source-aware foundation (schema + aggregation) | 🟢 **PM GO to merge — redesign independently verified correct** (3 minor non-blocking asks, see Log 2026-07-21b) | No | — |
-| 1 | OAuth token-lifetime spike (H6) | 🟡 **In progress — checklist relayed, device arrived, OAuth Playground smoke test approved as informational-only (does not shortcut the 7-day gate)** | No | — (parallel with 0) |
+| 0 | Source-aware foundation (schema + aggregation) | ✅ **DONE 2026-07-21** — PRs #351+#352 merged, migration 062 applied, July re-baselined hourly. Apple's own dedup independently reproduced the resolver's numbers (Jul-10 = 5,721 both ways). | No | — |
+| 1 | OAuth token-lifetime spike (H6) | 🟢 **IN FLIGHT — consent click-through PASSED 2026-07-21** (Restricted + Production + unverified → 'Gelişmiş → devam' appeared). Refresh token captured; 7-day refresh test due **≥2026-07-28**. Live API sweep done → docs/google-health-api-surface.md. | No | — (parallel with 0) |
 | 2 | OAuth production wiring | ⏸ Blocked | No | Phase 1 PASS |
 | 3 | Poller + first live pull | 🟡 **Device now in hand — no longer device-blocked.** Two new entry-gate items added (Log 2026-07-21b): must use `dataPoints.list` (intraday), never `dailyRollUp`, for cumulative metrics; `ai-proxy`'s `get_health_stats` must be source-aware + redeployed BEFORE the poller writes real `fitbit` rows. | No longer blocked — Air arrived | Phase 0 merged, Phase 2 merged, `get_health_stats` source-aware |
 | 4 | UI + AI wiring (source switch, Sleep, mini-cards, coach) | ⏸ Blocked | Yes (real data to show) | Phase 3 producing real rows |
