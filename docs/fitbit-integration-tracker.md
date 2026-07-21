@@ -19,7 +19,7 @@
 | 0 | Source-aware foundation (schema + aggregation) | ✅ **DONE 2026-07-21** — PRs #351+#352 merged, migration 062 applied, July re-baselined hourly. Apple's own dedup independently reproduced the resolver's numbers (Jul-10 = 5,721 both ways). | No | — |
 | 1 | OAuth token-lifetime spike (H6) | 🟢 **IN FLIGHT — consent click-through PASSED 2026-07-21** (Restricted + Production + unverified → 'Gelişmiş → devam' appeared). Refresh token captured; 7-day refresh test due **≥2026-07-28**. Live API sweep done → docs/google-health-api-surface.md. | No | — (parallel with 0) |
 | 2 | OAuth production wiring | ⏸ Blocked | No | Phase 1 PASS |
-| 3 | Poller + first live pull | 🟡 **Device now in hand — no longer device-blocked.** Two new entry-gate items added (Log 2026-07-21b): must use `dataPoints.list` (intraday), never `dailyRollUp`, for cumulative metrics; `ai-proxy`'s `get_health_stats` must be source-aware + redeployed BEFORE the poller writes real `fitbit` rows. | No longer blocked — Air arrived | Phase 0 merged, Phase 2 merged, `get_health_stats` source-aware |
+| 3 | Poller + first live pull | 🟡 **Device now in hand — no longer device-blocked.** THREE entry gates now (Log 2026-07-21c adds the 3rd, PM-ratified as the most critical): (a) must use `dataPoints.list`/intraday, never `dailyRollUp`, for cumulative metrics; (b) `ai-proxy`'s `get_health_stats` must be source-aware + redeployed BEFORE the poller writes real `fitbit` rows; (c) **poller MUST drop every point where `dataSource.platform != "FITBIT"`** — the API mirrors Apple HealthKit back through the same endpoints; ingesting unfiltered would re-store the webhook's own Apple data a second time under `source_family='fitbit'`. | No longer blocked — Air arrived | Phase 0 merged, Phase 2 merged, `get_health_stats` source-aware, platform filter implemented |
 | 4 | UI + AI wiring (source switch, Sleep, mini-cards, coach) | ⏸ Blocked | Yes (real data to show) | Phase 3 producing real rows |
 | 5 | Hardening (reconciliation, stale banner, webhook upgrade) | ⏸ Blocked | No | Phase 3/4 shipped |
 
@@ -102,6 +102,13 @@ that doc's single cross-reference line, added separately).
   **Verdict: PM GO to merge.** None of the three findings above block anything — fix them in the same commit or a fast follow-up, whichever is less friction, then merge. Migration apply + webhook redeploy remain the user's manual steps (unchanged from before).
   **New Phase 3 entry-gate items, added to the tracker's Phase 3 card** (both raised by the coordinator, both approved): poller must call `dataPoints.list` (intraday), never `dailyRollUp`, for every cumulative metric — a pre-aggregated daily number can't feed the hourly bucket-merge this whole redesign depends on; and `ai-proxy`'s `get_health_stats` must be made source-aware and redeployed **before** the poller starts writing real `fitbit` rows, or the AI reproduces on its own separate aggregation path the exact double-count bug just fixed on the frontend.
   **Phase 1 note**: the OAuth Playground smoke test (informational peek at a real Google Health API payload, now that the Air has arrived and is being worn) is approved — useful, low-risk, no app code, still the user's own manual OAuth clicking. One flag: Google's Playground defaults to ITS OWN shared OAuth client, which almost certainly cannot request Restricted `googlehealth.*` scopes for an arbitrary user — the "Use your own OAuth credentials" toggle must be set to the throwaway project's real Client ID/Secret, or the scope simply won't be grantable and it'll look like a mysterious failure. **This smoke test does not shortcut Phase 1's actual gate** — the 7-day refresh-token-durability wait and the Restricted-scope click-through confirmation are unchanged and still required before Phase 2 starts.
+- **2026-07-21c — PHASE 0 CLOSED (PR #351 + #352 merged). PM verified the closure report's key claims directly, not on trust:**
+  - `CLAUDE.md`'s migration-041 section **already corrects itself in place** ("corrected 2026-07-21: with Time Grouping: Hours it genuinely does aggregate... 'Hours' is now the REQUIRED setting") and gained a full new dated bullet ("Intra-stream workout twins, real bug, fixed 2026-07-21") documenting the twins bug + the fix trio + the Apple-dedup cross-validation. No action needed — this is exactly the kind of correction CLAUDE.md is supposed to capture, done well.
+  - `collapseIntraStreamMinuteDuplicates` (`healthAggregate.ts`) read in full: groups by `(stream, minute)`, keeps the point with the larger `qty` per group, identity-fast-paths when nothing was dropped. Correctly called from both `computeDailySeries` and `computeHourlyBuckets`, gated on `getAggregationType(metricName) === 'sum'` — exactly the "sum metrics only, AFTER inter-stream resolution" design described, and NOT applied to `heart_rate`/minmaxavg (correct — a same-minute float-noise twin skews an average by a hair, it doesn't inflate a sum ~2.7×, much lower severity, reasonably left alone).
+  - `docs/google-health-api-surface.md` read in full — genuinely live-verified (fetched `$discovery` doc + a real token sweep, not inferred), directly actionable, high quality.
+  - My 3 minor findings from the prior review: (1) bucket-set asymmetry — fixed, confirmed; (3) UTC-hour comment — added, confirmed; (2) sleep dead-code — declined, accepted (I'd flagged it as optional myself).
+  - **PM follow-up questions (informational report, no ask expected back on cadence — but worth answering at the next natural touchpoint, not urgent):** did the July `health_metrics` wipe (67,626 rows) touch any `source='manual'` sleep-correction rows from earlier in July? Those don't exist in HealthKit and can't be recovered by re-export — worth one explicit check that "14 sleep nights intact" isn't quietly missing a manual night. Separately: what's the root cause of the Google Health API mirroring HealthKit back (`dataSource.platform: HEALTH_KIT`) — the Google Health iOS app's own passive HealthKit read access, or something specific to this test? Matters for how much to trust a simple platform-equality filter long-term; add to `docs/google-health-api-surface.md` if/when known.
+  - **Phase 2 stays untouched pending Phase 1's 28 Jul verdict — agreed, correct per plan.** Next real gate: Phase 1 pass/fail after the refresh-token test, whenever that lands (informational updates before then are welcome but not required).
 
 ---
 
@@ -129,10 +136,10 @@ repo) to call the token-exchange/refresh endpoints and log raw responses.
 7. Record the exact result (pass, or the exact error).
 
 **Definition of done:**
-- [ ] Click-through behavior for Restricted scopes confirmed (allowed / blocked — record which)
-- [ ] Refresh token tested past 7 days — pass/fail with exact error if failed
-- [ ] Workspace/Internal-eligibility for `power.no` determined
-- [ ] Recommendation on record: build Phase 2 against External-Production-unverified, Internal, or "must design for weekly reconnect"
+- [x] Click-through behavior for Restricted scopes confirmed — **PASSED 2026-07-21**: External+Production+unverified genuinely shows "Gelişmiş → devam" (Advanced → continue) for `googlehealth.*` Restricted scopes. The plan's single biggest unknown (§6, H6, H7) is resolved in the design's favor.
+- [ ] Refresh token tested past 7 days — token captured 2026-07-21, test due ≥2026-07-28, not yet due
+- [ ] Workspace/Internal-eligibility for `power.no` determined — not yet addressed (moot for now since the unverified-Production path already passed; only matters as a fallback if the 7-day test fails)
+- [ ] Recommendation on record — pending the 28 Jul result; leaning External-Production-unverified given the click-through already passed
 
 **Escalate immediately (don't wait for the 7-day mark) if:** the click-through
 itself is blocked/forces verification — that changes Phase 2's design before any
@@ -141,6 +148,16 @@ more time is sunk waiting on the clock.
 **Log:**
 - 2026-07-20 — PM: GO issued, start whenever convenient — the 7-day clock is the
   gating factor, not engineering effort, so starting early costs nothing.
+- 2026-07-21 — Engineer: consent click-through PASSED. Refresh token captured, 7-day test now running (due ≥28 Jul). Bonus live API sweep (user-provided short-lived token, not the refresh-token path) against the real `$discovery` doc → `docs/google-health-api-surface.md`: all 32 data types confirmed kebab-case path ids, real payload shapes captured (minute-grain steps/energy as numeric STRINGS, HR as single samples not Min/Avg/Max, STAGES sleep with `metadata.externalId`), and a critical finding — `dataPoint.dataSource.platform` can be `FITBIT` or `HEALTH_KIT` (the Google Health iOS app mirrors Apple HealthKit into this same API) — logged as a new mandatory Phase 3 gate (see Phase 3 section + Decision Log).
+- 2026-07-21 — PM: independently read `docs/google-health-api-surface.md` in full — high-quality, genuinely live-verified (not inferred), directly actionable. Confirmed via git log this came from a real discovery-doc fetch + a real token sweep, not guesswork. **Two follow-ups, not blocking Phase 1 itself:**
+  1. The `platform` filter should be an explicit **allowlist** (`platform === 'FITBIT'` passes; anything else — `HEALTH_KIT`, unknown/missing, or some future third value — gets dropped and logged) rather than a blocklist (`platform !== 'HEALTH_KIT'`). A blocklist would silently admit an unanticipated third platform string mislabeled as Fitbit; default-deny is the safer stance and matches this project's existing convention (ai-proxy's default-deny table allow-list).
+  2. Please get (or add to the surface doc if already known) the ROOT CAUSE of the HealthKit mirroring — is it because the Google Health iOS app itself holds HealthKit read permission and passively republishes it to the cloud API for every user, or something specific to this account/setup? This matters for how much to trust a simple equality filter going forward (e.g. whether it could ever apply to more data types than observed in one sweep).
+  3. Separately, for the Phase 0 closure (not Phase 1): did the July `health_metrics` wipe touch any `source='manual'` sleep-correction rows from earlier in July? Those are NOT recoverable from a HealthKit re-export (manual entries never existed in HealthKit) — worth one explicit check that "14 sleep nights intact" isn't silently missing a manual night that was wiped and never re-entered.
+  - 2026-07-21 — Engineer answers to PM's three follow-ups:
+  1. **Platform ALLOWLIST — agreed and locked**: Phase 3 spec will use `platform === 'FITBIT'` (pass) / everything else dropped **and counted in the poller's response** (`skipped_non_fitbit`), mirroring the webhook's `skipped_*` counters — default-deny, per the ai-proxy convention.
+  2. **HealthKit-mirroring root cause**: the Google Health iOS app itself — during Air setup it requests Apple HealthKit READ permission (user grants it so the app can show a unified picture) and republishes that data to the cloud API. So the mirror is a per-account consequence of a permission the user granted, not an API-wide constant: revoking HealthKit access in the Google Health app would stop it, and NEW data types could join the mirror whenever Apple-side sources add them. The equality allowlist is therefore the only stance that stays correct as the mirror's contents drift. (Recorded in docs/google-health-api-surface.md.)
+  3. **Manual sleep rows — verified ZERO lost, checked BEFORE the wipe, not after**: `health_metrics?source=eq.manual` returned an empty set prior to deletion (the audit transcript's "manual-source rows (must be preserved) → []"). No manual entry ever existed in July; nothing unrecoverable was deleted.
+  **Ratifying the platform-filter finding as the single most critical of the three Phase 3 entry gates** — a `dailyRollUp`-vs-`list` mistake produces wrong numbers; a missed platform filter produces wrong numbers **that look like real Fitbit data**, silently, permanently, and in direct violation of the CARDINAL RULE's "both sources stored in full, correctly tagged" requirement. Phase 3 spec must treat this as non-negotiable, not a nice-to-have.
 
 ---
 
@@ -183,21 +200,50 @@ Fitbit.
 `health_metrics`/`health_sleep_segments`, resolving every §11 open item against
 real payloads.
 
-**Gated on:** Phase 0 merged (schema exists), Phase 2 merged (token minting
-works), **device in hand and worn for several days** (sleep/HRV/SpO2 need real
-nights, not just a first sync).
+**Gated on:** Phase 0 merged (✅ done), Phase 2 merged (token minting works),
+**device in hand and worn for several days** (✅ Air arrived + being worn as of
+2026-07-21 — device requirement satisfied, sleep/HRV/SpO2 evidence still
+accumulates with wear time).
+
+**THREE mandatory entry gates (superseding the original §13-derived read-method
+table below, which was speculative — this is now live-verified, see
+`docs/google-health-api-surface.md`):**
+1. Fetch every cumulative metric via `dataTypes/{kebab-id}/dataPoints` (the
+   intraday **list** endpoint), never `dailyRollUp` — a pre-aggregated daily
+   number cannot feed the hourly bucket-merge Phase 0's resolver depends on.
+2. `ai-proxy`'s `get_health_stats` must be made source-aware and redeployed
+   BEFORE this poller starts writing real `fitbit` rows, or the AI reproduces
+   the double-count bug Phase 0 just fixed, on its own separate aggregation path.
+3. **(Most critical, PM-ratified)** Drop every point where
+   `dataPoint.dataSource.platform != "FITBIT"` — the Google Health iOS app
+   mirrors Apple HealthKit into this same API, so an unfiltered pull re-stores
+   the webhook's own Apple data a second time, mislabeled `source_family='fitbit'`.
+   Implement as an **allowlist** (`platform === 'FITBIT'` passes, everything
+   else — including unknown/missing — is dropped and logged), not a blocklist.
 
 **Engineer (code):**
-- `supabase/functions/google-health-sync/index.ts` — per-metric read-method table from §13 Medium (`list` for daily-* + Session types incl. HRV/RHR/respiratory/SpO2/skin-temp/VO2max/sleep; `rollUp`/`dailyRollUp` only for interval activity: steps/distance/active-energy/AZM/heart-rate/total-calories), UTC→Europe/Oslo conversion before slicing `date`, daily-rollup `recorded_at` derived from the value's own civil day (not poll time — else every 3h poll duplicates), sequential requests (≤2.5 QPS unverified-safe), chunked upsert (mirrors the Apple webhook's `CHUNK_SIZE` pattern), tags every row `source_family:'fitbit'`
+- `supabase/functions/google-health-sync/index.ts` — built against the VERIFIED
+  surface in `docs/google-health-api-surface.md` (kebab-case path ids per data
+  type; filter grammar is snake_case and differs by type-class — interval /
+  sample / daily / session / sleep-end-time; numeric strings → `Number()`;
+  `weightGrams`→kg; civil time → our `date` column, same rule as the Apple
+  webhook), the 3 gates above, sequential requests (≤2.5 QPS unverified-safe),
+  chunked upsert (mirrors the Apple webhook's `CHUNK_SIZE` pattern)
+- Sleep → `health_sleep_segments` rows from `stages[]` (+ `metadata.externalId`
+  as `source_record_id`) — also emit a `sleep_analysis`-shaped `health_metrics`
+  row (Fitbit family) so existing charts work before Phase 4's UI lands
+- HR: decide store-raw-samples vs. pre-bucket-to-Min/Avg/Max-at-ingest (surface
+  doc leans raw-samples; watch rate limits given ~1-sample/5s density)
 - Manual "Fetch now" trigger for testing ahead of a cron schedule
-- Resolve each §11 flag against the real response: SpO2 shape (confirms/corrects Phase 0's locked `minmaxavg` guess), AZM units, skin-temp derivation fields, VO2max presence, AFib/`irregular_rhythm_notification` presence, any Premium-gating surprise
+- Resolve remaining §11 flags against real payloads: SpO2 shape (`oxygenSaturation` samples vs `dailyOxygenSaturation` summary — which the Air actually populates, confirms/corrects Phase 0's locked `minmaxavg` guess), skin-temp fields, VO2max presence, AFib/IRN presence, any Premium-gating surprise
 
 **User (manual):**
-- Pair + wear the Air (overnight, several nights minimum) before judging sleep/HRV/SpO2 quality
+- Continue wearing the Air (overnight especially) — sleep/HRV/SpO2 evidence still accumulating
 - Set the ~3h cron schedule once manual-trigger results look right
 - Apply any follow-up migration this phase's real-payload findings require
 
 **Definition of done:**
+- [ ] All three entry gates implemented and verified (list-not-rollup; get_health_stats source-aware+deployed; platform allowlist)
 - [ ] One real sample of every net-new metric captured and sanity-checked
 - [ ] Sleep segments reconstruct a real night matching the Fitbit app's own view
 - [ ] Rate-limit usage observed vs. the ~1,120 req/day estimate

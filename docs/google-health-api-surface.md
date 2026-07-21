@@ -156,3 +156,14 @@ the list filter grammar has no dataSource field.)
    need the rollUp endpoint for HR instead).
 6. `oxygen-saturation`/`daily-oxygen-saturation` both 200 but EMPTY pre-first-night —
    re-pull after a full night to settle the minmaxavg-vs-latest question (§11).
+
+## Mirroring root cause + filter stance (2026-07-21, PM-ratified)
+The HEALTH_KIT mirror exists because the **Google Health iOS app** holds Apple
+HealthKit READ permission (granted by the user during Air setup for a unified
+in-app picture) and republishes it to this cloud API. Consequences: (a) the
+mirror's CONTENTS can drift as Apple-side sources change — never assume the
+observed type list is complete; (b) the poller uses a strict ALLOWLIST —
+`dataSource.platform === 'FITBIT'` passes, anything else (HEALTH_KIT, missing,
+unknown future values) is dropped AND counted in a `skipped_non_fitbit`
+response counter (default-deny, same convention as ai-proxy's table allow-list
+and the webhook's skipped_* counters).
