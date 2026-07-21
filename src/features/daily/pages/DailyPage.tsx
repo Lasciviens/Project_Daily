@@ -165,7 +165,7 @@ function useGreeting() {
 function DaySection({ date, onDayClick, onOpenTasks }: { date: Date; onDayClick: (d: Date) => void; onOpenTasks?: () => void }) {
   return (
     <div className="flex flex-col gap-6">
-      <div className="xl:grid xl:grid-cols-[minmax(0,60rem)_minmax(0,1fr)] xl:gap-6 xl:items-start">
+      <div className="xl:grid xl:grid-cols-[minmax(0,60rem)_minmax(0,1fr)] xl:gap-6 xl:items-stretch">
         <section className="w-full bg-cream-50 border border-ink-200 rounded-2xl shadow-card overflow-hidden">
           <div className="h-0.5 bg-accent-500" />
           <WeekStrip viewDate={date} onDayClick={onDayClick} />

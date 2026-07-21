@@ -87,8 +87,10 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
 
       {/* Open tasks — the day's actionable list, visible without switching
           tabs (was the "Jump to" nav grid, removed on user request: tasks are
-          worth this space, duplicate navigation wasn't). */}
-      <div>
+          worth this space, duplicate navigation wasn't). flex-1 makes this the
+          elastic block, so the rail always matches the hero's height instead
+          of ending short (equal-height aesthetics). */}
+      <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400">Open tasks</p>
           {onOpenTasks && (
@@ -100,7 +102,7 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
         {openTaskList.length === 0 ? (
           <p className="text-xs text-ink-400 px-1">Nothing open for this day.</p>
         ) : (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 overflow-y-auto">
             {openTaskList.slice(0, 5).map(t => <ToDoItem key={t.id} task={t} />)}
             {openTaskList.length > 5 && (
               <button onClick={onOpenTasks} className="text-[11px] text-ink-400 hover:text-ink-700 text-left px-1 min-h-[32px]">
