@@ -124,6 +124,46 @@ export function resolveSourcePoints(
   return out
 }
 
+// ── Intra-stream duplicate collapse (display-level, sum metrics only) ───────
+// A SINGLE stream can carry overlapping samples of the same physical activity:
+// starting a Fitness-app workout makes HealthKit hold both the regular step
+// samples AND workout-associated ones, and Health Auto Export exports every
+// sample with only its START time (no interval end) — so Apple's own
+// interval-overlap dedup can't be replicated here. Live proof (2026-07-20,
+// 16–17h, watch stream): 88 of 94 minutes had TWO points with essentially the
+// same qty (106.86025364796929 vs …26 — float-noise twins), inflating the day
+// by thousands of steps even though only one stream was involved (so the
+// cross-stream resolver above correctly left it alone).
+//
+// Backstop rule: within one stream, one MINUTE keeps only its LARGEST point —
+// overlapping same-minute samples are the same seconds counted twice, and the
+// larger one is the fuller window. Applied only to 'sum'-type metrics (for
+// average/minmaxavg/latest, duplicate values don't distort the result). This
+// is display-level only: the DB keeps every raw point (CARDINAL RULE), and the
+// ROOT fix is Health Auto Export's "Aggregate Data" export setting — this
+// backstop protects whatever raw shape actually arrives. Cross-minute window
+// overlap (a ~2-min sample every ~40s) is NOT fully recoverable without
+// interval ends; expect residual inflation until the source exports
+// pre-aggregated data.
+function collapseIntraStreamMinuteDuplicates(points: HealthMetric[]): HealthMetric[] {
+  const byKey = new Map<string, HealthMetric>()
+  const passthrough: HealthMetric[] = []
+  let dropped = 0
+  for (const p of points) {
+    const q = p.value?.qty
+    if (typeof q !== 'number') { passthrough.push(p); continue }
+    const k = `${streamKeyOf(p)}|${p.recorded_at.slice(0, 16)}`
+    const kept = byKey.get(k)
+    if (!kept) byKey.set(k, p)
+    else {
+      dropped++
+      if (q > (kept.value?.qty as number)) byKey.set(k, p)
+    }
+  }
+  if (dropped === 0) return points
+  return [...byKey.values(), ...passthrough]
+}
+
 // Health Auto Export can export active/basal energy in kJ instead of kcal
 // depending on the device's locale/unit settings, even though every card in
 // the Health tab labels the value "kcal" — convert so the label is honest.
@@ -177,7 +217,9 @@ export interface DailyValue { date: string; value: number }
 
 // One number per day for sum/average/latest-type metrics.
 export function computeDailySeries(metricName: string, points: HealthMetric[]): DailyValue[] {
-  const byDate = groupByDate(resolveSourcePoints(points, metricName))
+  let resolved = resolveSourcePoints(points, metricName)
+  if (getAggregationType(metricName) === 'sum') resolved = collapseIntraStreamMinuteDuplicates(resolved)
+  const byDate = groupByDate(resolved)
   const result: DailyValue[] = []
   for (const [date, pts] of byDate) {
     const value = aggregateGroup(pts, metricName)
@@ -192,8 +234,10 @@ export interface HourlyValue { hour: number; label: string; value: number }
 // Steps/Energy sections' hourly bar charts. Uses the browser's local timezone
 // to bucket (recorded_at is an absolute instant either way).
 export function computeHourlyBuckets(metricName: string, points: HealthMetric[]): HourlyValue[] {
+  let resolved = resolveSourcePoints(points, metricName)
+  if (getAggregationType(metricName) === 'sum') resolved = collapseIntraStreamMinuteDuplicates(resolved)
   const byHour = new Map<number, HealthMetric[]>()
-  for (const p of resolveSourcePoints(points, metricName)) {
+  for (const p of resolved) {
     const h = new Date(p.recorded_at).getHours()
     const arr = byHour.get(h)
     if (arr) arr.push(p)
