@@ -284,7 +284,7 @@ external world?                → special tools (transit/calendar/media/…)
 | Surface | Start model | thinking_level | Tool slice | Rationale |
 |---|---|---|---|---|
 | General chat | gemini-3.5-flash | MINIMAL (as today) | full | Quality-critical, unpredictable questions |
-| Coach chat | 3.5-flash | MINIMAL loop / consider MEDIUM final | coach (db_query, db_aggregate, semantic_search, 2× hevy) | Reasoning quality matters |
+| Coach chat | 3.5-flash | MINIMAL loop / consider MEDIUM final | **full** (NOT sliced) | Open training+nutrition+schedule conversation that creates tasks / plans time_blocks / logs food — slicing it would weaken the assistant. Only the bounded shop surface is sliced. |
 | Shop chat | **2.5-flash / 3.1-flash-lite** | MINIMAL | shop (5 tools) | Structurally simple; 5–15× cheaper |
 | Structured extraction | 3.5-flash | MINIMAL (as today) | none | responseSchema does the discipline |
 | Briefing / PT assessment | 3.5-flash | MEDIUM (quality ↑, 1×/day so cost ≈ 0) | none | Capability-up lever, nearly free |
@@ -468,8 +468,9 @@ first cannot break anything.
 - **T2 — context gating** (`aiApi.ts`): `TRANSIT_RE` — conservative; only clearly
   transit-routing questions get the light date/time header instead of the full dump.
   Everything else keeps full context (the AI can always pull more via db_query).
-- **T3 — per-surface tool slices** (`ai-proxy`): `toolsFor(surface)` → shop gets 5
-  tools, coach a focused set, general everything. `surface` sent from the client.
+- **T3 — per-surface tool slices** (`ai-proxy`): `toolsFor(surface)` → ONLY the
+  bounded shop surface is sliced (5 tools); coach + general keep the full set so
+  the assistant is never weakened. `surface` sent from the client.
 - **T4 — model routing** (`ai-proxy`): `SURFACE_MODEL.shop = gemini-2.5-flash`
   (~5× cheaper start; still falls through the whole chain on 503).
 - **T5 — usage logging** (`ai-proxy`): `UsageAcc`/`addUsage` accumulate token counts

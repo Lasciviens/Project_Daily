@@ -678,18 +678,20 @@ Deno.serve(async (req) => {
 
 // ─── Per-surface tool slices ──────────────────────────────────────────────
 // Sending only the tools a surface can use keeps the (now-cacheable) prefix
-// smaller and cheaper. 'general' (and any unknown surface) = every tool.
-// db_query is in every slice so any surface can still read the user's data.
-const SHOP_TOOL_NAMES  = ['get_shop_categories', 'create_shop_category', 'create_shop_item', 'ask_clarifying_question', 'db_query']
-const COACH_TOOL_NAMES = ['describe_database', 'db_query', 'run_read_query', 'get_health_stats', 'update_hevy_routine', 'create_hevy_routine', 'save_memory']
+// smaller and cheaper. We slice ONLY the shop surface — it's a genuinely
+// bounded persona (a shopping companion) that never needs tasks/media/training
+// tools. The coach and general surfaces keep the FULL tool set on purpose: the
+// coach is an open training+nutrition+schedule conversation that legitimately
+// creates tasks / plans time_blocks / logs food (db_insert/update/delete), so
+// slicing it would WEAKEN the assistant — the opposite of the goal.
+const SHOP_TOOL_NAMES = ['get_shop_categories', 'create_shop_category', 'create_shop_item', 'ask_clarifying_question', 'db_query']
 
 function sliceTools(names: string[]): typeof TOOLS {
   const flat = TOOLS[0].functionDeclarations as AnyRecord[]
   return [{ functionDeclarations: flat.filter(d => names.includes(d.name)) }]
 }
 function toolsFor(surface?: string): typeof TOOLS {
-  if (surface === 'shop')  return sliceTools(SHOP_TOOL_NAMES)
-  if (surface === 'coach') return sliceTools(COACH_TOOL_NAMES)
+  if (surface === 'shop') return sliceTools(SHOP_TOOL_NAMES)
   return TOOLS
 }
 
