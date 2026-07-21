@@ -146,6 +146,18 @@ Deno.serve(async (req) => {
     .from('user_calendar_tokens').select('refresh_token').eq('user_id', userId).single()
   if (!tokenRow?.refresh_token) return fail(401, 'not_connected — use Connect Google in the app', true)
 
+  // DOWN-SCOPED refresh (live-verified requirement, 2026-07-21): the Google
+  // Health API rejects any access token that also carries non-health scopes —
+  // 403 DISALLOWED_OAUTH_SCOPES naming "cl_events,tasks". The ONE stored
+  // refresh token keeps the full union (single "Connect Google" consent);
+  // here we mint a health-only access token by passing the narrower scope set
+  // (standard OAuth2 down-scoping). calendar-token keeps minting full-scope
+  // tokens for Calendar/Tasks, which tolerate extra scopes.
+  const HEALTH_SCOPES = [
+    'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
+    'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
+    'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
+  ].join(' ')
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -154,6 +166,7 @@ Deno.serve(async (req) => {
       client_id:     Deno.env.get('GOOGLE_CLIENT_ID')!,
       client_secret: Deno.env.get('GOOGLE_CLIENT_SECRET')!,
       grant_type:    'refresh_token',
+      scope:         HEALTH_SCOPES,
     }),
   })
   if (!tokenRes.ok) {
