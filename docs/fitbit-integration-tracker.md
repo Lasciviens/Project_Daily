@@ -19,7 +19,7 @@
 | 0 | Source-aware foundation (schema + aggregation) | ✅ **DONE 2026-07-21** — PRs #351+#352 merged, migration 062 applied, July re-baselined hourly. Apple's own dedup independently reproduced the resolver's numbers (Jul-10 = 5,721 both ways). | No | — |
 | 1 | OAuth token-lifetime spike (H6) | 🟢 **IN FLIGHT — consent click-through PASSED 2026-07-21** (Restricted + Production + unverified → 'Gelişmiş → devam' appeared). Refresh token captured; 7-day refresh test due **≥2026-07-28**. Live API sweep done → docs/google-health-api-surface.md. | No | — (parallel with 0) |
 | 2 | OAuth production wiring | ✅ **DONE 2026-07-21 (user-directed redesign: unified "Connect Google")** — no new client/table/functions needed: the existing calendar-oauth/token pair + `user_calendar_tokens` now carry Calendar+Tasks+Health on ONE token; scope union shipped in `SettingsMenu.tsx`. Gate override: user waived the 7-day wait (vacation deadline) after research showed the 7-day expiry is Testing-status-only and Google documents an explicit personal-use exception for unverified Production restricted-scope apps; 28 Jul refresh test downgraded to non-blocking formality. | No | — |
-| 3 | Poller + first live pull | 🟠 **CODE SHIPPED 2026-07-21 (google-health-sync v1)** — all three entry gates implemented (intraday list; platform ALLOWLIST + skipped_non_fitbit counter; hourly ingest grain). ai-proxy get_health_stats source-awareness still pending (safe: sums remain single-family-correct until fitbit rows actually land, and first pulls are user-triggered). Awaiting user manual steps (consent-screen scopes, Vault secret, deploys, re-consent, cron). Previously: THREE entry gates now (Log 2026-07-21c adds the 3rd, PM-ratified as the most critical): (a) must use `dataPoints.list`/intraday, never `dailyRollUp`, for cumulative metrics; (b) `ai-proxy`'s `get_health_stats` must be source-aware + redeployed BEFORE the poller writes real `fitbit` rows; (c) **poller MUST drop every point where `dataSource.platform != "FITBIT"`** — the API mirrors Apple HealthKit back through the same endpoints; ingesting unfiltered would re-store the webhook's own Apple data a second time under `source_family='fitbit'`. | No longer blocked — Air arrived | Phase 0 merged, Phase 2 merged, `get_health_stats` source-aware, platform filter implemented |
+| 3 | Poller + first live pull | 🟠 **CODE SHIPPED 2026-07-21 (google-health-sync v1), PM code-verified correct** — all three entry gates implemented and confirmed by direct code review: intraday `list` (never rollup); platform ALLOWLIST (`===  'FITBIT'` exactly, everything else dropped + counted); hourly ingest grain (HR→hourly Min/Avg/Max, sleep→segments+aggregate row, correct wake-day civil-date attribution). **PM DISAGREES with the get_health_stats sequencing** — see Log 2026-07-21d: the risk window is NOT "until the cron is enabled," it's "until any real fitbit row exists," and the Fetch-now button is ALREADY live in this same PR — ship the AI fix immediately, don't sequence it behind anything else, and check now whether Fetch-now has already been clicked. | No longer blocked — Air arrived | Phase 0 merged ✅, Phase 2 merged ✅, `get_health_stats` source-aware (URGENT, not yet done), platform filter ✅ implemented |
 | 4 | UI + AI wiring (source switch, Sleep, mini-cards, coach) | ⏸ Blocked | Yes (real data to show) | Phase 3 producing real rows |
 | 5 | Hardening (reconciliation, stale banner, webhook upgrade) | ⏸ Blocked | No | Phase 3/4 shipped |
 
@@ -168,6 +168,17 @@ working Calendar integration. **Gated on Phase 1 PASS** (design depends on which
 token posture won). Still device-independent — consent doesn't require a paired
 Fitbit.
 
+**⚠️ SUPERSEDED 2026-07-21 — everything below this line is the ORIGINAL plan,
+kept for the record, NOT what shipped.** User-directed override (vacation
+deadline, "Connect Google yeterli"): ONE unified consent on the EXISTING
+Calendar OAuth client/project (Calendar+Tasks+3 health scopes together), ONE
+refresh token in the EXISTING `user_calendar_tokens` — no dedicated client, no
+`user_health_tokens` table, no separate `google-health-oauth`/`google-health-token`
+functions. PM accepted this as a legitimate call within the user's own
+authority over their single-user app's risk posture (see Phase 3's Log,
+2026-07-21d, for the full reasoning and the one follow-up verification ask).
+Actual shipped Phase 2 = a scope-union change in `SettingsMenu.tsx` only.
+
 **Locked decisions carried in from Phase 1 output:** (fill in once Phase 1 reports)
 
 **Engineer (code):**
@@ -243,11 +254,26 @@ table below, which was speculative — this is now live-verified, see
 - Apply any follow-up migration this phase's real-payload findings require
 
 **Definition of done:**
-- [ ] All three entry gates implemented and verified (list-not-rollup; get_health_stats source-aware+deployed; platform allowlist)
+- [x] Intraday-list-not-rollup gate — implemented, PM-verified by reading `listDataPoints()`: hits `dataTypes/{id}/dataPoints`, never `:rollUp`/`:dailyRollUp`
+- [ ] **get_health_stats source-aware + deployed — NOT done, PM says this is now URGENT, not sequenced** (see Log)
+- [x] Platform allowlist gate — implemented, PM-verified: `p?.dataSource?.platform === 'FITBIT'` exact match, else `skipped.nonFitbit++`; nothing else passes
+- [x] Hourly ingest grain gate — implemented, PM-verified: cumulative metrics summed per civil hour; HR samples collapsed to one `{Min,Avg,Max}` row/hour (matches the Apple minmaxavg shape exactly); sleep → `health_sleep_segments` (stage-mapped, natural-key upsert) + one `sleep_analysis`-shaped aggregate row (LIGHT→core, per the design doc's own Core≈Light equivalence); wake-day date derived from the API's own civil/UTC-offset fields, matching the existing `sleepNightKey` convention
 - [ ] One real sample of every net-new metric captured and sanity-checked
 - [ ] Sleep segments reconstruct a real night matching the Fitbit app's own view
 - [ ] Rate-limit usage observed vs. the ~1,120 req/day estimate
 - [ ] Every §11 open item resolved (confirmed or corrected) — update the design doc's §11 checkboxes, not this file, since that's the doc's job
+
+**Log:**
+- **2026-07-21d — PM response to the off-cadence report (PR #353, gate overrides + Phase 2/3 shipped).**
+
+  **1. 7-day-wait waiver — ACCEPTED, on the technical merits, not just because it's reported as user-directed.** The reasoning holds up on its own: the design doc's own H6 always said "Production = durable, Testing = 7-day" per Google's documented model — the click-through (the part that was genuinely uncertain) already passed. The 7-day wait was a confirmatory validation of an already-well-documented claim, not the load-bearing risk. Failure mode if the assumption is somehow wrong for Restricted scopes specifically is graceful (`reconnect_required` + banner, already implemented) not silent/destructive. The 28 Jul check is preserved as a non-blocking formality rather than dropped outright. No objection.
+
+  **2. Phase 2 consolidation (one client, one token table) — ACCEPTED as within the user's own authority over their single-user app's risk posture**, and honestly characterized (blast radius genuinely is "one reconnect click" for a personal app with no other users to protect) rather than glossed over. This supersedes my original dedicated-client/separate-table recommendation, which was a reasonable default absent a time-boxed personal constraint, not a hard requirement. **One verification ask, not a blocker**: when you report the first real Fitbit pull, explicitly confirm it succeeded using the CURRENT row in `user_calendar_tokens` (not a manually-inserted test token) — the unified re-consent needs to have actually forced `prompt=consent` to mint a refresh token covering the NEW scope union (Google can omit a fresh refresh_token on a re-consent for an already-authorized user if `prompt=consent` isn't forced), otherwise the UI could show "connected" while the stored token still only covers the old Calendar-only scopes. Cheap to confirm as part of the pull you're already about to report.
+
+  **3. Code review of `google-health-sync/index.ts` + migration `063` + `FitbitSyncButton.tsx` — read in full, not taken on the summary.** Auth logic is sound: shared-secret path only fires on an exact header match, otherwise falls through to a REAL `supabase.auth.getUser(jwt)` check (same correct pattern as `calendar-oauth`), userId is always resolved from the validated caller (JWT `user.id` or the single hardcoded id for the secret path) rather than any client-supplied parameter, so there's no cross-user data risk even hypothetically. Upsert conflict keys correctly reuse the EXISTING unique indexes from migrations 041/062 (no new index needed, idempotent re-delivery confirmed by inspection). `FitbitSyncButton.tsx` correctly uses `useMutationWithFeedback` (the mandatory-toast convention) with a proper reconnect message and `min-h-[44px]`. Migration 063: clean, idempotent, correctly RLS'd read-only-for-owner (service role writes, no user-write policy needed) — one purely cosmetic nit, no `created_at` column (AGENTS.md's usual convention), harmless for a single-row-per-user upsert table, not worth a follow-up migration just for that.
+     All three gates are exactly as ratified. Genuinely good work under real time pressure.
+
+  **4. DISAGREE with the get_health_stats sequencing — flagging as requested.** The reasoning given ("stays correct until fitbit rows exist, first pulls are user-triggered," sequenced "before the cron is enabled") treats the 3h cron as the "poller goes live" moment. It isn't — **the Fetch-now button is already live in this same merged PR**, callable by the user (or anyone at the keyboard) right now, and a single click writes real `source_family='fitbit'` rows into production `health_metrics` immediately. My original gate's intent was "before any real fitbit row can exist," not "before the scheduled cron specifically." Concretely: **please check right now whether Fetch-now has already been clicked** (query `google_health_sync_state.last_success_at` / whether any `health_metrics` rows with `source_family='fitbit'` already exist) — if yes, the AI is already able to give a double-counted answer to a health question today, not hypothetically later. Either way, **ship `get_health_stats` source-awareness next, immediately, ahead of any further polish or the cron enablement** — not "next code item" in a loose sense, but before anything else lands. Given the user is about to lose access to this setup, this is also the kind of small-but-easy-to-drop item that a "next session" might never happen for once the primary stakeholder is unavailable to re-prioritize it — better to close it out now while there's still a session to do it in.
 
 ---
 
