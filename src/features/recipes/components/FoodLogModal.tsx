@@ -244,7 +244,13 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       <div className="fixed inset-0 flex items-stretch sm:items-center justify-center sm:p-4">
         {/* FULL-SCREEN on phones; a tall fixed-height sheet on desktop. The
             panel is a flex COLUMN of fixed bands — only the body scrolls. */}
-        <DialogPanel transition className="w-full h-full sm:h-[min(780px,94vh)] sm:max-w-2xl sm:rounded-3xl bg-cream-50 sm:border border-ink-200 sm:shadow-card-hover flex flex-col overflow-hidden transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-6 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
+        {/* Safe-area: on true full-screen (phone) the panel must pad its top
+            for the iOS PWA notch/status bar (edge-to-edge mode) — without it
+            the header row sits under the clock. */}
+        <DialogPanel
+          transition
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
+          className="w-full h-full sm:h-[min(780px,94vh)] sm:max-w-2xl sm:rounded-3xl bg-cream-50 sm:border border-ink-200 sm:shadow-card-hover flex flex-col overflow-hidden transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-6 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
 
           {/* ── HEADER — one calm row ── */}
           <div className="shrink-0 h-14 px-2 sm:px-3 flex items-center gap-1 border-b border-ink-100">
