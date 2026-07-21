@@ -26,9 +26,21 @@ export function SettingsMenu() {
 
   const isCalConnected = !!accessToken && (!expiresAt || Date.now() < expiresAt - 60_000)
 
+  // ONE "Connect Google" = one consent covering every Google service the app
+  // pulls (user decision 2026-07-21, supersedes the earlier per-service-client
+  // plan): Calendar + Tasks + the three Google Health (Fitbit Air) read scopes.
+  // The single refresh token stored by calendar-oauth then serves them all —
+  // including the server-side google-health-sync poller. Adding a future scope
+  // (Gmail briefing, contacts birthdays, …) = append here + one re-consent.
   const login = useGoogleLogin({
     flow:    'auth-code',
-    scope:   'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks',
+    scope:   [
+      'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/tasks',
+      'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
+      'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
+      'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
+    ].join(' '),
     ux_mode: 'popup',
     onSuccess: async ({ code }) => {
       setCalLoading(true)
@@ -74,9 +86,10 @@ export function SettingsMenu() {
         transition
         className="z-50 bg-cream-50 border border-ink-200 rounded-xl shadow-card-hover w-60 overflow-hidden [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0 data-[closed]:scale-95"
       >
-        {/* Google Calendar */}
+        {/* Google — one connection for Calendar + Tasks + Fitbit (Google Health) */}
         <div className="px-4 py-3 border-b border-ink-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2.5">Google Calendar</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1">Google</p>
+          <p className="text-[10px] text-ink-400 mb-2.5 leading-snug">Calendar · Tasks · Fitbit (Health)</p>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isCalConnected ? 'bg-green-400' : 'bg-ink-300'}`} />

@@ -15,3 +15,8 @@ verify_jwt = false
 
 [functions.health-export-webhook]
 verify_jwt = false
+
+# Dual-auth: user JWT ("Fetch now") OR x-sync-secret (cron) — the secret path
+# is not a Supabase JWT, so platform verification must be off (checked in-code).
+[functions.google-health-sync]
+verify_jwt = false

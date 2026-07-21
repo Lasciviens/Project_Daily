@@ -1056,7 +1056,7 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
 
   const { data, error } = await supabase
     .from('health_metrics')
-    .select('metric_name, date, unit, value')
+    .select('metric_name, date, unit, value, recorded_at, source, source_family')
     .eq('user_id', userId)
     .in('metric_name', METRICS)
     .gte('date', since)
@@ -1070,8 +1070,53 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
   const kcal = (qty: number, unit: string | null, metric: string) =>
     (metric === 'active_energy' || metric === 'basal_energy_burned') && unit?.toLowerCase().includes('kj') ? qty / 4.184 : qty
 
+  // ── Source resolution (mirrors src/features/training/healthAggregate.ts,
+  // 2026-07-21) — with both Apple and Fitbit rows in the table, summing every
+  // row would double-count. Each window (hour for flow metrics, day for
+  // point-in-time) keeps exactly ONE stream (raw source string), picked by a
+  // per-metric tier ladder; same-tier duplicate streams keep the richest one.
+  type Tier = 'manual' | 'watch' | 'fitbit' | 'phone'
+  const tierOf = (r: AnyRecord): Tier =>
+    r.source === 'manual' ? 'manual'
+    : r.source_family === 'fitbit' ? 'fitbit'
+    : String(r.source ?? '').toLowerCase().includes('watch') ? 'watch' : 'phone'
+  const LADDER_CUMULATIVE: Tier[] = ['manual', 'watch', 'fitbit', 'phone']
+  const LADDER_FITBIT_FIRST: Tier[] = ['manual', 'fitbit', 'watch', 'phone']
+  const ladderFor = (m: string) =>
+    m === 'heart_rate' || m === 'resting_heart_rate' ? LADDER_FITBIT_FIRST : LADDER_CUMULATIVE
+  const windowOf = (r: AnyRecord) =>
+    r.metric_name === 'resting_heart_rate' ? r.date : String(r.recorded_at ?? '').slice(0, 13)
+  const resolved: AnyRecord[] = []
+  {
+    const byWindow = new Map<string, AnyRecord[]>()
+    for (const r of rows) {
+      const k = `${r.metric_name}|${windowOf(r)}`
+      const arr = byWindow.get(k)
+      if (arr) arr.push(r); else byWindow.set(k, [r])
+    }
+    for (const group of byWindow.values()) {
+      const streams = new Map<string, AnyRecord[]>()
+      for (const r of group) {
+        const k = `${r.source_family === 'fitbit' ? 'f' : 'a'}|${r.source}`
+        const arr = streams.get(k)
+        if (arr) arr.push(r); else streams.set(k, [r])
+      }
+      if (streams.size === 1) { resolved.push(...group); continue }
+      const ladder = ladderFor(group[0].metric_name)
+      const present = new Set([...streams.values()].map(g => tierOf(g[0])))
+      const winTier = ladder.find(t => present.has(t))
+      let win: AnyRecord[] | null = null
+      let winKey = ''
+      for (const [k, g] of streams) {
+        if (tierOf(g[0]) !== winTier) continue
+        if (!win || g.length > win.length || (g.length === win.length && k < winKey)) { win = g; winKey = k }
+      }
+      if (win) resolved.push(...win)
+    }
+  }
+
   const byDate = new Map<string, AnyRecord[]>()
-  for (const r of rows) {
+  for (const r of resolved) {
     const arr = byDate.get(r.date)
     if (arr) arr.push(r); else byDate.set(r.date, [r])
   }
