@@ -386,6 +386,7 @@ The complaint that produced this: tiny data stretched wall-to-wall on big monito
 - **Density toggle was tried and REJECTED** (Comfortable/Compact/Dense) — it changed the VERTICAL plane; the complaint was horizontal. Don't reintroduce it.
 
 ### Other rules
+- **English-only project artifacts (MANDATORY, user rule 2026-07-21):** everything that lives in the repo or on GitHub — code, comments, UI strings, error/toast messages, commit messages, PR titles and bodies, docs — is written in English. No Turkish (or any other language) in project artifacts. Chat replies to the user follow the Communication Style section above (Turkish with taught terminology) — this rule is about the PROJECT, not the conversation.
 - Date format: always `en-GB` (DD/MM/YYYY). Never `en-US`.
 - Never hardcode `amber-*` — use `accent-*`.
 - Comments only when WHY is non-obvious.

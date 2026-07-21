@@ -70,8 +70,9 @@ export function strategyFor(metricName: string): ResolveStrategy {
 
 // Ladders. First tier present in a window wins the window.
 //
-// CUMULATIVE (steps/distance/energy/AZM): user's explicit call ("ikisi
-// takılıysa şimdilik Apple; bilekteki cihaz ceptekini yener") — Watch first,
+// CUMULATIVE (steps/distance/energy/AZM): user's explicit call (Apple preferred
+// while both wrist devices are worn; a wrist device beats the pocket phone) —
+// Watch first,
 // then Fitbit, and the pocket iPhone only when neither wrist device wrote.
 // This supersedes red-team H3's fitbit-first lock for these metrics (user's
 // direct decision on their own data, 2026-07-21).

@@ -29,13 +29,13 @@ export function FitbitSyncButton() {
         // the toast said nothing useful).
         const ctx = (error as { context?: Response }).context
         const body = ctx ? await ctx.json().catch(() => null) as SyncResult | null : null
-        if (body?.reconnect_required) throw new Error('Google bağlantısı gerekli — Ayarlar → Google → Disconnect → Connect (5 izin)')
-        if (body?.error?.includes('disallowed OAuth scope')) throw new Error('Token eski izinlerde — Ayarlar → Google → Disconnect → Connect ile 5 izni yeniden onayla')
+        if (body?.reconnect_required) throw new Error('Google connection required — Settings → Google → Disconnect → Connect (grant all 5 permissions)')
+        if (body?.error?.includes('disallowed OAuth scope')) throw new Error('Stored token has stale permissions — Settings → Google → Disconnect → Connect and re-grant all 5 permissions')
         throw new Error(body?.error ?? error.message)
       }
       if (data?.error) {
         throw new Error(data.reconnect_required
-          ? 'Google bağlantısı gerekli — Ayarlar → Google → Connect'
+          ? 'Google connection required — Settings → Google → Connect'
           : data.error)
       }
       return data
@@ -49,7 +49,7 @@ export function FitbitSyncButton() {
       type="button"
       onClick={() => sync.mutate()}
       disabled={sync.isPending}
-      title="Fitbit Air verisini şimdi çek (Google Health API)"
+      title="Fetch Fitbit Air data now (Google Health API)"
       className="min-h-[44px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 bg-cream-50 border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors press-feedback disabled:opacity-50"
     >
       <span className={sync.isPending ? 'animate-spin' : ''}>⟳</span>
