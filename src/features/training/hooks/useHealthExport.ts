@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchHealthWorkouts, fetchHealthMetrics, fetchHealthMetricSeries, upsertManualSleepEntry, type ManualSleepInput } from '../api/healthApi'
+import { fetchHealthWorkouts, fetchHealthMetrics, fetchHealthMetricSeries, fetchSleepSegments, upsertManualSleepEntry, type ManualSleepInput } from '../api/healthApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 
 export function useHealthWorkouts(opts: { limit?: number; offset?: number } = {}) {
@@ -20,10 +20,24 @@ export function useHealthMetrics(opts: { limit?: number } = {}) {
 
 // One metric's full point history within a date range — used by the
 // dedicated chart sections (rings, steps, energy, heart, sleep, body).
-export function useHealthMetricSeries(metricName: string, fromDate: string, toDate: string) {
+export function useHealthMetricSeries(
+  metricName: string,
+  fromDate: string,
+  toDate: string,
+  sourceFamily?: 'apple' | 'fitbit',
+) {
   return useQuery({
-    queryKey: ['health', 'metric-series', metricName, fromDate, toDate],
-    queryFn:  () => fetchHealthMetricSeries(metricName, fromDate, toDate),
+    queryKey: ['health', 'metric-series', metricName, fromDate, toDate, sourceFamily ?? 'all'],
+    queryFn:  () => fetchHealthMetricSeries(metricName, fromDate, toDate, sourceFamily),
+    staleTime: 5 * 60_000,
+  })
+}
+
+// Fitbit sleep-stage segments overlapping [fromIso, toIso].
+export function useSleepSegments(fromIso: string, toIso: string) {
+  return useQuery({
+    queryKey: ['health', 'sleep-segments', fromIso, toIso],
+    queryFn:  () => fetchSleepSegments(fromIso, toIso),
     staleTime: 5 * 60_000,
   })
 }

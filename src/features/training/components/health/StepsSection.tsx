@@ -4,6 +4,7 @@ import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
+import { SourceToggle, type SourceSelection } from './SourceToggle'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 import { useAnchorDate } from './useAnchorDate'
@@ -17,6 +18,8 @@ function fmtDay(dateStr: string): string {
 export function StepsSection() {
   const today = todayStr()
   const [period, setPeriod] = useState<Period>('week')
+  const [source, setSource] = useState<SourceSelection>('auto')
+  const src = source === 'auto' ? undefined : source
   const [anchor, setAnchor] = useAnchorDate()
 
   // Headline follows the SELECTED PERIOD, not always a single day: Day →
@@ -25,8 +28,8 @@ export function StepsSection() {
   // these queries dedupe with what the old anchor-only queries fetched).
   const isDay = period === 'day'
   const { from, to } = rangeForAnchor(period, anchor)
-  const { data: rangePoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', from, to)
-  const { data: rangeDistPoints = [] } = useHealthMetricSeries('walking_running_distance', from, to)
+  const { data: rangePoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', from, to, src)
+  const { data: rangeDistPoints = [] } = useHealthMetricSeries('walking_running_distance', from, to, src)
 
   const stepDays = computeDailySeries('step_count', rangePoints)
   const distDays = computeDailySeries('walking_running_distance', rangeDistPoints)
@@ -119,6 +122,7 @@ export function StepsSection() {
           onPick={setAnchor}
         />
         <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
+        <SourceToggle value={source} onChange={setSource} />
       </div>
 
       <div className="h-32">

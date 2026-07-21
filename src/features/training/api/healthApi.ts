@@ -125,6 +125,30 @@ export async function fetchHealthMetricSeries(
   return all
 }
 
+export interface SleepSegment {
+  id:               string
+  start_at:         string
+  end_at:           string
+  stage:            'light' | 'deep' | 'rem' | 'wake' | 'asleep'
+  source:           string | null
+  source_family:    'apple' | 'fitbit' | 'manual'
+  source_record_id: string | null
+}
+
+// Fitbit's timestamped sleep-stage segments (written by google-health-sync) —
+// the true hypnogram source. Apple/HAE never delivers per-segment stages, so
+// this table is fitbit-family in practice.
+export async function fetchSleepSegments(fromIso: string, toIso: string): Promise<SleepSegment[]> {
+  const { data, error } = await supabase
+    .from('health_sleep_segments')
+    .select('id, start_at, end_at, stage, source, source_family, source_record_id')
+    .gte('end_at', fromIso)
+    .lte('start_at', toIso)
+    .order('start_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as SleepSegment[]
+}
+
 export interface ManualSleepInput {
   date:             string // the night this sleep is attributed to
   totalHours:       number

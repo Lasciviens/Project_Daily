@@ -7,6 +7,8 @@ import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/
 import { DateNav } from './DateNav'
 import { shiftStr, rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 import { PeriodToggle, type Period } from './PeriodToggle'
+import { SourceToggle, type SourceSelection } from './SourceToggle'
+import { FitbitHypnogram } from './FitbitHypnogram'
 import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { SLEEP_EXTRA_METRICS } from './miniMetrics'
@@ -143,6 +145,8 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
 export function SleepSection() {
   const today = todayStr()
   const [period, setPeriod] = useState<Period>('week')
+  const [source, setSource] = useState<SourceSelection>('auto')
+  const src = source === 'auto' ? undefined : source
   const [anchor, setAnchor] = useAnchorDate()
 
   // In Day mode the chart still shows a 7-night CONTEXT window ending at the
@@ -151,7 +155,7 @@ export function SleepSection() {
   const chartRange = period === 'day'
     ? { from: shiftStr(anchor, -6), to: anchor }
     : rangeForAnchor(period, anchor)
-  const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', chartRange.from, chartRange.to)
+  const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', chartRange.from, chartRange.to, src)
   const summary = computeSleepSummary(points)
   const summaryByDate = new Map(summary.map(s => [s.date, s]))
 
@@ -285,6 +289,7 @@ export function SleepSection() {
       {/* Day mode: the ONE "when you slept" clock timeline, right under the
           headline (period modes show the multi-night trend chart lower down). */}
       {isDay && detailSessions.length > 0 && <NightChart sessions={detailSessions} />}
+      {isDay && <FitbitHypnogram nightDate={anchor} />}
 
       {showManualForm && (
         <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 relative">
@@ -366,6 +371,7 @@ export function SleepSection() {
           onPick={a => { setPinned(null); setAnchor(a) }}
         />
         <PeriodToggle value={period} onChange={p => { setPinned(null); setPeriod(p); setAnchor(today) }} />
+        <SourceToggle value={source} onChange={setSource} />
       </div>
 
       {/* Day mode gets the NIGHT CHART below instead; the multi-bar trend is
