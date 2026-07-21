@@ -9,7 +9,6 @@ import { SleepSection } from './health/SleepSection'
 import { BodySection } from './health/BodySection'
 import { SECTIONS, type SectionId } from './health/sectionTypes'
 import type { HealthWorkout } from '../api/healthApi'
-import { FitbitSyncButton } from './health/FitbitSyncButton'
 
 // Apple Health-inspired browse view: activity rings + dedicated sections per
 // metric group (steps/energy/heart/sleep/body). Every HealthKit metric we
@@ -141,7 +140,6 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
               <span>{s.icon}</span>{s.label}
             </button>
           ))}
-          <FitbitSyncButton />
         </div>
         <div
           className="sm:hidden pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas to-transparent"

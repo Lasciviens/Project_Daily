@@ -4,7 +4,6 @@
 // (which only fetches) so these are trivially unit-testable without a DB.
 import { getAggregationType } from './healthMetrics'
 import { strategyFor, ladderFor } from './healthSourceDefaults'
-import { todayStr, shiftDateStr } from '../../shared/utils/dateUtils'
 import type { HealthMetric } from './api/healthApi'
 
 // ── Source resolution (Fitbit Air integration, Phase 0 — redesigned) ────────
@@ -501,65 +500,7 @@ export function estimateSleepStageProportions(summaries: SleepSummary[]): { deep
   return { deep: avgOf('deep'), core: avgOf('core'), rem: avgOf('rem') }
 }
 
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-}
-
-// How many preceding days computeBasalEnergyDailySeries looks at for its
-// per-hour reference — callers must fetch this many extra buffer days
-// before the earliest date they pass in.
-export const BASAL_REFERENCE_WINDOW_DAYS = 7
-
-// Basal (resting) energy is roughly constant hour-to-hour, so a gap from the
-// Watch being off (charging, not worn, or just removed mid-hour) shouldn't
-// read as zero/partial for that stretch. For every hour of the target day,
-// if the Watch-measured amount is below what that SAME hour-of-day usually
-// contributes, top it up to that floor instead of leaving the raw (possibly
-// partial) reading. The floor is the MEDIAN of that hour across the last
-// `BASAL_REFERENCE_WINDOW_DAYS` days (only days/hours that have any data) —
-// median rather than a single day's average so one unusually high/low
-// reference day can't skew the floor, and per-hour rather than one flat
-// number so a naturally-lower-basal hour (e.g. deep sleep) isn't over-
-// corrected using a naturally-higher hour's rate. `allPoints` must include
-// that many extra buffer days before the earliest date in `dates`.
-export function computeBasalEnergyDailySeries(allPoints: HealthMetric[], dates: string[]): DailyValue[] {
-  const byDate = groupByDate(allPoints)
-  const today = todayStr()
-  const currentHour = new Date().getHours()
-
-  const hourlyCache = new Map<string, number[]>()
-  function hourlyFor(date: string): number[] {
-    let hourly = hourlyCache.get(date)
-    if (!hourly) {
-      hourly = computeHourlyBuckets('basal_energy_burned', byDate.get(date) ?? []).map(h => h.value)
-      hourlyCache.set(date, hourly)
-    }
-    return hourly
-  }
-
-  const result: DailyValue[] = []
-  for (const date of dates) {
-    const hourly = hourlyFor(date)
-    // Don't project into hours of today that haven't happened yet.
-    const maxHour = date === today ? currentHour : 23
-
-    const referenceByHour = Array.from({ length: 24 }, (_, h) => {
-      const samples: number[] = []
-      for (let d = 1; d <= BASAL_REFERENCE_WINDOW_DAYS; d++) {
-        const v = hourlyFor(shiftDateStr(date, -d))[h]
-        if (v > 0) samples.push(v)
-      }
-      return samples.length ? median(samples) : null
-    })
-
-    let total = 0
-    for (let h = 0; h <= maxHour; h++) {
-      const ref = referenceByHour[h]
-      total += ref != null ? Math.max(hourly[h], ref) : hourly[h]
-    }
-    if (total > 0 || (byDate.get(date) ?? []).length) result.push({ date, value: Math.round(total * 10) / 10 })
-  }
-  return result
-}
+// (The synthetic basal-energy per-hour top-up — median of the same hour over
+// the prior week for Watch-off hours — was REMOVED 2026-07-21: the Fitbit Air
+// is worn 24/7, so those hours are gap-filled with REAL fitbit-family points
+// by resolveSourcePoints instead of an estimate. Measured values only.)

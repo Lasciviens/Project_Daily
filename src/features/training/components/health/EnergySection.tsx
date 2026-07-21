@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeDailySeries, computeHourlyBuckets, computeBasalEnergyDailySeries, BASAL_REFERENCE_WINDOW_DAYS } from '../../healthAggregate'
-import { todayStr, shiftDateStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
+import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
+import { todayStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
@@ -20,26 +20,28 @@ export function EnergySection() {
   const [anchor, setAnchor] = useAnchorDate()
 
   const isDay = period === 'day'
-  // Day-mode headline figures — basal fetches extra buffer days before the
-  // anchor so computeBasalEnergyDailySeries has a per-hour gap-filling
-  // reference. Week/Month headline figures come from chartData below instead.
+  // Measured values only — the synthetic per-hour basal top-up (median of the
+  // same hour over the prior week when the Watch was off) was REMOVED
+  // 2026-07-21: the Fitbit Air is worn 24/7, so Watch-off hours are now
+  // gap-filled with REAL device data by the source resolver instead of an
+  // estimate.
   const { data: anchorActive = [], isLoading } = useHealthMetricSeries('active_energy', anchor, anchor)
-  const { data: anchorBasalBuffered = [] } = useHealthMetricSeries('basal_energy_burned', shiftDateStr(anchor, -BASAL_REFERENCE_WINDOW_DAYS), anchor)
+  const { data: anchorBasal = [] } = useHealthMetricSeries('basal_energy_burned', anchor, anchor)
   const activeToday = Math.round(computeDailySeries('active_energy', anchorActive)[0]?.value ?? 0)
-  const basalToday = Math.round(computeBasalEnergyDailySeries(anchorBasalBuffered, [anchor])[0]?.value ?? 0)
+  const basalToday = Math.round(computeDailySeries('basal_energy_burned', anchorBasal)[0]?.value ?? 0)
 
   const { from, to } = rangeForAnchor(period, anchor)
   const { data: activePoints = [] } = useHealthMetricSeries('active_energy', from, to)
-  const { data: basalPointsBuffered = [] } = useHealthMetricSeries('basal_energy_burned', shiftDateStr(from, -BASAL_REFERENCE_WINDOW_DAYS), to)
+  const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', from, to)
 
   let chartData: { label: string; date?: string; active: number; basal: number }[]
   if (period === 'day') {
     const a = computeHourlyBuckets('active_energy', activePoints)
-    const b = computeHourlyBuckets('basal_energy_burned', basalPointsBuffered.filter(p => p.date === from))
+    const b = computeHourlyBuckets('basal_energy_burned', basalPoints)
     chartData = a.map((row, i) => ({ label: row.label, active: Math.round(row.value), basal: Math.round(b[i]?.value ?? 0) }))
   } else {
     const a = computeDailySeries('active_energy', activePoints)
-    const b = computeBasalEnergyDailySeries(basalPointsBuffered, datesBetweenStr(from, to))
+    const b = computeDailySeries('basal_energy_burned', basalPoints)
     const byDate = new Map<string, { label: string; date: string; active: number; basal: number }>()
     for (const d of a) byDate.set(d.date, { label: fmtDay(d.date), date: d.date, active: Math.round(d.value), basal: 0 })
     for (const d of b) {
