@@ -29,6 +29,8 @@ SPECIAL-PURPOSE tools (use instead of the generic ones when they apply):
 - get_health_stats — daily/weekly-average health stats (steps, active+basal energy in kcal, heart rate, resting HR, exercise minutes) computed from health_metrics' point-in-time samples. Prefer this over raw db_query for anything "how was my week/month" — it already aggregates correctly (sums cumulative metrics, min/max/avg for heart rate). For a single specific metric/date range not covered here, db_query health_metrics directly (columns: metric_name, date, unit, source, value jsonb — plain {qty} for most metrics, {Min,Avg,Max} for heart_rate, stage fields for sleep_analysis).
 - get_media / plan_media / mark_episode_watched — media library + planning-with-schedule + episode progress logic.
 - Shop: get_shop_categories, create_shop_category, create_shop_item, ask_clarifying_question — for shopping-wishlist flows (2-level category tree; ask before inventing a category).
+- run_read_query(sql) — LIVE read-only SQL escape hatch. Use it ONLY when the user EXPLICITLY asks for a raw / custom / complex query that the structured db_query cannot express (multi-table joins, GROUP BY, arithmetic, window functions), or explicitly says "live sql" / "raw sql" / "canlı sorgu" / "özel sorgu çalıştır". SELECT-only, automatically read-only + row-capped, and only the allow-listed tables are reachable. NEVER use it for a lookup db_query already does, and NEVER for writes. Show the user the SQL you ran.
+- save_memory(title, content, kind?) — persist a durable note/summary/fact to the user's AI memory (ai_memory table). Use it when the user asks you to remember something for later ("bunu aklında tut", "şunu kaydet", "bunu unutma"), or to store a compacted summary of the current conversation when they ask you to. Announce what you'll save before saving. Recall saved memories later with db_query on ai_memory.
 
 TRANSIT ROUTING — fast path, follow exactly (this was a real latency pain point):
 - For ANY routing/transfer/"how do I get there"/"when should I leave" question, call plan_trip ONCE, directly, passing the user's own words as from/to (e.g. from:"ev", to:"iş"). Do NOT call get_saved_transit or search_transit_stops first — plan_trip already resolves home/work, saved stops/routes, and addresses internally. Extra lookups just make it slow.
@@ -250,9 +252,20 @@ async function throwFunctionError(error: { message: string }): Promise<never> {
   throw new Error(friendlyError(body, error.message))
 }
 
-export async function invokeAI(messages: Message[], systemPrompt: string, model?: AIModel): Promise<AIResponse> {
+// Which chat surface a request comes from — lets the edge function send only
+// the tools that surface can use (a smaller, cacheable prefix) and route a
+// simple surface to a cheaper model. Optional + additive, so existing callers
+// (briefing, PT assessment) are unaffected.
+export type AISurface = 'general' | 'coach' | 'shop'
+
+export async function invokeAI(messages: Message[], systemPrompt: string, model?: AIModel, surface?: AISurface): Promise<AIResponse> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
-    body: { messages, systemPrompt, ...(model && model !== 'auto' ? { model } : {}) },
+    body: {
+      messages,
+      systemPrompt,
+      ...(model && model !== 'auto' ? { model } : {}),
+      ...(surface ? { surface } : {}),
+    },
   })
 
   if (error) await throwFunctionError(error)
@@ -261,12 +274,48 @@ export async function invokeAI(messages: Message[], systemPrompt: string, model?
   return data as AIResponse
 }
 
+// ─── Prompt assembly (cache-aligned) ──────────────────────────────────────────
+//  The system prompt is kept BYTE-IDENTICAL across every call so Gemini's
+//  implicit prefix cache (~90% off the repeated systemInstruction + tools
+//  block) can actually hit. Volatile live data must therefore NOT be baked into
+//  the system prompt — that was the single biggest cost leak (see
+//  docs/ai-cost-capability-analysis.md P1). It rides as the first conversation
+//  turn instead, where it never poisons the cacheable prefix.
+
+const CONTEXT_ACK = 'OK, güncel verilere göz attım.'
+
+function lastUserText(messages: Message[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'user') return messages[i].content
+  return ''
+}
+
+// Conservative gate: skip the full live-data dump ONLY for clearly transit-
+// routing questions (the AI can always pull anything it needs via db_query, so
+// a miss just costs one tool call, never correctness). Everything else gets the
+// full context. Tunable — see the analysis doc's context-gating note.
+const TRANSIT_RE = /(nas[ıi]l\s+(gid|ula[şs])|ka[çc]ta\s+([çc][ıi]k|kalk)|ne\s+zaman\s+[çc][ıi]k|aktarma|otob[üu]s|tramvay|\bmetro\b|\bdurak|\bsefer\b|\bbus\b|\btram\b|depart|how (do|can) i get|when should i leave)/i
+
+function prependContext(messages: Message[], context: string): Message[] {
+  return [
+    { role: 'user',      content: `CONTEXT (auto-attached, not typed by the user):\n${context}` },
+    { role: 'assistant', content: CONTEXT_ACK },
+    ...messages,
+  ]
+}
+
+function contextHeader(): string {
+  return [
+    `DATE: ${format(new Date(), 'EEEE, MMMM d yyyy')}`,
+    `TIME: ${format(new Date(), 'HH:mm')} (local time, timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone})`,
+  ].join('\n')
+}
+
 // ─── Main send function ───────────────────────────────────────────────────────
 
 export async function sendMessage(messages: Message[], model?: AIModel): Promise<AIResponse> {
-  const context = await buildContext()
-  const systemWithContext = `${SYSTEM_PROMPT}\n\n---\nLIVE DATA:\n${context}`
-  return invokeAI(messages, systemWithContext, model)
+  const heavy   = !TRANSIT_RE.test(lastUserText(messages))
+  const context = heavy ? await buildContext() : contextHeader()
+  return invokeAI(prependContext(messages, context), SYSTEM_PROMPT, model, 'general')
 }
 
 // ─── Coach mode ───────────────────────────────────────────────────────────────
@@ -300,7 +349,9 @@ PROGRAM CHANGES — you CAN actually edit their Hevy routines via update_hevy_ro
 export async function sendCoachMessage(messages: Message[], model?: AIModel): Promise<AIResponse> {
   const { buildCoachContext } = await import('./coachContext')
   const context = await buildCoachContext()
-  return invokeAI(messages, `${COACH_CHAT_PROMPT}\n\n---\nSON 30 GÜN VERİSİ (JSON):\n${context}`, model)
+  // Coach prompt stays constant (cacheable); the 30-day snapshot rides as the
+  // leading context turn, same cache-alignment as sendMessage.
+  return invokeAI(prependContext(messages, `SON 30 GÜN VERİSİ (JSON):\n${context}`), COACH_CHAT_PROMPT, model, 'coach')
 }
 
 // ─── Shop-scoped send function ───────────────────────────────────────────────
@@ -355,7 +406,9 @@ Respond in the same language the user writes in (Turkish or English).`
 
 export async function sendShopMessage(messages: Message[]): Promise<AIResponse> {
   const nowLine = `Current date/time: ${format(new Date(), 'EEEE, MMMM d yyyy HH:mm')} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`
-  return invokeAI(messages, `${SHOP_SYSTEM_PROMPT}\n\n${nowLine}`)
+  // Shop prompt stays constant (cacheable); the shop surface also gets a
+  // trimmed tool set and a cheaper model server-side (see ai-proxy).
+  return invokeAI(prependContext(messages, nowLine), SHOP_SYSTEM_PROMPT, undefined, 'shop')
 }
 
 // ─── Structured extraction (recipes) ──────────────────────────────────────

@@ -121,7 +121,7 @@ pre-author a query per question, and we must not dump whole tables into context.
 |---|---|---|---|---|
 | **A. Status quo** (generic CRUD tools + baked context) | what we have | works today | P1–P5; row-dumps for analytics | Baseline, not acceptable |
 | **B. Cache-aligned tool-first** (keep generic CRUD; fix prompt assembly; add `db_aggregate`; per-surface tool slices) | evolution of A | ≥60–80% input-cost cut; analytics without row dumps; zero security change | none functional; small refactor risk | ✅ **CHOSEN** |
-| **C. AI-generated raw SQL** | model writes SQL, we execute | maximal flexibility, no per-scenario code | runs under service role → RLS bypass; injection surface; wrong-JOIN silent errors; validation layer ≈ rebuilding the structured layer anyway | ❌ Rejected — risk buys nothing B doesn't give |
+| **C. AI-generated raw SQL** | model writes SQL, we execute | maximal flexibility, no per-scenario code | runs under service role → RLS bypass; injection surface; wrong-JOIN silent errors; validation layer ≈ rebuilding the structured layer anyway | ❌ Rejected as the PRIMARY path — BUT shipped as an explicit-opt-in, READ-ONLY escape hatch (`run_read_query`) per user request; see §7.6 for the safe design that neutralizes the risks above |
 | **D. Semantic/metric layer** (named metrics registry: "protein_today", "sleep_avg_7d"…) | curated metric catalog the AI calls by name | precise, cheap, self-documenting | it's exactly the "pre-write every scenario" trap — unbounded authoring burden | Partial adopt: ship a FEW hot metrics as SQL RPCs (§7.3), never as the primary path |
 | **E. Frontend-executed queries** (AI returns a query plan; browser runs it under the user's own JWT/RLS) | true RLS enforcement | extra round-trips per tool call (browser↔edge↔browser), latency ×N in a 16-turn loop; complex protocol | ❌ Rejected for chat; NOTE: the app's own UI already IS this layer for known views |
 | **F. RAG/embeddings-first** (retrieve chunks, no live queries) | great recall | embeddings are STALE copies — "how many kcal today" needs live SQL, not similarity | Adopt as a COMPLEMENT for fuzzy recall only (§7.4), never for current-state questions |
@@ -240,6 +240,31 @@ create index on ai_embeddings using hnsw (embedding vector_cosine_ops);
   cosine top-k → return `{source_table, source_id, snippet, score}` — the model then
   `db_query`s the live row by id. **Embeddings locate; live SQL answers.** Never use
   similarity results as the factual value of anything current-state.
+
+### 7.6 Live SQL — the opt-in read-only escape hatch (`run_read_query`)
+
+The user explicitly wants raw live SQL available **when they ask for it**, without
+us pre-writing a query per scenario. Option C's risks are neutralized by making it
+opt-in + read-only + layered:
+
+- **Explicit opt-in only.** The system prompt tells the model to use it ONLY when
+  the user asks for a raw/custom/complex query db_query can't express, or literally
+  says "live sql"/"canlı sorgu". It's absent from casual lookups.
+- **User-scoped, RLS-enforced.** ai-proxy runs its normal ops under the **service
+  role** (RLS bypassed) — so a raw query there would be dangerous. `run_read_query`
+  instead builds a **user-JWT client** and calls a **SECURITY INVOKER** RPC
+  (`ai_run_read_query`), so it runs as the `authenticated` user and RLS applies.
+- **Read-only at the DB.** The RPC sets `transaction_read_only=on` + a 5 s
+  `statement_timeout` and wraps the query in `LIMIT 500` before `jsonb_agg`.
+- **Edge-side guard (fails closed):** single statement, `SELECT`/`WITH`-only,
+  DML/DDL keyword block, sensitive-table/schema block (token/secret/vault/auth./pg_/
+  information_schema), and every `FROM`/`JOIN` target must be an allow-listed catalog
+  table (or a CTE defined in the same query). Anything ambiguous is rejected, not run.
+- **Logged.** Every run_read_query (and db_query) is recorded in `ai_query_log` with
+  the exact SQL — the substrate for later promoting hot queries to the UI (§7.3).
+- **Residual risk (honest):** the model could, in principle, read one of the user's
+  OWN non-secret, allow-listed rows it maybe didn't need to — but it's the user's own
+  single-user data and they opted in; secrets are blocked and writes are impossible.
 
 ### 7.5 Decision ladder the system prompt teaches
 
@@ -425,3 +450,54 @@ needed once prefix is stable · explicit cachedContent same discount + hourly st
 no "developer discount" tier exists (the "Developer API" is just the AI-Studio product
 name) · AI-Studio vs Vertex per-token parity (Vertex adds SLA/compliance, not savings)
 · grounding-with-Search ~5k free prompts/mo · embeddings $0.15/M (batch $0.075/M).
+
+---
+
+## 14. Implementation log — Phase 1 + user additions (code written 2026-07-21)
+
+Phase 1's cost core plus three user-requested capabilities were implemented in one
+change. Client code ships on merge; **the edge function + migration are deployed by
+the user (tomorrow)** — every new server write is best-effort so shipping the client
+first cannot break anything.
+
+**Shipped (code):**
+- **T1 — stable prefix** (`aiApi.ts`): `SYSTEM_PROMPT`/`COACH_CHAT_PROMPT`/
+  `SHOP_SYSTEM_PROMPT` are now byte-identical per call; live context rides as a
+  leading `contents[0]` turn via `prependContext` (user CONTEXT turn + tiny ack),
+  so the cacheable systemInstruction+tools prefix stops being poisoned.
+- **T2 — context gating** (`aiApi.ts`): `TRANSIT_RE` — conservative; only clearly
+  transit-routing questions get the light date/time header instead of the full dump.
+  Everything else keeps full context (the AI can always pull more via db_query).
+- **T3 — per-surface tool slices** (`ai-proxy`): `toolsFor(surface)` → shop gets 5
+  tools, coach a focused set, general everything. `surface` sent from the client.
+- **T4 — model routing** (`ai-proxy`): `SURFACE_MODEL.shop = gemini-2.5-flash`
+  (~5× cheaper start; still falls through the whole chain on 503).
+- **T5 — usage logging** (`ai-proxy`): `UsageAcc`/`addUsage` accumulate token counts
+  across the tool loop; `logUsage` writes one `ai_usage_log` row per interaction
+  (incl. `cached_tokens` — the proof that implicit caching is hitting).
+- **Live SQL** (`run_read_query`, §7.6): read-only escape hatch, opt-in, layered guard.
+- **Query logging** (`ai_query_log`): every db_query + run_read_query recorded with
+  SQL/args → later promote hot ones to the UI.
+- **AI memory** (`ai_memory` + `save_memory` tool + catalog rw): durable notes/
+  summaries/facts the user asks the AI to remember; recalled via db_query.
+
+**Deferred to later phases (per the plan above):** `db_aggregate` (T6), vision/
+photo→food (T8), pgvector `semantic_search` (T9), weekly review (T10), explicit
+`cachedContent` (only if `ai_usage_log.cached_tokens` shows implicit misses dominate).
+
+### Deploy checklist — DO TOMORROW (Supabase side)
+1. **Apply migration** `supabase/migrations/064_ai_cost_capability.sql`
+   (Dashboard → SQL Editor, or `supabase db push`). Creates the 3 tables + the
+   `ai_run_read_query` RPC.
+2. **Redeploy the `ai-proxy` edge function** (Dashboard paste or `supabase functions
+   deploy ai-proxy`). It's self-contained (no `_shared/` imports).
+3. **Verify:** ask the AI a normal question → a row appears in `ai_usage_log`
+   (`cached_tokens` should climb on repeated similar questions once the prefix caches).
+   Ask "run a live sql: select count(*) from tasks" → it uses run_read_query and a row
+   lands in `ai_query_log`. Ask "bunu aklında tut: …" → a row lands in `ai_memory`.
+4. **Order note:** deploying the edge function BEFORE the migration is safe (writes
+   no-op until the tables exist); merging the CLIENT before either is also safe (old
+   edge function just ignores `surface` and gets context as the first message).
+
+No new secrets/env vars. No new cron. `run_read_query` needs no config — it reuses the
+caller's JWT (already sent by the browser) + `SUPABASE_ANON_KEY` (built-in).
