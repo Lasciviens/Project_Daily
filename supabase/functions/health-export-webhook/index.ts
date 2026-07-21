@@ -130,6 +130,12 @@ Deno.serve(async (req) => {
         avg_heart_rate: numOrQty(raw.heartRate?.avg),
         min_heart_rate: numOrQty(raw.heartRate?.min),
         max_heart_rate: numOrQty(raw.heartRate?.max),
+        // Everything through THIS webhook is Apple-family: Huawei Health already
+        // syncs into Apple HealthKit before Health Auto Export reads it. Fitbit
+        // Air data arrives via a separate poller (google-health-sync) tagged
+        // 'fitbit'. Stamping explicitly (not relying on the column default) so
+        // the family is correct even if the default ever changes.
+        source_family: 'apple',
         raw,
         updated_at: now,
         synced_at: now,
@@ -213,6 +219,9 @@ Deno.serve(async (req) => {
           recorded_at: recordedAt,
           unit: group.units ?? null,
           source,
+          // Apple-family (see the workout upsert above for why) — Fitbit points
+          // come through google-health-sync tagged 'fitbit'.
+          source_family: 'apple',
           value: point,
           updated_at: now,
           synced_at: now,

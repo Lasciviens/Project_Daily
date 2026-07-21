@@ -49,6 +49,21 @@ export const METRIC_AGGREGATION: Record<string, AggType> = {
 
   // Heart rate — Min/Avg/Max shaped points
   heart_rate: 'minmaxavg',
+  // Overnight resting HR while asleep (Fitbit reports this distinctly from the
+  // waking resting_heart_rate) — a point-in-time nightly value.
+  sleeping_heart_rate: 'latest',
+
+  // Net-new metrics that arrive from Fitbit Air (registered inert in Phase 0 —
+  // nothing writes them until the Google Health poller lands in Phase 3):
+  // - oxygen_saturation: overnight SpO2. LOCKED as minmaxavg for now on the
+  //   assumption it arrives heart_rate-shaped (Min/Avg/Max for a continuous
+  //   overnight vital) — re-verify against the first real Fitbit payload in
+  //   Phase 3 and correct here if it's actually single-point samples.
+  oxygen_saturation: 'minmaxavg',
+  // - active_zone_minutes: Fitbit's own cumulative daily activity metric.
+  active_zone_minutes: 'sum',
+  // - skin_temperature: nightly skin-temp deviation (point-in-time).
+  skin_temperature: 'latest',
 
   // Running dynamics (rate/level metrics from a run — never sum)
   running_speed: 'average',

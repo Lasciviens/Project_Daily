@@ -26,6 +26,11 @@ export interface HealthMetric {
   recorded_at: string
   unit:        string | null
   source:      string
+  // Which device/source stream this row belongs to. Optional here because rows
+  // fetched before migration 062 is applied won't have the column — the
+  // aggregation layer treats a missing family as 'apple' (every legacy row is
+  // Apple). 'fitbit' rows arrive from the Google Health poller (Phase 3).
+  source_family?: 'apple' | 'fitbit' | 'manual'
   // deno-lint-ignore no-explicit-any
   value:       Record<string, any>
   synced_at:   string
@@ -82,21 +87,31 @@ const MAX_ROWS_PER_PAGE = 1000
 // yesterday) fell off the end entirely. This showed up as "Day view has
 // data, Week view doesn't" (a single day rarely hits the cap; a week/month
 // range routinely does).
+// `sourceFamily` (optional): restrict to one source stream ('apple' | 'fitbit').
+// Omitted → every source (today's behavior, unchanged). This is inert
+// scaffolding for the Phase 4 source switch — no caller passes it yet. When it
+// IS passed, migration 062 (which adds the source_family column) must already
+// be applied, or the .eq() errors with 42703; that ordering is guaranteed
+// because the Phase 4 UI ships after 062.
 export async function fetchHealthMetricSeries(
   metricName: string,
   fromDate: string,
   toDate: string,
+  sourceFamily?: 'apple' | 'fitbit',
 ): Promise<HealthMetric[]> {
   const all: HealthMetric[] = []
   let offset = 0
 
   for (;;) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('health_metrics')
       .select('*')
       .eq('metric_name', metricName)
       .gte('date', fromDate)
       .lte('date', toDate)
+    if (sourceFamily) query = query.eq('source_family', sourceFamily)
+
+    const { data, error } = await query
       .order('recorded_at', { ascending: true })
       .range(offset, offset + MAX_ROWS_PER_PAGE - 1)
 
