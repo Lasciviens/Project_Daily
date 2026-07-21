@@ -3,74 +3,119 @@
 // numbers for rings/summary cards/charts. Kept separate from healthApi.ts
 // (which only fetches) so these are trivially unit-testable without a DB.
 import { getAggregationType } from './healthMetrics'
-import { defaultSourceFor } from './healthSourceDefaults'
+import { strategyFor, ladderFor } from './healthSourceDefaults'
 import { todayStr, shiftDateStr } from '../../shared/utils/dateUtils'
 import type { HealthMetric } from './api/healthApi'
 
-// ── Source-family resolution (Fitbit Air integration, Phase 0) ──────────────
+// ── Source resolution (Fitbit Air integration, Phase 0 — redesigned) ────────
 // CARDINAL RULE (docs/fitbit-air-integration.md): both Apple and Fitbit data
-// live in the DB in full. For DISPLAY, a given (metric, day) must resolve to a
-// SINGLE source family — never blend two device streams into one aggregate
-// (that would double-count steps/energy or average two different HR sensors).
-// The winner is the metric's default family IF it has data that day, else the
-// other family present. This runs BEFORE any aggregation, in one shared place.
+// live in the DB in full. For DISPLAY, every resolution window (hour, day, or
+// night — the metric's strategy in healthSourceDefaults.ts) picks exactly ONE
+// winning STREAM (one raw `source` string); streams are never blended inside a
+// window, and a window the winner didn't cover falls to the next ladder rung —
+// gap-filling union without double-counting.
 //
-// ZERO-DRIFT GUARANTEE: today every row is Apple-family, so every day-group has
-// exactly one family and the fast-path returns the points untouched — output
-// is byte-identical to before this layer existed. The resolver only starts
-// making choices once the Phase 3 poller writes 'fitbit' rows.
+// Stream-level (not family-level) competition is empirically required: live
+// data showed the iPhone ('Lasci') and the Watch writing the SAME hours of
+// step_count (app showed 10,355 steps on a ~5,700-step day), and active_energy
+// arriving as identical duplicates under two Watch-labelled strings. So this
+// resolver also fixes a real pre-existing within-Apple double-count — the
+// "zero drift" guarantee is: output identical EXCEPT where the old output was
+// that proven bug (PM-ratified redefinition, 2026-07-21).
 
-export type RowFamily = 'apple' | 'fitbit' | 'manual'
+export type StreamTier = 'manual' | 'watch' | 'fitbit' | 'phone'
 
-// A missing/legacy family is 'apple' — every row written before migration 062
-// (and every row through the Apple webhook) is Apple-family.
-export function familyOf(p: HealthMetric): RowFamily {
-  const f = p.source_family
-  return f === 'fitbit' || f === 'manual' ? f : 'apple'
+// A missing/legacy source_family is 'apple' — every row written before
+// migration 062 (and every row through the Apple webhook) is Apple-family.
+function isFitbit(p: HealthMetric): boolean {
+  return p.source_family === 'fitbit'
 }
 
-// Exported so the Phase 0 verification script (scripts/verify-health-source-
-// resolver.cjs) can assert the zero-drift identity property directly. Callers
-// inside this module use it via the compute functions — nothing OUTSIDE resolves
-// per-caller (that's the C1/H2 invariant).
-export function resolveSourcePerDate(
+// Exported for the verification script.
+export function streamTierOf(p: HealthMetric): StreamTier {
+  if (p.source === 'manual') return 'manual'
+  if (isFitbit(p)) return 'fitbit'
+  return p.source.toLowerCase().includes('watch') ? 'watch' : 'phone'
+}
+
+function streamKeyOf(p: HealthMetric): string {
+  return `${isFitbit(p) ? 'fitbit' : 'apple'}|${p.source}`
+}
+
+// Resolves every window to its single winning stream and returns the winners'
+// POINTS flattened back into one array — aggregation itself stays in the
+// existing (verified) aggregateGroup/rangeFromPoints/sleep merges, so this is
+// correct for every agg type (sum/average/minmaxavg/latest/sleep) without
+// special-casing. Exported for the verification script; nothing outside this
+// module resolves per-caller (the C1/H2 invariant).
+//
+// `nightKeyFn` is only passed by the sleep callers (sleepNightKey) — for the
+// 'night' strategy the window is the attributed night, for 'day' the calendar
+// date, for 'bucket' the exact hour (date+hour from recorded_at, so a Watch
+// morning and a Fitbit evening coexist within one day without ever sharing a
+// window).
+export function resolveSourcePoints(
   points: HealthMetric[],
   metricName: string,
-  keyFn: (p: HealthMetric) => string = p => p.date,
+  nightKeyFn?: (p: HealthMetric) => string,
 ): HealthMetric[] {
-  // Global fast-path: if the whole set carries ≤1 distinct family (the only
-  // case that exists today), there is nothing to resolve — return the SAME
-  // array, so callers see identical points in identical order.
-  let firstFamily: RowFamily | null = null
-  let mixed = false
+  // Fast-path: a single distinct stream (today's normal case for most
+  // metrics) has nothing to resolve — return the SAME array, so output stays
+  // byte-identical to the pre-resolver behavior.
+  let firstStream: string | null = null
+  let multi = false
   for (const p of points) {
-    const f = familyOf(p)
-    if (firstFamily === null) firstFamily = f
-    else if (f !== firstFamily) { mixed = true; break }
+    const k = streamKeyOf(p)
+    if (firstStream === null) firstStream = k
+    else if (k !== firstStream) { multi = true; break }
   }
-  if (!mixed) return points
+  if (!multi) return points
 
-  const preferred = defaultSourceFor(metricName)
-  // Winner priority when the preferred family is absent from a given day-group:
-  // preferred first, then a fixed order over the remaining families. (A group
-  // with two non-preferred families can't occur until real Fitbit data exists;
-  // this ordering is the documented Phase-3 behaviour, inert now.)
-  const priority: RowFamily[] = [preferred, 'apple', 'fitbit', 'manual']
+  const strategy = strategyFor(metricName)
+  const ladder = ladderFor(metricName)
+  const windowKey: (p: HealthMetric) => string =
+    strategy === 'bucket' ? p => p.recorded_at.slice(0, 13)
+    : strategy === 'night' ? (nightKeyFn ?? (p => p.date))
+    : p => p.date
 
-  const byDay = new Map<string, HealthMetric[]>()
+  const byWindow = new Map<string, HealthMetric[]>()
   for (const p of points) {
-    const k = keyFn(p)
-    const arr = byDay.get(k)
+    const k = windowKey(p)
+    const arr = byWindow.get(k)
     if (arr) arr.push(p)
-    else byDay.set(k, [p])
+    else byWindow.set(k, [p])
   }
 
   const out: HealthMetric[] = []
-  for (const group of byDay.values()) {
-    const present = new Set(group.map(familyOf))
-    if (present.size <= 1) { out.push(...group); continue }
-    const winner = priority.find(f => present.has(f)) as RowFamily
-    for (const p of group) if (familyOf(p) === winner) out.push(p)
+  for (const group of byWindow.values()) {
+    // Streams present in this window, keyed by stream, with their tier.
+    const streams = new Map<string, { tier: StreamTier; pts: HealthMetric[] }>()
+    for (const p of group) {
+      const k = streamKeyOf(p)
+      let s = streams.get(k)
+      if (!s) { s = { tier: streamTierOf(p), pts: [] }; streams.set(k, s) }
+      s.pts.push(p)
+    }
+    if (streams.size === 1) { out.push(...group); continue }
+
+    // Winning tier = first ladder rung any stream occupies.
+    const present = new Set([...streams.values()].map(s => s.tier))
+    const winnerTier = ladder.find(t => present.has(t)) as StreamTier
+
+    // If several streams share the winning tier (live case: active_energy
+    // delivered identically under two Watch-labelled strings), keep exactly
+    // ONE — the stream with the most points in this window (a merged/richer
+    // string carries more data), tie-broken deterministically by key.
+    let winner: { pts: HealthMetric[] } | null = null
+    let winnerKey = ''
+    for (const [k, s] of streams) {
+      if (s.tier !== winnerTier) continue
+      if (!winner || s.pts.length > winner.pts.length ||
+          (s.pts.length === winner.pts.length && k < winnerKey)) {
+        winner = s; winnerKey = k
+      }
+    }
+    out.push(...(winner as { pts: HealthMetric[] }).pts)
   }
   return out
 }
@@ -100,11 +145,11 @@ function groupByDate(points: HealthMetric[]): Map<string, HealthMetric[]> {
   return byDate
 }
 
-// Collapses a group of points (any source, all merged) into a single number
-// per the metric's aggregation type. Source is deliberately ignored — the
-// same metric can arrive under differing source strings within one day
-// (e.g. a compound "Watch|Phone" string once a second data provider joins
-// partway through the day); the daily total should read as one number.
+// Collapses a group of points into a single number per the metric's
+// aggregation type. Callers pass points that already went through
+// resolveSourcePoints (one winning stream per window) — this function itself
+// stays source-blind on purpose: all cross-stream policy lives in the
+// resolver, all math lives here.
 function aggregateGroup(points: HealthMetric[], metricName: string): number | null {
   const aggType = getAggregationType(metricName)
   const qtys = points.map(p => qtyOf(p, metricName)).filter((v): v is number => v != null)
@@ -128,7 +173,7 @@ export interface DailyValue { date: string; value: number }
 
 // One number per day for sum/average/latest-type metrics.
 export function computeDailySeries(metricName: string, points: HealthMetric[]): DailyValue[] {
-  const byDate = groupByDate(resolveSourcePerDate(points, metricName))
+  const byDate = groupByDate(resolveSourcePoints(points, metricName))
   const result: DailyValue[] = []
   for (const [date, pts] of byDate) {
     const value = aggregateGroup(pts, metricName)
@@ -144,7 +189,7 @@ export interface HourlyValue { hour: number; label: string; value: number }
 // to bucket (recorded_at is an absolute instant either way).
 export function computeHourlyBuckets(metricName: string, points: HealthMetric[]): HourlyValue[] {
   const byHour = new Map<number, HealthMetric[]>()
-  for (const p of resolveSourcePerDate(points, metricName)) {
+  for (const p of resolveSourcePoints(points, metricName)) {
     const h = new Date(p.recorded_at).getHours()
     const arr = byHour.get(h)
     if (arr) arr.push(p)
@@ -174,7 +219,7 @@ function rangeFromPoints(pts: HealthMetric[]): { min: number; max: number; avg: 
 // heart_rate-shaped points ({Min,Avg,Max} per point) — a real day range needs
 // the min of all mins / max of all maxes, not just the last window's numbers.
 export function computeHeartRateDailySeries(points: HealthMetric[]): DailyRange[] {
-  const byDate = groupByDate(resolveSourcePerDate(points, 'heart_rate'))
+  const byDate = groupByDate(resolveSourcePoints(points, 'heart_rate'))
   const result: DailyRange[] = []
   for (const [date, pts] of byDate) {
     const range = rangeFromPoints(pts)
@@ -189,7 +234,7 @@ export interface HourlyRange { hour: number; label: string; min: number; max: nu
 // single day's "Day" view.
 export function computeHeartRateHourlySeries(points: HealthMetric[]): HourlyRange[] {
   const byHour = new Map<number, HealthMetric[]>()
-  for (const p of resolveSourcePerDate(points, 'heart_rate')) {
+  for (const p of resolveSourcePoints(points, 'heart_rate')) {
     const h = new Date(p.recorded_at).getHours()
     const arr = byHour.get(h)
     if (arr) arr.push(p)
@@ -315,7 +360,7 @@ export interface SleepSessionInterval { startMs: number; endMs: number; totalSle
 // per-stage segment timing (verified against every live row), so this is the
 // finest honest granularity available.
 export function extractSleepSessions(points: HealthMetric[], nightKey: string): SleepSessionInterval[] {
-  const pts = resolveSourcePerDate(points, 'sleep_analysis', sleepNightKey)
+  const pts = resolveSourcePoints(points, 'sleep_analysis', sleepNightKey)
     .filter(p => sleepNightKey(p) === nightKey && typeof p.value?.totalSleep === 'number')
   return mergeSleepSessions(pts)
     .map(p => {
@@ -338,7 +383,7 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
 
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = new Map<string, HealthMetric[]>()
-  for (const p of resolveSourcePerDate(points, 'sleep_analysis', sleepNightKey)) {
+  for (const p of resolveSourcePoints(points, 'sleep_analysis', sleepNightKey)) {
     const key = sleepNightKey(p)
     const arr = byDate.get(key)
     if (arr) arr.push(p)

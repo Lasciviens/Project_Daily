@@ -1,36 +1,35 @@
 #!/usr/bin/env node
 /*
- * Phase 0 verification — source-family resolver (Fitbit Air integration).
+ * Phase 0 verification — stream-level source resolver (Fitbit Air integration,
+ * redesigned 2026-07-21: hourly-slice union + priority ladders).
  *
- * Proves two things about src/features/training/healthAggregate.ts:
- *   1. ZERO DRIFT — for single-source (all-Apple) data, the resolver returns
- *      the SAME array reference, so every aggregation is byte-identical to
- *      before this layer existed. This is the mathematical guarantee behind the
- *      "Health tab shows zero numeric change" DoD item.
- *   2. DUAL-SOURCE CORRECTNESS — when a (metric, day) has BOTH Apple and Fitbit
- *      points, exactly ONE family wins (no blending, no double-count), the
- *      winner respects the curated default, and it falls back to the other
- *      family when the default has no data that day.
- *
- * Runs the REAL, un-mocked module code (not a re-implementation) via sucrase —
- * this repo has no unit-test runner (no vitest/jest, only Playwright for E2E),
- * so this is a throwaway script per the same convention as
- * scripts/generate-matvaretabellen-seed.mjs. It's a .cjs so it stays CommonJS
- * under the repo's "type":"module" (which is what lets require() load .ts).
+ * Proves, against the REAL un-mocked module code (loaded via sucrase — the
+ * repo has no unit-test runner by convention):
+ *   1. IDENTITY — single-stream data returns the SAME array reference, so all
+ *      of today's single-stream metrics (heart_rate, sleep, weight, …) stay
+ *      byte-identical.
+ *   2. REAL-DATA BUG FIX — fixtures shaped like the live 2026-07-10 step_count
+ *      day (Watch + iPhone writing the same hours) and the live active_energy
+ *      duplicate-delivery case dedupe correctly instead of double-counting.
+ *   3. GAP-FILLING UNION — hours only one device covered are filled by that
+ *      device; no hour is ever counted from two streams.
+ *   4. LADDERS — cumulative: manual > watch > fitbit > phone (user's call);
+ *      physiological (HR/…): fitbit first; sleep: whole-night winner, fitbit
+ *      first, manual beats everything.
  *
  *   Run:  node scripts/verify-health-source-resolver.cjs
- *   Dep:  `sucrase` (already present as a transitive dependency).
  */
 require('sucrase/register')
 
 const {
-  resolveSourcePerDate,
-  familyOf,
+  resolveSourcePoints,
+  streamTierOf,
   computeDailySeries,
+  computeHourlyBuckets,
   computeHeartRateDailySeries,
   computeSleepSummary,
 } = require('../src/features/training/healthAggregate')
-const { defaultSourceFor } = require('../src/features/training/healthSourceDefaults')
+const { strategyFor, ladderFor } = require('../src/features/training/healthSourceDefaults')
 
 let passed = 0
 let failed = 0
@@ -39,137 +38,164 @@ function check(name, cond, detail) {
   else { failed++; console.log(`  ✗ ${name}${detail ? ' — ' + detail : ''}`) }
 }
 
-// Minimal HealthMetric factory. `fam` omitted → legacy/Apple (no source_family
-// column, exactly what a pre-migration row looks like when fetched).
+// HealthMetric factory. `src` is the raw source string; `fam` defaults to
+// 'apple' unless the stream is Fitbit. hhmm places the point inside an hour.
 let seq = 0
-function m(metric, date, qty, fam, hhmm = '08:00') {
+function m(metric, date, qty, src, hhmm = '08:00', fam) {
   seq++
   const row = {
     id: String(seq), user_id: 'u', metric_name: metric, date,
-    recorded_at: `${date}T${hhmm}:00Z`, unit: 'count', source: fam || 'watch',
+    recorded_at: `${date}T${hhmm}:00Z`, unit: 'count', source: src,
     value: { qty }, synced_at: 'x',
   }
   if (fam) row.source_family = fam
   return row
 }
+const WATCH = 'Furkan’s Apple Watch|Lasci'   // live compound watch string
+const WATCH2 = 'Furkan’s Apple Watch'         // second watch-tier string (dup case)
+const PHONE = 'Lasci'                          // the iPhone's own name
+const FITBIT = 'Fitbit Air'
+const fb = (metric, date, qty, hhmm) => m(metric, date, qty, FITBIT, hhmm, 'fitbit')
 
-console.log('\n== 1. Zero-drift: single-source data passes through untouched ==')
+console.log('\n== 0. Config sanity ==')
 {
-  // Callers always fetch ONE metric at a time (fetchHealthMetricSeries filters
-  // by metric_name), so each fixture is single-metric. Multi-day, multi-point,
-  // legacy (no source_family) Apple data — exactly a pre-migration fetch.
-  const apple = [
-    m('step_count', '2026-07-18', 100), m('step_count', '2026-07-18', 250, undefined, '13:00'),
-    m('step_count', '2026-07-19', 300), m('step_count', '2026-07-19', 50, undefined, '21:00'),
-  ]
-  const appleEnergy = [m('active_energy', '2026-07-18', 120), m('active_energy', '2026-07-19', 90, undefined, '10:00')]
-  // Identity: the fast-path must return the SAME array object (not a copy) when
-  // the whole set has ≤1 family — that IS byte-identical aggregation input.
-  check('resolveSourcePerDate returns the identical array reference (step_count)',
-    resolveSourcePerDate(apple, 'step_count') === apple)
-  check('resolveSourcePerDate returns the identical array reference (active_energy)',
-    resolveSourcePerDate(appleEnergy, 'active_energy') === appleEnergy)
-
-  // Explicit source_family:'apple' rows (post-migration) are still one family.
-  const appleExplicit = [m('step_count', '2026-07-19', 100, 'apple'), m('step_count', '2026-07-19', 40, 'apple', '12:00')]
-  check('explicit all-apple rows also pass through by identity',
-    resolveSourcePerDate(appleExplicit, 'step_count') === appleExplicit)
-
-  // A manual sleep correction is source_family 'apple' (column default; it sets
-  // source:'manual' but never source_family) → still a single family → identity.
-  const withManual = [m('step_count', '2026-07-19', 100, 'apple'), { ...m('step_count', '2026-07-19', 5, 'apple', '23:00'), source: 'manual' }]
-  check('apple + manual(source_family apple) is one family → identity',
-    resolveSourcePerDate(withManual, 'step_count') === withManual)
-
-  // And the observable daily total is the plain sum (no interference).
-  check('computeDailySeries(all-apple) sums normally: 18th=350, 19th=350',
-    JSON.stringify(computeDailySeries('step_count', apple)) ===
-    JSON.stringify([{ date: '2026-07-18', value: 350 }, { date: '2026-07-19', value: 350 }]))
+  check("strategy: step_count → bucket", strategyFor('step_count') === 'bucket')
+  check("strategy: heart_rate → bucket", strategyFor('heart_rate') === 'bucket')
+  check("strategy: sleep_analysis → night", strategyFor('sleep_analysis') === 'night')
+  check("strategy: weight_body_mass → day", strategyFor('weight_body_mass') === 'day')
+  check("ladder: step_count = manual>watch>fitbit>phone",
+    JSON.stringify(ladderFor('step_count')) === JSON.stringify(['manual','watch','fitbit','phone']))
+  check("ladder: heart_rate fitbit-first", ladderFor('heart_rate')[1] === 'fitbit')
+  check("ladder: flights_climbed apple-first (Air has no altimeter)",
+    JSON.stringify(ladderFor('flights_climbed')) === JSON.stringify(['manual','watch','phone','fitbit']))
+  check("tier: 'manual' source → manual", streamTierOf(m('x','2026-07-19',1,'manual')) === 'manual')
+  check("tier: watch string → watch", streamTierOf(m('x','2026-07-19',1,WATCH)) === 'watch')
+  check("tier: 'Lasci' → phone", streamTierOf(m('x','2026-07-19',1,PHONE)) === 'phone')
+  check("tier: fitbit family → fitbit", streamTierOf(fb('x','2026-07-19',1)) === 'fitbit')
 }
 
-console.log('\n== 2. Dual-source: one family wins per day, never blended ==')
+console.log('\n== 1. Identity: single-stream data passes through untouched ==')
 {
-  // step_count default = fitbit (24/7 continuity). A day with BOTH families:
-  // apple 100+50=150, fitbit 200+30=230. Fitbit wins → 230 (NOT 380).
-  check('sanity: step_count default is fitbit', defaultSourceFor('step_count') === 'fitbit')
-  const mixed = [
-    m('step_count', '2026-07-19', 100, 'apple'), m('step_count', '2026-07-19', 50, 'apple', '15:00'),
-    m('step_count', '2026-07-19', 200, 'fitbit'), m('step_count', '2026-07-19', 30, 'fitbit', '15:00'),
-  ]
-  const mixedOut = computeDailySeries('step_count', mixed)
-  check('dual-source step_count picks fitbit total 230 (no double-count to 380)',
-    mixedOut.length === 1 && mixedOut[0].value === 230, JSON.stringify(mixedOut))
-  const resolved = resolveSourcePerDate(mixed, 'step_count')
-  check('resolver drops apple rows on a mixed fitbit-default day',
-    resolved.length === 2 && resolved.every(p => familyOf(p) === 'fitbit'))
-
-  // Fallback: default (fitbit) absent that day → use apple.
-  const appleOnlyDay = [m('step_count', '2026-07-20', 100, 'apple'), m('step_count', '2026-07-20', 50, 'apple', '15:00')]
-  const fb = computeDailySeries('step_count', appleOnlyDay)
-  check('fallback: fitbit-default metric with only apple data → apple total 150',
-    fb.length === 1 && fb[0].value === 150, JSON.stringify(fb))
-
-  // Apple-default metric (weight): apple 80 vs fitbit 79, latest wins per family,
-  // apple is the default → 80.
-  check('sanity: weight_body_mass default is apple', defaultSourceFor('weight_body_mass') === 'apple')
-  const weight = [m('weight_body_mass', '2026-07-19', 80, 'apple'), m('weight_body_mass', '2026-07-19', 79, 'fitbit', '09:00')]
-  const w = computeDailySeries('weight_body_mass', weight)
-  check('dual-source weight picks apple (its default) = 80',
-    w.length === 1 && w[0].value === 80, JSON.stringify(w))
-
-  // Per-day independence: 18th apple-only, 19th has both → 18th apple, 19th fitbit.
-  const perDay = [
-    m('step_count', '2026-07-18', 111, 'apple'),
-    m('step_count', '2026-07-19', 100, 'apple'), m('step_count', '2026-07-19', 222, 'fitbit'),
-  ]
-  const pd = computeDailySeries('step_count', perDay)
-  check('per-day winner is independent: 18th=111 (apple), 19th=222 (fitbit)',
-    JSON.stringify(pd) === JSON.stringify([{ date: '2026-07-18', value: 111 }, { date: '2026-07-19', value: 222 }]),
-    JSON.stringify(pd))
+  const hr = [m('heart_rate','2026-07-18',70,'Furkan’s Apple Watch','08:00'), m('heart_rate','2026-07-19',72,'Furkan’s Apple Watch','09:00')]
+  check('single-stream heart_rate → identical array reference', resolveSourcePoints(hr,'heart_rate') === hr)
+  const steps = [m('step_count','2026-07-18',100,WATCH), m('step_count','2026-07-19',300,WATCH,'21:00')]
+  check('single-stream step_count → identical array reference', resolveSourcePoints(steps,'step_count') === steps)
+  check('daily sum unchanged', JSON.stringify(computeDailySeries('step_count',steps)) ===
+    JSON.stringify([{date:'2026-07-18',value:100},{date:'2026-07-19',value:300}]))
 }
 
-console.log('\n== 3. Heart rate (minmaxavg) never blends two sensors ==')
+console.log('\n== 2. REAL 2026-07-10 shape: Watch + iPhone same hours → no double-count ==')
 {
-  function hr(date, min, avg, max, fam, hhmm = '08:00') {
+  // Simplified live shape: overlap hours where both streams write, one
+  // phone-only hour (Watch charging). Live day: 5,721 (watch) + 4,634 (phone)
+  // summed to 10,355 by the old code.
+  const pts = [
+    m('step_count','2026-07-10',1857,WATCH,'06:10'), m('step_count','2026-07-10',831,PHONE,'06:20'),
+    m('step_count','2026-07-10',103, WATCH,'07:05'), m('step_count','2026-07-10',103,PHONE,'07:06'),
+    m('step_count','2026-07-10',264, WATCH,'09:15'), m('step_count','2026-07-10',227,PHONE,'09:30'),
+    m('step_count','2026-07-10',500, PHONE,'12:00'),                       // phone-ONLY hour → phone fills
+  ]
+  const out = computeDailySeries('step_count', pts)
+  // watch hours: 1857+103+264 = 2224; phone-only hour adds 500 → 2724
+  check('hourly winners: watch hours + phone-only gap = 2724 (NOT 3885 sum-all)',
+    out.length === 1 && out[0].value === 2724, JSON.stringify(out))
+  const hourly = computeHourlyBuckets('step_count', pts)
+  check('hour 06 = watch only (1857)', hourly[6].value === 1857, JSON.stringify(hourly[6]))
+  check('hour 12 = phone fills gap (500)', hourly[12].value === 500)
+}
+
+console.log('\n== 3. REAL active_energy shape: duplicate delivery under two watch strings ==')
+{
+  const pts = [
+    m('active_energy','2026-07-07',50,WATCH2,'10:05'), m('active_energy','2026-07-07',53,WATCH2,'10:35'),
+    m('active_energy','2026-07-07',50,'Furkan’s Apple Watch|Lasci|HUAWEI Health: Europe','10:06'),
+  ]
+  const out = computeDailySeries('active_energy', pts)
+  // Same tier (both watch): keep ONE stream — WATCH2 has more points (2) → 103.
+  check('duplicate watch-tier streams: one stream kept → 103 (NOT 153)',
+    out.length === 1 && out[0].value === 103, JSON.stringify(out))
+}
+
+console.log('\n== 4. Gap-filling union across families (the Fitbit future) ==')
+{
+  // Watch worn 08-13, Fitbit worn all day: overlap hours → Watch (user: apple
+  // preferred when both on wrist); Fitbit-only hours fill the rest.
+  const pts = [
+    m('step_count','2026-08-01',900,WATCH,'08:30'), fb('step_count','2026-08-01',850,'08:40'),
+    m('step_count','2026-08-01',700,WATCH,'11:30'), fb('step_count','2026-08-01',680,'11:40'),
+    fb('step_count','2026-08-01',600,'15:30'),   // fitbit-only
+    fb('step_count','2026-08-01',400,'20:30'),   // fitbit-only
+    m('step_count','2026-08-01',30, PHONE,'15:45'), // phone loses to fitbit in-hour
+  ]
+  const out = computeDailySeries('step_count', pts)
+  // 900 + 700 (watch hours) + 600 + 400 (fitbit hours; phone loses 15h) = 2600
+  check('watch overlap-hours + fitbit gap-hours = 2600 (fitbit beats phone in-hour)',
+    out.length === 1 && out[0].value === 2600, JSON.stringify(out))
+}
+
+console.log('\n== 5. Heart rate: fitbit-first per hour, sensors never blended ==')
+{
+  function hr(date, src, fam, min, avg, max, hhmm) {
     seq++
-    const r = { id: String(seq), user_id: 'u', metric_name: 'heart_rate', date, recorded_at: `${date}T${hhmm}:00Z`, unit: 'count/min', source: fam, value: { Min: min, Avg: avg, Max: max }, synced_at: 'x' }
-    r.source_family = fam
+    const r = { id:String(seq), user_id:'u', metric_name:'heart_rate', date, recorded_at:`${date}T${hhmm}:00Z`, unit:'count/min', source:src, value:{Min:min,Avg:avg,Max:max}, synced_at:'x' }
+    if (fam) r.source_family = fam
     return r
   }
-  check('sanity: heart_rate default is fitbit', defaultSourceFor('heart_rate') === 'fitbit')
-  const pts = [hr('2026-07-19', 50, 70, 120, 'apple'), hr('2026-07-19', 48, 65, 110, 'fitbit', '09:00')]
+  const pts = [
+    hr('2026-08-01','Furkan’s Apple Watch',undefined,55,75,130,'10:00'),
+    hr('2026-08-01',FITBIT,'fitbit',50,65,110,'10:30'),  // same hour → fitbit wins
+    hr('2026-08-01','Furkan’s Apple Watch',undefined,60,90,150,'17:00'), // watch-only hour fills
+  ]
   const out = computeHeartRateDailySeries(pts)
-  // Fitbit wins → its own 48/65/110, NOT min(48,50)/avg(...)/max(120,110).
-  check('dual-source HR uses fitbit only (48/65/110, not cross-source min/max)',
-    out.length === 1 && out[0].min === 48 && out[0].avg === 65 && out[0].max === 110, JSON.stringify(out))
+  // winners: fitbit(10h) 50/65/110 + watch(17h) 60/90/150 → min 50, max 150, avg (65+90)/2
+  check('day range from winning hours only: min 50 / max 150 / avg 77.5',
+    out.length === 1 && out[0].min === 50 && out[0].max === 150 && Math.abs(out[0].avg - 77.5) < 1e-9,
+    JSON.stringify(out))
 }
 
-console.log('\n== 4. Sleep is always Fitbit; sessions not double-counted ==')
+console.log('\n== 6. Sleep: whole-night winner — fitbit > apple, manual > all ==')
 {
-  function sleep(nightDate, startH, endH, total, fam) {
+  function sleep(nightDate, src, fam, total) {
     seq++
-    const start = `${nightDate}T0${startH}:00:00+02:00`.replace('T0', total < 0 ? 'T' : 'T0')
-    const r = {
-      id: String(seq), user_id: 'u', metric_name: 'sleep_analysis', date: nightDate,
-      recorded_at: `${nightDate}T${String(endH).padStart(2, '0')}:00:00Z`, unit: 'hr', source: fam,
-      value: { sleepStart: `${nightDate} ${String(startH).padStart(2, '0')}:00:00 +0200`, sleepEnd: `${nightDate} ${String(endH).padStart(2, '0')}:00:00 +0200`, totalSleep: total, core: total * 0.6, rem: total * 0.25, deep: total * 0.15, awake: 0 },
-      synced_at: 'x',
-    }
-    r.source_family = fam
+    const r = { id:String(seq), user_id:'u', metric_name:'sleep_analysis', date:nightDate,
+      recorded_at:`${nightDate}T07:00:00Z`, unit:'hr', source:src,
+      value:{ sleepStart:`${nightDate} 00:00:00 +0200`, sleepEnd:`${nightDate} 0${Math.min(9,Math.round(total))}:00:00 +0200`, totalSleep:total, core:total*0.6, rem:total*0.25, deep:total*0.15, awake:0 }, synced_at:'x' }
+    if (fam) r.source_family = fam
     return r
   }
-  check('sanity: sleep_analysis default is fitbit', defaultSourceFor('sleep_analysis') === 'fitbit')
-  // Same night: apple session 7h, fitbit session 8h. Fitbit wins → total 8 (not 15).
-  const night = [sleep('2026-07-19', 0, 7, 7, 'apple'), sleep('2026-07-19', 0, 8, 8, 'fitbit')]
-  const s = computeSleepSummary(night)
-  check('dual-source night uses fitbit total 8h (not summed to 15h)',
-    s.length === 1 && Math.abs(s[0].total - 8) < 1e-9, JSON.stringify(s))
+  const both = [sleep('2026-08-02','Furkan’s Apple Watch',undefined,7), sleep('2026-08-02',FITBIT,'fitbit',8)]
+  const s = computeSleepSummary(both)
+  check('both-device night → fitbit total 8h (never 15h)', s.length === 1 && Math.abs(s[0].total-8) < 1e-9, JSON.stringify(s))
 
-  // Apple-only night (no fitbit) still shows (fallback), single source.
-  const appleNight = [sleep('2026-07-20', 0, 6, 6, 'apple')]
-  const s2 = computeSleepSummary(appleNight)
-  check('apple-only night falls back to apple total 6h',
-    s2.length === 1 && Math.abs(s2[0].total - 6) < 1e-9, JSON.stringify(s2))
+  const appleOnly = [sleep('2026-08-03','Furkan’s Apple Watch',undefined,6)]
+  const s2 = computeSleepSummary(appleOnly)
+  check('apple-only night falls back to apple 6h', s2.length === 1 && Math.abs(s2[0].total-6) < 1e-9)
+
+  // Manual correction must beat fitbit (this was ChatGPT-review bug: old code
+  // resolved family first, manual second — a fitbit night would have hidden
+  // the manual row).
+  const manual = { ...sleep('2026-08-02','manual',undefined,9) }
+  const s3 = computeSleepSummary([...both, manual])
+  check('manual night beats fitbit (9h shown)', s3.length === 1 && Math.abs(s3[0].total-9) < 1e-9, JSON.stringify(s3))
+}
+
+console.log('\n== 7. Day-strategy metrics: one winner per day, no in-day mixing ==')
+{
+  const w = [
+    m('weight_body_mass','2026-08-01',80,'Furkan’s Apple Watch','08:00'),
+    fb('weight_body_mass','2026-08-01',79,'09:00'),
+  ]
+  const out = computeDailySeries('weight_body_mass', w)
+  check('weight: apple-first day winner → 80', out.length === 1 && out[0].value === 80, JSON.stringify(out))
+
+  const hrv = [
+    m('heart_rate_variability','2026-08-01',45,'Furkan’s Apple Watch','08:00'),
+    fb('heart_rate_variability','2026-08-01',52,'03:00'),
+    fb('heart_rate_variability','2026-08-01',48,'04:00'),
+  ]
+  const out2 = computeDailySeries('heart_rate_variability', hrv)
+  // fitbit-first day winner: avg(52,48)=50 — apple's 45 never mixed in.
+  check('HRV: fitbit day winner avg 50 (apple 45 not blended)', out2.length === 1 && out2[0].value === 50, JSON.stringify(out2))
 }
 
 console.log(`\n${failed === 0 ? '✅ ALL PASS' : '❌ FAILURES'} — ${passed} passed, ${failed} failed\n`)
