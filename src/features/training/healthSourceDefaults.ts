@@ -55,6 +55,12 @@ const BUCKET_METRICS: ReadonlySet<string> = new Set([
   'basal_energy_burned',
   'active_zone_minutes',
   'heart_rate',
+  // Apple-exclusive cumulative flows — Fitbit never competes for these, but
+  // they're the same summed-flow class, so they get the same hourly strategy
+  // for consistency (matters only if a second Apple stream ever writes them).
+  'apple_exercise_time',
+  'apple_stand_time',
+  'time_in_daylight',
 ])
 
 export function strategyFor(metricName: string): ResolveStrategy {

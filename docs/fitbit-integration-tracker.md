@@ -16,10 +16,10 @@
 
 | # | Phase | Status | Device needed? | Gated on |
 |---|---|---|---|---|
-| 0 | Source-aware foundation (schema + aggregation) | 🟡 **Redesign IMPLEMENTED (user-approved 2026-07-21) — awaiting migration apply + webhook redeploy + merge.** Stream-level hourly/day/night resolver shipped; real-data replay: 2026-07-10 steps 10,355 → 5,721. See Decision Log 2026-07-21. | No | — |
-| 1 | OAuth token-lifetime spike (H6) | 🟡 **GO — checklist being relayed to user now, clock not yet started** | No | — (parallel with 0) |
+| 0 | Source-aware foundation (schema + aggregation) | 🟢 **PM GO to merge — redesign independently verified correct** (3 minor non-blocking asks, see Log 2026-07-21b) | No | — |
+| 1 | OAuth token-lifetime spike (H6) | 🟡 **In progress — checklist relayed, device arrived, OAuth Playground smoke test approved as informational-only (does not shortcut the 7-day gate)** | No | — (parallel with 0) |
 | 2 | OAuth production wiring | ⏸ Blocked | No | Phase 1 PASS |
-| 3 | Poller + first live pull | ⏸ Blocked | **Yes** | Phase 0 merged, Phase 2 merged, device in hand |
+| 3 | Poller + first live pull | 🟡 **Device now in hand — no longer device-blocked.** Two new entry-gate items added (Log 2026-07-21b): must use `dataPoints.list` (intraday), never `dailyRollUp`, for cumulative metrics; `ai-proxy`'s `get_health_stats` must be source-aware + redeployed BEFORE the poller writes real `fitbit` rows. | No longer blocked — Air arrived | Phase 0 merged, Phase 2 merged, `get_health_stats` source-aware |
 | 4 | UI + AI wiring (source switch, Sleep, mini-cards, coach) | ⏸ Blocked | Yes (real data to show) | Phase 3 producing real rows |
 | 5 | Hardening (reconciliation, stale banner, webhook upgrade) | ⏸ Blocked | No | Phase 3/4 shipped |
 
@@ -53,23 +53,24 @@ that doc's single cross-reference line, added separately).
 
 **Engineer (code):**
 - ~~Branch `claude/fitbit-phase0-source-foundation`~~ → actually shipped on `claude/charming-newton-yhk8i` / **PR #351**, which already carries the design-doc commits — PM verified this is the correct continuation, not a scope miss (see Log).
-- Items 1–6 above — **shipped**, commit `85b2a67`
-- `npm run build` green — **reported by coordinator, not independently executed by PM** (no code-execution tool available this session) — re-confirm after the fix below
+- Original 6 items — shipped, commit `85b2a67`; **redesigned per the 2026-07-21 escalation** (stream-level hourly/day/night resolver, `health_source_prefs` dropped) — shipped, commit `52e1db2`, PM-verified correct (see Log 2026-07-21b, 3 minor non-blocking asks)
+- `npm run build` green — reported by coordinator both times; **PM has no code-execution tool this session, so this is never independently re-run**, only cross-checked by reading the diff for anything that would plausibly break `tsc`
 - Draft PR against `main` — done (#351)
 
 **User (manual):**
 - Apply migration `062` (Supabase Dashboard → SQL Editor, or `supabase db push`)
 - Redeploy `health-export-webhook` after the `source_family` stamp lands (Dashboard or CLI — "Enforce JWT Verification" stays OFF, unchanged)
 - Optional: explicitly opt in this turn if you want the "zero drift" check run against live prod data instead of only synthetic fixtures + your own read of the Health tab (per CLAUDE.md: direct DB access is opt-in per request, not assumed for the whole project)
-- Review + merge the PR only after PM's GO on the phase report — **PM GO issued 2026-07-20**, conditional on the coordinator committing PM's `flights_climbed` fix first (see Log)
+- Review + merge the PR — **PM GO issued 2026-07-21** (superseding the 2026-07-20 conditional GO, which was overtaken by the redesign) once the 3 minor findings in Log 2026-07-21b are addressed or explicitly accepted
 
 **Definition of done:**
-- [ ] Migration applied (pending — user), `npm run build` passes (reported green; re-confirm after committing PM's fix)
+- [ ] Migration applied (pending — user), `npm run build` passes (reported green both times, never independently executed by PM)
 - [ ] `health-export-webhook` redeployed with the explicit stamp (pending — user)
-- [x] Verification script run — PM hand-traced all 17 assertions in `scripts/verify-health-source-resolver.cjs` against the actual shipped resolver code (not just the report's word); all correct. `sucrase` confirmed present in `package-lock.json` so the script is genuinely runnable.
-- [ ] Manual click-through of Health tab (Day/Week/Month — Steps/Energy/Heart/Sleep/Body) shows **zero numeric change** from before this branch — blocked on migration apply, this is the true "Phase 0 fully done" closer, not a merge blocker
-- [x] New metric names present in `METRIC_AGGREGATION` and don't crash `getAggregationType` (confirmed by reading the file — inert, no caller uses them yet)
-- [x] No UI/route/component changed (confirmed by reading the diff)
+- [x] Verification script — PM hand-traced all 25 assertions in `scripts/verify-health-source-resolver.cjs` against the actual shipped resolver code (real 2026-07-10/07-07 data shapes, gap-filling union, HR/sleep/day-strategy cases) — all correct
+- [ ] Manual click-through of Health tab shows the **expected, deliberate** change (steps/distance/energy totals drop to their correct deduped values; everything else unchanged) — blocked on migration apply, the true "Phase 0 fully done" closer, not a merge blocker
+- [x] New metric names present in `METRIC_AGGREGATION`, don't crash `getAggregationType`
+- [x] No UI/route/component changed
+- [x] `flights_climbed` exclusion carried forward into the redesign, now with an explicit regression test (`ladder: flights_climbed apple-first`) — stronger than before, was just a comment
 
 **Log:**
 - 2026-07-20 — PM: scope locked, GO issued. See Decision Log below for the 5 adjustments made to the design doc's candidate scope.
@@ -93,6 +94,14 @@ that doc's single cross-reference line, added separately).
   **Ask before writing code**: get the user's explicit sign-off on this CONCRETE design (priority order + the literal before/after step numbers), not just the general gap-filling requirement — it's their personal data changing by a real, visible amount (10,355 → ~5,700), they should see that delta before it ships, not just the abstract policy.
 - 2026-07-21 — Engineer: REDESIGN implemented per user approval + PM GO. Stream-level resolver (hour/day/night strategies, ladders manual>watch>fitbit>phone for cumulative per user's word, fitbit-first for physiological+sleep, apple-first rest incl. flights_climbed). health_source_prefs DROPPED from 062; sleep_segments gained natural unique key + synced_at/updated_at; composite source_family indexes added. Verification 25/25 incl. real-data-shaped fixtures; LIVE replay of real 2026-07-10 step data: 10,355 → 5,721. Build green.
 - 2026-07-20 — Engineer: all six code items complete. Migration `062` written; webhook `source_family:'apple'` stamp added; 4 metric names registered; `healthSourceDefaults.ts` + the C1/H2 resolver landed (applied via one shared helper in every raw-point consumer); `fetchHealthMetricSeries` gained the optional filter. `npm run build` (tsc -b + vite) **green**. Verification script `scripts/verify-health-source-resolver.cjs` runs against the REAL module (via sucrase) — **17/17 PASS**, incl. array-identity zero-drift proof + dual-source no-double-count. Two DoD items are user-gated (migration apply, webhook redeploy) and the Health-tab click-through waits on the apply. **Deviation:** shipped on the existing `claude/charming-newton-yhk8i` branch (PR #351), not a new `claude/fitbit-phase0-*` branch — the harness pins this session to that branch; noted for PM. Awaiting PM GO for Phase 1 (which is already GO in parallel).
+- **2026-07-21b — PM independently verified the redesign (commit `52e1db2`) against the real diff — not taken on the report's word.** Confirmed via `.git/logs/HEAD` (commits `85b2a67`→`68ddcfa5`→`096ecd7d`→`52e1db2`). Read migration `062` (health_source_prefs genuinely absent, only a historical comment remains; `health_sleep_segments` gained `source_record_id`/`synced_at`/`updated_at` + a natural unique key for idempotent re-delivery; composite source_family indexes added — all sound), `healthSourceDefaults.ts` (new `StreamTier`/`ResolveStrategy` types, `BUCKET_METRICS`/`CUMULATIVE`/`FITBIT_FIRST` sets, 3 ladders), and `healthAggregate.ts`'s `resolveSourcePoints` in full, then **hand-traced every one of the 25 assertions** in `scripts/verify-health-source-resolver.cjs` against the actual shipped code (real 2026-07-10 step shape, active_energy duplicate-tier tie-break, cross-family gap-filling union, heart-rate fitbit-first-hourly, sleep manual>fitbit>apple, day-strategy weight/HRV) — every one is mathematically correct by trace. Confirmed no orphaned references to the old `resolveSourcePerDate`/`familyOf` names anywhere in the repo (clean rename, consistent with a real green build). The manual-sleep-priority fix is real: `streamTierOf` puts `'manual'` as rung 1 of every ladder, so it now wins at the resolver level before `computeSleepSummary`'s own (now-redundant-but-harmless) manual filter ever runs.
+  **Three minor, non-blocking findings — fix quickly or explicitly accept, don't need another PM round-trip:**
+  1. `CUMULATIVE` (gets the ladder) includes `apple_exercise_time`/`apple_stand_time`/`time_in_daylight`, which are **not** in `BUCKET_METRICS` (gets hourly resolution) — so they'd resolve at DAY granularity despite being cumulative/summed metrics. Low risk in practice (all three are Apple-exclusive per the design doc, same class as `flights_climbed` — Fitbit can never write them, so day-vs-hour is probably moot) but it's an unexplained asymmetry between the two config sets and wasn't in your summary. Either move them into `BUCKET_METRICS` for consistency, or add a one-line comment saying why not.
+  2. `computeSleepSummary`'s old `manualPts`/`sourcePts` filter (lines ~401-402) is now dead weight — `resolveSourcePoints` already guarantees manual wins before this code ever runs. Harmless, optional cleanup.
+  3. The `'bucket'` strategy's window key (`recorded_at.slice(0,13)`, i.e. UTC hour) doesn't literally match `computeHourlyBuckets`' local-hour display bucketing — verified this causes **no actual bug** (Oslo's UTC offset is always a whole number of hours, even across DST, so UTC-hour and local-hour boundaries are the same real-time boundaries, just different labels) but a one-line comment explaining that equivalence would save a future reader from re-deriving it.
+  **Verdict: PM GO to merge.** None of the three findings above block anything — fix them in the same commit or a fast follow-up, whichever is less friction, then merge. Migration apply + webhook redeploy remain the user's manual steps (unchanged from before).
+  **New Phase 3 entry-gate items, added to the tracker's Phase 3 card** (both raised by the coordinator, both approved): poller must call `dataPoints.list` (intraday), never `dailyRollUp`, for every cumulative metric — a pre-aggregated daily number can't feed the hourly bucket-merge this whole redesign depends on; and `ai-proxy`'s `get_health_stats` must be made source-aware and redeployed **before** the poller starts writing real `fitbit` rows, or the AI reproduces on its own separate aggregation path the exact double-count bug just fixed on the frontend.
+  **Phase 1 note**: the OAuth Playground smoke test (informational peek at a real Google Health API payload, now that the Air has arrived and is being worn) is approved — useful, low-risk, no app code, still the user's own manual OAuth clicking. One flag: Google's Playground defaults to ITS OWN shared OAuth client, which almost certainly cannot request Restricted `googlehealth.*` scopes for an arbitrary user — the "Use your own OAuth credentials" toggle must be set to the throwaway project's real Client ID/Secret, or the scope simply won't be grantable and it'll look like a mysterious failure. **This smoke test does not shortcut Phase 1's actual gate** — the 7-day refresh-token-durability wait and the Restricted-scope click-through confirmation are unchanged and still required before Phase 2 starts.
 
 ---
 

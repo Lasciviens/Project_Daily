@@ -73,6 +73,10 @@ export function resolveSourcePoints(
 
   const strategy = strategyFor(metricName)
   const ladder = ladderFor(metricName)
+  // Bucket key is the raw UTC-hour slice of recorded_at, while the display
+  // layer (computeHourlyBuckets) buckets by LOCAL hour — deliberately fine:
+  // Oslo's UTC offset is a whole hour year-round (CET/CEST), so the two hour
+  // grids share boundaries and a window never straddles a local hour.
   const windowKey: (p: HealthMetric) => string =
     strategy === 'bucket' ? p => p.recorded_at.slice(0, 13)
     : strategy === 'night' ? (nightKeyFn ?? (p => p.date))
