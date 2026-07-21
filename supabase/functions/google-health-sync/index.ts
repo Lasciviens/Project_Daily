@@ -28,7 +28,18 @@
 // google_health_sync_state and app_error_logs, returns 401.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const jsonHeaders = { 'Content-Type': 'application/json' }
+// The Fetch-now path is called from the BROWSER (supabase.functions.invoke),
+// so CORS headers are mandatory — same allow-list as calendar-oauth. The cron
+// path is server-to-server and ignores them.
+const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
+function corsHeaders(origin: string | null): Record<string, string> {
+  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Headers': 'authorization, content-type, x-client-info, apikey, x-sync-secret',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
+}
 const API = 'https://health.googleapis.com/v4/users/me'
 
 const supabase = createClient(
@@ -87,8 +98,10 @@ async function listDataPoints(
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204 })
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
+  const cors = corsHeaders(req.headers.get('origin'))
+  const jsonHeaders = { ...cors, 'Content-Type': 'application/json' }
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: cors })
 
   // ── Auth: user JWT (Fetch now) or shared secret (cron) ──
   const secret = Deno.env.get('GOOGLE_HEALTH_SYNC_SECRET')
