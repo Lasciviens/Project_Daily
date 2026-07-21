@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { isToday, format } from 'date-fns'
 import { useTimeBlocks } from '../hooks/useSchedule'
 import { useDayData } from '../hooks/useDayData'
 import { useUIStore } from '../../../app/store'
 import { FoodLogModal } from '../../recipes/components/FoodLogModal'
+import { ToDoItem } from '../../todo/components/ToDoItem'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,18 +12,9 @@ import { formatLocalDate } from '../../../shared/utils/dateUtils'
 //  (xl+, covers laptop 1469 and monitor 2450). Putting the schedule on its own
 //  row leaves a big empty horizontal band; rather than blow the timeline up,
 //  this fills it with things worth doing from Daily: quick actions, what's
-//  next, day stats, and one-tap jumps into the other areas. Hidden below xl
+//  next, day stats, and the day's open tasks. Hidden below xl
 //  (narrow screens have no gap to fill — the hero just goes full width).
 // ─────────────────────────────────────────────────────────────────────────────
-
-const JUMP: { to: string; icon: string; label: string }[] = [
-  { to: '/work',     icon: '💼', label: 'Work' },
-  { to: '/training', icon: '💪', label: 'Training' },
-  { to: '/media',    icon: '🎬', label: 'Media' },
-  { to: '/shop',     icon: '🛒', label: 'Shop' },
-  { to: '/projects', icon: '🗂️', label: 'Projects' },
-  { to: '/games',    icon: '🎮', label: 'Games' },
-]
 
 function StatTile({ value, label }: { value: number | string; label: string }) {
   return (
@@ -34,7 +25,7 @@ function StatTile({ value, label }: { value: number | string; label: string }) {
   )
 }
 
-export function DayQuickRail({ date }: { date: Date }) {
+export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: () => void }) {
   const dateStr = formatLocalDate(date)
   const openCommandBar = useUIStore(s => s.openCommandBar)
   const { data: blocks = [] } = useTimeBlocks(dateStr)
@@ -52,7 +43,8 @@ export function DayQuickRail({ date }: { date: Date }) {
     return timed.find(b => (b.start_time ?? '') >= nowHM) ?? null
   }, [blocks, today])
 
-  const openTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
+  const openTaskList = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled')
+  const openTasks = openTaskList.length
   const doneTasks = tasks.filter(t => t.status === 'done').length
   const plannedMin = blocks.reduce((a, b) => a + (b.duration_minutes ?? 0), 0)
   const plannedH = Math.round((plannedMin / 60) * 10) / 10
@@ -93,18 +85,30 @@ export function DayQuickRail({ date }: { date: Date }) {
         </div>
       </div>
 
-      {/* Jump to */}
+      {/* Open tasks — the day's actionable list, visible without switching
+          tabs (was the "Jump to" nav grid, removed on user request: tasks are
+          worth this space, duplicate navigation wasn't). */}
       <div>
-        <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400 mb-2">Jump to</p>
-        <div className="grid grid-cols-3 gap-2">
-          {JUMP.map(j => (
-            <Link key={j.to} to={j.to}
-              className="flex flex-col items-center justify-center gap-1 rounded-lg bg-cream-50 border border-ink-100 py-2.5 hover:border-accent-300 transition-colors">
-              <span className="text-lg leading-none">{j.icon}</span>
-              <span className="text-[10px] text-ink-500">{j.label}</span>
-            </Link>
-          ))}
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400">Open tasks</p>
+          {onOpenTasks && (
+            <button onClick={onOpenTasks} className="text-[11px] text-accent-600 hover:text-accent-700 font-medium min-h-[32px] px-1">
+              All →
+            </button>
+          )}
         </div>
+        {openTaskList.length === 0 ? (
+          <p className="text-xs text-ink-400 px-1">Nothing open for this day.</p>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {openTaskList.slice(0, 5).map(t => <ToDoItem key={t.id} task={t} />)}
+            {openTaskList.length > 5 && (
+              <button onClick={onOpenTasks} className="text-[11px] text-ink-400 hover:text-ink-700 text-left px-1 min-h-[32px]">
+                +{openTaskList.length - 5} more…
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={dateStr} />

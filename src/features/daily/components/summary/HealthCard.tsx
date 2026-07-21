@@ -32,8 +32,10 @@ function Panel({ icon, label, children }: { icon: string; label: string; childre
 const Big = ({ children }: { children: React.ReactNode }) => <p className="text-xl font-bold text-ink-900 leading-none tabular-nums">{children}</p>
 const Sub = ({ children }: { children: React.ReactNode }) => <p className="text-[11px] text-ink-500">{children}</p>
 const Empty = () => <p className="text-[11px] text-ink-300 py-1">No data</p>
+import { useDragScroll } from '../../../../shared/hooks/useDragScroll'
 
 export function HealthCard({ date }: { date: string }) {
+  const drag = useDragScroll<HTMLDivElement>()
   // Sleep (night that ended on `date`) — 2-day window for midnight attribution.
   const { data: sleepPts = [] } = useHealthMetricSeries('sleep_analysis', shiftDateStr(date, -1), date)
   const sleep = computeSleepSummary(sleepPts).find(s => s.date === date) ?? null
@@ -57,7 +59,7 @@ export function HealthCard({ date }: { date: string }) {
       <CellHeader icon="❤️" title="Health" action={<CellLink to="/training">Details →</CellLink>} />
 
       {/* Swipeable strip — snap + edge fade signals there's more to the side */}
-      <div className="flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory -mx-1 px-1 pb-1">
+      <div {...drag} className={`flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory -mx-1 px-1 pb-1 ${drag.className}`}>
         <Panel icon="😴" label="Sleep">
           {sleep ? (<><Big>{fmtHrs(sleep.total)}</Big><Sub>slept</Sub></>) : <Empty />}
         </Panel>
