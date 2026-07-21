@@ -8,6 +8,7 @@ import { exchangeCalendarCode, disconnectCalendar } from '../../features/calenda
 import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCalendar'
 import { applyTheme, THEMES } from './ThemeSwitcher'
 import { signOut } from '../../security/supabaseClient'
+import { FitbitSyncButton } from '../../features/training/components/health/FitbitSyncButton'
 
 export function SettingsMenu() {
   const [calLoading, setCalLoading] = useState(false)
@@ -118,6 +119,7 @@ export function SettingsMenu() {
             )}
           </div>
           {calError && <p className="text-[10px] text-red-400 mt-1.5 leading-snug">{calError}</p>}
+          {isCalConnected && <div className="mt-2"><FitbitSyncButton /></div>}
         </div>
 
         {/* Theme */}
