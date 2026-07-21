@@ -179,6 +179,35 @@ console.log('\n== 6. Sleep: whole-night winner — fitbit > apple, manual > all 
   check('manual night beats fitbit (9h shown)', s3.length === 1 && Math.abs(s3[0].total-9) < 1e-9, JSON.stringify(s3))
 }
 
+console.log('\n== 6b. REAL 2026-07-20 shape: intra-stream workout twins collapse ==')
+{
+  // Live case: starting a Fitness-app workout duplicated the SAME minutes
+  // inside the SAME watch stream (float-noise twins). One stream → the
+  // cross-stream resolver rightly does nothing; the minute-collapse must.
+  const pts = [
+    m('step_count','2026-07-20',106.86025364796929,WATCH,'16:03'),
+    { ...m('step_count','2026-07-20',106.86025364796926,WATCH,'16:03'), recorded_at:'2026-07-20T16:03:41Z' },
+    m('step_count','2026-07-20',37.66,WATCH,'16:02'),
+    { ...m('step_count','2026-07-20',106.86,WATCH,'16:02'), recorded_at:'2026-07-20T16:02:55Z' },
+    m('step_count','2026-07-20',50,WATCH,'16:05'),   // clean minute untouched
+  ]
+  const out = computeDailySeries('step_count', pts)
+  // per-minute max: 16:03→106.86…, 16:02→106.86, 16:05→50 = 263.72…
+  check('same-stream same-minute twins keep max per minute (≈264, not 408)',
+    out.length === 1 && Math.abs(out[0].value - (106.86025364796929 + 106.86 + 50)) < 0.01,
+    JSON.stringify(out))
+
+  // Non-sum metrics are untouched by the collapse (avg of twins is harmless
+  // and dropping points would distort minmaxavg counts).
+  const hrv = [
+    m('heart_rate_variability','2026-07-20',40,WATCH,'08:00'),
+    { ...m('heart_rate_variability','2026-07-20',60,WATCH,'08:00'), recorded_at:'2026-07-20T08:00:30Z' },
+  ]
+  const hv = computeDailySeries('heart_rate_variability', hrv)
+  check('average-type metrics NOT collapsed (avg 50 from both points)',
+    hv.length === 1 && hv[0].value === 50, JSON.stringify(hv))
+}
+
 console.log('\n== 7. Day-strategy metrics: one winner per day, no in-day mixing ==')
 {
   const w = [
