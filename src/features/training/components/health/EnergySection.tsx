@@ -4,6 +4,7 @@ import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
+import { SourceToggle, type SourceSelection } from './SourceToggle'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 import { useAnchorDate } from './useAnchorDate'
@@ -17,6 +18,8 @@ function fmtDay(dateStr: string): string {
 export function EnergySection() {
   const today = todayStr()
   const [period, setPeriod] = useState<Period>('week')
+  const [source, setSource] = useState<SourceSelection>('auto')
+  const src = source === 'auto' ? undefined : source
   const [anchor, setAnchor] = useAnchorDate()
 
   const isDay = period === 'day'
@@ -25,14 +28,14 @@ export function EnergySection() {
   // 2026-07-21: the Fitbit Air is worn 24/7, so Watch-off hours are now
   // gap-filled with REAL device data by the source resolver instead of an
   // estimate.
-  const { data: anchorActive = [], isLoading } = useHealthMetricSeries('active_energy', anchor, anchor)
-  const { data: anchorBasal = [] } = useHealthMetricSeries('basal_energy_burned', anchor, anchor)
+  const { data: anchorActive = [], isLoading } = useHealthMetricSeries('active_energy', anchor, anchor, src)
+  const { data: anchorBasal = [] } = useHealthMetricSeries('basal_energy_burned', anchor, anchor, src)
   const activeToday = Math.round(computeDailySeries('active_energy', anchorActive)[0]?.value ?? 0)
   const basalToday = Math.round(computeDailySeries('basal_energy_burned', anchorBasal)[0]?.value ?? 0)
 
   const { from, to } = rangeForAnchor(period, anchor)
-  const { data: activePoints = [] } = useHealthMetricSeries('active_energy', from, to)
-  const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', from, to)
+  const { data: activePoints = [] } = useHealthMetricSeries('active_energy', from, to, src)
+  const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', from, to, src)
 
   let chartData: { label: string; date?: string; active: number; basal: number }[]
   if (period === 'day') {
@@ -126,6 +129,7 @@ export function EnergySection() {
           onPick={setAnchor}
         />
         <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
+        <SourceToggle value={source} onChange={setSource} />
       </div>
 
       <div className="h-40">

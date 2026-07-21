@@ -3,6 +3,7 @@ import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeHeartRateDailySeries, computeHeartRateHourlySeries, computeDailySeries } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { PeriodToggle, type Period } from './PeriodToggle'
+import { SourceToggle, type SourceSelection } from './SourceToggle'
 import { BarLineChart } from './BarLineChart'
 import { DateNav } from './DateNav'
 import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
@@ -17,6 +18,8 @@ function fmtDay(dateStr: string): string {
 export function HeartSection() {
   const today = todayStr()
   const [period, setPeriod] = useState<Period>('week')
+  const [source, setSource] = useState<SourceSelection>('auto')
+  const src = source === 'auto' ? undefined : source
   const [anchor, setAnchor] = useAnchorDate()
 
   // Headline follows the SELECTED PERIOD: Day → that day's min–max + resting
@@ -25,9 +28,9 @@ export function HeartSection() {
   // is fetched vs the old anchor-only queries).
   const isDay = period === 'day'
   const { from, to } = rangeForAnchor(period, anchor)
-  const { data: rangePoints = [], isLoading } = useHealthMetricSeries('heart_rate', from, to)
-  const { data: restingPoints = [] } = useHealthMetricSeries('resting_heart_rate', from, to)
-  const { data: hrvPoints = [] } = useHealthMetricSeries('heart_rate_variability', from, to)
+  const { data: rangePoints = [], isLoading } = useHealthMetricSeries('heart_rate', from, to, src)
+  const { data: restingPoints = [] } = useHealthMetricSeries('resting_heart_rate', from, to, src)
+  const { data: hrvPoints = [] } = useHealthMetricSeries('heart_rate_variability', from, to, src)
 
   const hrDaily = computeHeartRateDailySeries(rangePoints)
   const restingDaily = computeDailySeries('resting_heart_rate', restingPoints)
@@ -93,6 +96,7 @@ export function HeartSection() {
           onPick={setAnchor}
         />
         <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
+        <SourceToggle value={source} onChange={setSource} />
       </div>
 
       <BarLineChart
