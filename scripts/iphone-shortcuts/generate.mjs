@@ -36,7 +36,7 @@ const shortcuts = [
   buildNutritionToday(secret),
   buildSleepSummary(secret),
   buildLogFoodFromDictation(
-    'Atistirmalik Logla',
+    'Atıştırmalık Logla',
     'atistirmalik-logla',
     'snack',
     59436,
@@ -44,7 +44,7 @@ const shortcuts = [
     secret
   ),
   buildLogFoodFromDictation(
-    'Aksam Yemegi Logla',
+    'Akşam Yemeği Logla',
     'aksam-yemegi-logla',
     'dinner',
     59549,
@@ -81,6 +81,8 @@ for (const shortcut of shortcuts) {
 function buildLogCreatine(phoneSecret) {
   const requestId = uuid();
   const loggedId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
   const okId = uuid();
 
   return shortcut('Log Creatine', 'log-creatine', 61444, 4282601983, [
@@ -90,17 +92,19 @@ function buildLogCreatine(phoneSecret) {
       numberItem('calories', 0),
     ]),
     getValueAction(loggedId, 'logged', actionOutput(requestId, 'Contents of URL')),
-    {
-      WFWorkflowActionIdentifier: 'is.workflow.actions.notification',
-      WFWorkflowActionParameters: {
-        UUID: uuid(),
-        WFNotificationActionTitle: "Lasci's Board",
-        WFNotificationActionBody: tokenString(`${OBJECT_REPLACEMENT} loglandi`, {
-          0: actionOutput(loggedId, 'Dictionary Value'),
-        }),
-        WFNotificationActionSound: true,
-      },
-    },
+    htmlTextAction(
+      htmlId,
+      htmlCard({
+        emoji: '✅',
+        title: 'Kreatin Loglandı',
+        subtitle: 'Lasci’s Board · supplement',
+        accent: '#5e8c7b',
+        bodyParts: ['Kaydedilen: ', actionOutput(loggedId, 'Dictionary Value')],
+        chips: ['Bugün', '0 kcal', 'Supplement'],
+      })
+    ),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
     getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
   ]);
 }
@@ -109,6 +113,8 @@ function buildAsk(phoneSecret) {
   const dictatedId = uuid();
   const requestId = uuid();
   const textId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
   const okId = uuid();
 
   return shortcut("AI'a Sor", 'aia-sor', 59716, 4271458815, [
@@ -136,6 +142,19 @@ function buildAsk(phoneSecret) {
         WFSpeakTextWait: true,
       },
     },
+    htmlTextAction(
+      htmlId,
+      htmlCard({
+        emoji: '🤖',
+        title: "AI'a Sor",
+        subtitle: 'Türkçe yanıt',
+        accent: '#6f6ab8',
+        bodyParts: [actionOutput(textId, 'Dictionary Value')],
+        chips: ['Sesli yanıt', 'Lasci’s Board'],
+      })
+    ),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
     getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
   ]);
 }
@@ -143,22 +162,26 @@ function buildAsk(phoneSecret) {
 function buildBrief(phoneSecret) {
   const requestId = uuid();
   const textId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
   const okId = uuid();
 
   return shortcut('Sabah Brief', 'sabah-brief', 59781, 431817727, [
     postAction(requestId, phoneSecret, [textItem('action', 'brief')]),
     getValueAction(textId, 'text', actionOutput(requestId, 'Contents of URL')),
-    {
-      WFWorkflowActionIdentifier: 'is.workflow.actions.notification',
-      WFWorkflowActionParameters: {
-        UUID: uuid(),
-        WFNotificationActionTitle: 'Sabah Brief',
-        WFNotificationActionBody: tokenString(OBJECT_REPLACEMENT, {
-          0: actionOutput(textId, 'Dictionary Value'),
-        }),
-        WFNotificationActionSound: true,
-      },
-    },
+    htmlTextAction(
+      htmlId,
+      htmlCard({
+        emoji: '🌤️',
+        title: 'Sabah Brief',
+        subtitle: 'Bugünün kısa planı',
+        accent: '#d8a24a',
+        bodyParts: [actionOutput(textId, 'Dictionary Value')],
+        chips: ['Görevler', 'Program', 'Antrenman'],
+      })
+    ),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
     getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
   ]);
 }
@@ -168,6 +191,8 @@ function buildNutritionToday(phoneSecret) {
   const kcalId = uuid();
   const proteinId = uuid();
   const entriesId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
   const okId = uuid();
 
   return shortcut('Beslenme Durumu', 'beslenme-durumu', 59752, 4282601983, [
@@ -175,22 +200,16 @@ function buildNutritionToday(phoneSecret) {
     getValueAction(kcalId, 'kcal', actionOutput(requestId, 'Contents of URL')),
     getValueAction(proteinId, 'protein_g', actionOutput(requestId, 'Contents of URL')),
     getValueAction(entriesId, 'entries', actionOutput(requestId, 'Contents of URL')),
-    {
-      WFWorkflowActionIdentifier: 'is.workflow.actions.notification',
-      WFWorkflowActionParameters: {
-        UUID: uuid(),
-        WFNotificationActionTitle: 'Beslenme Durumu',
-        WFNotificationActionBody: tokenStringFromParts([
-          actionOutput(kcalId, 'Dictionary Value'),
-          ' kcal, ',
-          actionOutput(proteinId, 'Dictionary Value'),
-          ' g protein, ',
-          actionOutput(entriesId, 'Dictionary Value'),
-          ' kayit',
-        ]),
-        WFNotificationActionSound: true,
-      },
-    },
+    htmlTextAction(
+      htmlId,
+      nutritionHtmlCard(
+        actionOutput(kcalId, 'Dictionary Value'),
+        actionOutput(proteinId, 'Dictionary Value'),
+        actionOutput(entriesId, 'Dictionary Value')
+      )
+    ),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
     getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
   ]);
 }
@@ -198,10 +217,14 @@ function buildNutritionToday(phoneSecret) {
 function buildSleepSummary(phoneSecret) {
   const requestId = uuid();
   const textId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
   const okId = uuid();
+  const prompt =
+    'Uyku verilerime bak ve bana kısa bir Türkçe uyku özeti ver. Sadece uyku süresi, kalite yorumu, son 7 günle karşılaştırma ve bugün için tek öneriyi yaz. Kısa, net, madde madde olsun.';
 
-  return shortcut('Uyku Ozeti', 'uyku-ozeti', 59717, 431817727, [
-    postAction(requestId, phoneSecret, [textItem('action', 'sleep')]),
+  return shortcut('Uyku Özeti', 'uyku-ozeti', 59717, 431817727, [
+    postAction(requestId, phoneSecret, [textItem('action', 'ask'), textItem('q', prompt)]),
     getValueAction(textId, 'text', actionOutput(requestId, 'Contents of URL')),
     {
       WFWorkflowActionIdentifier: 'is.workflow.actions.speaktext',
@@ -214,6 +237,19 @@ function buildSleepSummary(phoneSecret) {
         WFSpeakTextWait: true,
       },
     },
+    htmlTextAction(
+      htmlId,
+      htmlCard({
+        emoji: '🌙',
+        title: 'Uyku Özeti',
+        subtitle: 'Dinlenme · toparlanma · odak',
+        accent: '#5e8c7b',
+        bodyParts: [actionOutput(textId, 'Dictionary Value')],
+        chips: ['Uyku', '7 gün', 'Öneri'],
+      })
+    ),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
     getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
   ]);
 }
@@ -222,6 +258,8 @@ function buildLogFoodFromDictation(name, slug, mealSlot, glyph, color, phoneSecr
   const dictatedId = uuid();
   const requestId = uuid();
   const loggedId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
   const okId = uuid();
 
   return shortcut(name, slug, glyph, color, [
@@ -239,17 +277,19 @@ function buildLogFoodFromDictation(name, slug, mealSlot, glyph, color, phoneSecr
       tokenItem('title', actionOutput(dictatedId, 'Dictated Text')),
     ]),
     getValueAction(loggedId, 'logged', actionOutput(requestId, 'Contents of URL')),
-    {
-      WFWorkflowActionIdentifier: 'is.workflow.actions.notification',
-      WFWorkflowActionParameters: {
-        UUID: uuid(),
-        WFNotificationActionTitle: name,
-        WFNotificationActionBody: tokenString(`${OBJECT_REPLACEMENT} loglandi`, {
-          0: actionOutput(loggedId, 'Dictionary Value'),
-        }),
-        WFNotificationActionSound: true,
-      },
-    },
+    htmlTextAction(
+      htmlId,
+      htmlCard({
+        emoji: '🍽️',
+        title: `${name}`,
+        subtitle: mealSlot === 'dinner' ? 'Akşam yemeği kaydı' : 'Atıştırmalık kaydı',
+        accent: mealSlot === 'dinner' ? '#c86b4a' : '#d8a24a',
+        bodyParts: ['Kaydedilen: ', actionOutput(loggedId, 'Dictionary Value')],
+        chips: [mealSlot === 'dinner' ? 'Akşam' : 'Atıştırmalık', 'Bugün', 'Yeni kayıt'],
+      })
+    ),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
     getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
   ]);
 }
@@ -300,6 +340,37 @@ function postAction(id, phoneSecret, jsonItems) {
   };
 }
 
+function htmlTextAction(id, text) {
+  return {
+    WFWorkflowActionIdentifier: 'is.workflow.actions.gettext',
+    WFWorkflowActionParameters: {
+      UUID: id,
+      WFTextActionText: text,
+    },
+  };
+}
+
+function richTextFromHtmlAction(id, input) {
+  return {
+    WFWorkflowActionIdentifier: 'is.workflow.actions.getrichtextfromhtml',
+    WFWorkflowActionParameters: {
+      UUID: id,
+      WFHTML: tokenAttachment(input),
+    },
+  };
+}
+
+function quickLookAction(input) {
+  return {
+    WFWorkflowActionIdentifier: 'is.workflow.actions.previewdocument',
+    WFWorkflowActionParameters: {
+      UUID: uuid(),
+      WFInput: tokenAttachment(input),
+      WFQuickLookActionFullScreen: true,
+    },
+  };
+}
+
 function getValueAction(id, key, input) {
   return {
     WFWorkflowActionIdentifier: 'is.workflow.actions.getvalueforkey',
@@ -309,6 +380,168 @@ function getValueAction(id, key, input) {
       WFInput: tokenAttachment(input),
     },
   };
+}
+
+function htmlCard({ emoji, title, subtitle, accent, bodyParts, chips }) {
+  const chipHtml = chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join('');
+  return tokenStringFromParts([
+    `<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #f6f0e7;
+    color: #241f1a;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  .kart {
+    border: 1px solid #decfbd;
+    border-radius: 18px;
+    padding: 18px;
+    background: #fffaf2;
+    box-shadow: 0 10px 28px rgba(53, 43, 31, 0.12);
+  }
+  .baslik {
+    font-size: 26px;
+    font-weight: 800;
+    margin: 0 0 6px;
+  }
+  .alt {
+    color: #766b5f;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .chipler {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0 16px;
+  }
+  .chip {
+    border-radius: 999px;
+    padding: 6px 10px;
+    background: #f0e5d4;
+    color: #4d4338;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .ozet {
+    white-space: pre-wrap;
+    font-size: 17px;
+    line-height: 1.45;
+  }
+  .cizgi {
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, ${accent}, #d8a24a, #c86b4a);
+    margin: 14px 0 4px;
+  }
+  .etiket {
+    font-size: 12px;
+    color: #766b5f;
+  }
+</style>
+</head>
+<body>
+  <main class="kart">
+    <h1 class="baslik">${escapeHtml(emoji)} ${escapeHtml(title)}</h1>
+    <div class="alt">${escapeHtml(subtitle)}</div>
+    <div class="cizgi"></div>
+    <div class="chipler">${chipHtml}</div>
+    <div class="etiket">Lasci’s Board</div>
+    <section class="ozet">`,
+    ...bodyParts,
+    `</section>
+  </main>
+</body>
+</html>`,
+  ]);
+}
+
+function nutritionHtmlCard(kcalOutput, proteinOutput, entriesOutput) {
+  return tokenStringFromParts([
+    `<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #f6f0e7;
+    color: #241f1a;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  .kart {
+    border: 1px solid #decfbd;
+    border-radius: 18px;
+    padding: 18px;
+    background: #fffaf2;
+    box-shadow: 0 10px 28px rgba(53, 43, 31, 0.12);
+  }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 6px;
+  }
+  .alt {
+    color: #766b5f;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .metrik {
+    border: 1px solid #eadccb;
+    border-radius: 14px;
+    padding: 14px;
+    background: #fcf5ea;
+  }
+  .deger {
+    font-size: 34px;
+    line-height: 1;
+    font-weight: 850;
+  }
+  .etiket {
+    margin-top: 5px;
+    color: #766b5f;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .bar {
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #5e8c7b, #d8a24a, #c86b4a);
+    margin-top: 14px;
+  }
+</style>
+</head>
+<body>
+  <main class="kart">
+    <h1>🍽️ Beslenme Durumu</h1>
+    <div class="alt">Bugünkü kayıtların kısa özeti</div>
+    <div class="grid">
+      <section class="metrik"><div class="deger">`,
+    kcalOutput,
+    `</div><div class="etiket">kcal</div><div class="bar"></div></section>
+      <section class="metrik"><div class="deger">`,
+    proteinOutput,
+    ` g</div><div class="etiket">protein</div><div class="bar"></div></section>
+      <section class="metrik"><div class="deger">`,
+    entriesOutput,
+    `</div><div class="etiket">kayıt</div><div class="bar"></div></section>
+    </div>
+  </main>
+</body>
+</html>`,
+  ]);
 }
 
 function dictionary(items) {
@@ -440,6 +673,14 @@ function escapeXml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&apos;');
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }
 
 function uuid() {

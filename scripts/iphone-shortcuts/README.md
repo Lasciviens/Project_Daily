@@ -7,13 +7,16 @@ Generates Apple Shortcuts for the safe `phone-gateway` action API documented in
 - `AI'a Sor`
 - `Sabah Brief`
 - `Beslenme Durumu`
-- `Uyku Ozeti`
-- `Atistirmalik Logla`
-- `Aksam Yemegi Logla`
+- `Uyku Özeti`
+- `Atıştırmalık Logla`
+- `Akşam Yemeği Logla`
 
-`Log Creatine`, `Atistirmalik Logla`, and `Aksam Yemegi Logla` insert new food
+`Log Creatine`, `Atıştırmalık Logla`, and `Akşam Yemeği Logla` insert new food
 diary rows. The other shortcuts only read or ask for summaries. None of the
 shortcuts delete data.
+
+Every generated shortcut shows a Turkish visual result card with Quick Look.
+Voice shortcuts also speak in Turkish (`tr-TR`) before showing the card.
 
 The committed source uses `__PHONE_GATEWAY_SECRET__` as a placeholder. Do not
 commit generated `.plist` or `.shortcut` files containing the real
