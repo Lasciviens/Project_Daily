@@ -162,6 +162,15 @@ const MODEL_CHAIN = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-fl
 type GeminiModel = typeof MODEL_CHAIN[number]
 const DEFAULT_MODEL: GeminiModel = MODEL_CHAIN[0]
 
+// Per-surface starting model. The shop persona is structurally simple
+// (categorize + a couple of function calls), so it starts on a cheaper model
+// (~5× cheaper than the 3.5-flash default) while keeping proven function-calling
+// reliability; a 503 still falls through the whole chain. General/coach keep
+// the default. Tunable — see docs/ai-cost-capability-analysis.md §8.
+const SURFACE_MODEL: Record<string, GeminiModel> = {
+  shop: 'gemini-2.5-flash',
+}
+
 function isGeminiModel(m: unknown): m is GeminiModel {
   return typeof m === 'string' && (MODEL_CHAIN as readonly string[]).includes(m)
 }
@@ -316,6 +325,32 @@ const TOOLS = [
             filters: { type: 'STRING', description: 'JSON object identifying rows to delete, e.g. {"id":"..."}. Required and must be non-empty.' },
           },
           required: ['table', 'filters'],
+        },
+      },
+      // ─── Live read-only SQL escape hatch (explicit user opt-in only) ──────
+      {
+        name: 'run_read_query',
+        description: 'LIVE read-only SQL escape hatch. Use ONLY when the user EXPLICITLY asks for a raw / custom / complex query the structured db_query cannot express (multi-table JOIN, GROUP BY / aggregate, arithmetic, window functions), or explicitly says "live sql" / "raw sql" / "canlı sorgu" / "özel sorgu". Constraints (enforced server-side): a SINGLE SELECT (or WITH … SELECT) statement only — no INSERT/UPDATE/DELETE/DDL, no semicolons; only the allow-listed catalog tables may be referenced (call describe_database if unsure of names/columns); results are row-capped and the query is read-only + timed out. Prefer db_query for anything it can already do. Always show the user the SQL you ran.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            sql: { type: 'STRING', description: 'A single read-only SELECT (or WITH...SELECT) statement. No trailing semicolon. Reference only allow-listed tables. Rows are auto-scoped to the user and capped.' },
+          },
+          required: ['sql'],
+        },
+      },
+      // ─── Durable AI memory (user-directed) ────────────────────────────────
+      {
+        name: 'save_memory',
+        description: 'Persist a durable note/summary/fact to the user\'s AI memory (ai_memory table) so it survives across conversations. Use it when the user asks you to remember something for later ("bunu aklında tut", "şunu kaydet", "bunu unutma"), or to store a compacted summary of the current conversation when they ask. Announce what you will save before calling. Recall saved memories later via db_query on ai_memory.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            title:   { type: 'STRING', description: 'Short label for the memory (a few words).' },
+            content: { type: 'STRING', description: 'The full note/summary/fact to remember, in the user\'s language.' },
+            kind:    { type: 'STRING', enum: ['note', 'summary', 'fact', 'preference'], description: 'Optional — default "note". Use "summary" for a compacted conversation recap, "preference" for a standing user preference.' },
+          },
+          required: ['title', 'content'],
         },
       },
       // ─── Media (kept — non-trivial multi-step logic) ──────────────────────
@@ -563,7 +598,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as
-      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean }
+      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean; surface?: string }
 
     // Debug/maintenance: return the REAL list of models this API key can use
     // (name + generateContent support). Exists so the MODEL_CHAIN above is
@@ -595,7 +630,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { messages, systemPrompt, responseSchema, model } = body
+    const { messages, systemPrompt, responseSchema, model, surface } = body
     if (!messages?.length) {
       return new Response(JSON.stringify({ error: 'messages or fetchUrl required' }), {
         status: 400, headers: { ...headers, 'Content-Type': 'application/json' },
@@ -614,13 +649,15 @@ Deno.serve(async (req) => {
     // manual choice and automatic resilience aren't mutually exclusive; a
     // 503 on the chosen model still falls through to the rest of the chain
     // rather than failing outright.
-    const preferredModel = isGeminiModel(model) ? model : undefined
+    // An explicit picker choice wins; otherwise a surface may set a cheaper
+    // starting model (still just the PREFERRED start of the fallback chain).
+    const preferredModel = isGeminiModel(model) ? model : (surface ? SURFACE_MODEL[surface] : undefined)
 
     // Structured single-shot extraction (no tool-calling loop) — used for
     // things like parsing pasted recipe text into a JSON shape.
     const result = responseSchema
       ? await callGeminiStructured(GEMINI_KEY, messages, systemPrompt, responseSchema, preferredModel)
-      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader)
+      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader, surface)
     return new Response(JSON.stringify(result), {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
@@ -639,6 +676,37 @@ Deno.serve(async (req) => {
   }
 })
 
+// ─── Per-surface tool slices ──────────────────────────────────────────────
+// Sending only the tools a surface can use keeps the (now-cacheable) prefix
+// smaller and cheaper. We slice ONLY the shop surface — it's a genuinely
+// bounded persona (a shopping companion) that never needs tasks/media/training
+// tools. The coach and general surfaces keep the FULL tool set on purpose: the
+// coach is an open training+nutrition+schedule conversation that legitimately
+// creates tasks / plans time_blocks / logs food (db_insert/update/delete), so
+// slicing it would WEAKEN the assistant — the opposite of the goal.
+const SHOP_TOOL_NAMES = ['get_shop_categories', 'create_shop_category', 'create_shop_item', 'ask_clarifying_question', 'db_query']
+
+function sliceTools(names: string[]): typeof TOOLS {
+  const flat = TOOLS[0].functionDeclarations as AnyRecord[]
+  return [{ functionDeclarations: flat.filter(d => names.includes(d.name)) }]
+}
+function toolsFor(surface?: string): typeof TOOLS {
+  if (surface === 'shop') return sliceTools(SHOP_TOOL_NAMES)
+  return TOOLS
+}
+
+// Running total of Gemini token usage across a multi-turn call, so the whole
+// interaction is logged as one row (cachedContentTokenCount is the PROOF that
+// implicit prefix-caching is actually hitting — see the analysis doc).
+interface UsageAcc { prompt: number; cached: number; output: number; turns: number }
+function addUsage(acc: UsageAcc, meta: AnyRecord | undefined): void {
+  if (!meta) return
+  acc.prompt += meta.promptTokenCount ?? 0
+  acc.cached += meta.cachedContentTokenCount ?? 0
+  acc.output += meta.candidatesTokenCount ?? 0
+  acc.turns  += 1
+}
+
 async function callGemini(
   apiKey: string,
   messages: Message[],
@@ -648,6 +716,7 @@ async function callGemini(
   userId: string,
   preferredModel?: GeminiModel,
   authHeader?: string,
+  surface?: string,
 ): Promise<{ text: string; quickReplies?: string[]; steps?: string[]; model?: string }> {
   const buildUrl = (model: GeminiModel) =>
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
@@ -671,7 +740,10 @@ async function callGemini(
   // requirement — but ONLY on Gemini 3.x models (supportsThinking); the 2.5-tier
   // tail of the fallback chain 400s on this field entirely, so the body is
   // built per-model (buildBody), not once and reused across the whole chain.
-  const baseBody: AnyRecord = { tools: TOOLS }
+  // Accumulate token usage across every turn; logged once at the end.
+  const usage: UsageAcc = { prompt: 0, cached: 0, output: 0, turns: 0 }
+
+  const baseBody: AnyRecord = { tools: toolsFor(surface) }
   if (systemPrompt) {
     baseBody.systemInstruction = { parts: [{ text: systemPrompt }] }
   }
@@ -683,6 +755,7 @@ async function callGemini(
     }
   }
 
+  try {
   // Multi-turn function calling loop
   for (let turn = 0; turn < 16; turn++) {
     const { res, modelUsed: usedThisTurn } = await fetchGeminiWithFallback(
@@ -697,6 +770,7 @@ async function callGemini(
     }
 
     const data      = await res.json()
+    addUsage(usage, data.usageMetadata)
     const candidate = data.candidates?.[0]
     if (!candidate) return { text: '', model: modelUsed }
 
@@ -725,7 +799,7 @@ async function callGemini(
     const toolResponseParts = await Promise.all(
       fnCallParts.map(async (part: AnyRecord) => {
         const { name, args } = part.functionCall
-        const result = await dispatch(name, args, supabase, userId, authHeader)
+        const result = await dispatch(name, args, supabase, userId, authHeader, surface)
         steps.push(describeStep(name, args, result))
         return { functionResponse: { name, response: result } }
       })
@@ -747,6 +821,7 @@ async function callGemini(
   )
   if (finalRes.ok) {
     const finalData = await finalRes.json()
+    addUsage(usage, finalData.usageMetadata)
     const finalText = finalData.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text
     if (finalText) return { text: finalText, steps: steps.length ? steps : undefined, model: finalModel }
   }
@@ -756,6 +831,9 @@ async function callGemini(
     text: `Bu turda çok fazla adım gerektiği için işlemi tek seferde bitiremedim.${doneList}\n\nKaldığım yerden devam etmemi ister misin? "devam et" yaz, sürdüreyim.`,
     steps: steps.length ? steps : undefined,
     model: finalModel,
+  }
+  } finally {
+    void logUsage(supabase, userId, surface, modelUsed, usage)
   }
 }
 
@@ -822,10 +900,21 @@ async function dispatch(
   supabase: any,
   userId: string,
   authHeader?: string,
+  surface?: string,
 ): Promise<AnyRecord> {
   switch (name) {
     case 'describe_database':    return describeDatabase(args)
-    case 'db_query':             return dbQuery(supabase, userId, args)
+    case 'db_query': {
+      const r = await dbQuery(supabase, userId, args)
+      void logQuery(supabase, userId, surface, 'db_query', args.table ?? null, args, r)
+      return r
+    }
+    case 'run_read_query': {
+      const r = await runReadQuery(args, authHeader)
+      void logQuery(supabase, userId, surface, 'run_read_query', null, args, r)
+      return r
+    }
+    case 'save_memory':          return saveMemory(supabase, userId, args)
     case 'db_insert':            return dbInsert(supabase, userId, args)
     case 'db_update':            return dbUpdate(supabase, userId, args)
     case 'db_delete':            return dbDelete(supabase, userId, args)
@@ -1863,6 +1952,14 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     columns: "id, title, description, page(route e.g. /training), category(bug|feature|improvement|integration|longterm|question|other), priority(low|medium|high|urgent), status(open|in_progress|done|dismissed — default open), effort(small|medium|large, nullable), sort_order, created_at, updated_at",
     rules: 'Write title/description in the language the user used. Default status "open". Never mark done/dismissed unless the user says so.',
   },
+  // ai_memory is rw: the user directs it ("bunu aklında tut") and the AI is the
+  // one that both writes (save_memory / db_insert) and recalls (db_query) it.
+  ai_memory: {
+    access: 'rw',
+    purpose: "The user's durable AI memory — notes/summaries/facts/preferences the AI was asked to remember across conversations. Prefer the save_memory tool to write; db_query here to recall (e.g. filter kind='preference', or search title/content).",
+    columns: "id, kind(note|summary|fact|preference — default note), title, content, source(user|ai|auto — how it was captured), created_at, updated_at",
+    rules: 'Write in the user\'s language. Only save when the user asks you to remember something or to store a conversation summary. Never delete a memory without explicit confirmation.',
+  },
 }
 
 function describeDatabase(args: AnyRecord): AnyRecord {
@@ -1932,6 +2029,131 @@ async function dbQuery(supabase: AnyRecord, userId: string, args: AnyRecord): Pr
     const { data, error } = await query
     if (error) return { success: false, error: error.message }
     return { success: true, count: data?.length ?? 0, rows: data ?? [] }
+  } catch (e) { return { success: false, error: (e as Error).message } }
+}
+
+// ─── AI instrumentation + live-SQL + memory ───────────────────────────────
+// All writes here are BEST-EFFORT: the tables/RPC land in migration 064 (user
+// applies tomorrow). Until then these silently no-op (a missing table resolves
+// as an error result, not a throw) so a chat response is NEVER broken by them.
+
+// One row per completed AI interaction. cached_tokens is the proof that the
+// cache-aligned prefix (stable systemInstruction + tools) is actually hitting.
+async function logUsage(
+  supabase: AnyRecord, userId: string, surface: string | undefined,
+  model: string, usage: UsageAcc,
+): Promise<void> {
+  if (usage.turns === 0) return
+  try {
+    await supabase.from('ai_usage_log').insert({
+      user_id: userId, surface: surface ?? 'general', model,
+      prompt_tokens: usage.prompt, cached_tokens: usage.cached,
+      output_tokens: usage.output, tool_turns: usage.turns,
+    })
+  } catch { /* pre-migration / never break the response */ }
+}
+
+// Every data-read the AI runs — so hot queries can later be promoted to a
+// hard-coded frontend query / RPC (the "on yüze çek" plan). Live-SQL rows keep
+// the exact SQL text; db_query rows keep the structured args.
+async function logQuery(
+  supabase: AnyRecord, userId: string, surface: string | undefined,
+  tool: string, table: string | null, args: AnyRecord, result: AnyRecord,
+): Promise<void> {
+  try {
+    await supabase.from('ai_query_log').insert({
+      user_id: userId, surface: surface ?? 'general', tool, table_name: table,
+      sql:       tool === 'run_read_query' ? String(args.sql ?? '').slice(0, 4000) : null,
+      args:      tool === 'db_query' ? args : null,
+      ok:        result?.success !== false,
+      row_count: typeof result?.count === 'number' ? result.count : null,
+      error:     result?.success === false ? String(result.error ?? '').slice(0, 500) : null,
+    })
+  } catch { /* pre-migration / never break the response */ }
+}
+
+// Live read-only SQL escape hatch (explicit user opt-in only).
+//
+// THE SECURITY BOUNDARY IS THE DATABASE, NOT THIS TEXT GUARD (an adversarial
+// review proved regex SQL-parsing is bypassable via comments/quoting). What
+// actually contains this:
+//   • the ai_run_read_query RPC is SECURITY INVOKER, called via a USER-JWT
+//     client → RLS applies (rows scoped to the user; a service-role call would
+//     bypass RLS, which is why we build a dedicated user client here);
+//   • the RPC runs the query read-only (transaction_read_only) → no writes;
+//   • the OAuth-token tables are already revoked from the `authenticated` role
+//     (migration 044), so even if the text guard were bypassed the secrets are
+//     permission-denied at the DB; result rows are hard-capped (LIMIT 500).
+// The text guard below is a best-effort UX filter (clear errors, cheap block of
+// obvious system-catalog probes) layered on top — it is NOT relied on for
+// containment. It fails CLOSED: anything it can't vet is rejected.
+async function runReadQuery(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
+  try {
+    if (!authHeader) return { success: false, error: 'No auth context for live query.' }
+    let sql = typeof args.sql === 'string' ? args.sql.trim() : ''
+    if (!sql) return { success: false, error: 'sql is required.' }
+
+    // Strip SQL comments FIRST — otherwise every check below is bypassable by
+    // hiding a table/keyword behind /* */ or -- (a real bypass the review found:
+    // `FROM/**/pg_proc`). Then drop a single trailing ';'.
+    sql = sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ').replace(/;\s*$/, '').trim()
+
+    if (sql.includes(';'))   return { success: false, error: 'Only a single statement is allowed (no ";").' }
+    if (/["`]/.test(sql))    return { success: false, error: 'Quoted identifiers are not allowed — reference tables by their plain lowercase names.' }
+    if (!/^(select|with)\b/i.test(sql)) return { success: false, error: 'Only SELECT / WITH … SELECT queries are allowed.' }
+    // Cheap explicit block of system catalogs / other schemas (the pg_ form is
+    // anchored only on a leading word-boundary — a trailing \b never matched
+    // pg_class/pg_proc, the review's dead-regex finding).
+    if (/\bpg_/i.test(sql) || /\binformation_schema\b/i.test(sql) || /\b(auth|vault|storage|extensions)\s*\./i.test(sql)) {
+      return { success: false, error: 'That query references a restricted schema/table.' }
+    }
+
+    // Best-effort: every table reference must be an allow-listed catalog table
+    // (or a CTE defined IN this query). CTE names are recognised ONLY as
+    // `name AS (` so a SELECT-list `expr AS alias` is not mistaken for one;
+    // comma-joined FROM lists (`FROM a, b`) are covered.
+    const catalog  = new Set(Object.keys(DB_CATALOG))
+    const cteNames = new Set<string>()
+    for (const m of sql.matchAll(/\b([a-z_][a-z0-9_]*)\s+as\s*\(/gi)) cteNames.add(m[1].toLowerCase())
+    const refs = new Set<string>()
+    // capture the whole FROM/JOIN table list up to the next clause keyword,
+    // then split on commas and take each entry's first token (drops aliases +
+    // schema qualifiers).
+    for (const m of sql.matchAll(/\b(?:from|join)\s+([a-z0-9_,.\s]+?)(?=\b(?:where|group|order|limit|having|join|on|union|except|intersect|offset|fetch)\b|$)/gi)) {
+      for (const part of m[1].split(',')) {
+        const id = part.trim().split(/\s+/)[0].split('.')[0].toLowerCase()
+        if (id && !/^\d/.test(id)) refs.add(id)
+      }
+    }
+    for (const t of refs) {
+      if (!catalog.has(t) && !cteNames.has(t)) {
+        return { success: false, error: `Table "${t}" is not accessible — only allow-listed tables can be queried (call describe_database for the list).` }
+      }
+    }
+
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false, autoRefreshToken: false } },
+    )
+    const { data, error } = await userClient.rpc('ai_run_read_query', { query_text: sql })
+    if (error) return { success: false, error: error.message }
+    const rows = Array.isArray(data) ? data : (data ?? [])
+    return { success: true, count: rows.length, rows, sql }
+  } catch (e) { return { success: false, error: (e as Error).message } }
+}
+
+async function saveMemory(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  try {
+    const title   = typeof args.title === 'string' ? args.title.trim() : ''
+    const content = typeof args.content === 'string' ? args.content.trim() : ''
+    if (!title || !content) return { success: false, error: 'title and content are required.' }
+    const kind = ['note', 'summary', 'fact', 'preference'].includes(args.kind) ? args.kind : 'note'
+    const { data, error } = await supabase.from('ai_memory')
+      .insert({ user_id: userId, kind, title, content, source: 'ai' })
+      .select('id').single()
+    if (error) return { success: false, error: error.message }
+    return { success: true, id: data?.id, kind }
   } catch (e) { return { success: false, error: (e as Error).message } }
 }
 

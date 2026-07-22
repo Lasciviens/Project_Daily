@@ -75,8 +75,8 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
       })
       toast.dismiss(tid); toast.success('Saved ✓')
       onClose()
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    } catch {
+      toast.dismiss(tid)   // the hook (useMutationWithFeedback) already toasted + logged the error
     } finally {
       setSaving(false)
     }
@@ -89,8 +89,8 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
       await remove.mutateAsync(existing.id)
       toast.dismiss(tid); toast.success('Removed')
       onClose()
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+    } catch {
+      toast.dismiss(tid)   // the hook (useMutationWithFeedback) already toasted + logged the error
     }
   }
 
