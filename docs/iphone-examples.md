@@ -90,7 +90,7 @@ in `SECRET`. **This never expires** (device secret, not a JWT).
 // Lasci's Board — Nutrition (Scriptable, Small widget). Durable: device secret.
 const GATEWAY = "https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/phone-gateway";
 const SECRET  = "PASTE_YOUR_PHONE_GATEWAY_SECRET";
-const GOAL_KCAL = 2100, GOAL_PROT = 150; // edit to your targets
+const GOAL_KCAL = 2100, GOAL_PROT = 150, GOAL_WATER_ML = 2000; // edit to your targets
 
 const req = new Request(GATEWAY);
 req.method = "POST";
@@ -99,6 +99,7 @@ req.body = JSON.stringify({ action: "nutrition_today" });
 let d = {};
 try { d = await req.loadJSON(); } catch (e) { d = {}; }
 const kcal = Math.round(d.kcal || 0), prot = Math.round(d.protein_g || 0);
+const waterMl = Math.round(d.water_ml || 0);
 
 const dark = Device.isUsingDarkAppearance();
 const w = new ListWidget();
@@ -114,6 +115,8 @@ w.addSpacer(4);
 let p = w.addText(`protein ${prot} / ${GOAL_PROT} g`); p.font = Font.mediumSystemFont(13); p.textColor = acc;
 w.addSpacer(2);
 let left = w.addText(`${Math.max(0, GOAL_KCAL - kcal)} kcal kaldı`); left.font = Font.systemFont(11); left.textColor = mut;
+w.addSpacer(2);
+let wtr = w.addText(`💧 ${(waterMl / 1000).toFixed(1)} / ${(GOAL_WATER_ML / 1000).toFixed(0)} L`); wtr.font = Font.systemFont(11); wtr.textColor = waterMl >= GOAL_WATER_ML ? acc : mut;
 Script.setWidget(w);
 if (config.runsInApp) w.presentSmall();
 Script.complete();
@@ -128,9 +131,10 @@ Refresh is on iOS's widget budget (~every 15–60 min; not real-time).
 |---|---|---|---|
 | `log_supplement` | `{title?, calories?, date?}` | `{ok, logged}` | no |
 | `log_food` | `{title, meal_slot?, calories?, protein_g?, carbs_g?, fat_g?, date?}` | `{ok, logged}` | no |
-| `nutrition_today` | `{date?}` | `{ok, kcal, protein_g, entries}` | no |
-| `ask` | `{q}` | `{ok, text}` | yes (→ ai-proxy) |
-| `brief` | `{}` | `{ok, text}` | yes |
+| `log_water` | `{amount_ml?, date?}` (default 250 ml) | `{ok, logged_ml}` | no |
+| `nutrition_today` | `{date?}` | `{ok, kcal, protein_g, water_ml, entries}` | no |
+| `ask` | `{q}` | `{ok, text}` | yes (→ ai-proxy, fast model) |
+| `brief` | `{}` | `{ok, text}` | yes (context pre-built, single-shot) |
 | `sleep` | `{}` | `{ok, text}` | yes |
 
 `date` defaults to the server's UTC date; pass a `yyyy-MM-dd` (Format Date in the
