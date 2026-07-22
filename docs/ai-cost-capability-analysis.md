@@ -496,9 +496,40 @@ first cannot break anything.
 - **AI memory** (`ai_memory` + `save_memory` tool + catalog rw): durable notes/
   summaries/facts the user asks the AI to remember; recalled via db_query.
 
-**Deferred to later phases (per the plan above):** `db_aggregate` (T6), vision/
-photo→food (T8), pgvector `semantic_search` (T9), weekly review (T10), explicit
-`cachedContent` (only if `ai_usage_log.cached_tokens` shows implicit misses dominate).
+### Phases 2–4 (code written 2026-07-22)
+
+- **Phase 2 (T6/T7):** `db_aggregate` tool (sum/avg/min/max/count + group_by,
+  rows reduced server-side in JS — only the summary reaches the model; no SQL
+  built from input, no PostgREST-aggregate dependency) + `get_day_summary` tool
+  + a SYSTEM_PROMPT decision ladder. No migration; needs ai-proxy redeploy.
+- **Phase 3 (T8) — vision:** `Message.images` end-to-end; a shared
+  `messagesToContents()` attaches base64 photos as Gemini `inline_data` parts
+  (chat + structured paths); AIPanel 📷 attach (≤3, thumbnails, image-only send);
+  `parseFoodPhoto()` + `fileToCompactDataUrl` util. No migration; ai-proxy redeploy.
+- **Phase 4 (T9/T10):** migration **065** = pgvector + `ai_embeddings` +
+  `ai_semantic_search()` RPC + `ai_reviews`. Edge: `gemini-embedding-001` @ 768
+  dims (cosine index → no manual normalize), `semantic_search` tool, a
+  user-triggered `reindexEmbeddings` action (+ "Reindex AI search" button on
+  the Developer page). Weekly review = client-side lazy+cached (like the daily
+  briefing, no cron/edge fn): `weeklyReviewApi`/`useWeeklyReview`/`WeeklyReview`
+  on Home, durable copy in `ai_reviews`.
+
+**Still deferred:** explicit `cachedContent` (only if `ai_usage_log.cached_tokens`
+shows implicit misses dominate); a dedicated Food "add by photo" button (the chat
+vision path + `parseFoodPhoto` helper already cover it); embed-on-write freshness
+(reindex is manual for now).
+
+### Deploy checklist addendum — phases 2–4
+1. **Apply migration `065_ai_semantic_and_reviews.sql`** (pgvector ext +
+   ai_embeddings + ai_semantic_search RPC + ai_reviews). Migration 064 must be
+   applied first (it isn't a hard dependency, but both are pending).
+2. **Redeploy `ai-proxy`** (all of phases 2-4's edge changes ship together).
+3. **First run:** open Developer → **Reindex AI search** once so `semantic_search`
+   has data. **Verify the embeddings call succeeds** on that first reindex — it's
+   the one API shape confirmed only via docs, not a live call from here; if it
+   errors, check the model id / field names against `ai.google.dev` before relying
+   on semantic search. Weekly review generates itself on first Home open of the week.
+4. No new secrets/env/cron. The reindex + semantic_search reuse the caller's JWT.
 
 ### Deploy checklist — DO TOMORROW (Supabase side)
 1. **Apply migration** `supabase/migrations/064_ai_cost_capability.sql`

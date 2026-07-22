@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useUIStore } from '../../../app/store'
+import { useUIStore, toast } from '../../../app/store'
 import { sendMessage, sendCoachMessage, AI_MODEL_OPTIONS } from '../api/aiApi'
 import type { Message, AIModel } from '../api/aiApi'
+import { fileToCompactDataUrl } from '../../../shared/utils/image'
 
 // The AI performs real DB writes server-side (ai-proxy's db_insert/update/
 // delete + create_task/plan_media/etc.), but the panel had NO cache
@@ -74,8 +75,20 @@ export function AIPanel() {
   // Coach mode: replaces the generic assistant persona+context with the
   // blunt PT persona + a prepared 30-day training/health/nutrition JSON.
   const [coachMode,   setCoachMode]   = useState(false)
+  // Attached photos (compact JPEG data URLs) sent with the next message —
+  // Gemini reads them natively (meal/label photos etc.). Capped at 3.
+  const [pendingImages, setPendingImages] = useState<string[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
+  const fileRef   = useRef<HTMLInputElement>(null)
+
+  async function addImages(files: FileList | null) {
+    if (!files?.length) return
+    try {
+      const urls = await Promise.all(Array.from(files).slice(0, 3).map(f => fileToCompactDataUrl(f)))
+      setPendingImages(p => [...p, ...urls].slice(0, 3))
+    } catch { toast.error('Could not read image') }
+  }
 
   useEffect(() => {
     if (isAIOpen) inputRef.current?.focus()
@@ -97,12 +110,13 @@ export function AIPanel() {
 
   async function handleSend(text: string) {
     const trimmed = text.trim()
-    if (!trimmed || loading) return
+    if ((!trimmed && !pendingImages.length) || loading) return
 
-    const userMsg: ChatMessage = { role: 'user', content: trimmed }
+    const userMsg: ChatMessage = { role: 'user', content: trimmed, ...(pendingImages.length ? { images: pendingImages } : {}) }
     const next = [...messages, userMsg]
     setMessages(next)
     setInput('')
+    setPendingImages([])
     setLoading(true)
     setError(null)
 
@@ -231,15 +245,24 @@ export function AIPanel() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[85%] flex flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                <div
-                  className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'bg-accent-500 text-white rounded-br-sm'
-                      : 'bg-cream-100 text-ink-800 rounded-bl-sm'
-                  }`}
-                >
-                  {renderMarkdown(msg.content)}
-                </div>
+                {msg.images && msg.images.length > 0 && (
+                  <div className="flex gap-1.5 flex-wrap justify-end">
+                    {msg.images.map((src, k) => (
+                      <img key={k} src={src} alt="" className="w-24 h-24 object-cover rounded-xl border border-ink-200" />
+                    ))}
+                  </div>
+                )}
+                {msg.content && (
+                  <div
+                    className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                      msg.role === 'user'
+                        ? 'bg-accent-500 text-white rounded-br-sm'
+                        : 'bg-cream-100 text-ink-800 rounded-bl-sm'
+                    }`}
+                  >
+                    {renderMarkdown(msg.content)}
+                  </div>
+                )}
                 {msg.role === 'assistant' && (msg.model || (msg.steps && msg.steps.length > 0)) && (
                   <div className="flex items-center gap-2 px-1">
                     {/* Which model ACTUALLY answered — the fallback chain can
@@ -285,7 +308,38 @@ export function AIPanel() {
 
         {/* Input */}
         <div className="px-4 py-3 border-t border-ink-100 flex-shrink-0">
+          {pendingImages.length > 0 && (
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {pendingImages.map((src, k) => (
+                <div key={k} className="relative">
+                  <img src={src} alt="" className="w-14 h-14 object-cover rounded-lg border border-ink-200" />
+                  <button
+                    onClick={() => setPendingImages(p => p.filter((_, j) => j !== k))}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-ink-700 text-white rounded-full text-xs flex items-center justify-center leading-none"
+                    aria-label="Remove photo"
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex items-end gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={e => { void addImages(e.target.files); e.target.value = '' }}
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={loading || pendingImages.length >= 3}
+              title="Attach a photo"
+              aria-label="Attach a photo"
+              className="flex-shrink-0 w-11 h-11 rounded-lg border border-ink-200 text-ink-500 hover:bg-cream-100 disabled:opacity-40 flex items-center justify-center transition-colors duration-150 text-lg"
+            >
+              📷
+            </button>
             <textarea
               ref={inputRef}
               value={input}
@@ -303,7 +357,7 @@ export function AIPanel() {
             />
             <button
               onClick={() => handleSend(input)}
-              disabled={!input.trim() || loading}
+              disabled={(!input.trim() && !pendingImages.length) || loading}
               className="flex-shrink-0 w-11 h-11 bg-accent-500 hover:bg-accent-600 disabled:opacity-40 text-white rounded-lg flex items-center justify-center transition-colors duration-150"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
