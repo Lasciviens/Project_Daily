@@ -11,7 +11,26 @@ function corsHeaders(origin: string | null): Record<string, string> {
   }
 }
 
-interface Message { role: 'user' | 'assistant'; content: string }
+interface Message { role: 'user' | 'assistant'; content: string; images?: string[] }
+
+// Turn a client Message into Gemini `parts`, attaching any images as inline_data
+// (base64 data URLs only). Flash-tier models are multimodal, so a photo of a
+// meal / food label rides alongside the text and the tool loop still runs.
+function parseImageData(s: unknown): { mime_type: string; data: string } | null {
+  if (typeof s !== 'string') return null
+  const m = /^data:([\w/+.\-]+);base64,(.+)$/s.exec(s.trim())
+  return m ? { mime_type: m[1], data: m[2] } : null
+}
+function partsForMessage(m: Message): AnyRecord[] {
+  const parts: AnyRecord[] = []
+  if (m.content) parts.push({ text: m.content })
+  for (const img of m.images ?? []) { const d = parseImageData(img); if (d) parts.push({ inline_data: d }) }
+  if (!parts.length) parts.push({ text: '' })
+  return parts
+}
+function messagesToContents(messages: Message[]): AnyRecord[] {
+  return messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: partsForMessage(m) }))
+}
 
 // deno-lint-ignore no-explicit-any
 type AnyRecord = Record<string, any>
@@ -351,6 +370,32 @@ const TOOLS = [
             kind:    { type: 'STRING', enum: ['note', 'summary', 'fact', 'preference'], description: 'Optional — default "note". Use "summary" for a compacted conversation recap, "preference" for a standing user preference.' },
           },
           required: ['title', 'content'],
+        },
+      },
+      // ─── Aggregation (analytics without dumping rows into context) ─────────
+      {
+        name: 'db_aggregate',
+        description: 'Aggregate a table (sum/avg/min/max/count, optionally grouped) and get back ONLY the computed numbers — never the raw rows. USE THIS for any "average/total/trend/compare/how many/how much over time" question instead of db_query-then-count-in-your-head: it is both cheaper and correct (the math is done in code, not by you). Auto-scoped to the user. E.g. average protein over a date range, total kcal per day, workout count per week.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            table:   { type: 'STRING', description: 'Table name (must be in the catalog).' },
+            metrics: { type: 'STRING', description: 'JSON array of {op, column?, as?}. op ∈ sum|avg|min|max|count. column is required except for count (count with no column = row count). E.g. [{"op":"avg","column":"protein_g","as":"avg_protein"},{"op":"count"}].' },
+            filters: { type: 'STRING', description: 'Optional JSON filter object, SAME grammar as db_query (equals / null / array=IN / {gte,lte,gt,lt,neq,like}). E.g. {"status":"eaten","date":{"gte":"2026-07-01"}}.' },
+            group_by:{ type: 'STRING', description: 'Optional JSON array of column names to group by, e.g. ["date"] or ["meal_slot"]. Omit for a single overall aggregate.' },
+          },
+          required: ['table', 'metrics'],
+        },
+      },
+      {
+        name: 'get_day_summary',
+        description: 'One compact snapshot of a single day — open tasks, calories + protein eaten, scheduled blocks, whether a workout was logged. Prefer this over several separate db_query calls when the user asks "how is my day / what does today look like".',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            date: { type: 'STRING', description: 'YYYY-MM-DD. Defaults to today if omitted.' },
+          },
+          required: [],
         },
       },
       // ─── Media (kept — non-trivial multi-step logic) ──────────────────────
@@ -727,10 +772,7 @@ async function callGemini(
   // in again from wherever it left off.
   let modelUsed: GeminiModel = preferredModel ?? DEFAULT_MODEL
 
-  let contents: AnyRecord[] = messages.map(m => ({
-    role:  m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }))
+  let contents: AnyRecord[] = messagesToContents(messages)
 
   // Descriptions of each tool call performed — surfaced to the client as an
   // activity trace (shown behind a "Show detail" link, not spoken inline).
@@ -863,10 +905,7 @@ async function callGeminiStructured(
   const buildUrl = (model: GeminiModel) =>
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
-  const contents: AnyRecord[] = messages.map(m => ({
-    role:  m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }))
+  const contents: AnyRecord[] = messagesToContents(messages)
 
   const baseBody: AnyRecord = { contents }
   if (systemPrompt) baseBody.systemInstruction = { parts: [{ text: systemPrompt }] }
@@ -914,6 +953,12 @@ async function dispatch(
       void logQuery(supabase, userId, surface, 'run_read_query', null, args, r)
       return r
     }
+    case 'db_aggregate': {
+      const r = await dbAggregate(supabase, userId, args)
+      void logQuery(supabase, userId, surface, 'db_aggregate', args.table ?? null, args, r)
+      return r
+    }
+    case 'get_day_summary':      return getDaySummary(supabase, userId, args)
     case 'save_memory':          return saveMemory(supabase, userId, args)
     case 'db_insert':            return dbInsert(supabase, userId, args)
     case 'db_update':            return dbUpdate(supabase, userId, args)
@@ -2154,6 +2199,88 @@ async function saveMemory(supabase: AnyRecord, userId: string, args: AnyRecord):
       .select('id').single()
     if (error) return { success: false, error: error.message }
     return { success: true, id: data?.id, kind }
+  } catch (e) { return { success: false, error: (e as Error).message } }
+}
+
+// db_aggregate — SQL-style aggregation WITHOUT dumping rows into the LLM. Rows
+// are fetched server-side (user-scoped, same as db_query) and reduced in JS;
+// only the computed summary is returned. No SQL is built from user input
+// (column/op are identifier/enum-validated and go into PostgREST's own
+// .select(), which validates them), so there's no injection surface, and it
+// doesn't depend on PostgREST's optional aggregate feature being enabled.
+const AGG_OPS = new Set(['sum', 'avg', 'min', 'max', 'count'])
+const AGG_IDENT = /^[a-z_][a-z0-9_]*$/i
+const round2 = (n: number) => Math.round(n * 100) / 100
+async function dbAggregate(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  try {
+    assertAccess(args.table, false)
+    const metricList = (() => { const m = parseJsonArg(args.metrics, 'metrics'); return Array.isArray(m) ? m as AnyRecord[] : [] })()
+    if (!metricList.length) return { success: false, error: 'metrics must be a non-empty JSON array of {op, column?, as?}.' }
+    const groupBy: string[] = (() => { const g = args.group_by ? parseJsonArg(args.group_by, 'group_by') : []; return Array.isArray(g) ? g.filter((c: unknown): c is string => typeof c === 'string') : [] })()
+    for (const c of groupBy) if (!AGG_IDENT.test(c)) return { success: false, error: `Invalid group_by column "${c}".` }
+    for (const m of metricList) {
+      if (!AGG_OPS.has(m.op)) return { success: false, error: `Invalid op "${m.op}" — use sum|avg|min|max|count.` }
+      if (m.op !== 'count' && (typeof m.column !== 'string' || !AGG_IDENT.test(m.column))) return { success: false, error: `Metric "${m.op}" needs a valid column.` }
+      if (m.column != null && (typeof m.column !== 'string' || !AGG_IDENT.test(m.column))) return { success: false, error: `Invalid column "${m.column}".` }
+    }
+    const filters = parseJsonArg(args.filters, 'filters')
+
+    const cols = Array.from(new Set([...groupBy, ...metricList.map(m => m.column).filter((c: unknown): c is string => typeof c === 'string')]))
+    const SCAN = 10000
+    let q = supabase.from(args.table).select(cols.length ? cols.join(',') : 'user_id').eq('user_id', userId)
+    q = applyFilters(q, filters)
+    q = q.limit(SCAN)
+    const { data, error } = await q
+    if (error) return { success: false, error: error.message }
+    const rows: AnyRecord[] = data ?? []
+
+    const groups = new Map<string, AnyRecord[]>()
+    for (const r of rows) {
+      const key = groupBy.map(c => String(r[c] ?? '∅')).join('')
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(r)
+    }
+    const out: AnyRecord[] = []
+    for (const grp of groups.values()) {
+      const o: AnyRecord = {}
+      for (const c of groupBy) o[c] = grp[0][c]
+      for (const m of metricList) {
+        const alias = (typeof m.as === 'string' && m.as) ? m.as : `${m.op}_${m.column ?? 'rows'}`
+        if (m.op === 'count') { o[alias] = m.column ? grp.filter(r => r[m.column] != null).length : grp.length; continue }
+        const nums = grp.map(r => Number(r[m.column])).filter(n => Number.isFinite(n))
+        if (!nums.length) { o[alias] = null; continue }
+        if (m.op === 'sum') o[alias] = round2(nums.reduce((a, b) => a + b, 0))
+        else if (m.op === 'avg') o[alias] = round2(nums.reduce((a, b) => a + b, 0) / nums.length)
+        else if (m.op === 'min') o[alias] = Math.min(...nums)
+        else o[alias] = Math.max(...nums)
+      }
+      out.push(o)
+    }
+    return { success: true, group_count: out.length, groups: out, scanned: rows.length, truncated: rows.length >= SCAN }
+  } catch (e) { return { success: false, error: (e as Error).message } }
+}
+
+// get_day_summary — one compact snapshot instead of several db_query calls.
+async function getDaySummary(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
+  try {
+    const date = (typeof args.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.date)) ? args.date : new Date().toISOString().slice(0, 10)
+    const [tasksR, foodR, blocksR, workoutR] = await Promise.allSettled([
+      supabase.from('tasks').select('id,title,priority').eq('user_id', userId).or(`section.eq.today,due_date.eq.${date}`).neq('status', 'cancelled').neq('status', 'done'),
+      supabase.from('food_log_entries').select('calories,protein_g').eq('user_id', userId).eq('date', date).eq('status', 'eaten'),
+      supabase.from('time_blocks').select('title,start_time,duration_minutes').eq('user_id', userId).eq('date', date).order('start_time', { ascending: true }),
+      supabase.from('hevy_workouts').select('id').eq('user_id', userId).gte('start_time', `${date}T00:00:00`).lte('start_time', `${date}T23:59:59`),
+    ])
+    const g = (r: AnyRecord): AnyRecord[] => r.status === 'fulfilled' ? (r.value.data ?? []) : []
+    const food = g(foodR)
+    return {
+      success: true, date,
+      open_task_count: g(tasksR).length,
+      open_tasks: g(tasksR).map((t: AnyRecord) => ({ id: t.id, title: t.title, priority: t.priority })),
+      kcal_eaten: Math.round(food.reduce((a: number, x: AnyRecord) => a + (Number(x.calories) || 0), 0)),
+      protein_g_eaten: Math.round(food.reduce((a: number, x: AnyRecord) => a + (Number(x.protein_g) || 0), 0)),
+      schedule: g(blocksR).map((b: AnyRecord) => ({ time: b.start_time?.slice(0, 5) ?? null, title: b.title, minutes: b.duration_minutes })),
+      workout_logged: g(workoutR).length > 0,
+    }
   } catch (e) { return { success: false, error: (e as Error).message } }
 }
 

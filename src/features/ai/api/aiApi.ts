@@ -5,6 +5,7 @@ import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 export interface Message {
   role:    'user' | 'assistant'
   content: string
+  images?: string[]   // base64 data URLs (image/*) — sent as multimodal parts to Gemini
 }
 
 // ─── System prompt ────────────────────────────────────────────────────────────
@@ -17,6 +18,8 @@ PRIMARY CAPABILITY — generic database access. You can read and write ANY of th
 - db_insert(table, values) — create a row (user_id is set for you; returns the new id).
 - db_update(table, filters, values) — update rows matching filters (usually {"id":"..."}).
 - db_delete(table, filters) — delete rows matching filters.
+- db_aggregate(table, metrics, filters?, group_by?) — SUM/AVG/MIN/MAX/COUNT (optionally grouped), returning ONLY the computed numbers, never the raw rows. Use this for any average/total/trend/compare/"how many"/"how much over time" question — it's cheaper AND more accurate than pulling rows with db_query and adding them up yourself. metrics is a JSON array like [{"op":"avg","column":"protein_g","as":"avg_protein"}]; group_by a JSON array like ["date"].
+- get_day_summary(date?) — one compact snapshot of a day (open tasks, kcal+protein eaten, schedule, whether a workout was logged). Prefer over several separate reads for "how's my day".
 filters/values are JSON. filters: plain value = equals, null = IS NULL, array = IN, or {"gte":...,"lte":...,"gt":...,"lt":...,"neq":...,"like":...} for ranges/patterns.
 Every operation is auto-scoped to the user; only allow-listed tables are reachable (token/secret/auth tables are private and will error). Externally-synced tables (hevy_*, strava_activities, health_metrics, health_workouts, movies, tv_series) are READ-ONLY.
 
@@ -72,6 +75,7 @@ NUTRITION / FOOD LOGGING — help the user track food with minimum friction (die
 - GUARDRAILS: never present an estimate as exact (flag every non-snapshot number as an estimate); logged data beats guesses; no medical/clinical-diet advice; if a calorie target looks unsafe-low, say so plainly and refuse that number; no micronutrients beyond fiber; no "health score"/food grades; round to whole grams (no false precision).
 
 Workflow rules:
+- Pick the right data tool: a current value or list → db_query; an average/total/trend/comparison/"how many" → db_aggregate (NEVER pull rows just to add them up yourself); a whole-day snapshot → get_day_summary; a bespoke multi-table/complex read the user explicitly asks for → run_read_query; "remember this for later" → save_memory.
 - Unsure which table or column? Call describe_database first — do not guess column names.
 - Refer to a row by name? db_query for its id first, then update/delete by that id.
 - Training: read from hevy_workouts / hevy_routines / hevy_body_measurements / strava_activities (read-only). A PLANNED training session is a time_blocks row with category="training".
@@ -424,9 +428,9 @@ export async function sendShopMessage(messages: Message[]): Promise<AIResponse> 
 //  into callGeminiStructured instead of the conversational tool-calling path.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function invokeStructured<T>(prompt: string, responseSchema: any): Promise<T> {
+async function invokeStructured<T>(prompt: string, responseSchema: any, images?: string[]): Promise<T> {
   const { data, error } = await supabase.functions.invoke('ai-proxy', {
-    body: { messages: [{ role: 'user', content: prompt }], responseSchema },
+    body: { messages: [{ role: 'user', content: prompt, ...(images?.length ? { images } : {}) }], responseSchema },
   })
 
   if (error) await throwFunctionError(error)
@@ -545,4 +549,45 @@ export async function estimateRecipeMacros(
     .join('\n')
   const prompt = `Estimate the PER-SERVING macros (calories, protein_g, carbs_g, fat_g, sugar_g) for a recipe with ${servings} serving(s) made from these ingredients:\n${list}\n\nGive your best rough estimate — never refuse, round to sensible whole/half numbers.`
   return invokeStructured<MacroEstimate>(prompt, MACRO_ESTIMATE_SCHEMA)
+}
+
+// ─── Vision: photo → food items ────────────────────────────────────────────
+//  Send a meal/nutrition-label photo, get back estimated items to REVIEW and
+//  edit before logging (never auto-saved — same contract as the barcode flow).
+
+export interface PhotoFoodItem {
+  name:      string
+  grams:     number | null
+  calories:  number | null
+  protein_g: number | null
+  carbs_g:   number | null
+  fat_g:     number | null
+}
+
+const FOOD_PHOTO_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    items: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name:      { type: 'STRING' },
+          grams:     { type: 'NUMBER', description: 'Estimated portion in grams' },
+          calories:  { type: 'NUMBER' },
+          protein_g: { type: 'NUMBER' },
+          carbs_g:   { type: 'NUMBER' },
+          fat_g:     { type: 'NUMBER' },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  required: ['items'],
+}
+
+export async function parseFoodPhoto(imageDataUrl: string): Promise<PhotoFoodItem[]> {
+  const prompt = `This is a photo of food — either a plated meal or a product's nutrition label. Identify each distinct food item and estimate, for the portion shown, its weight in grams and its macros (calories, protein_g, carbs_g, fat_g). If it's a nutrition label, read the declared values (state the basis in the name if per-100g). Output item names in TURKISH. Be realistic; never refuse — give your best estimate.`
+  const res = await invokeStructured<{ items: PhotoFoodItem[] }>(prompt, FOOD_PHOTO_SCHEMA, [imageDataUrl])
+  return res.items ?? []
 }
