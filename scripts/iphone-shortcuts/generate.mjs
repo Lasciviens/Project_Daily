@@ -33,6 +33,24 @@ const shortcuts = [
   buildLogCreatine(secret),
   buildAsk(secret),
   buildBrief(secret),
+  buildNutritionToday(secret),
+  buildSleepSummary(secret),
+  buildLogFoodFromDictation(
+    'Atistirmalik Logla',
+    'atistirmalik-logla',
+    'snack',
+    59436,
+    4282601983,
+    secret
+  ),
+  buildLogFoodFromDictation(
+    'Aksam Yemegi Logla',
+    'aksam-yemegi-logla',
+    'dinner',
+    59549,
+    463140863,
+    secret
+  ),
 ];
 
 for (const shortcut of shortcuts) {
@@ -137,6 +155,97 @@ function buildBrief(phoneSecret) {
         WFNotificationActionTitle: 'Sabah Brief',
         WFNotificationActionBody: tokenString(OBJECT_REPLACEMENT, {
           0: actionOutput(textId, 'Dictionary Value'),
+        }),
+        WFNotificationActionSound: true,
+      },
+    },
+    getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
+  ]);
+}
+
+function buildNutritionToday(phoneSecret) {
+  const requestId = uuid();
+  const kcalId = uuid();
+  const proteinId = uuid();
+  const entriesId = uuid();
+  const okId = uuid();
+
+  return shortcut('Beslenme Durumu', 'beslenme-durumu', 59752, 4282601983, [
+    postAction(requestId, phoneSecret, [textItem('action', 'nutrition_today')]),
+    getValueAction(kcalId, 'kcal', actionOutput(requestId, 'Contents of URL')),
+    getValueAction(proteinId, 'protein_g', actionOutput(requestId, 'Contents of URL')),
+    getValueAction(entriesId, 'entries', actionOutput(requestId, 'Contents of URL')),
+    {
+      WFWorkflowActionIdentifier: 'is.workflow.actions.notification',
+      WFWorkflowActionParameters: {
+        UUID: uuid(),
+        WFNotificationActionTitle: 'Beslenme Durumu',
+        WFNotificationActionBody: tokenStringFromParts([
+          actionOutput(kcalId, 'Dictionary Value'),
+          ' kcal, ',
+          actionOutput(proteinId, 'Dictionary Value'),
+          ' g protein, ',
+          actionOutput(entriesId, 'Dictionary Value'),
+          ' kayit',
+        ]),
+        WFNotificationActionSound: true,
+      },
+    },
+    getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
+  ]);
+}
+
+function buildSleepSummary(phoneSecret) {
+  const requestId = uuid();
+  const textId = uuid();
+  const okId = uuid();
+
+  return shortcut('Uyku Ozeti', 'uyku-ozeti', 59717, 431817727, [
+    postAction(requestId, phoneSecret, [textItem('action', 'sleep')]),
+    getValueAction(textId, 'text', actionOutput(requestId, 'Contents of URL')),
+    {
+      WFWorkflowActionIdentifier: 'is.workflow.actions.speaktext',
+      WFWorkflowActionParameters: {
+        UUID: uuid(),
+        WFInput: tokenAttachment(actionOutput(textId, 'Dictionary Value')),
+        WFSpeakTextLanguage: 'tr-TR',
+        WFSpeakTextPitch: 1,
+        WFSpeakTextRate: 0.5,
+        WFSpeakTextWait: true,
+      },
+    },
+    getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
+  ]);
+}
+
+function buildLogFoodFromDictation(name, slug, mealSlot, glyph, color, phoneSecret) {
+  const dictatedId = uuid();
+  const requestId = uuid();
+  const loggedId = uuid();
+  const okId = uuid();
+
+  return shortcut(name, slug, glyph, color, [
+    {
+      WFWorkflowActionIdentifier: 'is.workflow.actions.dictatetext',
+      WFWorkflowActionParameters: {
+        UUID: dictatedId,
+        WFDictateTextLanguage: 'tr-TR',
+        WFDictateTextStopListening: 'After Pause',
+      },
+    },
+    postAction(requestId, phoneSecret, [
+      textItem('action', 'log_food'),
+      textItem('meal_slot', mealSlot),
+      tokenItem('title', actionOutput(dictatedId, 'Dictated Text')),
+    ]),
+    getValueAction(loggedId, 'logged', actionOutput(requestId, 'Contents of URL')),
+    {
+      WFWorkflowActionIdentifier: 'is.workflow.actions.notification',
+      WFWorkflowActionParameters: {
+        UUID: uuid(),
+        WFNotificationActionTitle: name,
+        WFNotificationActionBody: tokenString(`${OBJECT_REPLACEMENT} loglandi`, {
+          0: actionOutput(loggedId, 'Dictionary Value'),
         }),
         WFNotificationActionSound: true,
       },
@@ -265,6 +374,29 @@ function tokenString(value, attachmentsByIndex) {
     WFSerializationType: 'WFTextTokenString',
     Value: {
       string: value,
+      attachmentsByRange,
+    },
+  };
+}
+
+function tokenStringFromParts(parts) {
+  let string = '';
+  const attachmentsByRange = {};
+
+  for (const part of parts) {
+    if (typeof part === 'string') {
+      string += part;
+    } else {
+      const index = string.length;
+      string += OBJECT_REPLACEMENT;
+      attachmentsByRange[`{${index}, 1}`] = part;
+    }
+  }
+
+  return {
+    WFSerializationType: 'WFTextTokenString',
+    Value: {
+      string,
       attachmentsByRange,
     },
   };

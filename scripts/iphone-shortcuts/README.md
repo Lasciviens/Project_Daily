@@ -1,10 +1,19 @@
 # iPhone Shortcuts generator
 
-Generates the three Apple Shortcuts from `docs/iphone-examples.md`:
+Generates Apple Shortcuts for the safe `phone-gateway` action API documented in
+`docs/iphone-examples.md`:
 
 - `Log Creatine`
 - `AI'a Sor`
 - `Sabah Brief`
+- `Beslenme Durumu`
+- `Uyku Ozeti`
+- `Atistirmalik Logla`
+- `Aksam Yemegi Logla`
+
+`Log Creatine`, `Atistirmalik Logla`, and `Aksam Yemegi Logla` insert new food
+diary rows. The other shortcuts only read or ask for summaries. None of the
+shortcuts delete data.
 
 The committed source uses `__PHONE_GATEWAY_SECRET__` as a placeholder. Do not
 commit generated `.plist` or `.shortcut` files containing the real
