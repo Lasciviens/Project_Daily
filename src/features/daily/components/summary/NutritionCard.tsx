@@ -2,6 +2,7 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useState } from 'react'
 import { useEatPlannedEntry } from '../../../recipes/hooks/useMealPlan'
 import { Cell, CellHeader } from './cellKit'
+import { WaterTracker } from './WaterTracker'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
 import { useDayTargets, type NutritionGoal } from '../../hooks/useDayTargets'
 import { useNutritionCoach } from '../../hooks/useNutritionCoach'
@@ -257,6 +258,13 @@ export function NutritionCard({ date }: { date: string }) {
         }
       />
 
+      {/* Hydration — always visible (independent of meals), consistent per day. */}
+      {!editing && (
+        <div className="pb-1 mb-1 border-b border-ink-100">
+          <WaterTracker date={date} />
+        </div>
+      )}
+
       {editing ? (
         <div className="flex flex-col gap-2">
           {/* Goal — steers the protein g/kg suggestion + calorie coaching */}
@@ -282,6 +290,10 @@ export function NutritionCard({ date }: { date: string }) {
           <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
             <span>Protein goal</span>
             <GoalStepper value={targets.protein} step={10} onChange={v => update({ protein: v })} suffix="g" />
+          </div>
+          <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
+            <span>Water goal</span>
+            <GoalStepper value={targets.water} step={250} onChange={v => update({ water: v })} suffix="ml" />
           </div>
 
           {/* Bodyweight-based protein suggestion (real latest weight) */}

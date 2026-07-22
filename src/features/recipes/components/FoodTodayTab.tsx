@@ -6,6 +6,7 @@ import { useDeleteFoodLogEntry } from '../hooks/useFoodLog'
 import { useDeleteQuickMeal } from '../../daily/hooks/useQuickMeals'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
+import { WaterTracker } from '../../daily/components/summary/WaterTracker'
 import { FoodLogModal } from './FoodLogModal'
 import { EditFoodLogModal } from './EditFoodLogModal'
 import { AssignMealModal } from './AssignMealModal'
@@ -150,6 +151,11 @@ export function FoodTodayTab({ date }: { date: string }) {
             </div>
           </div>
 
+          {/* Hydration — its own card under the nutrition hero. */}
+          <div className="rounded-2xl border border-ink-200 bg-cream-50 px-4 py-3">
+            <WaterTracker date={date} />
+          </div>
+
           {/* Goals editor — under the nutrition widget, same width (user
               request). Set targets by hand + apply coach suggestions. */}
           {goalsOpen && (
@@ -172,6 +178,10 @@ export function FoodTodayTab({ date }: { date: string }) {
               <div className="flex items-center justify-between gap-2">
                 <span className="text-ink-600">Protein</span>
                 <GoalStepper value={targets.protein} step={10} suffix="g" onChange={v => update({ protein: v })} />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink-600">Water</span>
+                <GoalStepper value={targets.water} step={250} suffix="ml" onChange={v => update({ water: v })} />
               </div>
               <p className="text-[11px] text-ink-400 leading-relaxed">
                 These are YOUR targets (saved on this device). The 🧠 Coach suggests a protein target from your bodyweight
