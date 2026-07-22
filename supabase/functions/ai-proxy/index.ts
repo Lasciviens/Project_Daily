@@ -683,22 +683,28 @@ Deno.serve(async (req) => {
 
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers })
 
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401, headers: { ...headers, 'Content-Type': 'application/json' },
-    })
-  }
-
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   )
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser(
-    authHeader.replace('Bearer ', '')
-  )
-  if (authError || !user) {
+  // Auth: EITHER a Supabase user JWT (the browser, validated by getUser below)
+  // OR the phone device-secret (x-phone-secret === PHONE_GATEWAY_SECRET → act as
+  // the single user). The secret path is why config.toml now sets
+  // verify_jwt=false here — same in-code auth pattern as hevy-sync; the JWT path
+  // still fully validates via getUser, so the browser flow is unchanged.
+  const authHeader   = req.headers.get('authorization') ?? undefined
+  const phoneSecret  = Deno.env.get('PHONE_GATEWAY_SECRET')
+  const givenSecret  = req.headers.get('x-phone-secret')
+  let user: { id: string } | null = null
+  if (phoneSecret && givenSecret === phoneSecret) {
+    const uid = Deno.env.get('HEVY_USER_ID')          // single-user app, same id everywhere
+    if (uid) user = { id: uid }
+  } else if (authHeader) {
+    const { data } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
+    user = data?.user ? { id: data.user.id } : null
+  }
+  if (!user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401, headers: { ...headers, 'Content-Type': 'application/json' },
     })
