@@ -7,11 +7,11 @@ Generates Apple Shortcuts for the safe `phone-gateway` action API documented in
 - `AI'a Sor`
 - `Sabah Brief`
 - `Beslenme Durumu`
-- `Uyku Ozeti`
-- `Atistirmalik Logla`
-- `Aksam Yemegi Logla`
+- `Uyku Özeti`
+- `Atıştırmalık Logla`
+- `Akşam Yemeği Logla`
 
-`Log Creatine`, `Atistirmalik Logla`, and `Aksam Yemegi Logla` insert new food
+`Log Creatine`, `Atıştırmalık Logla`, and `Akşam Yemeği Logla` insert new food
 diary rows. The other shortcuts only read or ask for summaries. None of the
 shortcuts delete data.
 

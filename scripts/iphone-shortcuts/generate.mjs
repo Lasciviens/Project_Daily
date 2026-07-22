@@ -36,7 +36,7 @@ const shortcuts = [
   buildNutritionToday(secret),
   buildSleepSummary(secret),
   buildLogFoodFromDictation(
-    'Atistirmalik Logla',
+    'Atıştırmalık Logla',
     'atistirmalik-logla',
     'snack',
     59436,
@@ -44,7 +44,7 @@ const shortcuts = [
     secret
   ),
   buildLogFoodFromDictation(
-    'Aksam Yemegi Logla',
+    'Akşam Yemeği Logla',
     'aksam-yemegi-logla',
     'dinner',
     59549,
@@ -198,10 +198,14 @@ function buildNutritionToday(phoneSecret) {
 function buildSleepSummary(phoneSecret) {
   const requestId = uuid();
   const textId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
   const okId = uuid();
+  const prompt =
+    'Uyku verilerime bak ve bana kısa bir Türkçe uyku özeti ver. Sadece uyku süresi, kalite yorumu, son 7 günle karşılaştırma ve bugün için tek öneriyi yaz. Kısa, net, madde madde olsun.';
 
-  return shortcut('Uyku Ozeti', 'uyku-ozeti', 59717, 431817727, [
-    postAction(requestId, phoneSecret, [textItem('action', 'sleep')]),
+  return shortcut('Uyku Özeti', 'uyku-ozeti', 59717, 431817727, [
+    postAction(requestId, phoneSecret, [textItem('action', 'ask'), textItem('q', prompt)]),
     getValueAction(textId, 'text', actionOutput(requestId, 'Contents of URL')),
     {
       WFWorkflowActionIdentifier: 'is.workflow.actions.speaktext',
@@ -214,6 +218,9 @@ function buildSleepSummary(phoneSecret) {
         WFSpeakTextWait: true,
       },
     },
+    htmlTextAction(htmlId, sleepHtmlCard(actionOutput(textId, 'Dictionary Value'))),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
     getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
   ]);
 }
@@ -300,6 +307,37 @@ function postAction(id, phoneSecret, jsonItems) {
   };
 }
 
+function htmlTextAction(id, text) {
+  return {
+    WFWorkflowActionIdentifier: 'is.workflow.actions.gettext',
+    WFWorkflowActionParameters: {
+      UUID: id,
+      WFTextActionText: text,
+    },
+  };
+}
+
+function richTextFromHtmlAction(id, input) {
+  return {
+    WFWorkflowActionIdentifier: 'is.workflow.actions.getrichtextfromhtml',
+    WFWorkflowActionParameters: {
+      UUID: id,
+      WFHTML: tokenAttachment(input),
+    },
+  };
+}
+
+function quickLookAction(input) {
+  return {
+    WFWorkflowActionIdentifier: 'is.workflow.actions.previewdocument',
+    WFWorkflowActionParameters: {
+      UUID: uuid(),
+      WFInput: tokenAttachment(input),
+      WFQuickLookActionFullScreen: true,
+    },
+  };
+}
+
 function getValueAction(id, key, input) {
   return {
     WFWorkflowActionIdentifier: 'is.workflow.actions.getvalueforkey',
@@ -309,6 +347,69 @@ function getValueAction(id, key, input) {
       WFInput: tokenAttachment(input),
     },
   };
+}
+
+function sleepHtmlCard(summaryOutput) {
+  return tokenStringFromParts([
+    `<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #f7f2ea;
+    color: #241f1a;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  .kart {
+    border: 1px solid #decfbd;
+    border-radius: 18px;
+    padding: 18px;
+    background: #fffaf2;
+  }
+  .baslik {
+    font-size: 26px;
+    font-weight: 800;
+    margin: 0 0 6px;
+  }
+  .alt {
+    color: #766b5f;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .ozet {
+    white-space: pre-wrap;
+    font-size: 17px;
+    line-height: 1.45;
+  }
+  .cizgi {
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #5e8c7b, #d8a24a, #c86b4a);
+    margin: 14px 0 4px;
+  }
+  .etiket {
+    font-size: 12px;
+    color: #766b5f;
+  }
+</style>
+</head>
+<body>
+  <main class="kart">
+    <h1 class="baslik">🌙 Uyku Özeti</h1>
+    <div class="alt">Lasci's Board · bugün için kısa değerlendirme</div>
+    <div class="cizgi"></div>
+    <div class="etiket">Dinlenme · toparlanma · odak</div>
+    <section class="ozet">`,
+    summaryOutput,
+    `</section>
+  </main>
+</body>
+</html>`,
+  ]);
 }
 
 function dictionary(items) {
