@@ -123,6 +123,23 @@ Script.complete();
 ```
 Refresh is on iOS's widget budget (~every 15–60 min; not real-time).
 
+## Example 5 · Log 1 L water — NFC bottle tap OR manual  (deterministic, instant, free)
+**Does:** logs **1 L** into today's water total (shows on Daily, Food, and the
+widget). Runs by NFC tap on your bottle, by hand, or by voice.
+
+**Shortcut — name `Su İç`:**
+1. **Get Contents of URL**
+   - URL: `GATEWAY` · Method: **POST**
+   - Headers: `x-phone-secret` = `<your secret>` · `Content-Type` = `application/json`
+   - Request Body: **JSON** → `action` (Text) = `log_water` · `amount_ml` (Number) = `1000`
+2. **Show Notification** — `Get Dictionary Value` key `logged_ml` → "💧 … ml eklendi"
+
+**Manual run:** it's an ordinary shortcut — tap it in the Shortcuts app, add it
+to the Home Screen, or say "Hey Siri, Su İç". (Change `amount_ml` to `500` for a
+half-bottle, etc.)
+**NFC (optional):** iPhone → Shortcuts → **Automation** → **NFC** → **Scan** the
+bottle sticker → **Run Shortcut → Su İç** → turn **OFF "Ask Before Running"**.
+
 ---
 
 ## Gateway API reference (what the shortcuts send)
