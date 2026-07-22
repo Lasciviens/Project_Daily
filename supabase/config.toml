@@ -20,3 +20,16 @@ verify_jwt = false
 # is not a Supabase JWT, so platform verification must be off (checked in-code).
 [functions.google-health-sync]
 verify_jwt = false
+
+# Dual-auth: browser user JWT (validated in-code by getUser) OR the iPhone
+# device secret (x-phone-secret === PHONE_GATEWAY_SECRET → acts as the single
+# user). The secret path is not a Supabase JWT, so platform verification is off
+# and auth is enforced in-code. The browser flow is unchanged (getUser still
+# validates its JWT).
+[functions.ai-proxy]
+verify_jwt = false
+
+# The iPhone's single durable entry point — authenticates by x-phone-secret
+# (device secret), acts as the single user via the service role, server-side.
+[functions.phone-gateway]
+verify_jwt = false

@@ -133,7 +133,14 @@ auth model below.
 
 ## Decision log
 
-_(empty — the user records approach decisions here as gates are crossed.)_
+- **2026-07-22 — Approach chosen: Shortcuts + `phone-gateway` (device-secret), DURABLE from the start.**
+  User: "kalıcı hale gelecek, tam kurulum." So we skipped the pasted-JWT spike and
+  built the permanent path directly: a `phone-gateway` Edge Function authed by a
+  static, revocable `x-phone-secret` (acts as the single user server-side), plus a
+  matching `x-phone-secret` branch in `ai-proxy` for AI actions. One endpoint, one
+  secret, flat `{action}` bodies, never-expiring. Built in code (awaiting the
+  user's one-time deploy + on-device test). Web Push return channel: **deferred**
+  (revisit if "notify me while closed" becomes a need). Recipes: `iphone-examples.md`.
 
 ## Notes
 
