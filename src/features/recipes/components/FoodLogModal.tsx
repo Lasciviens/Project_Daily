@@ -49,9 +49,10 @@ interface Props {
   date:          string
   defaultSlot?:  MealSlot
   defaultQuery?: string
+  onEditRecipe?: (r: RecipeWithIngredients) => void   // ✎ on a saved meal → open its editor
 }
 
-export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }: Props) {
+export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, onEditRecipe }: Props) {
   const { data: library = [] } = useIngredientLibrary()
   const { data: recents = [] } = useRecentFoods()
   const { data: recipes = [] } = useRecipes()
@@ -67,6 +68,9 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
   const [mealName, setMealName] = useState('')
   const [mealServings, setMealServings] = useState('1')
   const [saveMealOpen, setSaveMealOpen] = useState(false)
+  // A saved meal defaults to TEMP (a one-off named meal, hidden from the recipe
+  // Library) — tick "Save to library" to make it a permanent Library recipe.
+  const [saveToLibrary, setSaveToLibrary] = useState(false)
   const [portionRecipe, setPortionRecipe] = useState<RecipeWithIngredients | null>(null)
 
   // Re-seed per open (instance is reused) — sanctioned adjust-during-render.
@@ -224,12 +228,15 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
       await createRecipe.mutateAsync({
         title: mealName.trim(), servings: servingsN, macro_mode: 'manual',
         calories: per(m.calories), protein_g: per(m.protein_g), carbs_g: per(m.carbs_g), fat_g: per(m.fat_g), fiber_g: per(m.fiber_g), sugar_g: per(m.sugar_g),
+        is_temp: !saveToLibrary,
         ingredients: basket.map(it => ({ name: it.ingredient.name, quantity: it.grams, unit: 'g', note: null, library_ingredient_id: it.ingredient.id })),
       })
       qc.invalidateQueries({ queryKey: ['recipes'] })
       toast.dismiss(tid)
-      toast.success(`Saved "${mealName.trim()}" ✓ — log it anytime from Saved meals`)
-      setMealName(''); setMealServings('1'); setSaveMealOpen(false)
+      toast.success(saveToLibrary
+        ? `Saved "${mealName.trim()}" to library ✓`
+        : `Saved "${mealName.trim()}" ✓ — log it anytime from Saved meals`)
+      setMealName(''); setMealServings('1'); setSaveMealOpen(false); setSaveToLibrary(false)
     } catch (e) { toast.dismiss(tid); toast.error((e as Error).message ?? 'Failed') }
   }
 
@@ -390,18 +397,30 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
                   <section>
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Saved meals</p>
                     <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1 pb-1 snap-x">
-                      {savedMeals.map(r => (
-                        <button key={r.id} type="button" onClick={() => setPortionRecipe(r)}
-                          className={`snap-start shrink-0 w-36 rounded-2xl border p-2.5 flex flex-col items-start gap-1 text-left transition-colors press-feedback ${
-                            portionRecipe?.id === r.id ? 'border-accent-400 bg-accent-50/60' : 'border-ink-100 bg-cream-100/50 hover:border-accent-300'
-                          }`}>
-                          <FoodThumb name={r.title} imageUrl={r.image_url} size={36} />
-                          <span className="text-[12px] font-medium text-ink-800 leading-tight line-clamp-2">{r.title}</span>
-                          <span className="text-[10px] text-ink-400 tabular-nums">
-                            {r.calories != null && `${Math.round(r.calories)} kcal`}{r.servings > 1 && ` · ${r.servings} portions`}
-                          </span>
-                        </button>
-                      ))}
+                      {savedMeals.map(r => {
+                        // Hover (desktop) / the ✎ editor (mobile) reveals the meal's
+                        // ingredients — a temp meal is one named unit, not N loose rows.
+                        const contents = r.ingredients?.map(i => i.name).filter(Boolean).join(', ') || undefined
+                        return (
+                        <div key={r.id} className="relative snap-start shrink-0 w-36">
+                          <button type="button" onClick={() => setPortionRecipe(r)} title={contents}
+                            className={`w-full rounded-2xl border p-2.5 flex flex-col items-start gap-1 text-left transition-colors press-feedback ${
+                              portionRecipe?.id === r.id ? 'border-accent-400 bg-accent-50/60' : 'border-ink-100 bg-cream-100/50 hover:border-accent-300'
+                            }`}>
+                            <FoodThumb name={r.title} imageUrl={r.image_url} size={36} />
+                            <span className="text-[12px] font-medium text-ink-800 leading-tight line-clamp-2 pr-5">{r.title}</span>
+                            <span className="text-[10px] text-ink-400 tabular-nums">
+                              {r.calories != null && `${Math.round(r.calories)} kcal`}{r.servings > 1 && ` · ${r.servings} portions`}
+                            </span>
+                          </button>
+                          {onEditRecipe && (
+                            <button type="button" aria-label={`Edit ${r.title}`}
+                              onClick={() => { onEditRecipe(r); onClose() }}
+                              className="absolute top-1 right-1 w-6 h-6 rounded-full bg-cream-50/90 border border-ink-200 text-ink-500 hover:text-accent-600 flex items-center justify-center text-[11px] leading-none">✎</button>
+                          )}
+                        </div>
+                        )
+                      })}
                     </div>
                   </section>
                 )}
@@ -465,6 +484,11 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery }:
                       title="How many portions this batch makes"
                       className="w-12 min-h-[40px] px-1 text-sm text-center border border-ink-200 rounded-xl bg-cream-50 tabular-nums" />
                     <span className="text-[10px] text-ink-400 shrink-0">portions</span>
+                    <label className="flex items-center gap-1 text-[10px] text-ink-500 shrink-0 cursor-pointer select-none"
+                      title="Add to your recipe Library. Off = a temp meal: reusable + editable, but hidden from the Library grid.">
+                      <input type="checkbox" checked={saveToLibrary} onChange={e => setSaveToLibrary(e.target.checked)} className="accent-accent-500 w-3.5 h-3.5" />
+                      Library
+                    </label>
                     <button type="button" onClick={handleSaveMeal} disabled={!mealName.trim() || createRecipe.isPending}
                       className="shrink-0 min-h-[40px] px-3 rounded-xl text-xs font-semibold border border-accent-300 text-accent-700 bg-accent-50/50 hover:bg-accent-50 disabled:opacity-50">Save</button>
                   </div>

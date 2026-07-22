@@ -4,7 +4,7 @@ import { format, getISOWeek } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Home as HomeIcon, CalendarDays, Clapperboard, Briefcase, Dumbbell, FolderKanban, Gamepad2,
-  MoreHorizontal, Code2, Search, Sparkles, ClipboardList, type LucideIcon,
+  MoreHorizontal, Code2, Search, Sparkles, ClipboardList, UtensilsCrossed, type LucideIcon,
 } from 'lucide-react'
 import { useViewTransitionNav } from '../shared/hooks/useViewTransitionNav'
 import { usePullToRefresh } from '../shared/hooks/usePullToRefresh'
@@ -171,15 +171,16 @@ function PullToRefreshIndicator({ pullDistance, isRefreshing, isReady }: {
 // across OS/browser font versions and read as dated rather than "native app"
 // polish; a single crisp icon set that recolors/fills on the active tab is
 // the modern-iOS-tab-bar look this is going for.
-// Mobile bottom bar: 4 PRIMARY tabs (user-chosen) + a "More" cell. The rest
-// (Work/Projects/Games/Developer) live in a bottom-sheet — iOS/Material cap
-// primary tabs at ~5, and a scannable 4-up bar reads far more app-like than 7
-// cramped ~50px cells with sub-legible labels.
+// Mobile bottom bar: 5 PRIMARY tabs (user-chosen; Food is a pinned top-level
+// destination now) + a "More" cell. The rest (Work/Projects/Games/Developer)
+// live in a bottom-sheet. Personal is Daily ONLY now; Food (which also holds
+// Shop) is its own tab.
 const TABS: { to: string; label: string; icon: LucideIcon; match: string[] }[] = [
-  { to: '/home',     label: 'Home',     icon: HomeIcon,     match: ['/home'] },
-  { to: '/daily',    label: 'Personal', icon: CalendarDays, match: ['/daily', '/shop', '/recipes'] },
-  { to: '/media',    label: 'Media',    icon: Clapperboard, match: ['/media'] },
-  { to: '/training', label: 'Training', icon: Dumbbell,     match: ['/training'] },
+  { to: '/home',     label: 'Home',     icon: HomeIcon,        match: ['/home'] },
+  { to: '/daily',    label: 'Personal', icon: CalendarDays,    match: ['/daily'] },
+  { to: '/recipes',  label: 'Food',     icon: UtensilsCrossed, match: ['/recipes', '/shop'] },
+  { to: '/media',    label: 'Media',    icon: Clapperboard,    match: ['/media'] },
+  { to: '/training', label: 'Training', icon: Dumbbell,        match: ['/training'] },
 ]
 const MORE_TABS: { to: string; label: string; icon: LucideIcon; match: string[] }[] = [
   { to: '/work',      label: 'Work',      icon: Briefcase,    match: ['/work'] },
@@ -275,22 +276,21 @@ function BottomTabBar() {
   )
 }
 
-// "Personal" groups the personal-life sub-pages (Daily, Shop, Recipes) under
-// one nav entry. It's a single link to /daily — PersonalLayout renders a
-// Work-style tab bar there for switching between the three (see
-// src/features/personal/components/PersonalLayout.tsx).
-function PersonalNavLink() {
+// "Food" groups Food (/recipes) + Shop (/shop) under one nav entry — a single
+// link to /recipes, active on either; FoodTabs (in each page's header) switches
+// between them. Personal is now just Daily (a plain link in the nav row).
+function FoodNavLink() {
   const location = useLocation()
-  const isActive = ['/daily', '/shop', '/recipes'].includes(location.pathname)
+  const isActive = ['/recipes', '/shop'].includes(location.pathname)
 
   return (
     <NavLink
-      to="/daily"
+      to="/recipes"
       className={`px-3 py-2.5 min-h-[44px] inline-flex items-center text-sm font-medium rounded-lg transition-colors duration-150 whitespace-nowrap ${
         isActive ? 'bg-accent-500 text-white' : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100'
       }`}
     >
-      Personal
+      Food
     </NavLink>
   )
 }
@@ -330,7 +330,8 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
             two navigations. From sm+ this is the only nav (no bottom bar). */}
         <nav className="hidden sm:flex items-center gap-0.5 overflow-x-auto scrollbar-none flex-1 min-w-0">
           <NavLink to="/home"      className={linkClass}>Home</NavLink>
-          <PersonalNavLink />
+          <NavLink to="/daily"     className={linkClass}>Personal</NavLink>
+          <FoodNavLink />
           <NavLink to="/media"     className={linkClass}>Media</NavLink>
           <NavLink to="/work"      className={linkClass}>Work</NavLink>
           <NavLink to="/training"  className={linkClass}>Training</NavLink>

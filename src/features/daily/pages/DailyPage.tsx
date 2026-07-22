@@ -7,7 +7,6 @@ import { DayQuickRail } from '../components/DayQuickRail'
 import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
 import { TodaySummary } from '../components/TodaySummary'
-import { PersonalTabs } from '../../personal/components/PersonalLayout'
 import { TasksPanel } from '../components/TasksPanel'
 import { DateNav } from '../../../shared/components/DateNav'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
@@ -87,7 +86,6 @@ export function DailyPage() {
               isToday={mode === 'day' && isToday(viewDate)}
             />
           </div>
-          <div className="shrink-0"><PersonalTabs /></div>
         </div>
         <div className="grid grid-cols-4 gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl">
           <button onClick={() => { setViewDate(new Date()); setMode('day') }} className={segBtn(mode === 'day' && isToday(viewDate))}>Today</button>
@@ -112,11 +110,9 @@ export function DailyPage() {
           {context && <span className="text-xs text-accent-600 font-medium hidden sm:inline truncate min-w-0">{context}</span>}
         </div>
 
-        {/* min-w-0 lets the period bar shrink and scroll internally instead of
-            pushing PersonalTabs (Daily/Shop/Food) off-screen — real mobile bug:
-            at 393px Shop/Food were clipped to x=402+/458+ and unreachable (no
-            page horizontal scroll to reveal them). PersonalTabs is now shrink-0
-            so it always stays visible; the period tabs scroll if they don't fit. */}
+        {/* Period tabs scroll internally if they don't fit (min-w-0 + overflow).
+            Daily is standalone now — the Food/Shop group tabs moved to the Food
+            nav entry, so no in-header group tabs remain here. */}
         <div className="ml-auto flex items-center gap-2 min-w-0 max-w-full">
           <div className="flex gap-0.5 bg-cream-50 border border-ink-200 p-0.5 rounded-xl overflow-x-auto scrollbar-none min-w-0">
             <button onClick={() => { setViewDate(addDays(new Date(), -1)); setMode('day') }} className={tabBtn(dayTab === 'yesterday')}>Yesterday</button>
@@ -126,7 +122,6 @@ export function DailyPage() {
             <button onClick={() => setMode('month')} className={tabBtn(mode === 'month')}>Month</button>
             <button onClick={() => setMode('tasks')} className={tabBtn(mode === 'tasks')}>Tasks</button>
           </div>
-          <div className="shrink-0"><PersonalTabs /></div>
         </div>
       </div>
 

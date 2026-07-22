@@ -122,6 +122,7 @@ export interface Recipe {
   source_url:   string | null
   times_cooked: number
   category:     FoodCategory | null
+  is_temp:      boolean       // saved from the logger as a one-off named meal → hidden from the Library grid
   created_at:   string
   updated_at:   string
 }
@@ -184,5 +185,6 @@ export interface RecipeInput {
   image_url?:    string | null
   source_url?:   string | null
   category?:     FoodCategory | null
+  is_temp?:      boolean
   ingredients:   IngredientDraft[]
 }

@@ -3,7 +3,7 @@ import { useShopCategories, useShopItems } from '../hooks/useShop'
 import { ShopAIBox } from '../components/ShopAIBox'
 import { ShopItemCard } from '../components/ShopItemCard'
 import { AddShopItemModal } from '../components/AddShopItemModal'
-import { PersonalTabs } from '../../personal/components/PersonalLayout'
+import { FoodTabs } from '../../personal/components/PersonalLayout'
 import { Sheet } from '../../../shared/components/Sheet'
 import { haptic } from '../../../shared/utils/haptics'
 
@@ -63,7 +63,7 @@ export function ShopPage() {
               <span aria-hidden className="text-lg leading-none sm:hidden">＋</span>
               <span className="hidden sm:inline">+ Add item</span>
             </button>
-            <PersonalTabs />
+            <FoodTabs />
           </div>
         </div>
 

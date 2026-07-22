@@ -10,10 +10,9 @@ import { MealPlanWeek } from '../components/MealPlanWeek'
 import { RecipeBackdrop } from '../components/RecipeBackdrop'
 import { IngredientManager } from '../components/IngredientManager'
 import { FoodLogModal } from '../components/FoodLogModal'
-import { SupplementModal } from '../components/SupplementModal'
 import { FoodTodayTab } from '../components/FoodTodayTab'
 import type { RecipeWithIngredients, FoodCategory } from '../types'
-import { PersonalTabs } from '../../personal/components/PersonalLayout'
+import { FoodTabs } from '../../personal/components/PersonalLayout'
 
 type Tab = 'today' | 'library' | 'ingredients' | 'plan'
 
@@ -26,7 +25,6 @@ export function RecipesPage() {
   const [query,     setQuery]     = useState('')
   const [category,  setCategory]  = useState<FoodCategory | 'all'>('all')
   const [logOpen,   setLogOpen]   = useState(false)
-  const [suppOpen,  setSuppOpen]  = useState(false)
   const [foodDate,  setFoodDate]  = useState(() => formatLocalDate(new Date()))   // Today tab's day (nav lives in the banner)
   const foodIsToday = foodDate === formatLocalDate(new Date())
 
@@ -36,7 +34,9 @@ export function RecipesPage() {
 
   const filteredRecipes = useMemo(() => {
     const q = query.trim().toLowerCase()
-    let out = recipes
+    // Temp meals (saved from the logger as one-off named meals) are hidden from
+    // the Library grid — they still live in the logger's "Saved meals" strip.
+    let out = recipes.filter(r => !r.is_temp)
     if (category !== 'all') out = out.filter(r => r.category === category)
     if (!q) return out
     return out.filter(r =>
@@ -103,14 +103,6 @@ export function RecipesPage() {
               >
                 🍽️ Log food
               </button>
-              <button
-                onClick={() => setSuppOpen(true)}
-                title="Log a supplement (creatine, protein, pre-workout)"
-                aria-label="Log a supplement"
-                className="press-feedback min-h-[44px] min-w-[44px] flex items-center justify-center border border-ink-200 text-ink-600 bg-cream-50 text-lg rounded-xl hover:border-accent-300 hover:text-accent-700 transition-colors"
-              >
-                💊
-              </button>
               {tab === 'library' && (
                 <button
                   onClick={() => setAddOpen(true)}
@@ -119,7 +111,7 @@ export function RecipesPage() {
                   + Add recipe
                 </button>
               )}
-              <PersonalTabs />
+              <FoodTabs />
             </div>
           </div>
         </div>
@@ -189,8 +181,8 @@ export function RecipesPage() {
       {/* Log food / supplement — into the VIEWED day (foodDate follows the
           Today tab's DateNav; the old hardcoded UTC-today wrote to the wrong
           day when browsing and even to yesterday between 00:00–02:00 local). */}
-      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={foodDate} />
-      <SupplementModal open={suppOpen} onClose={() => setSuppOpen(false)} date={foodDate} />
+      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={foodDate}
+        onEditRecipe={r => { setLogOpen(false); setEditing(r) }} />
 
       {/* Create */}
       <RecipeModal open={addOpen} onClose={() => setAddOpen(false)} />

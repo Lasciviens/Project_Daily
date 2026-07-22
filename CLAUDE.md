@@ -141,6 +141,12 @@ typed).
 
 Everything except `/login` and `/reset-password` is protected by `SessionGuard` in `src/app/router.tsx`.
 
+**Nav IA restructure (2026-07-22)** — routes unchanged (deep links intact), only grouping changed (all in `src/app/layout.tsx`): **Personal is now Daily ONLY** (`/daily`, no in-header sub-tabs). **Food is its own top-level nav entry** (`/recipes`) that **holds Shop** (`/shop`) — the in-header group tabs became `FoodTabs` (Food | Shop) in `PersonalLayout.tsx`, rendered by the Food + Shop pages; Daily renders none. Desktop nav order: Home · Personal · Food · Media · Work · Training · Projects · Games. **Mobile bottom bar = 5 primary tabs** (Home · Personal · **Food** pinned, `UtensilsCrossed` icon · Media · Training) + More — was 4; bumped to pin Food. The standalone 💊 **supplement launcher button was removed** (Food header + Daily NutritionCard) — supplements still log via the `supplement` meal slot in the normal logger.
+
+**Temp meals (migration `066`, `recipes.is_temp`)** — "Save meal" in `FoodLogModal` now saves a meal built from ingredients as ONE named unit that is **temp by default** (`is_temp=true`): hidden from the recipe **Library grid** (`RecipesPage` filters `!is_temp`), but still fully usable — it appears in the logger's "Saved meals" strip, hover (desktop) / the ✎ editor (mobile, via `onEditRecipe` → RecipeModal) reveal its ingredients. An **inline** "Library" checkbox on the save row (no extra row) promotes it to a permanent Library recipe. `createRecipe`/`updateRecipe` carry a pre-066 fallback (drop `is_temp` on a missing-column error), same pattern as fiber_g. **Manual-apply: migration 066** (user).
+
+**AI panel** — chat now accepts **pasted images** (copy a photo → Cmd/Ctrl+V on desktop, paste on mobile; `onPaste` in `AIPanel`) alongside the 📷 button. The **Weekly Review** Home card (briefly added in the AI phases work) was **removed** on request; `ai_reviews` table left in place (harmless/empty).
+
 **Password reset (real bug, fixed):** the app had no recovery flow at all — Supabase's reset email
 redirected back to the app with a recovery token, but nothing read it or showed an "set new
 password" form, so the link silently did nothing (a very common gap — see the GitHub issues on

@@ -132,22 +132,23 @@ async function resolveMacros(input: RecipeInput) {
   }
 }
 
-// recipes.fiber_g arrives in migration 060 — until it's applied, an insert/
-// update carrying fiber_g 400s with a "column not found" (PGRST204 / 42703).
-// Detect that one case and retry once without fiber_g so a pre-migration
-// browser still saves the recipe (matches the ingredient-library image_url
-// graceful-degradation pattern). Every other error propagates unchanged.
-function isFiberColumnMissing(err: unknown): boolean {
+// Some recipe columns land in later migrations (fiber_g = 060, is_temp = 066).
+// Until applied, an insert/update carrying one 400s with "column not found"
+// (PGRST204 / 42703). Detect that specific case per-column and retry without it
+// so a pre-migration browser still saves (matches the image_url degradation
+// pattern). Every other error propagates unchanged.
+const OPTIONAL_RECIPE_COLS = ['is_temp', 'fiber_g'] as const
+function missingRecipeCol(err: unknown, col: string): boolean {
   const e = err as { code?: string; message?: string }
   const msg = (e?.message ?? '').toLowerCase()
-  return (e?.code === 'PGRST204' || e?.code === '42703') && msg.includes('fiber_g')
+  return (e?.code === 'PGRST204' || e?.code === '42703') && msg.includes(col)
 }
 
 export async function createRecipe(input: RecipeInput): Promise<string> {
   const user = await requireUser()
 
   const macros = await resolveMacros(input)
-  const row = {
+  const row: Record<string, unknown> = {
     user_id:      user.id,
     title:        input.title.trim(),
     description:  input.description ?? null,
@@ -158,12 +159,14 @@ export async function createRecipe(input: RecipeInput): Promise<string> {
     image_url:    input.image_url ?? null,
     source_url:   input.source_url ?? null,
     category:     input.category ?? null,
+    is_temp:      input.is_temp ?? false,
   }
   let { data, error } = await supabase.from('recipes').insert(row).select('id').single()
-  if (error && isFiberColumnMissing(error)) {
-    const noFiber: Record<string, unknown> = { ...row }
-    delete noFiber.fiber_g
-    ;({ data, error } = await supabase.from('recipes').insert(noFiber).select('id').single())
+  for (const col of OPTIONAL_RECIPE_COLS) {
+    if (error && missingRecipeCol(error, col)) {
+      delete row[col]
+      ;({ data, error } = await supabase.from('recipes').insert(row).select('id').single())
+    }
   }
   if (error) throw error
   if (!data) throw new Error('Recipe insert returned no row')
@@ -176,7 +179,7 @@ export async function updateRecipe(id: string, input: RecipeInput): Promise<void
   const user = await requireUser()
 
   const macros = await resolveMacros(input)
-  const row = {
+  const row: Record<string, unknown> = {
     title:        input.title.trim(),
     description:  input.description ?? null,
     servings:     input.servings,
@@ -188,11 +191,13 @@ export async function updateRecipe(id: string, input: RecipeInput): Promise<void
     category:     input.category ?? null,
     updated_at:   new Date().toISOString(),
   }
+  if (input.is_temp !== undefined) row.is_temp = input.is_temp
   let { error } = await supabase.from('recipes').update(row).eq('id', id)
-  if (error && isFiberColumnMissing(error)) {
-    const noFiber: Record<string, unknown> = { ...row }
-    delete noFiber.fiber_g
-    ;({ error } = await supabase.from('recipes').update(noFiber).eq('id', id))
+  for (const col of OPTIONAL_RECIPE_COLS) {
+    if (error && missingRecipeCol(error, col)) {
+      delete row[col]
+      ;({ error } = await supabase.from('recipes').update(row).eq('id', id))
+    }
   }
   if (error) throw error
 
