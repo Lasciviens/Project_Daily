@@ -15,6 +15,9 @@ Generates Apple Shortcuts for the safe `phone-gateway` action API documented in
 diary rows. The other shortcuts only read or ask for summaries. None of the
 shortcuts delete data.
 
+Every generated shortcut shows a Turkish visual result card with Quick Look.
+Voice shortcuts also speak in Turkish (`tr-TR`) before showing the card.
+
 The committed source uses `__PHONE_GATEWAY_SECRET__` as a placeholder. Do not
 commit generated `.plist` or `.shortcut` files containing the real
 `x-phone-secret`.
