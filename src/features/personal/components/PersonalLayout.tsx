@@ -1,19 +1,19 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useUIStore } from '../../../app/store'
 
-// Shared shell for the Personal nav group (Daily/Shop/Recipes). Routes are
-// unchanged (/daily, /shop, /recipes) so every existing deep link keeps
-// working; only what renders above the page content changed.
+// Shared scroll shell for the Daily / Food / Shop routes (unchanged deep links).
+// NAV GROUPING changed (Nav in app/layout.tsx): Personal is now Daily ALONE;
+// Food is its own top-level entry that also holds Shop. So the in-header tab
+// group below switches Food ↔ Shop (used by RecipesPage + ShopPage); Daily
+// renders no group tabs (it's standalone now).
 const TABS = [
-  { to: '/daily',   label: 'Daily'   },
-  { to: '/shop',    label: 'Shop'    },
   { to: '/recipes', label: 'Food' },
+  { to: '/shop',    label: 'Shop' },
 ]
 
-// Exported so DailyPage can embed the group tabs INSIDE its own single
-// header row (far right) instead of stacking a separate bar above the page —
-// part of collapsing Daily's old three-row header into one.
-export function PersonalTabs() {
+// Embedded INSIDE each Food/Shop page's own header row (far right) — same spot
+// on both, no separate bar row. (Was PersonalTabs / Daily·Shop·Food.)
+export function FoodTabs() {
   return (
     <div className="inline-flex items-center gap-0.5 bg-cream-100 rounded-xl p-1">
       {TABS.map(tab => (

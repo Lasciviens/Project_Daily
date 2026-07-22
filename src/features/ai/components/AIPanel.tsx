@@ -82,12 +82,22 @@ export function AIPanel() {
   const inputRef  = useRef<HTMLTextAreaElement>(null)
   const fileRef   = useRef<HTMLInputElement>(null)
 
-  async function addImages(files: FileList | null) {
+  async function addImages(files: File[] | FileList | null) {
     if (!files?.length) return
     try {
       const urls = await Promise.all(Array.from(files).slice(0, 3).map(f => fileToCompactDataUrl(f)))
       setPendingImages(p => [...p, ...urls].slice(0, 3))
     } catch { toast.error('Could not read image') }
+  }
+
+  // Paste an image straight into the chat (copy a photo/screenshot → Cmd/Ctrl+V
+  // on desktop, or the paste action on mobile) — attaches it like the 📷 button.
+  function handlePaste(e: React.ClipboardEvent) {
+    const imgs = Array.from(e.clipboardData?.items ?? [])
+      .filter(it => it.kind === 'file' && it.type.startsWith('image/'))
+      .map(it => it.getAsFile())
+      .filter((f): f is File => f != null)
+    if (imgs.length) { e.preventDefault(); void addImages(imgs) }
   }
 
   useEffect(() => {
@@ -345,6 +355,7 @@ export function AIPanel() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
+              onPaste={handlePaste}
               placeholder="Ask anything… (Enter to send)"
               rows={1}
               className="flex-1 resize-none input text-sm py-2 max-h-32"

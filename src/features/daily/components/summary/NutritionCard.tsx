@@ -10,7 +10,6 @@ import { MacroBar } from '../../../recipes/components/MacroBar'
 import { AssignMealModal } from '../../../recipes/components/AssignMealModal'
 import { FoodLogModal } from '../../../recipes/components/FoodLogModal'
 import { EditFoodLogModal } from '../../../recipes/components/EditFoodLogModal'
-import { SupplementModal } from '../../../recipes/components/SupplementModal'
 import { useRecentFoods, useAddFoodLogEntries, useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
 import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrary'
 import { ingredientSnapshot, type RecentFood } from '../../../recipes/api/foodLogApi'
@@ -226,7 +225,6 @@ export function NutritionCard({ date }: { date: string }) {
   const copyYesterday = useCopyYesterdayMeals()
 
   const [logOpen, setLogOpen] = useState(false)
-  const [suppOpen, setSuppOpen] = useState(false)
   // Empty day → compact one-liner IN PLACE (the cell never moves or grows
   // unless the user expands it or logs something).
   const [expanded, setExpanded] = useState(false)
@@ -250,11 +248,6 @@ export function NutritionCard({ date }: { date: string }) {
         icon="🍽️" title="Nutrition"
         action={
           <div className="flex items-center gap-0.5 shrink-0">
-            <button onClick={() => setSuppOpen(true)}
-              className="text-[13px] min-h-[28px] px-1 rounded transition-colors hover:bg-cream-100"
-              title="Log a supplement (creatine, protein, pre-workout)">
-              💊
-            </button>
             <button onClick={() => setLogOpen(true)}
               className="text-[11px] font-semibold text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 rounded transition-colors"
               title="Log food — pick ingredients from your library, grams, done">
@@ -412,7 +405,6 @@ export function NutritionCard({ date }: { date: string }) {
         </div>
       )}
       {logOpen && <FoodLogModal open onClose={() => setLogOpen(false)} date={date} />}
-      {suppOpen && <SupplementModal open onClose={() => setSuppOpen(false)} date={date} />}
     </Cell>
   )
 }
