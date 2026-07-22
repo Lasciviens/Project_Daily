@@ -34,7 +34,9 @@ export function RecipesPage() {
 
   const filteredRecipes = useMemo(() => {
     const q = query.trim().toLowerCase()
-    let out = recipes
+    // Temp meals (saved from the logger as one-off named meals) are hidden from
+    // the Library grid — they still live in the logger's "Saved meals" strip.
+    let out = recipes.filter(r => !r.is_temp)
     if (category !== 'all') out = out.filter(r => r.category === category)
     if (!q) return out
     return out.filter(r =>
@@ -179,7 +181,8 @@ export function RecipesPage() {
       {/* Log food / supplement — into the VIEWED day (foodDate follows the
           Today tab's DateNav; the old hardcoded UTC-today wrote to the wrong
           day when browsing and even to yesterday between 00:00–02:00 local). */}
-      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={foodDate} />
+      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={foodDate}
+        onEditRecipe={r => { setLogOpen(false); setEditing(r) }} />
 
       {/* Create */}
       <RecipeModal open={addOpen} onClose={() => setAddOpen(false)} />
