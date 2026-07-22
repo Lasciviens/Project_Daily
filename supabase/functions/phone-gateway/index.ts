@@ -39,17 +39,104 @@ async function insertFoodLog(userId: string, row: AnyRecord) {
   return error
 }
 
+// Latency design (iOS Shortcuts "Get Contents of URL" times out at ~25s):
+// - FAST_MODEL: start AI calls on a fast lite model, skipping the frequently
+//   503-overloaded 3.5-flash primary (a 503 there used to burn ~7-13s of retry
+//   budget before falling through). ai-proxy still falls through the rest of
+//   the chain on a 503.
+// - brief: context is pre-built HERE (server-side) and sent with surface
+//   'phone' → ai-proxy runs it with NO tools = a single-shot answer, not a
+//   2-4 turn tool loop (the big win).
+// - a 22s AbortController on the ai-proxy call returns a clean error BEFORE the
+//   ~25s client cutoff instead of a silent hang.
+const FAST_MODEL = 'gemini-3.1-flash-lite'
+const PHONE_PERSONA =
+  "Sen Lasci'nin kişisel asistanısın. Türkçe, kısa ve net cevap ver; düz metin " +
+  '(kısa maddeler olabilir, markdown yok). Sana verilen DATA dışında bilgi uydurma.'
+
+// yyyy-MM-dd, `days` from today (UTC).
+function dateFromTodayUTC(days: number): string {
+  const d = new Date(); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10)
+}
+
+// Build a COMPACT brief context server-side (today's tasks + schedule + upcoming
+// training) so the AI answers in ONE shot with no tool loop — mirrors the web
+// daily-briefing's pre-built-context approach. Service role bypasses RLS, so
+// every query is user-scoped EXPLICITLY. Best-effort: a failing section is
+// omitted, never breaks the brief. Column names mirror briefingApi.ts.
+async function buildBriefContext(userId: string): Promise<string> {
+  const today = todayUTC()
+  const lines: string[] = [`DATE: ${today}`]
+  try {
+    const { data: tasks } = await supabase.from('tasks')
+      .select('title, status, priority, domain, due_time')
+      .eq('user_id', userId).or(`section.eq.today,due_date.eq.${today}`)
+      .neq('status', 'cancelled').neq('status', 'done')
+      .order('due_time', { ascending: true }).limit(20)
+    if (tasks?.length) {
+      lines.push(`\nBUGÜNKÜ İŞLER (${tasks.length} açık):`)
+      for (const t of tasks as AnyRecord[]) {
+        lines.push(`  - ${t.title} [${t.priority}${t.domain ? `, ${t.domain}` : ''}]${t.due_time ? ` @${String(t.due_time).slice(0, 5)}` : ''}`)
+      }
+    } else { lines.push('\nBUGÜNKÜ İŞLER: yok') }
+  } catch { /* omit section */ }
+  try {
+    const { data: blocks } = await supabase.from('time_blocks')
+      .select('title, start_time, duration_minutes')
+      .eq('user_id', userId).eq('date', today)
+      .order('start_time', { ascending: true }).limit(20)
+    const withTime = (blocks as AnyRecord[] ?? []).filter(b => b.start_time)
+    if (withTime.length) {
+      lines.push('\nBUGÜNKÜ PROGRAM:')
+      for (const b of withTime) lines.push(`  - ${String(b.start_time).slice(0, 5)} ${b.title}${b.duration_minutes ? ` (${b.duration_minutes}dk)` : ''}`)
+    }
+  } catch { /* omit section */ }
+  try {
+    const { data: tr } = await supabase.from('time_blocks')
+      .select('title, date, start_time')
+      .eq('user_id', userId).eq('category', 'training')
+      .gte('date', today).lte('date', dateFromTodayUTC(14))
+      .order('date', { ascending: true }).limit(5)
+    if (tr?.length) {
+      lines.push('\nYAKLAŞAN ANTRENMANLAR:')
+      for (const s of tr as AnyRecord[]) lines.push(`  - ${s.date}${s.start_time ? ` ${String(s.start_time).slice(0, 5)}` : ''} ${s.title}`)
+    }
+  } catch { /* omit section */ }
+  return lines.join('\n')
+}
+
 // Forward an AI request to ai-proxy using the SAME phone secret (ai-proxy has an
-// x-phone-secret auth branch → acts as the same single user). Returns { text }.
-async function askAi(q: string, secret: string): Promise<AnyRecord> {
-  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-proxy`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-phone-secret': secret },
-    body: JSON.stringify({ messages: [{ role: 'user', content: q }], surface: 'general' }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) return { ok: false, error: data?.error ?? `ai-proxy ${res.status}` }
-  return { ok: true, text: data?.text ?? '', model: data?.model }
+// x-phone-secret auth branch → acts as the same single user). Bounded by a 22s
+// AbortController so a slow/hung upstream returns a clean error before the
+// client's ~25s timeout. Returns { ok, text, model }.
+async function askAi(opts: {
+  q: string; secret: string; surface?: string; model?: string; systemPrompt?: string
+}): Promise<AnyRecord> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 22_000)
+  try {
+    const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-proxy`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'x-phone-secret': opts.secret },
+      body: JSON.stringify({
+        messages:  [{ role: 'user', content: opts.q }],
+        surface:   opts.surface ?? 'general',
+        ...(opts.model ? { model: opts.model } : {}),
+        ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+      }),
+      signal: controller.signal,
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, error: data?.error ?? `ai-proxy ${res.status}` }
+    return { ok: true, text: data?.text ?? '', model: data?.model }
+  } catch (e) {
+    const msg = (e as Error)?.name === 'AbortError'
+      ? 'AI timed out (~22s). Try again in a moment.'
+      : (e as Error).message
+    return { ok: false, error: msg }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 Deno.serve(async (req) => {
@@ -101,29 +188,53 @@ Deno.serve(async (req) => {
         }
         if (error) return json({ ok: false, error: error.message }, 400)
         const rows = data ?? []
+        // Water total (its own table; missing pre-067 → 0, never errors the widget).
+        let waterMl = 0
+        const w = await supabase.from('water_log_entries')
+          .select('amount_ml').eq('user_id', userId).eq('date', date)
+        if (!w.error && w.data) waterMl = (w.data as AnyRecord[]).reduce((a, r) => a + num(r.amount_ml), 0)
         return json({
           ok: true, date,
           kcal: Math.round(rows.reduce((a: number, r: AnyRecord) => a + num(r.calories), 0)),
           protein_g: Math.round(rows.reduce((a: number, r: AnyRecord) => a + num(r.protein_g), 0)),
+          water_ml: Math.round(waterMl),
           entries: rows.length,
         })
       }
 
-      // ── AI: free-form question / brief / sleep — forwarded to ai-proxy ──
-      case 'ask':
-      case 'brief':
-      case 'sleep': {
-        const q = action === 'brief'
-          ? "Bana bugünün kısa sabah brief'ini ver: bugünkü görevler, program ve planlı antrenman. Kısa, madde madde."
-          : action === 'sleep'
-          ? 'Dün gece nasıl uyudum? Süreyi, kaliteyi ve son 7 günün ortalamasına göre kısa bir yorum ver.'
-          : String(body.q ?? '').trim()
+      // ── Deterministic: log water (default 250 ml — e.g. an NFC bottle tap) ──
+      case 'log_water': {
+        const amount = num(body.amount_ml, 250)
+        if (amount <= 0) return json({ ok: false, error: 'amount_ml must be > 0' }, 400)
+        const { error } = await supabase.from('water_log_entries')
+          .insert({ user_id: userId, date: body.date ?? todayUTC(), amount_ml: Math.round(amount) })
+        return error ? json({ ok: false, error: error.message }, 400) : json({ ok: true, logged_ml: Math.round(amount) })
+      }
+
+      // ── AI: free-form question — forwarded to ai-proxy (fast model, full
+      //    tools since the question is open-ended) ──
+      case 'ask': {
+        const q = String(body.q ?? '').trim()
         if (!q) return json({ ok: false, error: 'q required for action "ask"' }, 400)
-        return json(await askAi(q, secret))
+        return json(await askAi({ q, secret, surface: 'general', model: FAST_MODEL, systemPrompt: PHONE_PERSONA }))
+      }
+
+      // ── AI: morning brief — context pre-built here → single-shot, no tools ──
+      case 'brief': {
+        const ctx = await buildBriefContext(userId)
+        const q = `Bana bugünün kısa sabah brief'ini ver: işler, program, yaklaşan antrenman. Kısa, madde madde. SADECE aşağıdaki DATA'yı kullan:\n\n${ctx}`
+        return json(await askAi({ q, secret, surface: 'phone', systemPrompt: PHONE_PERSONA }))
+      }
+
+      // ── AI: sleep — one get_health_stats tool call (source-aware) then a
+      //    short comment; fast model, full tools ──
+      case 'sleep': {
+        const q = 'Dün gece nasıl uyudum? Uyku verisi için get_health_stats aracını çağır, sonra süre + kaliteyi son 7 günün ortalamasıyla kıyaslayarak kısa yorumla.'
+        return json(await askAi({ q, secret, surface: 'general', model: FAST_MODEL, systemPrompt: PHONE_PERSONA }))
       }
 
       default:
-        return json({ ok: false, error: `Unknown action "${action}" (use log_supplement | log_food | nutrition_today | ask | brief | sleep)` }, 400)
+        return json({ ok: false, error: `Unknown action "${action}" (use log_supplement | log_food | log_water | nutrition_today | ask | brief | sleep)` }, 400)
     }
   } catch (e) {
     return json({ ok: false, error: (e as Error).message }, 500)

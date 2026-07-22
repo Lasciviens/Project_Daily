@@ -51,6 +51,8 @@ export const HEART_EXTRA_METRICS: MiniMetricConfig[] = [
     description: 'How much your heart rate drops in the minute after exercise — higher is fitter.' },
   { metric: 'vo2_max', icon: '🫀', title: 'VO₂ Max', unit: 'ml/kg·min', decimals: 1,
     description: 'Cardio fitness — estimated max oxygen uptake; higher is fitter. Apple estimates it from outdoor walks/runs, so it only updates on those days.' },
+  { metric: 'heart_rate_variability', icon: '📈', title: 'HRV', unit: 'ms', decimals: 0,
+    description: 'Heart rate variability — beat-to-beat variation (Fitbit reports RMSSD, Apple SDNN); higher generally reflects better recovery. Mostly captured overnight.' },
 ]
 
 // Running dynamics — form metrics captured during a run (sparse: only exist on

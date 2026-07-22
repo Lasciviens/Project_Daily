@@ -187,7 +187,13 @@ const DEFAULT_MODEL: GeminiModel = MODEL_CHAIN[0]
 // reliability; a 503 still falls through the whole chain. General/coach keep
 // the default. Tunable — see docs/ai-cost-capability-analysis.md §8.
 const SURFACE_MODEL: Record<string, GeminiModel> = {
-  shop: 'gemini-2.5-flash',
+  shop:  'gemini-2.5-flash',
+  // Phone (Apple Shortcuts) is latency-critical — iOS "Get Contents of URL"
+  // times out at ~25s — so start on a fast lite model, skipping the frequently
+  // 503-overloaded 3.5-flash primary (a 503 there burned ~7-13s of retry
+  // budget before falling through). A 503 still falls through the rest of the
+  // chain. Pairs with the 'phone' tool slice below (no tools → single-shot).
+  phone: 'gemini-3.1-flash-lite',
 }
 
 function isGeminiModel(m: unknown): m is GeminiModel {
@@ -211,6 +217,10 @@ function supportsThinking(model: GeminiModel): boolean {
 // the second 3, the tail models 2 (they're the escape hatch, not the goal).
 const RETRIES_BY_POSITION = [4, 3, 2, 2]
 const RETRY_BASE_DELAY_MS = 700
+// Per-attempt hard ceiling. A single Gemini generation is normally 1-5s; 20s
+// bounds a genuinely hung connection (there was NO timeout before — a hang
+// blocked forever, and with up to 11 attempts total there was no upper bound).
+const GEMINI_ATTEMPT_TIMEOUT_MS = 20_000
 
 // Random spread on the backoff delay ("jitter") — without it, if this
 // function is ever invoked concurrently (e.g. two tabs), every retry lands on
@@ -833,6 +843,11 @@ function sliceTools(names: string[]): typeof TOOLS {
 }
 function toolsFor(surface?: string): typeof TOOLS {
   if (surface === 'shop') return sliceTools(SHOP_TOOL_NAMES)
+  // The phone 'brief' pre-builds its context server-side (phone-gateway), so it
+  // needs NO tools — a single-shot answer with no multi-turn tool loop is the
+  // phone path's biggest latency win. An empty declaration list is dropped from
+  // the request body upstream (Gemini rejects an empty tools array).
+  if (surface === 'phone') return [{ functionDeclarations: [] }]
   return TOOLS
 }
 
@@ -882,6 +897,11 @@ async function callGemini(
   const usage: UsageAcc = { prompt: 0, cached: 0, output: 0, turns: 0 }
 
   const baseBody: AnyRecord = { tools: toolsFor(surface) }
+  // A surface can opt out of tools entirely (the 'phone' brief — context is
+  // pre-built, so a single-shot answer skips the whole tool loop). Gemini
+  // rejects an empty tools array, so drop the key when there are no functions.
+  const toolList = baseBody.tools as AnyRecord[]
+  if (!toolList?.length || !(toolList[0]?.functionDeclarations?.length)) delete baseBody.tools
   if (systemPrompt) {
     baseBody.systemInstruction = { parts: [{ text: systemPrompt }] }
   }

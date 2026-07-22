@@ -69,6 +69,35 @@ function civilDate(ct: AnyRecord | undefined): string | null {
 // frontend resolver documents).
 const hourIso = (ts: string) => ts.slice(0, 13) + ':00:00Z'
 
+// A daily-summary row keyed by a sentinel far-future date is config, not a real
+// day (the live sweep saw daily-heart-rate-zones dated 9998-12-31) — skip those.
+const isSentinelDate = (d: string) => d.startsWith('999')
+
+// distance point → kilometres. The standalone `distance` type's value field/unit
+// was NOT in the live payload sweep (surface doc verified exercise's
+// metricsSummary.distanceMillimeters, not the top-level distance point), so read
+// defensively: mm → km (Fitbit's documented native unit) first, then metres, then
+// an already-km {qty}. Stored in KM to match the Apple pipeline — StepsSection
+// reads walking_running_distance's qty straight as kilometres.
+function distanceKm(body: AnyRecord): number | null {
+  const mm = num(body?.distanceMillimeters)
+  if (mm != null) return mm / 1_000_000
+  const m = num(body?.distanceMeters ?? body?.meters)
+  if (m != null) return m / 1000
+  return num(body?.kilometers ?? body?.qty)
+}
+
+// active zone minutes point → total minutes. Fitbit weights cardio/peak zones
+// double; the AZM total-field name is unverified in the sweep, so try a flat
+// total first, else sum the fat-burn/cardio/peak/active zone breakdown.
+function activeZoneMin(body: AnyRecord): number | null {
+  const flat = num(body?.minutes ?? body?.activeZoneMinutes ?? body?.totalMinutes)
+  if (flat != null) return flat
+  const parts = [body?.fatBurnMinutes, body?.cardioMinutes, body?.peakMinutes, body?.activeMinutes]
+    .map(num).filter((x): x is number => x != null)
+  return parts.length ? parts.reduce((a, b) => a + b, 0) : null
+}
+
 async function listDataPoints(
   accessToken: string,
   dataType: string,       // kebab-case path id
@@ -186,6 +215,33 @@ Deno.serve(async (req) => {
     source: SOURCE, source_family: 'fitbit', value, updated_at: syncedAt, synced_at: syncedAt,
   })
 
+  // Cumulative interval type → hourly {qty} sum rows (gate 1 + 3), same shape as
+  // the steps/energy loop below. `conv` maps one point's union body to its
+  // contribution in the STORED unit (or null to skip) — lets the two v1.1
+  // cumulative metrics (distance, AZM) reuse the exact bucket logic while doing
+  // their own unit normalization, without touching the verified steps/energy path.
+  async function ingestCumulative(
+    pathId: string, unionField: string, filterTok: string,
+    metric: string, unit: string, conv: (b: AnyRecord) => number | null,
+  ) {
+    const pts = await listDataPoints(access_token, pathId,
+      `${filterTok}.interval.start_time >= "${fromIso}" AND ${filterTok}.interval.start_time < "${toIso}"`, skipped)
+    const byHour = new Map<string, { date: string; sum: number }>()
+    for (const p of pts) {
+      const body = p[unionField]
+      const q = conv(body ?? {})
+      const start = body?.interval?.startTime
+      const date = civilDate(body?.interval?.civilStartTime)
+      if (q == null || typeof start !== 'string' || !date) continue
+      const k = hourIso(start)
+      const cur = byHour.get(k)
+      if (cur) cur.sum += q
+      else byHour.set(k, { date, sum: q })
+    }
+    for (const [k, v] of byHour) metricRows.push(baseRow(metric, v.date, k, unit, { qty: v.sum }))
+    counts[metric] = byHour.size
+  }
+
   try {
     // ── Cumulative interval metrics → hourly sums (gate 1 + 3) ──
     for (const [pathId, filterTok, metric, unit, valueKey] of [
@@ -209,6 +265,13 @@ Deno.serve(async (req) => {
       for (const [k, v] of byHour) metricRows.push(baseRow(metric, v.date, k, unit, { qty: v.sum }))
       counts[metric] = byHour.size
     }
+
+    // ── v1.1 cumulative interval metrics → hourly sums (own unit normalization) ──
+    // Distance stored in km (app convention); AZM in minutes.
+    await ingestCumulative('distance', 'distance', 'distance',
+      'walking_running_distance', 'km', distanceKm)
+    await ingestCumulative('active-zone-minutes', 'activeZoneMinutes', 'active_zone_minutes',
+      'active_zone_minutes', 'min', activeZoneMin)
 
     // ── Heart rate samples → one {Min,Avg,Max} row per hour ──
     {
@@ -248,6 +311,110 @@ Deno.serve(async (req) => {
         n++
       }
       counts.resting_heart_rate = n
+    }
+
+    // ── Daily heart-rate variability (one value per day) ──
+    // Fitbit natively reports RMSSD (surface doc confirms
+    // rootMeanSquareOfSuccessiveDifferencesMilliseconds); SDNN is the fallback.
+    // Registered 'average' in METRIC_AGGREGATION (a daily point → itself per day,
+    // averaged across a week window).
+    {
+      const fromDate = fromIso.slice(0, 10)
+      const pts = await listDataPoints(access_token, 'daily-heart-rate-variability',
+        `daily_heart_rate_variability.date >= "${fromDate}"`, skipped)
+      let n = 0
+      for (const p of pts) {
+        const d = p.dailyHeartRateVariability
+        const ms = num(d?.rootMeanSquareOfSuccessiveDifferencesMilliseconds ?? d?.standardDeviationMilliseconds)
+        const date = civilDate(d)
+        if (ms == null || !date || isSentinelDate(date)) continue
+        metricRows.push(baseRow('heart_rate_variability', date, `${date}T12:00:00Z`, 'ms', { qty: ms }))
+        n++
+      }
+      counts.heart_rate_variability = n
+    }
+
+    // ── Nightly skin-temperature deviation (daily summary, point-in-time) ──
+    // Field name UNVERIFIED (no overnight sample in the sweep) — try the
+    // documented deviation-from-baseline shapes; value is °C. metric_name
+    // skin_temperature (registered 'latest').
+    {
+      const fromDate = fromIso.slice(0, 10)
+      const pts = await listDataPoints(access_token, 'daily-sleep-temperature-derivations',
+        `daily_sleep_temperature_derivations.date >= "${fromDate}"`, skipped)
+      let n = 0
+      for (const p of pts) {
+        const d = p.dailySleepTemperatureDerivations
+        const dev = num(
+          d?.nightlyTemperatureRelativeToBaselineCelsius ??
+          d?.temperatureRelativeToBaselineCelsius ??
+          d?.skinTemperatureDeviationCelsius ??
+          d?.deviationCelsius ?? d?.value,
+        )
+        const date = civilDate(d)
+        if (dev == null || !date || isSentinelDate(date)) continue
+        metricRows.push(baseRow('skin_temperature', date, `${date}T12:00:00Z`, '°C', { qty: dev }))
+        n++
+      }
+      counts.skin_temperature = n
+    }
+
+    // ── Blood oxygen (SpO2) — the shape the Air populates is UNCONFIRMED ──
+    // Registered minmaxavg (heart_rate-shaped assumption, tracker Phase 0 lock).
+    // Both the intraday samples type and the daily-summary type exist; try the
+    // SAMPLES type first (fits minmaxavg cleanly via hourly Min/Avg/Max, exactly
+    // like HR), and if it yields no rows, fall back to the daily summary. The
+    // path that produced data is reflected in counts.oxygen_saturation_source.
+    // Both are empty until a real overnight wear — never hard-fail. The value
+    // field is also unverified, so read it under a few plausible keys.
+    {
+      const spo2Pct = (o: AnyRecord | undefined): number | null => num(
+        o?.percentage ?? o?.oxygenSaturationPercentage ?? o?.saturationPercentage ??
+        o?.value ?? o?.qty,
+      )
+      // Path A: oxygen-saturation samples → hourly Min/Avg/Max (minmaxavg).
+      const samples = await listDataPoints(access_token, 'oxygen-saturation',
+        `oxygen_saturation.sample_time.physical_time >= "${fromIso}" AND oxygen_saturation.sample_time.physical_time < "${toIso}"`, skipped)
+      const byHour = new Map<string, { date: string; min: number; max: number; sum: number; n: number }>()
+      for (const p of samples) {
+        const o = p.oxygenSaturation
+        const pct = spo2Pct(o)
+        const t = o?.sampleTime?.physicalTime
+        const date = civilDate(o?.sampleTime?.civilTime)
+        if (pct == null || typeof t !== 'string' || !date) continue
+        const k = hourIso(t)
+        const cur = byHour.get(k)
+        if (!cur) byHour.set(k, { date, min: pct, max: pct, sum: pct, n: 1 })
+        else { cur.min = Math.min(cur.min, pct); cur.max = Math.max(cur.max, pct); cur.sum += pct; cur.n++ }
+      }
+      if (byHour.size > 0) {
+        for (const [k, v] of byHour) {
+          metricRows.push(baseRow('oxygen_saturation', v.date, k, '%',
+            { Min: v.min, Max: v.max, Avg: Math.round((v.sum / v.n) * 10) / 10 }))
+        }
+        counts.oxygen_saturation = byHour.size
+        counts.oxygen_saturation_source = 'samples'
+      } else {
+        // Path B: daily-oxygen-saturation summary → one Min/Avg/Max row per day.
+        const fromDate = fromIso.slice(0, 10)
+        const daily = await listDataPoints(access_token, 'daily-oxygen-saturation',
+          `daily_oxygen_saturation.date >= "${fromDate}"`, skipped)
+        let n = 0
+        for (const p of daily) {
+          const d = p.dailyOxygenSaturation
+          const date = civilDate(d)
+          if (!date || isSentinelDate(date)) continue
+          const avg = spo2Pct(d) ?? num(d?.average ?? d?.avg)
+          if (avg == null) continue
+          const min = num(d?.min ?? d?.minimum) ?? avg
+          const max = num(d?.max ?? d?.maximum) ?? avg
+          metricRows.push(baseRow('oxygen_saturation', date, `${date}T12:00:00Z`, '%',
+            { Min: min, Max: max, Avg: avg }))
+          n++
+        }
+        counts.oxygen_saturation = n
+        counts.oxygen_saturation_source = n > 0 ? 'daily' : 'none'
+      }
     }
 
     // ── Sleep sessions → stage segments + one aggregate sleep_analysis row ──
