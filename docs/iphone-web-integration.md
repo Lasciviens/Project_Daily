@@ -43,7 +43,7 @@ These are the surfaces a phone could plausibly hit: **Supabase REST/RPC**, an
 | Phase | Goal | Exit criteria (Definition of Done) | Gate |
 |---|---|---|---|
 | **0 · Discovery** — research DONE ✅, awaiting user decision | Learn every viable method (Shortcuts/Siri/widgets/apps/PWA/…), how each reaches our Supabase/edge, capabilities, limits, effort, two-way support, 2026 innovations. | ✅ Comparison table + recommended shortlist written below. | **← USER PICKS THE APPROACH(ES) HERE.** |
-| 1 · Decide + spike | Prove the chosen method end-to-end with ONE tiny real call (e.g. a Shortcut that hits a read endpoint and shows the result). | A working round-trip demo on the real iPhone. | User: "yes, build on this." |
+| 1 · Decide + spike | Prove the chosen method end-to-end with ONE tiny real call. **4 ready-to-test recipes prepared → [`iphone-examples.md`](./iphone-examples.md)** (NFC supplement · voice AI · 07:00 brief · nutrition widget), each with exact steps, values, and what the user must do. | A working round-trip demo on the real iPhone. | User: "yes, build on this." |
 | 2 · Auth + security | Safe, revocable auth from the phone to our backend. | `guardian`-approved auth path; no secrets on device. | User sign-off. |
 | 3 · Build core actions | The handful of real actions (add task / today / log food / ask AI …). | Each action works on-device + is documented here. | User sign-off. |
 | 4 · Polish | Widgets / Siri phrasing / notifications / discoverability. | — | — |
