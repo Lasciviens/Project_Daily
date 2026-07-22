@@ -398,6 +398,19 @@ const TOOLS = [
           required: [],
         },
       },
+      // ─── Semantic recall over the user's own text ─────────────────────────
+      {
+        name: 'semantic_search',
+        description: "Fuzzy/meaning-based search over the user's OWN text content (recipes, past coach assessments, dev backlog, work notes, saved AI memories) — for recall questions where you don't know the exact words, e.g. \"that Italian recipe I saved\", \"what did the coach tell me about deloads\", \"the note about the width standard\". Returns {source_table, source_id, content, similarity}. Then db_query the live row by that source_id if you need full/fresh fields. Use db_query (not this) when you already know the exact table+filter.",
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            query: { type: 'STRING', description: 'Natural-language description of what to find.' },
+            limit: { type: 'NUMBER', description: 'Max matches (default 8, max 25).' },
+          },
+          required: ['query'],
+        },
+      },
       // ─── Media (kept — non-trivial multi-step logic) ──────────────────────
       {
         name: 'get_media',
@@ -614,6 +627,56 @@ const TOOLS = [
   },
 ]
 
+// ─── Embeddings (semantic search) ─────────────────────────────────────────
+// gemini-embedding-001 @ 768 dims. Cosine index handles the un-normalized
+// <3072-dim output, so no manual normalization is needed. Request/response
+// shape web-verified (ai.google.dev/gemini-api/docs/embeddings): request
+// {content:{parts:[{text}]},taskType,outputDimensionality}; response
+// {embedding:{values}} (single) / {embeddings:[{values}]} (batch).
+const EMBED_MODEL = 'gemini-embedding-001'
+const EMBED_DIMS = 768
+const vecLiteral = (v: number[]) => `[${v.join(',')}]`
+async function embedTexts(apiKey: string, texts: string[], taskType: string): Promise<(number[] | null)[]> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents?key=${apiKey}`
+  const body = { requests: texts.map(t => ({ model: `models/${EMBED_MODEL}`, content: { parts: [{ text: t.slice(0, 8000) }] }, taskType, outputDimensionality: EMBED_DIMS })) }
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(`embed ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+  const j = await res.json()
+  return (j.embeddings ?? []).map((e: AnyRecord) => Array.isArray(e?.values) ? e.values as number[] : null)
+}
+async function embedOne(apiKey: string, text: string, taskType: string): Promise<number[] | null> {
+  const [v] = await embedTexts(apiKey, [text], taskType)
+  return v ?? null
+}
+// Text-rich, simple tables worth embedding for recall (no joins needed).
+const EMBED_SOURCES: { table: string; cols: string; text: (r: AnyRecord) => string }[] = [
+  { table: 'recipes',        cols: 'id,title,description,instructions', text: r => [r.title, r.description, r.instructions].filter(Boolean).join('\n') },
+  { table: 'dev_requests',   cols: 'id,title,description',              text: r => [r.title, r.description].filter(Boolean).join('\n') },
+  { table: 'pt_assessments', cols: 'id,feeling,note,assessment',        text: r => [r.feeling, r.note, r.assessment].filter(Boolean).join('\n') },
+  { table: 'work_notes',     cols: 'id,content',                        text: r => r.content ?? '' },
+  { table: 'ai_memory',      cols: 'id,title,content',                  text: r => [r.title, r.content].filter(Boolean).join('\n') },
+]
+
+async function semanticSearch(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
+  try {
+    if (!authHeader) return { success: false, error: 'No auth context for search.' }
+    const query = typeof args.query === 'string' ? args.query.trim() : ''
+    if (!query) return { success: false, error: 'query is required.' }
+    const key = Deno.env.get('GEMINI_API_KEY')
+    if (!key) return { success: false, error: 'AI not configured.' }
+    const vec = await embedOne(key, query, 'RETRIEVAL_QUERY')
+    if (!vec) return { success: false, error: 'Could not embed the query.' }
+    const limit = Math.min(Math.max(Number(args.limit) || 8, 1), 25)
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false, autoRefreshToken: false } },
+    )
+    const { data, error } = await userClient.rpc('ai_semantic_search', { query_embedding: vecLiteral(vec), match_count: limit })
+    if (error) return { success: false, error: error.message }
+    return { success: true, count: (data ?? []).length, matches: data ?? [] }
+  } catch (e) { return { success: false, error: (e as Error).message } }
+}
+
 Deno.serve(async (req) => {
   const origin  = req.headers.get('origin')
   const headers = corsHeaders(origin)
@@ -643,7 +706,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as
-      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean; surface?: string }
+      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean; surface?: string; reindexEmbeddings?: boolean }
 
     // Debug/maintenance: return the REAL list of models this API key can use
     // (name + generateContent support). Exists so the MODEL_CHAIN above is
@@ -673,6 +736,33 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ text }), {
         status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
       })
+    }
+
+    // Backfill/refresh the semantic-search index over the user's own text rows.
+    // User-triggered (a button); embeds each source table's rows and upserts
+    // into ai_embeddings. Idempotent on (user_id, source_table, source_id).
+    if (body.reindexEmbeddings) {
+      const key = Deno.env.get('GEMINI_API_KEY')
+      if (!key) return new Response(JSON.stringify({ error: 'AI not configured' }), { status: 503, headers: { ...headers, 'Content-Type': 'application/json' } })
+      const perTable: AnyRecord = {}
+      let indexed = 0
+      for (const src of EMBED_SOURCES) {
+        try {
+          const { data: rows } = await supabase.from(src.table).select(src.cols).eq('user_id', user.id).limit(500)
+          const withText = (rows ?? []).map((r: AnyRecord) => ({ id: String(r.id), text: src.text(r).trim() })).filter((x: AnyRecord) => x.text)
+          let n = 0
+          for (let i = 0; i < withText.length; i += 64) {
+            const chunk = withText.slice(i, i + 64)
+            const vecs = await embedTexts(key, chunk.map((c: AnyRecord) => c.text), 'RETRIEVAL_DOCUMENT')
+            const upserts = chunk
+              .map((c: AnyRecord, j: number) => vecs[j] ? { user_id: user.id, source_table: src.table, source_id: c.id, content: c.text.slice(0, 4000), embedding: vecLiteral(vecs[j]!), updated_at: new Date().toISOString() } : null)
+              .filter(Boolean)
+            if (upserts.length) { await supabase.from('ai_embeddings').upsert(upserts, { onConflict: 'user_id,source_table,source_id' }); n += upserts.length }
+          }
+          perTable[src.table] = n; indexed += n
+        } catch (e) { perTable[src.table] = `error: ${(e as Error).message}` }
+      }
+      return new Response(JSON.stringify({ success: true, indexed, perTable }), { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } })
     }
 
     const { messages, systemPrompt, responseSchema, model, surface } = body
@@ -959,6 +1049,11 @@ async function dispatch(
       return r
     }
     case 'get_day_summary':      return getDaySummary(supabase, userId, args)
+    case 'semantic_search': {
+      const r = await semanticSearch(args, authHeader)
+      void logQuery(supabase, userId, surface, 'semantic_search', null, args, r)
+      return r
+    }
     case 'save_memory':          return saveMemory(supabase, userId, args)
     case 'db_insert':            return dbInsert(supabase, userId, args)
     case 'db_update':            return dbUpdate(supabase, userId, args)

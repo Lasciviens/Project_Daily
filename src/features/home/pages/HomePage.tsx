@@ -8,6 +8,7 @@ import { DOMAIN_TAG_CLASS, DOMAIN_LABEL } from '../../todo/domainColors'
 import { completedWithinLast24h } from '../../todo/taskRules'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DailyBriefing } from '../components/DailyBriefing'
+import { WeeklyReview } from '../components/WeeklyReview'
 import { TodaySummary } from '../components/TodaySummary'
 import { WeatherWidget } from '../components/WeatherWidget'
 import { RuterWidget } from '../components/RuterWidget'
@@ -81,6 +82,7 @@ export function HomePage() {
       {/* stagger-in: mobile-only card cascade on entry (see index.css) */}
       <div className="xl:hidden space-y-4 stagger-in">
         <DailyBriefing />
+        <WeeklyReview />
         <WeatherWidget />
       </div>
 
@@ -100,8 +102,9 @@ export function HomePage() {
       <div className="flex-1 min-w-0 space-y-4 stagger-in">
         {/* AI morning briefing — leads the page on desktop; mobile gets its
             own copy above (see the xl:hidden block) instead of this one. */}
-        <div className="hidden xl:block">
+        <div className="hidden xl:block space-y-4">
           <DailyBriefing />
+          <WeeklyReview />
         </div>
 
         {/* Overview summary */}

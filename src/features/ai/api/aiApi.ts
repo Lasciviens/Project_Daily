@@ -75,7 +75,7 @@ NUTRITION / FOOD LOGGING — help the user track food with minimum friction (die
 - GUARDRAILS: never present an estimate as exact (flag every non-snapshot number as an estimate); logged data beats guesses; no medical/clinical-diet advice; if a calorie target looks unsafe-low, say so plainly and refuse that number; no micronutrients beyond fiber; no "health score"/food grades; round to whole grams (no false precision).
 
 Workflow rules:
-- Pick the right data tool: a current value or list → db_query; an average/total/trend/comparison/"how many" → db_aggregate (NEVER pull rows just to add them up yourself); a whole-day snapshot → get_day_summary; a bespoke multi-table/complex read the user explicitly asks for → run_read_query; "remember this for later" → save_memory.
+- Pick the right data tool: a current value or list → db_query; an average/total/trend/comparison/"how many" → db_aggregate (NEVER pull rows just to add them up yourself); a whole-day snapshot → get_day_summary; a fuzzy "that thing I saved/wrote about X" recall (you don't know the exact words) → semantic_search, then db_query the row by its id for full/fresh fields; a bespoke multi-table/complex read the user explicitly asks for → run_read_query; "remember this for later" → save_memory.
 - Unsure which table or column? Call describe_database first — do not guess column names.
 - Refer to a row by name? db_query for its id first, then update/delete by that id.
 - Training: read from hevy_workouts / hevy_routines / hevy_body_measurements / strava_activities (read-only). A PLANNED training session is a time_blocks row with category="training".
@@ -590,4 +590,16 @@ export async function parseFoodPhoto(imageDataUrl: string): Promise<PhotoFoodIte
   const prompt = `This is a photo of food — either a plated meal or a product's nutrition label. Identify each distinct food item and estimate, for the portion shown, its weight in grams and its macros (calories, protein_g, carbs_g, fat_g). If it's a nutrition label, read the declared values (state the basis in the name if per-100g). Output item names in TURKISH. Be realistic; never refuse — give your best estimate.`
   const res = await invokeStructured<{ items: PhotoFoodItem[] }>(prompt, FOOD_PHOTO_SCHEMA, [imageDataUrl])
   return res.items ?? []
+}
+
+// ─── Semantic search index ─────────────────────────────────────────────────
+//  One-tap rebuild of the embedding index over the user's own text (recipes,
+//  coach history, dev requests, work notes, saved memories). Idempotent; safe
+//  to re-run whenever new content should become searchable.
+export interface ReindexResult { indexed: number; perTable: Record<string, number | string> }
+export async function reindexAiSearch(): Promise<ReindexResult> {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { reindexEmbeddings: true } })
+  if (error) await throwFunctionError(error)
+  if (data?.error) throw new Error(friendlyError(data, data.error))
+  return data as ReindexResult
 }
