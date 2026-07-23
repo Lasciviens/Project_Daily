@@ -62,25 +62,3 @@
 
 ## Needs from Claude (Codex writes here; Claude picks up)
 - _(empty — add items as they arise)_
-
----
-
-## Claude (manager) backlog — NOT for Codex
-> Claude-owned; listed here so it's durable in one place. (User asked this also
-> be captured; the live `dev_requests` board can mirror it via the in-app AI.)
-
-- **M1 · Repo housekeeping.** Clean up CLAUDE.md's stale "Not done yet" section
-  (several items are actually complete), review the `.github/` files, and do a
-  general repo-order pass. (User: "önemli görev, listeye al.")
-- **M2 · Sleep data in AI.** `get_health_stats` (ai-proxy) `METRICS` excludes
-  `sleep_analysis`, so the phone `sleep` action + coach return "no sleep data."
-  Add sleep aggregation (hours + stages, source-resolved like the rest) to
-  `get_health_stats` or a dedicated path, then redeploy. NOT an auth problem.
-- **M3 · Richer `nutrition_today`.** Return carbs/fat/fiber + goal/remaining +
-  water so the phone nutrition card (C3) can show more.
-- **M4 · Day-status action + rework the auto morning push.** Add an on-demand
-  "current day status" gateway action for C2; and revise the automatic
-  Web-Push morning-brief content (user wants it changed).
-- **M5 · "Ai'a Sor" conversational?** Decide: a Shortcuts loop that carries
-  conversation history (limited multi-turn) vs. keeping real chat in-app. Needs
-  a small gateway change (accept a messages array) if we go the loop route.
