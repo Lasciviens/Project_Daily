@@ -87,12 +87,19 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
 export function useCreateTask() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (input: CreateTaskInput) => {
+    // `skipGoogleTasks` is set by the plan modal when this task will also be
+    // represented as a linked Google Calendar EVENT (via its time block).
+    // Without it the same task shows up on Google Calendar twice — once as a
+    // Google Task, once as the event — the "task duplicate" bug. The calendar
+    // event is the canonical two-way-linked record (time_blocks
+    // .google_calendar_event_id + migrations 038/043), so the Google Task copy
+    // is suppressed in that case.
+    mutationFn: async ({ skipGoogleTasks, ...input }: CreateTaskInput & { skipGoogleTasks?: boolean }) => {
       const task = await createTask(input)
       // Sync to Google Tasks — soft failure (never blocks the Supabase write)
       const token = useCalendarStore.getState().accessToken
       let googleTaskError: string | null = null
-      if (token) {
+      if (token && !skipGoogleTasks) {
         try {
           const googleTaskId = await createGoogleTask(token, task)
           // Persist to Supabase (cross-device) and localStorage (fallback)

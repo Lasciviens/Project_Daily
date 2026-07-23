@@ -71,6 +71,13 @@
   action `log_water`, body `{ "amount_ml": 1000 }` → `{ok, logged_ml:1000}`. This
   is already documented as Example 5 in `docs/iphone-examples.md`. Make sure the
   generator emits it and it imports + runs.
+  **⚠️ KNOWN ISSUE (user report + DB-confirmed):** the POST already SUCCEEDS —
+  a real 1000 ml row lands in `water_log_entries` — but the user says the
+  shortcut "didn't work", i.e. the **feedback step fails/doesn't show**. The bug
+  is the confirmation part, not the log: fix the `Get Dictionary Value` (key
+  `logged_ml`) → `Show Notification` chain so a success message actually appears.
+  (A malformed dictionary-key read or notification action makes the shortcut
+  look failed even though the water was logged.)
 
 - **C5 · "Barkod Tara" — `todo` (READY, no gateway change).** A companion
   Shortcut that uses iOS's built-in **Scan QR/Barcode** action (camera) →
@@ -81,5 +88,9 @@
   ONLY the small scan→run-script Shortcut; no gateway change, no OFF logic in
   the Shortcut itself.
 
-## Needs from Claude (Codex writes here; Claude picks up)
-- _(empty — add items as they arise)_
+## Communication (two-channel — see `coord/README.md`)
+This doc is the **stable spec only** (roles, rules, task board). The actual
+back-and-forth lives in two append-only logs so messages don't tangle:
+- **`coord/to-codex.md`** — Claude → Codex (tasks/answers). Codex reads.
+- **`coord/to-claude.md`** — Codex → Claude (reports/questions/blockers). Codex
+  writes here instead of editing this spec. Claude reads + updates the board above.

@@ -1,6 +1,5 @@
 import { isToday } from 'date-fns'
 import { NutritionCard } from './summary/NutritionCard'
-import { MealsCard } from './summary/MealsCard'
 import { TrainingCard } from './summary/TrainingCard'
 import { WatchNextCard } from './summary/WatchNextCard'
 import { GamesCard } from './summary/GamesCard'
@@ -29,14 +28,15 @@ export function TodaySummary({ date }: { date: Date }) {
       </p>
       {/* Full-width board now (schedule moved to its own row). Explicit column
           counts per breakpoint — NO auto-fill; Nutrition gets a DOUBLE slot
-          (wider, as requested) from sm up so its position stays deterministic. */}
+          (wider, as requested) from sm up so its position stays deterministic.
+          The old separate Meals card was MERGED into Nutrition (meal timeline +
+          ring/macros now live in one widget occupying that double slot). */}
       {/* Spaced cards instead of the old hairline-separated slab ("dip dibe"
           feedback): same FIXED slots and explicit column counts (never
           auto-fill), but each module is its own bordered card with real
           gaps, so the board reads as distinct modules at a glance. */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 stagger-in">
         <div className="sm:col-span-2 h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><NutritionCard date={dateStr} /></div>
-        <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><MealsCard date={dateStr} /></div>
         <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><TrainingCard date={dateStr} /></div>
         <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><WatchNextCard date={dateStr} /></div>
         <div className="h-full rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden"><HealthCard date={dateStr} /></div>

@@ -38,6 +38,10 @@ interface Props {
   config?: PlanModalConfig
   gcalAvailable: boolean
   editMode: boolean
+  /** True when editing a task that already has a linked Google Calendar event —
+   *  the control becomes a truthful "Added ✓" readout instead of a live toggle
+   *  (the idempotent save path won't create a second event either way). */
+  calendarLinked?: boolean
   extra?: React.ReactNode
 }
 
@@ -50,7 +54,7 @@ function SectionDivider({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function TaskTab({ form, patch, config, gcalAvailable, editMode, extra }: Props) {
+export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMode, calendarLinked, extra }: Props) {
   const hidden = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const locked = (f: Parameters<typeof isTaskFieldLocked>[0]) => isTaskFieldLocked(f, config)
 
@@ -153,13 +157,19 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode, extra }:
       {/* Caller-injected extra fields (Yol 1) */}
       {extra}
 
-      {!hidden('gcal') && !editMode && gcalAvailable && form.dueDate && (
-        <label className="flex items-center gap-3 min-h-[44px] cursor-pointer">
+      {/* Available on create AND edit (a task planned without a calendar entry
+          can be added later) — needs a due date since an event needs a date.
+          When already linked it's a disabled "Added ✓" readout. */}
+      {!hidden('gcal') && gcalAvailable && form.dueDate && (
+        <label className={`flex items-center gap-3 min-h-[44px] ${calendarLinked ? 'cursor-default' : 'cursor-pointer'}`}>
           <input
-            type="checkbox" checked={form.gcal} onChange={e => patch({ gcal: e.target.checked })}
-            className="w-4 h-4 accent-accent-500 rounded"
+            type="checkbox" checked={form.gcal} disabled={calendarLinked}
+            onChange={e => patch({ gcal: e.target.checked })}
+            className="w-4 h-4 accent-accent-500 rounded disabled:opacity-60"
           />
-          <span className="text-sm text-ink-700">Add to Google Calendar</span>
+          <span className="text-sm text-ink-700">
+            {calendarLinked ? 'Added to Google Calendar ✓' : 'Add to Google Calendar'}
+          </span>
         </label>
       )}
     </div>
