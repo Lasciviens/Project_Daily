@@ -33,12 +33,12 @@ export function usePushNotifications() {
   }, [supported])
 
   const enable = useCallback(async () => {
-    if (!supported) { toast.error('Bu cihaz push bildirimini desteklemiyor (PWA olarak ekli mi?)'); return }
-    if (!VAPID_PUBLIC) { toast.error('VAPID public anahtarı ayarlı değil'); return }
+    if (!supported) { toast.error('Push notifications are not supported on this device (added as a PWA?)'); return }
+    if (!VAPID_PUBLIC) { toast.error('VAPID public key is not configured'); return }
     setBusy(true)
     try {
       const perm = await Notification.requestPermission()
-      if (perm !== 'granted') { toast.error('Bildirim izni verilmedi'); return }
+      if (perm !== 'granted') { toast.error('Notification permission was not granted'); return }
       const reg = await navigator.serviceWorker.ready
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -55,9 +55,9 @@ export function usePushNotifications() {
       }, { onConflict: 'user_id,endpoint' })
       if (error) throw error
       setEnabled(true)
-      toast.success('Bildirimler açıldı ✓')
+      toast.success('Notifications enabled ✓')
     } catch (e) {
-      toast.error((e as Error).message ?? 'Bildirim açılamadı')
+      toast.error((e as Error).message ?? 'Could not enable notifications')
     } finally { setBusy(false) }
   }, [supported])
 
@@ -72,9 +72,9 @@ export function usePushNotifications() {
         await sub.unsubscribe()
       }
       setEnabled(false)
-      toast.success('Bildirimler kapatıldı')
+      toast.success('Notifications turned off')
     } catch (e) {
-      toast.error((e as Error).message ?? 'Kapatılamadı')
+      toast.error((e as Error).message ?? 'Could not turn off notifications')
     } finally { setBusy(false) }
   }, [supported])
 

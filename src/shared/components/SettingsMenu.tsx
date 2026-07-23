@@ -126,19 +126,19 @@ export function SettingsMenu() {
 
         {/* Notifications (Web Push) */}
         <div className="px-4 py-3 border-b border-ink-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Bildirimler</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Notifications</p>
           {push.supported ? (
             <button
               onClick={() => (push.enabled ? push.disable() : push.enable())}
               disabled={push.busy}
               className="w-full min-h-[44px] rounded-lg border border-ink-200 text-sm text-ink-700 hover:border-accent-300 hover:text-accent-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {push.busy ? '…' : push.enabled ? '🔕 Bildirimleri kapat' : '🔔 Bildirimleri aç'}
+              {push.busy ? '…' : push.enabled ? '🔕 Turn off notifications' : '🔔 Turn on notifications'}
             </button>
           ) : (
-            <p className="text-[10px] text-ink-400 leading-snug">Bu cihazda desteklenmiyor. iOS'ta önce siteyi Ana Ekrana ekle (PWA), sonra buradan aç.</p>
+            <p className="text-[10px] text-ink-400 leading-snug">Not supported on this device. On iOS, add the site to your Home Screen (PWA) first, then enable here.</p>
           )}
-          {push.enabled && <p className="text-[10px] text-ink-400 mt-1.5 leading-snug">Sabah brief'i kilit ekranına düşer.</p>}
+          {push.enabled && <p className="text-[10px] text-ink-400 mt-1.5 leading-snug">Your morning brief will arrive on the lock screen.</p>}
         </div>
 
         {/* Theme */}
