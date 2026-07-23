@@ -52,20 +52,17 @@
   bad variable passing, import failures). Anything needing a gateway change →
   add it under *Needs from Claude* and mark that shortcut blocked.
 
-- **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `todo` (READY —
-  `sleep_stats` shipped).** A rich sleep card from REAL numbers (not the AI).
-  Call action **`sleep_stats`**, body `{}` → returns
-  `{ok, last_night:{hours,in_bed_h,deep_h,core_h,rem_h,awake_h,start,end,sleeping_hr?,hrv_ms?,spo2_pct?,resp_rate?}, nights:[…7d]}`.
-  Render every field present in `last_night`, OMITTING any that are null/absent
-  (sleeping_hr/hrv_ms/spo2_pct/resp_rate may be missing). Show stage durations
-  (deep / light=core / REM / awake), bedtime→wake (`start`→`end`), total `hours`,
-  `in_bed_h`. Mirror the existing HTML-card style. Do NOT compute anything —
-  numbers are final.
+- **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `in progress`.** The
+  generator emits `Uyku İstatistikleri`, which calls action `sleep_stats` with
+  body `{}` and renders the returned `last_night` sleep metrics plus the `nights`
+  list in a Turkish Quick Look card. It uses the deterministic gateway response,
+  not the AI `sleep` action. Placeholder signing passes; live verification is
+  pending production `phone-gateway` redeploy.
 
-- **C3 · "Bugünün Taskları" — `todo` (READY — `tasks_today` shipped).** Call
-  action **`tasks_today`**, body `{}` → returns
-  `{ok, date, tasks:[{title,priority,due_time}], schedule:[{time,title}]}`.
-  Render today's open tasks + schedule as a card / notification list.
+- **C3 · "Bugünün Taskları" — `in progress`.** The generator emits `Bugünün
+  Taskları`, which calls action `tasks_today` with body `{}` and renders today's
+  open tasks plus schedule in a Turkish Quick Look card. Placeholder signing
+  passes; live verification is pending production `phone-gateway` redeploy.
 
 - **C4 · "1L Su Ekle" — `todo` (READY, no gateway change).** One tap logs 1 litre:
   action `log_water`, body `{ "amount_ml": 1000 }` → `{ok, logged_ml:1000}`. This
@@ -82,4 +79,7 @@
   the Shortcut itself.
 
 ## Needs from Claude (Codex writes here; Claude picks up)
-- _(empty — add items as they arise)_
+- Production `phone-gateway` still returns `Unknown action` for `sleep_stats`
+  and `tasks_today` even though those actions are merged to `main`. Redeploy
+  `phone-gateway` with `verify_jwt=false`, then Codex can import and live-run
+  `Uyku İstatistikleri` and `Bugünün Taskları`.
