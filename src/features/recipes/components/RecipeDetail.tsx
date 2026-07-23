@@ -8,6 +8,7 @@ import { recipeSnapshot } from '../api/foodLogApi'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MacroBar } from './MacroBar'
 import { CookMode } from './CookMode'
+import { ConfirmDialog } from './ConfirmDialog'
 import type { RecipeWithIngredients, MealSlot } from '../types'
 
 function slotForNow(): MealSlot {
@@ -17,6 +18,14 @@ function slotForNow(): MealSlot {
   if (h < 21) return 'dinner'
   return 'snack'
 }
+
+const LOG_SLOTS: { slot: MealSlot; label: string }[] = [
+  { slot: 'breakfast',  label: 'Breakfast' },
+  { slot: 'lunch',      label: 'Lunch' },
+  { slot: 'dinner',     label: 'Dinner' },
+  { slot: 'snack',      label: 'Snack' },
+  { slot: 'supplement', label: 'Supplement' },
+]
 
 interface Props {
   recipe: RecipeWithIngredients
@@ -35,9 +44,14 @@ function scaledQty(q: number | null, factor: number): string {
 export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const [servings, setServings] = useState(recipe.servings)
   const [ate, setAte] = useState(1)   // portions EATEN (≠ recipe base yield)
+  // "I ate this" target — defaults to today + the time-of-day slot, but both are
+  // editable so a past meal can be backfilled to the right day/slot.
+  const [logDate, setLogDate] = useState(formatLocalDate(new Date()))
+  const [logSlot, setLogSlot] = useState<MealSlot>(slotForNow())
   const [have,      setHave]     = useState<Set<string>>(new Set())
   const [cookMode,  setCookMode] = useState(false)
   const [imgError,  setImgError] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const remove       = useDeleteRecipe()
   const addToShop    = useAddMissingIngredientsToShop()
   const cooked        = useIncrementTimesCooked()
@@ -51,17 +65,17 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
     })
   }
 
-  // Log this recipe to TODAY's diary as ONE named line (recipe_id + a macro
+  // Log this recipe to the diary as ONE named line (recipe_id + a macro
   // snapshot at the selected servings) — this is what finally connects the
-  // recipe library to calorie tracking. Slot picked from the time of day.
+  // recipe library to calorie tracking. Day + slot are user-editable (default
+  // today + time-of-day) so a past meal can be backfilled.
   function handleLog() {
-    const slot = slotForNow()
     logFood.mutate([{
-      date: formatLocalDate(new Date()), meal_slot: slot,
+      date: logDate, meal_slot: logSlot,
       recipe_id: recipe.id, quantity: ate, unit: 'serving',
       ...recipeSnapshot(recipe, ate),
     }], {
-      onSuccess: () => toast.success(`Logged ${ate}× to ${slot} ✓`),
+      onSuccess: () => toast.success(`Logged ${ate}× to ${logSlot} ✓`),
       onError:   e  => toast.error((e as Error).message),
     })
   }
@@ -88,7 +102,6 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
     perServing == null ? null : Math.round(perServing * servings)
 
   function handleDelete() {
-    if (!confirm(`Delete "${recipe.title}"?`)) return
     const tid = toast.loading('Deleting…')
     remove.mutate(recipe.id, {
       onSuccess: () => { toast.dismiss(tid); toast.success('Deleted'); onClose() },
@@ -180,6 +193,18 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
               </div>
             </div>
 
+            {/* When + where "I ate this" logs to — defaults to today + the
+                time-of-day slot, both editable so a past meal can be backfilled. */}
+            <div className="flex items-center gap-2 flex-wrap -mt-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Log to</span>
+              <input type="date" value={logDate} max={formatLocalDate(new Date())} onChange={e => setLogDate(e.target.value)}
+                className="min-h-[40px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50 text-ink-800 focus:outline-none focus:ring-2 focus:ring-accent-400" />
+              <select value={logSlot} onChange={e => setLogSlot(e.target.value as MealSlot)}
+                className="min-h-[40px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50 text-ink-800 focus:outline-none focus:ring-2 focus:ring-accent-400">
+                {LOG_SLOTS.map(s => <option key={s.slot} value={s.slot}>{s.label}</option>)}
+              </select>
+            </div>
+
             {/* What "I ate this" will log — portion as a % of the batch + kcal. */}
             {ate > 0 && (recipe.calories != null || recipe.servings > 1) && (
               <p className="text-[11px] text-ink-400 tabular-nums -mt-2">
@@ -263,13 +288,21 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
           </div>
 
           <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-cream-50">
-            <button onClick={handleDelete} className="min-h-[44px] px-4 text-sm font-medium text-red-500 hover:bg-red-50 rounded-xl">Delete</button>
+            <button onClick={() => setConfirmDelete(true)} className="min-h-[44px] px-4 text-sm font-medium text-red-500 hover:bg-red-50 rounded-xl">Delete</button>
             <button onClick={() => onEdit(recipe)} className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600">Edit</button>
           </div>
         </DialogPanel>
       </div>
 
       {cookMode && <CookMode recipe={recipe} steps={steps} onClose={() => setCookMode(false)} />}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Delete "${recipe.title}"?`}
+        message="This can't be undone."
+        onConfirm={handleDelete}
+        onClose={() => setConfirmDelete(false)}
+      />
     </Dialog>
   )
 }

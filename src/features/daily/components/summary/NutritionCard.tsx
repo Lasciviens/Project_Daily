@@ -1,5 +1,6 @@
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useState } from 'react'
+import { isToday } from 'date-fns'
 import { useEatPlannedEntry } from '../../../recipes/hooks/useMealPlan'
 import { Cell, CellHeader } from './cellKit'
 import { WaterTracker } from './WaterTracker'
@@ -36,13 +37,24 @@ function reLogEntry(r: RecentFood, date: string, slot: MealSlot): FoodLogEntryIn
   }
 }
 
-const SLOTS: { slot: MealSlot; label: string }[] = [
-  { slot: 'breakfast',  label: 'Breakfast' },
-  { slot: 'lunch',      label: 'Lunch' },
-  { slot: 'dinner',     label: 'Dinner' },
-  { slot: 'snack',      label: 'Snack' },
-  { slot: 'supplement', label: 'Suppl.' },
+// Slot icons + "now" highlighting folded in from the old separate Meals card —
+// this card now presents nutrition AND the meal timeline as one widget.
+const SLOTS: { slot: MealSlot; label: string; icon: string }[] = [
+  { slot: 'breakfast',  label: 'Breakfast', icon: '🌅' },
+  { slot: 'lunch',      label: 'Lunch',     icon: '☀️' },
+  { slot: 'dinner',     label: 'Dinner',    icon: '🌙' },
+  { slot: 'snack',      label: 'Snack',     icon: '🍎' },
+  { slot: 'supplement', label: 'Suppl.',    icon: '💊' },
 ]
+
+// The slot matching the current time of day (only meaningful on today).
+function currentSlot(): MealSlot {
+  const h = new Date().getHours()
+  if (h < 11) return 'breakfast'
+  if (h < 15) return 'lunch'
+  if (h < 21) return 'dinner'
+  return 'snack'
+}
 
 function CalorieRing({ consumed, target }: { consumed: number; target: number }) {
   const pct = target > 0 ? Math.min(consumed / target, 1) : 0
@@ -69,8 +81,8 @@ function CalorieRing({ consumed, target }: { consumed: number; target: number })
 // (food_log_entries), not a macro-less plan title — a recent chip re-logs its
 // own snapshot; free text that matches your library logs that ingredient;
 // anything else opens the full logger prefilled (so it still gets macros).
-function SlotRow({ date, slot, label, meals }: {
-  date: string; slot: MealSlot; label: string
+function SlotRow({ date, slot, label, icon, isNow, meals }: {
+  date: string; slot: MealSlot; label: string; icon: string; isNow: boolean
   meals: DayMeal[]
 }) {
   const [adding, setAdding] = useState(false)
@@ -117,7 +129,9 @@ function SlotRow({ date, slot, label, meals }: {
         <div className="flex flex-col gap-0.5">
           {meals.map((meal, i) => (
             <div key={meal.id} className="flex items-center gap-2 min-h-[28px]">
-              <span className="text-ink-400 w-16 shrink-0">{i === 0 ? label : ''}</span>
+              <span className={`w-[4.5rem] shrink-0 flex items-center gap-1 ${isNow ? 'text-accent-700 font-semibold' : 'text-ink-400'}`}>
+                {i === 0 && <><span className="leading-none">{icon}</span>{label}{isNow && <span className="text-[9px] font-normal text-accent-500">·now</span>}</>}
+              </span>
               <span className="text-ink-700 flex-1 truncate">{meal.title}</span>
               {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
               {meal.source === 'plan' && meal.planEntry && (
@@ -141,7 +155,9 @@ function SlotRow({ date, slot, label, meals }: {
       ) : (
         <>
           <div className="flex items-center gap-2">
-            <span className="text-ink-400 w-16 shrink-0">{label}</span>
+            <span className={`w-[4.5rem] shrink-0 flex items-center gap-1 ${isNow ? 'text-accent-700 font-semibold' : 'text-ink-400'}`}>
+              <span className="leading-none">{icon}</span>{label}{isNow && <span className="text-[9px] font-normal text-accent-500">·now</span>}
+            </span>
             {adding ? (
               <input
                 autoFocus value={text} onChange={e => setText(e.target.value)}
@@ -242,6 +258,9 @@ export function NutritionCard({ date }: { date: string }) {
   const filledSlots = new Set(mealsBySlot.keys())
 
   const hasMeals = (nut?.meals?.length ?? 0) > 0
+  // Highlight the current time-of-day slot on today only (folded in from the
+  // old Meals card so "what's next to eat" still reads at a glance).
+  const now = isToday(new Date(date + 'T00:00:00')) ? currentSlot() : null
 
   return (
     <Cell>
@@ -380,8 +399,8 @@ export function NutritionCard({ date }: { date: string }) {
           </div>
 
           <ul className="flex flex-col gap-0.5 pt-1 border-t border-ink-100">
-            {SLOTS.map(({ slot, label }) => (
-              <SlotRow key={slot} date={date} slot={slot} label={label} meals={mealsBySlot.get(slot) ?? []} />
+            {SLOTS.map(({ slot, label, icon }) => (
+              <SlotRow key={slot} date={date} slot={slot} label={label} icon={icon} isNow={slot === now} meals={mealsBySlot.get(slot) ?? []} />
             ))}
           </ul>
 

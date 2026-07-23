@@ -4,6 +4,7 @@ import { toast } from '../../../app/store'
 import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
+import { ConfirmDialog } from './ConfirmDialog'
 import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ export function IngredientManager() {
   const [scanOpen, setScanOpen] = useState(false)
   const [onlineOpen, setOnlineOpen] = useState(false)
   const [meta, setMeta] = useState<{ source: string; source_ref: string; image_url: string | null } | null>(null)
+  const [toDelete, setToDelete] = useState<IngredientLibraryItem | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
 
   const set = (k: keyof typeof EMPTY, v: string) => setF(prev => ({ ...prev, [k]: v }))
@@ -216,7 +218,7 @@ export function IngredientManager() {
                 <span className="text-ink-400 tabular-nums shrink-0 w-10 text-right hidden sm:block">{ing.fat_g ?? '—'}F</span>
                 <button onClick={() => startEdit(ing)} aria-label={`Edit ${ing.name}`}
                   className="press-feedback min-w-[40px] min-h-[40px] flex items-center justify-center text-ink-300 hover:text-accent-600 shrink-0">✎</button>
-                <button onClick={() => { if (confirm(`Delete "${ing.name}"?`)) remove.mutate(ing.id) }} aria-label={`Delete ${ing.name}`}
+                <button onClick={() => setToDelete(ing)} aria-label={`Delete ${ing.name}`}
                   className="press-feedback min-w-[40px] min-h-[40px] flex items-center justify-center text-ink-300 hover:text-red-500 shrink-0">×</button>
               </li>
             ))}
@@ -225,6 +227,21 @@ export function IngredientManager() {
         {filtered.length > 300 && <p className="text-[10px] text-ink-400 px-4 py-2">Showing first 300 — search or filter to narrow.</p>}
       </div>
       <p className="text-[11px] text-ink-400">Per-100g is the source of truth; portion presets are one-tap conveniences. Logged meals snapshot their macros — editing a food later never rewrites your history. Nutrition data: Matvaretabellen (Mattilsynet), NLOD.</p>
+
+      <ConfirmDialog
+        open={!!toDelete}
+        title={toDelete ? `Delete "${toDelete.name}"?` : ''}
+        message="This removes it from your food library."
+        onConfirm={() => {
+          if (!toDelete) return
+          const tid = toast.loading('Deleting…')
+          remove.mutate(toDelete.id, {
+            onSuccess: () => { toast.dismiss(tid); toast.success('Deleted ✓') },
+            onError:   e  => { toast.dismiss(tid); toast.error((e as Error).message ?? 'Failed') },
+          })
+        }}
+        onClose={() => setToDelete(null)}
+      />
     </div>
   )
 }
