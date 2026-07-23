@@ -45,12 +45,16 @@
 > `docs/iphone-examples.md`. Do NOT compute anything in the shortcut that the
 > gateway can return; the gateway returns final values.
 
-- **C1 · Audit + fix all current shortcuts — `todo` (READY).** The existing
-  shortcuts are reported incomplete / working badly. For EACH generated shortcut:
-  imports cleanly? runs? hits the correct action + body? Produce a per-shortcut
-  findings list in the PR and fix the clear mechanical issues (wrong action/body,
-  bad variable passing, import failures). Anything needing a gateway change →
-  add it under *Needs from Claude* and mark that shortcut blocked.
+- **C1 · Audit + fix all current shortcuts — `done`.** PR #379 audited the
+  generated shortcuts and fixed the clear generator-side issues found during the
+  pass. The current imported Shortcuts library was checked with
+  `shortcuts list --show-identifiers` and had one correct copy of each generated
+  shortcut: `Log Creatine`, `Su İç`, `AI'a Sor`, `Sabah Brief`,
+  `Beslenme Durumu`, `Uyku Özeti`, `Atıştırmalık Logla`, and `Akşam Yemeği
+  Logla`. The old numbered / ASCII-name duplicates were gone at last check. The
+  generated voice shortcuts use Turkish dictation / speech where applicable:
+  `AI'a Sor`, `Atıştırmalık Logla`, and `Akşam Yemeği Logla` are set to
+  `tr-TR`.
 
 - **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `in progress`.** The
   generator emits `Uyku İstatistikleri`, which calls action `sleep_stats` with
@@ -64,10 +68,11 @@
   open tasks plus schedule in a Turkish Quick Look card. Placeholder signing
   passes; live verification is pending production `phone-gateway` redeploy.
 
-- **C4 · "1L Su Ekle" — `todo` (READY, no gateway change).** One tap logs 1 litre:
-  action `log_water`, body `{ "amount_ml": 1000 }` → `{ok, logged_ml:1000}`. This
-  is already documented as Example 5 in `docs/iphone-examples.md`. Make sure the
-  generator emits it and it imports + runs.
+- **C4 · "1L Su Ekle" — `done`.** PR #379 added `Su İç`, which calls action
+  `log_water` with body `{ "amount_ml": 1000 }` and renders a Turkish result
+  card. Placeholder generation, signing, real-secret local signing, import, and
+  live gateway verification were completed; the live gateway returned
+  `{ok:true, logged_ml:1000}` during verification.
 
 - **C5 · "Barkod Tara" — `todo` (READY, no gateway change).** A companion
   Shortcut that uses iOS's built-in **Scan QR/Barcode** action (camera) →
@@ -79,7 +84,28 @@
   the Shortcut itself.
 
 ## Needs from Claude (Codex writes here; Claude picks up)
-- Production `phone-gateway` still returns `Unknown action` for `sleep_stats`
-  and `tasks_today` even though those actions are merged to `main`. Redeploy
-  `phone-gateway` with `verify_jwt=false`, then Codex can import and live-run
-  `Uyku İstatistikleri` and `Bugünün Taskları`.
+- **C2/C3 production deploy needed.** Codex implemented the generator side on
+  branch `claude/codex-shortcuts-c2-c3`, commit `f9ad27a` (`Add deterministic
+  sleep and tasks shortcuts`), and pushed it to GitHub. The branch adds
+  `Uyku İstatistikleri` (`sleep_stats`) and `Bugünün Taskları` (`tasks_today`) to
+  `scripts/iphone-shortcuts/generate.mjs` and updates
+  `scripts/iphone-shortcuts/README.md`.
+- **Verification already done by Codex:** `node --check
+  scripts/iphone-shortcuts/generate.mjs` passed; `git diff --check
+  origin/main..HEAD` passed; placeholder generation/signing passed for the full
+  shortcut set in `/private/tmp/lascis-board-shortcuts-codex-c2-c3-placeholder`,
+  including `Uyku İstatistikleri.shortcut` and `Bugünün Taskları.shortcut`.
+- **Current blocker:** production `phone-gateway` still returns `Unknown action`
+  for `sleep_stats` and `tasks_today` even though those actions are merged to
+  `main`. Supabase CLI is not installed locally, no local Supabase auth token was
+  present, and the Supabase connector production deploy attempt was blocked
+  pending explicit approval because it mutates production.
+- **To finish C2/C3:** redeploy production `phone-gateway` with the merged
+  `sleep_stats` / `tasks_today` source and `verify_jwt=false`; then regenerate
+  real-secret shortcuts locally, import only `Uyku İstatistikleri` and
+  `Bugünün Taskları`, run both end-to-end, and update this doc from
+  `in progress` to `done`.
+- **GitHub PR status:** branch `claude/codex-shortcuts-c2-c3` is pushed, but
+  `gh pr create` failed because the GitHub API rate limit was exceeded for the
+  authenticated user. Create the PR later from the pushed branch, or rerun
+  `gh pr create` after the rate limit resets.
