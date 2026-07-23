@@ -39,26 +39,38 @@
    (placeholder pattern only). Don't stack new commits on an already-merged branch.
 
 ## Codex tasks (open)
-> Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these.
+> Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every
+> shortcut calls `POST /functions/v1/phone-gateway` with the `x-phone-secret`
+> header (placeholder) — mirror the exact "Get Contents of URL" pattern in
+> `docs/iphone-examples.md`. Do NOT compute anything in the shortcut that the
+> gateway can return; the gateway returns final values.
 
-- **C1 · Audit all current shortcuts — `todo`.** User reports the existing
-  shortcuts are "incomplete or working badly." For EACH shortcut the generator
-  emits: does it import cleanly, run, and hit the correct gateway action with the
-  right body? Produce a findings list (what's broken/missing per shortcut) in the
-  PR, and fix the clear mechanical issues (wrong action name/body, bad
-  variable-passing, import failures). Anything needing a gateway change → *Needs
-  from Claude*.
-- **C2 · Repurpose "Sabah Brief" → instant day-status — `blocked` (needs Claude C-side).**
-  The morning brief is now delivered automatically by Web Push, so this shortcut
-  should stop being a "morning brief" and instead give an **on-demand current
-  day status**. Rename it and point it at the day-status action. **Blocked on**
-  Claude deciding/adding the gateway action (see M4). Details TBD with the user.
-- **C3 · Enrich "Beslenme Durumu" card — `blocked` (needs Claude M3).** The card's
-  UI is good but shows too little. Once `nutrition_today` returns more (carbs/fat/
-  fiber, goal + remaining, water — Claude M3), expand the HTML card to show them.
-- **C4 · "Uyku Özeti" — verify after Claude M2 — `blocked`.** Today the AI answers
-  "no sleep data" — root cause is a gateway/AI gap (Claude M2), NOT the shortcut.
-  Once M2 ships, confirm the shortcut renders the sleep summary correctly.
+- **C1 · Audit + fix all current shortcuts — `todo` (READY).** The existing
+  shortcuts are reported incomplete / working badly. For EACH generated shortcut:
+  imports cleanly? runs? hits the correct action + body? Produce a per-shortcut
+  findings list in the PR and fix the clear mechanical issues (wrong action/body,
+  bad variable passing, import failures). Anything needing a gateway change →
+  add it under *Needs from Claude* and mark that shortcut blocked.
+
+- **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `blocked` (needs gateway
+  `sleep_stats`, Claude).** A rich sleep card from REAL numbers (not the AI).
+  Show every sleep metric we have for last night, omitting any that are absent:
+  total sleep (h) · time in bed · **stage durations** deep / light(core) / REM /
+  awake · bedtime → wake · sleeping heart rate · HRV (ms) · SpO2 % · respiratory
+  rate. Mirror the existing HTML-card style. **Wire once Claude ships
+  `sleep_stats`**, which will return
+  `{ok, last_night:{hours,in_bed_h,deep_h,core_h,rem_h,awake_h,start,end,sleeping_hr,hrv_ms,spo2_pct,resp_rate}, nights:[…7d]}`.
+
+- **C3 · "Bugünün Taskları" — `blocked` (needs gateway `tasks_today`, Claude).**
+  A deterministic list of today's open tasks + today's schedule. **Wire once
+  Claude ships `tasks_today`**, returning
+  `{ok, tasks:[{title,priority,due_time}], schedule:[{time,title}]}`. Render as a
+  card / notification list.
+
+- **C4 · "1L Su Ekle" — `todo` (READY, no gateway change).** One tap logs 1 litre:
+  action `log_water`, body `{ "amount_ml": 1000 }` → `{ok, logged_ml:1000}`. This
+  is already documented as Example 5 in `docs/iphone-examples.md`. Make sure the
+  generator emits it and it imports + runs.
 
 ## Needs from Claude (Codex writes here; Claude picks up)
 - _(empty — add items as they arise)_
