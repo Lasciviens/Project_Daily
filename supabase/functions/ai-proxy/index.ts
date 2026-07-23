@@ -462,7 +462,7 @@ const TOOLS = [
       },
       {
         name: 'get_health_stats',
-        description: 'Read daily health stats (steps, active/basal energy in kcal, heart rate min/avg/max, resting heart rate, exercise minutes) computed from health_metrics point-in-time samples, plus period averages. Use to answer fitness/health questions — prefer this over raw db_query for trend/average questions.',
+        description: 'Read daily health stats (steps, active/basal energy in kcal, heart rate min/avg/max, resting heart rate, exercise minutes, AND SLEEP — per-night hours + deep/core/rem/awake breakdown, last night + period average, overlap-merged and source-resolved) computed from health_metrics, plus period averages. Use to answer any fitness/health/SLEEP question — prefer this over raw db_query for trend/average/sleep questions.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -1304,9 +1304,47 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
 // day) — this mirrors the frontend's healthAggregate.ts aggregation rules
 // (sum for cumulative quantities, min/max/avg for heart_rate, last-reading
 // for resting HR) so the AI reports the same numbers the Health tab shows.
+// Sleep needs OVERLAP-MERGE (keep the LONGEST session per cluster of
+// overlapping [start,end] windows — duplicate/subset re-reports of one night),
+// NOT a qty sum, so it's computed separately from the metric loop. Overlap is
+// absolute-time (timezone-independent); each kept night is then attributed to
+// its Oslo wake day. Real bug this fixes: Fitbit ends are UTC ("...Z"), so a
+// late-evening sub-session (23:32Z) keyed by raw date split off from its main
+// session (06:12Z next day) → the night showed a 0.8h fragment instead of 7.4h.
+async function computeSleepNights(supabase: AnyRecord, userId: string, since: string): Promise<AnyRecord[]> {
+  const { data } = await supabase.from('health_metrics')
+    .select('value').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
+  const ms = (s: unknown): number | null => {
+    if (typeof s !== 'string') return null
+    const iso = s.trim().replace(' ', 'T').replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')
+    let t = Date.parse(iso); if (!Number.isFinite(t)) t = Date.parse(s)
+    return Number.isFinite(t) ? t : null
+  }
+  const sessions = ((data ?? []) as AnyRecord[]).map(r => {
+    const v = r.value ?? {}
+    return { start: ms(v.sleepStart), end: ms(v.sleepEnd), total: Number(v.totalSleep) || 0,
+             deep: Number(v.deep) || 0, core: Number(v.core) || 0, rem: Number(v.rem) || 0, awake: Number(v.awake) || 0 }
+  }).filter(s => s.start != null && s.end != null && (s.end as number) > (s.start as number))
+  sessions.sort((a, b) => (a.start as number) - (b.start as number))
+  const kept: typeof sessions = []
+  let cluster: typeof sessions = []; let cEnd = -Infinity
+  const flush = () => { if (cluster.length) { kept.push(cluster.reduce((b, s) => (s.total > b.total ? s : b))); cluster = [] } }
+  for (const s of sessions) { if ((s.start as number) >= cEnd) flush(); cluster.push(s); cEnd = Math.max(cEnd, s.end as number) }
+  flush()
+  return kept.map(s => ({
+    date:  new Date(s.end as number).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' }),
+    hours: Math.round(s.total * 100) / 100,
+    deep_h: Math.round(s.deep * 100) / 100, core_h: Math.round(s.core * 100) / 100,
+    rem_h:  Math.round(s.rem * 100) / 100, awake_h: Math.round(s.awake * 100) / 100,
+  })).sort((a, b) => a.date.localeCompare(b.date))
+}
+
 async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   const days  = Math.min(args.days ?? 7, 30)
   const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10)
+  const sleepNights = await computeSleepNights(supabase, userId, since)
+  const sleepAvg = sleepNights.length ? Math.round(sleepNights.reduce((a, n) => a + n.hours, 0) / sleepNights.length * 100) / 100 : null
+  const sleep = { avg_hours: sleepAvg, last_night: sleepNights.length ? sleepNights[sleepNights.length - 1] : null, nights: sleepNights }
   const METRICS = ['step_count', 'active_energy', 'basal_energy_burned', 'heart_rate', 'resting_heart_rate', 'apple_exercise_time']
 
   const { data, error } = await supabase
@@ -1318,7 +1356,7 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
 
   if (error) return { success: false, error: error.message }
   const rows: AnyRecord[] = data ?? []
-  if (!rows.length) return { success: true, message: 'No health data found for this period', averages: {}, daily: [] }
+  if (!rows.length && !sleepNights.length) return { success: true, message: 'No health data found for this period', averages: {}, daily: [], sleep }
 
   // Health Auto Export can export energy in kJ depending on locale — always
   // normalize to kcal so numbers match what the Health tab displays.
@@ -1416,7 +1454,9 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
       exercise_minutes:    avgKey('exercise_minutes'),
       heart_rate_avg:      avgKey('heart_rate_avg'),
       resting_heart_rate:  avgKey('resting_heart_rate'),
+      sleep_hours:         sleepAvg,
     },
+    sleep,
     daily,
   }
 }

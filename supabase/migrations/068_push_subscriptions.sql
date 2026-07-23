@@ -32,8 +32,8 @@ end $$;
 create index if not exists push_subscriptions_user_idx on public.push_subscriptions (user_id);
 
 -- ── Permanent morning-brief cron ──────────────────────────────────────────
--- Fires the push-send edge function daily. pg_cron runs in UTC: 05:00 UTC ≈
--- 07:00 Oslo in summer (06:00 in winter — the DST hour is accepted for a
+-- Fires the push-send edge function daily. pg_cron runs in UTC: 07:00 UTC ≈
+-- 09:00 Oslo in summer (08:00 in winter — the DST hour is accepted for a
 -- morning nudge). The x-cron-secret is read from Vault at call time (never
 -- stored in this file); add PUSH_CRON_SECRET to Vault before/after — a missing
 -- secret just makes push-send reject the call (no push, no harm).
@@ -49,7 +49,7 @@ do $$ begin
   end if;
 end $$;
 
-select cron.schedule('lascis-morning-push', '0 5 * * *', $cron$
+select cron.schedule('lascis-morning-push', '0 7 * * *', $cron$
   select net.http_post(
     url := 'https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/push-send',
     headers := jsonb_build_object(
