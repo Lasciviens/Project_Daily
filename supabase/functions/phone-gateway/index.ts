@@ -31,9 +31,14 @@ const supabase = createClient(
 
 // Insert a diary row as the single user. Handles the pre-061 schema (no status
 // column) the same way the client does, so it never hard-fails on old schema.
+// A 'status' column missing = pre-061 schema; callers fall back to the old
+// (no-status) query shape so nothing breaks on an un-migrated DB.
+const statusMissing = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === '42703' || e.code === 'PGRST204') && /status/i.test(e.message ?? '')
+
 async function insertFoodLog(userId: string, row: AnyRecord) {
   let { error } = await supabase.from('food_log_entries').insert({ ...row, user_id: userId, status: 'eaten' })
-  if (error && (error.code === '42703' || error.code === 'PGRST204') && /status/i.test(error.message ?? '')) {
+  if (statusMissing(error)) {
     ;({ error } = await supabase.from('food_log_entries').insert({ ...row, user_id: userId }))
   }
   return error
@@ -211,6 +216,55 @@ Deno.serve(async (req) => {
         return error ? json({ ok: false, error: error.message }, 400) : json({ ok: true, logged_ml: Math.round(amount) })
       }
 
+      // ── Deterministic: recently-eaten foods (dedup, snapshot macros) — for
+      //    the phone logger's "re-log" chips. Mirrors the client's fetchRecentFoods. ──
+      case 'recent_foods': {
+        const fromDate = body.from ?? dateFromTodayUTC(-30)
+        const cols = 'meal_slot, custom_title, calories, protein_g, carbs_g, fat_g, ingredient:recipe_ingredient_library(name), recipe:recipes(title)'
+        const base = () => {
+          let q = supabase.from('food_log_entries').select(cols)
+            .eq('user_id', userId).gte('date', fromDate)
+            .order('created_at', { ascending: false }).limit(80)
+          if (typeof body.slot === 'string' && body.slot) q = q.eq('meal_slot', body.slot)
+          return q
+        }
+        let { data, error } = await base().eq('status', 'eaten')
+        if (statusMissing(error)) ({ data, error } = await base())
+        if (error) return json({ ok: false, error: error.message }, 400)
+        const seen = new Set<string>()
+        const foods: AnyRecord[] = []
+        for (const r of (data ?? []) as AnyRecord[]) {
+          const title = r.ingredient?.name ?? r.recipe?.title ?? r.custom_title
+          if (!title) continue
+          const key = title.toLowerCase()
+          if (seen.has(key)) continue
+          seen.add(key)
+          foods.push({
+            title, meal_slot: r.meal_slot,
+            calories: num(r.calories), protein_g: num(r.protein_g), carbs_g: num(r.carbs_g), fat_g: num(r.fat_g),
+          })
+          if (foods.length >= 15) break
+        }
+        return json({ ok: true, foods })
+      }
+
+      // ── Deterministic: search the user's own ingredient library (per-100g). ──
+      case 'search_library': {
+        const q = String(body.q ?? '').replace(/[%,()]/g, ' ').trim()
+        if (!q) return json({ ok: false, error: 'q required' }, 400)
+        const { data, error } = await supabase.from('recipe_ingredient_library')
+          .select('name, calories, protein_g, carbs_g, fat_g, serving_label, serving_grams')
+          .eq('user_id', userId).ilike('name', `%${q}%`).order('name', { ascending: true }).limit(25)
+        if (error) return json({ ok: false, error: error.message }, 400)
+        const items = ((data ?? []) as AnyRecord[]).map(r => ({
+          name: r.name,
+          // Library macros are ALWAYS per 100 g.
+          per100: { kcal: num(r.calories), p: num(r.protein_g), c: num(r.carbs_g), f: num(r.fat_g) },
+          serving_label: r.serving_label ?? null, serving_grams: r.serving_grams ?? null,
+        }))
+        return json({ ok: true, items })
+      }
+
       // ── AI: free-form question — forwarded to ai-proxy (fast model, full
       //    tools since the question is open-ended) ──
       case 'ask': {
@@ -234,7 +288,7 @@ Deno.serve(async (req) => {
       }
 
       default:
-        return json({ ok: false, error: `Unknown action "${action}" (use log_supplement | log_food | log_water | nutrition_today | ask | brief | sleep)` }, 400)
+        return json({ ok: false, error: `Unknown action "${action}" (use log_supplement | log_food | log_water | nutrition_today | recent_foods | search_library | ask | brief | sleep)` }, 400)
     }
   } catch (e) {
     return json({ ok: false, error: (e as Error).message }, 500)
