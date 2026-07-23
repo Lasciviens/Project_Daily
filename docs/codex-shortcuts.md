@@ -45,12 +45,15 @@
 > `docs/iphone-examples.md`. Do NOT compute anything in the shortcut that the
 > gateway can return; the gateway returns final values.
 
-- **C1 · Audit + fix all current shortcuts — `todo` (READY).** The existing
-  shortcuts are reported incomplete / working badly. For EACH generated shortcut:
-  imports cleanly? runs? hits the correct action + body? Produce a per-shortcut
-  findings list in the PR and fix the clear mechanical issues (wrong action/body,
-  bad variable passing, import failures). Anything needing a gateway change →
-  add it under *Needs from Claude* and mark that shortcut blocked.
+- **C1 · Audit + fix all current shortcuts — `done`.** PR #379 audits the
+  generated shortcuts and fixes the clear generator-side issues found during the
+  pass. The current imported Shortcuts library has one correct copy of each
+  generated shortcut: `Log Creatine`, `Su İç`, `AI'a Sor`, `Sabah Brief`,
+  `Beslenme Durumu`, `Uyku Özeti`, `Atıştırmalık Logla`, and `Akşam Yemeği
+  Logla`. The old numbered / ASCII-name duplicates were removed. The generated
+  voice shortcuts use Turkish dictation / speech where applicable:
+  `AI'a Sor`, `Atıştırmalık Logla`, and `Akşam Yemeği Logla` are set to
+  `tr-TR`.
 
 - **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `blocked` (needs gateway
   `sleep_stats`, Claude).** A rich sleep card from REAL numbers (not the AI).
@@ -67,10 +70,11 @@
   `{ok, tasks:[{title,priority,due_time}], schedule:[{time,title}]}`. Render as a
   card / notification list.
 
-- **C4 · "1L Su Ekle" — `todo` (READY, no gateway change).** One tap logs 1 litre:
-  action `log_water`, body `{ "amount_ml": 1000 }` → `{ok, logged_ml:1000}`. This
-  is already documented as Example 5 in `docs/iphone-examples.md`. Make sure the
-  generator emits it and it imports + runs.
+- **C4 · "1L Su Ekle" — `done`.** The generator emits `Su İç`, which calls
+  action `log_water` with body `{ "amount_ml": 1000 }` and renders a Turkish
+  result card. Placeholder generation, signing, real-secret local signing, import,
+  and live gateway verification were completed in PR #379; the live gateway
+  returned `{ok:true, logged_ml:1000}` during verification.
 
 ## Needs from Claude (Codex writes here; Claude picks up)
 - _(empty — add items as they arise)_
