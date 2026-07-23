@@ -152,6 +152,8 @@ bottle sticker → **Run Shortcut → Su İç** → turn **OFF "Ask Before Runni
 | `nutrition_today` | `{date?}` | `{ok, kcal, protein_g, water_ml, entries}` | no |
 | `recent_foods` | `{slot?, from?}` | `{ok, foods[]}` (dedup, snapshot macros) | no |
 | `search_library` | `{q}` | `{ok, items[]}` (your library, per-100g) | no |
+| `sleep_stats` | `{}` | `{ok, last_night:{hours,in_bed_h,deep_h,core_h,rem_h,awake_h,start,end,sleeping_hr?,hrv_ms?,spo2_pct?,resp_rate?}, nights[]}` (overlap-merged, Oslo wake-day) | no |
+| `tasks_today` | `{}` | `{ok, date, tasks:[{title,priority,due_time}], schedule:[{time,title}]}` | no |
 | `ask` | `{q}` | `{ok, text}` | yes (→ ai-proxy, fast model) |
 | `brief` | `{}` | `{ok, text}` | yes (context pre-built, single-shot) |
 | `sleep` | `{}` | `{ok, text}` | yes |

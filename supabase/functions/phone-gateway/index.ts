@@ -144,6 +144,43 @@ async function askAi(opts: {
   }
 }
 
+// Deterministic sleep nights (port of ai-proxy's computeSleepNights): merge
+// overlapping [start,end] sessions keeping the LONGEST per cluster (duplicate/
+// subset re-reports of one night), attribute to the Oslo wake day, last 7 days.
+async function computeSleepNightsGw(userId: string): Promise<AnyRecord[]> {
+  const since = dateFromTodayUTC(-7)
+  const { data } = await supabase.from('health_metrics')
+    .select('value').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
+  const parse = (s: unknown): number | null => {
+    if (typeof s !== 'string') return null
+    const iso = s.trim().replace(' ', 'T').replace(/\s*([+-]\d{2}):?(\d{2})$/, '$1:$2')
+    let t = Date.parse(iso); if (!Number.isFinite(t)) t = Date.parse(s)
+    return Number.isFinite(t) ? t : null
+  }
+  const sess = ((data ?? []) as AnyRecord[]).map(r => {
+    const v = r.value ?? {}
+    return { v, start: parse(v.sleepStart), end: parse(v.sleepEnd), total: num(v.totalSleep) }
+  }).filter(s => s.start != null && s.end != null && (s.end as number) > (s.start as number))
+  sess.sort((a, b) => (a.start as number) - (b.start as number))
+  const kept: typeof sess = []; let cl: typeof sess = []; let cEnd = -Infinity
+  const flush = () => { if (cl.length) { kept.push(cl.reduce((b, s) => (s.total > b.total ? s : b))); cl = [] } }
+  for (const s of sess) { if ((s.start as number) >= cEnd) flush(); cl.push(s); cEnd = Math.max(cEnd, s.end as number) }
+  flush()
+  const hm  = (m: number | null) => m == null ? null : new Date(m).toLocaleTimeString('en-GB', { timeZone: 'Europe/Oslo', hour: '2-digit', minute: '2-digit' })
+  const day = (m: number) => new Date(m).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
+  return kept.map(s => {
+    const v = s.v, inS = parse(v.inBedStart), inE = parse(v.inBedEnd)
+    return {
+      date:  day(s.end as number),
+      hours: Math.round(s.total * 100) / 100,
+      in_bed_h: (inS != null && inE != null && inE > inS) ? Math.round((inE - inS) / 36000) / 100 : null,
+      deep_h: Math.round(num(v.deep) * 100) / 100, core_h: Math.round(num(v.core) * 100) / 100,
+      rem_h:  Math.round(num(v.rem) * 100) / 100, awake_h: Math.round(num(v.awake) * 100) / 100,
+      start: hm(s.start), end: hm(s.end),
+    }
+  }).sort((a, b) => a.date.localeCompare(b.date))
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (req.method !== 'POST') return json({ error: 'Method Not Allowed' }, 405)
@@ -287,8 +324,52 @@ Deno.serve(async (req) => {
         return json(await askAi({ q, secret, surface: 'general', model: FAST_MODEL, systemPrompt: PHONE_PERSONA }))
       }
 
+      // ── Deterministic: full sleep stats (last night + 7d) — for the NON-AI
+      //    "Uyku İstatistikleri" shortcut. Overlap-merged, source-resolved. ──
+      case 'sleep_stats': {
+        const nights = await computeSleepNightsGw(userId)
+        const last = nights.length ? { ...nights[nights.length - 1] } : null
+        if (last) {
+          // Sleep-adjacent metrics for that wake day (best-effort; omit if absent).
+          const { data: m } = await supabase.from('health_metrics')
+            .select('metric_name, value').eq('user_id', userId).eq('date', last.date)
+            .in('metric_name', ['sleeping_heart_rate', 'heart_rate_variability', 'oxygen_saturation', 'respiratory_rate'])
+          for (const r of (m ?? []) as AnyRecord[]) {
+            const v = r.value ?? {}
+            const val = Number(v.qty ?? v.Avg ?? v.avg)
+            if (!Number.isFinite(val)) continue
+            if (r.metric_name === 'sleeping_heart_rate')       last.sleeping_hr = Math.round(val)
+            else if (r.metric_name === 'heart_rate_variability') last.hrv_ms = Math.round(val)
+            else if (r.metric_name === 'oxygen_saturation')      last.spo2_pct = Math.round(val * 10) / 10
+            else if (r.metric_name === 'respiratory_rate')       last.resp_rate = Math.round(val * 10) / 10
+          }
+        }
+        return json({ ok: true, last_night: last, nights })
+      }
+
+      // ── Deterministic: today's open tasks + schedule — for "Bugünün Taskları". ──
+      case 'tasks_today': {
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
+        const tasks: AnyRecord[] = [], schedule: AnyRecord[] = []
+        try {
+          const { data } = await supabase.from('tasks')
+            .select('title, priority, due_time')
+            .eq('user_id', userId).or(`section.eq.today,due_date.eq.${today}`)
+            .neq('status', 'cancelled').neq('status', 'done')
+            .order('due_time', { ascending: true }).limit(30)
+          for (const t of (data ?? []) as AnyRecord[]) tasks.push({ title: t.title, priority: t.priority, due_time: t.due_time ? String(t.due_time).slice(0, 5) : null })
+        } catch { /* omit */ }
+        try {
+          const { data } = await supabase.from('time_blocks')
+            .select('title, start_time').eq('user_id', userId).eq('date', today)
+            .order('start_time', { ascending: true }).limit(30)
+          for (const b of (data ?? []) as AnyRecord[]) if (b.start_time) schedule.push({ time: String(b.start_time).slice(0, 5), title: b.title })
+        } catch { /* omit */ }
+        return json({ ok: true, date: today, tasks, schedule })
+      }
+
       default:
-        return json({ ok: false, error: `Unknown action "${action}" (use log_supplement | log_food | log_water | nutrition_today | recent_foods | search_library | ask | brief | sleep)` }, 400)
+        return json({ ok: false, error: `Unknown action "${action}" (use log_supplement | log_food | log_water | nutrition_today | recent_foods | search_library | sleep_stats | tasks_today | ask | brief | sleep)` }, 400)
     }
   } catch (e) {
     return json({ ok: false, error: (e as Error).message }, 500)

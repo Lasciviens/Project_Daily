@@ -52,25 +52,34 @@
   bad variable passing, import failures). Anything needing a gateway change →
   add it under *Needs from Claude* and mark that shortcut blocked.
 
-- **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `blocked` (needs gateway
-  `sleep_stats`, Claude).** A rich sleep card from REAL numbers (not the AI).
-  Show every sleep metric we have for last night, omitting any that are absent:
-  total sleep (h) · time in bed · **stage durations** deep / light(core) / REM /
-  awake · bedtime → wake · sleeping heart rate · HRV (ms) · SpO2 % · respiratory
-  rate. Mirror the existing HTML-card style. **Wire once Claude ships
-  `sleep_stats`**, which will return
-  `{ok, last_night:{hours,in_bed_h,deep_h,core_h,rem_h,awake_h,start,end,sleeping_hr,hrv_ms,spo2_pct,resp_rate}, nights:[…7d]}`.
+- **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `todo` (READY —
+  `sleep_stats` shipped).** A rich sleep card from REAL numbers (not the AI).
+  Call action **`sleep_stats`**, body `{}` → returns
+  `{ok, last_night:{hours,in_bed_h,deep_h,core_h,rem_h,awake_h,start,end,sleeping_hr?,hrv_ms?,spo2_pct?,resp_rate?}, nights:[…7d]}`.
+  Render every field present in `last_night`, OMITTING any that are null/absent
+  (sleeping_hr/hrv_ms/spo2_pct/resp_rate may be missing). Show stage durations
+  (deep / light=core / REM / awake), bedtime→wake (`start`→`end`), total `hours`,
+  `in_bed_h`. Mirror the existing HTML-card style. Do NOT compute anything —
+  numbers are final.
 
-- **C3 · "Bugünün Taskları" — `blocked` (needs gateway `tasks_today`, Claude).**
-  A deterministic list of today's open tasks + today's schedule. **Wire once
-  Claude ships `tasks_today`**, returning
-  `{ok, tasks:[{title,priority,due_time}], schedule:[{time,title}]}`. Render as a
-  card / notification list.
+- **C3 · "Bugünün Taskları" — `todo` (READY — `tasks_today` shipped).** Call
+  action **`tasks_today`**, body `{}` → returns
+  `{ok, date, tasks:[{title,priority,due_time}], schedule:[{time,title}]}`.
+  Render today's open tasks + schedule as a card / notification list.
 
 - **C4 · "1L Su Ekle" — `todo` (READY, no gateway change).** One tap logs 1 litre:
   action `log_water`, body `{ "amount_ml": 1000 }` → `{ok, logged_ml:1000}`. This
   is already documented as Example 5 in `docs/iphone-examples.md`. Make sure the
   generator emits it and it imports + runs.
+
+- **C5 · "Barkod Tara" — `todo` (READY, no gateway change).** A companion
+  Shortcut that uses iOS's built-in **Scan QR/Barcode** action (camera) →
+  **Run Script** the Scriptable food logger (`Yemek Logla`), passing the scanned
+  code as input. The food logger already reads it (`args.shortcutParameter`),
+  looks the product up on Open Food Facts, asks grams, and logs it — see
+  `docs/scriptable-food-logger.md` ("Barcode scanning" note). So this task is
+  ONLY the small scan→run-script Shortcut; no gateway change, no OFF logic in
+  the Shortcut itself.
 
 ## Needs from Claude (Codex writes here; Claude picks up)
 - _(empty — add items as they arise)_
