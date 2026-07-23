@@ -9,6 +9,8 @@ Generates Apple Shortcuts for the safe `phone-gateway` action API documented in
 - `Sabah Brief`
 - `Beslenme Durumu`
 - `Uyku Özeti`
+- `Uyku İstatistikleri`
+- `Bugünün Taskları`
 - `Atıştırmalık Logla`
 - `Akşam Yemeği Logla`
 
