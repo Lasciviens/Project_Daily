@@ -4,6 +4,7 @@ Generates Apple Shortcuts for the safe `phone-gateway` action API documented in
 `docs/iphone-examples.md`:
 
 - `Log Creatine`
+- `Su İç`
 - `AI'a Sor`
 - `Sabah Brief`
 - `Beslenme Durumu`
@@ -11,8 +12,8 @@ Generates Apple Shortcuts for the safe `phone-gateway` action API documented in
 - `Atıştırmalık Logla`
 - `Akşam Yemeği Logla`
 
-`Log Creatine`, `Atıştırmalık Logla`, and `Akşam Yemeği Logla` insert new food
-diary rows. The other shortcuts only read or ask for summaries. None of the
+`Log Creatine`, `Su İç`, `Atıştırmalık Logla`, and `Akşam Yemeği Logla` insert
+new diary rows. The other shortcuts only read or ask for summaries. None of the
 shortcuts delete data.
 
 Every generated shortcut shows a Turkish visual result card with Quick Look.

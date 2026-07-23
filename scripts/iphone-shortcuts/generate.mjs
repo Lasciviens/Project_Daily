@@ -31,6 +31,7 @@ mkdirSync(outDir, { recursive: true });
 
 const shortcuts = [
   buildLogCreatine(secret),
+  buildLogWater(secret),
   buildAsk(secret),
   buildBrief(secret),
   buildNutritionToday(secret),
@@ -101,6 +102,36 @@ function buildLogCreatine(phoneSecret) {
         accent: '#5e8c7b',
         bodyParts: ['Kaydedilen: ', actionOutput(loggedId, 'Dictionary Value')],
         chips: ['Bugün', '0 kcal', 'Supplement'],
+      })
+    ),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
+    getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
+  ]);
+}
+
+function buildLogWater(phoneSecret) {
+  const requestId = uuid();
+  const loggedId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
+  const okId = uuid();
+
+  return shortcut('Su İç', 'su-ic', 59545, 431817727, [
+    postAction(requestId, phoneSecret, [
+      textItem('action', 'log_water'),
+      numberItem('amount_ml', 1000),
+    ]),
+    getValueAction(loggedId, 'logged_ml', actionOutput(requestId, 'Contents of URL')),
+    htmlTextAction(
+      htmlId,
+      htmlCard({
+        emoji: '💧',
+        title: 'Su Eklendi',
+        subtitle: 'Lasci’s Board · hidrasyon',
+        accent: '#4f8fc8',
+        bodyParts: [actionOutput(loggedId, 'Dictionary Value'), ' ml su kaydedildi.'],
+        chips: ['Bugün', '1 L', 'Su'],
       })
     ),
     richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
@@ -190,6 +221,7 @@ function buildNutritionToday(phoneSecret) {
   const requestId = uuid();
   const kcalId = uuid();
   const proteinId = uuid();
+  const waterId = uuid();
   const entriesId = uuid();
   const htmlId = uuid();
   const richTextId = uuid();
@@ -199,12 +231,14 @@ function buildNutritionToday(phoneSecret) {
     postAction(requestId, phoneSecret, [textItem('action', 'nutrition_today')]),
     getValueAction(kcalId, 'kcal', actionOutput(requestId, 'Contents of URL')),
     getValueAction(proteinId, 'protein_g', actionOutput(requestId, 'Contents of URL')),
+    getValueAction(waterId, 'water_ml', actionOutput(requestId, 'Contents of URL')),
     getValueAction(entriesId, 'entries', actionOutput(requestId, 'Contents of URL')),
     htmlTextAction(
       htmlId,
       nutritionHtmlCard(
         actionOutput(kcalId, 'Dictionary Value'),
         actionOutput(proteinId, 'Dictionary Value'),
+        actionOutput(waterId, 'Dictionary Value'),
         actionOutput(entriesId, 'Dictionary Value')
       )
     ),
@@ -462,7 +496,7 @@ function htmlCard({ emoji, title, subtitle, accent, bodyParts, chips }) {
   ]);
 }
 
-function nutritionHtmlCard(kcalOutput, proteinOutput, entriesOutput) {
+function nutritionHtmlCard(kcalOutput, proteinOutput, waterOutput, entriesOutput) {
   return tokenStringFromParts([
     `<!doctype html>
 <html lang="tr">
@@ -534,6 +568,9 @@ function nutritionHtmlCard(kcalOutput, proteinOutput, entriesOutput) {
       <section class="metrik"><div class="deger">`,
     proteinOutput,
     ` g</div><div class="etiket">protein</div><div class="bar"></div></section>
+      <section class="metrik"><div class="deger">`,
+    waterOutput,
+    ` ml</div><div class="etiket">su</div><div class="bar"></div></section>
       <section class="metrik"><div class="deger">`,
     entriesOutput,
     `</div><div class="etiket">kayıt</div><div class="bar"></div></section>
