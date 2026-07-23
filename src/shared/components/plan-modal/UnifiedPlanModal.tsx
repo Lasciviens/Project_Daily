@@ -53,6 +53,7 @@ import { toast, useCalendarStore } from '../../../app/store'
 import { useCreateTimeBlock, useCreateScheduleBlock } from '../../../features/daily/hooks/useSchedule'
 import { updateTimeBlock, deleteTimeBlock } from '../../../features/daily/api/scheduleApi'
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
+import { deleteGoogleTask, removeGoogleTaskMapping, getGoogleTaskId } from '../../../features/todo/api/googleTasksApi'
 import { createCalendarEvent } from '../../../features/calendar/api/calendarApi'
 import { logError } from '../../utils/logError'
 import { supabase } from '../../../integrations/supabase/client'
@@ -87,6 +88,10 @@ export function UnifiedPlanModal({
   const [activeTab, setActiveTab] = useState<PlanTab>(resolveDefaultTab(config, tabs))
   const [form,      setForm]      = useState<PlanForm>(() => buildInitialForm(defaults, task, timeBlock))
   const [saving,    setSaving]    = useState(false)
+  // Whether the task being edited already has a linked Google Calendar event
+  // (via its time block) — lets the Task tab show a truthful "Added ✓" state
+  // instead of an unchecked toggle, and mirrors ScheduleTab's readout.
+  const [taskCalendarLinked, setTaskCalendarLinked] = useState(false)
 
   const qc          = useQueryClient()
   const calToken    = useCalendarStore(s => s.accessToken)
@@ -104,14 +109,38 @@ export function UnifiedPlanModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, task, timeBlock])
 
+  // When editing a task, look up whether its linked block already carries a
+  // Google Calendar event so the Task-tab gcal control reflects reality.
+  useEffect(() => {
+    if (!open || !task) { setTaskCalendarLinked(false); return }
+    let cancelled = false
+    supabase
+      .from('time_blocks').select('google_calendar_event_id')
+      .eq('source_type', 'task').eq('source_id', task.id)
+      .then(({ data }) => {
+        if (cancelled) return
+        const linked = (data ?? []).some(b => !!b.google_calendar_event_id)
+        setTaskCalendarLinked(linked)
+        if (linked) setForm(f => ({ ...f, gcal: true }))
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, task])
+
   const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
 
-  // Create a Google Calendar event for a freshly-made block and store the event
-  // id back on the block, so it can be updated/deleted with the block later
-  // (prevents orphaned/duplicate events). Best-effort — never blocks the save.
+  // Create a Google Calendar event for a block and store the event id back on
+  // the block, so it can be updated/deleted with the block later (prevents
+  // orphaned/duplicate events). Idempotent BY CONSTRUCTION: it re-reads the
+  // block first and NEVER creates a second event when one already exists — so
+  // re-saving (e.g. edit → add-to-calendar) can't duplicate, regardless of what
+  // the call site checked. Best-effort — never blocks the save.
   async function linkCalendarEvent(blockId: string, dateStr: string, timeHHMM: string, durationMin: number, title: string) {
     if (!calToken) return
     try {
+      const { data: current } = await supabase
+        .from('time_blocks').select('google_calendar_event_id').eq('id', blockId).single()
+      if (current?.google_calendar_event_id) return
       const start = new Date(`${dateStr}T${timeHHMM}:00`)
       const end   = new Date(start.getTime() + durationMin * 60_000)
       const created = await createCalendarEvent(calToken, 'primary', {
@@ -170,6 +199,9 @@ export function UnifiedPlanModal({
       // Caller can pin the domain/priority; otherwise derive domain from category.
       const taskDomain = defaults?.domain
         ?? (form.category === 'work' ? 'work' : form.category === 'media' ? 'media' : 'personal')
+      // A single-occurrence block earns a linked Google Calendar event below, so
+      // suppress the duplicate Google Task in that case (one task ⇄ one event).
+      const willBeCalendarEvent = form.gcal && !!calToken && form.recurrence === 'none'
       const { task: created, googleTaskError } = await createTask.mutateAsync({
         title:       form.title.trim(),
         section:     sectionForDate(form.date),
@@ -178,6 +210,7 @@ export function UnifiedPlanModal({
         due_date:    form.date,
         source_type: source?.taskSourceType,
         source_id:   source?.sourceId,
+        skipGoogleTasks: willBeCalendarEvent,
       })
       if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
       linkedTaskId = created.id
@@ -227,7 +260,7 @@ export function UnifiedPlanModal({
   // ONLY when it has both a due date AND a due time (no more 17:00 pile-ups);
   // otherwise any existing auto-block is removed. Idempotent: update / create /
   // delete to converge on the desired state.
-  async function syncTaskBlock(taskId: string) {
+  async function syncTaskBlock(taskId: string, googleTaskId?: string | null) {
     const title     = form.title.trim()
     const startTime = form.dueTime ? `${form.dueTime}:00` : null
     const wantBlock = form.domain === 'personal' && !!form.dueDate && !!startTime
@@ -253,10 +286,28 @@ export function UnifiedPlanModal({
         })
         blockId = block.id
       }
-      // Only create a NEW calendar event when the block doesn't already have one
-      // (avoids duplicates on re-save; an existing event was already updated above).
+      // Create a NEW calendar event only when the block doesn't already have one
+      // (linkCalendarEvent is itself idempotent; an existing event was updated above).
       if (form.gcal && calToken && !existingEventId) {
         await linkCalendarEvent(blockId, form.dueDate, form.dueTime, 60, title)
+      }
+      // Once the task lives on Google Calendar as a linked EVENT, drop any
+      // separate Google Task for it — otherwise the same task shows twice on
+      // the calendar (Task + event). Best-effort; the event is the canonical
+      // two-way-linked record. Covers the edit path (Bug 2) and cleans up rows
+      // created before the create-path suppression landed.
+      if (calToken && googleTaskId) {
+        const { data: linkedBlock } = await supabase
+          .from('time_blocks').select('google_calendar_event_id').eq('id', blockId).single()
+        if (linkedBlock?.google_calendar_event_id) {
+          try {
+            await deleteGoogleTask(calToken, googleTaskId)
+            removeGoogleTaskMapping(taskId)
+            await supabase.from('tasks').update({ google_task_id: null }).eq('id', taskId)
+          } catch (err) {
+            logError(`Google Task cleanup failed: ${(err as Error).message}`, { action: 'dedupe_google_task', taskId })
+          }
+        }
       }
     } else {
       for (const b of blocks) await deleteTimeBlock(b.id)   // also removes their calendar events
@@ -280,11 +331,18 @@ export function UnifiedPlanModal({
           due_time:    form.dueTime ? `${form.dueTime}:00` : null,
         },
       })
-      await syncTaskBlock(task.id)
+      // Pass the task's existing Google Task id so syncTaskBlock can drop it
+      // once the task gains a linked calendar event (edit → add-to-calendar).
+      await syncTaskBlock(task.id, task.google_task_id ?? getGoogleTaskId(task.id))
       onSaved?.({ tab: 'task', taskId: task.id })
       return
     }
 
+    // A personal task with a due date AND time earns a linked calendar event in
+    // syncTaskBlock; when that event is created, suppress the duplicate Google
+    // Task so the task appears on Google Calendar exactly once.
+    const willBeCalendarEvent =
+      form.gcal && !!calToken && form.domain === 'personal' && !!form.dueDate && !!form.dueTime
     const { task: created, googleTaskError } = await createTask.mutateAsync({
       title,
       section:     form.section,
@@ -294,6 +352,7 @@ export function UnifiedPlanModal({
       due_time:    form.dueTime ? `${form.dueTime}:00` : null,
       source_type: source?.taskSourceType,
       source_id:   source?.sourceId,
+      skipGoogleTasks: willBeCalendarEvent,
     })
     if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
     await syncTaskBlock(created.id)
@@ -389,7 +448,7 @@ export function UnifiedPlanModal({
                 form={form} patch={patch} config={config} gcalAvailable={!!calToken} extra={scheduleExtra}
                 taskAlreadyLinked={!!timeBlock && !task && timeBlock.source_type === 'task'}
               />
-            : <TaskTab form={form} patch={patch} config={config} gcalAvailable={!!calToken} editMode={editMode} extra={taskExtra} />
+            : <TaskTab form={form} patch={patch} config={config} gcalAvailable={!!calToken} editMode={editMode} calendarLinked={taskCalendarLinked} extra={taskExtra} />
           }
 
           {/* Footer */}
