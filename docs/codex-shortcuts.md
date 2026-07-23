@@ -71,6 +71,13 @@
   action `log_water`, body `{ "amount_ml": 1000 }` → `{ok, logged_ml:1000}`. This
   is already documented as Example 5 in `docs/iphone-examples.md`. Make sure the
   generator emits it and it imports + runs.
+  **⚠️ KNOWN ISSUE (user report + DB-confirmed):** the POST already SUCCEEDS —
+  a real 1000 ml row lands in `water_log_entries` — but the user says the
+  shortcut "didn't work", i.e. the **feedback step fails/doesn't show**. The bug
+  is the confirmation part, not the log: fix the `Get Dictionary Value` (key
+  `logged_ml`) → `Show Notification` chain so a success message actually appears.
+  (A malformed dictionary-key read or notification action makes the shortcut
+  look failed even though the water was logged.)
 
 - **C5 · "Barkod Tara" — `todo` (READY, no gateway change).** A companion
   Shortcut that uses iOS's built-in **Scan QR/Barcode** action (camera) →
