@@ -314,7 +314,23 @@ const SLEEP_STAGE_KEYS = ['Core', 'REM', 'Deep', 'Awake', 'Asleep'] as const
 // (manual entries, raw segments) keep their stored date.
 function sleepNightKey(p: HealthMetric): string {
   const end = p.value?.sleepEnd
-  if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end)) return end.slice(0, 10)
+  if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end)) {
+    // Apple exports a local-time string with an explicit offset ("...+0200") —
+    // its date part IS the local wake day, use it directly (no tz math).
+    if (/[+-]\d{2}:?\d{2}$/.test(end.trim())) return end.slice(0, 10)
+    // Fitbit (Google Health) exports UTC ("...Z"), whose raw date part can be
+    // the PREVIOUS calendar day for a late-evening end (e.g. 23:32Z = 01:32
+    // local next day). Slicing it split one night's overlapping sub-sessions
+    // across two night keys → they never overlap-merged and the night showed
+    // only a tiny fragment (live: 2026-07-22 Fitbit night showed 0.8h instead
+    // of 7.4h). Convert to the LOCAL wake day so both sub-sessions cluster.
+    const ms = sessionMs(end)
+    if (ms != null) {
+      const d = new Date(ms)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+    return end.slice(0, 10)
+  }
   return p.date
 }
 
