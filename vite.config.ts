@@ -50,6 +50,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Web Push handlers (push + notificationclick) live in public/push-sw.js
+        // and are imported into the Workbox-generated SW — generateSW mode can't
+        // express them otherwise. Relative path so it resolves under the Pages base.
+        importScripts: ['push-sw.js'],
         // Without these, a new service worker installs but sits "waiting"
         // until every open tab of the app is fully closed — a hard refresh
         // does NOT activate it (a hard refresh bypasses the HTTP cache, not

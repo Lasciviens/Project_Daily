@@ -9,6 +9,7 @@ import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCa
 import { applyTheme, THEMES } from './ThemeSwitcher'
 import { signOut } from '../../security/supabaseClient'
 import { FitbitSyncButton } from '../../features/training/components/health/FitbitSyncButton'
+import { usePushNotifications } from '../hooks/usePushNotifications'
 
 export function SettingsMenu() {
   const [calLoading, setCalLoading] = useState(false)
@@ -17,6 +18,7 @@ export function SettingsMenu() {
 
   const { accessToken, expiresAt, setAccessToken } = useCalendarStore()
   const { theme: appearance, setTheme: setAppearance } = useThemeStore()
+  const push = usePushNotifications()
   useAutoRefreshCalendarToken()
 
   const APPEARANCE_OPTIONS: { value: ThemePreference; label: string; icon: string }[] = [
@@ -120,6 +122,23 @@ export function SettingsMenu() {
           </div>
           {calError && <p className="text-[10px] text-red-400 mt-1.5 leading-snug">{calError}</p>}
           {isCalConnected && <div className="mt-2"><FitbitSyncButton /></div>}
+        </div>
+
+        {/* Notifications (Web Push) */}
+        <div className="px-4 py-3 border-b border-ink-100">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Bildirimler</p>
+          {push.supported ? (
+            <button
+              onClick={() => (push.enabled ? push.disable() : push.enable())}
+              disabled={push.busy}
+              className="w-full min-h-[44px] rounded-lg border border-ink-200 text-sm text-ink-700 hover:border-accent-300 hover:text-accent-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {push.busy ? '…' : push.enabled ? '🔕 Bildirimleri kapat' : '🔔 Bildirimleri aç'}
+            </button>
+          ) : (
+            <p className="text-[10px] text-ink-400 leading-snug">Bu cihazda desteklenmiyor. iOS'ta önce siteyi Ana Ekrana ekle (PWA), sonra buradan aç.</p>
+          )}
+          {push.enabled && <p className="text-[10px] text-ink-400 mt-1.5 leading-snug">Sabah brief'i kilit ekranına düşer.</p>}
         </div>
 
         {/* Theme */}

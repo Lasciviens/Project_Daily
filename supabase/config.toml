@@ -33,3 +33,10 @@ verify_jwt = false
 # (device secret), acts as the single user via the service role, server-side.
 [functions.phone-gateway]
 verify_jwt = false
+
+# Web Push sender. Dual-auth: the pg_cron morning job (x-cron-secret ===
+# PUSH_CRON_SECRET → acts as the single user) OR a browser user JWT (ad-hoc
+# send). The cron path is a shared secret, not a Supabase JWT, so platform
+# verification is off and auth is enforced in-code.
+[functions.push-send]
+verify_jwt = false

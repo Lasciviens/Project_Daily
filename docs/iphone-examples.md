@@ -150,6 +150,8 @@ bottle sticker → **Run Shortcut → Su İç** → turn **OFF "Ask Before Runni
 | `log_food` | `{title, meal_slot?, calories?, protein_g?, carbs_g?, fat_g?, date?}` | `{ok, logged}` | no |
 | `log_water` | `{amount_ml?, date?}` (default 250 ml) | `{ok, logged_ml}` | no |
 | `nutrition_today` | `{date?}` | `{ok, kcal, protein_g, water_ml, entries}` | no |
+| `recent_foods` | `{slot?, from?}` | `{ok, foods[]}` (dedup, snapshot macros) | no |
+| `search_library` | `{q}` | `{ok, items[]}` (your library, per-100g) | no |
 | `ask` | `{q}` | `{ok, text}` | yes (→ ai-proxy, fast model) |
 | `brief` | `{}` | `{ok, text}` | yes (context pre-built, single-shot) |
 | `sleep` | `{}` | `{ok, text}` | yes |
