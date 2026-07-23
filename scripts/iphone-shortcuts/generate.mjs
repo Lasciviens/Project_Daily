@@ -36,6 +36,8 @@ const shortcuts = [
   buildBrief(secret),
   buildNutritionToday(secret),
   buildSleepSummary(secret),
+  buildSleepStats(secret),
+  buildTasksToday(secret),
   buildLogFoodFromDictation(
     'Atıştırmalık Logla',
     'atistirmalik-logla',
@@ -281,6 +283,94 @@ function buildSleepSummary(phoneSecret) {
         bodyParts: [actionOutput(textId, 'Dictionary Value')],
         chips: ['Uyku', '7 gün', 'Öneri'],
       })
+    ),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
+    getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
+  ]);
+}
+
+function buildSleepStats(phoneSecret) {
+  const requestId = uuid();
+  const lastNightId = uuid();
+  const hoursId = uuid();
+  const inBedId = uuid();
+  const deepId = uuid();
+  const coreId = uuid();
+  const remId = uuid();
+  const awakeId = uuid();
+  const startId = uuid();
+  const endId = uuid();
+  const sleepingHrId = uuid();
+  const hrvId = uuid();
+  const spo2Id = uuid();
+  const respRateId = uuid();
+  const nightsId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
+  const okId = uuid();
+
+  return shortcut('Uyku İstatistikleri', 'uyku-istatistikleri', 59717, 431817727, [
+    postAction(requestId, phoneSecret, [textItem('action', 'sleep_stats')]),
+    getValueAction(lastNightId, 'last_night', actionOutput(requestId, 'Contents of URL')),
+    getValueAction(hoursId, 'hours', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(inBedId, 'in_bed_h', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(deepId, 'deep_h', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(coreId, 'core_h', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(remId, 'rem_h', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(awakeId, 'awake_h', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(startId, 'start', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(endId, 'end', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(sleepingHrId, 'sleeping_hr', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(hrvId, 'hrv_ms', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(spo2Id, 'spo2_pct', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(respRateId, 'resp_rate', actionOutput(lastNightId, 'Dictionary Value')),
+    getValueAction(nightsId, 'nights', actionOutput(requestId, 'Contents of URL')),
+    htmlTextAction(
+      htmlId,
+      sleepStatsHtmlCard({
+        hours: actionOutput(hoursId, 'Dictionary Value'),
+        inBed: actionOutput(inBedId, 'Dictionary Value'),
+        deep: actionOutput(deepId, 'Dictionary Value'),
+        core: actionOutput(coreId, 'Dictionary Value'),
+        rem: actionOutput(remId, 'Dictionary Value'),
+        awake: actionOutput(awakeId, 'Dictionary Value'),
+        start: actionOutput(startId, 'Dictionary Value'),
+        end: actionOutput(endId, 'Dictionary Value'),
+        sleepingHr: actionOutput(sleepingHrId, 'Dictionary Value'),
+        hrv: actionOutput(hrvId, 'Dictionary Value'),
+        spo2: actionOutput(spo2Id, 'Dictionary Value'),
+        respRate: actionOutput(respRateId, 'Dictionary Value'),
+        nights: actionOutput(nightsId, 'Dictionary Value'),
+      })
+    ),
+    richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
+    quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
+    getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
+  ]);
+}
+
+function buildTasksToday(phoneSecret) {
+  const requestId = uuid();
+  const dateId = uuid();
+  const tasksId = uuid();
+  const scheduleId = uuid();
+  const htmlId = uuid();
+  const richTextId = uuid();
+  const okId = uuid();
+
+  return shortcut('Bugünün Taskları', 'bugunun-tasklari', 59428, 4271458815, [
+    postAction(requestId, phoneSecret, [textItem('action', 'tasks_today')]),
+    getValueAction(dateId, 'date', actionOutput(requestId, 'Contents of URL')),
+    getValueAction(tasksId, 'tasks', actionOutput(requestId, 'Contents of URL')),
+    getValueAction(scheduleId, 'schedule', actionOutput(requestId, 'Contents of URL')),
+    htmlTextAction(
+      htmlId,
+      tasksTodayHtmlCard(
+        actionOutput(dateId, 'Dictionary Value'),
+        actionOutput(tasksId, 'Dictionary Value'),
+        actionOutput(scheduleId, 'Dictionary Value')
+      )
     ),
     richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
     quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
@@ -575,6 +665,193 @@ function nutritionHtmlCard(kcalOutput, proteinOutput, waterOutput, entriesOutput
     entriesOutput,
     `</div><div class="etiket">kayıt</div><div class="bar"></div></section>
     </div>
+  </main>
+</body>
+</html>`,
+  ]);
+}
+
+function sleepStatsHtmlCard(values) {
+  return tokenStringFromParts([
+    `<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #f6f0e7;
+    color: #241f1a;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  .kart {
+    border: 1px solid #decfbd;
+    border-radius: 18px;
+    padding: 18px;
+    background: #fffaf2;
+    box-shadow: 0 10px 28px rgba(53, 43, 31, 0.12);
+  }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 6px;
+  }
+  .alt {
+    color: #766b5f;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .metrik {
+    border: 1px solid #eadccb;
+    border-radius: 14px;
+    padding: 13px;
+    background: #fcf5ea;
+  }
+  .genis {
+    grid-column: 1 / -1;
+  }
+  .deger {
+    font-size: 25px;
+    line-height: 1.1;
+    font-weight: 850;
+    word-break: break-word;
+  }
+  .etiket {
+    margin-top: 5px;
+    color: #766b5f;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .liste {
+    white-space: pre-wrap;
+    font-size: 14px;
+    line-height: 1.35;
+  }
+</style>
+</head>
+<body>
+  <main class="kart">
+    <h1>🌙 Uyku İstatistikleri</h1>
+    <div class="alt">Dün gece · gerçek sağlık verisi</div>
+    <div class="grid">
+      <section class="metrik"><div class="deger">`,
+    values.hours,
+    ` sa</div><div class="etiket">uyku</div></section>
+      <section class="metrik"><div class="deger">`,
+    values.inBed,
+    ` sa</div><div class="etiket">yatakta</div></section>
+      <section class="metrik genis"><div class="deger">`,
+    values.start,
+    ` → `,
+    values.end,
+    `</div><div class="etiket">yatış → uyanış</div></section>
+      <section class="metrik"><div class="deger">`,
+    values.deep,
+    ` sa</div><div class="etiket">derin</div></section>
+      <section class="metrik"><div class="deger">`,
+    values.core,
+    ` sa</div><div class="etiket">hafif / core</div></section>
+      <section class="metrik"><div class="deger">`,
+    values.rem,
+    ` sa</div><div class="etiket">REM</div></section>
+      <section class="metrik"><div class="deger">`,
+    values.awake,
+    ` sa</div><div class="etiket">uyanık</div></section>
+      <section class="metrik"><div class="deger">`,
+    values.sleepingHr,
+    `</div><div class="etiket">uyku nabzı</div></section>
+      <section class="metrik"><div class="deger">`,
+    values.hrv,
+    ` ms</div><div class="etiket">HRV</div></section>
+      <section class="metrik"><div class="deger">`,
+    values.spo2,
+    `%</div><div class="etiket">SpO2</div></section>
+      <section class="metrik"><div class="deger">`,
+    values.respRate,
+    `</div><div class="etiket">solunum</div></section>
+      <section class="metrik genis"><div class="liste">`,
+    values.nights,
+    `</div><div class="etiket">son 7 gece</div></section>
+    </div>
+  </main>
+</body>
+</html>`,
+  ]);
+}
+
+function tasksTodayHtmlCard(dateOutput, tasksOutput, scheduleOutput) {
+  return tokenStringFromParts([
+    `<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #f6f0e7;
+    color: #241f1a;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  .kart {
+    border: 1px solid #decfbd;
+    border-radius: 18px;
+    padding: 18px;
+    background: #fffaf2;
+    box-shadow: 0 10px 28px rgba(53, 43, 31, 0.12);
+  }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 6px;
+  }
+  .alt {
+    color: #766b5f;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .bolum {
+    border: 1px solid #eadccb;
+    border-radius: 14px;
+    padding: 14px;
+    background: #fcf5ea;
+    margin-top: 10px;
+  }
+  h2 {
+    font-size: 15px;
+    margin: 0 0 8px;
+  }
+  .liste {
+    white-space: pre-wrap;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+  <main class="kart">
+    <h1>📋 Bugünün Taskları</h1>
+    <div class="alt">`,
+    dateOutput,
+    ` · açık işler ve program</div>
+    <section class="bolum">
+      <h2>Tasklar</h2>
+      <div class="liste">`,
+    tasksOutput,
+    `</div>
+    </section>
+    <section class="bolum">
+      <h2>Program</h2>
+      <div class="liste">`,
+    scheduleOutput,
+    `</div>
+    </section>
   </main>
 </body>
 </html>`,

@@ -45,39 +45,37 @@
 > `docs/iphone-examples.md`. Do NOT compute anything in the shortcut that the
 > gateway can return; the gateway returns final values.
 
-- **C1 · Audit + fix all current shortcuts — `todo` (READY).** The existing
-  shortcuts are reported incomplete / working badly. For EACH generated shortcut:
-  imports cleanly? runs? hits the correct action + body? Produce a per-shortcut
-  findings list in the PR and fix the clear mechanical issues (wrong action/body,
-  bad variable passing, import failures). Anything needing a gateway change →
-  add it under *Needs from Claude* and mark that shortcut blocked.
+- **C1 · Audit + fix all current shortcuts — `done`.** PR #379 audited the
+  generated shortcuts and fixed the clear generator-side issues found during the
+  pass. The current imported Shortcuts library was checked with
+  `shortcuts list --show-identifiers` and had one correct copy of each generated
+  shortcut: `Log Creatine`, `Su İç`, `AI'a Sor`, `Sabah Brief`,
+  `Beslenme Durumu`, `Uyku Özeti`, `Atıştırmalık Logla`, and `Akşam Yemeği
+  Logla`. The old numbered / ASCII-name duplicates were gone at last check. The
+  generated voice shortcuts use Turkish dictation / speech where applicable:
+  `AI'a Sor`, `Atıştırmalık Logla`, and `Akşam Yemeği Logla` are set to
+  `tr-TR`.
 
-- **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `todo` (READY —
-  `sleep_stats` shipped).** A rich sleep card from REAL numbers (not the AI).
-  Call action **`sleep_stats`**, body `{}` → returns
-  `{ok, last_night:{hours,in_bed_h,deep_h,core_h,rem_h,awake_h,start,end,sleeping_hr?,hrv_ms?,spo2_pct?,resp_rate?}, nights:[…7d]}`.
-  Render every field present in `last_night`, OMITTING any that are null/absent
-  (sleeping_hr/hrv_ms/spo2_pct/resp_rate may be missing). Show stage durations
-  (deep / light=core / REM / awake), bedtime→wake (`start`→`end`), total `hours`,
-  `in_bed_h`. Mirror the existing HTML-card style. Do NOT compute anything —
-  numbers are final.
+- **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `in progress`.** The
+  generator emits `Uyku İstatistikleri`, which calls action `sleep_stats` with
+  body `{}` and renders the returned `last_night` sleep metrics plus the `nights`
+  list in a Turkish Quick Look card. It uses the deterministic gateway response,
+  not the AI `sleep` action. Placeholder signing passes; live verification is
+  pending production `phone-gateway` redeploy.
 
-- **C3 · "Bugünün Taskları" — `todo` (READY — `tasks_today` shipped).** Call
-  action **`tasks_today`**, body `{}` → returns
-  `{ok, date, tasks:[{title,priority,due_time}], schedule:[{time,title}]}`.
-  Render today's open tasks + schedule as a card / notification list.
+- **C3 · "Bugünün Taskları" — `in progress`.** The generator emits `Bugünün
+  Taskları`, which calls action `tasks_today` with body `{}` and renders today's
+  open tasks plus schedule in a Turkish Quick Look card. Placeholder signing
+  passes; live verification is pending production `phone-gateway` redeploy.
 
-- **C4 · "1L Su Ekle" — `todo` (READY, no gateway change).** One tap logs 1 litre:
-  action `log_water`, body `{ "amount_ml": 1000 }` → `{ok, logged_ml:1000}`. This
-  is already documented as Example 5 in `docs/iphone-examples.md`. Make sure the
-  generator emits it and it imports + runs.
-  **⚠️ KNOWN ISSUE (user report + DB-confirmed):** the POST already SUCCEEDS —
-  a real 1000 ml row lands in `water_log_entries` — but the user says the
-  shortcut "didn't work", i.e. the **feedback step fails/doesn't show**. The bug
-  is the confirmation part, not the log: fix the `Get Dictionary Value` (key
-  `logged_ml`) → `Show Notification` chain so a success message actually appears.
-  (A malformed dictionary-key read or notification action makes the shortcut
-  look failed even though the water was logged.)
+- **C4 · "1L Su Ekle" — `done` (log works) · ⚠ feedback step still OPEN.** PR #379
+  added `Su İç` (action `log_water`, body `{ "amount_ml": 1000 }`); real-secret
+  import + live gateway verification returned `{ok:true, logged_ml:1000}` and a
+  real 1000 ml row is DB-confirmed. **But the user reports it "didn't work" — the
+  POST succeeds, the FEEDBACK step doesn't:** fix the `Get Dictionary Value` (key
+  `logged_ml`) → `Show Notification` chain so a success message actually shows
+  (a malformed key read / notification makes the shortcut look failed even though
+  the water was logged).
 
 - **C5 · "Barkod Tara" — `todo` (READY, no gateway change).** A companion
   Shortcut that uses iOS's built-in **Scan QR/Barcode** action (camera) →
@@ -94,3 +92,7 @@ back-and-forth lives in two append-only logs so messages don't tangle:
 - **`coord/to-codex.md`** — Claude → Codex (tasks/answers). Codex reads.
 - **`coord/to-claude.md`** — Codex → Claude (reports/questions/blockers). Codex
   writes here instead of editing this spec. Claude reads + updates the board above.
+
+> **C2/C3 note:** the generator side is DONE (merged here); the only remaining
+> step is the production **`phone-gateway` redeploy** so `sleep_stats` /
+> `tasks_today` stop returning "Unknown action", then a live end-to-end check.
