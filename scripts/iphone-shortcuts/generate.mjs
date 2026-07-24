@@ -38,6 +38,7 @@ const shortcuts = [
   buildSleepSummary(secret),
   buildSleepStats(secret),
   buildTasksToday(secret),
+  buildBarcodeScanner(),
   buildLogFoodFromDictation(
     'Atıştırmalık Logla',
     'atistirmalik-logla',
@@ -115,6 +116,7 @@ function buildLogCreatine(phoneSecret) {
 function buildLogWater(phoneSecret) {
   const requestId = uuid();
   const loggedId = uuid();
+  const notificationTextId = uuid();
   const htmlId = uuid();
   const richTextId = uuid();
   const okId = uuid();
@@ -125,6 +127,15 @@ function buildLogWater(phoneSecret) {
       numberItem('amount_ml', 1000),
     ]),
     getValueAction(loggedId, 'logged_ml', actionOutput(requestId, 'Contents of URL')),
+    textAction(notificationTextId, [
+      '💧 ',
+      actionOutput(loggedId, 'Dictionary Value'),
+      ' ml su eklendi',
+    ]),
+    notificationAction(
+      actionOutput(notificationTextId, 'Text'),
+      'Su Eklendi'
+    ),
     htmlTextAction(
       htmlId,
       htmlCard({
@@ -139,6 +150,25 @@ function buildLogWater(phoneSecret) {
     richTextFromHtmlAction(richTextId, actionOutput(htmlId, 'Text')),
     quickLookAction(actionOutput(richTextId, 'Rich Text from HTML')),
     getValueAction(okId, 'ok', actionOutput(requestId, 'Contents of URL')),
+  ]);
+}
+
+function buildBarcodeScanner() {
+  const scanId = uuid();
+  const urlId = uuid();
+
+  return shortcut('Barkod Tara', 'barkod-tara', 59750, 4282601983, [
+    {
+      WFWorkflowActionIdentifier: 'is.workflow.actions.scanbarcode',
+      WFWorkflowActionParameters: {
+        UUID: scanId,
+      },
+    },
+    textAction(urlId, [
+      'scriptable:///run/Yemek%20Logla?ean=',
+      actionOutput(scanId, 'Scanned Code'),
+    ]),
+    openUrlAction(actionOutput(urlId, 'Text')),
   ]);
 }
 
@@ -470,6 +500,32 @@ function htmlTextAction(id, text) {
     WFWorkflowActionParameters: {
       UUID: id,
       WFTextActionText: text,
+    },
+  };
+}
+
+function textAction(id, parts) {
+  return htmlTextAction(id, tokenStringFromParts(parts));
+}
+
+function notificationAction(input, title) {
+  return {
+    WFWorkflowActionIdentifier: 'is.workflow.actions.notification',
+    WFWorkflowActionParameters: {
+      UUID: uuid(),
+      WFInput: tokenAttachment(input),
+      WFNotificationActionBody: tokenAttachment(input),
+      WFNotificationActionTitle: title,
+    },
+  };
+}
+
+function openUrlAction(input) {
+  return {
+    WFWorkflowActionIdentifier: 'is.workflow.actions.openurl',
+    WFWorkflowActionParameters: {
+      UUID: uuid(),
+      WFInput: tokenAttachment(input),
     },
   };
 }

@@ -11,12 +11,18 @@ Generates Apple Shortcuts for the safe `phone-gateway` action API documented in
 - `Uyku Özeti`
 - `Uyku İstatistikleri`
 - `Bugünün Taskları`
+- `Barkod Tara`
 - `Atıştırmalık Logla`
 - `Akşam Yemeği Logla`
 
 `Log Creatine`, `Su İç`, `Atıştırmalık Logla`, and `Akşam Yemeği Logla` insert
 new diary rows. The other shortcuts only read or ask for summaries. None of the
 shortcuts delete data.
+
+`Barkod Tara` scans a barcode and opens Scriptable with
+`scriptable:///run/Yemek%20Logla?ean=...`. The Scriptable food logger must be
+named `Yemek Logla` and must read `args.queryParameters.ean`, as documented in
+`docs/scriptable-food-logger.md`.
 
 Every generated shortcut shows a Turkish visual result card with Quick Look.
 Voice shortcuts also speak in Turkish (`tr-TR`) before showing the card.
