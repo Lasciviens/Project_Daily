@@ -45,6 +45,9 @@
 > `docs/iphone-examples.md`. Do NOT compute anything in the shortcut that the
 > gateway can return; the gateway returns final values.
 
+**Board status:** C1–C5 complete; open items are two device-side confirmations
+(re-import `Su İç`, camera-run `Barkod Tara`).
+
 - **C1 · Audit + fix all current shortcuts — `done`.** PR #379 audited the
   generated shortcuts and fixed the clear generator-side issues found during the
   pass. The current imported Shortcuts library was checked with
@@ -56,35 +59,37 @@
   `AI'a Sor`, `Atıştırmalık Logla`, and `Akşam Yemeği Logla` are set to
   `tr-TR`.
 
-- **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `in progress`.** The
+- **C2 · "Uyku İstatistikleri" — NON-AI, deterministic — `done`.** The
   generator emits `Uyku İstatistikleri`, which calls action `sleep_stats` with
   body `{}` and renders the returned `last_night` sleep metrics plus the `nights`
   list in a Turkish Quick Look card. It uses the deterministic gateway response,
-  not the AI `sleep` action. Placeholder signing passes; live verification is
-  pending production `phone-gateway` redeploy.
+  not the AI `sleep` action. Live-verified after the production `phone-gateway`
+  deploy (`sleep_stats` returns `ok:true`); `shortcuts run 'Uyku İstatistikleri'`
+  exited 0.
 
-- **C3 · "Bugünün Taskları" — `in progress`.** The generator emits `Bugünün
+- **C3 · "Bugünün Taskları" — `done`.** The generator emits `Bugünün
   Taskları`, which calls action `tasks_today` with body `{}` and renders today's
-  open tasks plus schedule in a Turkish Quick Look card. Placeholder signing
-  passes; live verification is pending production `phone-gateway` redeploy.
+  open tasks plus schedule in a Turkish Quick Look card. `tasks_today` is
+  live-verified; `shortcuts run` exited 0 (note: macOS stores the name in
+  decomposed Unicode form).
 
-- **C4 · "1L Su Ekle" — `done` (log works) · ⚠ feedback step still OPEN.** PR #379
-  added `Su İç` (action `log_water`, body `{ "amount_ml": 1000 }`); real-secret
-  import + live gateway verification returned `{ok:true, logged_ml:1000}` and a
-  real 1000 ml row is DB-confirmed. **But the user reports it "didn't work" — the
-  POST succeeds, the FEEDBACK step doesn't:** fix the `Get Dictionary Value` (key
-  `logged_ml`) → `Show Notification` chain so a success message actually shows
-  (a malformed key read / notification makes the shortcut look failed even though
-  the water was logged).
+- **C4 · "1L Su Ekle" — `done`.** PR #379 added `Su İç` (action `log_water`,
+  body `{ "amount_ml": 1000 }`); real-secret import + live gateway verification
+  returned `{ok:true, logged_ml:1000}` and a real 1000 ml row is DB-confirmed.
+  The feedback step is fixed too: it reads `logged_ml` → a real
+  `is.workflow.actions.notification` step titled `Su Eklendi` → "💧 … ml su
+  eklendi". **Remaining is a device step for the user, not code:** delete the old
+  installed `Su İç` and re-import the fixed one (re-importing the same name
+  creates duplicates).
 
-- **C5 · "Barkod Tara" — `todo` (READY, no gateway change).** A companion
-  Shortcut that uses iOS's built-in **Scan QR/Barcode** action (camera) →
-  **Run Script** the Scriptable food logger (`Yemek Logla`), passing the scanned
-  code as input. The food logger already reads it (`args.shortcutParameter`),
-  looks the product up on Open Food Facts, asks grams, and logs it — see
-  `docs/scriptable-food-logger.md` ("Barcode scanning" note). So this task is
-  ONLY the small scan→run-script Shortcut; no gateway change, no OFF logic in
-  the Shortcut itself.
+- **C5 · "Barkod Tara" — `done`.** A companion Shortcut that uses iOS's built-in
+  **Scan QR/Barcode** action (`is.workflow.actions.scanbarcode`), then opens
+  **`scriptable:///run/Yemek%20Logla?ean=<scanned code>`** — a URL handoff into
+  the Scriptable food logger's `args.queryParameters.ean` path. Claude reviewed
+  and **approved this over a literal third-party Run-Script intent**
+  (24/07/2026) — see `docs/scriptable-food-logger.md` ("Barcode scanning"). No
+  gateway change, no OFF logic in the Shortcut itself. **Remaining:** one
+  on-iPhone camera run to confirm end-to-end.
 
 ## Communication (two-channel — see `coord/README.md`)
 This doc is the **stable spec only** (roles, rules, task board). The actual
@@ -92,7 +97,3 @@ back-and-forth lives in two append-only logs so messages don't tangle:
 - **`coord/to-codex.md`** — Claude → Codex (tasks/answers). Codex reads.
 - **`coord/to-claude.md`** — Codex → Claude (reports/questions/blockers). Codex
   writes here instead of editing this spec. Claude reads + updates the board above.
-
-> **C2/C3 note:** the generator side is DONE (merged here); the only remaining
-> step is the production **`phone-gateway` redeploy** so `sleep_stats` /
-> `tasks_today` stop returning "Unknown action", then a live end-to-end check.

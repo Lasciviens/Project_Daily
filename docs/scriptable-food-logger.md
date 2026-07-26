@@ -8,9 +8,8 @@
 > - **📷 Barkod** — scanned via a companion Shortcut, or typed → OFF product.
 >
 > Everything goes through the `phone-gateway` (`log_food` / `log_water` /
-> `nutrition_today` / `recent_foods` / `search_library`). Depends only on:
-> `phone-gateway` deployed + `PHONE_GATEWAY_SECRET`.
-> **After adding recent_foods/search_library the gateway must be redeployed.**
+> `nutrition_today` / `recent_foods` / `search_library`).
+> Requires `phone-gateway` deployed with `PHONE_GATEWAY_SECRET` in Vault.
 
 ## Setup
 1. Scriptable → **＋** (new script) → delete the template.
@@ -18,11 +17,14 @@
 3. Set `SECRET` to your real `PHONE_GATEWAY_SECRET` (same value as Vault).
 4. Name it **Yemek Logla**. Run (▶) to test. Add to Home Screen / "Hey Siri, Yemek Logla".
 
-### Barcode scanning (optional companion Shortcut)
+### Barcode scanning (companion Shortcut `Barkod Tara`)
 Scriptable has no camera-scanner API, so scanning is done by a tiny Shortcut:
-**Scan QR/Barcode** → **Run Script** `Yemek Logla` (pass the scanned text as
-input). The script reads it (`args.shortcutParameter`) → OFF product lookup →
+**`Barkod Tara`** uses iOS's built-in **Scan QR/Barcode** action, then opens a
+**URL handoff** — `scriptable:///run/Yemek%20Logla?ean=<code>` — which this script
+reads via **`args.queryParameters.ean`** (it still also accepts
+`args.shortcutParameter` if a Run-Script path is ever used) → OFF product lookup →
 grams → log. Without the Shortcut, use the in-app **📷 Barkod gir** (type it).
+The script name must be exactly **`Yemek Logla`** — the deep link resolves by name.
 
 ## How it works
 - The header shows today's totals (`nutrition_today`), re-fetched after each action.

@@ -6,7 +6,7 @@
   "configSchemaVersion": "1.0",
   "convertToGoogleSheet": false,
   "dbxFolderName": "",
-  "exportAggregation": "Default",
+  "exportAggregation": "Hours",
   "exportDataType": "workouts",
   "exportDestination": "restApi",
   "exportFileLength": "day",

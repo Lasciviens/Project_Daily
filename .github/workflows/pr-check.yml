@@ -1,0 +1,47 @@
+# PR gate. deploy.yml only runs on push to main, so without this a broken build
+# is first discovered AFTER merge, by the deploy going red.
+#
+# Deliberately a separate workflow: adding a pull_request trigger to deploy.yml
+# would try to publish a Pages deployment per PR.
+name: PR check
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Unlike the Pages deploy, cancelling a type-check has no side effects, so a new
+# push to the same branch supersedes the previous run.
+concurrency:
+  group: pr-check-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same command the deploy job runs: tsc -b && vite build.
+      # No VITE_* secrets on purpose — Vite never executes app code at build
+      # time, so a missing env var cannot fail this. This job proves the code
+      # COMPILES and BUNDLES; the deploy job is what needs real values.
+      - name: Type-check and build
+        run: npm run build
+
+      # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
+      # large share of the errors come from eslint linting supabase/functions
+      # (Deno code checked with browser globals). Narrow the ESLint scope and
+      # clear the real src/ findings first, then promote it to a step here.

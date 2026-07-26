@@ -11,29 +11,39 @@ each one after importing** (see caveats below) rather than trusting it blindly.
 
 | File | Purpose | Schedule |
 |---|---|---|
-| `01-health-metrics-daily.json` | Recurring daily health metrics sync | Date Range: **Yesterday** · every 24h |
+| `01-health-metrics-daily.json` | Recurring health metrics sync · shorten the cadence in the app if you want fresher same-day data — with point-in-time grain there is no overwrite risk | Date Range: **Since Last Sync** · every 24h |
 | `02-health-metrics-weekly-reconciliation.json` | Safety net for missed daily runs (iOS background execution is opportunistic, not guaranteed) | Date Range: **Previous 7 Days** · every 168h (weekly) |
 | `03-workouts-recurring.json` | Recurring workout sync | Date Range: **Since Last Sync** · every 3h |
 | `04-health-metrics-backfill-onetime.json` | One-time historical seed for metrics | Previous 7 Days, Batch Requests ON |
 | `05-workouts-backfill-onetime.json` | One-time historical seed for workouts | Previous 7 Days, Batch Requests ON |
 
-## Why "Yesterday" for the daily metrics job, not "Today" or "Since Last Sync"
+## Required app settings (and why)
 
-Health metrics are stored **one row per (metric, day, source)** — a re-sync
-for the same day *overwrites* the previous row, it doesn't add to it. If a
-recurring job runs multiple times a day with a range that only covers a
-partial window (`Today` mid-day, or `Since Last Sync` at a few-hour cadence),
-each run overwrites the previous one with a smaller partial number —
-`Step Count` for today can end up showing a tiny fraction of the real total.
+- **Export Version 2** — the current format; v1 is legacy (no `id` field, different
+  field shapes).
+- **Summarize Data ON + Time Grouping: Hours** — this is **mandatory, not a
+  preference**. With Time Grouping on "Default", Health Auto Export exports raw
+  overlapping samples: starting a Fitness-app workout makes HealthKit hold
+  overlapping step samples, and one stream delivered the same minutes twice as
+  float-noise twins (20/07/2026 showed **15,362** steps against Apple's own
+  **5,731**). With **Hours** the app genuinely aggregates and Apple's own
+  overlap-dedup is applied at the source. (This also corrects the older
+  "Health Auto Export ignores Summarize" note.)
+- **Date Range: "Since Last Sync"** for the recurring metrics automation. Since
+  migration `041`, `health_metrics` stores **one row per point**, keyed
+  `(user_id, metric_name, recorded_at, source)` — the old "one row per
+  (metric, day, source), so a re-sync overwrites the day" behaviour is **gone**, so
+  a partial window can no longer clobber a day's total and "Yesterday" is no longer
+  needed. Keep a separate weekly **"Previous 7 Days"** automation as a
+  reconciliation safety net (iOS background execution is opportunistic, not
+  guaranteed).
+- **Enable all Health Metrics**, not a curated subset (the confirmed real-world
+  setting in CLAUDE.md). The `metrics` array in these files is a large subset
+  captured when they were built — after importing, tick anything missing in the app
+  UI.
 
-`Yesterday` always exports one full, closed calendar day — no partial-day
-overwrite risk. Trade-off: today's data isn't visible until tomorrow's run.
-Fine for a retrospective personal dashboard, not for same-day/real-time
-tracking.
-
-Workouts don't have this problem (each workout is its own row keyed by id),
-so the workouts automation can safely stay on a shorter `Since Last Sync`
-cadence.
+Workouts are keyed by id (each workout is its own row), so the workouts automation
+stays on a short `Since Last Sync` cadence regardless.
 
 **Confirmed against the real app**: `aggregateData`/`aggregateSleep`
 (the "Summarize Data" toggle) only applies to Health Metrics — turning it on
@@ -54,6 +64,9 @@ these to `false`.
      it imported wrong, just change it in the UI, the `include*` flags in the
      file are the ones that actually matter for what gets sent.
    - **Export Version** = 2 (should already be set by the file, but confirm)
+   - **Time Grouping** shows **"Hours"** — the exact JSON token for that field
+     (`exportAggregation`) was inferred from the UI label, so fix it in the app UI if
+     it imported wrong. This one is mandatory (see above).
    - **Authorization header** value matches whatever you actually put in the
      Supabase Vault for `HEALTH_EXPORT_WEBHOOK_SECRET` (the file has a
      placeholder value — if you rotated the secret since, update it here)

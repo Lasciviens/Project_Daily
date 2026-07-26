@@ -16,7 +16,9 @@ This runs in Claude Code on the web — the container is fresh each session. All
 1. Read `/home/user/Project_Daily/CLAUDE.md` to understand the current stack, features, and rules
 2. Run `git log --oneline -10` to understand recent work and current branch
 3. Ask clarifying questions if the request is ambiguous (scope, priority, constraints)
-4. Write a short spec to `.claude/specs/<feature-name>.md`
+4. Write a short spec to `.claude/specs/<feature-name>.md` — specs are TRANSIENT working
+   artifacts: delete the file once the feature ships (CLAUDE.md is where durable
+   knowledge lives, not the spec).
 5. Break the work into ordered tasks, noting which can run in parallel
 6. Delegate each task to the appropriate specialist agent
 7. After all tasks complete, verify the build passes and summarize what shipped

@@ -57,8 +57,9 @@ returns `{ok, sent, pruned}` — `sent > 0` means it hit a live subscription.
 
 ## Notes
 - Works only on the **home-screen-installed PWA** (not a Safari tab), iOS 16.4+.
-- Timing: the cron runs **05:00 UTC ≈ 07:00 Oslo (summer) / 06:00 (winter)**. To
-  change it, re-run `cron.schedule('lascis-morning-push', '<expr>', …)`.
+- Timing: the cron is `'0 7 * * *'` = **07:00 UTC ≈ 09:00 Oslo (CEST, summer) /
+  08:00 (CET, winter)**. To change it, re-run
+  `cron.schedule('lascis-morning-push', '<expr>', …)`.
 - Changing `PUSH_CRON_SECRET`: just update it in Vault — the cron reads it from
   Vault at call time, no re-migration needed.
 - Expired subscriptions are auto-pruned (push-send deletes on 404/410).
