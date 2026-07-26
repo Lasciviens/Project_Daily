@@ -6,6 +6,7 @@ import { useUIStore, toast } from '../../../app/store'
 import { sendMessage, sendCoachMessage, AI_MODEL_OPTIONS } from '../api/aiApi'
 import type { Message, AIModel } from '../api/aiApi'
 import { useVoiceChat } from '../hooks/useVoiceChat'
+import { useKeyboardInset, useStickToBottom } from '../hooks/useChatViewport'
 import { fileToCompactDataUrl } from '../../../shared/utils/image'
 
 // The AI performs real DB writes server-side (ai-proxy's db_insert/update/
@@ -83,6 +84,7 @@ export function AIPanel() {
   // it finishes, so speak → answer → speak again is one continuous loop.
   const [voiceMode, setVoiceMode] = useState(false)
   const [interim,   setInterim]   = useState('')
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
   const fileRef   = useRef<HTMLInputElement>(null)
@@ -123,9 +125,34 @@ export function AIPanel() {
     if (isAIOpen) inputRef.current?.focus()
   }, [isAIOpen])
 
+  // Lift the sheet above the on-screen keyboard (see useKeyboardInset) and keep
+  // the newest message visible without hijacking a user who scrolled up.
+  const { inset: kbInset, visibleHeight } = useKeyboardInset(isAIOpen)
+  const { scrollRef, atBottom, onScroll, scrollToBottom } = useStickToBottom([messages, loading])
+
+  // The lg breakpoint turns the sheet into a full-height side drawer, which must
+  // keep its class-based sizing — the keyboard fix is mobile-only.
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const on = () => setIsDesktop(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+
+  // vh / bottom-0 measure the FULL screen on iOS even with the keyboard up —
+  // that is what buried the input. Only when a keyboard is actually detected,
+  // drive the sheet from the real visible viewport instead.
+  const sheetStyle = kbInset > 0 && !isDesktop
+    ? { bottom: kbInset, height: Math.max(260, visibleHeight - 24) }
+    : undefined
+
+  // When the keyboard opens the visible area shrinks under the last message —
+  // snap to it so what you are replying to stays on screen.
+  useEffect(() => {
+    if (kbInset > 0) scrollToBottom('auto')
+  }, [kbInset, scrollToBottom])
 
   // Persist the conversation so it survives a page refresh.
   useEffect(() => {
@@ -211,6 +238,27 @@ export function AIPanel() {
     }
   }
 
+  // Resend the most recent user message after a failure, dropping the dead
+  // turn so the conversation doesn't accumulate a stranded question.
+  function retryLast() {
+    const lastUser = [...messages].reverse().find(m => m.role === 'user')
+    if (!lastUser || loading) return
+    setMessages(m => {
+      const idx = m.map(x => x.role).lastIndexOf('user')
+      return idx >= 0 ? m.slice(0, idx) : m
+    })
+    setError(null)
+    setTimeout(() => { void handleSend(lastUser.content) }, 0)
+  }
+
+  async function copyReply(text: string, idx: number) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedIdx(idx)
+      setTimeout(() => setCopiedIdx(c => (c === idx ? null : c)), 1500)
+    } catch { toast.error('Could not copy') }
+  }
+
   function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -227,13 +275,14 @@ export function AIPanel() {
       <div
         className={[
           'fixed z-50 bg-cream-50 flex flex-col border-ink-200',
-          'bottom-0 left-0 right-0 h-[88vh] rounded-t-3xl border-t',
+          'bottom-0 left-0 right-0 h-[88vh] supports-[height:1dvh]:h-[88dvh] rounded-t-3xl border-t',
           'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-[520px] xl:w-[620px] lg:rounded-none lg:border-t-0 lg:border-l',
           isAIOpen
             ? 'translate-y-0 lg:translate-x-0'
             : 'translate-y-full lg:translate-y-0 lg:translate-x-full',
           'transition-transform duration-200',
         ].join(' ')}
+        style={sheetStyle}
       >
         {/* Grab handle — bottom-sheet affordance (mobile only; the panel is a
             side drawer from lg up where a handle would be meaningless). */}
@@ -333,7 +382,7 @@ export function AIPanel() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
+        <div ref={scrollRef} onScroll={onScroll} className="relative flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 min-h-0">
           {messages.length === 0 && !loading && (
             <div>
               <p className="text-sm text-ink-400 mb-4">What can I help you with?</p>
@@ -380,6 +429,13 @@ export function AIPanel() {
                     {msg.model && (
                       <span className="text-[10px] text-ink-300">{msg.model.replace('gemini-', '')}</span>
                     )}
+                    <button
+                      onClick={() => copyReply(msg.content, i)}
+                      className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[28px]"
+                      aria-label="Copy this reply"
+                    >
+                      {copiedIdx === i ? '✓ Copied' : 'Copy'}
+                    </button>
                     {msg.steps && msg.steps.length > 0 && (
                       <button
                         onClick={() => setDetailSteps(msg.steps!)}
@@ -407,13 +463,34 @@ export function AIPanel() {
           )}
 
           {error && (
-            <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {error}
+            <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-start gap-2">
+              <span className="flex-1 min-w-0">{error}</span>
+              {/* A failed turn used to strand the question — the user had to
+                  retype it. Resend the last user message instead. */}
+              <button
+                onClick={retryLast}
+                disabled={loading}
+                className="shrink-0 min-h-[44px] px-2 font-medium text-red-700 hover:text-red-900 disabled:opacity-40"
+              >
+                Retry
+              </button>
             </div>
           )}
 
           <div ref={bottomRef} />
         </div>
+
+        {/* Shown only when the user has scrolled up: auto-scroll is suppressed
+            in that state so a new reply must not silently land off-screen. */}
+        {!atBottom && messages.length > 0 && (
+          <button
+            onClick={() => scrollToBottom('smooth')}
+            aria-label="Jump to newest message"
+            className="absolute right-4 bottom-24 z-10 min-h-[44px] min-w-[44px] px-3 rounded-full bg-ink-900/85 text-white text-xs font-medium shadow-lg backdrop-blur flex items-center gap-1"
+          >
+            ↓ Newest
+          </button>
+        )}
 
         {/* Input */}
         <div className="px-4 py-3 border-t border-ink-100 flex-shrink-0">
