@@ -12,6 +12,7 @@ import { FitbitHypnogram } from './FitbitHypnogram'
 import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { SLEEP_EXTRA_METRICS } from './miniMetrics'
+import { compactAxisTick } from './axisFormat'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -292,12 +293,15 @@ export function SleepSection() {
       {isDay && <FitbitHypnogram nightDate={anchor} />}
 
       {showManualForm && (
-        <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 relative">
+        // pr-12 keeps the fields clear of the absolutely-positioned 44px
+        // cancel button in the top-right corner (a 28px one used to fit
+        // beside the Save button on a phone row; a compliant one does not).
+        <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 pr-12 relative">
           <button
             type="button"
             onClick={() => setShowManualForm(false)}
             aria-label="Cancel"
-            className="absolute top-1.5 right-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-sm leading-none"
+            className="absolute top-1.5 right-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-sm leading-none"
           >
             ×
           </button>
@@ -310,7 +314,7 @@ export function SleepSection() {
                 everywhere, no exceptions. */}
             <DateInput
               value={manualDate} max={today} onChange={setManualDate}
-              className="min-h-[36px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50"
+              className="min-h-[44px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -318,12 +322,12 @@ export function SleepSection() {
             <input
               type="number" step="0.25" min="0" max="24" placeholder="7.5" value={manualHours}
               onChange={e => setManualHours(e.target.value)}
-              className="min-h-[36px] w-20 px-2 text-sm border border-ink-200 rounded-lg bg-cream-50"
+              className="min-h-[44px] w-20 px-2 text-sm border border-ink-200 rounded-lg bg-cream-50"
             />
           </div>
           <button
             type="submit" disabled={addManualSleep.isPending}
-            className="min-h-[36px] px-3 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="min-h-[44px] px-3 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
           >
             {addManualSleep.isPending ? 'Saving…' : isCorrectingExisting ? 'Save correction' : 'Save'}
           </button>
@@ -383,10 +387,10 @@ export function SleepSection() {
         <div className="relative" ref={chartWrapRef}>
           <div className="h-28">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
                 <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
+                <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
                 {/* Hide the hover tooltip while a bar is pinned — otherwise the
                     pinned popover AND the hover tooltip both render = two info
                     boxes at once (user-reported). The popover already shows the
@@ -430,15 +434,15 @@ export function SleepSection() {
                     <p className="font-semibold text-indigo-600">{night ? fmtHrs(night.total) : 'no data'}</p>
                   </div>
                   <button type="button" onClick={() => setPinned(null)} aria-label="Close"
-                    className="min-w-[28px] min-h-[28px] -mr-1 -mt-1 flex items-center justify-center text-ink-400 hover:text-ink-700">✕</button>
+                    className="min-w-[44px] min-h-[44px] -mr-1 -mt-1 flex items-center justify-center text-ink-400 hover:text-ink-700">✕</button>
                 </div>
                 <div className="flex flex-col items-start mt-0.5">
                   <button type="button" onClick={() => { viewDay(pinned.date); setPinned(null) }}
-                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 min-h-[30px]">
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 min-h-[44px] flex items-center">
                     View this day →
                   </button>
                   <button type="button" onClick={() => { openCorrectForm(pinned.date); setPinned(null) }}
-                    className="text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[30px]">
+                    className="text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[44px] flex items-center">
                     Correct manually
                   </button>
                 </div>
@@ -458,7 +462,7 @@ export function SleepSection() {
         <button
           type="button"
           onClick={() => setShowRaw(v => !v)}
-          className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[28px]"
+          className="text-[11px] text-ink-500 hover:text-ink-700 min-h-[44px] flex items-center"
         >
           {showRaw ? '▲ Hide raw data' : `🔍 Raw data (${points.length} rows)`}
         </button>

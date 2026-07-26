@@ -10,6 +10,7 @@ import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { STEPS_EXTRA_METRICS, RUNNING_EXTRA_METRICS } from './miniMetrics'
+import { compactAxisTick } from './axisFormat'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -69,7 +70,7 @@ export function StepsSection() {
           <button
             type="button"
             onClick={() => goToDay(date)}
-            className="text-accent-600 underline text-xs py-1.5 block min-h-[32px]"
+            className="text-accent-600 underline text-xs py-1.5 flex items-center min-h-[44px]"
           >
             Go to this day →
           </button>
@@ -127,17 +128,20 @@ export function StepsSection() {
 
       <div className="h-32">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <BarChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
+            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
             {/* Hover trigger (default): the value must be visible the moment
                 the pointer is over a bar — click is reserved for the
                 "Go to this day" button inside the tooltip. pointerEvents:
                 recharts tooltips are pointer-events:none by default, which
                 would make that button unclickable. */}
             <Tooltip cursor={false} content={StepsTooltipContent} wrapperStyle={{ pointerEvents: 'auto' }} />
-            <Bar dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]} activeBar={false} />
+            {/* maxBarSize: a single-day series would otherwise stretch one bar
+                across the whole plot area, reading as a solid slab / render
+                error rather than as one data point. */}
+            <Bar dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]} activeBar={false} maxBarSize={28} />
           </BarChart>
         </ResponsiveContainer>
       </div>

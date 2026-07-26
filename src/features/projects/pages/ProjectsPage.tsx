@@ -62,7 +62,7 @@ export function ProjectsPage() {
         <div className="max-w-md bg-cream-50 border border-dashed border-ink-200 rounded-2xl text-center py-14 px-6">
           <p className="text-3xl mb-2">🗂️</p>
           <p className="text-ink-700 font-semibold text-sm">No projects yet</p>
-          <p className="text-ink-400 text-xs mt-1 mb-4">Create your first project to start tracking phases and items.</p>
+          <p className="text-ink-500 text-xs mt-1 mb-4">Create your first project to start tracking phases and items.</p>
           <button
             type="button"
             onClick={handleNew}

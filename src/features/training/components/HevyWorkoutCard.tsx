@@ -111,7 +111,7 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
             type="button"
             onClick={() => deleteTask.mutate(matchedTask)}
             disabled={deleteTask.isPending}
-            className="min-h-[32px] px-2.5 rounded-lg bg-accent-600 text-white text-[11px] font-semibold hover:bg-accent-700 transition-colors disabled:opacity-50 shrink-0"
+            className="min-h-[44px] px-2.5 rounded-lg bg-accent-600 text-white text-[11px] font-semibold hover:bg-accent-700 transition-colors disabled:opacity-50 shrink-0"
           >
             Kapat
           </button>

@@ -132,7 +132,7 @@ export function TodaySummary() {
               <p className="text-[10px] text-ink-400">{nextBlock.start_time!.slice(0, 5)}</p>
             </>
           ) : (
-            <p className="text-sm text-ink-400 mt-0.5">Nothing left</p>
+            <p className="text-[13px] leading-tight text-ink-500 mt-0.5">Nothing left</p>
           )}
         </Link>
 
@@ -144,7 +144,7 @@ export function TodaySummary() {
               <p className="text-[10px] text-ink-400">{relativeDay(nextSession.date)}</p>
             </>
           ) : (
-            <p className="text-sm text-ink-400 mt-0.5">None planned</p>
+            <p className="text-[13px] leading-tight text-ink-500 mt-0.5">None planned</p>
           )}
         </Link>
       </div>

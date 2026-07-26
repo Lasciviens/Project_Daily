@@ -39,6 +39,13 @@ export default {
           300: 'rgb(var(--ink-300) / <alpha-value>)',
           200: 'rgb(var(--ink-200) / <alpha-value>)',
           100: 'rgb(var(--ink-100) / <alpha-value>)',
+          // 50 was MISSING from this scale while 65 call sites (bg-ink-50,
+          // hover:bg-ink-50) already used it across home/projects/training/
+          // media/recipes/developer — Tailwind emitted nothing for an unknown
+          // key, so every one of those faint surfaces silently rendered as
+          // its parent's background (Home's TASKS/NEXT UP chips read as loose
+          // paragraphs). Adding the token fixes all of them with zero churn.
+          50:  'rgb(var(--ink-50)  / <alpha-value>)',
         },
         accent: {
           50:  'rgb(var(--accent-50)  / <alpha-value>)',

@@ -251,7 +251,7 @@ export function ActivityLogTab() {
   // max-w caps the datetime-local so it doesn't stretch full-width (width
   // standard W3) and the from→to pair reads as one control row on mobile.
   const dtCls = 'min-h-[44px] max-w-[11rem] min-w-0 text-xs border border-ink-200 rounded-lg px-2 bg-cream-50 text-ink-700'
-  // Full-width stacked variant for the mobile Filtreler sheet.
+  // Full-width stacked variant for the mobile Filters sheet.
   const sheetFieldCls = 'min-h-[44px] w-full border border-ink-200 rounded-lg px-3 bg-cream-50 text-sm text-ink-700'
   const activeFilterCount =
     (tableFilter !== 'all' ? 1 : 0) +
@@ -309,7 +309,7 @@ export function ActivityLogTab() {
         </div>
       </div>
 
-      {/* Filter bar — mobile (<sm): only range + Filtreler + Refresh; the rest lives in a Sheet */}
+      {/* Filter bar — mobile (<sm): only range + Filters + Refresh; the rest lives in a Sheet */}
       <div className="flex sm:hidden items-center gap-2 mb-3">
         <select
           value={rangeHours}
@@ -323,7 +323,7 @@ export function ActivityLogTab() {
           onClick={() => { haptic('light'); setFiltersOpen(true) }}
           className="press-feedback relative inline-flex items-center gap-1.5 text-xs px-3 rounded-lg border border-ink-200 text-ink-600 min-h-[44px] whitespace-nowrap"
         >
-          Filtreler
+          Filters
           {activeFilterCount > 0 && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent-500 text-white text-[10px] font-semibold tabular-nums">{activeFilterCount}</span>
           )}
@@ -339,11 +339,11 @@ export function ActivityLogTab() {
         </button>
       </div>
 
-      {/* Mobile Filtreler sheet — type/op/actor + exact window + Clear all */}
+      {/* Mobile Filters sheet — type/op/actor + exact window + Clear all */}
       <Sheet
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        title="Filtreler"
+        title="Filters"
         size="sm"
         footer={
           <div className="flex items-center gap-2">

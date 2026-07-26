@@ -77,7 +77,7 @@ export function WatchNextCard({ date }: { date: string }) {
         <div className="flex gap-1 overflow-x-auto scrollbar-none pb-0.5">
           {shows.map(s => (
             <button key={s.id} onClick={() => setSelectedId(s.id)}
-              className={`shrink-0 text-[10px] px-2 py-1 rounded-full border transition-colors min-h-[24px] ${
+              className={`shrink-0 text-[10px] px-2.5 rounded-full border transition-colors min-h-[44px] ${
                 s.id === entry?.id
                   ? 'bg-accent-500 text-white border-accent-500'
                   : 'text-ink-500 border-ink-200 hover:border-accent-300'
@@ -99,7 +99,7 @@ export function WatchNextCard({ date }: { date: string }) {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-800 truncate">{series.title}</p>
             {next.isLoading ? (
-              <p className="text-[11px] text-ink-400 mt-0.5">Finding next episode…</p>
+              <p className="text-[11px] text-ink-500 mt-0.5">Finding next episode…</p>
             ) : n?.caughtUp ? (
               <p className="text-[11px] text-green-600 mt-0.5">All caught up ✓ ({n.watchedCount} watched)</p>
             ) : n ? (
@@ -108,7 +108,7 @@ export function WatchNextCard({ date }: { date: string }) {
                   Next: <strong>S{pad(n.season!)}·E{pad(n.episode!)}</strong>
                   {n.episodeTitle && <span className="text-ink-500"> — {n.episodeTitle}</span>}
                 </p>
-                <p className="text-[10px] text-ink-400 mt-0.5">
+                <p className="text-[10px] text-ink-500 mt-0.5">
                   {n.watchedCount}{n.totalEpisodes ? `/${n.totalEpisodes}` : ''} watched
                   {n.lastWatched && ` · last S${pad(n.lastWatched.season)}·E${pad(n.lastWatched.episode)}`}
                 </p>
@@ -121,14 +121,14 @@ export function WatchNextCard({ date }: { date: string }) {
                   <button
                     onClick={() => markWatched.mutate()}
                     disabled={markWatched.isPending || !n.released}
-                    className="text-[11px] px-2 py-1 rounded-lg border border-green-300 text-green-700 hover:bg-green-50 transition-colors disabled:opacity-40 min-h-[28px]"
+                    className="text-[11px] px-3 rounded-lg border border-green-300 text-green-700 hover:bg-green-50 transition-colors disabled:opacity-40 min-h-[44px]"
                   >
                     ✓ Watched
                   </button>
                   <button
                     onClick={() => setPlanOpen(true)}
                     disabled={!n.released}
-                    className="text-[11px] px-2 py-1 rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-40 min-h-[28px]"
+                    className="text-[11px] px-3 rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-40 min-h-[44px]"
                   >
                     📅 Plan
                   </button>
@@ -146,14 +146,14 @@ export function WatchNextCard({ date }: { date: string }) {
             <div className="w-14 h-20 rounded-lg bg-cream-200 flex items-center justify-center text-2xl shrink-0">🎬</div>
           )}
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wide text-ink-400">Movie</p>
+            <p className="text-[10px] uppercase tracking-wide text-ink-500">Movie</p>
             <p className="text-sm font-semibold text-ink-800 group-hover:text-accent-700 transition-colors line-clamp-2">
               {movieFallback.title}
             </p>
           </div>
         </Link>
       ) : (
-        <Link to="/media" className="text-xs text-accent-600 hover:text-accent-700 py-2">
+        <Link to="/media" className="text-xs text-accent-600 hover:text-accent-700 min-h-[44px] flex items-center">
           Nothing in progress — find something →
         </Link>
       )}

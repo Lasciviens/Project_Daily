@@ -61,13 +61,13 @@ function Ring({ consumed, target, size, stroke, color, label, sizeClass }: {
 // −/+ stepper for a goal number (same feel as the Daily card's).
 function GoalStepper({ value, step, suffix, onChange }: { value: number; step: number; suffix: string; onChange: (v: number) => void }) {
   const set = (v: number) => onChange(Math.max(0, v))
-  const btn = 'w-8 h-8 min-h-[32px] rounded-lg border border-ink-200 text-ink-600 hover:border-accent-300 flex items-center justify-center leading-none'
+  const btn = 'w-11 h-11 min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:border-accent-300 flex items-center justify-center leading-none'
   return (
     <div className="flex items-center gap-1">
       <button type="button" onClick={() => set(value - step)} className={btn}>−</button>
       <div className="relative">
         <input type="number" value={value} min={0} step={step} onChange={e => set(Number(e.target.value) || 0)}
-          className="w-20 min-h-[32px] text-sm text-center pr-8 tabular-nums border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
+          className="w-20 min-h-[44px] text-sm text-center pr-8 tabular-nums border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-ink-400 pointer-events-none">{suffix}</span>
       </div>
       <button type="button" onClick={() => set(value + step)} className={btn}>+</button>
@@ -97,7 +97,7 @@ export function FoodTodayTab({ date }: { date: string }) {
   const coachSummary =
     coach.weightKg == null ? 'Set up →'
     : coach.calorieAdvice ? `${coach.calorieAdvice.delta > 0 ? '+' : ''}${coach.calorieAdvice.delta} kcal suggested`
-    : coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? `${coach.proteinForGoal}g protein`
+    : coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? `Suggest ${coach.proteinForGoal}g protein`
     : coach.onTrack ? '✓ On track'
     : '✓ Looking good'
 
@@ -119,7 +119,7 @@ export function FoodTodayTab({ date }: { date: string }) {
             <div className="h-1 bg-accent-500" />
             {/* ⚙ Goals — bottom-right corner of the nutrition widget. */}
             <button onClick={() => setGoalsOpen(o => !o)} title="Goals" aria-label="Goals"
-              className={`press-feedback absolute bottom-2 right-2 min-w-[40px] min-h-[40px] rounded-lg flex items-center justify-center text-base transition-colors ${goalsOpen ? 'text-accent-700 bg-accent-50' : 'text-ink-400 hover:text-accent-600 hover:bg-cream-100/90 bg-cream-50/70'}`}>⚙</button>
+              className={`press-feedback absolute bottom-2 right-2 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center text-base transition-colors ${goalsOpen ? 'text-accent-700 bg-accent-50' : 'text-ink-400 hover:text-accent-600 hover:bg-cream-100/90 bg-cream-50/70'}`}>⚙</button>
             <div className="p-4 sm:p-6 flex items-center gap-4 sm:gap-5 flex-wrap">
               <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color="rgb(var(--accent-500))" label="kcal left" sizeClass="w-[108px] h-[108px] sm:w-[134px] sm:h-[134px]" />
               {/* Small, tasteful protein ring — "kalan protein" as a graphic. */}
@@ -136,14 +136,18 @@ export function FoodTodayTab({ date }: { date: string }) {
                 </p>
                 {nut && nut.calories > 0 && (
                   <div className="mt-2.5">
-                    <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} />
-                    {/* P · C · F · Fiber — the four side by side (fiber green). */}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 pr-10 text-[11px] tabular-nums">
-                      <span className="text-ink-600">{nut.protein_g}g <span className="text-ink-400">P</span></span>
-                      <span className="text-ink-600">{nut.carbs_g}g <span className="text-ink-400">C</span></span>
-                      <span className="text-ink-600">{nut.fat_g}g <span className="text-ink-400">F</span></span>
-                      <span className="text-ink-600">{nut.fiber_g}g <span className="text-ink-400">fiber</span></span>
-                      {nut.sugar_g > 0 && <span className="text-ink-500">{nut.sugar_g}g <span className="text-ink-400">sugar</span></span>}
+                    {/* ONE macro row. The bar's own legend printed the same split
+                        as percentages directly above these grams (~40px of pure
+                        duplication on a phone), so it's suppressed here and the
+                        colour dots move onto the gram figures. Full macro names,
+                        never P/C/F. `pr-12` clears the ⚙ Goals button's 44px box. */}
+                    <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false} />
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-1.5 pr-12 text-[11px] tabular-nums text-ink-600">
+                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 shrink-0 rounded-full bg-blue-400" />{nut.protein_g}g protein</span>
+                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 shrink-0 rounded-full bg-orange-400" />{nut.carbs_g}g carbs</span>
+                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 shrink-0 rounded-full bg-rose-400" />{nut.fat_g}g fat</span>
+                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 shrink-0 rounded-full bg-green-500" />{nut.fiber_g}g fiber</span>
+                      {nut.sugar_g > 0 && <span className="text-ink-500">{nut.sugar_g}g sugar</span>}
                     </div>
                   </div>
                 )}
@@ -165,7 +169,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                 <div className="flex gap-1">
                   {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
                     <button key={g} onClick={() => update({ goal: g })}
-                      className={`text-[11px] px-2.5 min-h-[32px] rounded-full border transition-colors ${
+                      className={`text-[11px] px-2.5 min-h-[44px] rounded-full border transition-colors ${
                         targets.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
                       }`}>{GOAL_LABEL[g]}</button>
                   ))}
@@ -211,7 +215,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                 {coach.calorieAdvice ? (
                   <button
                     onClick={() => update({ calories: Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), lastCalorieAdjust: formatLocalDate(new Date()) })}
-                    className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
+                    className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
                     <span className="text-ink-600"><strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong><span className="text-ink-400"> · {coach.calorieAdvice.reason}</span></span>
                     <span className="text-accent-600 font-semibold shrink-0">Apply</span>
                   </button>
@@ -229,7 +233,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                 {coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? (
                   <button
                     onClick={() => update({ protein: coach.proteinForGoal! })}
-                    className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
+                    className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
                     <span className="text-ink-600">Suggested <strong className="text-accent-700">{coach.proteinForGoal}g</strong> protein <span className="text-ink-400">· {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span></span>
                     <span className="text-accent-600 font-semibold shrink-0">Apply</span>
                   </button>
@@ -257,22 +261,22 @@ export function FoodTodayTab({ date }: { date: string }) {
                   <span className="text-sm font-semibold text-ink-800 flex-1">{label}</span>
                   {kcal > 0 && <span className="text-xs text-ink-400 tabular-nums">{kcal} kcal</span>}
                   <button onClick={() => setLogSlot(slot)}
-                    className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[40px] px-2.5 rounded-lg transition-colors">+ Log</button>
+                    className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[44px] px-2.5 rounded-lg transition-colors">+ Log</button>
                 </div>
                 {meals.length > 0 ? (
                   <ul className="divide-y divide-ink-50">
                     {meals.map(meal => {
                       const planned = meal.source === 'plan'
                       return (
-                        <li key={meal.id} className="flex items-center gap-1.5 px-4 py-1 min-h-[40px] text-sm">
+                        <li key={meal.id} className="flex items-center gap-1.5 px-4 py-1 min-h-[44px] text-sm">
                           <button
                             type="button"
                             onClick={() => planned ? setPlanMeal(meal.planEntry ?? null) : setEditMeal(meal)}
-                            className="flex items-center gap-2 flex-1 min-w-0 text-left min-h-[40px] hover:text-accent-700 transition-colors">
+                            className="flex items-center gap-2 flex-1 min-w-0 text-left min-h-[44px] hover:text-accent-700 transition-colors">
                             <span className={`flex-1 min-w-0 truncate ${planned ? 'text-ink-400 italic' : 'text-ink-800'}`}>{meal.title}</span>
-                            {planned && <span className="text-[9px] uppercase tracking-wide text-ink-300 border border-ink-200 rounded px-1 shrink-0">planned</span>}
+                            {planned && <span className="text-[9px] uppercase tracking-wide text-ink-500 border border-ink-200 rounded px-1 shrink-0">planned</span>}
                             {meal.protein_g > 0 && <span className="text-[11px] text-ink-400 tabular-nums shrink-0">{meal.protein_g}p</span>}
-                            {meal.calories > 0 && <span className={`text-xs tabular-nums shrink-0 w-14 text-right ${planned ? 'text-ink-300' : 'text-ink-500'}`}>{meal.calories}</span>}
+                            {meal.calories > 0 && <span className={`text-xs tabular-nums shrink-0 w-14 text-right ${planned ? 'text-ink-400' : 'text-ink-500'}`}>{meal.calories}</span>}
                           </button>
                           {/* Planned → confirm as eaten (starts counting). */}
                           {planned && meal.planEntry && (
@@ -285,14 +289,14 @@ export function FoodTodayTab({ date }: { date: string }) {
                           <button
                             onClick={() => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)}
                             aria-label={`Remove ${meal.title}`}
-                            className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-500 shrink-0">✕</button>
+                            className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 shrink-0">✕</button>
                         </li>
                       )
                     })}
                   </ul>
                 ) : (
                   <button onClick={() => setLogSlot(slot)}
-                    className="w-full text-left px-4 py-2.5 text-xs text-ink-300 hover:text-accent-600 transition-colors">+ Add something</button>
+                    className="w-full flex items-center text-left px-4 min-h-[44px] text-xs text-ink-400 hover:text-accent-600 transition-colors">+ Add something</button>
                 )}
               </div>
             )

@@ -73,7 +73,7 @@ export function ShopPage() {
             <button
               onClick={() => setActiveTop(null)}
               className={`text-xs px-3 min-h-[44px] rounded-full border font-medium transition-colors ${
-                !activeTop ? 'bg-ink-950 text-white border-ink-950' : 'border-ink-200 text-ink-600 hover:border-accent-300'
+                !activeTop ? 'bg-accent-500 text-white border-accent-500' : 'border-ink-200 text-ink-600 hover:border-accent-300'
               }`}
             >All</button>
             {tops.map(t => (
@@ -137,8 +137,8 @@ export function ShopPage() {
         className="press-feedback sm:hidden flex-shrink-0 flex items-center gap-2 min-h-[48px] px-4 border-t border-ink-200 bg-cream-50 text-accent-700 text-sm font-semibold"
       >
         <span aria-hidden>✦</span>
-        <span>Sor</span>
-        <span className="ml-auto text-xs font-normal text-ink-400">Alışveriş asistanı</span>
+        <span>Ask</span>
+        <span className="ml-auto text-xs font-normal text-ink-400">Shopping assistant</span>
       </button>
 
       <AddShopItemModal open={addOpen} onClose={() => setAddOpen(false)} />

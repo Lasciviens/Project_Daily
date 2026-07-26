@@ -79,9 +79,9 @@ export function ShopAIBox({ onClose }: { onClose?: () => void } = {}) {
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-2.5">
         {thread.length === 0 && (
           <p className="text-xs text-ink-400 leading-relaxed">
-            Ne almayı planladığını anlat — tek bir ürün olabilir, düşündüğün bir şey olabilir,
-            ya da bütün bir alışveriş listesi. Kategori konusunda emin olmazsam
-            sana seçenek sunarak soracağım.
+            Tell me what you are planning to buy — a single item, something you
+            are still thinking about, or a whole shopping list. If I am unsure
+            which category it belongs to, I will ask and offer you options.
           </p>
         )}
         {thread.map((m, i) => (
@@ -119,7 +119,7 @@ export function ShopAIBox({ onClose }: { onClose?: () => void } = {}) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') send(input) }}
-          placeholder="Mesaj yaz…"
+          placeholder="Write a message…"
           disabled={sending}
           className="flex-1 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-ink-900 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-400 disabled:opacity-60"
         />
@@ -128,7 +128,7 @@ export function ShopAIBox({ onClose }: { onClose?: () => void } = {}) {
           disabled={sending || !input.trim()}
           className="min-h-[44px] px-4 bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 disabled:opacity-50 flex-shrink-0"
         >
-          {sending ? '…' : 'Gönder'}
+          {sending ? '…' : 'Send'}
         </button>
       </div>
     </div>

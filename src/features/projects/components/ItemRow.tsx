@@ -64,7 +64,7 @@ export function ItemRow({ item, onUpdate, onDelete, onEdit, isPending }: Props) 
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="flex items-center gap-2 px-3 py-1.5 min-h-[44px]">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 min-h-[44px] lg:flex-nowrap">
         {/* 3-state status button — enlarged tap target on mobile */}
         <button
           onClick={() => { haptic('light'); cycleStatus() }}
@@ -109,7 +109,7 @@ export function ItemRow({ item, onUpdate, onDelete, onEdit, isPending }: Props) 
         <button
           type="button"
           onClick={onEdit}
-          className={`flex-1 min-w-0 text-left text-sm truncate rounded px-0.5 hover:bg-ink-100 transition-colors duration-100 ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}
+          className={`order-first basis-full min-w-0 text-left text-sm leading-snug line-clamp-2 rounded px-0.5 hover:bg-ink-100 transition-colors duration-100 lg:order-none lg:basis-auto lg:flex-1 lg:line-clamp-none lg:truncate ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}
           title="Click to edit"
         >
           {item.title}
@@ -117,7 +117,7 @@ export function ItemRow({ item, onUpdate, onDelete, onEdit, isPending }: Props) 
 
         {/* Mobile: fold schedule / notes / delete into one ⋯ menu (edit is the
             title tap itself, so no redundant ✎ here). Hover actions stay on desktop. */}
-        <Menu as="div" className="flex-shrink-0 lg:hidden">
+        <Menu as="div" className="flex-shrink-0 ml-auto lg:hidden">
           <MenuButton
             className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 active:text-ink-700 text-lg leading-none rounded press-feedback"
             title="More actions"

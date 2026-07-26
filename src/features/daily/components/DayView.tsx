@@ -49,7 +49,7 @@ export function DayView({ date }: Props) {
               </span>
             )}
             {openTasks.length === 0 && doneTasks.length === 0 && !isLoading && (
-              <span className="text-[11px] text-ink-300">no tasks</span>
+              <span className="text-[11px] text-ink-500">no tasks</span>
             )}
           </div>
         </div>
@@ -65,7 +65,7 @@ export function DayView({ date }: Props) {
             {openTasks.length === 0 && doneTasks.length === 0 && (
               <div className="py-4 text-center">
                 <p className="text-sm text-ink-400">No tasks for this day</p>
-                <p className="text-xs text-ink-300 mt-0.5">Click below to add one</p>
+                <p className="text-xs text-ink-500 mt-0.5">Click below to add one</p>
               </div>
             )}
             {openTasks.length === 0 && doneTasks.length > 0 && (
@@ -110,7 +110,7 @@ export function DayView({ date }: Props) {
           <div className="mt-3 pt-3 border-t border-ink-100">
             <button
               onClick={() => setShowWeek(s => !s)}
-              className="w-full flex items-center justify-between text-left min-h-[32px]"
+              className="w-full flex items-center justify-between text-left min-h-[44px]"
             >
               <span className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold">This week — no date</span>
               <span className="text-[10px] text-ink-400">{floating.length} {showWeek ? '▴' : '▾'}</span>

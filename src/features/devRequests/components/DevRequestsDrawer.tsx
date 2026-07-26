@@ -39,7 +39,7 @@ function NewRequestForm({ currentPage, onDone }: { currentPage: string; onDone: 
       <input
         autoFocus value={title} onChange={e => setTitle(e.target.value)}
         placeholder="What's the request/bug/idea?"
-        className="min-h-[40px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50"
+        className="min-h-[44px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50"
       />
       <textarea
         value={description} onChange={e => setDescription(e.target.value)}
@@ -49,27 +49,27 @@ function NewRequestForm({ currentPage, onDone }: { currentPage: string; onDone: 
       />
       <div className="grid grid-cols-2 gap-1.5">
         <select value={category} onChange={e => setCategory(e.target.value as DevRequestCategory)}
-          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
+          className="min-h-[44px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={priority} onChange={e => setPriority(e.target.value as DevRequestPriority)}
-          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
+          className="min-h-[44px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <input value={page} onChange={e => setPage(e.target.value)} placeholder="Page"
-          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50" />
+          className="min-h-[44px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50" />
         <select value={effort} onChange={e => setEffort(e.target.value as DevRequestEffort | '')}
-          className="min-h-[36px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
+          className="min-h-[44px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           <option value="">effort?</option>
           {EFFORTS.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
       </div>
       <div className="flex gap-1.5">
         <button type="submit" disabled={create.isPending || !title.trim()}
-          className="flex-1 min-h-[36px] rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
+          className="flex-1 min-h-[44px] rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
           {create.isPending ? 'Saving…' : 'Add'}
         </button>
-        <button type="button" onClick={onDone} className="min-h-[36px] px-3 rounded-lg text-xs text-ink-500 hover:text-ink-800">
+        <button type="button" onClick={onDone} className="min-h-[44px] px-3 rounded-lg text-xs text-ink-500 hover:text-ink-800">
           Cancel
         </button>
       </div>
@@ -95,8 +95,8 @@ function EditRequestForm({ request, onDone }: { request: DevRequest; onDone: () 
   }
 
   // Mark done straight from the edit form (saves any field edits too) — so
-  // "düzenlerken tamamlandı da işaretleyebilme" is one tap, no separate
-  // status-cycle click needed.
+  // "mark it complete while editing" is one tap, no separate status-cycle
+  // click needed.
   const isDone = request.status === 'done'
   function handleToggleDone() {
     update.mutate(
@@ -108,41 +108,41 @@ function EditRequestForm({ request, onDone }: { request: DevRequest; onDone: () 
   return (
     <div className="flex flex-col gap-2 p-2.5 bg-accent-50/60 border border-accent-200 rounded-xl">
       <input value={title} onChange={e => setTitle(e.target.value)}
-        className="min-h-[36px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50" />
+        className="min-h-[44px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50" />
       <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4}
         placeholder="Details (optional)"
         className="px-2 py-1.5 text-xs border border-ink-200 rounded-lg bg-cream-50 resize-y min-h-[90px] lg:min-h-[180px]" />
       <div className="grid grid-cols-2 gap-1.5">
         <select value={category} onChange={e => setCategory(e.target.value as DevRequestCategory)}
-          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
+          className="min-h-[44px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={priority} onChange={e => setPriority(e.target.value as DevRequestPriority)}
-          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
+          className="min-h-[44px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <input value={page} onChange={e => setPage(e.target.value)} placeholder="Page"
-          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50" />
+          className="min-h-[44px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50" />
         <select value={effort} onChange={e => setEffort(e.target.value as DevRequestEffort | '')}
-          className="min-h-[32px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
+          className="min-h-[44px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50">
           <option value="">effort?</option>
           {EFFORTS.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
       </div>
       <div className="flex gap-1.5 items-center">
         <button type="button" onClick={handleSave} disabled={update.isPending}
-          className="min-h-[32px] px-3 rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
+          className="min-h-[44px] px-3 rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
           Save
         </button>
         <button type="button" onClick={handleToggleDone} disabled={update.isPending}
-          className={`min-h-[32px] px-3 rounded-lg text-xs font-semibold border transition-colors ${
+          className={`min-h-[44px] px-3 rounded-lg text-xs font-semibold border transition-colors ${
             isDone
               ? 'bg-cream-50 border-ink-200 text-ink-500 hover:text-ink-800'
               : 'bg-green-500 border-green-500 text-white hover:bg-green-600'
           }`}>
           {isDone ? '↩ Reopen' : '✓ Done'}
         </button>
-        <button type="button" onClick={onDone} className="ml-auto min-h-[32px] px-3 rounded-lg text-xs text-ink-500 hover:text-ink-800">
+        <button type="button" onClick={onDone} className="ml-auto min-h-[44px] px-3 rounded-lg text-xs text-ink-500 hover:text-ink-800">
           Close
         </button>
       </div>
@@ -234,7 +234,7 @@ export function DevRequestsDrawer() {
               background. */}
           <button
             onClick={() => setCategoryFilter(null)}
-            className={`text-[10px] px-2 min-h-[28px] rounded border font-medium transition-colors ${
+            className={`text-[10px] px-2 min-h-[44px] rounded border font-medium transition-colors ${
               categoryFilter === null ? 'bg-accent-500 text-white border-accent-500' : 'bg-ink-50 text-ink-600 border-ink-200'
             }`}
           >
@@ -247,7 +247,7 @@ export function DevRequestsDrawer() {
               <button
                 key={c}
                 onClick={() => setCategoryFilter(f => f === c ? null : c)}
-                className={`text-[10px] px-2 min-h-[28px] rounded border transition-colors ${
+                className={`text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
                   categoryFilter === c ? CATEGORY_BADGE[c] + ' font-semibold' : 'bg-ink-50 text-ink-600 border-ink-200'
                 }`}
               >
@@ -257,7 +257,7 @@ export function DevRequestsDrawer() {
           })}
           <button
             onClick={() => setSortMode(m => m === 'manual' ? 'priority' : 'manual')}
-            className="ml-auto text-[10px] px-2 min-h-[28px] rounded border border-ink-200 text-ink-500 hover:text-ink-800"
+            className="ml-auto text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:text-ink-800"
             title="Toggle sort order"
           >
             {sortMode === 'manual' ? '↕ manual' : '⚡ priority'}

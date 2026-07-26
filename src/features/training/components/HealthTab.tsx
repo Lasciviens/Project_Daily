@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useHealthWorkouts } from '../hooks/useHealthExport'
 import { ActivityRings } from './health/ActivityRings'
 import { HealthWorkoutDetail } from './health/HealthWorkoutDetail'
@@ -122,6 +122,15 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
   const section = controlledSection ?? localSection
   const setSection = onSectionChange ?? setLocalSection
 
+  // The pill strip scrolls on a phone and the right-edge fade paints over
+  // whatever sits under it — an ACTIVE (near-black) pill under that gradient
+  // reads as a corrupted button. Keep the active pill scrolled into view so it
+  // is never the thing being faded, on mount as well as on change.
+  const activePillRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    activePillRef.current?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  }, [section])
+
   return (
     <div className="flex flex-col gap-4">
       {/* Section pills — a right-edge fade cues the strip scrolls on a phone
@@ -132,6 +141,7 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
             <button
               key={s.id}
               type="button"
+              ref={section === s.id ? activePillRef : undefined}
               onClick={() => setSection(s.id)}
               className={`min-h-[44px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors press-feedback snap-start ${
                 section === s.id ? 'bg-ink-950 text-white' : 'bg-cream-50 border border-ink-200 text-ink-600 hover:bg-ink-50'
@@ -142,7 +152,7 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
           ))}
         </div>
         <div
-          className="sm:hidden pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas to-transparent"
+          className="sm:hidden pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-canvas to-transparent"
           aria-hidden
         />
       </div>

@@ -68,8 +68,11 @@ export function Sheet({
 
           <div className={`flex-1 overflow-y-auto ${className ?? ''}`}>{children}</div>
 
+          {/* The footer is the LAST thing above the home indicator on a notched
+              iPhone — without the safe-area allowance its buttons sit inside
+              the indicator's swipe zone (affects every Sheet consumer). */}
           {footer && (
-            <div className="sticky bottom-0 border-t border-ink-100 bg-cream-50 px-5 py-3">
+            <div className="sticky bottom-0 border-t border-ink-100 bg-cream-50 px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
               {footer}
             </div>
           )}

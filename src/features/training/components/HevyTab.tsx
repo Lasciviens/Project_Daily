@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { startOfWeek, startOfMonth, format } from 'date-fns'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useHevyPRs } from '../hooks/useHevyPRs'
@@ -218,10 +218,18 @@ function PRsSubTab() {
 export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => void } = {}) {
   const [activeTab, setActiveTab] = useState<SubTab>('workouts')
   const [logOpen, setLogOpen] = useState(false)
+  const activeSubRef = useRef<HTMLButtonElement>(null)
 
   // Report the active sub-tab up so the page can widen for the data-dense ones
   // (Exercises grid, Muscles two-column) on large monitors.
   useEffect(() => { onSubTabChange?.(activeTab) }, [activeTab, onSubTabChange])
+
+  // Six sub-tabs never fit a 393px phone, so the strip scrolls — keep the
+  // ACTIVE one in view instead of leaving it half-hidden behind the pinned
+  // Log button / the right-edge fade.
+  useEffect(() => {
+    activeSubRef.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [activeTab])
 
   return (
     <div className="flex flex-col gap-3">
@@ -236,6 +244,7 @@ export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => v
               <button
                 key={tab.id}
                 type="button"
+                ref={activeTab === tab.id ? activeSubRef : undefined}
                 onClick={() => setActiveTab(tab.id)}
                 className={`min-h-[44px] px-3 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px press-feedback snap-start ${
                   activeTab === tab.id
@@ -253,13 +262,16 @@ export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => v
           />
         </div>
         {activeTab === 'workouts' && (
+          // Icon-only below sm: the "Log" word cost ~60px, which is exactly
+          // what pushed the sub-tab strip under this button on a phone.
           <button
             type="button"
             onClick={() => setLogOpen(true)}
-            className="shrink-0 min-h-[44px] px-3 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1 press-feedback"
+            aria-label="Log workout"
+            title="Log workout"
+            className="shrink-0 min-h-[44px] min-w-[44px] px-2 sm:px-3 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center justify-center gap-1 press-feedback"
           >
             <span className="text-base leading-none">+</span>
-            <span className="sm:hidden">Log</span>
             <span className="hidden sm:inline">Log Workout</span>
           </button>
         )}

@@ -10,6 +10,7 @@ import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
 import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { ENERGY_EXTRA_METRICS } from './miniMetrics'
+import { compactAxisTick } from './axisFormat'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -77,7 +78,7 @@ export function EnergySection() {
           </p>
         ))}
         {period !== 'day' && date && (
-          <button type="button" onClick={() => goToDay(date)} className="text-accent-600 underline text-xs py-1.5 block min-h-[32px]">
+          <button type="button" onClick={() => goToDay(date)} className="text-accent-600 underline text-xs py-1.5 flex items-center min-h-[44px]">
             Go to this day →
           </button>
         )}
@@ -134,18 +135,22 @@ export function EnergySection() {
 
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <BarChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} />
+            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
             <Tooltip cursor={false} content={EnergyTooltipContent} wrapperStyle={{ pointerEvents: 'auto' }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
+            {/* maxBarSize: with a single day of data one stacked bar would
+                otherwise span the whole plot area and read as a solid slab. */}
             <Bar
               dataKey="basal" name="Basal" stackId="e" fill="#94a3b8" radius={[0, 0, 0, 0]} activeBar={false}
+              maxBarSize={28}
               cursor={period !== 'day' ? 'pointer' : 'default'}
             />
             <Bar
               dataKey="active" name="Active" stackId="e" fill="#f43f5e" radius={[3, 3, 0, 0]} activeBar={false}
+              maxBarSize={28}
               cursor={period !== 'day' ? 'pointer' : 'default'}
             />
           </BarChart>

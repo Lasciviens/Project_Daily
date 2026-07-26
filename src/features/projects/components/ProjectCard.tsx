@@ -59,7 +59,7 @@ export function ProjectCard({ project, stat, onOpen }: Props) {
           <div className="h-1.5 rounded-full bg-ink-100 overflow-hidden">
             <div className="h-full bg-emerald-400 transition-all duration-300" style={{ width: `${pct}%` }} />
           </div>
-          <div className="flex items-center justify-between text-[11px] text-ink-400">
+          <div className="flex items-center justify-between text-[11px] text-ink-500">
             <span>{total > 0 ? `${done}/${total} done` : 'No items yet'}</span>
             <span className="flex items-center gap-2">
               {wip > 0 && <span className="text-accent-600 font-medium">{wip} in progress</span>}

@@ -251,7 +251,10 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
                     {tierClass && <span className={`absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded leading-none ${tierClass}`}>{g.tier}</span>}
                     <span className={`absolute bottom-1 right-1 w-2 h-2 rounded-full border border-white/60 ${dotColor}`} />
                     {g.is_iconic && <span className="absolute bottom-1 left-1 text-[10px] leading-none">⭐</span>}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-1.5 pt-4 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-3 pt-4 transition-opacity duration-150 lg:group-hover:opacity-0">
+                      <p className="text-white text-[9px] font-semibold leading-tight line-clamp-1">{g.title}</p>
+                    </div>
+                    <div className="hidden lg:block absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-3 pt-4 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                       <p className="text-white text-[9px] font-semibold leading-tight line-clamp-2">{g.title}</p>
                     </div>
                   </button>
@@ -315,9 +318,15 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       {/* Search */}
       <div className="relative mb-3">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search games, series…"
-          className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50" />
+          className="w-full min-h-[44px] pl-9 pr-12 py-2.5 text-sm rounded-xl border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50" />
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 text-sm">🔍</span>
-        {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-300 hover:text-ink-600">✕</button>}
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            aria-label="Clear search"
+            className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-500 hover:text-ink-800"
+          >✕</button>
+        )}
       </div>
 
       {/* Status chips — horizontally scrollable on mobile */}
@@ -398,7 +407,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
           onClick={() => { haptic('light'); setFiltersOpen(true) }}
           className="press-feedback relative inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-xl border border-ink-200 bg-cream-50 text-sm font-medium text-ink-700"
         >
-          <span aria-hidden>⚙</span> Filtreler
+          <span aria-hidden>⚙</span> Filters
           {activeFilterCount > 0 && (
             <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent-500 text-white text-[10px] font-bold leading-none">{activeFilterCount}</span>
           )}
@@ -420,7 +429,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       <Sheet
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        title="Filtreler"
+        title="Filters"
         footer={
           <div className="flex items-center gap-2">
             <button
@@ -428,12 +437,12 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
               onClick={clearFilters}
               disabled={!hasFilters}
               className="press-feedback flex-1 min-h-[44px] rounded-xl border border-ink-200 text-sm font-medium text-ink-600 disabled:opacity-40"
-            >Temizle</button>
+            >Clear</button>
             <button
               type="button"
               onClick={() => setFiltersOpen(false)}
               className="press-feedback flex-1 min-h-[44px] rounded-xl bg-accent-500 text-white text-sm font-semibold"
-            >{filtered.length} oyun göster</button>
+            >Show {filtered.length} game{filtered.length !== 1 ? 's' : ''}</button>
           </div>
         }
       >
@@ -582,24 +591,24 @@ export function GamesPage() {
 
   if (!rp5) {
     return (
-      <div className="min-h-full flex items-center justify-center bg-cream-50">
+      <div className="min-h-[60vh] flex items-center justify-center px-4">
         <div className="text-center">
           <div className="text-5xl mb-4">🎮</div>
           <h1 className="text-2xl font-bold text-ink-900 mb-2">Games</h1>
-          <p className="text-sm text-ink-400">RP5 Supabase keys not configured</p>
+          <p className="text-sm text-ink-500">RP5 Supabase keys not configured</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-full bg-cream-50">
+    <div className="min-h-full">
       <div className="max-w-7xl mx-auto px-4 py-4 sm:py-5">
 
         {/* Top-level platform tabs */}
         <div className="flex items-center gap-3 mb-4 sm:mb-6">
           <h1 className="text-lg font-bold text-ink-900 mr-2">🎮 Games</h1>
-          <div className="flex flex-1 gap-1 bg-cream-50 rounded-xl border border-ink-200 p-1 shadow-sm">
+          <div className="hidden sm:flex flex-1 gap-1 bg-cream-50 rounded-xl border border-ink-200 p-1 shadow-sm">
             {([
               { t: 'retroid'     as PlatformTab, label: '📱 Retroid',      hideOnMobile: false, color: platform === 'retroid'     ? 'bg-accent-500 text-white' : '' },
               { t: 'playstation' as PlatformTab, label: '🎮 PlayStation',  hideOnMobile: true,  color: platform === 'playstation' ? 'bg-accent-500 text-white' : '' },

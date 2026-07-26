@@ -211,15 +211,18 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
           isActive || isSelected ? 'bg-cream-100' : 'hover:bg-cream-100/70'
         } ${isPast ? 'opacity-50' : ''} ${overlappingIds.has(block.id) ? 'ring-1 ring-red-300' : ''}`}
       >
-        <div className="flex items-center gap-2.5 min-h-[24px]">
+        {/* The whole row is the tap target (onClick above), so it must clear
+            44px: the wrapper's py-1.5 adds 12px to this 32px line = 44 exactly,
+            which keeps the agenda dense instead of padding every row to 56. */}
+        <div className="flex items-center gap-2.5 min-h-[32px]">
           <div className="w-[86px] shrink-0 text-[11px] tabular-nums leading-tight">
             {block.allDay || block.startHour < 0 ? (
-              <span className="text-ink-400">{block.allDay ? 'All day' : 'No time'}</span>
+              <span className="text-ink-500">{block.allDay ? 'All day' : 'No time'}</span>
             ) : (
               <>
                 <span className="font-semibold text-ink-800">{hourToTimeStr(block.startHour)}</span>
-                <span className="text-ink-400">–{hourToTimeStr(block.endHour)}</span>
-                <span className="block text-[10px] text-ink-400">{formatDurationMinutes(durationMins)}</span>
+                <span className="text-ink-500">–{hourToTimeStr(block.endHour)}</span>
+                <span className="block text-[10px] text-ink-500">{formatDurationMinutes(durationMins)}</span>
               </>
             )}
           </div>
@@ -235,7 +238,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
             ) : (
               <p className="text-xs font-semibold text-ink-800 truncate leading-snug">
                 {block.title}
-                {block.recurring && <span className="ml-1.5 text-[9px] font-normal text-ink-400" title="Recurring">⟳</span>}
+                {block.recurring && <span className="ml-1.5 text-[9px] font-normal text-ink-500" title="Recurring">⟳</span>}
                 {isCal && <span className="ml-1.5 text-[9px] font-normal text-green-600" title="Google Calendar">◈</span>}
                 {taskNotes && <span className="ml-1 text-[9px] opacity-40">📝</span>}
                 {overlappingIds.has(block.id) && <span className="ml-1 text-[10px] text-red-500" title="Overlaps another block">⚠</span>}
@@ -243,17 +246,17 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
               </p>
             )}
             {isSelected && taskNotes && (
-              <p className="text-[10px] text-ink-400 mt-0.5 line-clamp-2">{taskNotes}</p>
+              <p className="text-[10px] text-ink-500 mt-0.5 line-clamp-2">{taskNotes}</p>
             )}
           </div>
           {isSelected && block.deletable && !isEditing && (
             <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
               {block.startHour >= 0 && (
-                <button onClick={postpone30m} className="text-[10px] px-1.5 min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+30m</button>
+                <button onClick={postpone30m} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+30m</button>
               )}
-              <button onClick={postpone1d} className="text-[10px] px-1.5 min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+1d</button>
-              <button onClick={() => { setEditingId(block.id); setEditTitle(block.title) }} className="text-[10px] px-1.5 min-h-[28px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">✎</button>
-              <button onClick={() => { deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }} className="text-[10px] px-1.5 min-h-[28px] rounded border border-ink-200 text-ink-400 hover:text-red-500 hover:border-red-300">✕</button>
+              <button onClick={postpone1d} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+1d</button>
+              <button onClick={() => { setEditingId(block.id); setEditTitle(block.title) }} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">✎</button>
+              <button onClick={() => { deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:text-red-500 hover:border-red-300">✕</button>
             </div>
           )}
         </div>
@@ -291,19 +294,19 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {totalBookedMin > 0 && (
-            <span className="text-[10px] text-ink-400">{formatDurationMinutes(totalBookedMin)} planned</span>
+            <span className="text-[10px] text-ink-500">{formatDurationMinutes(totalBookedMin)} planned</span>
           )}
           {calToken && (
             <button
               onClick={handleCalRefresh} disabled={calFetching} title="Sync Google Calendar"
-              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
             >
               <span className={calFetching ? 'animate-spin inline-block' : ''}>↻</span>
             </button>
           )}
           <button
             onClick={() => openAdd()}
-            className="bg-accent-500 text-white hover:bg-accent-600 min-h-[36px] px-3 rounded-full text-xs font-semibold transition-colors"
+            className="bg-accent-500 text-white hover:bg-accent-600 min-h-[44px] px-4 rounded-full text-xs font-semibold transition-colors"
           >
             + Add
           </button>
@@ -317,7 +320,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         {/* 🌙 Night — anything before 06:00 is the night, not the morning */}
         {night.length > 0 && (
           <>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-300 px-1 pt-1">🌙 Night</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500 px-1 pt-1">🌙 Night</p>
             {night.map(b => <div key={b.id}>{renderRow(b)}</div>)}
             <div className="border-t border-ink-100 my-0.5" />
           </>
@@ -335,7 +338,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         {/* Unscheduled (no start time) */}
         {unscheduled.length > 0 && (
           <>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-300 px-1 pt-1">No time set</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500 px-1 pt-1">No time set</p>
             {unscheduled.map(b => <div key={b.id}>{renderRow(b)}</div>)}
           </>
         )}
@@ -343,11 +346,11 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         {/* Empty day — quick-add chips instead of a giant empty grid */}
         {timed.length === 0 && unscheduled.length === 0 && allDayEvents.length === 0 && (
           <div className="text-center py-5">
-            <p className="text-sm text-ink-300 mb-2.5">Nothing scheduled</p>
+            <p className="text-sm text-ink-500 mb-2.5">Nothing scheduled</p>
             <div className="flex items-center justify-center gap-1.5 flex-wrap">
               {[['Morning', '09:00'], ['Afternoon', '13:00'], ['Evening', '19:00']].map(([label, t]) => (
                 <button key={t} onClick={() => openAdd(t)}
-                  className="text-[11px] px-2.5 py-1.5 rounded-lg border border-ink-200 text-ink-500 hover:border-accent-300 hover:text-accent-700 transition-colors min-h-[32px]">
+                  className="text-[11px] px-3 rounded-lg border border-ink-200 text-ink-500 hover:border-accent-300 hover:text-accent-700 transition-colors min-h-[44px]">
                   + {label} {t}
                 </button>
               ))}

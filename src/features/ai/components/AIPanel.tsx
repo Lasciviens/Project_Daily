@@ -242,8 +242,8 @@ export function AIPanel() {
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 flex-shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-ink-100 flex-shrink-0">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
             <div className="w-5 h-5 bg-accent-500 rounded-md flex items-center justify-center text-white text-[10px] font-bold">✦</div>
             <h2 className="text-sm font-semibold text-ink-800">Ask AI</h2>
             {/* Model picker: "Auto" (default) lets the server's 4-model
@@ -252,7 +252,7 @@ export function AIPanel() {
                 only sets which model the chain tries FIRST. */}
             <Listbox value={model} onChange={pickModel}>
               <div className="relative">
-                <ListboxButton className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded-full font-medium hover:bg-green-100 transition-colors min-h-[24px]">
+                <ListboxButton className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-medium hover:bg-green-100 transition-colors min-h-[44px]">
                   {AI_MODEL_OPTIONS.find(o => o.id === model)?.label ?? 'Auto'}
                   <span className="opacity-60">▾</span>
                 </ListboxButton>
@@ -274,14 +274,14 @@ export function AIPanel() {
                 training/health/nutrition JSON (see sendCoachMessage). */}
             <button
               onClick={() => setCoachMode(v => !v)}
-              title="Koç modu: PT kimliği + son 30 günün antrenman/uyku/kilo/nutrition verisi hazır bağlam olarak"
-              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium border transition-colors min-h-[24px] ${
+              title="Coach mode: PT persona + the last 30 days of training/sleep/weight/nutrition data as prepared context"
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium border transition-colors min-h-[44px] ${
                 coachMode
                   ? 'bg-orange-500 text-white border-orange-500'
                   : 'bg-cream-100 text-ink-500 border-ink-200 hover:border-orange-300'
               }`}
             >
-              🏋️ Koç
+              🏋️ Coach
             </button>
             {/* Hands-free voice chat: speak → it answers out loud → the mic
                 reopens. Hidden entirely when the browser has neither half of
@@ -294,7 +294,7 @@ export function AIPanel() {
                     ? 'Voice chat: speak your message, hear the answer, mic reopens automatically'
                     : 'Speak the answers out loud (this browser cannot listen)'}
                   aria-pressed={voiceMode}
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium border transition-colors min-h-[24px] ${
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium border transition-colors min-h-[44px] ${
                     voiceMode
                       ? 'bg-accent-500 text-white border-accent-500'
                       : 'bg-cream-100 text-ink-500 border-ink-200 hover:border-accent-300'
@@ -306,7 +306,7 @@ export function AIPanel() {
                   <button
                     onClick={() => voice.setLang(voice.lang === 'tr-TR' ? 'en-US' : 'tr-TR')}
                     title="Speech language (recognition + speaking)"
-                    className="text-[10px] px-1.5 py-0.5 rounded-full font-medium border border-ink-200 bg-cream-100 text-ink-500 hover:border-accent-300 transition-colors min-h-[24px]"
+                    className="text-[10px] px-2 py-0.5 rounded-full font-medium border border-ink-200 bg-cream-100 text-ink-500 hover:border-accent-300 transition-colors min-h-[44px]"
                   >
                     {voice.lang === 'tr-TR' ? 'TR' : 'EN'}
                   </button>

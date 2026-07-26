@@ -117,7 +117,7 @@ export function HevyPRList() {
               <button
                 type="button"
                 onClick={() => setPeekId(isOpen ? null : pr.exercise_template_id)}
-                className={`w-full flex items-center justify-between gap-2 py-1.5 min-h-[36px] px-1.5 rounded-lg text-left transition-colors ${
+                className={`w-full flex items-center justify-between gap-2 py-1.5 min-h-[44px] px-1.5 rounded-lg text-left transition-colors ${
                   isOpen ? 'bg-cream-100' : 'hover:bg-cream-50'
                 }`}
               >

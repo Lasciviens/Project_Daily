@@ -25,7 +25,7 @@ export function DailyBriefing() {
               type="button"
               onClick={() => regenerate()}
               disabled={isRefreshing}
-              title="Yeniden oluştur (yeni bir AI isteği harcar)"
+              title="Regenerate (spends a new AI request)"
               className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-400 hover:text-accent-600 disabled:opacity-40 transition-colors"
             >
               <span className={isRefreshing ? 'inline-block animate-spin' : ''}>↻</span>
@@ -34,7 +34,7 @@ export function DailyBriefing() {
           <button
             type="button"
             onClick={toggle}
-            title={collapsed ? 'Genişlet' : 'Daralt'}
+            title={collapsed ? 'Expand' : 'Collapse'}
             aria-expanded={!collapsed}
             className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-400 hover:text-accent-600 transition-colors"
           >
@@ -49,17 +49,17 @@ export function DailyBriefing() {
           <div className="h-3 rounded bg-accent-100 animate-pulse w-full" />
           <div className="h-3 rounded bg-accent-100 animate-pulse w-5/6" />
           <div className="h-3 rounded bg-accent-100 animate-pulse w-2/3" />
-          <p className="text-xs text-ink-400 pt-1">Bugünün brifingi hazırlanıyor…</p>
+          <p className="text-xs text-ink-500 pt-1">Preparing today's brief…</p>
         </div>
       ) : error ? (
         <div className="text-sm text-ink-600">
-          <p className="mb-2">Brifing oluşturulamadı: {error.message}</p>
+          <p className="mb-2">Could not generate the brief: {error.message}</p>
           <button
             type="button"
             onClick={() => regenerate()}
             className="min-h-[44px] px-3 rounded-lg bg-accent-600 text-white text-xs font-semibold hover:bg-accent-700 transition-colors"
           >
-            Tekrar dene
+            Try again
           </button>
         </div>
       ) : text ? (

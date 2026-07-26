@@ -252,10 +252,10 @@ function BottomTabBar() {
         <span className={`inline-flex items-center justify-center rounded-full px-2.5 py-0.5 transition-colors duration-200 ${moreActive ? 'bg-accent-500/15' : ''}`}>
           <MoreHorizontal size={21} strokeWidth={moreActive ? 2.25 : 1.75} />
         </span>
-        <span className={`text-[10px] leading-none ${moreActive ? 'font-semibold' : 'font-medium'}`}>Daha fazla</span>
+        <span className={`text-[10px] leading-none ${moreActive ? 'font-semibold' : 'font-medium'}`}>More</span>
       </button>
     </nav>
-    <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="Daha fazla" size="sm">
+    <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="More" size="sm">
       <div className="p-2 flex flex-col gap-0.5">
         {MORE_TABS.map(tab => {
           const Icon = tab.icon

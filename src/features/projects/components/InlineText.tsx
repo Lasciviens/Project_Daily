@@ -31,7 +31,7 @@ export function InlineText({ value, onSave, placeholder, className = '', inputCl
         title="Click to edit"
         className={`cursor-text rounded px-0.5 hover:bg-ink-100 transition-colors duration-100 ${className}`}
       >
-        {value || <span className="text-ink-300">{placeholder}</span>}
+        {value || <span className="text-ink-500">{placeholder}</span>}
       </span>
     )
   }

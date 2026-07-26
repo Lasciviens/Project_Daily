@@ -24,14 +24,14 @@ function Panel({ icon, label, children }: { icon: string; label: string; childre
     // Fixed-width snap panels — the strip scrolls; each panel is content-sized.
     // No border (the board surface owns borders) — a soft tint is enough.
     <div className="snap-start shrink-0 w-[150px] rounded-lg bg-cream-100/60 p-3 flex flex-col gap-1">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">{icon} {label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">{icon} {label}</p>
       {children}
     </div>
   )
 }
 const Big = ({ children }: { children: React.ReactNode }) => <p className="text-xl font-bold text-ink-900 leading-none tabular-nums">{children}</p>
 const Sub = ({ children }: { children: React.ReactNode }) => <p className="text-[11px] text-ink-500">{children}</p>
-const Empty = () => <p className="text-[11px] text-ink-300 py-1">No data</p>
+const Empty = () => <p className="text-[11px] text-ink-500 py-1">No data</p>
 import { useDragScroll } from '../../../../shared/hooks/useDragScroll'
 
 export function HealthCard({ date }: { date: string }) {

@@ -36,7 +36,21 @@ export function WeatherWidget() {
           </div>
         </div>
       )}
-      {error    && <div className="text-ink-400 text-sm">Unavailable</div>}
+      {/* WidgetShell's ↻ is hidden below sm: (pull-to-refresh covers mobile),
+          so a failed widget had no in-place recovery on a phone — and no
+          reason for the failure either. */}
+      {error && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-ink-500">Unavailable — {(error as Error).message || 'could not load the forecast'}</span>
+          <button
+            type="button"
+            onClick={handleManualSync}
+            className="min-h-[44px] px-3 rounded-lg border border-ink-200 text-xs font-medium text-accent-600 hover:bg-accent-50 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {geo?.source === 'default' && (
         <p className="text-[10px] text-ink-300 mb-2">

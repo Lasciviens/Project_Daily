@@ -67,7 +67,8 @@ export function MealPlanWeek() {
           onToday={() => setWeekOffset(0)}
           isToday={weekOffset === 0}
         />
-        <span className="text-xs text-ink-400">{format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d')}</span>
+        {/* en-GB day-first, per the repo date rule. */}
+        <span className="text-xs text-ink-500">{format(weekStart, 'd MMM')} – {format(weekEnd, 'd MMM')}</span>
       </div>
       {/* Legend — the plan vs what was actually eaten (the Today diary), now
           shown together so a logged day no longer looks empty here. */}
@@ -105,15 +106,18 @@ export function MealPlanWeek() {
               <div key={slot} className="rounded-2xl border border-ink-200 bg-cream-50 overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ink-100">
                   <span className="text-sm font-semibold text-ink-800 flex-1">{SLOT_LABEL[slot]}</span>
-                  <button onClick={openAdd} className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[32px] px-2 rounded-lg">+ Add</button>
+                  <button onClick={openAdd} className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[44px] px-2.5 rounded-lg">+ Add</button>
                 </div>
                 {planLabel || eaten.length > 0 ? (
                   <ul className="divide-y divide-ink-50">
                     {planLabel && (
                       <li className="flex items-center gap-1.5 px-4 py-1.5 min-h-[44px] text-sm">
-                        <button onClick={openPlan} className="flex items-center gap-2 flex-1 min-w-0 text-left min-h-[40px]">
-                          <span className="flex-1 min-w-0 truncate text-ink-400 italic">📋 {planLabel}{entry!.servings !== 1 ? ` ×${entry!.servings}` : ''}</span>
-                          <span className="text-[9px] uppercase tracking-wide text-ink-300 border border-ink-200 rounded px-1 shrink-0">planned</span>
+                        {/* No "planned" badge: 📋 + the italic muted title already
+                            encode the state, and on a phone the badge stole ~60px
+                            from the title — the planned row truncated while the
+                            eaten row below it didn't, so one meal read as two. */}
+                        <button onClick={openPlan} className="flex items-center gap-2 flex-1 min-w-0 text-left min-h-[44px]">
+                          <span className="flex-1 min-w-0 truncate text-ink-500 italic">📋 {planLabel}{entry!.servings !== 1 ? ` ×${entry!.servings}` : ''}</span>
                         </button>
                         <button onClick={() => eat.mutate(entry!)} disabled={eat.isPending} aria-label="Mark eaten" title="I ate this — count it"
                           className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
@@ -129,7 +133,7 @@ export function MealPlanWeek() {
                     ))}
                   </ul>
                 ) : (
-                  <button onClick={openPlan} className="w-full text-left px-4 py-2.5 text-xs text-ink-300 hover:text-accent-600 transition-colors">+ Plan a meal</button>
+                  <button onClick={openPlan} className="w-full flex items-center text-left px-4 min-h-[44px] text-xs text-ink-400 hover:text-accent-600 transition-colors">+ Plan a meal</button>
                 )}
               </div>
             )

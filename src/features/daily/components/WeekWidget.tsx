@@ -92,7 +92,7 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
           {calList.length > 1 && (
             <button
               onClick={() => setShowCalFilter(p => !p)}
-              className={`min-h-[28px] min-w-[28px] flex items-center justify-center text-[10px] rounded transition-colors duration-150 font-medium ${
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center text-[10px] rounded transition-colors duration-150 font-medium ${
                 showCalFilter ? 'bg-accent-100 text-accent-700' : 'text-ink-400 hover:text-ink-600'
               }`}
               title="Filter calendars"
@@ -110,7 +110,7 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
             <button
               key={cal.id}
               onClick={() => toggleCalendar(cal.id)}
-              className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border transition-colors duration-150 ${
+              className={`flex items-center gap-1 text-[10px] px-2.5 min-h-[44px] rounded-full border transition-colors duration-150 ${
                 isCalSelected(cal.id)
                   ? 'bg-green-50 border-green-200 text-green-700'
                   : 'bg-ink-50 border-ink-200 text-ink-400'
@@ -125,8 +125,10 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
 
       {/* Date range + completion bar */}
       <div className="flex items-center justify-between mb-3">
+        {/* en-GB (day-first) — the repo's date rule; this card owns the label,
+            the Week tab around it no longer prints its own copy. */}
         <p className="text-[10px] text-ink-400">
-          {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
+          {format(weekStart, 'd MMM')} – {format(weekEnd, 'd MMM yyyy')}
         </p>
         {totalTasks > 0 && (
           <div className="flex items-center gap-1.5">

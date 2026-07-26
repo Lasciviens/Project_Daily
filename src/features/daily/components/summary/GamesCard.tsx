@@ -17,7 +17,7 @@ export function GamesCard({ date }: { date: string }) {
       <CellHeader icon="🎮" title="Play next" action={<CellLink to="/games">Queue →</CellLink>} />
 
       {isError || top.length === 0 ? (
-        <Link to="/games" className="text-xs text-accent-600 hover:text-accent-700 py-1.5">
+        <Link to="/games" className="text-xs text-accent-600 hover:text-accent-700 min-h-[44px] flex items-center">
           {isError ? 'Games library unavailable' : 'Play queue is empty — add games →'}
         </Link>
       ) : (
@@ -31,13 +31,13 @@ export function GamesCard({ date }: { date: string }) {
               )}
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ink-800 truncate">
-                  <span className="text-ink-300 font-normal mr-1">{i + 1}.</span>{g.title}
+                  <span className="text-ink-500 font-normal mr-1">{i + 1}.</span>{g.title}
                 </p>
-                {g.series_name && <p className="text-[10px] text-ink-400 truncate">{g.series_name}</p>}
+                {g.series_name && <p className="text-[10px] text-ink-500 truncate">{g.series_name}</p>}
               </div>
               <button
                 onClick={() => setPlanning(g)}
-                className="text-[11px] px-2 py-1 rounded-lg border border-purple-300 text-purple-700 hover:bg-purple-50 transition-colors shrink-0 min-h-[28px]"
+                className="text-[11px] px-2.5 rounded-lg border border-purple-300 text-purple-700 hover:bg-purple-50 transition-colors shrink-0 min-h-[44px]"
               >
                 📅 Plan
               </button>

@@ -45,7 +45,7 @@ export function OnlineFoodSearch({ initialQuery = '', onPick }: {
     } finally { setLoading(false) }
   }
 
-  const inputCls = 'min-h-[40px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
+  const inputCls = 'min-h-[44px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
 
   return (
     <div className="flex flex-col gap-2">
@@ -55,7 +55,7 @@ export function OnlineFoodSearch({ initialQuery = '', onPick }: {
           placeholder="Search online (e.g. chicken breast, gresham peanut butter)…"
           className={`flex-1 min-w-0 ${inputCls}`} autoFocus />
         <button type="button" onClick={run} disabled={loading || !query.trim()}
-          className="shrink-0 min-h-[40px] px-3 rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
+          className="shrink-0 min-h-[44px] px-3 rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
           {loading ? '…' : 'Search'}
         </button>
       </div>
