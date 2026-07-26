@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useUIStore, toast } from '../../../app/store'
 import { sendMessage, sendCoachMessage, AI_MODEL_OPTIONS } from '../api/aiApi'
 import type { Message, AIModel } from '../api/aiApi'
+import { useVoiceChat } from '../hooks/useVoiceChat'
 import { fileToCompactDataUrl } from '../../../shared/utils/image'
 
 // The AI performs real DB writes server-side (ai-proxy's db_insert/update/
@@ -78,9 +79,27 @@ export function AIPanel() {
   // Attached photos (compact JPEG data URLs) sent with the next message —
   // Gemini reads them natively (meal/label photos etc.). Capped at 3.
   const [pendingImages, setPendingImages] = useState<string[]>([])
+  // Hands-free voice chat: the reply is spoken aloud and the mic reopens when
+  // it finishes, so speak → answer → speak again is one continuous loop.
+  const [voiceMode, setVoiceMode] = useState(false)
+  const [interim,   setInterim]   = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
   const fileRef   = useRef<HTMLInputElement>(null)
+  // handleSend/voiceMode change every render; the speech handlers live outside
+  // React's render cycle, so they read the latest value through refs.
+  const sendRef      = useRef<(t: string) => void>(() => {})
+  const voiceModeRef = useRef(false)
+
+  const voice = useVoiceChat({
+    onFinalTranscript: (text) => {
+      // In voice mode a finished utterance IS the message; otherwise it just
+      // dictates into the box so the user can edit before sending.
+      if (voiceModeRef.current) sendRef.current(text)
+      else setInput(prev => (prev.trim() ? prev.trim() + ' ' : '') + text)
+    },
+    onInterim: setInterim,
+  })
 
   async function addImages(files: File[] | FileList | null) {
     if (!files?.length) return
@@ -113,6 +132,50 @@ export function AIPanel() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch { /* quota */ }
   }, [messages])
 
+  // Refreshed every render (no dep array) so the speech callbacks above always
+  // see the current conversation and voice-mode state. A closed panel counts as
+  // voice-off, so the speak→listen loop can never continue behind the user.
+  useEffect(() => {
+    sendRef.current = (t: string) => { void handleSend(t) }
+    voiceModeRef.current = voiceMode && isAIOpen
+  })
+
+  // Safety net for any close path that doesn't go through handleClose: stop the
+  // hardware only (no setState — this is exactly the "sync an external system"
+  // an effect is for). Depends on the two STABLE callbacks, not the `voice`
+  // object, which is rebuilt every render and would re-run this endlessly.
+  const { stopListening: voiceStop, cancelSpeak: voiceHush } = voice
+  useEffect(() => {
+    if (isAIOpen) return
+    voiceStop()
+    voiceHush()
+  }, [isAIOpen, voiceStop, voiceHush])
+
+  function handleClose() {
+    voiceModeRef.current = false
+    setVoiceMode(false)
+    setInterim('')
+    voiceStop()
+    voiceHush()
+    closeAI()
+  }
+
+  function toggleVoiceMode() {
+    const next = !voiceMode
+    setVoiceMode(next)
+    voiceModeRef.current = next
+    if (next) {
+      // Must happen inside this tap: iOS only allows speech synthesis that a
+      // real user gesture unlocked, and the reply is spoken much later.
+      voice.primeAudio()
+      if (voice.sttSupported) voice.startListening()
+    } else {
+      voice.cancelSpeak()
+      voice.stopListening()
+      setInterim('')
+    }
+  }
+
   function pickModel(next: AIModel) {
     setModel(next)
     try { localStorage.setItem(MODEL_KEY, next) } catch { /* quota */ }
@@ -135,6 +198,12 @@ export function AIPanel() {
       setMessages(m => [...m, { role: 'assistant', content: reply.text, steps: reply.steps, model: reply.model }])
       // The turn may have written to the DB — refresh every AI-writable view.
       for (const key of AI_WRITE_NAMESPACES) qc.invalidateQueries({ queryKey: key })
+      // Voice mode: read the answer out, then hand the mic back for the next
+      // turn. Re-checking the ref in the callback means switching voice off
+      // mid-sentence ends the loop instead of reopening the mic.
+      if (voiceModeRef.current && reply.text) {
+        voice.speak(reply.text, () => { if (voiceModeRef.current) voice.startListening() })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
@@ -152,7 +221,7 @@ export function AIPanel() {
   return (
     <>
       {isAIOpen && (
-        <div className="fixed inset-0 z-40 bg-ink-950/10" onClick={closeAI} />
+        <div className="fixed inset-0 z-40 bg-ink-950/10" onClick={handleClose} />
       )}
 
       <div
@@ -214,6 +283,36 @@ export function AIPanel() {
             >
               🏋️ Koç
             </button>
+            {/* Hands-free voice chat: speak → it answers out loud → the mic
+                reopens. Hidden entirely when the browser has neither half of
+                the Web Speech API. */}
+            {(voice.sttSupported || voice.ttsSupported) && (
+              <>
+                <button
+                  onClick={toggleVoiceMode}
+                  title={voice.sttSupported
+                    ? 'Voice chat: speak your message, hear the answer, mic reopens automatically'
+                    : 'Speak the answers out loud (this browser cannot listen)'}
+                  aria-pressed={voiceMode}
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium border transition-colors min-h-[24px] ${
+                    voiceMode
+                      ? 'bg-accent-500 text-white border-accent-500'
+                      : 'bg-cream-100 text-ink-500 border-ink-200 hover:border-accent-300'
+                  }`}
+                >
+                  {voiceMode ? '🔊 Voice' : '🎙 Voice'}
+                </button>
+                {voiceMode && (
+                  <button
+                    onClick={() => voice.setLang(voice.lang === 'tr-TR' ? 'en-US' : 'tr-TR')}
+                    title="Speech language (recognition + speaking)"
+                    className="text-[10px] px-1.5 py-0.5 rounded-full font-medium border border-ink-200 bg-cream-100 text-ink-500 hover:border-accent-300 transition-colors min-h-[24px]"
+                  >
+                    {voice.lang === 'tr-TR' ? 'TR' : 'EN'}
+                  </button>
+                )}
+              </>
+            )}
           </div>
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
@@ -225,7 +324,7 @@ export function AIPanel() {
               </button>
             )}
             <button
-              onClick={closeAI}
+              onClick={handleClose}
               className="w-11 h-11 flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
             >
               ×
@@ -332,6 +431,22 @@ export function AIPanel() {
               ))}
             </div>
           )}
+          {/* Live voice status — what is being heard, or that a reply is being
+              spoken, each with a one-tap way out. */}
+          {(voice.listening || voice.speaking) && (
+            <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-accent-50 border border-accent-200">
+              <span className={`w-2 h-2 rounded-full bg-accent-500 shrink-0 ${voice.listening ? 'animate-pulse' : ''}`} />
+              <span className="text-xs text-ink-700 flex-1 min-w-0 truncate">
+                {voice.listening ? (interim || 'Listening…') : 'Speaking…'}
+              </span>
+              <button
+                onClick={() => { voice.stopListening(); voice.cancelSpeak() }}
+                className="text-[11px] font-medium text-accent-700 hover:text-accent-800 min-h-[28px] px-1.5 shrink-0"
+              >
+                Stop
+              </button>
+            </div>
+          )}
           <div className="flex items-end gap-2">
             <input
               ref={fileRef}
@@ -350,6 +465,24 @@ export function AIPanel() {
             >
               📷
             </button>
+            {/* Push-to-talk dictation — outside voice mode this just fills the
+                box so the text can be edited before sending. */}
+            {voice.sttSupported && (
+              <button
+                onClick={voice.toggleListening}
+                disabled={loading}
+                title={voice.listening ? 'Stop listening' : 'Dictate a message'}
+                aria-label={voice.listening ? 'Stop listening' : 'Dictate a message'}
+                aria-pressed={voice.listening}
+                className={`flex-shrink-0 w-11 h-11 rounded-lg border flex items-center justify-center transition-colors duration-150 text-lg disabled:opacity-40 ${
+                  voice.listening
+                    ? 'bg-accent-500 border-accent-500 text-white animate-pulse'
+                    : 'border-ink-200 text-ink-500 hover:bg-cream-100'
+                }`}
+              >
+                🎤
+              </button>
+            )}
             <textarea
               ref={inputRef}
               value={input}
