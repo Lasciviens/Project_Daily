@@ -51,7 +51,7 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
   const plannedMin = blocks.reduce((a, b) => a + (b.duration_minutes ?? 0), 0)
   const plannedH = Math.round((plannedMin / 60) * 10) / 10
 
-  const actionBtn = 'flex items-center gap-2 rounded-lg border border-ink-200 bg-cream-50 px-3 min-h-[40px] text-xs font-medium text-ink-700 hover:border-accent-300 hover:text-accent-700 transition-colors'
+  const actionBtn = 'flex items-center gap-2 rounded-lg border border-ink-200 bg-cream-50 px-3 min-h-[44px] text-xs font-medium text-ink-700 hover:border-accent-300 hover:text-accent-700 transition-colors'
 
   return (
     <aside className="hidden xl:flex flex-col gap-4 rounded-2xl border border-ink-200 bg-ink-100/40 p-4">
@@ -96,7 +96,7 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
         <div className="flex items-center justify-between mb-2">
           <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400">Open tasks</p>
           {onOpenTasks && (
-            <button onClick={onOpenTasks} className="text-[11px] text-accent-600 hover:text-accent-700 font-medium min-h-[32px] px-1">
+            <button onClick={onOpenTasks} className="text-[11px] text-accent-600 hover:text-accent-700 font-medium min-h-[44px] px-1.5">
               All →
             </button>
           )}
@@ -107,7 +107,7 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
           <div className="flex flex-col gap-1 overflow-y-auto">
             {openTaskList.slice(0, 5).map(t => <ToDoItem key={t.id} task={t} />)}
             {openTaskList.length > 5 && (
-              <button onClick={onOpenTasks} className="text-[11px] text-ink-400 hover:text-ink-700 text-left px-1 min-h-[32px]">
+              <button onClick={onOpenTasks} className="text-[11px] text-ink-500 hover:text-ink-700 text-left px-1 min-h-[44px]">
                 +{openTaskList.length - 5} more…
               </button>
             )}

@@ -17,7 +17,7 @@ function Section({ title, tasks, tone }: { title: string; tasks: Task[]; tone: s
     <div className="mb-4">
       <h3 className={`text-xs font-semibold uppercase tracking-wide mb-1.5 flex items-center gap-1.5 ${tone}`}>
         {title}
-        <span className="text-ink-300 tabular-nums font-normal">{tasks.length}</span>
+        <span className="text-ink-500 tabular-nums font-normal">{tasks.length}</span>
       </h3>
       <div className="flex flex-col gap-1">
         {tasks.map(t => <ToDoItem key={t.id} task={t} />)}
@@ -61,7 +61,7 @@ export function TasksPanel() {
       <Section title="⚠ Overdue"   tasks={g.overdue}  tone="text-red-500" />
       <Section title="Today"        tasks={g.today}    tone="text-accent-600" />
       <Section title="Upcoming"     tasks={g.upcoming} tone="text-ink-500" />
-      <Section title="No date"      tasks={g.noDate}   tone="text-ink-400" />
+      <Section title="No date"      tasks={g.noDate}   tone="text-ink-500" />
       <Section title="Recently done" tasks={g.done}    tone="text-green-600" />
     </div>
   )

@@ -2,6 +2,9 @@ interface Props {
   protein: number | null   // grams
   carbs:   number | null   // grams
   fat:     number | null   // grams
+  /** Callers that already print the same split in grams next to the bar pass
+   *  false — otherwise the percentages read as a duplicated macro row. */
+  showLegend?: boolean
 }
 
 const SEGMENTS = [
@@ -15,7 +18,7 @@ const SEGMENTS = [
  * from protein/carbs/fat (standard 4/4/9 kcal-per-gram conversion) — a more
  * visual read than three separate number badges.
  */
-export function MacroBar({ protein, carbs, fat }: Props) {
+export function MacroBar({ protein, carbs, fat, showLegend = true }: Props) {
   const grams = { protein: protein ?? 0, carbs: carbs ?? 0, fat: fat ?? 0 }
   const kcal  = {
     protein: grams.protein * 4,
@@ -34,18 +37,20 @@ export function MacroBar({ protein, carbs, fat }: Props) {
           return <div key={seg.key} className={seg.color} style={{ width: `${pct}%` }} />
         })}
       </div>
-      <div className="flex items-center gap-3 mt-1.5">
-        {SEGMENTS.map(seg => {
-          const pct = Math.round((kcal[seg.key] / total) * 100)
-          if (pct <= 0) return null
-          return (
-            <span key={seg.key} className="flex items-center gap-1 text-[10px] text-ink-500">
-              <span className={`w-1.5 h-1.5 rounded-full ${seg.color}`} />
-              {seg.label} {pct}%
-            </span>
-          )
-        })}
-      </div>
+      {showLegend && (
+        <div className="flex items-center gap-3 mt-1.5">
+          {SEGMENTS.map(seg => {
+            const pct = Math.round((kcal[seg.key] / total) * 100)
+            if (pct <= 0) return null
+            return (
+              <span key={seg.key} className="flex items-center gap-1 text-[10px] text-ink-500">
+                <span className={`w-1.5 h-1.5 rounded-full ${seg.color}`} />
+                {seg.label} {pct}%
+              </span>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

@@ -77,9 +77,10 @@ curl -H "Authorization: Bearer $T" "https://health.googleapis.com/v4/users/me/da
 # last night's sleep (run the morning after wearing it overnight)
 curl -H "Authorization: Bearer $T" "https://health.googleapis.com/v4/users/me/dataTypes/sleep/dataPoints?filter=sleep.interval.civil_end_time%20%3E%3D%20%222026-07-21%22"
 ```
-(If `heartRate`'s filter token differs, try `heart_rate` vs `heartRate` in the
-filter string — the path segment is the camelCase union field name; note which
-works and record it here.)
+**Casing rule (confirmed — this is what the shipped poller uses):** **path ids are
+kebab-case, filter tokens are snake_case, JSON union fields are camelCase — three
+casings, one API.** `heart_rate.interval.start_time` is the working filter token for
+the `heart-rate` path.
 
 
 ---
@@ -156,6 +157,12 @@ the list filter grammar has no dataSource field.)
    need the rollUp endpoint for HR instead).
 6. `oxygen-saturation`/`daily-oxygen-saturation` both 200 but EMPTY pre-first-night —
    re-pull after a full night to settle the minmaxavg-vs-latest question (§11).
+7. **SHIPPED:** HR is ingested as **per-hour Min/Avg/Max at ingest** (matching the
+   Apple `minmaxavg` value shape), not raw per-sample rows — item 5's decision, made.
+8. **STILL OPEN:** SpO2 ships a **dual-path A/B** — `oxygen-saturation` samples →
+   hourly Min/Avg/Max, else the `daily-oxygen-saturation` summary — with an
+   `oxygen_saturation_source` counter in the poller's response. The
+   samples-vs-daily question stays honestly open until a night of Air data settles it.
 
 ## Mirroring root cause + filter stance (2026-07-21, PM-ratified)
 The HEALTH_KIT mirror exists because the **Google Health iOS app** holds Apple

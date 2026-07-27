@@ -15,7 +15,7 @@ export function Cell({ children }: { children: ReactNode }) {
 
 export function CellHeader({ icon, title, action }: { icon: string; title: string; action?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-2 min-h-[28px]">
+    <div className="flex items-center justify-between gap-2 min-h-[44px]">
       <h3 className="flex items-center gap-2 text-[13px] font-semibold text-ink-800">
         <span className="w-6 h-6 rounded-md bg-ink-100/60 grid place-items-center text-[13px] leading-none">{icon}</span>
         {title}
@@ -26,12 +26,13 @@ export function CellHeader({ icon, title, action }: { icon: string; title: strin
 }
 
 // Quiet link-out — deliberately ink, not accent (the accent is budgeted for
-// primary actions and "now" states, not navigation).
+// primary actions and "now" states, not navigation). ink-500 is the floor for
+// text/icon controls: ink-400 measures 2.46:1 on cream, below the 4.5:1 rule.
 export function CellLink({ to, children }: { to: string; children: ReactNode }) {
   return (
     <Link
       to={to}
-      className="text-[11px] font-medium text-ink-400 hover:text-accent-600 min-h-[28px] px-1 flex items-center transition-colors shrink-0"
+      className="text-[11px] font-medium text-ink-500 hover:text-accent-600 min-h-[44px] px-1.5 flex items-center transition-colors shrink-0"
     >
       {children}
     </Link>

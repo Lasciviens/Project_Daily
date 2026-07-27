@@ -31,9 +31,12 @@ export function DateNav({
   size?: 'sm' | 'md'
   labelClassName?: string
 }) {
+  // Hit box grows to the 44px minimum; the GLYPH scale (text-base / text-sm)
+  // is untouched, so nothing looks bigger — only the tappable area is. `sm`
+  // keeps a narrower 36px width so compact widget headers still fit their row.
   const btn = size === 'md'
-    ? 'min-h-[36px] min-w-[36px] text-base'
-    : 'min-h-[28px] min-w-[28px] text-sm'
+    ? 'min-h-[44px] min-w-[44px] text-base'
+    : 'min-h-[44px] min-w-[36px] text-sm'
   const lbl = labelClassName ?? (size === 'md'
     ? 'text-sm font-semibold text-ink-800 min-w-[130px]'
     : 'text-xs font-semibold text-ink-700 min-w-[92px]')
@@ -42,12 +45,12 @@ export function DateNav({
     <div className="flex items-center gap-1">
       <button
         type="button" onClick={onPrev} disabled={!canGoPrev} aria-label="Previous"
-        className={`${btn} flex items-center justify-center rounded-md text-ink-400 hover:text-ink-800 hover:bg-cream-100 disabled:opacity-30 disabled:hover:bg-transparent`}
+        className={`${btn} flex items-center justify-center rounded-md text-ink-500 hover:text-ink-800 hover:bg-cream-100 disabled:opacity-30 disabled:hover:bg-transparent`}
       >‹</button>
       <span className={`${lbl} text-center`}>{label}</span>
       <button
         type="button" onClick={onNext} disabled={!canGoNext} aria-label="Next"
-        className={`${btn} flex items-center justify-center rounded-md text-ink-400 hover:text-ink-800 hover:bg-cream-100 disabled:opacity-30 disabled:hover:bg-transparent`}
+        className={`${btn} flex items-center justify-center rounded-md text-ink-500 hover:text-ink-800 hover:bg-cream-100 disabled:opacity-30 disabled:hover:bg-transparent`}
       >›</button>
       {onToday && !isToday && (
         <button
@@ -55,13 +58,17 @@ export function DateNav({
           className={`${btn} px-2 w-auto text-[11px] font-medium text-accent-600 hover:text-accent-800 rounded-md hover:bg-accent-50`}
         >Today</button>
       )}
+      {/* 76px clipped DD/MM/YYYY to "26/07/202" on a phone: DateInput is a text
+          input, and the app-wide iOS anti-zoom rule forces every text-entry
+          control to 16px on a coarse pointer, which needs ~92px. Widen the box
+          — never shrink the font, that re-arms the zoom bug. */}
       {pickerValue !== undefined && onPick && (
         <DateInput
           value={pickerValue}
           max={pickerMax}
           onChange={v => v && onPick(pickerMax && v > pickerMax ? pickerMax : v)}
           aria-label="Jump to date"
-          className="min-h-[28px] w-[76px] px-1 text-[11px] text-ink-500 border border-ink-100 rounded-md bg-transparent"
+          className="min-h-[44px] w-[104px] sm:w-[76px] px-1 text-[11px] text-ink-500 border border-ink-100 rounded-md bg-transparent"
         />
       )}
     </div>

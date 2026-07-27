@@ -1,4 +1,5 @@
 import { ComposedChart, Bar, Line, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { compactAxisTick } from './axisFormat'
 
 // Canonical Health-tab chart style — translucent bar + connecting line with
 // dots on top, same color. Established with Body's weight/fat/BMI charts;
@@ -49,7 +50,7 @@ function makeTooltipContent(unit: string, onPointClick?: (point: ChartPoint) => 
           <button
             type="button"
             onClick={() => onPointClick(rawPoint)}
-            className="text-accent-600 underline text-xs py-1.5 block min-h-[32px]"
+            className="text-accent-600 underline text-xs py-1.5 flex items-center min-h-[44px]"
           >
             Go to this day →
           </button>
@@ -77,10 +78,12 @@ export function BarLineChart({
   return (
     <div style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+        <ComposedChart data={data} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
           <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
-          <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
+          {/* width/margin: 2-digit bpm ticks fitted by luck — a 3-digit or
+              4-digit axis clipped to slivers of glyphs. See axisFormat.ts. */}
+          <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} domain={['auto', 'auto']} />
           {/* Hover trigger (default): per explicit user request, the value
               must appear the moment the pointer is over a point — no click
               needed. On touch, the first tap acts as hover and still shows

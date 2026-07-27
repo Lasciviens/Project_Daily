@@ -379,7 +379,7 @@ export function WorkedMuscles() {
           )}
         </div>
 
-        <div className="relative w-full flex justify-center rounded-2xl bg-gradient-to-b from-ink-800 to-ink-950 p-5">
+        <div className="relative w-full flex justify-center rounded-2xl bg-gradient-to-b from-ink-800 to-ink-950 p-3 sm:p-5">
           {isLoading && (
             <div className="absolute inset-0 z-10 rounded-2xl bg-ink-900/60 flex items-center justify-center">
               <span className="flex items-center gap-2 text-xs text-ink-200">
@@ -388,7 +388,11 @@ export function WorkedMuscles() {
               </span>
             </div>
           )}
-          <div className="w-full max-w-[340px] [&>svg]:w-full [&>svg]:h-auto">
+          {/* The body SVG is ~1:2.5, so a full-width 340px box renders ~850px
+              tall — taller than the usable phone viewport, pushing every stat,
+              the legend and the under-dosed list a full swipe below the fold.
+              Capped narrower below sm; desktop keeps the original size. */}
+          <div className="w-full max-w-[220px] sm:max-w-[340px] [&>svg]:w-full [&>svg]:h-auto">
             <Body data={bodyData} side={side} gender="male" scale={1} defaultFill={UNTRAINED_COLOR} border="#ffffff1f" onBodyPartPress={(part) => toggle(part.slug)} />
           </div>
         </div>
@@ -453,9 +457,9 @@ export function WorkedMuscles() {
 
         {period === 'custom' && (
           <div className="flex items-center gap-2 flex-wrap text-xs text-ink-500">
-            <DateInput value={customFrom} max={anchorDay} onChange={setCustomFrom} className="min-h-[40px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50" />
+            <DateInput value={customFrom} max={anchorDay} onChange={setCustomFrom} className="min-h-[44px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50" />
             <span>→</span>
-            <DateInput value={customTo} max={anchorDay} onChange={setCustomTo} className="min-h-[40px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50" />
+            <DateInput value={customTo} max={anchorDay} onChange={setCustomTo} className="min-h-[44px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50" />
             {!customValid && <span className="text-ink-400">pick a start & end date</span>}
           </div>
         )}
@@ -600,7 +604,7 @@ export function WorkedMuscles() {
                                   ? { onMouseEnter: () => setPeek(key), onMouseLeave: () => setPeek(p => (p === key ? null : p)) }
                                   : { onClick: () => setPeek(p => (p === key ? null : key)) })}
                                 className="rounded-lg hover:bg-cream-100 transition-colors cursor-pointer">
-                                <div className="flex items-center justify-between gap-2 text-sm px-1 py-1 min-h-[36px]">
+                                <div className="flex items-center justify-between gap-2 text-sm px-1 py-1 min-h-[44px]">
                                   <span className="flex items-center gap-1.5 min-w-0">
                                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${ROLE_BADGE[hit.role]}`}>{ROLE_LABEL[hit.role]}</span>
                                     <span className="text-ink-700 truncate">{name}</span>

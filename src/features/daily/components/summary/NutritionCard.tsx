@@ -70,7 +70,7 @@ function CalorieRing({ consumed, target }: { consumed: number; target: number })
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-base font-bold text-ink-900 leading-none">{remaining}</span>
-        <span className="text-[9px] text-ink-400 mt-0.5">{over ? 'over' : 'left'}</span>
+        <span className="text-[9px] text-ink-500 mt-0.5">{over ? 'over' : 'left'}</span>
       </div>
     </div>
   )
@@ -124,29 +124,32 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
   }
 
   return (
-    <li className="text-xs min-h-[28px]">
+    <li className="text-xs">
       {meals.length > 0 ? (
         <div className="flex flex-col gap-0.5">
           {meals.map((meal, i) => (
-            <div key={meal.id} className="flex items-center gap-2 min-h-[28px]">
-              <span className={`w-[4.5rem] shrink-0 flex items-center gap-1 ${isNow ? 'text-accent-700 font-semibold' : 'text-ink-400'}`}>
+            <div key={meal.id} className="flex items-center gap-1 min-h-[44px]">
+              <span className={`w-[4.5rem] shrink-0 flex items-center gap-1 ${isNow ? 'text-accent-700 font-semibold' : 'text-ink-500'}`}>
                 {i === 0 && <><span className="leading-none">{icon}</span>{label}{isNow && <span className="text-[9px] font-normal text-accent-500">·now</span>}</>}
               </span>
               <span className="text-ink-700 flex-1 truncate">{meal.title}</span>
-              {meal.calories > 0 && <span className="text-ink-400 shrink-0">{meal.calories} kcal</span>}
+              {meal.calories > 0 && <span className="text-ink-500 shrink-0 pr-1">{meal.calories} kcal</span>}
               {meal.source === 'plan' && meal.planEntry && (
                 <button onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
                   title="I ate this — count it" aria-label="Mark eaten"
-                  className="text-green-600 hover:bg-green-50 rounded-full min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0 disabled:opacity-50">✓</button>
+                  className="text-green-600 hover:bg-green-50 rounded-full min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 disabled:opacity-50">✓</button>
               )}
               <button
                 onClick={() => meal.source === 'plan' ? setEditPlan(meal.planEntry!) : setEditLog(meal)}
-                className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
+                className="text-ink-500 hover:text-accent-600 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0"
                 title={meal.source === 'plan' ? 'Edit planned meal' : 'Edit logged food (amount / macros)'}
               >✎</button>
+              {/* Three 44px targets + the slot label leave ~90px for the title on
+                  a 393px phone, so ✕ is desktop-only: both editors this row opens
+                  (EditFoodLogModal / AssignMealModal) already carry Delete. */}
               <button
                 onClick={() => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)}
-                className="text-ink-300 hover:text-red-500 min-w-[24px] min-h-[28px] flex items-center justify-center shrink-0"
+                className="hidden sm:flex text-ink-500 hover:text-red-500 min-w-[44px] min-h-[44px] items-center justify-center shrink-0"
                 aria-label={`Remove ${meal.title}`}
               >✕</button>
             </div>
@@ -154,8 +157,8 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-2">
-            <span className={`w-[4.5rem] shrink-0 flex items-center gap-1 ${isNow ? 'text-accent-700 font-semibold' : 'text-ink-400'}`}>
+          <div className="flex items-center gap-1 min-h-[44px]">
+            <span className={`w-[4.5rem] shrink-0 flex items-center gap-1 ${isNow ? 'text-accent-700 font-semibold' : 'text-ink-500'}`}>
               <span className="leading-none">{icon}</span>{label}{isNow && <span className="text-[9px] font-normal text-accent-500">·now</span>}
             </span>
             {adding ? (
@@ -164,18 +167,18 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
                 onKeyDown={e => { if (e.key === 'Enter') save(text); if (e.key === 'Escape') reset() }}
                 onBlur={() => { if (!text.trim()) reset() }}
                 placeholder="Type a food…"
-                className="flex-1 min-w-0 px-2 py-1 rounded-md border border-accent-300 bg-cream-50 focus:outline-none focus:ring-1 focus:ring-accent-400 min-h-[28px]"
+                className="flex-1 min-w-0 px-2 py-1 rounded-md border border-accent-300 bg-cream-50 focus:outline-none focus:ring-1 focus:ring-accent-400 min-h-[44px]"
               />
             ) : (
               <button
                 onClick={() => setAdding(true)}
-                className="flex-1 text-left text-ink-300 hover:text-accent-600 transition-colors min-h-[28px]"
+                className="flex-1 text-left text-ink-500 hover:text-accent-600 transition-colors min-h-[44px]"
               >+ add</button>
             )}
             {adding && (
               <button
                 onClick={() => { setLogQuery(text.trim()); setLogOpen(true); reset() }}
-                className="text-ink-300 hover:text-accent-600 min-w-[24px] min-h-[28px] shrink-0"
+                className="text-ink-500 hover:text-accent-600 min-w-[44px] min-h-[44px] shrink-0"
                 title="Build a meal (pick ingredients, grams, macros)"
               >⋯</button>
             )}
@@ -184,8 +187,8 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
             <div className="flex flex-wrap gap-1 mt-1 pl-[4.5rem]">
               {recent.slice(0, 5).map(r => (
                 <button key={r.key} onClick={() => reLog(r)}
-                  className="px-2 py-0.5 rounded-full border border-ink-200 text-[10px] text-ink-600 hover:border-accent-300 min-h-[24px]">
-                  {r.title}{r.protein_g != null && r.protein_g > 0 && <span className="text-ink-400"> · {Math.round(r.protein_g)}p</span>}
+                  className="px-2.5 rounded-full border border-ink-200 text-[10px] text-ink-600 hover:border-accent-300 min-h-[44px]">
+                  {r.title}{r.protein_g != null && r.protein_g > 0 && <span className="text-ink-500"> · {Math.round(r.protein_g)}p</span>}
                 </button>
               ))}
             </div>
@@ -215,7 +218,7 @@ function GoalStepper({ value, step, onChange, suffix }: {
   value: number; step: number; onChange: (v: number) => void; suffix: string
 }) {
   const set = (v: number) => onChange(Math.max(0, v))
-  const btn = 'w-9 h-9 min-h-[36px] rounded-lg border border-ink-200 text-ink-600 hover:border-accent-300 hover:text-accent-600 flex items-center justify-center text-lg leading-none transition-colors select-none'
+  const btn = 'w-11 h-11 min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:border-accent-300 hover:text-accent-600 flex items-center justify-center text-lg leading-none transition-colors select-none'
   return (
     <div className="flex items-center gap-1">
       <button type="button" aria-label={`−${step}`} onClick={() => set(value - step)} className={btn}>−</button>
@@ -223,9 +226,9 @@ function GoalStepper({ value, step, onChange, suffix }: {
         <input
           type="number" value={value} min={0} step={step}
           onChange={e => set(Number(e.target.value) || 0)}
-          className="input w-24 text-sm py-1 text-center pr-9 tabular-nums"
+          className="input w-24 text-sm py-1 text-center pr-9 tabular-nums min-h-[44px]"
         />
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-ink-400 pointer-events-none">{suffix}</span>
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-ink-500 pointer-events-none">{suffix}</span>
       </div>
       <button type="button" aria-label={`+${step}`} onClick={() => set(value + step)} className={btn}>+</button>
     </div>
@@ -269,7 +272,7 @@ export function NutritionCard({ date }: { date: string }) {
         action={
           <div className="flex items-center gap-0.5 shrink-0">
             <button onClick={() => setLogOpen(true)}
-              className="text-[11px] font-semibold text-accent-600 hover:text-accent-700 min-h-[28px] px-1.5 rounded transition-colors"
+              className="text-[11px] font-semibold text-accent-600 hover:text-accent-700 min-h-[44px] px-2 rounded transition-colors"
               title="Log food — pick ingredients from your library, grams, done">
               + Log
             </button>
@@ -292,7 +295,7 @@ export function NutritionCard({ date }: { date: string }) {
             <div className="flex gap-1">
               {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
                 <button key={g} onClick={() => update({ goal: g })}
-                  className={`text-[11px] px-2 min-h-[28px] rounded-full border transition-colors ${
+                  className={`text-[11px] px-3 min-h-[44px] rounded-full border transition-colors ${
                     targets.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
                   }`}>{GOAL_LABEL[g]}</button>
               ))}
@@ -317,23 +320,23 @@ export function NutritionCard({ date }: { date: string }) {
 
           {/* Bodyweight-based protein suggestion (real latest weight) */}
           {coach.weightKg == null ? (
-            <p className="text-[10px] text-ink-400 px-0.5">Sync or add a bodyweight (Training → Body) to get protein &amp; calorie suggestions.</p>
+            <p className="text-[10px] text-ink-500 px-0.5">Sync or add a bodyweight (Training → Body) to get protein &amp; calorie suggestions.</p>
           ) : coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? (
             <button onClick={() => update({ protein: coach.proteinForGoal! })}
-              className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
+              className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
               <span className="text-ink-600">
                 Suggested <strong className="text-accent-700">{coach.proteinForGoal}g</strong> protein
-                <span className="text-ink-400"> · {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span>
+                <span className="text-ink-500"> · {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span>
               </span>
               <span className="text-accent-600 font-semibold shrink-0">Apply</span>
             </button>
           ) : coach.proteinForGoal != null ? (
-            <p className="text-[10px] text-ink-400 px-0.5">✓ Protein on target ({(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg).</p>
+            <p className="text-[10px] text-ink-500 px-0.5">✓ Protein on target ({(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg).</p>
           ) : null}
 
           {/* Fat floor — only on a cut (hormonal-health minimum) */}
           {coach.fatFloorG != null && (
-            <p className="text-[10px] text-ink-400 px-0.5">Keep fat ≥ ~{coach.fatFloorG}g/day on a cut (hormonal health).</p>
+            <p className="text-[10px] text-ink-500 px-0.5">Keep fat ≥ ~{coach.fatFloorG}g/day on a cut (hormonal health).</p>
           )}
 
           {/* Adaptive calorie coaching — gated on intake logging AND weight-signal
@@ -341,10 +344,10 @@ export function NutritionCard({ date }: { date: string }) {
           {coach.weightKg != null && (
             coach.calorieAdvice ? (
               <button onClick={() => update({ calories: Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), lastCalorieAdjust: todayStr() })}
-                className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[36px] hover:bg-accent-50 transition-colors">
+                className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
                 <span className="text-ink-600">
                   <strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong>
-                  <span className="text-ink-400"> · {coach.calorieAdvice.reason}</span>
+                  <span className="text-ink-500"> · {coach.calorieAdvice.reason}</span>
                 </span>
                 <span className="text-accent-600 font-semibold shrink-0">Apply</span>
               </button>
@@ -353,16 +356,16 @@ export function NutritionCard({ date }: { date: string }) {
             ) : coach.atFloor ? (
               <p className="text-[10px] text-ink-500 px-0.5">You're at your calorie floor (~{coach.calorieFloor}) but not losing — take a diet break rather than cutting lower.</p>
             ) : coach.inCooldown ? (
-              <p className="text-[10px] text-ink-400 px-0.5">Calorie adjusted recently — hold {coach.cooldownDaysLeft} more day{coach.cooldownDaysLeft === 1 ? '' : 's'} so the trend can catch up.</p>
+              <p className="text-[10px] text-ink-500 px-0.5">Calorie adjusted recently — hold {coach.cooldownDaysLeft} more day{coach.cooldownDaysLeft === 1 ? '' : 's'} so the trend can catch up.</p>
             ) : !coach.consistent ? (
-              <p className="text-[10px] text-ink-400 px-0.5">Logged {coach.loggedDays7} of the last 7 days — log {Math.max(1, 4 - coach.loggedDays7)} more to unlock calorie coaching.</p>
+              <p className="text-[10px] text-ink-500 px-0.5">Logged {coach.loggedDays7} of the last 7 days — log {Math.max(1, 4 - coach.loggedDays7)} more to unlock calorie coaching.</p>
             ) : !coach.weighInsOk ? (
-              <p className="text-[10px] text-ink-400 px-0.5">Weigh in more often ({coach.weighIns} readings) — a couple of weeks of regular weigh-ins lets me read your trend.</p>
+              <p className="text-[10px] text-ink-500 px-0.5">Weigh in more often ({coach.weighIns} readings) — a couple of weeks of regular weigh-ins lets me read your trend.</p>
             ) : null
           )}
 
           <button onClick={() => setEditing(false)}
-            className="self-end text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[28px] px-1.5 rounded transition-colors">
+            className="self-end text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[44px] px-2 rounded transition-colors">
             Done
           </button>
         </div>
@@ -373,7 +376,7 @@ export function NutritionCard({ date }: { date: string }) {
             <div className="flex-1 min-w-0">
               <p className="text-sm text-ink-700">
                 <strong className="text-ink-900">{consumed}</strong>
-                <span className="text-ink-400"> / {targets.calories} kcal</span>
+                <span className="text-ink-500"> / {targets.calories} kcal</span>
               </p>
               <div className="mt-1.5">
                 <div className="flex items-center justify-between text-[11px] text-ink-500 mb-1">
@@ -384,14 +387,14 @@ export function NutritionCard({ date }: { date: string }) {
                   <div className="h-full bg-blue-400 rounded-full transition-all" style={{ width: `${proteinPct}%` }} />
                 </div>
                 {coach.proteinPerMealG != null && (
-                  <p className="text-[10px] text-ink-400 mt-1">≈{coach.proteinPerMealG}g protein per meal spreads it best</p>
+                  <p className="text-[10px] text-ink-500 mt-1">≈{coach.proteinPerMealG}g protein per meal spreads it best</p>
                 )}
               </div>
               {(nut && nut.calories > 0) && (
                 <div className="mt-2">
                   <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} />
                   {nut.fiber_g > 0 && (
-                    <p className="text-[10px] text-ink-400 mt-1">🌾 Fiber {nut.fiber_g}g <span className="text-ink-300">/ ~{Math.round((targets.calories / 1000) * 14)}g goal</span></p>
+                    <p className="text-[10px] text-ink-500 mt-1">🌾 Fiber {nut.fiber_g}g <span className="text-ink-500">/ ~{Math.round((targets.calories / 1000) * 14)}g goal</span></p>
                   )}
                 </div>
               )}
@@ -410,26 +413,26 @@ export function NutritionCard({ date }: { date: string }) {
               <button
                 onClick={() => copyYesterday.mutate({ date, filledSlots })}
                 disabled={copyYesterday.isPending}
-                className="text-[10px] text-ink-400 hover:text-accent-600 min-h-[28px] px-1.5 rounded transition-colors disabled:opacity-50"
+                className="text-[10px] text-ink-500 hover:text-accent-600 min-h-[44px] px-2 rounded transition-colors disabled:opacity-50"
                 title="Copy yesterday's meals into empty slots"
               >⧉ Yesterday</button>
             )}
             <button onClick={() => setEditing(true)}
-              className="text-[10px] text-ink-400 hover:text-ink-700 min-h-[28px] px-1.5 rounded transition-colors">
+              className="text-[10px] text-ink-500 hover:text-ink-700 min-h-[44px] px-2 rounded transition-colors">
               Goals
             </button>
           </div>
         </>
       ) : (
         <div className="flex flex-col gap-1 py-0.5">
-          <p className="text-xs text-ink-400">Nothing logged yet · goal {targets.calories} kcal / {targets.protein}g protein</p>
+          <p className="text-xs text-ink-500">Nothing logged yet · goal {targets.calories} kcal / {targets.protein}g protein</p>
           <div className="flex items-center gap-2">
             <button onClick={() => setExpanded(true)}
-              className="text-xs text-ink-500 hover:text-accent-600 text-left min-h-[28px] transition-colors">
+              className="text-xs text-ink-500 hover:text-accent-600 text-left min-h-[44px] transition-colors">
               Meal slots ▾
             </button>
             <button onClick={() => setEditing(true)}
-              className="text-xs text-ink-400 hover:text-ink-700 min-h-[28px] transition-colors">
+              className="text-xs text-ink-500 hover:text-ink-700 min-h-[44px] transition-colors">
               Goals
             </button>
           </div>

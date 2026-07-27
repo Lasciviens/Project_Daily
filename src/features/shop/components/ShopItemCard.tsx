@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { toast } from '../../../app/store'
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { useUpdateShopItem, useDeleteShopItem } from '../hooks/useShop'
 import type { ShopItem } from '../types'
 
@@ -10,6 +12,7 @@ const REGION_FLAG: Record<string, string> = { TR: '🇹🇷', NO: '🇳🇴' }
 export function ShopItemCard({ item }: { item: ShopItem }) {
   const update = useUpdateShopItem()
   const remove  = useDeleteShopItem()
+  const [confirmDel, setConfirmDel] = useState(false)
   const isBought = item.status === 'bought'
 
   // Hooks are useMutationWithFeedback now — errors toast + log there; only the
@@ -66,10 +69,20 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
           {isBought ? '↩ Back to wishlist' : '✓ Mark bought'}
         </button>
         <button
-          onClick={handleDelete}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors text-sm"
+          onClick={() => setConfirmDel(true)}
+          aria-label={`Delete ${item.title}`}
+          title={`Delete ${item.title}`}
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-500 hover:text-red-400 transition-colors text-sm"
         >✕</button>
       </div>
+
+      <ConfirmDialog
+        open={confirmDel}
+        onClose={() => setConfirmDel(false)}
+        onConfirm={handleDelete}
+        title={`Delete "${item.title}"?`}
+        message="This removes the item from your wishlist for good."
+      />
     </div>
   )
 }

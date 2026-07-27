@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { addDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isToday, isYesterday, isTomorrow, isSameDay, differenceInCalendarDays } from 'date-fns'
+import { addDays, format, startOfMonth, endOfMonth, isToday, isYesterday, isTomorrow, isSameDay, differenceInCalendarDays } from 'date-fns'
 import { DayView } from '../components/DayView'
 import { DayAgenda } from '../components/DayAgenda'
 import { WeekStrip } from '../components/WeekStrip'
@@ -200,9 +200,9 @@ function MonthSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => v
               <h2 className="text-sm font-bold text-ink-900">{format(picked, 'EEEE, d MMMM')}</h2>
               <div className="flex items-center gap-1">
                 <button onClick={() => onDayClick(picked)}
-                  className="text-[11px] text-accent-600 hover:text-accent-700 min-h-[32px] px-2 rounded-lg">Open day →</button>
+                  className="text-[11px] text-accent-600 hover:text-accent-700 min-h-[44px] px-2 rounded-lg">Open day →</button>
                 <button onClick={() => setPicked(null)}
-                  className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[32px] px-2 rounded-lg">✕ Upcoming</button>
+                  className="text-[11px] text-ink-500 hover:text-ink-700 min-h-[44px] px-2 rounded-lg">✕ Upcoming</button>
               </div>
             </div>
             {/* DayAgenda = the day's editable schedule (add/edit/delete blocks) */}
@@ -247,14 +247,18 @@ function UpcomingActivities({ onPick }: { onPick: (d: Date) => void }) {
             return (
               <div key={dateStr}>
                 <button onClick={() => onPick(d)}
-                  className="text-xs font-semibold text-ink-700 hover:text-accent-600 min-h-[28px] flex items-center gap-2">
+                  className="text-xs font-semibold text-ink-700 hover:text-accent-600 min-h-[44px] flex items-center gap-2">
                   {format(d, 'EEE, d MMM')}
                   {isSameDay(d, today) && <span className="text-[9px] font-bold text-accent-600 bg-accent-50 rounded-full px-1.5">TODAY</span>}
                 </button>
-                <ul className="mt-0.5 flex flex-col gap-0.5 pl-1 border-l-2 border-ink-100">
+                <ul className="mt-0.5 flex flex-col gap-1.5 pl-1 border-l-2 border-ink-100">
                   {items.map(t => (
-                    <li key={t.id} className="pl-2 text-xs text-ink-600 flex items-center gap-1.5">
-                      {t.due_time && <span className="text-[10px] text-ink-400 tabular-nums shrink-0">{t.due_time.slice(0, 5)}</span>}
+                    <li key={t.id} className="pl-2 py-0.5 text-xs text-ink-600 flex items-center gap-1.5">
+                      {/* The time column is ALWAYS reserved (empty when a task
+                          has no time) — rendering it conditionally gave the
+                          list two different left edges and read as broken
+                          indentation. */}
+                      <span className="w-10 shrink-0 text-[10px] text-ink-500 tabular-nums">{t.due_time?.slice(0, 5) ?? ''}</span>
                       <span className="truncate">{t.title}</span>
                     </li>
                   ))}
@@ -269,13 +273,9 @@ function UpcomingActivities({ onPick }: { onPick: (d: Date) => void }) {
 }
 
 function WeekSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
-  const now   = new Date()
-  const start = startOfWeek(now, { weekStartsOn: 1 })
-  const end   = endOfWeek(now,   { weekStartsOn: 1 })
-  return (
-    <div>
-      <p className="text-sm text-ink-400 mb-3">{format(start, 'MMM d')} – {format(end, 'MMM d, yyyy')}</p>
-      <WeekWidget onDayClick={onDayClick} highlightDate={selectedDate} />
-    </div>
-  )
+  // No range label here: WeekWidget prints its own, driven by ITS weekOffset.
+  // The copy that used to sit above it was computed from new Date(), so paging
+  // the widget back left the outer label showing the current week — two ranges
+  // on screen, one of them lying.
+  return <WeekWidget onDayClick={onDayClick} highlightDate={selectedDate} />
 }

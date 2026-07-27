@@ -27,7 +27,7 @@ export function InlineTextArea({ value, onSave, placeholder, className = '' }: P
         onClick={() => setEditing(true)}
         className={`cursor-text text-xs text-ink-500 hover:bg-ink-100 rounded px-0.5 min-h-[18px] ${className}`}
       >
-        {value || <span className="text-ink-300">{placeholder}</span>}
+        {value || <span className="text-ink-500">{placeholder}</span>}
       </p>
     )
   }

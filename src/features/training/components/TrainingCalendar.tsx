@@ -312,7 +312,7 @@ function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, toda
         <button
           type="button"
           onClick={onSwitchToMonth}
-          className="min-h-[36px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
+          className="min-h-[44px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
         >
           Month
         </button>
@@ -422,7 +422,7 @@ function MonthView({ year, month, workouts, activities, plansByDate, todayStr, t
           <button
             type="button"
             onClick={onSwitchToWeek}
-            className="min-h-[36px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
+            className="min-h-[44px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
           >
             Week
           </button>

@@ -6,6 +6,7 @@ import { PhaseCard } from './PhaseCard'
 import { ProjectItemModal } from './ProjectItemModal'
 import { ProjectNotesCard } from './ProjectNotesCard'
 import { ProjectActivityFeed } from './ProjectActivityFeed'
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import {
   usePhases, useItems,
   useUpdateProject, useDeleteProject,
@@ -61,6 +62,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
   const [itemModal, setItemModal] = useState<{ phaseId?: string; item?: ProjectItem } | null>(null)
   const [draggingId,  setDraggingId]  = useState<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<ItemStatus | null>(null)
+  const [confirmDel,  setConfirmDel]  = useState(false)
 
   const { data: phases = [], isLoading: phasesLoading } = usePhases(project.id)
   const { data: allItems = [] }                          = useItems(project.id)
@@ -81,7 +83,6 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
   const phaseName = (id: string) => phases.find(p => p.id === id)?.name ?? '—'
 
   async function handleDeleteProject() {
-    if (!confirm(`Delete "${project.name}"? This will remove all phases and items.`)) return
     await deleteProject.mutateAsync(project.id)
     onDelete()
   }
@@ -131,13 +132,22 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
             onCycle={status => updateProject.mutate({ id: project.id, patch: { status } })}
           />
           <button
-            onClick={handleDeleteProject}
+            onClick={() => setConfirmDel(true)}
             disabled={deleteProject.isPending}
-            className="min-w-[44px] min-h-[44px] ml-auto flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors disabled:opacity-40"
+            className="min-w-[44px] min-h-[44px] ml-auto flex items-center justify-center text-ink-500 hover:text-red-400 transition-colors disabled:opacity-40"
             title="Delete project"
+            aria-label={`Delete project ${project.name}`}
           >
             ✕
           </button>
+          <ConfirmDialog
+            open={confirmDel}
+            onClose={() => setConfirmDel(false)}
+            onConfirm={() => { void handleDeleteProject() }}
+            title={`Delete "${project.name}"?`}
+            message="This will remove all its phases and items."
+            confirmLabel="Delete project"
+          />
         </div>
 
         <InlineTextArea
@@ -280,9 +290,9 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                   >
                     <div className="flex items-center justify-between px-1">
                       <span className={`text-[11px] font-bold uppercase tracking-wide ${col.accent}`}>{col.label}</span>
-                      <span className="text-[11px] text-ink-400">{items.length}</span>
+                      <span className="text-[11px] text-ink-500">{items.length}</span>
                     </div>
-                    {items.length === 0 && <p className="text-[11px] text-ink-300 px-1 py-2">{isDropTarget ? 'Drop here' : 'Empty'}</p>}
+                    {items.length === 0 && <p className="text-[11px] text-ink-500 px-1 py-2">{isDropTarget ? 'Drop here' : 'Empty'}</p>}
                     {items.map(item => (
                       <div
                         key={item.id}
@@ -303,7 +313,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${TYPE_BADGE[item.type]}`}>{TYPE_LABEL[item.type]}</span>
                           <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[item.priority]}`} title={`priority: ${item.priority}`} />
-                          <span className="text-[10px] text-ink-400 truncate">{phaseName(item.phase_id)}</span>
+                          <span className="text-[10px] text-ink-500 truncate">{phaseName(item.phase_id)}</span>
                           <div className="ml-auto flex items-center gap-0.5">
                             {colIdx > 0 && (
                               <button onClick={() => { haptic('light'); moveItem(item, -1) }} className="min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:w-6 lg:h-6 flex items-center justify-center flex-shrink-0" title="Move left">
@@ -330,7 +340,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
             // just those three) — cancelled items are real but intentionally hidden
             // here rather than silently missing; they're still visible in Phases view.
             return cancelledCount > 0 ? (
-              <p className="text-[11px] text-ink-400 mt-2">{cancelledCount} cancelled item{cancelledCount === 1 ? '' : 's'} hidden from board — see Phases view</p>
+              <p className="text-[11px] text-ink-500 mt-2">{cancelledCount} cancelled item{cancelledCount === 1 ? '' : 's'} hidden from board — see Phases view</p>
             ) : null
           })()}
         </div>

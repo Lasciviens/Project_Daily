@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { HevyTab } from '../components/HevyTab'
 import { PTCoachTab } from '../components/PTCoachTab'
 import { StravaTab } from '../components/StravaTab'
@@ -12,7 +12,12 @@ import type { SectionId } from '../components/health/sectionTypes'
 type Tab = 'hevy' | 'strava' | 'health' | 'coach'
 type HevySub = 'workouts' | 'routines' | 'prs' | 'muscles' | 'body' | 'exercises'
 
-const TAB_LABELS: Record<Tab, string> = { hevy: 'Hevy', strava: 'Strava', health: 'Health', coach: '🧠 Coach' }
+const TAB_LABELS: Record<Tab, string> = { hevy: 'Hevy', strava: 'Strava', health: 'Health', coach: 'Coach' }
+// Emoji is decoration, and on a 393px phone the pill strip has ~237px for
+// ~275px of pills — the Coach pill used to be clipped under the sync buttons.
+// Dropping the glyph (and tightening pill padding) below sm reclaims the ~50px
+// that makes all four fit; desktop still reads "🧠 Coach".
+const TAB_ICONS: Partial<Record<Tab, string>> = { coach: '🧠' }
 
 // Royalty-free training photo (Unsplash license) used as a faint header backdrop.
 const HEADER_BG =
@@ -23,6 +28,14 @@ export function TrainingPage() {
   const [healthSection, setHealthSection] = useState<SectionId>('overview')
   const [hevySub, setHevySub] = useState<HevySub>('workouts')
   void hevySub // sub-tab no longer affects layout width, but the callback contract stays
+
+  // Belt-and-braces for the narrow strip: whatever the labels grow into later,
+  // the ACTIVE pill is always scrolled into view rather than hidden under the
+  // pinned sync buttons.
+  const activePillRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    activePillRef.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [tab])
 
   // Hevy + Health both fill the space up to the calendar rail on big
   // monitors now — routine cards with exercise GIFs need the room.
@@ -54,13 +67,15 @@ export function TrainingPage() {
               {(['hevy', 'strava', 'health', 'coach'] as Tab[]).map(t => (
                 <button
                   key={t}
+                  ref={tab === t ? activePillRef : undefined}
                   onClick={() => setTab(t)}
-                  className={`shrink-0 whitespace-nowrap px-3 rounded-md text-xs font-semibold capitalize transition-colors duration-150 min-h-[44px] ${
+                  className={`shrink-0 whitespace-nowrap px-2 sm:px-3 rounded-md text-xs font-semibold capitalize transition-colors duration-150 min-h-[44px] ${
                     tab === t
                       ? 'bg-ink-950 text-white'
                       : 'bg-transparent text-ink-600 hover:text-ink-900'
                   }`}
                 >
+                  {TAB_ICONS[t] && <span className="hidden sm:inline mr-1" aria-hidden>{TAB_ICONS[t]}</span>}
                   {TAB_LABELS[t]}
                 </button>
               ))}

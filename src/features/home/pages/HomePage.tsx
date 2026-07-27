@@ -176,7 +176,7 @@ function TodayScheduleWidget() {
     <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Day Schedule</h3>
-        <Link to="/daily" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
+        <Link to="/daily" className="text-xs text-accent-600 hover:text-accent-700 min-h-[44px] inline-flex items-center px-1 -mr-1">Open →</Link>
       </div>
       <div className="space-y-1.5">
         {visible.map(b => (
@@ -230,7 +230,7 @@ function TodayTasksWidget({ tasks, done, total, open, progress, isLoading, onEdi
     <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Today's Tasks</h3>
-        <Link to="/daily" className="text-xs text-accent-600 hover:text-accent-700">Open Daily →</Link>
+        <Link to="/daily" className="text-xs text-accent-600 hover:text-accent-700 min-h-[44px] inline-flex items-center px-1 -mr-1">Open Daily →</Link>
       </div>
 
       {isLoading && (

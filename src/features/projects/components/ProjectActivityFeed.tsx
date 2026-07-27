@@ -64,11 +64,11 @@ export function ProjectActivityFeed({ projectId, itemIds, phaseIds }: { projectI
 
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-2">
-      <span className="text-[11px] font-bold uppercase tracking-wider text-ink-400">Activity</span>
+      <span className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Activity</span>
       {isLoading ? (
         <div className="h-16 rounded-xl bg-cream-100 animate-pulse" />
       ) : logs.length === 0 ? (
-        <p className="text-xs text-ink-300 py-2">No recent activity yet.</p>
+        <p className="text-xs text-ink-500 py-2">No recent activity yet.</p>
       ) : (
         <div className="flex flex-col gap-2 max-h-[280px] overflow-y-auto">
           {logs.map(log => (
@@ -78,7 +78,7 @@ export function ProjectActivityFeed({ projectId, itemIds, phaseIds }: { projectI
                 <p className="text-ink-700 truncate">
                   <span className="font-medium">{rowLabel(log)}</span> {OP_LABEL[log.operation]}
                 </p>
-                <p className="text-[10px] text-ink-300">{fmtWhen(log.created_at)}</p>
+                <p className="text-[10px] text-ink-500">{fmtWhen(log.created_at)}</p>
               </div>
             </div>
           ))}

@@ -21,7 +21,7 @@ export function WaterTracker({ date }: { date: string }) {
   const pct = Math.min(Math.round((ml / goal) * 100), 100)
   const reached = ml >= goal
 
-  const chip = 'min-h-[36px] px-2.5 rounded-full border border-ink-200 text-ink-600 hover:border-accent-300 hover:text-accent-600 text-[11px] font-medium transition-colors disabled:opacity-40'
+  const chip = 'min-h-[44px] px-3 rounded-full border border-ink-200 text-ink-600 hover:border-accent-300 hover:text-accent-600 text-[11px] font-medium transition-colors disabled:opacity-40'
 
   return (
     <div className="flex flex-col gap-1.5 py-1">
@@ -30,7 +30,7 @@ export function WaterTracker({ date }: { date: string }) {
         <span className="tabular-nums">
           {reached && <span className="text-sky-600 font-medium">✓ </span>}
           <strong className="text-ink-800">{litres(ml)}</strong>
-          <span className="text-ink-400"> / {litres(goal)} L</span>
+          <span className="text-ink-500"> / {litres(goal)} L</span>
         </span>
       </div>
       <div className="h-2 rounded-full bg-ink-100 overflow-hidden">

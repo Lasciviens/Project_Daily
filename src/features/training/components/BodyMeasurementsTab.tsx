@@ -201,7 +201,7 @@ function MeasurementModal({ isOpen, onClose, initial, existing = [] }: Measureme
                   <button
                     type="button"
                     onClick={() => setVal('weight_kg', String(suggestions.weight!.value))}
-                    className="text-xs px-3 min-h-[36px] rounded-full border border-accent-200 bg-accent-50 text-accent-700 hover:bg-accent-100 transition-colors press-feedback"
+                    className="text-xs px-3 min-h-[44px] rounded-full border border-accent-200 bg-accent-50 text-accent-700 hover:bg-accent-100 transition-colors press-feedback"
                   >
                     ⚖️ {suggestions.weight.value} kg <span className="opacity-60">({fmtDate(suggestions.weight.date)})</span>
                   </button>
@@ -210,7 +210,7 @@ function MeasurementModal({ isOpen, onClose, initial, existing = [] }: Measureme
                   <button
                     type="button"
                     onClick={() => setVal('fat_percent', String(suggestions.fat!.value))}
-                    className="text-xs px-3 min-h-[36px] rounded-full border border-accent-200 bg-accent-50 text-accent-700 hover:bg-accent-100 transition-colors press-feedback"
+                    className="text-xs px-3 min-h-[44px] rounded-full border border-accent-200 bg-accent-50 text-accent-700 hover:bg-accent-100 transition-colors press-feedback"
                   >
                     💧 %{suggestions.fat.value} fat <span className="opacity-60">({fmtDate(suggestions.fat.date)})</span>
                   </button>
@@ -597,7 +597,7 @@ export function BodyMeasurementsTab() {
       <div className="flex items-center justify-between mb-2 sm:mb-3">
         <div>
           <h3 className="text-base font-bold text-ink-900">Body Measurements</h3>
-          <p className="text-xs text-ink-400">{measurements.length} entries</p>
+          <p className="text-xs text-ink-400">{measurements.length} {measurements.length === 1 ? 'entry' : 'entries'}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -606,7 +606,9 @@ export function BodyMeasurementsTab() {
             className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5"
           >
             <span className="text-base leading-none">+</span>
-            <span>Log Measurement</span>
+            {/* The full label ate ~200px of a 361px row and crammed the
+                heading against it — shorten to "+ Log" below sm. */}
+            <span>Log<span className="hidden sm:inline"> Measurement</span></span>
           </button>
         </div>
       </div>

@@ -2,7 +2,11 @@
 
 Agent-specific instructions for this repository. Supplements `CLAUDE.md` (the
 master project guide — read that first) with rules specific to database/schema
-work. See `docs/README.md` for deeper reference docs (data model, architecture).
+and Edge Function work. See `docs/README.md` for deeper reference docs (data
+model, architecture).
+
+This is a **rules** document: what to do, and the constraint that makes it
+necessary. Feature history belongs in `CLAUDE.md`.
 
 ---
 
@@ -18,32 +22,88 @@ work. See `docs/README.md` for deeper reference docs (data model, architecture).
 |---|---|
 | Supabase project | Main instance (`VITE_SUPABASE_URL`) |
 | RP5 games | Separate Supabase instance (`VITE_RP5_SUPABASE_URL`) — read-only views |
-| Auth | Supabase Auth — every user row references `auth.users(id)` |
+| Auth | Supabase Auth — every user row references `auth.users(id)`; single-user app in practice |
 | ORM | None — raw `supabase-js` client everywhere |
-| Secrets | `CLAUDE_API_KEY`, `OPENAI_API_KEY` — Supabase Vault only, never in client code |
-| Migration numbering | Sequential, zero-padded three digits (`NNN_description.sql`). Don't hardcode "the next number" — run `ls supabase/migrations \| sort \| tail -1` to find the current highest and increment from that. |
-| Deploy | **Manual** — Dashboard › SQL Editor or `supabase db push`. GitHub Actions does NOT run migrations. |
+| Client env vars | See `CLAUDE.md`'s Environment Variables table. Ground truth: `grep -rhoE 'VITE_[A-Z0-9_]+' src/ index.html vite.config.ts \| sort -u` |
+| Server secrets | Supabase Vault only, never in client code or function source. Ground truth: `grep -rhoE "Deno.env.get\(['\"][A-Z0-9_]+" supabase/functions/ \| sort -u`. `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` are **injected by the platform** — do not add those to Vault. |
+| Migration numbering | Sequential, zero-padded three digits (`NNN_description.sql`). Highest applied is **068**. Don't hardcode "the next number" — run `ls supabase/migrations \| sort \| tail -1` and increment. |
+| Deploy | **Manual, always.** Migrations: Dashboard › SQL Editor or `supabase db push`. Edge Functions: Dashboard or `supabase functions deploy <name>`. GitHub Actions builds and publishes the frontend only — it runs no migrations and deploys no functions. |
+
+**Numbering gap:** `056` does not exist (the sequence runs `055 → 057`) and `058`
+is an intentional dead no-op — both are documented in `058`'s own header and in
+`scripts/generate-matvaretabellen-seed.mjs`. Never "fill" `056`; a new file with
+that number would collide with a deleted one in history.
 
 ---
 
 ### Migration Rules
 
 1. **File naming:** `NNN_short_description.sql` — zero-padded three digits, snake_case description. Check `ls supabase/migrations` for the current highest number before picking the next one.
-2. **Always idempotent.** Use `CREATE TABLE IF NOT EXISTS`, `DO $$ IF NOT EXISTS` for policies, `CREATE INDEX IF NOT EXISTS`. Never assume a clean slate.
+2. **Always idempotent.** `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, `DROP TRIGGER IF EXISTS` before `CREATE TRIGGER`, and the `DO $$ ... pg_policies` guard for policies (rule 4). Never assume a clean slate — every migration must survive being re-run.
 3. **Always enable RLS** immediately after `CREATE TABLE`:
    ```sql
-   ALTER TABLE my_table ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE public.my_table ENABLE ROW LEVEL SECURITY;
    ```
-4. **Always add an owner policy** for user-owned tables:
+   Enabling RLS is separate from having a policy: RLS on with no policy denies
+   everything, which is the safe direction. Never ship the reverse.
+4. **Owner policy — the canonical form** (copy this verbatim; it is what `067`/`068` use):
    ```sql
-   CREATE POLICY "my_table_owner" ON my_table
-     USING (auth.uid() = user_id)
-     WITH CHECK (auth.uid() = user_id);
+   DO $$ BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname = 'public' AND tablename = 'my_table'
+         AND policyname = 'Users manage own my_table'
+     ) THEN
+       CREATE POLICY "Users manage own my_table"
+         ON public.my_table
+         FOR ALL
+         USING ((select auth.uid()) = user_id)
+         WITH CHECK ((select auth.uid()) = user_id);
+     END IF;
+   END $$;
    ```
-5. **user_id pattern:** Every user-data table gets `user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE`.
-6. **Timestamps:** Include `created_at timestamptz NOT NULL DEFAULT now()` on every table. Add `updated_at` when rows are mutated.
-7. **CHECK constraints over enums:** Prefer `text NOT NULL CHECK (col IN ('a','b','c'))` over `CREATE TYPE`. Easier to extend later.
-8. **Indexes:** Add index on `(user_id, created_at DESC)` for any table that will be queried with `ORDER BY created_at` per user.
+   **`(select auth.uid())`, never bare `auth.uid()`.** The scalar subquery makes
+   Postgres evaluate it once per statement as an InitPlan instead of per row —
+   Supabase's documented fix for the `auth_rls_initplan` linter warning.
+   Migration `046` converted the whole corpus to this form; writing bare
+   `auth.uid()` re-introduces the warning it existed to clear. Access semantics
+   are identical, so there is never a reason to "simplify" it back.
+5. **`user_id` pattern:** every user-data table gets
+   `user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE`.
+   The `DEFAULT` is load-bearing — the client and the AI's `db_insert` tool both
+   insert rows without an explicit `user_id`.
+6. **Timestamps:** `created_at timestamptz NOT NULL DEFAULT now()` on every table. Add `updated_at` when rows are mutated.
+7. **CHECK constraints over enums:** prefer `text NOT NULL CHECK (col IN ('a','b','c'))` over `CREATE TYPE`. Easier to extend later.
+8. **Indexes:** index `(user_id, <the column you actually filter or sort by>)` — that is `date` for day-scoped tables (`water_log_entries`, `time_blocks`), `created_at DESC` only when the query really orders by insertion time, plain `(user_id)` when the whole set is read at once (`push_subscriptions`).
+9. **Audit trigger:** a new **user-authored** table gets `trg_audit` in the same migration, or a one-line reason in the file header for why not:
+   ```sql
+   DROP TRIGGER IF EXISTS trg_audit ON public.my_table;
+   CREATE TRIGGER trg_audit
+     AFTER INSERT OR UPDATE OR DELETE ON public.my_table
+     FOR EACH ROW EXECUTE FUNCTION public.log_audit();
+   ```
+   `037` attached it to a hardcoded table list, so anything created afterwards
+   is **not** covered automatically — `052` exists solely because `dev_requests`
+   (created in `042`) was missed and deleted rows left no recoverable trace.
+   Exempt by design, and say so in the header: bulk-synced tables (`hevy_*`,
+   `health_*`, `strava_*` — sync spam) and high-frequency append-only tables
+   (`water_log_entries`, `push_subscriptions`).
+10. **Grants:** table CRUD for the `authenticated` role is already covered by
+    Supabase's public-schema default privileges — the explicit `GRANT SELECT,
+    INSERT, UPDATE, DELETE ... TO authenticated` lines in migrations up to `051`
+    are belt-and-braces, not a requirement for a new table (`066`/`067`/`068`
+    ship none and work in production). **`GRANT EXECUTE` on a new function IS
+    required** (see `065`'s `ai_semantic_search`).
+    Deliberate exception, do not undo: `044` **revokes** `authenticated` access
+    to `user_calendar_tokens` entirely and narrows `strava_tokens` to three
+    non-secret columns. RLS limits rows; only grants limit **columns** — that is
+    the whole reason that migration exists.
+11. **A drop is never a one-file change.** Before dropping a table or column,
+    grep the repo for hardcoded name lists that reference it: `037`'s audit
+    attach array, `046`'s policy list, and `ai-proxy`'s `DB_CATALOG`. Already-applied
+    migrations that name a since-dropped table stop being re-runnable (`037`
+    names `recipe_meal_plans`, which `061` drops) — acceptable for applied
+    history, never acceptable for the migration you are writing.
 
 ---
 
@@ -52,10 +112,11 @@ work. See `docs/README.md` for deeper reference docs (data model, architecture).
 | Operation | Rule |
 |---|---|
 | `DROP TABLE` | **Always ask first.** Describe what data is lost. |
-| `DROP COLUMN` | Prefer `ALTER TABLE … ALTER COLUMN … SET DEFAULT NULL` + backfill, or rename first. If truly needed, ask. |
+| `DROP COLUMN` | Prefer leaving it nullable/unused, or rename first. If truly needed, ask. |
 | `DELETE FROM` without `WHERE` | **Never write this.** If intentional truncation is needed, use `TRUNCATE … RESTART IDENTITY CASCADE` and ask first. |
 | `TRUNCATE` | Always ask. Include cascade implications. |
 | Removing an RLS policy | Show what access it currently grants before removing. |
+| Removing a `GRANT` | State which client code loses access (verify by grepping `src/`, as `044` did). |
 
 When in doubt: prefer additive changes. Columns can be nullable-added without risk. New tables never break existing queries.
 
@@ -63,32 +124,93 @@ When in doubt: prefer additive changes. Columns can be nullable-added without ri
 
 ### RLS Design Patterns
 
-**Simple owner access (most tables):**
+**Simple owner access (most tables)** — use the guarded `FOR ALL` block from
+Migration Rule 4. The bare-`CREATE POLICY` shorthand below is shown only to name
+the clauses; ship the guarded version.
+
 ```sql
-CREATE POLICY "owner" ON my_table
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users manage own my_table" ON public.my_table
+  FOR ALL
+  USING ((select auth.uid()) = user_id)
+  WITH CHECK ((select auth.uid()) = user_id);
 ```
 
-**Read-only public data:**
+**Read-only shared metadata** (`movies`, `tv_series` — not user-owned):
 ```sql
-CREATE POLICY "public_read" ON my_table
-  FOR SELECT USING (true);
+CREATE POLICY "public_read" ON public.my_table FOR SELECT USING (true);
 ```
+These still need an explicit UPDATE policy if the app upserts refreshed metadata
+— a missing one silently freezes rows at first insert (the bug `050` fixed).
 
-**Split read/write:**
+**Split read/write** (only when the commands genuinely differ):
 ```sql
-CREATE POLICY "owner_read"   ON my_table FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "owner_write"  ON my_table FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "owner_update" ON my_table FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "owner_delete" ON my_table FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "owner_read"   ON public.my_table FOR SELECT USING ((select auth.uid()) = user_id);
+CREATE POLICY "owner_write"  ON public.my_table FOR INSERT WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY "owner_update" ON public.my_table FOR UPDATE USING ((select auth.uid()) = user_id);
+CREATE POLICY "owner_delete" ON public.my_table FOR DELETE USING ((select auth.uid()) = user_id);
 ```
 
 **Checklist before finishing any migration:**
 - [ ] `ENABLE ROW LEVEL SECURITY` present?
-- [ ] At least one policy covers every intended access pattern?
-- [ ] No policy accidentally grants cross-user access (`auth.uid()` always scoped)?
-- [ ] Service role access needed for Edge Functions? (Edge Functions use the service role key from Vault — no RLS needed for server-side ops, but document it.)
+- [ ] At least one policy covers every intended access pattern, wrapped in the `pg_policies` guard?
+- [ ] Every policy uses `(select auth.uid())`, scoped to `user_id`, no cross-user leak?
+- [ ] `GRANT EXECUTE` on any new function?
+- [ ] `trg_audit` attached, or a stated reason why not?
+- [ ] Re-runnable end to end (`IF NOT EXISTS` / `DROP … IF EXISTS` everywhere)?
+- [ ] Does `ai-proxy`'s `DB_CATALOG` need the new table (and a redeploy)? See below.
+- [ ] Does the client need a column-missing fallback for the window before this is applied? See below.
+- [ ] Edge Functions needing server-side access use the service role (which bypasses RLS) — document that in the migration header if it applies.
+
+---
+
+### Migrations land AFTER the frontend — client code must degrade, not throw
+
+The frontend auto-deploys on merge; migrations are applied by hand later. There
+is **always** a window where the shipped client runs against the old schema.
+
+- A read/write touching a column added by an unapplied migration must catch the
+  column-missing error (`42703` from Postgres, `PGRST204` from PostgREST) and
+  **retry once without that field**. Reference implementations:
+  `recipesApi.ts` (`recipes.fiber_g` / `is_temp`), `foodLogApi.ts` +
+  `mealPlanApi.ts` + `dayNutritionApi.ts` (the `food_log_entries.status` dual
+  path around `061`).
+- A new **table** gets a missing-table guard so the feature renders empty
+  instead of crashing the page (see `fetchDayNutrition`'s pre-`053` guard).
+- Note the fallback's removal condition in a comment ("drop once 0NN is
+  applied") so it does not become permanent.
+- Never build a filter on a column that may not exist yet — a `.eq()` on it
+  errors before any fallback can run; branch on a probe first.
+
+---
+
+### `ai-proxy` DB_CATALOG obligation
+
+The Ask AI panel's generic CRUD layer (`db_query`/`db_insert`/`db_update`/
+`db_delete`) is a **default-deny allow-list** (`DB_CATALOG` in
+`supabase/functions/ai-proxy/index.ts`). A new user table is invisible to the
+assistant until it is added there, with a deliberate `access: 'rw' | 'ro'`
+decision — externally synced tables (`hevy_*`, `health_*`, `strava_activities`,
+`movies`, `tv_series`) are `'ro'`; token/secret tables are never listed at all.
+Changing the catalog means **redeploying `ai-proxy`**; say so in the PR's manual
+steps.
+
+---
+
+### pg_cron jobs
+
+Reference: `068_push_subscriptions.sql`.
+
+- `create extension if not exists pg_cron;` / `pg_net;` at the top; note in the
+  header that they may need enabling in Dashboard › Database › Extensions.
+- Idempotent scheduling: `cron.unschedule(<name>)` if it exists, then
+  `cron.schedule(...)`.
+- **Read the secret from Vault inside the job body**, never inline it in the
+  migration text:
+  `coalesce((select decrypted_secret from vault.decrypted_secrets where name = 'X'), '')`.
+  A missing secret must degrade to the target function rejecting the call (no
+  action, no harm), not to a leaked value in migration history.
+- pg_cron runs in **UTC** — state the intended local time and accept the DST
+  drift explicitly, or compute it.
 
 ---
 
@@ -122,6 +244,12 @@ if (!user) throw new Error('Not authenticated')
 
 **Error handling:** always destructure `{ data, error }`, always `if (error) throw error`.
 
+**Pagination is mandatory for open-ended ranges.** PostgREST caps every response
+at 1000 rows server-side regardless of an explicit `.limit()`, and with
+ascending order the cap silently drops the **newest** rows. Loop
+`.range(offset, offset + 999)` until a page comes back short (see
+`fetchHealthMetricSeries` — this was a real, invisible data-truncation bug).
+
 **RP5 Games — special rules:**
 - Read from `v_games_summary` / `v_games_full` views only.
 - Write to raw `games` table.
@@ -134,9 +262,9 @@ if (!user) throw new Error('Not authenticated')
 
 This app writes to Postgres from **three different doors**: the web UI, the
 Ask AI panel's generic `db_insert`/`db_update`/`db_delete` tool layer, and
-sync webhooks/edge functions (Hevy, Health Auto Export). Any cross-entity
-consistency rule written only in one door's application code (a React hook,
-an API function) silently doesn't apply when a write comes through a
+sync webhooks/edge functions (Hevy, Health Auto Export, the phone gateway). Any
+cross-entity consistency rule written only in one door's application code (a
+React hook, an API function) silently doesn't apply when a write comes through a
 different door. Real bugs this caused before migration 043: deleting a
 Training-plan `time_block` left its auto-created `task` behind; dragging a
 planned block to a new day never updated the linked task's due date (or vice
@@ -175,10 +303,11 @@ which door the write came through.
   sync can each cause the other to fire. Guarded with `pg_trigger_depth() = 1`
   — a direct user edit propagates to the other side exactly once; that
   propagation does not bounce back and ping-pong.
-- **Google Calendar/Google Tasks sync is deliberately NOT done in triggers**
-  — a trigger runs inside Postgres and has no access to the end user's OAuth
-  token (lives in the browser). That stays best-effort at the API layer
-  (`src/features/daily/api/scheduleApi.ts`, `src/features/todo/api/tasksApi.ts`).
+- **Google Calendar sync is deliberately NOT done in triggers** — a trigger
+  runs inside Postgres and has no access to the end user's OAuth token (it
+  lives in the browser). That stays best-effort at the API layer
+  (`src/features/daily/api/scheduleApi.ts`, `src/features/todo/api/tasksApi.ts`),
+  where one task maps to exactly one calendar event.
 - **When adding a new "plannable" entity** (something else that can get a
   `time_blocks` row via `UnifiedPlanModal`'s `source` prop): decide whether it
   needs a cleanup-on-source-change trigger the same way `user_tv_episodes`/
@@ -190,23 +319,72 @@ which door the write came through.
 ### Edge Function Rules
 
 - Runtime: **Deno** — use `import` not `require`, no Node built-ins.
-- Auth: verify JWT with `supabase.auth.getUser()` before processing.
-- Secrets: read from `Deno.env.get('SECRET_NAME')` — set in Supabase Vault.
-- CORS: include `Access-Control-Allow-Origin` and handle OPTIONS preflight.
-- Deploy: **manual** via Supabase Dashboard or `supabase functions deploy <name>`. GitHub Actions does not deploy functions.
-- Never put API keys or secrets in function source code.
+- **Every function must be self-contained. No `_shared/` imports.** Supabase
+  Dashboard deploys do not bundle sibling `_shared/` files, so any such import
+  fails the deploy with "Module not found". This is why the Hevy upsert logic is
+  **inlined verbatim into all four Hevy functions** (`hevy-sync`,
+  `hevy-initial-sync`, `hevy-incremental-sync`, `hevy-api`), each carrying a
+  header comment flagging it. Consequence to accept: change that logic and you
+  change it in four files by hand. Do not "fix" this by re-introducing a shared
+  module.
+- Secrets: `Deno.env.get('SECRET_NAME')`, set in Supabase Vault. Never in
+  function source. `SUPABASE_URL` / `SUPABASE_ANON_KEY` /
+  `SUPABASE_SERVICE_ROLE_KEY` are injected by the platform, not Vault entries.
+- CORS: include `Access-Control-Allow-Origin`, list every custom header the
+  function accepts in `Access-Control-Allow-Headers`, and handle the OPTIONS
+  preflight.
+- Deploy: **manual** via Supabase Dashboard or `supabase functions deploy <name>`. GitHub Actions does not deploy functions. There is no CI job for them.
+
+**Three auth models — pick one deliberately, and match `supabase/config.toml`:**
+
+1. **Browser** — validate the caller's JWT in code with
+   `supabase.auth.getUser(authHeader.replace('Bearer ', ''))`. Default; platform
+   `verify_jwt` may stay on.
+2. **Third-party webhook** — the sender presents its own
+   `Authorization: Bearer <vault secret>`, which is *not* a Supabase JWT.
+3. **Device / cron** — a custom header secret (`x-phone-secret`,
+   `x-cron-secret`, `x-sync-secret`) compared against a Vault value, after which
+   the function acts as the single user (`HEVY_USER_ID`) with the service role.
+   The service key stays server-side, never on the device.
+
+Models 2 and 3 **require `verify_jwt = false`**: platform JWT verification
+rejects the call before our code runs, so the webhook or cron silently stops
+working (the long-standing Hevy/Health gotcha). Current set:
+
+| Function | `verify_jwt` | Authenticates by |
+|---|---|---|
+| `hevy-sync` | false | `Authorization: Bearer <HEVY_WEBHOOK_SECRET>` (Hevy's webhook) |
+| `health-export-webhook` | false | `Authorization: Bearer <HEALTH_EXPORT_WEBHOOK_SECRET>` |
+| `google-health-sync` | false | user JWT **or** `x-sync-secret` == `GOOGLE_HEALTH_SYNC_SECRET` (cron) |
+| `ai-proxy` | false | user JWT via `getUser` **or** `x-phone-secret` == `PHONE_GATEWAY_SECRET` |
+| `phone-gateway` | false | `x-phone-secret` only, then acts as `HEVY_USER_ID` via the service role |
+| `push-send` | false | user JWT **or** `x-cron-secret` == `PUSH_CRON_SECRET` (pg_cron) |
+
+Every other function keeps `verify_jwt` on (the default) and validates the
+browser JWT in code.
+
+Rules for the secret-comparison paths:
+- **Fail closed.** A missing Vault value must reject the request (`if (!secret || given !== secret) return 401`), never fall through to an unauthenticated path.
+- Never log the secret, the header value, or a diff of the two.
+- A function listed above must have the same setting in `supabase/config.toml`
+  **and** "Enforce JWT Verification" toggled off in the Dashboard when deployed
+  by paste — the config file only applies on a CLI deploy.
+- Adding a new secret-authenticated function means a Vault entry plus a
+  `config.toml` block; list both in the PR's manual steps.
 
 ---
 
 ### Schema Design Checklist
 
 Before proposing any new table:
-1. Does this data belong in an existing table (new column) or truly needs its own table?
+1. Does this data belong in an existing table (new column) or truly need its own table?
 2. Will rows be deleted when the user is deleted? → `ON DELETE CASCADE`
 3. Is there a natural sort order? → add `sort_order int` or use `created_at`.
-4. Will it be queried by user + time range? → add compound index `(user_id, created_at DESC)`.
+4. How will it be queried? → compound index `(user_id, <that column>)`.
 5. Are there enum-like values? → `text CHECK (col IN (...))` not `CREATE TYPE`.
-6. Does the feature need soft-delete? → add `deleted_at timestamptz` instead of hard delete.
+6. Does the feature need soft-delete? → add `deleted_at timestamptz` (or a `status` value, as `tasks` does with `cancelled`) instead of a hard delete.
+7. Is it user-authored? → attach `trg_audit`. Bulk-synced or churny? → exempt, and say so in the header.
+8. Should the AI be able to read or write it? → add it to `ai-proxy`'s `DB_CATALOG` with an explicit `rw`/`ro`, and redeploy.
 
 ---
 
@@ -216,3 +394,6 @@ Before proposing any new table:
 - Does not modify `auth.users` schema.
 - Does not touch the RP5 Supabase schema (separate project, read-only for us).
 - Does not generate Supabase client configuration — `src/integrations/supabase/client.ts` is the source of truth.
+- Does not write raw SQL for the AI to execute beyond the read-only, guarded
+  `run_read_query` path (single `SELECT`/`WITH`, `LIMIT 500`, RLS applies via a
+  SECURITY INVOKER RPC). No DDL, no dynamic SQL built from model output.

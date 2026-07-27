@@ -1,5 +1,3 @@
-# Redeploy nudge: 2026-07-03 — forces a fresh commit SHA so GitHub Pages
-# creates a brand-new deployment instead of retrying a wedged one on the same SHA.
 name: Deploy to GitHub Pages
 
 on:
@@ -23,6 +21,9 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # The retry step below can legitimately idle ~40s; 15 minutes is generous
+    # for a ~1 minute job and stops a wedged npm ci / Pages call burning hours.
+    timeout-minutes: 15
     environment:
       name: github-pages
       # coalesce: whichever deploy attempt succeeded provides the url
@@ -32,24 +33,61 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 20 is end-of-life; vite 8 wants ^20.19.0 || >=22.12.0.
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      # Every secret here is added by hand, and src/integrations/supabase/client.ts
+      # THROWS at module init when the Supabase pair is empty — i.e. a missing or
+      # renamed secret produces a green deploy and a blank white page. Fail the
+      # build with the exact name instead.
+      - name: Verify build secrets
+        env:
+          VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY:     ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_TMDB_API_KEY:          ${{ secrets.VITE_TMDB_API_KEY }}
+          VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_STRAVA_CLIENT_ID:      ${{ secrets.VITE_STRAVA_CLIENT_ID }}
+          VITE_OXR_APP_ID:            ${{ secrets.VITE_OXR_APP_ID }}
+          VITE_RP5_SUPABASE_URL:      ${{ secrets.VITE_RP5_SUPABASE_URL }}
+          VITE_RP5_SUPABASE_ANON_KEY: ${{ secrets.VITE_RP5_SUPABASE_ANON_KEY }}
+          VITE_VAPID_PUBLIC_KEY:      ${{ secrets.VITE_VAPID_PUBLIC_KEY || vars.VITE_VAPID_PUBLIC_KEY }}
+        run: |
+          fatal=""
+          for v in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY; do
+            [ -n "${!v}" ] || fatal="$fatal $v"
+          done
+          for v in VITE_TMDB_API_KEY VITE_GOOGLE_CLIENT_ID VITE_STRAVA_CLIENT_ID \
+                   VITE_OXR_APP_ID VITE_RP5_SUPABASE_URL VITE_RP5_SUPABASE_ANON_KEY \
+                   VITE_VAPID_PUBLIC_KEY; do
+            [ -n "${!v}" ] || echo "::warning::$v is empty — the feature that uses it will be dead in this deploy."
+          done
+          if [ -n "$fatal" ]; then
+            echo "::error::Missing required secret(s):$fatal — the deployed app would white-screen on load."
+            exit 1
+          fi
+
+      # Keep this list in sync with what the app actually reads:
+      #   grep -rhoE 'VITE_[A-Z0-9_]+' src/ index.html vite.config.ts | sort -u
       - name: Build
         run: npm run build
         env:
-          VITE_SUPABASE_URL:        ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY:   ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_TMDB_API_KEY:        ${{ secrets.VITE_TMDB_API_KEY }}
-          VITE_GOOGLE_CLIENT_ID:    ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-          VITE_STRAVA_CLIENT_ID:    ${{ secrets.VITE_STRAVA_CLIENT_ID }}
-          VITE_OXR_APP_ID:          ${{ secrets.VITE_OXR_APP_ID }}
-          VITE_RP5_SUPABASE_URL:    ${{ secrets.VITE_RP5_SUPABASE_URL }}
+          VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY:     ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_TMDB_API_KEY:          ${{ secrets.VITE_TMDB_API_KEY }}
+          VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_STRAVA_CLIENT_ID:      ${{ secrets.VITE_STRAVA_CLIENT_ID }}
+          VITE_OXR_APP_ID:            ${{ secrets.VITE_OXR_APP_ID }}
+          VITE_RP5_SUPABASE_URL:      ${{ secrets.VITE_RP5_SUPABASE_URL }}
           VITE_RP5_SUPABASE_ANON_KEY: ${{ secrets.VITE_RP5_SUPABASE_ANON_KEY }}
-          VITE_VAPID_PUBLIC_KEY:    ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          # CLAUDE.md documents this one as an Actions *Variable* while it is
+          # wired here as a secret — accept either so a settings mismatch can't
+          # silently ship an empty VAPID key (Web Push would then fail only when
+          # the user taps the Settings toggle).
+          VITE_VAPID_PUBLIC_KEY:      ${{ secrets.VITE_VAPID_PUBLIC_KEY || vars.VITE_VAPID_PUBLIC_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

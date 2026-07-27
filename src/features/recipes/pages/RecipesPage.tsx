@@ -55,20 +55,28 @@ export function RecipesPage() {
         <RecipeBackdrop />
         <div className="absolute inset-0 bg-gradient-to-r from-cream-50/92 via-cream-50/70 to-cream-50/20 dark:from-cream-50/90 dark:via-cream-50/70 dark:to-cream-50/30" aria-hidden />
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 px-4 py-2.5 sm:py-3 sm:px-5">
-          {/* Row 1 (mobile) — compact title + horizontally-scrolling sub-tabs. */}
+          {/* Row 1 (mobile) — the four sub-tabs own the whole row. The fixed app
+              header already renders "Food", so the h1 (+ blurb) is desktop-only:
+              on a 393px phone that duplicate title left ~271px for ~350px of
+              pills, which turned the strip into a scroller and clipped
+              "Meal Plan" to "Mea" (TrainingPage does the same for the same
+              reason). Below lg the pills are a 4-up grid — no scroller, no clip. */}
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="min-w-0 shrink-0">
+            <div className="hidden lg:block min-w-0 shrink-0">
               <h1 className="text-lg sm:text-xl font-bold text-ink-900 leading-tight">Food</h1>
-              <p className="hidden lg:block text-xs text-ink-500 lg:whitespace-nowrap">Your meals & ingredients — log, scale, track macros</p>
+              <p className="text-xs text-ink-500 lg:whitespace-nowrap">Your meals & ingredients — log, scale, track macros</p>
             </div>
 
-            <div className="flex items-center min-w-0 flex-1 lg:flex-none overflow-x-auto scrollbar-none -mx-1 px-1 lg:mx-0 lg:px-0">
-              <div className="shrink-0 flex gap-1 bg-cream-50/70 border border-ink-200 p-1 rounded-xl backdrop-blur-sm">
+            {/* `overflow-x-auto` is only a safety valve for viewports narrower
+                than the 393px baseline — at 393px the 4-up grid fits, so nothing
+                scrolls and nothing clips. */}
+            <div className="flex items-center min-w-0 flex-1 lg:flex-none overflow-x-auto scrollbar-none">
+              <div className="w-full lg:w-auto grid grid-cols-4 lg:flex gap-1 bg-cream-50/70 border border-ink-200 p-1 rounded-xl backdrop-blur-sm">
                 {(['today', 'library', 'ingredients', 'plan'] as Tab[]).map(t => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
-                    className={`press-feedback shrink-0 whitespace-nowrap px-3 sm:px-4 min-h-[40px] text-sm font-medium rounded-lg transition-colors duration-150 ${
+                    className={`press-feedback shrink-0 whitespace-nowrap px-1 sm:px-4 min-h-[44px] text-xs sm:text-sm font-medium rounded-lg transition-colors duration-150 ${
                       tab === t ? 'bg-accent-500 text-white' : 'text-ink-600 hover:text-ink-900 hover:bg-ink-100'
                     }`}
                   >
@@ -96,7 +104,11 @@ export function RecipesPage() {
               </div>
             )}
 
-            <div className="flex items-center gap-2 flex-wrap lg:flex-nowrap shrink-0 lg:ml-auto">
+            {/* No `shrink-0` here: it defeats the `flex-wrap` on the SAME element
+                (the flex base resolves to max-content, so the group never wraps,
+                it overflows) — on Library, where "+ Add recipe" also renders,
+                that clipped the Food|Shop control off the banner's right edge. */}
+            <div className="flex items-center gap-2 flex-wrap lg:flex-nowrap min-w-0 lg:ml-auto">
               <button
                 onClick={() => setLogOpen(true)}
                 className="press-feedback min-h-[44px] px-4 bg-accent-500 text-white text-sm font-semibold rounded-xl hover:bg-accent-600 transition-colors shadow-sm whitespace-nowrap"
@@ -117,16 +129,18 @@ export function RecipesPage() {
         </div>
       </div>
 
-      {/* Library search (only where it applies) */}
+      {/* Library search (only where it applies). Full-width below sm so the
+          field's right edge lines up with the card grid (it stopped ~40px
+          short); capped from sm per the width standard. */}
       {tab === 'library' && recipes.length > 0 && (
-        <div className="relative max-w-xs min-w-[180px] mb-4">
+        <div className="relative w-full sm:max-w-xs min-w-[180px] mb-4">
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search recipes or ingredients…"
-            className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-xl pl-8 pr-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
+            className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl pl-8 pr-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
           />
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-300 text-sm">🔍</span>
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 text-sm">🔍</span>
         </div>
       )}
 
@@ -134,7 +148,7 @@ export function RecipesPage() {
         <div className="flex flex-wrap gap-1.5 mb-4">
           {(['all', 'breakfast', 'lunch', 'dinner', 'snack', 'supplement'] as const).map(c => (
             <button key={c} onClick={() => setCategory(c)}
-              className={`press-feedback text-xs px-3.5 min-h-[40px] rounded-full border font-medium capitalize transition-colors ${
+              className={`press-feedback text-xs px-3.5 min-h-[44px] rounded-full border font-medium capitalize transition-colors ${
                 category === c ? 'bg-accent-500 text-white border-accent-500' : 'border-ink-200 text-ink-600 hover:border-accent-300'
               }`}>
               {c === 'all' ? 'All' : c}

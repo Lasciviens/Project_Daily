@@ -29,29 +29,29 @@ export function ShopCard({ date }: { date: string }) {
               <button
                 onClick={() => update.mutate({ id: i.id, patch: { status: 'bought' } })}
                 title="Mark bought"
-                className="w-7 h-7 grid place-items-center shrink-0 rounded-md hover:bg-green-50 transition-colors group"
+                className="w-11 h-11 grid place-items-center shrink-0 rounded-md hover:bg-green-50 transition-colors group"
               ><span className="w-4 h-4 rounded border-2 border-ink-300 group-hover:border-green-500 group-hover:bg-green-100 transition-colors" /></button>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-ink-800 truncate leading-snug">
                   {i.region && <span className="mr-1">{REGION_FLAG[i.region]}</span>}{i.title}
                 </p>
-                {i.price != null && <p className="text-[10px] text-ink-400">{i.price}</p>}
+                {i.price != null && <p className="text-[10px] text-ink-500">{i.price}</p>}
               </div>
               <button
                 onClick={() => update.mutate({ id: i.id, patch: { planned_date: null } })}
                 title="Remove from this day"
-                className="text-ink-300 hover:text-red-500 text-[11px] min-w-[24px] min-h-[24px] shrink-0"
+                className="text-ink-500 hover:text-red-500 text-[11px] min-w-[44px] min-h-[44px] shrink-0"
               >✕</button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-ink-400">Nothing planned to buy this day.</p>
+        <p className="text-xs text-ink-500">Nothing planned to buy this day.</p>
       )}
 
       {unplanned.length > 0 && (
         <div className="border-t border-ink-100 pt-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-300 mb-1">Top wishlist</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500 mb-1">Top wishlist</p>
           <ul className="flex flex-col gap-1">
             {unplanned.map((i: ShopItem) => (
               <li key={i.id} className="flex items-center gap-2">
@@ -60,7 +60,7 @@ export function ShopCard({ date }: { date: string }) {
                 </p>
                 <button
                   onClick={() => update.mutate({ id: i.id, patch: { planned_date: date } })}
-                  className="text-[10px] px-1.5 py-0.5 rounded border border-ink-200 text-ink-500 hover:border-accent-300 hover:text-accent-700 transition-colors shrink-0 min-h-[24px]"
+                  className="text-[10px] px-2 rounded border border-ink-200 text-ink-500 hover:border-accent-300 hover:text-accent-700 transition-colors shrink-0 min-h-[44px]"
                   title="Plan to buy this day"
                 >
                   → this day

@@ -53,13 +53,17 @@ export function MetricMiniCard({ config }: { config: MiniMetricConfig }) {
 
   return (
     <div className="bg-cream-50 border border-ink-100 rounded-xl p-3 flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-1">
+      {/* Stacked below sm: in the 2-column phone grid the title wraps to two
+          lines while the window badge stays pinned to line 1, leaving a ragged
+          notch. Side-by-side from sm, where the title fits one line. */}
+      <div className="flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-1">
         <p className="text-[11.5px] font-bold uppercase tracking-wide text-ink-400 leading-tight">{icon} {title}</p>
         <span className="text-[10.5px] text-ink-300 shrink-0">{windowLabel}</span>
       </div>
       <p className="text-[19.5px] font-bold text-ink-900 leading-tight">
         {value != null ? value.toFixed(decimals) : '—'}
-        <span className="text-[11.5px] font-normal text-ink-400 ml-1">{displayUnit}</span>
+        {/* No stray unit next to an em dash when the metric has no data. */}
+        {value != null && <span className="text-[11.5px] font-normal text-ink-400 ml-1">{displayUnit}</span>}
       </p>
       {todayCount != null && (
         <p className="text-[11.5px] font-semibold text-accent-600">{todayCount}× today</p>

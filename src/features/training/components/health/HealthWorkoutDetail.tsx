@@ -125,7 +125,7 @@ export function HealthWorkoutDetail({ workout, onClose }: { workout: HealthWorko
                   {raw.location && ` · ${raw.location}`}
                 </p>
               </div>
-              <button onClick={onClose} aria-label="Close" className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-lg leading-none shrink-0">×</button>
+              <button onClick={onClose} aria-label="Close" className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-lg leading-none shrink-0">×</button>
             </div>
 
             {/* Stat chips (only render what exists) */}

@@ -1,549 +1,150 @@
-# AI Cost + Capability Analysis — target architecture and migration plan
+# AI layer — cost & capability reference (as shipped)
 
-> Written 2026-07-21. Technical reference for future AI-layer work. Companion to the
-> four research passes run this session (Gemini pricing mechanics, ai-proxy token audit,
-> 2026 Gemini capability scan, app-specific AI feature ideation). Everything quantified
-> here was measured against the real code (`char count ÷ 4 ≈ tokens`) or researched with
-> sources; confidence flags are stated where numbers could not be verified against
-> Google's primary pricing page (403 from the sandbox).
->
-> **The brief this answers:** reduce AI spend WITHOUT reducing capability — capability
-> must go UP at the same time. Live data access during chat is mandatory, but we cannot
-> pre-write a query for every possible question. Compare all data-access approaches,
-> pick one, plan the migration.
+> **Status: SHIPPED.** Written 21/07/2026; phases 1–4 are all live — client `aiApi.ts` plus a redeployed `ai-proxy`,
+> with migrations `064` (`ai_usage_log`, `ai_query_log`, `ai_memory`, the `ai_run_read_query` RPC) and `065`
+> (pgvector, `ai_embeddings`, `ai_semantic_search()`, `ai_reviews`) applied.
+> **This is a reference, not a plan.** Read it before any `ai-proxy` / `aiApi.ts` cost or capability work.
+> **Deferred by decision:** explicit `cachedContent` (only if `ai_usage_log.cached_tokens` shows implicit misses
+> dominate) · embed-on-write freshness (reindex is manual — Developer → "Reindex AI search") · a dedicated Food
+> "add by photo" button (the chat vision path + `parseFoodPhoto` already cover it) · nightly `daily_rollups`.
 
----
+## 1. Cost model
 
-## 1. Current state and problems
+The **only materially non-zero bill is Gemini tokens**, and within that, uncached input-prefix re-billing dominated.
+Everything else rides free tiers with large headroom at single-user scale — Supabase free tier, edge functions
+(500K invocations/month), GitHub Pages, and every third-party API (TMDB / EnTur / Open Food Facts / Kassalapp / Hevy
+/ Google). **Don't go optimising them.**
 
-### What exists (verified in code)
+## 2. The caching contract (the measured driver)
 
-| Piece | Where | Role |
-|---|---|---|
-| `ai-proxy` edge function | `supabase/functions/ai-proxy/index.ts` (~99 KB) | Gemini tool-loop (≤16 turns), 4-model fallback chain, structured mode, fetchUrl mode |
-| Generic DB tool layer | `DB_CATALOG` + `db_query/insert/update/delete` + `describe_database` | AI reads/writes ~40 allow-listed tables, always `user_id`-scoped, no raw SQL |
-| Special tools | transit, calendar, media, health, shop, Hevy routines (~20 declarations) | Things generic CRUD can't express |
-| Client prompt assembly | `src/features/ai/api/aiApi.ts` | `SYSTEM_PROMPT` (~3,270 tok) + `buildContext()` live-data dump baked into the system prompt |
-| Coach chat | `coachContext.ts` (~1,800+ tok 30-day JSON) | Same baking pattern |
-| One-shot surfaces | daily briefing, PT assessment, recipe extraction | No tool loop; already lean |
+Baking live context into `systemInstruction` (`${SYSTEM_PROMPT}\n---\nLIVE DATA:\n${context}`) made Gemini's implicit
+prefix cache (~90% off a repeated byte-identical prefix, ~1,024-token minimum on Flash) **structurally unable to
+hit**, so a **~7,270-token fixed block** (system prompt ~3,270 + serialized `TOOLS` ~4,000) was billed at full price
+**on every turn of every tool loop** — a 4-tool answer re-shipped ~29k fixed tokens.
 
-### The problems, ranked by measured cost impact
+The shipped contract, which must not regress:
 
-**P1 — The cache-buster (the single biggest cost driver).**
-`aiApi.ts:268` bakes volatile live data INTO the system prompt:
+- `systemInstruction` is **byte-identical forever**; tool declarations are **byte-identical per surface** (serialize
+  `TOOLS` deterministically, stable key order).
+- Live context rides as `contents[0]` (`prependContext` in `aiApi.ts`), not in the system prompt.
+- **Never interpolate dates, timestamps or any volatile value into `SYSTEM_PROMPT`** — an instant cache-buster. The
+  current date belongs in the context turn.
+- `buildContext` is skipped for clearly transit-only questions (conservative client-side `TRANSIT_RE` gate); the
+  model can always pull more via `db_query`, so a misclassification is recoverable.
+- **`ai_usage_log.cached_tokens`** (← `usageMetadata.cachedContentTokenCount`) is the **proof metric** and the
+  documented trigger for escalating to explicit `cachedContent`.
 
-```ts
-const systemWithContext = `${SYSTEM_PROMPT}\n\n---\nLIVE DATA:\n${context}`
-```
+## 3. The tool layer
 
-Gemini's implicit caching (automatic, ~90% discount on a repeated byte-identical
-prefix, min ~1,024 tokens on Flash) can never hit, because the prefix changes with
-every message. Result: the ~7,270-token fixed block (system ~3,270 + serialized
-`TOOLS` ~4,000) is billed at FULL price on **every turn of every tool loop**. A
-4-tool-call answer re-ships ~29k fixed-overhead tokens. This is where the money goes.
+**`db_query`** stays the generic "any table, any filter" read.
 
-**P2 — All ~20 tools on every surface.** `callGemini` always sends the full `TOOLS`
-array (`index.ts:674`, `baseBody = { tools: TOOLS }`). Shop chat uses ~5 of them
-(~900 tok needed vs ~4,000 sent); coach chat needs ~4. Multi-turn, so re-billed per turn.
-
-**P3 — Context sent even when useless.** `buildContext()` (~300–1,500 tok of
-tasks/media/schedule/workouts) is prepended unconditionally — including transit-only
-questions where the prompt itself tells the model to call `plan_trip` directly.
-(Long-flagged in CLAUDE.md as an unshipped win; confirmed still unshipped.)
-
-**P4 — Default model is the most expensive in the chain.** `MODEL_CHAIN` starts at
-`gemini-3.5-flash` (~$1.50/M input, ~$9/M output — MEDIUM confidence). The chain's tail,
-`gemini-2.5-flash-lite` (~$0.10/$0.40), is ~15–22× cheaper. Falling back on a 503
-currently makes calls *cheaper*, which is backwards as a default for simple surfaces.
-
-**P5 — Capability gaps (why "the current AI feels insufficient").** No multimodal
-input (message content is plain text, `index.ts` `parts:[{text}]`), no semantic recall
-("the recipe I saved last month" is impossible — `db_query` only does exact/ilike),
-no aggregation primitive (any "average/trend/compare" question forces the model to pull
-row dumps into context and do arithmetic in-head — expensive AND error-prone), no
-scheduled analysis beyond the daily briefing.
-
-### What is already RIGHT (do not churn)
-
-- `DB_CATALOG` is **on-demand** (behind `describe_database`), not in the prompt. Correct.
-- The tool loop already runs `thinking_level: MINIMAL` on 3.x (`index.ts:682`), built
-  per-model (the 2.5-tier 400 bug is fixed). Thinking tokens are NOT the main leak.
-- Structured mode (`callGeminiStructured`) sends no tools. Lean.
-- The daily briefing is once/day + localStorage-cached. Low impact.
-- The one-shot `plan_trip` latency design (resolve-in-tool, no investigate-first turns).
-
----
-
-## 2. Goals and constraints
-
-1. **Capability strictly up**: photo input, semantic recall, real aggregation, weekly
-   cross-domain review. "Cheaper but dumber" is explicitly rejected.
-2. **Cost down**: attack P1–P4; target ≥60–80% reduction in billed input tokens per
-   interaction (mechanically achievable from caching + tool scoping + context gating alone).
-3. **Live data access stays mandatory** — and must NOT require pre-writing a query per
-   scenario. The generic layer is the answer; it gets *stronger*, not replaced.
-4. **No security regression**: allow-list, `user_id` force-scoping, no DDL, no raw SQL
-   from the model, confirm-before-delete stay non-negotiable.
-5. Single-user scale today, but nothing that collapses if usage 10×es.
-
----
-
-## 3. Cost sources — full inventory
-
-For each: why it exists · how to measure · how to reduce · what reducing loses · compensation.
-
-| Source | Why | Measure | Reduce | Loss | Compensation |
-|---|---|---|---|---|---|
-| **LLM input tokens** | Prefix re-billed uncached (P1/P2/P3) | Gemini `usageMetadata` per response (log it — see §12 T8) | Stable prefix → implicit cache; tool slices; context gating | None if done right | — |
-| **LLM output tokens** | Answers + thinking | same | Already MINIMAL thinking in loop; keep answers concise via prompt | Over-terse answers | Per-surface style rules |
-| **Model tier** | 3.5-flash default everywhere | which model served (already reported) | Route simple surfaces to cheaper models | Quality dips on hard tasks | Routing + escalation (§8) |
-| **Embeddings** (future) | Semantic recall corpus | rows × avg tokens × $0.15/M (batch $0.075/M) | Batch API for backfill (50% off); embed-on-write after | None | — |
-| **DB queries** | Supabase free tier | Dashboard usage | Nothing to do — free tier headroom is large single-user | — | — |
-| **Edge functions** | Free tier: 500K invocations/mo | Dashboard | Non-issue at this scale | — | — |
-| **Storage/transfer** | Supabase free 1 GB / GH Pages free | Dashboard | health_metrics grows ~hourly-grain now (post-wipe); fine for years | — | Archive/prune old raw jsonb if ever needed |
-| **Background jobs** | crons (google-health-sync 15min) | invocation logs | Already sized (research: >15min gains nothing) | — | — |
-| **Logging** | `app_error_logs`, `audit_logs` | row counts | 30-day audit sweep already exists | — | — |
-| **3rd-party APIs** | TMDB/EnTur/OFF/Kassalapp/Hevy/Google | all free tiers | — | — | — |
-| **Scale-up risk** | tokens scale linearly with users | usageMetadata sums | The same fixes (cache/scoping) scale linearly too | — | Batch + explicit cache become worth it at volume |
-
-**Bottom line:** the ONLY materially non-zero bill is Gemini tokens, and within that,
-uncached input-prefix re-billing (P1) dominates. Everything else in the stack rides
-free tiers with large headroom at single-user scale.
-
----
-
-## 4. Alternative architectures for live data access
-
-The core tension: chat must reach ANY of the user's data on demand, but we can't
-pre-author a query per question, and we must not dump whole tables into context.
-
-| Option | What it is | Gains | Losses/risks | Verdict |
-|---|---|---|---|---|
-| **A. Status quo** (generic CRUD tools + baked context) | what we have | works today | P1–P5; row-dumps for analytics | Baseline, not acceptable |
-| **B. Cache-aligned tool-first** (keep generic CRUD; fix prompt assembly; add `db_aggregate`; per-surface tool slices) | evolution of A | ≥60–80% input-cost cut; analytics without row dumps; zero security change | none functional; small refactor risk | ✅ **CHOSEN** |
-| **C. AI-generated raw SQL** | model writes SQL, we execute | maximal flexibility, no per-scenario code | runs under service role → RLS bypass; injection surface; wrong-JOIN silent errors; validation layer ≈ rebuilding the structured layer anyway | ❌ Rejected as the PRIMARY path — BUT shipped as an explicit-opt-in, READ-ONLY escape hatch (`run_read_query`) per user request; see §7.6 for the safe design that neutralizes the risks above |
-| **D. Semantic/metric layer** (named metrics registry: "protein_today", "sleep_avg_7d"…) | curated metric catalog the AI calls by name | precise, cheap, self-documenting | it's exactly the "pre-write every scenario" trap — unbounded authoring burden | Partial adopt: ship a FEW hot metrics as SQL RPCs (§7.3), never as the primary path |
-| **E. Frontend-executed queries** (AI returns a query plan; browser runs it under the user's own JWT/RLS) | true RLS enforcement | extra round-trips per tool call (browser↔edge↔browser), latency ×N in a 16-turn loop; complex protocol | ❌ Rejected for chat; NOTE: the app's own UI already IS this layer for known views |
-| **F. RAG/embeddings-first** (retrieve chunks, no live queries) | great recall | embeddings are STALE copies — "how many kcal today" needs live SQL, not similarity | Adopt as a COMPLEMENT for fuzzy recall only (§7.4), never for current-state questions |
-| **G. Precomputed summaries** (nightly aggregate tables / materialized views) | cheap reads for AI + briefing | staleness (yesterday's rollup ≠ "today so far"); more moving parts | Partial adopt later: a nightly `daily_rollups` table is the natural substrate for the weekly review; not needed for v1 |
-
-**Decision: B, with D/F/G as targeted complements.** The generic structured layer
-(`db_query` + new `db_aggregate`) remains the universal answer to "any question, no
-pre-written SQL"; hot paths get RPCs; fuzzy memory gets embeddings; periodic analysis
-gets precomputed rollups. Raw SQL generation and frontend query execution are rejected.
-
----
-
-## 5–6. Gains, losses, and compensation (chosen architecture)
-
-| Change | Gain | Loss | Compensation |
-|---|---|---|---|
-| Stable prefix (context out of system prompt) | ~90% off ~7.3k tok/turn once cache hits | Cache only hits when calls repeat within Google's implicit-cache window; sporadic use may miss | Even on a miss we bill the same as today — strictly ≤ current cost. If billing shows misses dominate, explicit `cachedContent` is the deterministic fallback (storage fee noted, MEDIUM conf ~$1–4.5/M-tok/h) |
-| Context gating (skip live dump for transit/simple) | 300–1,500 tok/req | Model may lack context it silently used before (e.g. "plan after my last meeting" asked in "simple" mode) | Misclassification safety: the model can ALWAYS pull data via `db_query`; gate errs toward including context when intent is ambiguous; keep a one-line date/time header always |
-| Per-surface tool slices | ~3k tok/turn on shop/coach | A surface can't use an unlisted tool (user asks shop-AI a calendar question) | `general` slice remains the superset default; slices only for surfaces with a hard persona (shop, coach); measure before slicing more |
-| Model routing (cheap default for simple surfaces) | ~15–22× on routed calls | Quality regression risk on routed surfaces | Explicit picker already exists; escalation rule (§8); route ONLY surfaces with structurally simple jobs (shop parsing, classification) — general chat stays 3.5-flash |
-| `db_aggregate` tool | Analytics answers without row dumps (both cheaper AND more correct — SQL does the math, not the model) | New tool = new attack surface | Same guardrails as db_query: allow-listed tables/columns, enum'd ops, forced user_id, LIMIT on group count |
-| Photo→log (vision) | Biggest UX capability jump; ~1k tok/image ≈ negligible | Estimation accuracy on plates is genuinely rough | UI presents result as EDITABLE prefill (same as barcode flow), never auto-saves; label photos are near-exact |
-| Embeddings/pgvector | Fuzzy recall works at all | New infra; corpus staleness; embed cost | Batch backfill at 50%; embed-on-write triggers keep it fresh; scope v1 to 4 text-rich tables |
-| Weekly review (scheduled) | Cross-domain insight (training×nutrition×sleep) — the Fitbit payoff | One more cron + table | Reuses briefing pattern exactly; Batch-eligible if ever needed |
-
----
-
-## 7. Live data access design (the core)
-
-### 7.1 Prompt assembly — the fix for P1
-
-```
-BEFORE (every request, cache-hostile):
-  systemInstruction = SYSTEM_PROMPT + "LIVE DATA:" + volatile dump
-  tools             = ALL TOOLS
-
-AFTER (cache-aligned):
-  systemInstruction = SYSTEM_PROMPT          ← byte-identical forever
-  tools             = TOOL_SLICES[surface]   ← byte-identical per surface
-  contents[0]       = { role:'user', parts:[{ text:
-                        "CONTEXT (auto-attached, not typed by the user):\n" + dump }] }
-  contents[1..]     = real chat history
-```
-
-Rules: never interpolate timestamps/dates into `SYSTEM_PROMPT` (instant cache-buster —
-current date goes in the context part); serialize `TOOLS` deterministically (stable key
-order); one shared const per slice.
-
-### 7.2 The universal query layer (already ours) + `db_aggregate`
-
-`db_query` stays the generic "any table, any filter" read. What it cannot do is
-aggregate — today "average protein this month" → model pulls 30–90 rows into context
-and averages them itself (token-expensive, arithmetic-unreliable). New tool:
-
-```jsonc
-// db_aggregate — SQL does the math; the model never sees raw rows
-{
-  "table": "food_log_entries",          // must be in DB_CATALOG (any access level)
-  "metrics": [                          // enum'd ops only — no expressions
-    { "op": "sum|avg|min|max|count", "column": "protein_g", "as": "avg_protein" }
-  ],
-  "filters": { "status": "eaten", "date": { "gte": "2026-07-01" } },  // same grammar as db_query
-  "group_by": ["date"],                 // optional; columns validated against catalog
-  "order_by": "date", "limit": 100      // hard cap ≤ 366 groups
-}
-```
-
-Implementation: build a PostgREST aggregate select (`select=date,protein_g.avg()` —
-supported since PostgREST v12/13, verify the hosted flag; else a single generic
-`SECURITY DEFINER` RPC that assembles the aggregate from validated identifiers —
-identifiers checked against DB_CATALOG, values parameterized, `user_id` forced, so it
-is NOT raw SQL). Either way the model sends ~80 tokens and receives ~50, replacing
-row dumps of 1k–10k tokens. **This one tool is what makes "no pre-written query per
+**`db_aggregate`** exists because without it, "average protein this month" forces 30–90 rows into context plus
+in-head arithmetic — token-expensive *and* unreliable. Shape: enum'd ops only (`sum|avg|min|max|count`), never
+expressions; the same filter grammar as `db_query`; group columns validated against `DB_CATALOG`; a hard cap of
+**≤366 groups**; `user_id` forced server-side; rows reduced server-side in JS so only the summary reaches the model
+(~80 tokens out / ~50 back replaces 1k–10k-token dumps). **This one tool is what makes "no pre-written query per
 scenario" true for analytics, not just lookups.**
 
-### 7.3 Hot-path RPCs (semantic layer, deliberately tiny)
+**Hot-path RPCs** (`get_day_summary` / `ai_day_summary`-class) are capped at **~3–5**. Beyond that, use
+`db_aggregate` — otherwise you re-enter the pre-write-every-scenario trap.
 
-Only for questions asked near-daily where one call should return a composed picture:
+**`semantic_search`**: `vector(768)` from `gemini-embedding-001` (Matryoshka-truncated); the **hnsw cosine index
+means no manual normalisation**; vector `limit ≤ 8`; `user_id` filtered inside the vector query. It returns
+`{source_table, source_id, snippet, score}` and the model then `db_query`s the live row by id — **embeddings locate,
+live SQL answers; never use a similarity hit as the factual value of anything current-state.**
 
-```sql
--- get_day_summary(p_date): one row the AI reads instead of 5 tool calls
-create or replace function ai_day_summary(p_user uuid, p_date date)
-returns jsonb language sql stable security definer set search_path = public as $$
-  select jsonb_build_object(
-    'tasks_open',   (select count(*) from tasks where user_id=p_user and due_date=p_date and status not in ('done','cancelled')),
-    'kcal_eaten',   (select coalesce(sum(calories),0) from food_log_entries where user_id=p_user and date=p_date and status='eaten'),
-    'protein_g',    (select coalesce(sum(protein_g),0) from food_log_entries where user_id=p_user and date=p_date and status='eaten'),
-    'blocks',       (select count(*) from time_blocks where user_id=p_user and date=p_date),
-    'workout_done', exists(select 1 from hevy_workouts where user_id=p_user and start_time::date=p_date));
-$$;
-```
-
-Cap this catalog at ~3–5 functions (day summary, week training load, sleep window).
-Anything beyond → `db_aggregate`. This keeps D's precision without D's authoring trap.
-
-### 7.4 Semantic recall (complement, not substitute)
-
-```sql
-create extension if not exists vector;
-create table ai_embeddings (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  source_table text not null,      -- 'recipes' | 'pt_assessments' | 'dev_requests' | 'work_notes'
-  source_id text not null,
-  content text not null,           -- the embedded text (title + body, chunked if long)
-  embedding vector(768) not null,  -- gemini-embedding-001, Matryoshka-truncated to 768
-  updated_at timestamptz not null default now(),
-  unique (user_id, source_table, source_id)
-);
-create index on ai_embeddings using hnsw (embedding vector_cosine_ops);
-```
-
-- Backfill via **Batch API** (50% off — this is the one place batch genuinely pays here).
-- Freshness: embed-on-write from the API layer (or a 15-min cron sweep of `updated_at`).
-- New tool `semantic_search(query, sources?, limit≤8)` → embed the query server-side →
-  cosine top-k → return `{source_table, source_id, snippet, score}` — the model then
-  `db_query`s the live row by id. **Embeddings locate; live SQL answers.** Never use
-  similarity results as the factual value of anything current-state.
-
-### 7.6 Live SQL — the opt-in read-only escape hatch (`run_read_query`)
-
-The user explicitly wants raw live SQL available **when they ask for it**, without
-us pre-writing a query per scenario. Option C's risks are neutralized by making it
-opt-in + read-only + layered:
-
-- **Explicit opt-in only.** The system prompt tells the model to use it ONLY when
-  the user asks for a raw/custom/complex query db_query can't express, or literally
-  says "live sql"/"canlı sorgu". It's absent from casual lookups.
-- **User-scoped, RLS-enforced.** ai-proxy runs its normal ops under the **service
-  role** (RLS bypassed) — so a raw query there would be dangerous. `run_read_query`
-  instead builds a **user-JWT client** and calls a **SECURITY INVOKER** RPC
-  (`ai_run_read_query`), so it runs as the `authenticated` user and RLS applies.
-- **Read-only at the DB.** The RPC sets `transaction_read_only=on` + a 5 s
-  `statement_timeout` and wraps the query in `LIMIT 500` before `jsonb_agg`.
-- **The security boundary is the DATABASE, not the text guard.** An adversarial
-  review proved regex SQL-parsing is bypassable (`FROM/**/tbl` comments, `FROM "tbl"`
-  quoting), so containment does NOT rest on it. What actually holds: RLS (rows scoped
-  to the user), read-only transaction (no writes), **migration 044** already revokes
-  the OAuth-token tables from the `authenticated` role (so tokens are permission-denied
-  even if the guard is bypassed), and a hard `LIMIT 500`.
-- **Edge-side guard = best-effort UX filter** (clear errors + cheap block of obvious
-  probes), hardened after the review: strips SQL comments first, rejects quoted
-  identifiers, `SELECT`/`WITH`-only + single-statement, blocks `pg_`/`information_schema`/
-  other schemas, and checks every `FROM`/`JOIN` target (incl. comma-joined lists;
-  CTEs recognised only as `name AS (` so a `SELECT`-list alias isn't mistaken for one)
-  against the catalog allow-list. Verified against the review's bypass corpus (8/8
-  rejected, 5/5 legit queries pass). Fails closed. The broad DML-keyword regex was
-  removed — it false-rejected reads whose text contained words like "update" in a
-  string literal; write-prevention is the read-only transaction's job, not a word list.
-- **Logged.** Every run_read_query (and db_query) is recorded in `ai_query_log` with
-  the exact SQL — the substrate for later promoting hot queries to the UI (§7.3).
-- **Residual risk (honest):** the model could read one of the user's OWN non-secret,
-  non-catalog rows (e.g. their own audit_logs) it maybe didn't need — own single-user
-  data, opted-in; secrets are DB-denied and writes are impossible.
-- **Wall-clock:** the RPC's `statement_timeout` is best-effort (Postgres doesn't re-arm
-  the timer mid-statement); the reliable bounds are the 500-row cap + Supabase's own
-  `authenticated` role `statement_timeout` default.
-
-### 7.5 Decision ladder the system prompt teaches
+**Decision ladder the system prompt teaches:**
 
 ```
 current value / list?          → db_query
 average / trend / compare?     → db_aggregate
 "the whole day/week picture"?  → hot-path RPC tool
 "that thing I wrote/saved…"?   → semantic_search → db_query by id
-write?                         → db_insert/update/delete (+ confirm rules, unchanged)
-external world?                → special tools (transit/calendar/media/…)
+write?                         → db_insert/update/delete (+ the confirm rules)
+external world?                → special tools (transit / calendar / media / …)
 ```
 
----
+## 4. `run_read_query` — the opt-in read-only live-SQL hatch
 
-## 8. Model and tool strategy
+Raw SQL was rejected as the *primary* path because ai-proxy's normal ops run under the **service role (RLS
+bypassed)**. The hatch instead builds a **user-JWT client** and calls a **SECURITY INVOKER** RPC
+(`ai_run_read_query`), so it runs as `authenticated` and RLS applies; the RPC sets `transaction_read_only = on` plus
+a 5 s `statement_timeout` and wraps the query in `LIMIT 500` before `jsonb_agg`. The system prompt only reaches for
+it when the user asks for a raw/custom query `db_query` can't express (or literally says "live sql").
 
-| Surface | Start model | thinking_level | Tool slice | Rationale |
-|---|---|---|---|---|
-| General chat | gemini-3.5-flash | MINIMAL (as today) | full | Quality-critical, unpredictable questions |
-| Coach chat | 3.5-flash | MINIMAL loop / consider MEDIUM final | **full** (NOT sliced) | Open training+nutrition+schedule conversation that creates tasks / plans time_blocks / logs food — slicing it would weaken the assistant. Only the bounded shop surface is sliced. |
-| Shop chat | **2.5-flash / 3.1-flash-lite** | MINIMAL | shop (5 tools) | Structurally simple; 5–15× cheaper |
-| Structured extraction | 3.5-flash | MINIMAL (as today) | none | responseSchema does the discipline |
-| Briefing / PT assessment | 3.5-flash | MEDIUM (quality ↑, 1×/day so cost ≈ 0) | none | Capability-up lever, nearly free |
-| Weekly review (new) | 3.5-flash | HIGH | none (context pre-gathered) | 1×/week; depth is the point |
+**The security boundary is the DATABASE, not the text guard.** An adversarial review proved regex SQL parsing is
+bypassable (`FROM/**/tbl`, `FROM "tbl"`), so containment rests on RLS + the read-only transaction + **migration 044
+already revoking the OAuth-token tables from `authenticated`** + the hard row cap.
 
-Escalation: user picker already overrides; add prompt rule — if a cheap-routed surface
-detects it's out of depth, say so; the UI hint "retry with a stronger model" is enough
-at single-user scale (no auto-escalation machinery needed yet).
+The edge guard is a best-effort UX filter that fails closed: strip comments first, reject quoted identifiers,
+`SELECT`/`WITH`-only, single statement, block `pg_` / `information_schema` / other schemas, check every `FROM`/`JOIN`
+target (including comma-joined lists) against the catalog allow-list, and recognise CTEs only as `name AS (` so a
+SELECT-list alias isn't mistaken for one. Verified: 8/8 of the review's bypass corpus rejected, 5/5 legitimate
+queries pass. **The broad DML-keyword regex was deliberately REMOVED — do not re-add it**: it false-rejected reads
+containing words like "update" in a string literal; write-prevention is the read-only transaction's job.
 
-Fallback chain: unchanged for reliability; routing only changes the *starting* model
-(existing `model` param mechanism — zero new plumbing).
+Honest residual risk: the model could read one of the user's own non-secret, non-catalog rows. `statement_timeout` is
+best-effort (Postgres doesn't re-arm the timer mid-statement) — the reliable bounds are the 500-row cap and the
+role's own default timeout. Every `db_query` / `run_read_query` is logged to `ai_query_log` with the exact SQL, the
+substrate for later promoting hot queries into the UI.
 
-Batch API: interactive = never. Reserved for: embeddings backfill (real win),
-future bulk enrichment jobs. Not worth it for the single daily briefing.
+## 5. Tool slicing, model routing, batch
 
----
+- **Slicing is deliberate and narrow: ONLY the bounded shop surface is sliced (5 tools); coach and general keep the
+  FULL tool set.** Slicing an open training+nutrition+schedule conversation that creates tasks, plans time blocks and
+  logs food would weaken the assistant. Measure before slicing anything else.
+- **Model routing changes only the *starting* model** of the existing fallback chain
+  (`SURFACE_MODEL.shop = gemini-2.5-flash`); a 503 still falls through the whole chain — no new plumbing.
+- **Batch API: never interactive.** Reserved for the embeddings backfill (50% off) and future bulk enrichment; not
+  worth it for one daily briefing.
 
-## 9. Security and authorization (invariants — none relaxed)
+## 6. Security invariants (none relaxed)
 
-1. Allow-list only (`DB_CATALOG`); token/secret/auth tables unreachable. `db_aggregate`
-   validates table AND every column/op against the catalog; ops are enum'd, never expressions.
-2. Every op force-scoped to `user_id` server-side (model never supplies it).
-3. No raw SQL from the model — option C rejected; the RPC variant of db_aggregate builds
-   SQL from validated identifiers + parameterized values only.
-4. `security definer` RPCs: `set search_path = public`, `p_user` injected by the edge
-   function from auth, never from the model.
-5. Write guardrails unchanged: announce before create/update/delete; explicit user
-   confirmation before ANY delete.
-6. `semantic_search` returns only the caller's rows (user_id filter in the vector query).
-7. Timeouts/limits: db_aggregate `limit ≤ 366` groups; vector `limit ≤ 8`; existing
-   16-turn loop cap stays.
+1. Allow-list only (`DB_CATALOG`); token/secret/auth tables unreachable. `db_aggregate` validates the table AND every
+   column/op against the catalog; ops are enum'd, never expressions.
+2. Every op force-scoped to `user_id` server-side — the model never supplies it.
+3. No raw SQL from the model on the default path.
+4. `security definer` RPCs pin `set search_path = public` and take `p_user` injected by the edge function from auth,
+   never from the model.
+5. Announce before create/update/delete; **explicit user confirmation before ANY delete**.
+6. `semantic_search` returns only the caller's rows (user_id filter inside the vector query).
+7. Limits: 16-turn loop cap · `db_aggregate` ≤366 groups · vector `limit ≤ 8`.
 
----
+## 7. Architectures evaluated (so they aren't re-litigated)
 
-## 10. Recommended final architecture
+- **(C) AI-generated raw SQL** — rejected as the primary path (service-role RLS bypass, injection surface,
+  silent wrong-JOIN errors); shipped only as the opt-in read-only hatch in §4.
+- **(D) named-metric registry** — the pre-write-every-scenario trap; capped at 3–5 hot RPCs.
+- **(E) frontend-executed query plans** — latency ×N inside a 16-turn loop; rejected for chat. (Note: the app's own
+  UI already *is* this layer for known views.)
+- **(F) RAG-first** — embeddings are STALE copies, useless for "how many kcal today"; a complement only.
+- **(G) precomputed rollups** — staleness; the natural substrate for a future weekly review, not needed for v1.
 
-```
-Client (aiApi.ts)
-  ├─ surface tag ('general'|'coach'|'shop'|…)
-  ├─ STABLE SYSTEM_PROMPT (no interpolation)          ─┐ cache-aligned prefix
-  └─ context as contents[0] user part (gated by need)  ─┘
-        │
-ai-proxy (edge)
-  ├─ TOOL_SLICES[surface] (deterministic serialization)
-  ├─ MODEL routing table + existing fallback chain + per-model thinking
-  ├─ tools: db_query · db_insert/update/delete · db_aggregate (NEW)
-  │         · hot-path RPC tools (≤5) · semantic_search (NEW) · special tools
-  ├─ vision: image parts accepted → structured extraction (photo→food/label/receipt)
-  └─ usageMetadata logging → ai_usage_log (measure everything)
-        │
-Postgres
-  ├─ DB_CATALOG-governed tables (unchanged)
-  ├─ ai_day_summary()-class RPCs (≤5)
-  ├─ ai_embeddings (pgvector, 768-dim)  ← batch backfill + embed-on-write
-  └─ (later) daily_rollups for the weekly review
-Scheduled
-  ├─ daily briefing (existing) · weekly review (new, cron + table)
-```
+## 8. Already right — do not churn
 
----
+`DB_CATALOG` stays behind `describe_database` (on-demand, not in the prompt) · `thinking_level: MINIMAL` in the loop
+with the request body built **per model** (thinking tokens are not the leak) · structured mode sends no tools · the
+daily briefing is once/day + localStorage-cached · the weekly review is client-side lazy+cached the same way (no
+cron) · `plan_trip`'s one-shot resolve-in-tool latency design.
 
-## 11. Migration plan
-
-**Phase 1 — cost core (no schema, no manual steps, one PR):**
-stable prefix + context-as-first-message · context gating · TOOL_SLICES ·
-model routing for shop · usageMetadata logging (needs tiny `ai_usage_log` migration or
-reuse app_error_logs-style insert). Verify: token counts in the log drop; behavior parity
-on a scripted question set (transit, food lookup, task create, shop add).
-
-**Phase 2 — analytics capability:** `db_aggregate` + prompt ladder (§7.5) +
-`ai_day_summary` RPC. Verify: "average protein last 2 weeks" answers with ONE tool call
-and zero row dumps; numbers cross-checked against the Food UI.
-
-**Phase 3 — vision:** image part end-to-end (client capture → edge → Gemini) + photo→food
-structured extraction prefilling FoodLogModal (editable, never auto-saved). Reuses the
-barcode UX contract.
-
-**Phase 4 — memory + proactive:** pgvector migration + batch backfill + `semantic_search`
-tool · weekly review cron + surface. (Explicit `cachedContent` only if Phase-1 billing
-data shows implicit misses dominate.)
-
-Rollback: each phase is independent; Phase 1 keeps a `legacy_prompt` escape flag for one
-release in case cache-alignment regresses answer quality anywhere.
-
----
-
-## 12. Prioritized tasks
-
-| # | Task | Phase | Size |
-|---|---|---|---|
-| T1 | Stable prefix: context → `contents[0]`; de-interpolate SYSTEM_PROMPT | 1 | S |
-| T2 | Context gating (transit/simple heuristic; always-keep date line) | 1 | S |
-| T3 | TOOL_SLICES per surface + deterministic serialization | 1 | S |
-| T4 | Shop routing → cheaper start model | 1 | S |
-| T5 | `ai_usage_log` + usageMetadata capture (the measurement backbone) | 1 | S |
-| T6 | `db_aggregate` tool (validation + PostgREST-aggregate or RPC builder) | 2 | M |
-| T7 | `ai_day_summary` RPC + tool + prompt ladder | 2 | S |
-| T8 | Vision pipeline + photo→food prefill | 3 | M |
-| T9 | pgvector + batch backfill + `semantic_search` | 4 | M–L |
-| T10 | Weekly review cron + table + Home surface | 4 | M |
-
-Manual-apply steps (user): migrations for T5/T9/T10; redeploy `ai-proxy` at each phase.
-
----
-
-## 13. Key implementation sketches
-
-**T1 (aiApi.ts):**
-```ts
-// BEFORE: const systemWithContext = `${SYSTEM_PROMPT}\n\n---\nLIVE DATA:\n${context}`
-const contents: Message[] = needsContext(userText)
-  ? [{ role: 'user', content: `CONTEXT (auto-attached):\n${await buildContext()}` },
-     { role: 'model', content: 'Noted.' }, ...messages]
-  : [{ role: 'user', content: `Today: ${todayLine()}` },
-     { role: 'model', content: 'Noted.' }, ...messages]
-return invokeAI(contents, SYSTEM_PROMPT, model, surface)   // system prompt now constant
-```
-
-**T3 (ai-proxy):**
-```ts
-const TOOL_SLICES: Record<Surface, AnyRecord[]> = {
-  general: TOOLS,
-  shop:    pick(TOOLS, ['get_shop_categories','create_shop_category','create_shop_item',
-                        'ask_clarifying_question','db_query']),
-  coach:   pick(TOOLS, ['db_query','db_aggregate','semantic_search',
-                        'update_hevy_routine','create_hevy_routine']),
-}
-const baseBody = { tools: TOOL_SLICES[surface] ?? TOOLS }
-```
-
-**T5 (migration):**
-```sql
-create table ai_usage_log (
-  id bigint generated always as identity primary key,
-  user_id uuid not null, surface text not null, model text not null,
-  prompt_tokens int, cached_tokens int, output_tokens int, tool_turns int,
-  created_at timestamptz not null default now());
--- cached_tokens comes from usageMetadata.cachedContentTokenCount → this column is
--- the PROOF of whether Phase 1 worked, and the trigger for explicit caching if not.
-```
-
-**T8 (vision request part, edge):**
-```ts
-parts: [{ inline_data: { mime_type: 'image/jpeg', data: base64 } },
-        { text: 'Identify foods and estimate per-item grams + macros.' }]
-// + responseSchema → the same editable-prefill contract as the barcode flow
-```
-
----
-
-## Appendix — pricing snapshot (July 2026, MEDIUM confidence, verify on live billing)
+## 9. Pricing appendix (July 2026 — MEDIUM confidence, verify on live billing)
 
 | Model | In $/M | Out $/M |
 |---|---|---|
-| gemini-3.5-flash (current default) | ~1.50 | ~9.00 |
+| gemini-3.5-flash (default) | ~1.50 | ~9.00 |
 | gemini-3.1-flash-lite | ~0.25 | ~1.50 |
 | gemini-2.5-flash | ~0.30 | ~2.50 |
 | gemini-2.5-flash-lite | ~0.10 | ~0.40 |
 
-Mechanics (HIGH confidence): implicit cache ~90% off repeated prefix, ≥~1k tok, no code
-needed once prefix is stable · explicit cachedContent same discount + hourly storage fee,
-~32k floor — fallback only · Batch API 50% off, async ≤24h, useless interactively ·
-no "developer discount" tier exists (the "Developer API" is just the AI-Studio product
-name) · AI-Studio vs Vertex per-token parity (Vertex adds SLA/compliance, not savings)
-· grounding-with-Search ~5k free prompts/mo · embeddings $0.15/M (batch $0.075/M).
+(The chain's tail is ≈15–22× cheaper than the default.)
 
----
+Mechanics (HIGH confidence): implicit cache ~90% off a repeated prefix, no code needed once the prefix is stable ·
+explicit `cachedContent` gives the same discount plus an hourly storage fee with a ~32k floor — fallback only ·
+Batch 50% off, async ≤24 h · **no "developer discount" tier exists** (the "Developer API" is just the AI-Studio
+product name) · AI-Studio vs Vertex per-token parity (Vertex sells SLA/compliance, not savings) ·
+grounding-with-Search ~5k free prompts/month · embeddings $0.15/M (batch $0.075/M).
 
-## 14. Implementation log — Phase 1 + user additions (code written 2026-07-21)
+## 10. Open caveat
 
-Phase 1's cost core plus three user-requested capabilities were implemented in one
-change. Client code ships on merge; **the edge function + migration are deployed by
-the user (tomorrow)** — every new server write is best-effort so shipping the client
-first cannot break anything.
-
-**Shipped (code):**
-- **T1 — stable prefix** (`aiApi.ts`): `SYSTEM_PROMPT`/`COACH_CHAT_PROMPT`/
-  `SHOP_SYSTEM_PROMPT` are now byte-identical per call; live context rides as a
-  leading `contents[0]` turn via `prependContext` (user CONTEXT turn + tiny ack),
-  so the cacheable systemInstruction+tools prefix stops being poisoned.
-- **T2 — context gating** (`aiApi.ts`): `TRANSIT_RE` — conservative; only clearly
-  transit-routing questions get the light date/time header instead of the full dump.
-  Everything else keeps full context (the AI can always pull more via db_query).
-- **T3 — per-surface tool slices** (`ai-proxy`): `toolsFor(surface)` → ONLY the
-  bounded shop surface is sliced (5 tools); coach + general keep the full set so
-  the assistant is never weakened. `surface` sent from the client.
-- **T4 — model routing** (`ai-proxy`): `SURFACE_MODEL.shop = gemini-2.5-flash`
-  (~5× cheaper start; still falls through the whole chain on 503).
-- **T5 — usage logging** (`ai-proxy`): `UsageAcc`/`addUsage` accumulate token counts
-  across the tool loop; `logUsage` writes one `ai_usage_log` row per interaction
-  (incl. `cached_tokens` — the proof that implicit caching is hitting).
-- **Live SQL** (`run_read_query`, §7.6): read-only escape hatch, opt-in, layered guard.
-- **Query logging** (`ai_query_log`): every db_query + run_read_query recorded with
-  SQL/args → later promote hot ones to the UI.
-- **AI memory** (`ai_memory` + `save_memory` tool + catalog rw): durable notes/
-  summaries/facts the user asks the AI to remember; recalled via db_query.
-
-### Phases 2–4 (code written 2026-07-22)
-
-- **Phase 2 (T6/T7):** `db_aggregate` tool (sum/avg/min/max/count + group_by,
-  rows reduced server-side in JS — only the summary reaches the model; no SQL
-  built from input, no PostgREST-aggregate dependency) + `get_day_summary` tool
-  + a SYSTEM_PROMPT decision ladder. No migration; needs ai-proxy redeploy.
-- **Phase 3 (T8) — vision:** `Message.images` end-to-end; a shared
-  `messagesToContents()` attaches base64 photos as Gemini `inline_data` parts
-  (chat + structured paths); AIPanel 📷 attach (≤3, thumbnails, image-only send);
-  `parseFoodPhoto()` + `fileToCompactDataUrl` util. No migration; ai-proxy redeploy.
-- **Phase 4 (T9/T10):** migration **065** = pgvector + `ai_embeddings` +
-  `ai_semantic_search()` RPC + `ai_reviews`. Edge: `gemini-embedding-001` @ 768
-  dims (cosine index → no manual normalize), `semantic_search` tool, a
-  user-triggered `reindexEmbeddings` action (+ "Reindex AI search" button on
-  the Developer page). Weekly review = client-side lazy+cached (like the daily
-  briefing, no cron/edge fn): `weeklyReviewApi`/`useWeeklyReview`/`WeeklyReview`
-  on Home, durable copy in `ai_reviews`.
-
-**Still deferred:** explicit `cachedContent` (only if `ai_usage_log.cached_tokens`
-shows implicit misses dominate); a dedicated Food "add by photo" button (the chat
-vision path + `parseFoodPhoto` helper already cover it); embed-on-write freshness
-(reindex is manual for now).
-
-### Deploy checklist addendum — phases 2–4
-1. **Apply migration `065_ai_semantic_and_reviews.sql`** (pgvector ext +
-   ai_embeddings + ai_semantic_search RPC + ai_reviews). Migration 064 must be
-   applied first (it isn't a hard dependency, but both are pending).
-2. **Redeploy `ai-proxy`** (all of phases 2-4's edge changes ship together).
-3. **First run:** open Developer → **Reindex AI search** once so `semantic_search`
-   has data. **Verify the embeddings call succeeds** on that first reindex — it's
-   the one API shape confirmed only via docs, not a live call from here; if it
-   errors, check the model id / field names against `ai.google.dev` before relying
-   on semantic search. Weekly review generates itself on first Home open of the week.
-4. No new secrets/env/cron. The reindex + semantic_search reuse the caller's JWT.
-
-### Deploy checklist — DO TOMORROW (Supabase side)
-1. **Apply migration** `supabase/migrations/064_ai_cost_capability.sql`
-   (Dashboard → SQL Editor, or `supabase db push`). Creates the 3 tables + the
-   `ai_run_read_query` RPC.
-2. **Redeploy the `ai-proxy` edge function** (Dashboard paste or `supabase functions
-   deploy ai-proxy`). It's self-contained (no `_shared/` imports).
-3. **Verify:** ask the AI a normal question → a row appears in `ai_usage_log`
-   (`cached_tokens` should climb on repeated similar questions once the prefix caches).
-   Ask "run a live sql: select count(*) from tasks" → it uses run_read_query and a row
-   lands in `ai_query_log`. Ask "bunu aklında tut: …" → a row lands in `ai_memory`.
-4. **Order note:** deploying the edge function BEFORE the migration is safe (writes
-   no-op until the tables exist); merging the CLIENT before either is also safe (old
-   edge function just ignores `surface` and gets context as the first message).
-
-No new secrets/env vars. No new cron. `run_read_query` needs no config — it reuses the
-caller's JWT (already sent by the browser) + `SUPABASE_ANON_KEY` (built-in).
+The `gemini-embedding-001` request shape was confirmed **from docs, not a live call** — verify it on the first
+Developer → "Reindex AI search" run before trusting semantic search.

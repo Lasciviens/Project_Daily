@@ -5,6 +5,10 @@
 > (`x-phone-secret`) — never-expiring, no JWT to refresh, flat `{action}` bodies
 > so the Shortcuts stay simple. Build the shortcuts once on your Mac → they sync
 > to the iPhone over iCloud. (Spoken walkthrough happens in chat, in Turkish.)
+>
+> **See also:** `scriptable-food-logger.md` (the phone-native food logger),
+> `scriptable-widgets.md` (home-screen widgets), `web-push-setup.md`
+> (server→phone push) and `iphone-web-integration.md` (why this design).
 
 ## How it works (why this is safe + permanent)
 - The phone hits **`phone-gateway`** (a Supabase Edge Function, `verify_jwt=off`).
@@ -85,6 +89,10 @@ Brief` → **Run Immediately**. (iOS shows a small "ran" banner — that's the p
 Install **Scriptable** → new script → paste → ▶ to test → add the Scriptable
 Small widget to the Home Screen → Edit Widget → pick this script. Put your secret
 in `SECRET`. **This never expires** (device secret, not a JWT).
+
+This inline snippet is the minimal reference version — the maintained widget pack
+(including `Makro Halkalari`, the same idea with rings + an offline cache) lives in
+`scriptable-widgets.md`; keep only one copy in use to avoid divergence.
 
 ```javascript
 // Lasci's Board — Nutrition (Scriptable, Small widget). Durable: device secret.

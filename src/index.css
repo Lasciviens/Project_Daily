@@ -39,6 +39,7 @@
     --ink-300:   214 211 209;
     --ink-200:   231 229 228;
     --ink-100:   245 245 244;
+    --ink-50:    250 248 244;
   }
 
   /* Dark theme — same token names, inverted lightness. ink-900 stays "the
@@ -70,6 +71,7 @@
     --ink-300:   74  68  59;
     --ink-200:   53  49  42;
     --ink-100:   41  38  31;
+    --ink-50:    38  34  25;
   }
 
   body {

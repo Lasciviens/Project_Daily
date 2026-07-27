@@ -87,7 +87,7 @@ function ExerciseRowEditor({ ex, templates, onChange, onRemove }: ExerciseRowPro
             onClose={() => {}}
           >
             <ComboboxInput
-              className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-lg px-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
+              className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
               placeholder="Search exercise…"
               displayValue={(t: HevyExerciseTemplate | null) => t?.title ?? ''}
               onChange={e => onChange({ ...ex, query: e.target.value })}
@@ -115,7 +115,7 @@ function ExerciseRowEditor({ ex, templates, onChange, onRemove }: ExerciseRowPro
         <button
           type="button"
           onClick={onRemove}
-          className="min-h-[40px] min-w-[40px] flex items-center justify-center text-ink-400 hover:text-red-500 transition-colors"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 transition-colors"
           title="Remove exercise"
         >
           ✕
