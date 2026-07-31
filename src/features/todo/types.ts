@@ -13,6 +13,8 @@ export interface Task {
   section:                  TaskSection
   status:                   TaskStatus
   priority:                 TaskPriority
+  /** Opening edge of a window; due_date stays the sole deadline (migration 069). */
+  start_date:               string | null
   due_date:                 string | null
   due_time:                 string | null
   waiting_for:              string | null
@@ -28,9 +30,11 @@ export interface Task {
 
 export interface CreateTaskInput {
   title:       string
+  description?: string | null
   domain?:     TaskDomain
   section?:    TaskSection
   priority?:   TaskPriority
+  start_date?: string | null
   due_date?:   string | null
   due_time?:   string | null
   source_type?: TaskSourceType
@@ -44,6 +48,7 @@ export interface UpdateTaskInput {
   section?:                  TaskSection
   status?:                   TaskStatus
   priority?:                 TaskPriority
+  start_date?:               string | null
   due_date?:                 string | null
   due_time?:                 string | null
   waiting_for?:              string | null

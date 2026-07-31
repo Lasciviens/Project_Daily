@@ -21,6 +21,17 @@ type AnyRecord = Record<string, any>
 const todayUTC = () => new Date().toISOString().slice(0, 10)
 const dateFromTodayUTC = (d: number) => { const x = new Date(); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10) }
 
+// en-GB day+month ("1 Dec"), used only when a wish carries no period_label.
+const dayMon = (d: string) =>
+  new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+const periodRange = (a: string, b: string | null) => (b ? `${dayMon(a)} – ${dayMon(b)}` : `From ${dayMon(a)}`)
+const seasonEmoji = (d: string) =>
+  ['❄️', '❄️', '🌸', '🌸', '🌸', '☀️', '☀️', '☀️', '🍂', '🍂', '🍂', '❄️'][Number(d.slice(5, 7)) - 1] ?? '📅'
+// WindowChips writes period_label WITH its own season emoji ("❄️ This winter"),
+// so a stored label already carries one — strip any leading non-letter run before
+// prepending seasonEmoji or the line renders the emoji twice.
+const labelText = (s: string) => s.replace(/^[^\p{L}\p{N}]+/u, '').trim()
+
 const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
 const VAPID_PUBLIC  = Deno.env.get('VAPID_PUBLIC_KEY')  ?? ''
@@ -51,7 +62,36 @@ async function buildMorning(userId: string): Promise<{ title: string; body: stri
       .order('date', { ascending: true }).limit(1)
     if (data?.[0]) trLine = ` · 💪 ${(data[0] as AnyRecord).title}`
   } catch { /* skip */ }
-  return { title: '🌅 Günaydın', body: `${tasksLine}${trLine}` }
+  // A wish period opening is announced ONCE, on the day period_start lands on
+  // today — a wish list is a memory, not a to-do, so repeating it every day of
+  // a three-month season would turn the morning push into a nag and get it
+  // muted. Purely additive: the tasks query above is untouched.
+  let wishLine = ''
+  try {
+    // Missing table (069 not applied) → { data: null, error } — never throws,
+    // so the null-check, not the catch, is what keeps the brief alive.
+    const { data } = await supabase.from('wish_items')
+      .select('period_label, period_start, period_end')
+      .eq('user_id', userId).eq('period_start', today)
+      .in('status', ['idea', 'planned']).limit(50)
+    // Two wishes sharing a period become ONE line, keyed by how the period is
+    // named. A row with no label of its own can only be described by its dates,
+    // which does not fit "<name> starts today" — hence the two phrasings.
+    const groups = new Map<string, { n: number; named: boolean }>()
+    for (const w of (data ?? []) as AnyRecord[]) {
+      const named = !!labelText(w.period_label ?? '')
+      const key   = named ? labelText(w.period_label) : periodRange(w.period_start, w.period_end)
+      const prev  = groups.get(key)
+      groups.set(key, { n: (prev?.n ?? 0) + 1, named })
+    }
+    wishLine = [...groups].slice(0, 2)
+      .map(([key, { n, named }]) => {
+        const what = named ? `${key} starts today` : `A new period starts today (${key})`
+        return ` · ${seasonEmoji(today)} ${what} — ${n} thing${n === 1 ? '' : 's'} on your list`
+      })
+      .join('')
+  } catch { /* skip */ }
+  return { title: '🌅 Günaydın', body: `${tasksLine}${trLine}${wishLine}` }
 }
 
 async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: number; pruned: number }> {

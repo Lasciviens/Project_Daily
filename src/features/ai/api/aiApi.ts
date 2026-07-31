@@ -1,6 +1,8 @@
 import { format } from 'date-fns'
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
+import { resolveWishWindow, wishPeriodLabel } from '../../wishes/wishRules'
+import type { WishItem } from '../../wishes/types'
 
 export interface Message {
   role:    'user' | 'assistant'
@@ -90,6 +92,12 @@ Workflow rules:
 
 // ─── Context builder ──────────────────────────────────────────────────────────
 
+// Only what a wish line needs. `wish_items` arrives with migration 069, which
+// the user applies later — until then the query resolves as {data:null,error},
+// which `get()` already flattens to [], so the section is simply absent.
+type WishContextRow = Pick<WishItem,
+  'id' | 'title' | 'status' | 'period_start' | 'period_end' | 'period_label' | 'city' | 'country'>
+
 async function buildContext(): Promise<string> {
   const today = format(new Date(), 'yyyy-MM-dd')
 
@@ -110,6 +118,12 @@ async function buildContext(): Promise<string> {
       .eq('date', today).order('start_time', { ascending: true }).limit(10),
     supabase.from('hevy_workouts').select('title, hevy_created_at, start_time, end_time')
       .order('hevy_created_at', { ascending: false }).limit(5),
+    // A wish whose period has passed is still in the app (nothing is ever
+    // hidden) — it is only left OUT OF THIS SUMMARY so the block stays short.
+    supabase.from('wish_items').select('id, title, status, period_start, period_end, period_label, city, country')
+      .in('status', ['idea', 'planned'])
+      .or(`period_end.gte.${today},period_end.is.null`)
+      .order('period_start', { ascending: true, nullsFirst: false }).limit(12),
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -134,6 +148,7 @@ async function buildContext(): Promise<string> {
   const schedule  = get<any>(6)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const training  = get<any>(7)
+  const wishes    = get<WishContextRow>(8)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const todayTasks = Array.from(new Map(todayRaw.map((t: any) => [t.id, t])).values()) as any[]
@@ -164,6 +179,27 @@ async function buildContext(): Promise<string> {
     lines.push(`\nINBOX (${inbox.length}):`)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const t of inbox) lines.push(`  [id:${t.id}] ${t.title}`)
+  }
+
+  if (wishes.length) {
+    const open     = wishes.filter(w => resolveWishWindow(w, today) === 'open')
+    const upcoming = wishes.filter(w => resolveWishWindow(w, today) === 'upcoming')
+    const undated  = wishes.length - open.length - upcoming.length
+
+    const wishLine = (w: WishContextRow, tag: string) => {
+      const period = wishPeriodLabel(w)
+      const where  = [w.city, w.country].filter(Boolean).join(', ')
+      return `  [${tag}] [id:${w.id}] ${w.title}${period ? ` — ${period}` : ''}${where ? ` @ ${where}` : ''}${w.status === 'planned' ? ' (already planned)' : ''}`
+    }
+
+    if (open.length || upcoming.length) {
+      lines.push('\nWISHES (wish_items — things the user wants to do; a period is a REMINDER window, NEVER a deadline, so a wish is never late/overdue):')
+      for (const w of open)     lines.push(wishLine(w, 'window open now'))
+      for (const w of upcoming) lines.push(wishLine(w, 'coming up'))
+      if (undated) lines.push(`  (+${undated} with no period; wishes whose period already passed are not listed here — db_query wish_items for all of them)`)
+    } else {
+      lines.push(`\nWISHES: ${wishes.length} saved, none with an active period right now (db_query wish_items to list them).`)
+    }
   }
 
   if (workTasks.length) {

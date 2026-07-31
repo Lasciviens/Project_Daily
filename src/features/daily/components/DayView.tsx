@@ -1,19 +1,61 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { format, startOfWeek, endOfWeek } from 'date-fns'
 import { useDayData } from '../hooks/useDayData'
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { completedWithinLast24h } from '../../todo/taskRules'
+import { useOpenWishes } from '../../wishes/hooks/useWishes'
+import { wishPeriodLabel } from '../../wishes/wishRules'
+import type { WishItem } from '../../wishes/types'
 import type { Task } from '../../todo/types'
 
 interface Props { date: Date }
+
+// Resurfacing row for wishes whose reminder period is open RIGHT NOW — the one
+// thing that keeps a July-written "go to the hytte this winter" from being
+// invisible until the user goes looking for it in December.
+//
+// Why HERE and nowhere else (verified in DailyPage.tsx's DaySection): the day
+// band stacks WeekStrip → DayAgenda → DayView, so at 393px this pane is about
+// one screenful down, while the glance board (TodaySummary) sits below the whole
+// band and DayQuickRail is `hidden xl:flex` — neither is a phone surface. Do not
+// "tidy" this into either of them.
+//
+// Deliberately quieter than the "N open" pill beside the Tasks heading: a wish
+// is a nudge, the day's tasks are the work.
+function OpenWishesRow({ wishes }: { wishes: WishItem[] }) {
+  if (wishes.length === 0) return null
+
+  const labels = [...new Set(wishes.map(wishPeriodLabel).filter((l): l is string => !!l))]
+  // Several periods can be open at once (a season plus a hand-picked range), so
+  // name the first and admit to the rest instead of silently showing one.
+  const lead = labels.length === 0 ? 'Open now'
+    : labels.length === 1 ? labels[0]
+    : `${labels[0]} +${labels.length - 1} more`
+
+  return (
+    <Link
+      to="/wishes"
+      className="mb-3 flex min-h-[44px] items-center gap-2 rounded-xl border border-accent-100 bg-accent-50/50 px-3 text-sm text-ink-600 transition-colors duration-150 hover:bg-accent-50"
+    >
+      <span className="truncate">{lead}</span>
+      <span className="text-ink-400">·</span>
+      <span className="shrink-0 tabular-nums">
+        {wishes.length} {wishes.length === 1 ? 'thing' : 'things'}
+      </span>
+      <span className="ml-auto shrink-0 text-ink-400" aria-hidden>→</span>
+    </Link>
+  )
+}
 
 // Renders as a chrome-less pane inside Daily's hero surface (the hero owns
 // the card border + accent bar). The undated "this week" tasks moved here
 // from the old WeekWidget column so nothing was lost in the consolidation.
 export function DayView({ date }: Props) {
   const { tasks, isLoading, section } = useDayData(date)
+  const { data: openWishes = [] } = useOpenWishes()
   const [modalOpen, setModalOpen] = useState(false)
   const [showWeek, setShowWeek] = useState(false)
 
@@ -35,6 +77,8 @@ export function DayView({ date }: Props) {
   return (
     <>
       <div className="p-4 sm:p-5">
+        <OpenWishesRow wishes={openWishes} />
+
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">Tasks</h2>
           <div className="flex items-center gap-2">

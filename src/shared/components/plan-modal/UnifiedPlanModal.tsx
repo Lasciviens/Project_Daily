@@ -16,6 +16,29 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-07-31 · v6 · Task windows + two save-path fixes.
+//                    (a) `startDate` joins PlanForm/PlanDefaults/TaskField and is
+//                    written to tasks.start_date on BOTH save paths — a task can
+//                    now say "do it between A and B", where due_date stays the
+//                    SOLE deadline (nothing else in the app learns a new concept).
+//                    The Task tab renders it as a window control (TaskWindowField,
+//                    season chips reusing shared/components/windowChips' math), not
+//                    a second bare date box. This could not live in `taskExtra`:
+//                    that prop is React.ReactNode with no access to form/patch or
+//                    the save payload. Pre-migration-safe — tasksApi retries the
+//                    write without start_date on 42703/PGRST204, and create omits
+//                    the key entirely when unset.
+//                    (b) The create path dropped the Notes textarea silently
+//                    (CreateTaskInput had no `description` until now) — a task
+//                    created with notes saved them nowhere while edit persisted
+//                    them. Now passed on create too.
+//                    (c) TaskTab's SECTIONS lost 'tomorrow' and 'this_week': they
+//                    have no home of their own in the UI, so choosing one only
+//                    made the task float like Backlog under a date-shaped name.
+//                    The TaskSection TYPE and planForm's 'today' default are
+//                    UNCHANGED — four server-side predicates filter on
+//                    section.eq.today (phone-gateway ×2, push-send, ai-proxy) and
+//                    legacy rows still hold both retired values.
 //  2026-07-04 · v5 · New `timeBlock` prop: Schedule-tab edit mode for a plain
 //                    time_block with no linked task (e.g. a planned training
 //                    session). saveSchedule updates that row in place instead
@@ -327,6 +350,10 @@ export function UnifiedPlanModal({
           section:     form.section,
           priority:    form.priority,
           domain:      form.domain,
+          // Sent only when there is something to say — a window was set, or an
+          // existing one is being cleared. Keeps an ordinary edit off tasksApi's
+          // pre-migration retry-without-start_date path.
+          ...(form.startDate || task.start_date ? { start_date: form.startDate || null } : {}),
           due_date:    form.dueDate || null,
           due_time:    form.dueTime ? `${form.dueTime}:00` : null,
         },
@@ -345,9 +372,13 @@ export function UnifiedPlanModal({
       form.gcal && !!calToken && form.domain === 'personal' && !!form.dueDate && !!form.dueTime
     const { task: created, googleTaskError } = await createTask.mutateAsync({
       title,
+      description: form.notes.trim() || null,
       section:     form.section,
       priority:    form.priority,
       domain:      form.domain,
+      // Omitted (not null) when unset, so a pre-migration insert never needs
+      // tasksApi's retry-without-start_date round trip.
+      start_date:  form.startDate || undefined,
       due_date:    form.dueDate || null,
       due_time:    form.dueTime ? `${form.dueTime}:00` : null,
       source_type: source?.taskSourceType,
