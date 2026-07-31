@@ -4,7 +4,7 @@ import { format, getISOWeek } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Home as HomeIcon, CalendarDays, Clapperboard, Briefcase, Dumbbell, FolderKanban, Gamepad2,
-  MoreHorizontal, Code2, Search, Sparkles, ClipboardList, UtensilsCrossed, type LucideIcon,
+  MoreHorizontal, Code2, Search, Sparkles, ClipboardList, UtensilsCrossed, Star, type LucideIcon,
 } from 'lucide-react'
 import { useViewTransitionNav } from '../shared/hooks/useViewTransitionNav'
 import { usePullToRefresh } from '../shared/hooks/usePullToRefresh'
@@ -24,7 +24,7 @@ import { useUIStore } from './store'
 const ROUTE_TITLES: Record<string, string> = {
   '/home': 'Home', '/daily': 'Personal', '/shop': 'Shop', '/recipes': 'Food',
   '/media': 'Media', '/work': 'Work', '/projects': 'Projects', '/training': 'Training',
-  '/games': 'Games', '/developer': 'Developer',
+  '/games': 'Games', '/wishes': 'Wishes', '/developer': 'Developer',
 }
 
 // Remembered scroll offsets per route (#7) — restored on a Back (POP) nav so
@@ -183,6 +183,9 @@ const TABS: { to: string; label: string; icon: LucideIcon; match: string[] }[] =
   { to: '/training', label: 'Training', icon: Dumbbell,        match: ['/training'] },
 ]
 const MORE_TABS: { to: string; label: string; icon: LucideIcon; match: string[] }[] = [
+  // Wishes leads the sheet on purpose: the whole point of a wish list is that
+  // it surfaces without being hunted for, and the 5 primary slots are taken.
+  { to: '/wishes',    label: 'Wishes',    icon: Star,         match: ['/wishes'] },
   { to: '/work',      label: 'Work',      icon: Briefcase,    match: ['/work'] },
   { to: '/projects',  label: 'Projects',  icon: FolderKanban, match: ['/projects'] },
   { to: '/games',     label: 'Games',     icon: Gamepad2,     match: ['/games'] },
@@ -337,6 +340,10 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
           <NavLink to="/training"  className={linkClass}>Training</NavLink>
           <NavLink to="/projects"  className={linkClass}>Projects</NavLink>
           <NavLink to="/games"     className={linkClass}>Games</NavLink>
+          {/* From sm+ this row is the ONLY nav (BottomTabBar is sm:hidden), so a
+              destination that lives in the mobile More sheet still needs a link
+              here or it is unreachable on desktop. */}
+          <NavLink to="/wishes"    className={linkClass}>Wishes</NavLink>
         </nav>
 
         {/* Right actions */}

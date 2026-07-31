@@ -371,7 +371,7 @@ const TOOLS = [
       // ─── Durable AI memory (user-directed) ────────────────────────────────
       {
         name: 'save_memory',
-        description: 'Persist a durable note/summary/fact to the user\'s AI memory (ai_memory table) so it survives across conversations. Use it when the user asks you to remember something for later ("bunu aklında tut", "şunu kaydet", "bunu unutma"), or to store a compacted summary of the current conversation when they ask. Announce what you will save before calling. Recall saved memories later via db_query on ai_memory.',
+        description: 'Persist a durable note/summary/fact to the user\'s AI memory (ai_memory table) so it survives across conversations. Use it when the user asks you to remember something for later ("bunu aklında tut", "şunu kaydet", "bunu unutma"), or to store a compacted summary of the current conversation when they ask. Announce what you will save before calling. Recall saved memories later via db_query on ai_memory. Save only FACTS about the user here: something they want to do or a place they want to go goes in wish_items, a request about this app in dev_requests, something to buy in shop_items — use db_insert for those.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -665,6 +665,7 @@ const EMBED_SOURCES: { table: string; cols: string; text: (r: AnyRecord) => stri
   { table: 'pt_assessments', cols: 'id,feeling,note,assessment',        text: r => [r.feeling, r.note, r.assessment].filter(Boolean).join('\n') },
   { table: 'work_notes',     cols: 'id,content',                        text: r => r.content ?? '' },
   { table: 'ai_memory',      cols: 'id,title,content',                  text: r => [r.title, r.content].filter(Boolean).join('\n') },
+  { table: 'wish_items',     cols: 'id,title,notes',                    text: r => [r.title, r.notes].filter(Boolean).join('\n') },
 ]
 
 async function semanticSearch(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
@@ -2013,8 +2014,8 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   tasks: {
     access: 'rw',
     purpose: 'To-do tasks (the To-Do feature IS this table).',
-    columns: 'id, title, description, domain(personal|work|media), section(inbox|today|tomorrow|this_week|backlog), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai), source_id(uuid), sort_order, created_at, updated_at',
-    rules: 'When deleting a task, also db_delete from time_blocks where source_type="task" and source_id=<task id> to avoid orphaned schedule blocks.',
+    columns: 'id, title, description, domain(personal|work|media), section(inbox|today|tomorrow|this_week|backlog), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), start_date(date; optional opening edge of a window — with due_date it means "do this between A and B"), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai|training_session|project_item), source_id(uuid), sort_order, created_at, updated_at',
+    rules: 'When deleting a task, also db_delete from time_blocks where source_type="task" and source_id=<task id> to avoid orphaned schedule blocks. due_date is the SOLE deadline — a task with a due_date can be late. If the user just wants to be reminded of something during a period ("go to the hytte this winter") with no date it must be done by, that is a wish_items row, not a task.',
   },
   time_blocks: {
     access: 'rw',
@@ -2052,9 +2053,29 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   },
   shop_items: {
     access: 'rw',
-    purpose: 'Shopping wishlist items (things to BUY). A recipe is never a shop item.',
+    purpose: 'Shopping wishlist items (things to BUY). A recipe is never a shop item, and neither is a thing to DO or a place to GO — "buy ski gear this winter" is a shop item, "go skiing this winter" is a wish_items row.',
     columns: 'id, category_id(uuid FK shop_categories; must be a subcategory), title, notes, price(numeric), price_source(manual|ai_estimate), platform, url, priority(low|medium|high), region(TR|NO), planned_date(date), status(wishlist|bought|dropped), source_type(manual|ai), created_at, updated_at',
     rules: 'Do not set price yourself (leave null) — price is manual-entry only. To mark an item bought/dropped, update its status.',
+  },
+  // wish_items is rw for the same reason dev_requests is: the user dictates
+  // wishes in chat ("let's go to the hytte this winter") and on the phone via
+  // the Siri ask-AI shortcut, which runs the FULL tool set — so one flat db_insert
+  // here is the app's best capture channel for them. There are now FOUR
+  // "remember this for me" targets and they have been confused before (a
+  // pasted recipe once landed in shop_items under an invented category); the
+  // rules below are the tie-breaker. Announce before writing, confirm before
+  // deleting, like every other write.
+  wish_items: {
+    access: 'rw',
+    purpose: 'Wishes — things the user wants to DO, or places they want to GO, optionally scoped to a reminder period ("go to the hytte this winter", "a ski trip this winter", "maybe an Italy trip this spring", "things to do in Polatli"). Use kind="place" for a destination, kind="thing" for everything else.',
+    columns: 'id, title, notes, kind(thing|place — default thing), period_start(date), period_end(date), period_label(text — the user\'s own word for the period, e.g. "Winter"), city, country, url (the three are meaningful when kind="place"), priority(low|medium|high), status(idea|planned|done|dropped — default idea), promoted_task_id(uuid FK tasks — set when the wish was scheduled as a real task; the wish row survives), sort_order, created_at, updated_at',
+    rules: [
+      'A PERIOD IS A REMINDER WINDOW, NEVER A DEADLINE. A wish is never late, never overdue, never urgent because its period is near or past. Never say a wish is due, never compute lateness for one, and never change its status just because period_end has passed — it stays "idea" until the user closes it.',
+      'If it MUST be done by a date, it is a tasks row with a due_date, not a wish.',
+      'Pick the right home for a note — there are four: dev_requests = a request about THIS APP (a bug, a feature, an idea for the app itself). ai_memory = a durable fact/preference about the user to recall later. shop_items = something to BUY. wish_items = something to DO or a place to GO, with an optional period.',
+      'Set period_start/period_end to CONCRETE dates (yyyy-mm-dd) resolved from what the user said; the current date is in the context turn. Leave both null for an "anytime" wish. period_label is optional and holds the user\'s own word for the window.',
+      'Write title/notes in the language the user used. Only set status="done" or "dropped" when the user says so, and never delete a wish without explicit confirmation.',
+    ].join(' '),
   },
   user_movie_entries: {
     access: 'rw',
@@ -2164,7 +2185,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     access: 'rw',
     purpose: "The user's durable AI memory — notes/summaries/facts/preferences the AI was asked to remember across conversations. Prefer the save_memory tool to write; db_query here to recall (e.g. filter kind='preference', or search title/content).",
     columns: "id, kind(note|summary|fact|preference — default note), title, content, source(user|ai|auto — how it was captured), created_at, updated_at",
-    rules: 'Write in the user\'s language. Only save when the user asks you to remember something or to store a conversation summary. Never delete a memory without explicit confirmation.',
+    rules: 'Write in the user\'s language. Only save when the user asks you to remember something or to store a conversation summary. Never delete a memory without explicit confirmation. A memory is a FACT about the user, not a plan: something to do or a place to go belongs in wish_items, a request about this app in dev_requests, something to buy in shop_items.',
   },
 }
 

@@ -46,13 +46,22 @@ export async function fetchOpenTrainingSessionTasks(): Promise<Task[]> {
 }
 
 export async function fetchTasksForDay(dateStr: string, section: string): Promise<Task[]> {
-  // For 'today' specifically, an open task with a due_date in the past must
-  // still surface (as overdue) rather than silently vanish — only future day
-  // views (tomorrow/this_week/backlog) keep the strict same-day match so
-  // overdue tasks don't bleed into them.
+  // 'today' is the one section whose UNDATED rows legitimately belong to the day
+  // being viewed (an undated task parked in 'today' is today's work), and an open
+  // task whose due_date has passed must still surface there as overdue rather
+  // than silently vanish — hence `lte`.
+  //
+  // Every other day view must match the date EXACTLY. useDayData maps a whole
+  // RANGE of day-offsets onto ONE section value (+2..+7 → 'this_week',
+  // everything else → 'backlog'), so keeping `due_date.is.null` here meant a
+  // single undated 'this_week' row rendered on all six of those days, and a
+  // single undated 'backlog' row claimed yesterday *and* every far-future day.
+  // Nothing loses its home: undated rows still reach fetchAllTasks →
+  // TasksPanel's "No date" group; undated 'this_week' rows also stay in
+  // fetchTasksByWeek's section arm → DayView's "This week — no date" band.
   const dueFilter = section === 'today'
     ? `due_date.is.null,due_date.lte.${dateStr}`
-    : `due_date.is.null,due_date.eq.${dateStr}`
+    : `due_date.eq.${dateStr}`
 
   const [sectionRes, dateRes] = await Promise.all([
     supabase
@@ -123,6 +132,16 @@ export async function fetchTasksByMonth(monthStart: string, monthEnd: string): P
   return data ?? []
 }
 
+// tasks.start_date lands in migration 069. Until it's applied, any write
+// carrying it 400s with "column not found" (PGRST204 / 42703) — detect that
+// specific case and retry without it so a pre-migration browser can still save
+// (the recipes fiber_g / is_temp precedent). Every other error propagates.
+function missingStartDate(err: unknown): boolean {
+  const e = err as { code?: string; message?: string }
+  return (e?.code === 'PGRST204' || e?.code === '42703')
+    && (e?.message ?? '').toLowerCase().includes('start_date')
+}
+
 export async function createTask(input: CreateTaskInput): Promise<Task> {
   const user = await requireUser()
   const section = input.section ?? 'inbox'
@@ -139,34 +158,38 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
     .maybeSingle()
   const nextSortOrder = (maxRow?.sort_order ?? -1) + 1
 
-  const { data, error } = await supabase
-    .from('tasks')
-    .insert({
-      user_id:     user.id,
-      title:       input.title,
-      domain:      input.domain      ?? 'personal',
-      section,
-      priority:    input.priority    ?? 'medium',
-      due_date:    input.due_date    ?? null,
-      due_time:    input.due_time    ?? null,
-      status:      'open',
-      sort_order:  nextSortOrder,
-      source_type: input.source_type ?? 'manual',
-      source_id:   input.source_id   ?? null,
-    })
-    .select()
-    .single()
+  const row: Record<string, unknown> = {
+    user_id:     user.id,
+    title:       input.title,
+    description: input.description ?? null,
+    domain:      input.domain      ?? 'personal',
+    section,
+    priority:    input.priority    ?? 'medium',
+    due_date:    input.due_date    ?? null,
+    due_time:    input.due_time    ?? null,
+    status:      'open',
+    sort_order:  nextSortOrder,
+    source_type: input.source_type ?? 'manual',
+    source_id:   input.source_id   ?? null,
+  }
+  if (input.start_date !== undefined) row.start_date = input.start_date ?? null
+
+  let { data, error } = await supabase.from('tasks').insert(row).select().single()
+  if (error && missingStartDate(error)) {
+    delete row.start_date
+    ;({ data, error } = await supabase.from('tasks').insert(row).select().single())
+  }
   if (error) throw error
   return data
 }
 
 export async function updateTask(id: string, patch: UpdateTaskInput): Promise<Task> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single()
+  const row: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() }
+  let { data, error } = await supabase.from('tasks').update(row).eq('id', id).select().single()
+  if (error && missingStartDate(error)) {
+    delete row.start_date
+    ;({ data, error } = await supabase.from('tasks').update(row).eq('id', id).select().single())
+  }
   if (error) throw error
   return data
 }

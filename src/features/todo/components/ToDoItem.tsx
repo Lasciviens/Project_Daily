@@ -7,6 +7,7 @@ import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
 import { PRIORITY_DOT_CLASS as PRIORITY_DOT } from '../../../shared/utils/priorityColors'
 import { isOverdue, dueLabel } from '../taskRules'
+import { windowRangeLabel } from '../../../shared/components/windowChips'
 import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
 
 function dueDateCls(dateStr: string, isDone: boolean): string {
@@ -113,12 +114,23 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${DOMAIN_TAG_CLASS[task.domain]}`}>
               {DOMAIN_LABEL[task.domain]}
             </span>
-            {task.due_date && (
+            {/* A windowed task (start_date + due_date) shows ONE range chip
+                INSTEAD of the due chip — never both. This row is already at its
+                width limit (see the ⋯-menu comment below: a second chip is what
+                starves the title on a 393px screen). Colour and the overdue mark
+                still come from due_date — the window's closing edge is the only
+                deadline there is. */}
+            {task.start_date && task.due_date ? (
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${dueDateCls(task.due_date, isDone)}`}>
+                {isOverdue(task) && <span title="Overdue">⚠ </span>}
+                {windowRangeLabel(task.start_date, task.due_date)}
+              </span>
+            ) : task.due_date ? (
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${dueDateCls(task.due_date, isDone)}`}>
                 {isOverdue(task) && <span title="Overdue">⚠ </span>}
                 {dueLabel(task)?.text}
               </span>
-            )}
+            ) : null}
           </div>
           {/* Description gets its OWN line — sharing the chip row squeezed it
               to a 1px-wide slot that rendered nothing on a phone. */}

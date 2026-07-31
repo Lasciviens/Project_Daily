@@ -29,6 +29,8 @@ export type TaskField =
   | 'section'
   | 'priority'
   | 'domain'
+  /** The "do it between A and B" window control (writes startDate + dueDate). */
+  | 'startDate'
   | 'dueDate'
   | 'dueTime'
   | 'gcal'
@@ -77,6 +79,8 @@ export interface PlanDefaults {
   section?: TaskSection
   priority?: TaskPriority
   domain?: TaskDomain
+  /** Window opening edge (tasks.start_date). dueDate stays the deadline. */
+  startDate?: string        // yyyy-MM-dd
   dueDate?: string          // yyyy-MM-dd
   dueTime?: string          // HH:MM
 

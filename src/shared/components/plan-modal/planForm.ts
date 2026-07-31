@@ -28,6 +28,8 @@ export interface PlanForm {
   section: TaskSection
   priority: TaskPriority
   domain: TaskDomain
+  /** Opening edge of a "do it between A and B" window; dueDate stays the deadline. */
+  startDate: string
   dueDate: string
   dueTime: string
 
@@ -63,6 +65,7 @@ export function buildInitialForm(defaults?: PlanDefaults, task?: Task, timeBlock
     section:        task?.section ?? defaults?.section ?? 'today',
     priority:       task?.priority ?? defaults?.priority ?? 'medium',
     domain:         task?.domain ?? defaults?.domain ?? 'personal',
+    startDate:      task?.start_date ?? defaults?.startDate ?? '',
     dueDate:        task?.due_date ?? defaults?.dueDate ?? '',
     dueTime:        task?.due_time ? task.due_time.slice(0, 5) : (defaults?.dueTime ?? ''),
 

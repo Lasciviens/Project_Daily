@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { FieldLabel, PillGroup, Time24Field } from './fields'
+import { TaskWindowField } from './TaskWindowField'
 import { DateInput } from '../DateInput'
 import { isTaskFieldHidden, isTaskFieldLocked, shiftTime, nextPlanTime } from './planModal.config'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
@@ -12,13 +13,21 @@ import type { PlanModalConfig } from './planModal.types'
 import type { PlanForm } from './planForm'
 import type { TaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
 
+// 'tomorrow' and 'this_week' are deliberately NOT offered: neither has a home of
+// its own in the UI, so picking one only made a task float like Backlog while
+// claiming a date-shaped name. The TaskSection TYPE keeps both values — existing
+// rows still hold them and other writers (planModal.config's sectionForDate,
+// DayAgenda, ai-proxy) still produce them.
 const SECTIONS: { id: TaskSection; label: string }[] = [
   { id: 'inbox',     label: 'Inbox'     },
   { id: 'today',     label: 'Today'     },
-  { id: 'tomorrow',  label: 'Tomorrow'  },
-  { id: 'this_week', label: 'This Week' },
   { id: 'backlog',   label: 'Backlog'   },
 ]
+
+const LEGACY_SECTION_LABEL: Partial<Record<TaskSection, string>> = {
+  tomorrow:  'Tomorrow',
+  this_week: 'This Week',
+}
 
 const PRIORITIES: { id: TaskPriority; label: string; dot: string }[] = [
   { id: 'low',    label: 'Low',    dot: 'bg-ink-300'    },
@@ -58,6 +67,12 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
   const hidden = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const locked = (f: Parameters<typeof isTaskFieldLocked>[0]) => isTaskFieldLocked(f, config)
 
+  // A task already parked in a retired section keeps its pill so the value is
+  // visible and highlighted; moving it off is one tap and the pill then goes away.
+  const sectionOptions = SECTIONS.some(s => s.id === form.section)
+    ? SECTIONS
+    : [...SECTIONS, { id: form.section, label: `${LEGACY_SECTION_LABEL[form.section] ?? form.section} (legacy)` }]
+
   return (
     <div className="px-5 py-4 flex flex-col gap-4">
       {!hidden('title') && (
@@ -77,7 +92,7 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
           {!hidden('section') && (
             <div>
               <FieldLabel>Section</FieldLabel>
-              <PillGroup options={SECTIONS} value={form.section} onChange={v => patch({ section: v })} locked={locked('section')} />
+              <PillGroup options={sectionOptions} value={form.section} onChange={v => patch({ section: v })} locked={locked('section')} />
             </div>
           )}
           {!hidden('priority') && (
@@ -139,6 +154,16 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
               </div>
             )}
           </div>
+          {/* The window control writes BOTH ends, so it only makes sense while the
+              Due Date field it closes on is itself present. */}
+          {!hidden('startDate') && !hidden('dueDate') && (
+            <TaskWindowField
+              startDate={form.startDate}
+              dueDate={form.dueDate}
+              onChange={v => patch({ startDate: v.startDate, dueDate: v.dueDate })}
+              locked={locked('startDate') || locked('dueDate')}
+            />
+          )}
         </>
       )}
 
