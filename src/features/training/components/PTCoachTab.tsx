@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { generatePTAssessment, fetchAssessments, type PTAssessmentRow } from '../api/ptCoachApi'
 import { toast } from '../../../app/store'
 import { todayStr } from '../../../shared/utils/dateUtils'
+import { useAthleteProfile, useAthleteLimitations } from '../hooks/useAthleteProfile'
+import { AthleteProfileSheet } from './AthleteProfileSheet'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  AI PT — user-initiated daily assessment (NEVER auto-runs; each run costs
@@ -40,6 +42,9 @@ export function PTCoachTab() {
   // Fallback display if the DB log isn't available yet (migration 051 not
   // applied): the generated text still shows, it just isn't persisted.
   const [localResult, setLocalResult] = useState<{ text: string; model: string | null } | null>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const { data: athleteProfile } = useAthleteProfile()
+  const { data: activeLimitations = [] } = useAthleteLimitations(true)
 
   const { data: history = [] } = useQuery({
     queryKey: ['pt-assessments'],
@@ -54,6 +59,14 @@ export function PTCoachTab() {
     assessment: localResult.text, model: localResult.model, created_at: '',
   } satisfies PTAssessmentRow : undefined)
   const past = history.filter(a => a.id !== current?.id)
+
+  // Compact profile readout for the coach snapshot (see AthleteProfileSheet
+  // for the actual form) — an unset profile invites setup instead of a blank.
+  const profileParts = [athleteProfile?.goal?.replace('_', ' '), athleteProfile?.experience_level, athleteProfile?.equipment_access]
+    .filter((p): p is string => !!p)
+  const profileSummary = profileParts.length > 0
+    ? `🎯 ${profileParts.join(' · ')}${activeLimitations.length > 0 ? ` · ${activeLimitations.length} limitation${activeLimitations.length === 1 ? '' : 's'}` : ''}`
+    : 'Set up your training profile'
 
   async function run() {
     setLoading(true)
@@ -72,6 +85,21 @@ export function PTCoachTab() {
 
   return (
     <div className="max-w-2xl flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2 rounded-xl border border-ink-200 bg-cream-50 px-3 py-1">
+        <span className="text-xs text-ink-500 truncate">{profileSummary}</span>
+        <button
+          type="button"
+          onClick={() => setProfileOpen(true)}
+          aria-label="Training profile settings"
+          title="Training profile"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-ink-500 hover:bg-cream-100 hover:text-ink-800 transition-colors shrink-0"
+        >
+          ⚙
+        </button>
+      </div>
+
+      <AthleteProfileSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
+
       <div className="rounded-2xl border border-ink-200 bg-cream-50 p-5 flex flex-col gap-4">
         <div>
           <h3 className="text-base font-bold text-ink-900">🧠 AI Koç — Günlük Değerlendirme</h3>

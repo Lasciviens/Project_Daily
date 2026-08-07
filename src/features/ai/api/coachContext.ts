@@ -3,6 +3,7 @@ import { fetchHealthMetricSeries } from '../../training/api/healthApi'
 import { computeSleepSummary, computeDailySeries } from '../../training/healthAggregate'
 import { fetchFoodLogRange } from '../../recipes/api/foodLogApi'
 import { fetchAssessments } from '../../training/api/ptCoachApi'
+import { fetchAthleteProfile, fetchAthleteLimitations } from '../../training/api/athleteProfileApi'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import type { HevySet } from '../../training/types.hevy'
 
@@ -31,6 +32,16 @@ export async function buildCoachContext(): Promise<string> {
   const from = shiftDateStr(today, -30)
   // deno-lint-ignore-file — plain JSON assembly
   const ctx: Record<string, unknown> = { period: `${from}..${today}` }
+
+  // ── Who the coach is coaching: profile + active limitations (before what they did) ──
+  try {
+    const profile = await fetchAthleteProfile()
+    if (profile) ctx.profile = { goal: profile.goal, level: profile.experience_level, days: profile.training_days_per_week, equip: profile.equipment_access, notes: profile.notes }
+  } catch { /* optional (pre-migration) */ }
+  try {
+    const limitations = await fetchAthleteLimitations(true)
+    if (limitations.length) ctx.limitations = limitations.map(l => ({ pattern: l.movement_pattern, severity: l.severity, note: l.note }))
+  } catch { /* optional (pre-migration) */ }
 
   // ── Workouts: every session in the window, per-exercise compact sets ──
   try {

@@ -62,6 +62,15 @@ const COACH_SUGGESTIONS = [
   'Back Day rutinimde ne değiştirirdin?',
 ]
 
+// One-tap "remember this" affordance for save_memory (aiApi.ts): a normal
+// user-authored message down the SAME send path as any other turn, so the
+// model's summary and its save_memory tool call land in the transcript like
+// any other reply — nothing hidden. Text follows the voice-chat TR/EN chip
+// (`voice.lang`), the one language setting this panel's chat content already
+// has; the button chrome itself stays English per the project's UI-string rule.
+const SUMMARIZE_AND_SAVE_EN = 'Summarize this conversation and save it to memory.'
+const SUMMARIZE_AND_SAVE_TR = 'Bu konuşmayı özetle ve hafızaya kaydet.'
+
 export function AIPanel() {
   const { isAIOpen, closeAI } = useUIStore()
   const qc = useQueryClient()
@@ -364,6 +373,17 @@ export function AIPanel() {
             )}
           </div>
           <div className="flex items-center gap-1">
+            {messages.length > 0 && (
+              <button
+                onClick={() => handleSend(voice.lang === 'tr-TR' ? SUMMARIZE_AND_SAVE_TR : SUMMARIZE_AND_SAVE_EN)}
+                disabled={loading}
+                title="Summarize & save this conversation"
+                aria-label="Summarize & save this conversation"
+                className="w-11 h-11 flex-shrink-0 flex items-center justify-center text-ink-400 hover:text-ink-700 disabled:opacity-40 transition-colors duration-150 text-lg rounded"
+              >
+                📝
+              </button>
+            )}
             {messages.length > 0 && (
               <button
                 onClick={() => { setMessages([]); setError(null); try { localStorage.removeItem(STORAGE_KEY) } catch { /* */ } }}

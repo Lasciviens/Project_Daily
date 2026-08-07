@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { ErrorLogTab } from '../components/ErrorLogTab'
 import { ActivityLogTab } from '../components/ActivityLogTab'
+import { MemoryTab } from '../components/MemoryTab'
 import { reindexAiSearch } from '../../ai/api/aiApi'
 import { toast } from '../../../app/store'
 
-type Tab = 'activity' | 'errors'
+type Tab = 'activity' | 'errors' | 'memory'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'activity', label: 'Activity' },
   { id: 'errors',   label: 'Errors'   },
+  { id: 'memory',   label: 'Memory'   },
 ]
 
 export function DeveloperPage() {
@@ -61,6 +63,7 @@ export function DeveloperPage() {
 
       {tab === 'activity' && <ActivityLogTab />}
       {tab === 'errors'   && <ErrorLogTab />}
+      {tab === 'memory'   && <MemoryTab />}
     </div>
   )
 }

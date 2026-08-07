@@ -8,12 +8,34 @@ import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { fetchMuscleVolume } from '../api/hevyApi'
 import { ExerciseThumb } from '../exerciseMedia'
 import { DateInput } from '../../../shared/components/DateInput'
+import { useAthleteProfile, useAthleteLimitations } from '../hooks/useAthleteProfile'
+import type { AthleteLimitation } from '../types.athlete'
 import {
-  slugForHevyGroup, contribution, MUSCLE_LANDMARKS, BANDS_META, bandForWeeklySets,
-  UNTRAINED_COLOR, SIDE_SLUGS, labelForSlug, MAJOR_MUSCLES, setDeltaToRange, type MuscleRole,
+  slugForHevyGroup, contribution, MUSCLE_LANDMARKS, BANDS_META,
+  UNTRAINED_COLOR, SIDE_SLUGS, labelForSlug, MAJOR_MUSCLES,
+  scaleLandmarksForExperience, EXPERIENCE_MULTIPLIER, PATTERN_AFFECTED_SLUGS, MOVEMENT_PATTERN_LABEL,
+  type MuscleRole, type Landmarks,
 } from '../muscleMap'
 
 const ROLE_LABEL: Record<MuscleRole, string> = { primary: 'Primary', secondary: 'Secondary', tertiary: 'Tertiary' }
+
+// A muscle flagged by an active athlete limitation is a THIRD state, deliberately
+// not one of BANDS_META's six colours. Violet reads as "train carefully", never
+// as green (optimal) or red (over-MRV) — most flagged muscles are still safely
+// trainable through a non-conflicting exercise, so a danger-coded colour would
+// overstate the restriction (a design-review correction, not a measured claim).
+const FLAG_META: Record<'avoid' | 'limit', { label: string; color: string; desc: string }> = {
+  avoid: {
+    label: 'Training conservatively',
+    color: '#7c3aed',
+    desc: 'An active limitation restricts the movement pattern that usually loads this muscle hardest, with no easy substitute at heavy load. Still trainable — just favour exercises that respect the limitation.',
+  },
+  limit: {
+    label: 'Flagged — see limitation',
+    color: '#a78bfa',
+    desc: 'An active limitation touches a movement pattern that helps train this muscle, but other patterns or isolation work can still load it safely.',
+  },
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  "Worked muscles" — weekly HARD-SET VOLUME per muscle vs evidence-based
@@ -36,6 +58,7 @@ interface ExerciseHit { sets: number; credited: number; role: MuscleRole; lastDa
 interface SlugAgg { credited: number; dates: Set<string>; directDates: Set<string>; exercises: Map<string, ExerciseHit> }
 type VolumeRow = { templateId: string; workoutId: string; workoutDate: string; workingSets: number }
 type Tpl = { primary: Slug | null; secondaries: Slug[]; title: string }
+interface SlugFlag { weight: 'avoid' | 'limit'; limitation: AthleteLimitation }
 
 function InfoBubble({ children }: { children: React.ReactNode }) {
   return (
@@ -173,6 +196,16 @@ export function WorkedMuscles() {
   const { data: recentWorkouts = [] } = useHevyWorkouts({ limit: 1 })
   const lastAt = recentWorkouts[0]?.start_time ?? recentWorkouts[0]?.hevy_created_at ?? null
 
+  // Athlete profile/limitations — independent of the volume window below.
+  // `experienceLevel` flows into every banding/landmark helper further down (a
+  // no-op when unset, so a user who never touches the athlete profile sees
+  // identical numbers to before this feature existed). Limitations are
+  // fetched active-only — a resolved/inactive one stops flagging immediately.
+  const { data: athleteProfile } = useAthleteProfile()
+  const experienceLevel = athleteProfile?.experience_level ?? null
+  const isExperienceAdjusted = experienceLevel != null && EXPERIENCE_MULTIPLIER[experienceLevel] !== 1
+  const { data: limitations = [] } = useAthleteLimitations(true)
+
   const enabled = period !== 'custom' || customValid
   const { data: volume = [], isLoading } = useQuery({
     queryKey: ['hevy', 'muscle-volume', fromIso, toIso],
@@ -197,6 +230,34 @@ export function WorkedMuscles() {
     return m
   }, [templates])
 
+  // Movement-pattern limitation → affected muscle slugs, fanned out per active
+  // limitation (a slug can be hit by more than one). Empty when there are no
+  // active limitations, so nothing downstream changes for a user who never
+  // records one.
+  const flagsBySlug = useMemo(() => {
+    const map = new Map<Slug, SlugFlag[]>()
+    for (const lim of limitations) {
+      for (const { slug, weight } of PATTERN_AFFECTED_SLUGS[lim.movement_pattern] ?? []) {
+        const arr = map.get(slug) ?? []
+        arr.push({ weight, limitation: lim })
+        map.set(slug, arr)
+      }
+    }
+    return map
+  }, [limitations])
+
+  // 'avoid' wins over 'limit' for the same slug — it's the more restrictive
+  // of the two when more than one active limitation flags it.
+  function flagWeightFor(slug: string): 'avoid' | 'limit' | null {
+    const hits = flagsBySlug.get(slug as Slug)
+    if (!hits?.length) return null
+    return hits.some(h => h.weight === 'avoid') ? 'avoid' : 'limit'
+  }
+  function flagFor(slug: string): { weight: 'avoid' | 'limit'; items: SlugFlag[] } | null {
+    const weight = flagWeightFor(slug)
+    return weight ? { weight, items: flagsBySlug.get(slug as Slug)! } : null
+  }
+
   const { perSlug, unattributed, totalWorkingSets, workoutCount } = useMemo(
     () => aggregate(volume as VolumeRow[], tplById), [volume, tplById])
   const priorAgg = useMemo(() => aggregate(priorVolume as VolumeRow[], tplById), [priorVolume, tplById])
@@ -207,7 +268,45 @@ export function WorkedMuscles() {
   const priorHasData = priorAgg.workoutCount > 0
 
   const weeklyOf = (slug: string) => (perSlug[slug]?.credited ?? 0) / weeks
-  const bandOf   = (slug: string) => bandForWeeklySets(slug, weeklyOf(slug))
+
+  // Every banding decision and every landmark number shown in this file reads
+  // MUSCLE_LANDMARKS through here — scaled to the athlete's experience level
+  // (novice/advanced shift MEV+MRV ±15%; intermediate/unset passes through
+  // unchanged) — so the body-diagram colour and the numbers in a muscle's own
+  // info bubble can never disagree with each other.
+  const landmarksFor = (slug: string): Landmarks | undefined => {
+    const L0 = MUSCLE_LANDMARKS[slug]
+    return L0 ? scaleLandmarksForExperience(L0, experienceLevel) : undefined
+  }
+  const bandFor = (slug: string, weeklySets: number): number => {
+    if (weeklySets <= 0) return 0
+    const L = landmarksFor(slug)
+    if (!L) return 3
+    if (weeklySets < L.mv)   return 1
+    if (weeklySets < L.mev)  return 2
+    if (weeklySets <= L.mav) return 3
+    if (weeklySets <= L.mrv) return 4
+    return 5
+  }
+  // Same "how far from the growth range" math as muscleMap's setDeltaToRange,
+  // reimplemented locally so it reads the same experience-scaled landmarks as
+  // bandFor above (the exported helper only ever sees the flat table).
+  const deltaFor = (slug: string, weeklySets: number):
+    | { kind: 'add'; sets: number; sessions: number; mev: number; mav: number }
+    | { kind: 'cut'; sets: number; mrv: number }
+    | null => {
+    const L = landmarksFor(slug)
+    if (!L) return null
+    if (weeklySets < L.mev) {
+      const deficit = Math.max(1, Math.round(L.mev - weeklySets))
+      return { kind: 'add', sets: deficit, sessions: Math.max(1, Math.ceil(deficit / 4)), mev: L.mev, mav: L.mav }
+    }
+    if (weeklySets > L.mrv) {
+      return { kind: 'cut', sets: Math.max(1, Math.round(weeklySets - L.mrv)), mrv: L.mrv }
+    }
+    return null
+  }
+  const bandOf   = (slug: string) => bandFor(slug, weeklyOf(slug))
   const freqOf   = (slug: string) => (perSlug[slug]?.directDates.size ?? 0) / weeks
   const daysSinceOf = (slug: string): number | null => {
     const d = perSlug[slug]?.directDates
@@ -226,14 +325,20 @@ export function WorkedMuscles() {
   }
 
   const bodyData = useMemo<ExtendedBodyPart[]>(() => {
-    const slugs = selected.size > 0 ? [...selected] : Object.keys(perSlug)
+    // A flagged muscle is shown even at 0 sets — the flag itself is the point,
+    // not its trained-volume state (which would otherwise leave a band-0
+    // muscle invisible on the diagram).
+    const universe = selected.size > 0 ? [...selected] : [...new Set([...Object.keys(perSlug), ...flagsBySlug.keys()])]
     const out: ExtendedBodyPart[] = []
-    for (const slug of slugs) {
-      const band = bandForWeeklySets(slug, (perSlug[slug]?.credited ?? 0) / weeks)
+    for (const slug of universe) {
+      const flagWeight = flagWeightFor(slug)
+      if (flagWeight) { out.push({ slug: slug as Slug, color: FLAG_META[flagWeight].color }); continue }
+      const band = bandFor(slug, (perSlug[slug]?.credited ?? 0) / weeks)
       if (band > 0) out.push({ slug: slug as Slug, color: BANDS_META[band].color })
     }
     return out
-  }, [perSlug, selected, weeks])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perSlug, selected, weeks, flagsBySlug, experienceLevel])
 
   const sideChips = useMemo(
     () => Object.keys(perSlug)
@@ -241,7 +346,7 @@ export function WorkedMuscles() {
       .map(slug => ({ slug: slug as Slug, wk: weeklyOf(slug), band: bandOf(slug) }))
       .sort((a, b) => b.wk - a.wk),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [perSlug, side, weeks],
+    [perSlug, side, weeks, experienceLevel],
   )
 
   // Actionable problem lists — under-dosed limited to MAJOR muscles so we never
@@ -257,7 +362,7 @@ export function WorkedMuscles() {
     // gets its own list and out-ranks a merely-low one.
     for (const slug of MAJOR_MUSCLES) {
       const wk = (perSlug[slug]?.credited ?? 0) / weeks
-      const b = bandForWeeklySets(slug, wk)
+      const b = bandFor(slug, wk)
       if (b >= 3) inGrowth++
       else if (b === 2) close++
       else needWork++
@@ -265,14 +370,15 @@ export function WorkedMuscles() {
       else if (b === 1 || b === 2) under.push({ slug, wk })
     }
     for (const slug of Object.keys(perSlug)) {
-      const b = bandForWeeklySets(slug, (perSlug[slug]!.credited) / weeks)
+      const b = bandFor(slug, (perSlug[slug]!.credited) / weeks)
       if (b === 3) optimal++
       if (b === 5) over.push({ slug, wk: (perSlug[slug]!.credited) / weeks })
     }
     under.sort((a, b) => a.wk - b.wk)
     over.sort((a, b) => b.wk - a.wk)
     return { underMajors: under, untrainedMajors: untrained, overMrv: over, optimalCount: optimal, buckets: { inGrowth, close, needWork } }
-  }, [perSlug, weeks])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perSlug, weeks, experienceLevel])
 
   const balance = useMemo(() => {
     const s = (slug: string) => weeklyOf(slug)
@@ -295,7 +401,7 @@ export function WorkedMuscles() {
     })
     const bullets: { icon: string; text: string }[] = []
     for (const o of persistentOver.slice(0, 2)) {
-      const d = setDeltaToRange(o.slug, o.wk)
+      const d = deltaFor(o.slug, o.wk)
       bullets.push({ icon: '⬇', text: `Ease off ${labelForSlug(o.slug)} — ${o.wk.toFixed(0)}/wk is more than most recover from${d?.kind === 'cut' ? `; if recovery's suffering, drop ~${d.sets} sets` : ''}.` })
     }
     // Skipped-entirely majors out-rank merely-low ones.
@@ -303,7 +409,7 @@ export function WorkedMuscles() {
       bullets.push({ icon: '➕', text: `Start training ${labelForSlug(slug)} — nothing logged this ${windowDays === 7 ? 'week' : 'period'}. Even one session helps.` })
     }
     for (const u of underMajors.slice(0, 3)) {
-      const d = setDeltaToRange(u.slug, u.wk)
+      const d = deltaFor(u.slug, u.wk)
       bullets.push({ icon: '⬆', text: d?.kind === 'add'
         ? `Add ~${d.sets} sets/wk to ${labelForSlug(u.slug)} (≈ ${d.sessions === 1 ? 'one more session' : `${d.sessions} more sessions`}) to reach the growth range.`
         : `Train ${labelForSlug(u.slug)} more — ${u.wk.toFixed(1)}/wk.` })
@@ -323,7 +429,8 @@ export function WorkedMuscles() {
     else if (optimalCount >= 4) headline = `Dialled in — most muscles are in the growth sweet spot. Keep it up.`
     else headline = `Here's how your last ${windowDays} days stack up per muscle.`
     return { headline, bullets: top, extra: bullets.length - top.length }
-  }, [workoutCount, overMrv, underMajors, untrainedMajors, buckets, balance.pushPull, optimalCount, smallSample, windowDays, priorHasData, priorPerSlug, weeks])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workoutCount, overMrv, underMajors, untrainedMajors, buckets, balance.pushPull, optimalCount, smallSample, windowDays, priorHasData, priorPerSlug, weeks, experienceLevel])
 
   function toggle(slug: Slug | null | undefined) {
     if (!slug) return
@@ -408,6 +515,7 @@ export function WorkedMuscles() {
                 <li>Warm-up sets don't count.</li>
                 <li>Shows <strong>volume</strong>, not effort/recovery — assumes your sets were reasonably hard.</li>
                 <li>Landmarks are population averages (±); guidance, not personalised.</li>
+                {flagsBySlug.size > 0 && <li>A violet muscle is <strong>flagged</strong> by an active limitation — not "good" or "bad". Open that muscle's card for which limitation and why.</li>}
               </ul>
             </InfoBubble>
           </div>
@@ -416,6 +524,12 @@ export function WorkedMuscles() {
               <div key={b.idx} className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: b.color }} />
                 <span className="text-[10px] text-ink-500">{b.label}</span>
+              </div>
+            ))}
+            {flagsBySlug.size > 0 && (['avoid', 'limit'] as const).map(w => (
+              <div key={w} className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: FLAG_META[w].color }} />
+                <span className="text-[10px] text-ink-500">{FLAG_META[w].label}</span>
               </div>
             ))}
           </div>
@@ -524,16 +638,17 @@ export function WorkedMuscles() {
             {[...selected].map(slug => {
               const agg = perSlug[slug]
               const wk = (agg?.credited ?? 0) / weeks
-              const band = bandForWeeklySets(slug, wk)
-              const meta = BANDS_META[band]
-              const L = MUSCLE_LANDMARKS[slug]
+              const band = bandFor(slug, wk)
+              const flag = flagFor(slug)
+              const meta = flag ? FLAG_META[flag.weight] : BANDS_META[band]
+              const L = landmarksFor(slug)
               const exercises = agg ? [...agg.exercises.entries()].sort((a, b) => b[1].credited - a[1].credited) : []
               const dates = agg ? [...agg.dates].sort((a, b) => (a < b ? 1 : -1)) : []
               const freq = freqOf(slug)
               const sessions = agg?.directDates.size ?? 0
               const since = daysSinceOf(slug)
               const trend = trendOf(slug)
-              const delta = setDeltaToRange(slug, wk)
+              const delta = deltaFor(slug, wk)
               return (
                 <div key={slug} className="rounded-2xl border-2 bg-cream-50 overflow-hidden shadow-sm" style={{ borderColor: meta.color }}>
                   <div className="px-4 py-3 flex items-center justify-between gap-2" style={{ backgroundColor: meta.color + '1f' }}>
@@ -548,6 +663,28 @@ export function WorkedMuscles() {
                   </div>
 
                   <div className="p-4 flex flex-col gap-3">
+                    {/* Flag explanation — its own distinct state, named to the
+                        source limitation so a violet header never reads as an
+                        unexplained colour change. Volume guidance below still
+                        proceeds normally: a flag narrows exercise CHOICE, it
+                        doesn't erase the muscle's real training-volume read. */}
+                    {flag && (
+                      <div className="rounded-xl border px-3 py-2.5 flex flex-col gap-1.5" style={{ borderColor: meta.color, backgroundColor: meta.color + '14' }}>
+                        <p className="text-xs font-bold flex items-center gap-1.5" style={{ color: meta.color }}>
+                          ⚑ {meta.label}
+                          <InfoBubble>{meta.desc} Flagging a muscle never means it can't be trained — it means favouring exercises that don't rely on the flagged movement pattern.</InfoBubble>
+                        </p>
+                        <ul className="flex flex-col gap-1">
+                          {flag.items.map((hit, i) => (
+                            <li key={i} className="text-xs text-ink-600 flex items-start gap-1.5">
+                              <span className="shrink-0 font-semibold" style={{ color: FLAG_META[hit.weight].color }}>{hit.weight === 'avoid' ? '(avoid)' : '(limit)'}</span>
+                              <span>{MOVEMENT_PATTERN_LABEL[hit.limitation.movement_pattern]}{hit.limitation.note ? ` — "${hit.limitation.note}"` : ''}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     {/* Action first — plain-language guidance + concrete "what to do" */}
                     <p className="text-sm text-ink-700 flex items-start gap-1">
                       <span>
@@ -555,7 +692,21 @@ export function WorkedMuscles() {
                         {delta?.kind === 'add' && ` That's about ${delta.sets} more sets a week — roughly ${delta.sessions === 1 ? 'one more session' : `${delta.sessions} more sessions`}.`}
                         {delta?.kind === 'cut' && ` If you're not recovering well, drop about ${delta.sets} sets.`}
                       </span>
-                      <InfoBubble>{meta.desc}{L && <><br /><br />Weekly-set landmarks — maintain {L.mv} · start growing (MEV) {L.mev} · best range up to (MAV) {L.mav} · usual ceiling (MRV) {L.mrv}. Population guidance, not personalised. Assumes your sets were reasonably hard.</>}</InfoBubble>
+                      <InfoBubble>
+                        {BANDS_META[band].desc}
+                        {L && (
+                          <>
+                            <br /><br />
+                            Weekly-set landmarks — maintain {L.mv} · start growing (MEV) {L.mev} · best range up to (MAV) {L.mav} · usual ceiling (MRV) {L.mrv}. Population guidance, not personalised. Assumes your sets were reasonably hard.
+                            {isExperienceAdjusted && (
+                              <>
+                                <br /><br />
+                                Adjusted ±15% for your experience level — an unvalidated adjustment on top of an already-heuristic baseline, not a measured number.
+                              </>
+                            )}
+                          </>
+                        )}
+                      </InfoBubble>
                     </p>
 
                     {/* Descriptive cues, second */}

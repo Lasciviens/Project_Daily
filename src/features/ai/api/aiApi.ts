@@ -35,7 +35,7 @@ SPECIAL-PURPOSE tools (use instead of the generic ones when they apply):
 - get_media / plan_media / mark_episode_watched — media library + planning-with-schedule + episode progress logic.
 - Shop: get_shop_categories, create_shop_category, create_shop_item, ask_clarifying_question — for shopping-wishlist flows (2-level category tree; ask before inventing a category).
 - run_read_query(sql) — LIVE read-only SQL escape hatch. Use it ONLY when the user EXPLICITLY asks for a raw / custom / complex query that the structured db_query cannot express (multi-table joins, GROUP BY, arithmetic, window functions), or explicitly says "live sql" / "raw sql" / "canlı sorgu" / "özel sorgu çalıştır". SELECT-only, automatically read-only + row-capped, and only the allow-listed tables are reachable. NEVER use it for a lookup db_query already does, and NEVER for writes. Show the user the SQL you ran.
-- save_memory(title, content, kind?) — persist a durable note/summary/fact to the user's AI memory (ai_memory table). Use it when the user asks you to remember something for later ("bunu aklında tut", "şunu kaydet", "bunu unutma"), or to store a compacted summary of the current conversation when they ask you to. Announce what you'll save before saving. Recall saved memories later with db_query on ai_memory.
+- save_memory(title, content, kind?) — persist to the user's AI memory (ai_memory table). Two distinct uses: (a) REMEMBER ONE FACT — the user asks you to remember/note a single durable fact or preference for later ("bunu aklında tut", "şunu kaydet", "bunu unutma") → kind="fact" or "preference". (b) SUMMARIZE THE CONVERSATION — the user explicitly asks you to wrap up/save a summary of the whole chat so far ("topla ve not al", "bunu özetle", "konuşmayı kaydet", "özet çıkar", "summarize this conversation", "save a summary of this", "note this down") → compact the ENTIRE conversation so far (not just the last message) into ONE save_memory call with kind="summary", a short auto-generated title describing the topic, and content = the actual compacted summary. Either way, announce what you'll save before saving (see Workflow rules). Recall saved memories later with db_query on ai_memory.
 
 TRANSIT ROUTING — fast path, follow exactly (this was a real latency pain point):
 - For ANY routing/transfer/"how do I get there"/"when should I leave" question, call plan_trip ONCE, directly, passing the user's own words as from/to (e.g. from:"ev", to:"iş"). Do NOT call get_saved_transit or search_transit_stops first — plan_trip already resolves home/work, saved stops/routes, and addresses internally. Extra lookups just make it slow.
@@ -48,6 +48,7 @@ HEALTH QUESTIONS — don't just recite numbers, actually analyze:
 
 TRAINING QUESTIONS — act as the user's personal strength coach (distilled from expert coaching + exercise-science review):
 - Decisive, honest, never generic. Ground every answer in their real data (hevy_workouts/hevy_sets via db_query, sleep/steps from get_health_stats); if unavailable, say so in one line, don't invent.
+- Before giving programming advice, check get_athlete_profile (durable goal/experience/equipment/active movement-pattern limitations): never recommend a movement pattern flagged "avoid"; treat "limit" as reduce load/volume, not a ban; treat "monitor" as awareness only — don't auto-restrict, that judgment call stays with the user/coach.
 - Progression default: all sets hit at same load → +2.5kg upper / +5kg lower compounds, else chase reps (double progression). Plateau with good sleep = add stimulus; plateau with rising fatigue = deload, don't add.
 - Sleep <6h or high fatigue → recommend lighter session (trim sets, RIR 2-3, no PRs). Rest ≥2-3min on compounds. Pain ≠ push through; no medical diagnosis.
 - Give ONE concrete recommendation with numbers, not option lists.
@@ -98,6 +99,12 @@ Workflow rules:
 type WishContextRow = Pick<WishItem,
   'id' | 'title' | 'status' | 'period_start' | 'period_end' | 'period_label' | 'city' | 'country'>
 
+// Durable identity facts/preferences the user asked the AI to remember
+// (ai_memory, kind in 'fact'|'preference' only — 'note'/'summary' rows are
+// point-in-time journal entries, deliberately left for on-demand recall via
+// db_query/semantic_search rather than paid on every single turn).
+type MemoryContextRow = { id: string; title: string; content: string; kind: string }
+
 async function buildContext(): Promise<string> {
   const today = format(new Date(), 'yyyy-MM-dd')
 
@@ -124,6 +131,11 @@ async function buildContext(): Promise<string> {
       .in('status', ['idea', 'planned'])
       .or(`period_end.gte.${today},period_end.is.null`)
       .order('period_start', { ascending: true, nullsFirst: false }).limit(12),
+    // Durable facts/preferences only (never note/summary) — kept short and
+    // read first so identity context colours everything else in this block.
+    supabase.from('ai_memory').select('id, title, content, kind')
+      .in('kind', ['fact', 'preference'])
+      .order('created_at', { ascending: false }).limit(12),
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,6 +161,7 @@ async function buildContext(): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const training  = get<any>(7)
   const wishes    = get<WishContextRow>(8)
+  const memories  = get<MemoryContextRow>(9)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const todayTasks = Array.from(new Map(todayRaw.map((t: any) => [t.id, t])).values()) as any[]
@@ -157,6 +170,11 @@ async function buildContext(): Promise<string> {
     `DATE: ${format(new Date(), 'EEEE, MMMM d yyyy')}`,
     `TIME: ${format(new Date(), 'HH:mm')} (local time, timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone})`,
   ]
+
+  if (memories.length) {
+    lines.push('\nABOUT ME (durable facts/preferences you were asked to remember):')
+    for (const m of memories) lines.push(`  [${m.kind}] ${m.title}: ${m.content}`)
+  }
 
   if (todayTasks.length) {
     lines.push(`\nTODAY'S TASKS (${todayTasks.length}):`)
