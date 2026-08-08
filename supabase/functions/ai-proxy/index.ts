@@ -493,12 +493,13 @@ const TOOLS = [
       },
       {
         name: 'update_hevy_routine',
-        description: 'Update an existing Hevy routine (title and/or full exercises list) — writes to the REAL Hevy account. RULES: (1) db_query hevy_routines + hevy_routine_exercises + hevy_routine_sets FIRST to get the routine id and its CURRENT full exercise/set structure. (2) Send the COMPLETE exercises array (every exercise you want kept, in order) — this REPLACES the whole list, omitted exercises are DELETED. (3) Set shape: {type:"normal"|"warmup"|"dropset"|"failure", weight_kg, reps} — use rep_range:{start,end} INSTEAD of reps only when a range is wanted, never both, never rep_range:null. Exercise shape: {exercise_template_id, superset_id, rest_seconds, notes, sets:[...]}. (4) ALWAYS summarize the exact change and get the user\'s explicit confirmation in a prior turn before calling this.',
+        description: 'Update an existing Hevy routine (title, the routine\'s own note, and/or full exercises list) — writes to the REAL Hevy account. RULES: (1) db_query hevy_routines + hevy_routine_exercises + hevy_routine_sets FIRST to get the routine id and its CURRENT full exercise/set structure. (2) Send the COMPLETE exercises array (every exercise you want kept, in order) — this REPLACES the whole list, omitted exercises are DELETED. (3) Set shape: {type:"normal"|"warmup"|"dropset"|"failure", weight_kg, reps} — use rep_range:{start,end} INSTEAD of reps only when a range is wanted, never both, never rep_range:null. Exercise shape: {exercise_template_id, superset_id, rest_seconds, notes, sets:[...]} — that per-exercise "notes" is a note on ONE exercise, not the routine. (4) The routine\'s OWN note/description (what shows under the routine title in Hevy) is the separate top-level "notes" param below — omit it to leave the routine\'s existing note untouched, or send the full replacement text (it REPLACES, it does not append). (5) ALWAYS summarize the exact change and get the user\'s explicit confirmation in a prior turn before calling this.',
         parameters: {
           type: 'OBJECT',
           properties: {
             routine_id: { type: 'STRING', description: 'hevy_routines.id (from db_query)' },
             title:      { type: 'STRING', description: 'Routine title (required by Hevy — resend the current one if unchanged)' },
+            notes:      { type: 'STRING', description: 'The routine\'s OWN note/description (hevy_routines.notes) — optional, omit to leave it unchanged. This replaces the whole note, it does not append to it.' },
             exercises:  { type: 'STRING', description: 'JSON array of the COMPLETE exercise list in the shape described above.' },
           },
           required: ['routine_id', 'title', 'exercises'],
@@ -1128,13 +1129,18 @@ async function updateHevyRoutine(args: AnyRecord, authHeader?: string): Promise<
   if (!Array.isArray(exercises) || exercises.length === 0) {
     return { success: false, error: 'exercises must be a non-empty array (it REPLACES the whole list)' }
   }
+  // The routine's OWN note (hevy_routines.notes) is a separate field from any
+  // per-exercise note inside `exercises[].notes`. Previously this function
+  // only ever forwarded id/title/exercises, so there was NO path at all for
+  // the AI to write a routine-level note — hevy-api's update_routine handler
+  // already spreads every payload key (minus id/folder_id) into the PUT body,
+  // so adding it here is sufficient; hevy-api itself needs no change.
+  const payload: AnyRecord = { id: args.routine_id, title: args.title, exercises }
+  if (typeof args.notes === 'string') payload.notes = args.notes
   const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hevy-api`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-    body: JSON.stringify({
-      action: 'update_routine',
-      payload: { id: args.routine_id, title: args.title, exercises },
-    }),
+    body: JSON.stringify({ action: 'update_routine', payload }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) return { success: false, error: body?.error ?? `hevy-api ${res.status}` }
