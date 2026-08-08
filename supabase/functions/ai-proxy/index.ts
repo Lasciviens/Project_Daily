@@ -2161,6 +2161,16 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: 'Hevy routines/templates. Embedded detail: "title, hevy_routine_exercises(title, hevy_routine_sets(weight_kg, reps, rep_range_start, rep_range_end))".',
     columns: 'id, folder_id, title, notes, hevy_created_at, hevy_updated_at',
   },
+  hevy_routine_exercises: {
+    access: 'ro',
+    purpose: 'One row per exercise slot inside a Hevy routine (hevy_routines.id via hevy_routine_id). Prefer querying hevy_routines with the embedded select above; use this directly (or in a run_read_query JOIN) when you need to filter/join on exercise_template_id.',
+    columns: 'id, hevy_routine_id(FK hevy_routines.id), exercise_template_id, index, title, notes, rest_seconds, supersets_id, created_at',
+  },
+  hevy_routine_sets: {
+    access: 'ro',
+    purpose: 'One row per planned set inside a routine exercise (hevy_routine_exercises.id via hevy_routine_exercise_id).',
+    columns: 'id, hevy_routine_exercise_id(FK hevy_routine_exercises.id), index, type(normal|warmup|dropset|failure), weight_kg, reps, rep_range_start, rep_range_end, distance_meters, duration_seconds, rpe, custom_metric, created_at',
+  },
   hevy_exercise_templates: {
     access: 'ro',
     purpose: 'Hevy exercise catalog (names + muscle groups).',

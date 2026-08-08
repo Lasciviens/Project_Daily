@@ -311,6 +311,7 @@ async function refreshRoutineFolders(supabase: any, userId: string): Promise<voi
 async function refreshRoutines(supabase: any, userId: string): Promise<number> {
   let page = 1
   let total = 0
+  const seenIds = new Set<string>()
   while (true) {
     const data = await hevyGet(`/v1/routines?page=${page}&pageSize=10`)
     // deno-lint-ignore no-explicit-any
@@ -318,6 +319,7 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
     if (routines.length === 0) break
     const now = new Date().toISOString()
     for (const routine of routines) {
+      seenIds.add(routine.id)
       const { error: rErr } = await supabase.from('hevy_routines').upsert({
         id: routine.id, user_id: userId, folder_id: routine.folder_id ?? null,
         title: routine.title, notes: routine.notes ?? null,
@@ -352,6 +354,28 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
     total += routines.length
     if (page >= data.page_count) break
     page++
+  }
+
+  // Routines have no delete-event feed (see the comment above this function),
+  // so a routine removed in the Hevy app between syncs previously left a
+  // STALE local row forever — this function only ever upserted. Real bug this
+  // fixes: the AI (or the UI) would db_query a stale id from hevy_routines and
+  // then get a 404 "Routine not found" from Hevy on update/delete. Reconcile
+  // against this fresh full list: anything local that Hevy didn't return this
+  // time is gone from Hevy, so delete it here too. Cascades to
+  // hevy_routine_exercises/hevy_routine_sets via their ON DELETE CASCADE FKs
+  // (024_hevy.sql). Safe even when seenIds is empty (a real zero-routines
+  // account) — hevyGet throws on a non-ok response, so we only ever reach
+  // here after a genuinely successful full fetch, never a transient failure.
+  const { data: localRoutines, error: localErr } = await supabase
+    .from('hevy_routines').select('id').eq('user_id', userId)
+  if (localErr) throw localErr
+  // deno-lint-ignore no-explicit-any
+  const staleIds = (localRoutines ?? []).map((r: any) => r.id as string).filter((id: string) => !seenIds.has(id))
+  if (staleIds.length > 0) {
+    const { error: staleErr } = await supabase.from('hevy_routines')
+      .delete().eq('user_id', userId).in('id', staleIds)
+    if (staleErr) throw staleErr
   }
   return total
 }
