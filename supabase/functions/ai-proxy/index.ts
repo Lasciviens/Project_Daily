@@ -408,6 +408,11 @@ const TOOLS = [
           required: [],
         },
       },
+      {
+        name: 'get_athlete_profile',
+        description: 'One compact call returning the user\'s durable training profile (goal, experience level, training days/week, equipment) AND their active movement-pattern limitations. Prefer this over two separate db_query calls before giving any training/programming advice — cheaper and the standard first step for training questions.',
+        parameters: { type: 'OBJECT', properties: {}, required: [] },
+      },
       // ─── Semantic recall over the user's own text ─────────────────────────
       {
         name: 'semantic_search',
@@ -1076,6 +1081,7 @@ async function dispatch(
       return r
     }
     case 'get_day_summary':      return getDaySummary(supabase, userId, args)
+    case 'get_athlete_profile':  return getAthleteProfile(supabase, userId)
     case 'semantic_search': {
       const r = await semanticSearch(args, authHeader)
       void logQuery(supabase, userId, surface, 'semantic_search', null, args, r)
@@ -2108,6 +2114,36 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: 'Items/tasks within a project phase.',
     columns: 'id, phase_id(uuid FK project_phases), project_id(uuid FK projects), title, notes, type(update|improvement|ui_request|bug|wishlist), status(open|in_progress|done|cancelled), priority(low|medium|high), sort_order, created_at, updated_at',
   },
+  // athlete_profile is rw because the user directs their own training settings
+  // in chat ("hedefim güç" / "ekipmanım sadece ev"). It is a SINGLETON keyed by
+  // user_id (no separate id column) — see the rules below for the db_update
+  // gotcha this shape causes (db_update refuses an empty filters object).
+  athlete_profile: {
+    access: 'rw',
+    purpose: "The user's durable training profile/settings — a SINGLETON: at most ONE row per user, keyed by user_id (there is no id column, unlike every other table here). Not a list. Consult before giving any training/programming advice so recommendations match their real goal/experience/equipment; prefer the get_athlete_profile tool to read it (returns limitations too in the same call).",
+    columns: 'user_id(uuid, PRIMARY KEY — not "id"), goal(strength|hypertrophy|fat_loss|general), experience_level(novice|intermediate|advanced), training_age_years(numeric, nullable), training_days_per_week(int, nullable), equipment_access(home|gym|both), notes(text, nullable), updated_at',
+    rules: [
+      'There is at most one row for this user — never insert a second one once a row exists.',
+      'To write: first db_query this table with filters={} to check whether a row already exists (or call get_athlete_profile). If none exists, db_insert one. If one exists, db_update it — but db_update refuses an empty filters object, so pass filters={"user_id":"<the user_id value from the row you just queried>"} to satisfy that check; every row already carries its own user_id in the query result, and it is always the correct value since every read/write here is scoped to you anyway.',
+      'This table has no id column, so a db_insert response\'s id/ids fields will read null for it — check success/rows instead to confirm the write went through.',
+      'Only change goal/experience_level/equipment_access when the user actually states a change; do not infer a new goal from one offhand remark.',
+    ].join(' '),
+  },
+  // athlete_limitations is rw for the same reason — a normal list table, not a
+  // singleton. severity is never auto-escalated; that stays a conversation with
+  // the user (see rules). This is structured settings data the user directs, not
+  // a "note" — it does NOT join the dev_requests/ai_memory/shop_items/wish_items
+  // four-way "remember this" tie-break documented on wish_items above.
+  athlete_limitations: {
+    access: 'rw',
+    purpose: 'A normal list table — one row per movement-pattern limitation the user has (an injury, a mobility restriction, an exercise to avoid), active or past. Consult before recommending exercises, programming changes or substitutions; prefer get_athlete_profile, which returns the active list alongside the profile in one call.',
+    columns: 'id, movement_pattern(text — a short movement-pattern label, e.g. overhead_press, heavy_hip_hinge, horizontal_pull — not a muscle name), severity(avoid|limit|monitor — default monitor), note(text, nullable), active(bool, default true), created_at, updated_at',
+    rules: [
+      'severity="avoid" means never recommend that movement pattern as a substitute or a new exercise. severity="limit" means reduce load/volume, don\'t ban it outright. severity="monitor" means just be aware — don\'t restrict anything automatically.',
+      'Never auto-escalate a limitation\'s severity (e.g. monitor→avoid) on your own — that judgment call stays a conversation with the user; only change it when they say so.',
+      'To retire a limitation that no longer applies, db_update active=false rather than deleting it, unless the user explicitly asks you to delete it outright.',
+    ].join(' '),
+  },
   // ── read-only (synced from external systems — write at the source, not here) ──
   hevy_workouts: {
     access: 'ro',
@@ -2463,6 +2499,22 @@ async function getDaySummary(supabase: AnyRecord, userId: string, args: AnyRecor
       schedule: g(blocksR).map((b: AnyRecord) => ({ time: b.start_time?.slice(0, 5) ?? null, title: b.title, minutes: b.duration_minutes })),
       workout_logged: g(workoutR).length > 0,
     }
+  } catch (e) { return { success: false, error: (e as Error).message } }
+}
+
+// get_athlete_profile — one compact call instead of two separate db_query
+// calls before any training/programming advice. Both reads run in parallel
+// and are independently tolerant of failure (e.g. migration 070 not yet
+// applied), matching getDaySummary's Promise.allSettled shape above.
+async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<AnyRecord> {
+  try {
+    const [profileR, limitationsR] = await Promise.allSettled([
+      supabase.from('athlete_profile').select('*').eq('user_id', userId).maybeSingle(),
+      supabase.from('athlete_limitations').select('movement_pattern,severity,note').eq('user_id', userId).eq('active', true),
+    ])
+    const profile = profileR.status === 'fulfilled' ? (profileR.value.data ?? null) : null
+    const limitations = limitationsR.status === 'fulfilled' ? (limitationsR.value.data ?? []) : []
+    return { success: true, profile, limitations }
   } catch (e) { return { success: false, error: (e as Error).message } }
 }
 

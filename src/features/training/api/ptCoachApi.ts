@@ -1,7 +1,8 @@
 import { fetchHevyWorkouts, fetchHevyWorkoutDetail, fetchMuscleVolume } from './hevyApi'
+import { fetchAthleteProfile, fetchAthleteLimitations } from './athleteProfileApi'
 import { fetchHealthMetricSeries } from './healthApi'
 import { computeSleepSummary, computeDailySeries } from '../healthAggregate'
-import { slugForHevyGroup, MUSCLE_LANDMARKS, labelForSlug } from '../muscleMap'
+import { slugForHevyGroup, MUSCLE_LANDMARKS, labelForSlug, MOVEMENT_PATTERN_LABEL } from '../muscleMap'
 import { supabase } from '../../../integrations/supabase/client'
 import { invokeAI, type Message } from '../../ai/api/aiApi'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
@@ -23,12 +24,13 @@ TONE: an experienced human coach — calm, professional, direct. Honest about pr
 FOLLOW-UP: if a PREVIOUS ASSESSMENT section is present, note briefly whether its main recommendation was applied ("Geçen sefer X önermiştim — uygulanmış/uygulanmamış") and move on. Accountability, not punishment.
 
 DATA SNAPSHOT (read-only, pre-aggregated; you have no tools):
+- PROFİL: athlete's goal / experience level / equipment access / training days per week — only the fields the user actually set. Followed by one "Kısıtlama: <hareket> (severity) — <note>" line per active limitation. Severity reading: (avoid) = this movement pattern is off the table entirely, no exceptions; (limit) = usable only at reduced load/volume; (monitor) = no restriction, just keep it in view. Absent entirely = no profile/limitations on file yet.
 - Workout lines: "Exercise: sets×reps@kg (prev: …)". "prev" = same exercise, last session it appeared. Warm-ups already excluded.
 - Weekly volume: hard sets per muscle vs landmarks (e.g. "Chest: 14 set/hf [MEV 8 · MAV 20 · MRV 22]"). MEV=minimum effective, MAV=growth sweet spot, MRV=recoverable ceiling.
 - Sleep "6.2h (7g ort 6.8h)", steps, active kcal, body weight trend, subjective feeling + free text.
 
 DECISION RULES (apply in this order):
-1. Safety: pain mentioned → stop-and-assess advice for that movement, suggest substitute, never "push through". No medical diagnosis; persistent pain → professional.
+1. Safety: pain mentioned → stop-and-assess advice for that movement, suggest substitute, never "push through". No medical diagnosis; persistent pain → professional. PROFİL limitation grounding: a limitation listed in PROFİL is durable fact, not something the user has to re-mention every session — (avoid) → never recommend that movement pattern as next-session progression or as a substitute exercise; (limit) → only suggest it at reduced load/volume and say so explicitly; (monitor) → no automatic restriction, proceed normally, you may note it's on watch.
 2. Recovery gate: sleep <6h OR ("çok yorgun" + sleep below 7d avg) → today is technique/maintenance: keep exercises, -20-30% load or -1 set per exercise, no PR attempts. Sleep <5h two nights running → recommend rest or light cardio day.
 3. Overreach: any muscle ≥MRV, or performance regressed on 2+ lifts vs prev while feeling "çok yorgun" → deload cue: halve sets for that muscle this week, keep loads.
 4. Progressive overload (default engine): if all target sets hit at same load as prev → next session +2.5kg (upper) / +5kg (lower compounds), or +1-2 reps on dumbbell/isolation work where 2.5kg is too big a jump. Reps dropped vs prev → hold load, chase reps. Same load AND reps 3 sessions running = plateau → say so, change rep range or exercise variant.
@@ -75,6 +77,26 @@ function workoutLines(w: HevyWorkout, prevByExercise: Map<string, string>): stri
 export async function buildTrainingSnapshot(): Promise<string> {
   const today = todayStr()
   const lines: string[] = []
+
+  // ── Athlete profile + active limitations — who the coach is coaching,
+  // read before any numbers. Durable facts set once (Settings), so the user
+  // never has to re-type an old injury every session; grounds rule 1 of the
+  // prompt's DECISION RULES.
+  try {
+    const [profile, limitations] = await Promise.all([
+      fetchAthleteProfile(),
+      fetchAthleteLimitations(true),
+    ])
+    const parts: string[] = []
+    if (profile?.goal) parts.push(`Hedef ${profile.goal}`)
+    if (profile?.experience_level) parts.push(`Seviye ${profile.experience_level}`)
+    if (profile?.equipment_access) parts.push(`Ekipman ${profile.equipment_access}`)
+    if (profile?.training_days_per_week) parts.push(`Haftada ${profile.training_days_per_week} gün`)
+    if (parts.length > 0) lines.push(`PROFİL: ${parts.join(' · ')}`)
+    for (const lim of limitations) {
+      lines.push(`  Kısıtlama: ${MOVEMENT_PATTERN_LABEL[lim.movement_pattern]} (${lim.severity})${lim.note ? ` — ${lim.note}` : ''}`)
+    }
+  } catch { /* profile/limitations optional — table may not exist pre-migration */ }
 
   // ── Workouts: latest session in full + prev-session comparison per exercise ──
   const recent = await fetchHevyWorkouts({ limit: 12 })

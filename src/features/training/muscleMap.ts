@@ -1,4 +1,5 @@
 import type { Slug } from 'react-muscle-highlighter'
+import type { ExperienceLevel } from './types.athlete'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Muscle mapping + a volume-based, evidence-anchored coloring model.
@@ -174,4 +175,114 @@ export function setDeltaToRange(slug: string, weeklySets: number):
     return { kind: 'cut', sets: Math.max(1, Math.round(weeklySets - L.mrv)), mrv: L.mrv }
   }
   return null
+}
+
+// ── Athlete profile: movement-pattern taxonomy + limitation → muscle seam ───
+// A short, fixed vocabulary of standard resistance-training movement patterns
+// (not exotic — the same categories any S&C coach or a functional movement
+// screen would use). This is what `athlete_limitations.movement_pattern`
+// stores, and it is deliberately NOT one-to-one with a muscle: a limitation is
+// on a MOVEMENT (e.g. "avoid overhead pressing — shoulder"), and
+// PATTERN_AFFECTED_SLUGS below is the derivation seam that turns that into a
+// per-muscle flag for a UI keyed by `Slug`, without the DB ever storing a
+// muscle slug directly.
+export type MovementPattern =
+  | 'squat'
+  | 'hinge'
+  | 'horizontal_press'
+  | 'vertical_press'
+  | 'horizontal_pull'
+  | 'vertical_pull'
+  | 'lunge'
+  | 'carry'
+  | 'isolation'
+
+export const MOVEMENT_PATTERN_LABEL: Record<MovementPattern, string> = {
+  squat:            'Squat',
+  hinge:            'Hinge (deadlift pattern)',
+  horizontal_press: 'Horizontal Press (bench / push-up)',
+  vertical_press:   'Vertical Press (overhead)',
+  horizontal_pull:  'Horizontal Pull (row)',
+  vertical_pull:    'Vertical Pull (pull-up / pulldown)',
+  lunge:            'Lunge / Single-leg',
+  carry:            'Loaded Carry',
+  isolation:        'Isolation (single-joint)',
+}
+
+// Which muscles a restriction on this PATTERN realistically affects, and how
+// hard: 'avoid' = this muscle has no comparable alternative loading pattern,
+// so restricting the pattern effectively takes heavy loading of the muscle
+// off the menu too; 'limit' = the muscle is a mover/stabiliser in this
+// pattern but still has other patterns/isolation work that can train it, so
+// even a pattern-level "avoid" limitation only caps this muscle at "train it,
+// carefully" rather than zeroing it out — e.g. a shoulder-driven overhead
+// restriction doesn't ban flat pressing, so deltoids/triceps stay 'limit'
+// there, never 'avoid'. This is a coaching judgement call, same honesty as
+// ROLE_WEIGHTS above — not a measured constant. `isolation` has no fixed
+// muscle list: it is a catch-all spanning whatever single-joint exercise is
+// in question, too broad to pin to specific slugs without exercise-level
+// data (out of scope here).
+export const PATTERN_AFFECTED_SLUGS: Record<MovementPattern, { slug: Slug; weight: 'avoid' | 'limit' }[]> = {
+  squat: [
+    { slug: 'quadriceps', weight: 'avoid' }, // primary knee-extension driver, no comparable substitute at heavy load
+    { slug: 'gluteal',    weight: 'limit' }, // also trained via hinge/lunge
+    { slug: 'adductors',  weight: 'limit' }, // stabiliser, also trained via lateral/isolation work
+    { slug: 'lower-back', weight: 'avoid' }, // axial spinal loading — the usual concern behind a squat restriction
+  ],
+  hinge: [
+    { slug: 'hamstring',  weight: 'limit' }, // also trained via lunges/leg curls
+    { slug: 'gluteal',    weight: 'limit' }, // also trained via squat/lunge
+    { slug: 'lower-back', weight: 'avoid' }, // hinge is the primary axial-loading pattern for this muscle
+  ],
+  horizontal_press: [
+    { slug: 'chest',    weight: 'avoid' }, // primary chest-loading pattern, no comparable substitute at heavy load
+    { slug: 'triceps',  weight: 'limit' }, // also trained via vertical press/isolation
+    { slug: 'deltoids', weight: 'limit' }, // anterior-delt synergist, also trained via vertical press
+  ],
+  vertical_press: [
+    { slug: 'deltoids', weight: 'limit' }, // also trained via horizontal press/lateral raises — doesn't ban flat pressing
+    { slug: 'triceps',  weight: 'limit' }, // also trained via horizontal press/isolation
+  ],
+  horizontal_pull: [
+    { slug: 'upper-back', weight: 'limit' }, // also trained via vertical pull
+    { slug: 'trapezius',  weight: 'limit' }, // also trained via other pulling patterns
+    { slug: 'biceps',     weight: 'limit' }, // secondary elbow flexor, also trained via vertical pull/isolation
+  ],
+  vertical_pull: [
+    { slug: 'upper-back', weight: 'avoid' }, // lat width/depth is primarily loaded through vertical pulling
+    { slug: 'biceps',     weight: 'limit' }, // also trained via horizontal pull/isolation
+    { slug: 'forearm',    weight: 'limit' }, // grip synergist, also trained via carries/isolation
+  ],
+  lunge: [
+    { slug: 'quadriceps', weight: 'limit' }, // also trained via squat/isolation
+    { slug: 'gluteal',    weight: 'limit' }, // also trained via squat/hinge
+    { slug: 'hamstring',  weight: 'limit' }, // also trained via hinge/isolation
+    { slug: 'adductors',  weight: 'limit' }, // stabiliser, also trained via squat/isolation
+  ],
+  carry: [
+    { slug: 'trapezius',  weight: 'limit' }, // also trained via pulls/shrugs
+    { slug: 'forearm',    weight: 'limit' }, // grip, also trained via vertical pull/isolation
+    { slug: 'lower-back', weight: 'limit' }, // isometric bracing load, lighter than squat/hinge's dynamic axial load
+  ],
+  isolation: [],
+}
+
+// ── Experience-scaled landmarks ──────────────────────────────────────────────
+// RP framework: MEV/MRV shift with training age (a novice grows on less
+// volume and can't yet tolerate as much; an advanced lifter needs more to
+// keep progressing and can recover from more). MV/MAV are left UNSCALED on
+// purpose — this was a cross-examined agreement, not an oversight: scaling
+// the whole landmark set by experience would overclaim precision on a table
+// that is already a heuristic, not a measured constant (same honesty as
+// ROLE_WEIGHTS/BANDS_META above).
+export const EXPERIENCE_MULTIPLIER: Record<ExperienceLevel, number> = {
+  novice:       0.85,
+  intermediate: 1,
+  advanced:     1.15,
+}
+
+export function scaleLandmarksForExperience(L: Landmarks, level: ExperienceLevel | null | undefined): Landmarks {
+  if (!level) return L
+  const m = EXPERIENCE_MULTIPLIER[level]
+  return { ...L, mev: Math.round(L.mev * m), mrv: Math.round(L.mrv * m) }
 }
