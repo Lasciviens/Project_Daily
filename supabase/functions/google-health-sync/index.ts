@@ -6,6 +6,18 @@
 // filter fields snake_case, JSON fields camelCase; numeric values often arrive
 // as STRINGS.
 //
+// 2026-08-20 completeness pass: re-verified every ingested metric's exact
+// field names against a fresh fetch of the same v4 discovery document (still
+// the current version — no v5 exists). Found and fixed FIVE real gaps:
+// basal_energy_burned and respiratory_rate were never fetched at all despite
+// being documented as shipped; walking_running_distance and
+// heart_rate_variability were fetched but silently produced zero rows because
+// the field names read were wrong (both were originally shipped as
+// best-guesses, explicitly flagged "unverified" in their own comments — the
+// guesses were wrong); active_zone_minutes was summing raw per-zone minutes
+// without Fitbit's own ×2 cardio/peak weighting. vo2_max is a new addition
+// (the Air can produce it via Connected-GPS; previously Apple-only).
+//
 // THREE non-negotiable gates (PM-ratified, tracker Phase 3):
 //  1. Intraday `dataPoints` list for cumulative metrics (never dailyRollUp) —
 //     the app's hourly source-resolution depends on sub-day granularity.
@@ -73,29 +85,34 @@ const hourIso = (ts: string) => ts.slice(0, 13) + ':00:00Z'
 // day (the live sweep saw daily-heart-rate-zones dated 9998-12-31) — skip those.
 const isSentinelDate = (d: string) => d.startsWith('999')
 
-// distance point → kilometres. The standalone `distance` type's value field/unit
-// was NOT in the live payload sweep (surface doc verified exercise's
-// metricsSummary.distanceMillimeters, not the top-level distance point), so read
-// defensively: mm → km (Fitbit's documented native unit) first, then metres, then
-// an already-km {qty}. Stored in KM to match the Apple pipeline — StepsSection
-// reads walking_running_distance's qty straight as kilometres.
+// distance point → kilometres. VERIFIED against the live v4 discovery schema
+// (2026-08-20): the `Distance` DataPoint has exactly one value field,
+// `millimeters` (an int64, arrives as a STRING like every int64 in this API) —
+// the earlier `distanceMillimeters`/`distanceMeters`/`kilometers`/`qty` guesses
+// were all wrong field names, which is why this metric produced zero Fitbit
+// rows despite the ingestion call existing since v1.1. Stored in KM to match
+// the Apple pipeline — StepsSection reads walking_running_distance's qty
+// straight as kilometres.
 function distanceKm(body: AnyRecord): number | null {
-  const mm = num(body?.distanceMillimeters)
-  if (mm != null) return mm / 1_000_000
-  const m = num(body?.distanceMeters ?? body?.meters)
-  if (m != null) return m / 1000
-  return num(body?.kilometers ?? body?.qty)
+  const mm = num(body?.millimeters)
+  return mm != null ? mm / 1_000_000 : null
 }
 
-// active zone minutes point → total minutes. Fitbit weights cardio/peak zones
-// double; the AZM total-field name is unverified in the sweep, so try a flat
-// total first, else sum the fat-burn/cardio/peak/active zone breakdown.
+// Active Zone Minutes point → WEIGHTED minutes. VERIFIED against the live
+// schema: `ActiveZoneMinutes` delivers one point PER HEART-RATE ZONE per
+// interval — `heartRateZone` (FAT_BURN | CARDIO | PEAK) + `activeZoneMinutes`
+// (raw minutes in that zone, int64-as-string). Fitbit's own AZM definition
+// weights Cardio and Peak zones ×2 (they count double toward the daily AZM
+// goal) and Fat Burn ×1 — the previous flat-sum/guessed-field-name version
+// ignored this weighting entirely (and its field-name fallbacks never matched
+// anything real), so AZM was being undercounted whenever cardio/peak minutes
+// were logged.
 function activeZoneMin(body: AnyRecord): number | null {
-  const flat = num(body?.minutes ?? body?.activeZoneMinutes ?? body?.totalMinutes)
-  if (flat != null) return flat
-  const parts = [body?.fatBurnMinutes, body?.cardioMinutes, body?.peakMinutes, body?.activeMinutes]
-    .map(num).filter((x): x is number => x != null)
-  return parts.length ? parts.reduce((a, b) => a + b, 0) : null
+  const raw = num(body?.activeZoneMinutes)
+  if (raw == null) return null
+  const zone = String(body?.heartRateZone ?? '').toUpperCase()
+  const weight = (zone === 'CARDIO' || zone === 'PEAK') ? 2 : 1
+  return raw * weight
 }
 
 async function listDataPoints(
@@ -267,11 +284,19 @@ Deno.serve(async (req) => {
     }
 
     // ── v1.1 cumulative interval metrics → hourly sums (own unit normalization) ──
-    // Distance stored in km (app convention); AZM in minutes.
+    // Distance stored in km (app convention); AZM in weighted minutes.
     await ingestCumulative('distance', 'distance', 'distance',
       'walking_running_distance', 'km', distanceKm)
     await ingestCumulative('active-zone-minutes', 'activeZoneMinutes', 'active_zone_minutes',
       'active_zone_minutes', 'min', activeZoneMin)
+
+    // ── Basal energy burned (cumulative interval, same shape as active energy) ──
+    // Real gap fixed 2026-08-20: this was never fetched at all despite
+    // docs/fitbit-air-integration.md documenting it as "v1, shipped" — the
+    // ingestion call itself was simply missing. Schema (VERIFIED): same shape
+    // as ActiveEnergyBurned — `interval` + `kcal`.
+    await ingestCumulative('basal-energy-burned', 'basalEnergyBurned', 'basal_energy_burned',
+      'basal_energy_burned', 'kcal', b => num(b?.kcal))
 
     // ── Heart rate samples → one {Min,Avg,Max} row per hour ──
     {
@@ -314,10 +339,15 @@ Deno.serve(async (req) => {
     }
 
     // ── Daily heart-rate variability (one value per day) ──
-    // Fitbit natively reports RMSSD (surface doc confirms
-    // rootMeanSquareOfSuccessiveDifferencesMilliseconds); SDNN is the fallback.
-    // Registered 'average' in METRIC_AGGREGATION (a daily point → itself per day,
-    // averaged across a week window).
+    // Field name VERIFIED against the live schema 2026-08-20: the DAILY summary
+    // type (`DailyHeartRateVariability`, which is what this path fetches) does
+    // NOT have `rootMeanSquareOfSuccessiveDifferencesMilliseconds` — that field
+    // lives on the SEPARATE intraday `HeartRateVariability` sample type, which
+    // this ingestion never queries. The real daily field is
+    // `averageHeartRateVariabilityMilliseconds` — reading the wrong schema's
+    // field name is why this produced zero Fitbit rows despite the call
+    // existing since v1.1. Registered 'average' in METRIC_AGGREGATION (a daily
+    // point → itself per day, averaged across a week window).
     {
       const fromDate = fromIso.slice(0, 10)
       const pts = await listDataPoints(access_token, 'daily-heart-rate-variability',
@@ -325,7 +355,7 @@ Deno.serve(async (req) => {
       let n = 0
       for (const p of pts) {
         const d = p.dailyHeartRateVariability
-        const ms = num(d?.rootMeanSquareOfSuccessiveDifferencesMilliseconds ?? d?.standardDeviationMilliseconds)
+        const ms = num(d?.averageHeartRateVariabilityMilliseconds)
         const date = civilDate(d)
         if (ms == null || !date || isSentinelDate(date)) continue
         metricRows.push(baseRow('heart_rate_variability', date, `${date}T12:00:00Z`, 'ms', { qty: ms }))
@@ -334,10 +364,60 @@ Deno.serve(async (req) => {
       counts.heart_rate_variability = n
     }
 
+    // ── Daily respiratory rate (one value per day) — real gap fixed 2026-08-20:
+    // never fetched at all. Schema (VERIFIED): `DailyRespiratoryRate` has
+    // `breathsPerMinute` + `date`. Unit matches the Apple pipeline's existing
+    // respiratory_rate rows ('count/min') for display consistency.
+    {
+      const fromDate = fromIso.slice(0, 10)
+      const pts = await listDataPoints(access_token, 'daily-respiratory-rate',
+        `daily_respiratory_rate.date >= "${fromDate}"`, skipped)
+      let n = 0
+      for (const p of pts) {
+        const d = p.dailyRespiratoryRate
+        const bpm = num(d?.breathsPerMinute)
+        const date = civilDate(d)
+        if (bpm == null || !date || isSentinelDate(date)) continue
+        metricRows.push(baseRow('respiratory_rate', date, `${date}T12:00:00Z`, 'count/min', { qty: bpm }))
+        n++
+      }
+      counts.respiratory_rate = n
+    }
+
+    // ── Daily VO2 max (one value per day) — real gap fixed 2026-08-20: never
+    // fetched at all, despite the Air being documented as able to produce it
+    // via Connected-GPS. Schema (VERIFIED): `DailyVO2Max` has `vo2Max`
+    // (ml/kg/min) + `date` (+ optional `estimated`/`cardioFitnessLevel`, not
+    // stored — this app shows the raw number only, matching the Apple pipeline's
+    // existing vo2_max rows). Low-volume metric (a handful of points even on
+    // the Apple side), so a small row count here is expected, not a bug.
+    {
+      const fromDate = fromIso.slice(0, 10)
+      const pts = await listDataPoints(access_token, 'daily-vo2-max',
+        `daily_vo2_max.date >= "${fromDate}"`, skipped)
+      let n = 0
+      for (const p of pts) {
+        const d = p.dailyVo2Max
+        const v = num(d?.vo2Max)
+        const date = civilDate(d)
+        if (v == null || !date || isSentinelDate(date)) continue
+        metricRows.push(baseRow('vo2_max', date, `${date}T12:00:00Z`, 'ml/(kg·min)', { qty: v }))
+        n++
+      }
+      counts.vo2_max = n
+    }
+
     // ── Nightly skin-temperature deviation (daily summary, point-in-time) ──
-    // Field name UNVERIFIED (no overnight sample in the sweep) — try the
-    // documented deviation-from-baseline shapes; value is °C. metric_name
-    // skin_temperature (registered 'latest').
+    // Field names VERIFIED against the live schema 2026-08-20: none of the four
+    // guessed "deviation" field names exist. `DailySleepTemperatureDerivations`
+    // actually carries the absolute `nightlyTemperatureCelsius` and an OPTIONAL
+    // `baselineTemperatureCelsius` (median of the last 30 days) — there is no
+    // single ready-made "deviation" field; we compute it ourselves as
+    // nightly − baseline, matching what the app displays (a deviation, not an
+    // absolute temperature). `baselineTemperatureCelsius` is optional (e.g. the
+    // first ~30 days have no baseline yet) — skip the row rather than storing
+    // a bare absolute temperature under a metric name the UI treats as a
+    // deviation, which would silently misrepresent it.
     {
       const fromDate = fromIso.slice(0, 10)
       const pts = await listDataPoints(access_token, 'daily-sleep-temperature-derivations',
@@ -345,15 +425,11 @@ Deno.serve(async (req) => {
       let n = 0
       for (const p of pts) {
         const d = p.dailySleepTemperatureDerivations
-        const dev = num(
-          d?.nightlyTemperatureRelativeToBaselineCelsius ??
-          d?.temperatureRelativeToBaselineCelsius ??
-          d?.skinTemperatureDeviationCelsius ??
-          d?.deviationCelsius ?? d?.value,
-        )
+        const nightly = num(d?.nightlyTemperatureCelsius)
+        const baseline = num(d?.baselineTemperatureCelsius)
         const date = civilDate(d)
-        if (dev == null || !date || isSentinelDate(date)) continue
-        metricRows.push(baseRow('skin_temperature', date, `${date}T12:00:00Z`, '°C', { qty: dev }))
+        if (nightly == null || baseline == null || !date || isSentinelDate(date)) continue
+        metricRows.push(baseRow('skin_temperature', date, `${date}T12:00:00Z`, '°C', { qty: nightly - baseline }))
         n++
       }
       counts.skin_temperature = n
