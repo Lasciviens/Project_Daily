@@ -126,15 +126,37 @@ show an honest "not in the API" note instead.
 | DB `metric_name` | Google Health type | Read | Shipped |
 |---|---|---|---|
 | `step_count` | `steps` | intraday list | v1 |
-| `active_energy` / `basal_energy_burned` | `activeEnergyBurned` / `basalEnergyBurned` | intraday list | v1 |
+| `active_energy` | `activeEnergyBurned` | intraday list | v1 |
 | `heart_rate` | `heartRate` (samples) | list → per-hour Min/Avg/Max at ingest | v1 |
 | `sleep_analysis` + segments | `sleep` (Session: Stages) | list, filter by END time | v1 |
 | `resting_heart_rate` | `dailyRestingHeartRate` | daily | v1 |
 | `walking_running_distance` | `distance` | intraday list | v1.1 (22/07) |
 | `active_zone_minutes` | `activeZoneMinutes` | intraday list | v1.1 |
 | `heart_rate_variability` | `dailyHeartRateVariability` | daily | v1.1 |
-| `skin_temperature` | `dailySleepTemperatureDerivations` | daily (relative variation) | v1.1 |
+| `skin_temperature` | `dailySleepTemperatureDerivations` | daily (nightly − baseline, computed) | v1.1 |
 | `oxygen_saturation` | `oxygenSaturation` **or** `dailyOxygenSaturation` | dual-path A/B (§10) | v1.1 |
+| `basal_energy_burned` | `basalEnergyBurned` | intraday list | v1.2 (20/08) |
+| `respiratory_rate` | `dailyRespiratoryRate` | daily | v1.2 |
+| `vo2_max` | `dailyVo2Max` | daily | v1.2 |
+
+**v1.2 completeness pass (20/08/2026) — a fresh discovery-doc re-fetch confirmed this table's own "Shipped" column
+had drifted from the code.** `basal_energy_burned` and `respiratory_rate` were documented above as v1/v1.1 but the
+ingestion call itself had never been written. Three more had a call in place that produced **zero rows** because
+the value field name guessed at write time turned out wrong once checked against the live schema:
+- `distance`: real field is `millimeters` (bare, no `distance` prefix) — not `distanceMillimeters`/`distanceMeters`/`kilometers`/`qty`.
+- `dailyHeartRateVariability`: real field is `averageHeartRateVariabilityMilliseconds` — the code was reading
+  `rootMeanSquareOfSuccessiveDifferencesMilliseconds`, which exists only on the separate intraday
+  `HeartRateVariability` sample type, never on the daily summary this call actually fetches.
+- `dailySleepTemperatureDerivations`: there is no single "deviation" field at all — the real fields are the absolute
+  `nightlyTemperatureCelsius` and an optional `baselineTemperatureCelsius`; the deviation shown in the app is now
+  computed as their difference, and the row is skipped (not stored as a bare absolute temperature) on the days
+  before a 30-day baseline exists.
+`active_zone_minutes` also had a **silent under-count**: `ActiveZoneMinutes` delivers one point per heart-rate zone
+(`FAT_BURN`/`CARDIO`/`PEAK`) and Fitbit's own definition weights Cardio/Peak ×2 toward the daily AZM total — the
+code was summing raw per-zone minutes with no weighting. `vo2_max` is a genuinely new addition (`dailyVo2Max`,
+`ml/kg/min`) — the Air can produce it via Connected-GPS, previously Apple-only in this app.
+No newer Google Health API version exists (`v4` is still current — confirmed via the public
+`discovery/v1/apis?name=health` listing, 20/08/2026).
 
 Sleep stages land in `health_sleep_segments` (a real hypnogram) plus one `sleep_analysis`-shaped aggregate
 `health_metrics` row so existing charts work; Fitbit `LIGHT` → our `core`. **Apple `Core` ≈ Fitbit `Light`; never
