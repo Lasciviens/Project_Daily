@@ -103,6 +103,16 @@ const LADDER_APPLE_FIRST: readonly StreamTier[] = ['manual', 'watch', 'phone', '
 // Sleep + the physiological set that Fitbit (worn 24/7, incl. every night)
 // should lead. sleep_analysis is here as an explicit user requirement, not a
 // tuning choice.
+//
+// oxygen_saturation and skin_temperature were previously Fitbit-only in
+// PRACTICE (the user's old Watch SE 2 had neither an SpO2 nor a wrist-
+// temperature sensor at all) but were never Fitbit-EXCLUSIVE by design —
+// 'watch' already sits at rung 2 here. After the 20/08/2026 upgrade to a
+// Series 11 (which has both sensors), Apple data can start competing for
+// these two the moment Health Auto Export actually exports it under these
+// exact metric names — no code change needed, this ladder was already
+// correct for that case. See docs/fitbit-air-integration.md §5a for what's
+// still unconfirmed (whether/how HAE exports SpO2 and wrist temperature).
 const FITBIT_FIRST: ReadonlySet<string> = new Set([
   'sleep_analysis',
   'sleeping_heart_rate',
