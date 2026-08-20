@@ -30,6 +30,23 @@ export async function createGoogleTask(token: string, task: Task): Promise<strin
   return result.id
 }
 
+// Real gap fixed 20/08/2026: editing a task (title/notes/due) after creation
+// never reached Google Tasks — only create/toggle-done/delete synced, so the
+// Google-side copy went stale the moment you rescheduled a due date or fixed
+// a typo. `null` on `due` clears it (mirrors reopenGoogleTask's already-
+// verified `completed: null` clearing pattern below, same API).
+export async function updateGoogleTask(token: string, googleTaskId: string, task: Task): Promise<void> {
+  const body: Record<string, unknown> = {
+    title: task.title,
+    notes: task.description ?? '',
+    due:   task.due_date ? new Date(task.due_date + 'T12:00:00').toISOString() : null,
+  }
+  await request(token, `/lists/@default/tasks/${googleTaskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}
+
 export async function completeGoogleTask(token: string, googleTaskId: string): Promise<void> {
   await request(token, `/lists/@default/tasks/${googleTaskId}`, {
     method: 'PATCH',

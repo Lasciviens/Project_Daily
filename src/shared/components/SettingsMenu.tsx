@@ -9,6 +9,7 @@ import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCa
 import { applyTheme, THEMES } from './ThemeSwitcher'
 import { signOut } from '../../security/supabaseClient'
 import { FitbitSyncButton } from '../../features/training/components/health/FitbitSyncButton'
+import { GoogleTasksSyncButtons } from '../../features/todo/components/GoogleTasksSyncButtons'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 
 export function SettingsMenu() {
@@ -121,7 +122,12 @@ export function SettingsMenu() {
             )}
           </div>
           {calError && <p className="text-[10px] text-red-400 mt-1.5 leading-snug">{calError}</p>}
-          {isCalConnected && <div className="mt-2"><FitbitSyncButton /></div>}
+          {isCalConnected && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <FitbitSyncButton />
+              <GoogleTasksSyncButtons />
+            </div>
+          )}
         </div>
 
         {/* Notifications (Web Push) */}
