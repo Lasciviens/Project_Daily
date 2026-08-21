@@ -109,6 +109,27 @@ export async function fetchTasksByWeek(weekStart: string, weekEnd: string): Prom
   return [...(sectionRes.data ?? []), ...(dateRes.data ?? [])]
 }
 
+// Parent-task lookup for the "↳ Subtask of …" chip and children lookup for
+// the inline expand — both small, react-query-cached (keyed by id), so
+// ToDoItem can render subtask relationships without its callers (TasksPanel,
+// DayView, DayQuickRail) threading the full task list through.
+export async function fetchTaskById(id: string): Promise<Task | null> {
+  const { data, error } = await supabase.from('tasks').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function fetchSubtasks(parentTaskId: string): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('parent_task_id', parentTaskId)
+    .neq('status', 'cancelled')
+    .order('sort_order', { ascending: true, nullsFirst: false })
+  if (error) throw error
+  return data ?? []
+}
+
 export async function fetchWorkTasks(): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')

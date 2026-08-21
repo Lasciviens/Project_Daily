@@ -8,6 +8,8 @@ import {
   fetchTasksByMonth,
   fetchWorkTasks,
   fetchOpenTrainingSessionTasks,
+  fetchTaskById,
+  fetchSubtasks,
   createTask,
   updateTask,
   toggleTaskDone,
@@ -177,6 +179,38 @@ export function useDeleteTask() {
       qc.invalidateQueries({ queryKey: ['schedule'] })
       qc.invalidateQueries({ queryKey: ['calendar'] })
     },
+  })
+}
+
+// Parent-title lookup for ToDoItem's "↳ Subtask of …" chip — one row, cheap,
+// react-query-cached by id so re-rendering the same parent across a list
+// costs one request, not one per child.
+export function useTaskById(id: string | null) {
+  return useQuery({
+    queryKey: ['tasks', 'by-id', id],
+    queryFn: () => fetchTaskById(id as string),
+    enabled: !!id,
+    staleTime: 30_000,
+  })
+}
+
+// Direct children for ToDoItem's inline "N subtasks" expand.
+export function useSubtasks(parentTaskId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['tasks', 'subtasks', parentTaskId],
+    queryFn: () => fetchSubtasks(parentTaskId),
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+export function useSetParentTask() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'set_parent_task',
+    mutationFn: ({ id, parentTaskId }: { id: string; parentTaskId: string | null }) =>
+      updateTask(id, { parent_task_id: parentTaskId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }
 
