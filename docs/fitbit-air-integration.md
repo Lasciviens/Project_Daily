@@ -115,11 +115,50 @@ accelerometer, gyroscope.
 | Sleep stages + sleeping HR | **Built-in GPS** — Connected-GPS (phone) only |
 | Steps, distance, calories, AZM, VO2max (Connected-GPS) | |
 
-**Watch SE 2 keeps sole ownership of:** running dynamics, stair speed, cardio recovery, walking-HR-average, audio
-exposure, time in daylight, handwashing/toothbrushing, stand time, workout GPS/route/pace. (The SE 2 has no SpO2,
-ECG or wrist temp — which is what makes the Air additive.) **Daily Readiness / Sleep Score are in-app only, NOT API
-data types** — and per the standing "no derived sleep metrics" decision, do not recompute-and-reuse those names;
-show an honest "not in the API" note instead.
+**Watch keeps sole ownership of:** running dynamics, stair speed, cardio recovery, walking-HR-average, audio
+exposure, time in daylight, handwashing/toothbrushing, stand time, workout GPS/route/pace. **Daily Readiness /
+Sleep Score are in-app only, NOT API data types** — and per the standing "no derived sleep metrics" decision, do
+not recompute-and-reuse those names; show an honest "not in the API" note instead.
+
+### 5a. Watch hardware changed 20/08/2026 — SE 2 → Series 11
+
+The user switched from an Apple Watch SE (2nd gen) to a **Series 11**. This closes most of what used to make the
+Air additive, because **SpO2, ECG and wrist temperature were never Fitbit-exclusive by design — they were only
+absent because the SE line has always lacked those sensors.** A Series 11 has all three (confirmed against Apple's
+own support/newsroom pages, 20/08/2026 research pass):
+
+| Capability | HealthKit identifier | Confidence |
+|---|---|---|
+| Blood oxygen (SpO2) | `HKQuantityTypeIdentifierOxygenSaturation` | Hardware: confirmed (Series 6+, not SE). **US-market caveat:** disabled Jan 2024–Aug 2026 on US units by the Masimo patent dispute; a software workaround shipped Aug 2025, full sensor restored after an April 2026 ITC ruling — whether a given unit's samples are already flowing depends on region/purchase date and firmware. |
+| ECG | `HKElectrocardiogramType` (its own sample type, not a plain quantity/category type — requires a distinct `HKElectrocardiogramQuery` authorization) | Hardware: confirmed (Series 4+, not SE). |
+| Wrist/skin temperature | `HKQuantityTypeIdentifierAppleSleepingWristTemperature` | Hardware: confirmed (Series 8+, not SE). |
+| Sleep apnea / breathing disturbances | `HKCategoryTypeIdentifier.sleepApneaEvent` | Confirmed to exist (watchOS 11, Sept 2024) — algorithmic (accelerometer-based wrist-movement pattern), not a new sensor; available on Series 9/10/11/Ultra 2, not SE-exclusive to 11. |
+| Hypertension notifications | `HKCategoryTypeIdentifierHypertensionEvent` | Algorithmic (existing PPG heart sensor, 30-day rolling pulse-wave analysis — **not a blood-pressure measurement**). The HealthKit type itself is brand new (iOS/iPadOS 26.2 beta 3, Nov 2025) — **postdates Health Auto Export's current documented metrics list**, so treat as **not exportable to this app today**. |
+| EDA / stress sensor | — | No evidence any Apple Watch (including Series 11) has this; remains Fitbit-only (unaffected by the upgrade). |
+
+**What this means for our pipeline — and what's deliberately NOT done yet:**
+- `health-export-webhook`'s metric ingestion is already fully generic (`group.name`/`group.units`/`group.data` →
+  one `health_metrics` row per point, whatever the name) — a brand-new HealthKit type Health Auto Export starts
+  exporting needs **zero ingestion code change** to land in the DB.
+- `healthSourceDefaults.ts`'s ladder for `oxygen_saturation`/`skin_temperature` is `LADDER_FITBIT_FIRST =
+  ['manual','fitbit','watch','phone']` — 'watch' was **already** the second rung (Fitbit is worn more, but the
+  ladder never assumed Apple was hardware-incapable). So if Apple data starts arriving under these exact metric
+  names, it is **already correctly incorporated** with no code change — it simply becomes a real second-rung
+  contender for windows Fitbit didn't cover, exactly as the gap-filling design intends.
+- **What is genuinely unconfirmed, and deliberately not built yet:** whether Health Auto Export exports SpO2 /
+  wrist temperature / sleep apnea events at all (its docs LIST them by name, but no live example payload or field
+  name was found — two of its own doc sources disagreed on ECG/wrist-temp/AFib-burden support when checked), and
+  whether ECG specifically populates real `voltageMeasurements` or ships them empty (HAE's documented schema
+  includes `{start,end,classification,severity,averageHeartRate,numberOfVoltageMeasurements,voltageMeasurements,
+  samplingFrequency,source}`, but this is unverified against a real export). Per this repo's own rule — never wire
+  code to a speculative external field — nothing reads these metric names yet. **The one thing that unblocks this:**
+  enable the relevant toggles in Health Auto Export (its "All Health Metrics" setting, already required, should
+  already cover the simple quantity metrics; ECG/breathing-disturbance records may need a separate toggle — check
+  the app), record at least one real sample of each (SpO2/wrist-temp need an overnight wear; ECG needs the Watch's
+  ECG app run once manually), let one real export land, then the actual `metric_name` strings in `health_metrics`
+  can be read directly and the ladder categorization / a UI card can be wired with confirmed names instead of
+  guesses.
+- Hypertension notifications: nothing to build — not exportable via Health Auto Export as of this research pass.
 
 ## 6. Metric → Google Health dataType map
 

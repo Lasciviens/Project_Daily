@@ -259,8 +259,28 @@ Deno.serve(async (req) => {
     counts[metric] = byHour.size
   }
 
-  try {
-    // ── Cumulative interval metrics → hourly sums (gate 1 + 3) ──
+  // ── Per-metric failure isolation (real bug fixed 2026-08-20) ──
+  // Everything below used to share ONE try/catch: a single transient Google-
+  // side error (a plain HTTP 500 or a DEADLINE_EXCEEDED timeout — confirmed
+  // live in app_error_logs on 13/18/19 Aug, e.g. "steps: HTTP 500 Internal
+  // error encountered") on ANY one data type aborted the WHOLE run via the
+  // shared catch, discarding every row already collected for every OTHER
+  // metric in that same run — and since the scheduled cron hit this
+  // repeatedly, the DB went **13 real days** (8–20 Aug) without a single new
+  // Fitbit row while nothing ever surfaced an error to the user (cron
+  // failures only ever reached app_error_logs, never a toast). Each block
+  // below is now isolated: a failure is recorded in `errors` and the run
+  // continues, so one flaky Google endpoint can never blank out a day's
+  // worth of otherwise-successful data for every other metric.
+  const errors: AnyRecord = {}
+  async function guarded(label: string, fn: () => Promise<void>) {
+    try { await fn() } catch (e) { errors[label] = (e as Error).message }
+  }
+
+  const segmentRows: AnyRecord[] = []
+
+  // ── Cumulative interval metrics → hourly sums (gate 1 + 3) ──
+  await guarded('step_count_active_energy', async () => {
     for (const [pathId, filterTok, metric, unit, valueKey] of [
       ['steps', 'steps', 'step_count', 'count', 'count'],
       ['active-energy-burned', 'active_energy_burned', 'active_energy', 'kcal', 'kcal'],
@@ -282,267 +302,271 @@ Deno.serve(async (req) => {
       for (const [k, v] of byHour) metricRows.push(baseRow(metric, v.date, k, unit, { qty: v.sum }))
       counts[metric] = byHour.size
     }
+  })
 
-    // ── v1.1 cumulative interval metrics → hourly sums (own unit normalization) ──
-    // Distance stored in km (app convention); AZM in weighted minutes.
-    await ingestCumulative('distance', 'distance', 'distance',
-      'walking_running_distance', 'km', distanceKm)
-    await ingestCumulative('active-zone-minutes', 'activeZoneMinutes', 'active_zone_minutes',
-      'active_zone_minutes', 'min', activeZoneMin)
+  // ── v1.1 cumulative interval metrics → hourly sums (own unit normalization) ──
+  // Distance stored in km (app convention); AZM in weighted minutes.
+  await guarded('walking_running_distance', () => ingestCumulative('distance', 'distance', 'distance',
+    'walking_running_distance', 'km', distanceKm))
+  await guarded('active_zone_minutes', () => ingestCumulative('active-zone-minutes', 'activeZoneMinutes', 'active_zone_minutes',
+    'active_zone_minutes', 'min', activeZoneMin))
 
-    // ── Basal energy burned (cumulative interval, same shape as active energy) ──
-    // Real gap fixed 2026-08-20: this was never fetched at all despite
-    // docs/fitbit-air-integration.md documenting it as "v1, shipped" — the
-    // ingestion call itself was simply missing. Schema (VERIFIED): same shape
-    // as ActiveEnergyBurned — `interval` + `kcal`.
-    await ingestCumulative('basal-energy-burned', 'basalEnergyBurned', 'basal_energy_burned',
-      'basal_energy_burned', 'kcal', b => num(b?.kcal))
+  // ── Basal energy burned (cumulative interval, same shape as active energy) ──
+  // Real gap fixed 2026-08-20: this was never fetched at all despite
+  // docs/fitbit-air-integration.md documenting it as "v1, shipped" — the
+  // ingestion call itself was simply missing. Schema (VERIFIED): same shape
+  // as ActiveEnergyBurned — `interval` + `kcal`.
+  await guarded('basal_energy_burned', () => ingestCumulative('basal-energy-burned', 'basalEnergyBurned', 'basal_energy_burned',
+    'basal_energy_burned', 'kcal', b => num(b?.kcal)))
 
-    // ── Heart rate samples → one {Min,Avg,Max} row per hour ──
-    {
-      const pts = await listDataPoints(access_token, 'heart-rate',
-        `heart_rate.sample_time.physical_time >= "${fromIso}" AND heart_rate.sample_time.physical_time < "${toIso}"`, skipped)
-      const byHour = new Map<string, { date: string; min: number; max: number; sum: number; n: number }>()
-      for (const p of pts) {
-        const hr = p.heartRate
-        const bpm = num(hr?.beatsPerMinute)
-        const t = hr?.sampleTime?.physicalTime
-        const date = civilDate(hr?.sampleTime?.civilTime)
-        if (bpm == null || typeof t !== 'string' || !date) continue
-        const k = hourIso(t)
-        const cur = byHour.get(k)
-        if (!cur) byHour.set(k, { date, min: bpm, max: bpm, sum: bpm, n: 1 })
-        else { cur.min = Math.min(cur.min, bpm); cur.max = Math.max(cur.max, bpm); cur.sum += bpm; cur.n++ }
-      }
+  // ── Heart rate samples → one {Min,Avg,Max} row per hour ──
+  await guarded('heart_rate', async () => {
+    const pts = await listDataPoints(access_token, 'heart-rate',
+      `heart_rate.sample_time.physical_time >= "${fromIso}" AND heart_rate.sample_time.physical_time < "${toIso}"`, skipped)
+    const byHour = new Map<string, { date: string; min: number; max: number; sum: number; n: number }>()
+    for (const p of pts) {
+      const hr = p.heartRate
+      const bpm = num(hr?.beatsPerMinute)
+      const t = hr?.sampleTime?.physicalTime
+      const date = civilDate(hr?.sampleTime?.civilTime)
+      if (bpm == null || typeof t !== 'string' || !date) continue
+      const k = hourIso(t)
+      const cur = byHour.get(k)
+      if (!cur) byHour.set(k, { date, min: bpm, max: bpm, sum: bpm, n: 1 })
+      else { cur.min = Math.min(cur.min, bpm); cur.max = Math.max(cur.max, bpm); cur.sum += bpm; cur.n++ }
+    }
+    for (const [k, v] of byHour) {
+      metricRows.push(baseRow('heart_rate', v.date, k, 'count/min',
+        { Min: v.min, Max: v.max, Avg: Math.round((v.sum / v.n) * 10) / 10 }))
+    }
+    counts.heart_rate = byHour.size
+  })
+
+  // ── Daily resting heart rate ──
+  await guarded('resting_heart_rate', async () => {
+    const fromDate = fromIso.slice(0, 10)
+    const pts = await listDataPoints(access_token, 'daily-resting-heart-rate',
+      `daily_resting_heart_rate.date >= "${fromDate}"`, skipped)
+    let n = 0
+    for (const p of pts) {
+      const d = p.dailyRestingHeartRate
+      const bpm = num(d?.beatsPerMinute)
+      const date = civilDate(d)   // {date:{...}} lives directly on the value
+      if (bpm == null || !date) continue
+      metricRows.push(baseRow('resting_heart_rate', date, `${date}T12:00:00Z`, 'count/min', { qty: bpm }))
+      n++
+    }
+    counts.resting_heart_rate = n
+  })
+
+  // ── Daily heart-rate variability (one value per day) ──
+  // Field name VERIFIED against the live schema 2026-08-20: the DAILY summary
+  // type (`DailyHeartRateVariability`, which is what this path fetches) does
+  // NOT have `rootMeanSquareOfSuccessiveDifferencesMilliseconds` — that field
+  // lives on the SEPARATE intraday `HeartRateVariability` sample type, which
+  // this ingestion never queries. The real daily field is
+  // `averageHeartRateVariabilityMilliseconds` — reading the wrong schema's
+  // field name is why this produced zero Fitbit rows despite the call
+  // existing since v1.1. Registered 'average' in METRIC_AGGREGATION (a daily
+  // point → itself per day, averaged across a week window).
+  await guarded('heart_rate_variability', async () => {
+    const fromDate = fromIso.slice(0, 10)
+    const pts = await listDataPoints(access_token, 'daily-heart-rate-variability',
+      `daily_heart_rate_variability.date >= "${fromDate}"`, skipped)
+    let n = 0
+    for (const p of pts) {
+      const d = p.dailyHeartRateVariability
+      const ms = num(d?.averageHeartRateVariabilityMilliseconds)
+      const date = civilDate(d)
+      if (ms == null || !date || isSentinelDate(date)) continue
+      metricRows.push(baseRow('heart_rate_variability', date, `${date}T12:00:00Z`, 'ms', { qty: ms }))
+      n++
+    }
+    counts.heart_rate_variability = n
+  })
+
+  // ── Daily respiratory rate (one value per day) — real gap fixed 2026-08-20:
+  // never fetched at all. Schema (VERIFIED): `DailyRespiratoryRate` has
+  // `breathsPerMinute` + `date`. Unit matches the Apple pipeline's existing
+  // respiratory_rate rows ('count/min') for display consistency.
+  await guarded('respiratory_rate', async () => {
+    const fromDate = fromIso.slice(0, 10)
+    const pts = await listDataPoints(access_token, 'daily-respiratory-rate',
+      `daily_respiratory_rate.date >= "${fromDate}"`, skipped)
+    let n = 0
+    for (const p of pts) {
+      const d = p.dailyRespiratoryRate
+      const bpm = num(d?.breathsPerMinute)
+      const date = civilDate(d)
+      if (bpm == null || !date || isSentinelDate(date)) continue
+      metricRows.push(baseRow('respiratory_rate', date, `${date}T12:00:00Z`, 'count/min', { qty: bpm }))
+      n++
+    }
+    counts.respiratory_rate = n
+  })
+
+  // ── Daily VO2 max (one value per day) — real gap fixed 2026-08-20: never
+  // fetched at all, despite the Air being documented as able to produce it
+  // via Connected-GPS. Schema (VERIFIED): `DailyVO2Max` has `vo2Max`
+  // (ml/kg/min) + `date` (+ optional `estimated`/`cardioFitnessLevel`, not
+  // stored — this app shows the raw number only, matching the Apple pipeline's
+  // existing vo2_max rows). Low-volume metric (a handful of points even on
+  // the Apple side), so a small row count here is expected, not a bug.
+  await guarded('vo2_max', async () => {
+    const fromDate = fromIso.slice(0, 10)
+    const pts = await listDataPoints(access_token, 'daily-vo2-max',
+      `daily_vo2_max.date >= "${fromDate}"`, skipped)
+    let n = 0
+    for (const p of pts) {
+      const d = p.dailyVo2Max
+      const v = num(d?.vo2Max)
+      const date = civilDate(d)
+      if (v == null || !date || isSentinelDate(date)) continue
+      metricRows.push(baseRow('vo2_max', date, `${date}T12:00:00Z`, 'ml/(kg·min)', { qty: v }))
+      n++
+    }
+    counts.vo2_max = n
+  })
+
+  // ── Nightly skin-temperature deviation (daily summary, point-in-time) ──
+  // Field names VERIFIED against the live schema 2026-08-20: none of the four
+  // guessed "deviation" field names exist. `DailySleepTemperatureDerivations`
+  // actually carries the absolute `nightlyTemperatureCelsius` and an OPTIONAL
+  // `baselineTemperatureCelsius` (median of the last 30 days) — there is no
+  // single ready-made "deviation" field; we compute it ourselves as
+  // nightly − baseline, matching what the app displays (a deviation, not an
+  // absolute temperature). `baselineTemperatureCelsius` is optional (e.g. the
+  // first ~30 days have no baseline yet) — skip the row rather than storing
+  // a bare absolute temperature under a metric name the UI treats as a
+  // deviation, which would silently misrepresent it.
+  await guarded('skin_temperature', async () => {
+    const fromDate = fromIso.slice(0, 10)
+    const pts = await listDataPoints(access_token, 'daily-sleep-temperature-derivations',
+      `daily_sleep_temperature_derivations.date >= "${fromDate}"`, skipped)
+    let n = 0
+    for (const p of pts) {
+      const d = p.dailySleepTemperatureDerivations
+      const nightly = num(d?.nightlyTemperatureCelsius)
+      const baseline = num(d?.baselineTemperatureCelsius)
+      const date = civilDate(d)
+      if (nightly == null || baseline == null || !date || isSentinelDate(date)) continue
+      metricRows.push(baseRow('skin_temperature', date, `${date}T12:00:00Z`, '°C', { qty: nightly - baseline }))
+      n++
+    }
+    counts.skin_temperature = n
+  })
+
+  // ── Blood oxygen (SpO2) — the shape the Air populates is UNCONFIRMED ──
+  // Registered minmaxavg (heart_rate-shaped assumption, tracker Phase 0 lock).
+  // Both the intraday samples type and the daily-summary type exist; try the
+  // SAMPLES type first (fits minmaxavg cleanly via hourly Min/Avg/Max, exactly
+  // like HR), and if it yields no rows, fall back to the daily summary. The
+  // path that produced data is reflected in counts.oxygen_saturation_source.
+  // Both are empty until a real overnight wear — never hard-fail. The value
+  // field is also unverified, so read it under a few plausible keys.
+  await guarded('oxygen_saturation', async () => {
+    const spo2Pct = (o: AnyRecord | undefined): number | null => num(
+      o?.percentage ?? o?.oxygenSaturationPercentage ?? o?.saturationPercentage ??
+      o?.value ?? o?.qty,
+    )
+    // Path A: oxygen-saturation samples → hourly Min/Avg/Max (minmaxavg).
+    const samples = await listDataPoints(access_token, 'oxygen-saturation',
+      `oxygen_saturation.sample_time.physical_time >= "${fromIso}" AND oxygen_saturation.sample_time.physical_time < "${toIso}"`, skipped)
+    const byHour = new Map<string, { date: string; min: number; max: number; sum: number; n: number }>()
+    for (const p of samples) {
+      const o = p.oxygenSaturation
+      const pct = spo2Pct(o)
+      const t = o?.sampleTime?.physicalTime
+      const date = civilDate(o?.sampleTime?.civilTime)
+      if (pct == null || typeof t !== 'string' || !date) continue
+      const k = hourIso(t)
+      const cur = byHour.get(k)
+      if (!cur) byHour.set(k, { date, min: pct, max: pct, sum: pct, n: 1 })
+      else { cur.min = Math.min(cur.min, pct); cur.max = Math.max(cur.max, pct); cur.sum += pct; cur.n++ }
+    }
+    if (byHour.size > 0) {
       for (const [k, v] of byHour) {
-        metricRows.push(baseRow('heart_rate', v.date, k, 'count/min',
+        metricRows.push(baseRow('oxygen_saturation', v.date, k, '%',
           { Min: v.min, Max: v.max, Avg: Math.round((v.sum / v.n) * 10) / 10 }))
       }
-      counts.heart_rate = byHour.size
-    }
-
-    // ── Daily resting heart rate ──
-    {
+      counts.oxygen_saturation = byHour.size
+      counts.oxygen_saturation_source = 'samples'
+    } else {
+      // Path B: daily-oxygen-saturation summary → one Min/Avg/Max row per day.
       const fromDate = fromIso.slice(0, 10)
-      const pts = await listDataPoints(access_token, 'daily-resting-heart-rate',
-        `daily_resting_heart_rate.date >= "${fromDate}"`, skipped)
+      const daily = await listDataPoints(access_token, 'daily-oxygen-saturation',
+        `daily_oxygen_saturation.date >= "${fromDate}"`, skipped)
       let n = 0
-      for (const p of pts) {
-        const d = p.dailyRestingHeartRate
-        const bpm = num(d?.beatsPerMinute)
-        const date = civilDate(d)   // {date:{...}} lives directly on the value
-        if (bpm == null || !date) continue
-        metricRows.push(baseRow('resting_heart_rate', date, `${date}T12:00:00Z`, 'count/min', { qty: bpm }))
-        n++
-      }
-      counts.resting_heart_rate = n
-    }
-
-    // ── Daily heart-rate variability (one value per day) ──
-    // Field name VERIFIED against the live schema 2026-08-20: the DAILY summary
-    // type (`DailyHeartRateVariability`, which is what this path fetches) does
-    // NOT have `rootMeanSquareOfSuccessiveDifferencesMilliseconds` — that field
-    // lives on the SEPARATE intraday `HeartRateVariability` sample type, which
-    // this ingestion never queries. The real daily field is
-    // `averageHeartRateVariabilityMilliseconds` — reading the wrong schema's
-    // field name is why this produced zero Fitbit rows despite the call
-    // existing since v1.1. Registered 'average' in METRIC_AGGREGATION (a daily
-    // point → itself per day, averaged across a week window).
-    {
-      const fromDate = fromIso.slice(0, 10)
-      const pts = await listDataPoints(access_token, 'daily-heart-rate-variability',
-        `daily_heart_rate_variability.date >= "${fromDate}"`, skipped)
-      let n = 0
-      for (const p of pts) {
-        const d = p.dailyHeartRateVariability
-        const ms = num(d?.averageHeartRateVariabilityMilliseconds)
+      for (const p of daily) {
+        const d = p.dailyOxygenSaturation
         const date = civilDate(d)
-        if (ms == null || !date || isSentinelDate(date)) continue
-        metricRows.push(baseRow('heart_rate_variability', date, `${date}T12:00:00Z`, 'ms', { qty: ms }))
+        if (!date || isSentinelDate(date)) continue
+        const avg = spo2Pct(d) ?? num(d?.average ?? d?.avg)
+        if (avg == null) continue
+        const min = num(d?.min ?? d?.minimum) ?? avg
+        const max = num(d?.max ?? d?.maximum) ?? avg
+        metricRows.push(baseRow('oxygen_saturation', date, `${date}T12:00:00Z`, '%',
+          { Min: min, Max: max, Avg: avg }))
         n++
       }
-      counts.heart_rate_variability = n
+      counts.oxygen_saturation = n
+      counts.oxygen_saturation_source = n > 0 ? 'daily' : 'none'
     }
+  })
 
-    // ── Daily respiratory rate (one value per day) — real gap fixed 2026-08-20:
-    // never fetched at all. Schema (VERIFIED): `DailyRespiratoryRate` has
-    // `breathsPerMinute` + `date`. Unit matches the Apple pipeline's existing
-    // respiratory_rate rows ('count/min') for display consistency.
-    {
-      const fromDate = fromIso.slice(0, 10)
-      const pts = await listDataPoints(access_token, 'daily-respiratory-rate',
-        `daily_respiratory_rate.date >= "${fromDate}"`, skipped)
-      let n = 0
-      for (const p of pts) {
-        const d = p.dailyRespiratoryRate
-        const bpm = num(d?.breathsPerMinute)
-        const date = civilDate(d)
-        if (bpm == null || !date || isSentinelDate(date)) continue
-        metricRows.push(baseRow('respiratory_rate', date, `${date}T12:00:00Z`, 'count/min', { qty: bpm }))
-        n++
-      }
-      counts.respiratory_rate = n
+  // ── Sleep sessions → stage segments + one aggregate sleep_analysis row ──
+  await guarded('sleep', async () => {
+    const pts = await listDataPoints(access_token, 'sleep',
+      `sleep.interval.end_time >= "${fromIso}" AND sleep.interval.end_time < "${toIso}"`, skipped)
+    let n = 0
+    const STAGE_MAP: Record<string, string> = {
+      LIGHT: 'light', DEEP: 'deep', REM: 'rem', WAKE: 'wake', AWAKE: 'wake', ASLEEP: 'asleep',
     }
-
-    // ── Daily VO2 max (one value per day) — real gap fixed 2026-08-20: never
-    // fetched at all, despite the Air being documented as able to produce it
-    // via Connected-GPS. Schema (VERIFIED): `DailyVO2Max` has `vo2Max`
-    // (ml/kg/min) + `date` (+ optional `estimated`/`cardioFitnessLevel`, not
-    // stored — this app shows the raw number only, matching the Apple pipeline's
-    // existing vo2_max rows). Low-volume metric (a handful of points even on
-    // the Apple side), so a small row count here is expected, not a bug.
-    {
-      const fromDate = fromIso.slice(0, 10)
-      const pts = await listDataPoints(access_token, 'daily-vo2-max',
-        `daily_vo2_max.date >= "${fromDate}"`, skipped)
-      let n = 0
-      for (const p of pts) {
-        const d = p.dailyVo2Max
-        const v = num(d?.vo2Max)
-        const date = civilDate(d)
-        if (v == null || !date || isSentinelDate(date)) continue
-        metricRows.push(baseRow('vo2_max', date, `${date}T12:00:00Z`, 'ml/(kg·min)', { qty: v }))
-        n++
+    for (const p of pts) {
+      const s = p.sleep
+      const start = s?.interval?.startTime
+      const end = s?.interval?.endTime
+      if (typeof start !== 'string' || typeof end !== 'string') continue
+      const externalId = s?.metadata?.externalId ?? p.name ?? null
+      for (const st of s?.stages ?? []) {
+        const stage = STAGE_MAP[String(st?.type ?? '').toUpperCase()]
+        if (!stage || typeof st.startTime !== 'string' || typeof st.endTime !== 'string') continue
+        segmentRows.push({
+          user_id: userId, start_at: st.startTime, end_at: st.endTime, stage,
+          source: SOURCE, source_family: 'fitbit', source_record_id: externalId,
+          synced_at: syncedAt, updated_at: syncedAt,
+        })
       }
-      counts.vo2_max = n
+      // Aggregate row in the exact shape the app's sleep pipeline reads
+      // (totalSleep/core/rem/deep/awake hours + session window). Fitbit's
+      // LIGHT maps onto the app's "core" bucket (closest concept — never
+      // blended with Apple rows anyway; whole-night single-source rule).
+      const sum = s?.summary
+      const mins = (v: unknown) => (num(v) ?? 0) / 60
+      const stageMin = (t: string) =>
+        mins((sum?.stagesSummary ?? []).find((x: AnyRecord) => x?.type === t)?.minutes)
+      // End's civil day = the night it belongs to (wake-day attribution).
+      const endOffsetSec = num(s?.interval?.endUtcOffset?.replace?.('s', '')) ?? 0
+      const endLocal = new Date(new Date(end).getTime() + endOffsetSec * 1000)
+      const date = endLocal.toISOString().slice(0, 10)
+      metricRows.push(baseRow('sleep_analysis', date, start, 'hr', {
+        sleepStart: start, sleepEnd: end,
+        totalSleep: mins(sum?.minutesAsleep),
+        core: stageMin('LIGHT'), deep: stageMin('DEEP'), rem: stageMin('REM'),
+        awake: mins(sum?.minutesAwake),
+        source: SOURCE,
+      }))
+      n++
     }
+    counts.sleep_sessions = n
+    counts.sleep_segments = segmentRows.length
+  })
 
-    // ── Nightly skin-temperature deviation (daily summary, point-in-time) ──
-    // Field names VERIFIED against the live schema 2026-08-20: none of the four
-    // guessed "deviation" field names exist. `DailySleepTemperatureDerivations`
-    // actually carries the absolute `nightlyTemperatureCelsius` and an OPTIONAL
-    // `baselineTemperatureCelsius` (median of the last 30 days) — there is no
-    // single ready-made "deviation" field; we compute it ourselves as
-    // nightly − baseline, matching what the app displays (a deviation, not an
-    // absolute temperature). `baselineTemperatureCelsius` is optional (e.g. the
-    // first ~30 days have no baseline yet) — skip the row rather than storing
-    // a bare absolute temperature under a metric name the UI treats as a
-    // deviation, which would silently misrepresent it.
-    {
-      const fromDate = fromIso.slice(0, 10)
-      const pts = await listDataPoints(access_token, 'daily-sleep-temperature-derivations',
-        `daily_sleep_temperature_derivations.date >= "${fromDate}"`, skipped)
-      let n = 0
-      for (const p of pts) {
-        const d = p.dailySleepTemperatureDerivations
-        const nightly = num(d?.nightlyTemperatureCelsius)
-        const baseline = num(d?.baselineTemperatureCelsius)
-        const date = civilDate(d)
-        if (nightly == null || baseline == null || !date || isSentinelDate(date)) continue
-        metricRows.push(baseRow('skin_temperature', date, `${date}T12:00:00Z`, '°C', { qty: nightly - baseline }))
-        n++
-      }
-      counts.skin_temperature = n
-    }
-
-    // ── Blood oxygen (SpO2) — the shape the Air populates is UNCONFIRMED ──
-    // Registered minmaxavg (heart_rate-shaped assumption, tracker Phase 0 lock).
-    // Both the intraday samples type and the daily-summary type exist; try the
-    // SAMPLES type first (fits minmaxavg cleanly via hourly Min/Avg/Max, exactly
-    // like HR), and if it yields no rows, fall back to the daily summary. The
-    // path that produced data is reflected in counts.oxygen_saturation_source.
-    // Both are empty until a real overnight wear — never hard-fail. The value
-    // field is also unverified, so read it under a few plausible keys.
-    {
-      const spo2Pct = (o: AnyRecord | undefined): number | null => num(
-        o?.percentage ?? o?.oxygenSaturationPercentage ?? o?.saturationPercentage ??
-        o?.value ?? o?.qty,
-      )
-      // Path A: oxygen-saturation samples → hourly Min/Avg/Max (minmaxavg).
-      const samples = await listDataPoints(access_token, 'oxygen-saturation',
-        `oxygen_saturation.sample_time.physical_time >= "${fromIso}" AND oxygen_saturation.sample_time.physical_time < "${toIso}"`, skipped)
-      const byHour = new Map<string, { date: string; min: number; max: number; sum: number; n: number }>()
-      for (const p of samples) {
-        const o = p.oxygenSaturation
-        const pct = spo2Pct(o)
-        const t = o?.sampleTime?.physicalTime
-        const date = civilDate(o?.sampleTime?.civilTime)
-        if (pct == null || typeof t !== 'string' || !date) continue
-        const k = hourIso(t)
-        const cur = byHour.get(k)
-        if (!cur) byHour.set(k, { date, min: pct, max: pct, sum: pct, n: 1 })
-        else { cur.min = Math.min(cur.min, pct); cur.max = Math.max(cur.max, pct); cur.sum += pct; cur.n++ }
-      }
-      if (byHour.size > 0) {
-        for (const [k, v] of byHour) {
-          metricRows.push(baseRow('oxygen_saturation', v.date, k, '%',
-            { Min: v.min, Max: v.max, Avg: Math.round((v.sum / v.n) * 10) / 10 }))
-        }
-        counts.oxygen_saturation = byHour.size
-        counts.oxygen_saturation_source = 'samples'
-      } else {
-        // Path B: daily-oxygen-saturation summary → one Min/Avg/Max row per day.
-        const fromDate = fromIso.slice(0, 10)
-        const daily = await listDataPoints(access_token, 'daily-oxygen-saturation',
-          `daily_oxygen_saturation.date >= "${fromDate}"`, skipped)
-        let n = 0
-        for (const p of daily) {
-          const d = p.dailyOxygenSaturation
-          const date = civilDate(d)
-          if (!date || isSentinelDate(date)) continue
-          const avg = spo2Pct(d) ?? num(d?.average ?? d?.avg)
-          if (avg == null) continue
-          const min = num(d?.min ?? d?.minimum) ?? avg
-          const max = num(d?.max ?? d?.maximum) ?? avg
-          metricRows.push(baseRow('oxygen_saturation', date, `${date}T12:00:00Z`, '%',
-            { Min: min, Max: max, Avg: avg }))
-          n++
-        }
-        counts.oxygen_saturation = n
-        counts.oxygen_saturation_source = n > 0 ? 'daily' : 'none'
-      }
-    }
-
-    // ── Sleep sessions → stage segments + one aggregate sleep_analysis row ──
-    const segmentRows: AnyRecord[] = []
-    {
-      const pts = await listDataPoints(access_token, 'sleep',
-        `sleep.interval.end_time >= "${fromIso}" AND sleep.interval.end_time < "${toIso}"`, skipped)
-      let n = 0
-      const STAGE_MAP: Record<string, string> = {
-        LIGHT: 'light', DEEP: 'deep', REM: 'rem', WAKE: 'wake', AWAKE: 'wake', ASLEEP: 'asleep',
-      }
-      for (const p of pts) {
-        const s = p.sleep
-        const start = s?.interval?.startTime
-        const end = s?.interval?.endTime
-        if (typeof start !== 'string' || typeof end !== 'string') continue
-        const externalId = s?.metadata?.externalId ?? p.name ?? null
-        for (const st of s?.stages ?? []) {
-          const stage = STAGE_MAP[String(st?.type ?? '').toUpperCase()]
-          if (!stage || typeof st.startTime !== 'string' || typeof st.endTime !== 'string') continue
-          segmentRows.push({
-            user_id: userId, start_at: st.startTime, end_at: st.endTime, stage,
-            source: SOURCE, source_family: 'fitbit', source_record_id: externalId,
-            synced_at: syncedAt, updated_at: syncedAt,
-          })
-        }
-        // Aggregate row in the exact shape the app's sleep pipeline reads
-        // (totalSleep/core/rem/deep/awake hours + session window). Fitbit's
-        // LIGHT maps onto the app's "core" bucket (closest concept — never
-        // blended with Apple rows anyway; whole-night single-source rule).
-        const sum = s?.summary
-        const mins = (v: unknown) => (num(v) ?? 0) / 60
-        const stageMin = (t: string) =>
-          mins((sum?.stagesSummary ?? []).find((x: AnyRecord) => x?.type === t)?.minutes)
-        // End's civil day = the night it belongs to (wake-day attribution).
-        const endOffsetSec = num(s?.interval?.endUtcOffset?.replace?.('s', '')) ?? 0
-        const endLocal = new Date(new Date(end).getTime() + endOffsetSec * 1000)
-        const date = endLocal.toISOString().slice(0, 10)
-        metricRows.push(baseRow('sleep_analysis', date, start, 'hr', {
-          sleepStart: start, sleepEnd: end,
-          totalSleep: mins(sum?.minutesAsleep),
-          core: stageMin('LIGHT'), deep: stageMin('DEEP'), rem: stageMin('REM'),
-          awake: mins(sum?.minutesAwake),
-          source: SOURCE,
-        }))
-        n++
-      }
-      counts.sleep_sessions = n
-      counts.sleep_segments = segmentRows.length
-    }
-
-    // ── Upserts (idempotent on the same keys the Apple pipeline uses) ──
+  // ── Upserts (idempotent on the same keys the Apple pipeline uses) — NOT
+  // per-metric guarded: if this itself fails, nothing was durably saved
+  // regardless of how much fetching succeeded above, so it's still a fatal
+  // error for this run (unlike a single data type's fetch failing).
+  try {
     const CHUNK = 2000
     for (let i = 0; i < metricRows.length; i += CHUNK) {
       const { error } = await supabase.from('health_metrics')
@@ -558,9 +582,22 @@ Deno.serve(async (req) => {
     return fail(502, (e as Error).message)
   }
 
+  // A per-metric failure is logged but does NOT block last_success_at — the
+  // run still made real progress (rows > 0 is the normal case even with one
+  // flaky endpoint), and the whole point of this fix is that one bad endpoint
+  // must not look like a total outage. Each failure still gets its own
+  // app_error_logs row so a genuinely recurring problem (e.g. a real scope
+  // issue) stays visible in Developer → Errors, not just in the response body.
+  const errorKeys = Object.keys(errors)
+  if (errorKeys.length > 0) {
+    await supabase.from('app_error_logs').insert(
+      errorKeys.map(k => ({ user_id: userId, message: `google-health-sync: ${k}: ${errors[k]}`, context: { partial: true } })),
+    ).then(() => {}, () => {})
+  }
   await recordState({ last_success_at: syncedAt, last_error: null, last_error_at: null })
   return new Response(JSON.stringify({
     ok: true, window_days: days, rows: metricRows.length, counts,
     skipped_non_fitbit: skipped.nonFitbit,
+    ...(errorKeys.length > 0 ? { partial_errors: errors } : {}),
   }), { status: 200, headers: jsonHeaders })
 })

@@ -19,6 +19,7 @@ import {
   googleDueToLocalDate,
   getSupabaseIdByGoogleTaskId,
   createGoogleTask,
+  updateGoogleTask,
   completeGoogleTask,
   reopenGoogleTask,
   deleteGoogleTask,
@@ -119,8 +120,23 @@ export function useCreateTask() {
 export function useUpdateTask() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: UpdateTaskInput }) =>
-      updateTask(id, patch),
+    mutationFn: async ({ id, patch }: { id: string; patch: UpdateTaskInput }) => {
+      const task = await updateTask(id, patch)
+      // Real gap fixed 20/08/2026: only create/toggle-done/delete used to sync
+      // to Google Tasks — a plain edit (reschedule the due date, fix a typo,
+      // add notes) never did, so the Google-side copy went stale immediately.
+      // Only bother Google when a synced field actually changed; skip a
+      // priority/section-only edit that Google Tasks has no field for anyway.
+      const syncedFieldChanged = patch.title !== undefined || patch.description !== undefined || patch.due_date !== undefined
+      if (syncedFieldChanged && task.google_task_id) {
+        const token = useCalendarStore.getState().accessToken
+        if (token) {
+          try { await updateGoogleTask(token, task.google_task_id, task) }
+          catch (err) { logError(`Google Tasks update failed: ${err instanceof Error ? err.message : String(err)}`, { taskId: id }) }
+        }
+      }
+      return task
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
       // A task edit can move/retitle a linked schedule block — keep schedule
@@ -198,10 +214,15 @@ export function useWorkTasks() {
   })
 }
 
-// Pull tasks from Google Tasks → import new ones to inbox
+// Pull tasks from Google Tasks → import new ones to inbox. Was defined but
+// unreachable from any UI (CLAUDE.md's "known side effect" of the old To-Do
+// drawer's removal) — wired up 20/08/2026 via GoogleTasksSyncButtons. Also
+// fixed a real drop here: `rt.notes` (a task's notes/detail written in the
+// Google Tasks app) was fetched but never carried into the imported row.
 export function useSyncFromGoogleTasks() {
   const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'sync_from_google_tasks',
     mutationFn: async () => {
       const token = useCalendarStore.getState().accessToken
       if (!token) throw new Error('Google account not connected')
@@ -210,11 +231,12 @@ export function useSyncFromGoogleTasks() {
       for (const rt of remoteTasks) {
         if (getSupabaseIdByGoogleTaskId(rt.id)) continue
         const newTask = await createTask({
-          title:    rt.title,
-          section:  'inbox',
-          priority: 'medium',
-          domain:   'personal',
-          due_date: rt.due ? googleDueToLocalDate(rt.due) : undefined,
+          title:       rt.title,
+          description: rt.notes ?? null,
+          section:     'inbox',
+          priority:    'medium',
+          domain:      'personal',
+          due_date:    rt.due ? googleDueToLocalDate(rt.due) : undefined,
         })
         saveGoogleTaskMapping(newTask.id, rt.id)
         // Persist to Supabase for cross-device sync
@@ -223,13 +245,19 @@ export function useSyncFromGoogleTasks() {
       }
       return imported
     },
+    successMessage: (imported: number) => imported > 0 ? `Imported ${imported} task${imported === 1 ? '' : 's'} from Google ✓` : 'No new tasks in Google Tasks',
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }
 
-// Push local tasks not yet in Google Tasks → create them there
+// Push local tasks not yet in Google Tasks → create them there. Same
+// unreachable-until-20/08/2026 story as the pull direction above. This is a
+// "catch up" action for tasks created before Google was connected, or whose
+// create-time sync silently failed (useCreateTask never blocks on it) — every
+// NEW task already gets pushed automatically going forward.
 export function usePushToGoogleTasks() {
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'push_to_google_tasks',
     mutationFn: async (tasks: import('../types').Task[]) => {
       const token = useCalendarStore.getState().accessToken
       if (!token) throw new Error('Google account not connected')
@@ -250,5 +278,9 @@ export function usePushToGoogleTasks() {
       }
       return { pushed, failed }
     },
+    successMessage: (r: { pushed: number; failed: number }) =>
+      r.pushed === 0 && r.failed === 0 ? 'All tasks already in Google Tasks'
+      : r.failed > 0 ? `Pushed ${r.pushed}, ${r.failed} failed ⚠`
+      : `Pushed ${r.pushed} task${r.pushed === 1 ? '' : 's'} to Google ✓`,
   })
 }

@@ -73,9 +73,12 @@ export const RUNNING_EXTRA_METRICS: MiniMetricConfig[] = [
 
 export const SLEEP_EXTRA_METRICS: MiniMetricConfig[] = [
   { metric: 'oxygen_saturation', icon: '🫁', title: 'Blood Oxygen', unit: '%', decimals: 0,
-    description: 'Overnight SpO2 from the Fitbit Air (red/IR sensor) — sustained dips can flag breathing disturbances.' },
+    // Not Fitbit-exclusive by design (see healthSourceDefaults.ts's FITBIT_FIRST
+    // comment) — worded source-agnostically since the Watch (Series 8+) can
+    // also measure this; whichever device's reading wins the resolver shows here.
+    description: 'Overnight SpO2 — sustained dips can flag breathing disturbances.' },
   { metric: 'skin_temperature', icon: '🌡️', title: 'Skin Temp', unit: '°C', decimals: 1,
-    description: 'Nightly skin-temperature deviation from your baseline (Fitbit) — can flag illness or cycle changes.' },
+    description: 'Nightly skin-temperature deviation from your baseline — can flag illness or cycle changes.' },
   { metric: 'sleeping_heart_rate', icon: '💤', title: 'Sleeping HR', unit: 'bpm', decimals: 0,
     description: 'Average heart rate while asleep (Fitbit) — lower generally reflects better recovery.' },
   { metric: 'respiratory_rate', icon: '🫁', title: 'Respiratory Rate', unit: 'br/min', decimals: 1,

@@ -72,11 +72,18 @@ export function strategyFor(metricName: string): ResolveStrategy {
 //
 // CUMULATIVE (steps/distance/energy/AZM): user's explicit call (Apple preferred
 // while both wrist devices are worn; a wrist device beats the pocket phone) —
-// Watch first,
-// then Fitbit, and the pocket iPhone only when neither wrist device wrote.
-// This supersedes red-team H3's fitbit-first lock for these metrics (user's
-// direct decision on their own data, 2026-07-21).
-const LADDER_CUMULATIVE: readonly StreamTier[] = ['manual', 'watch', 'fitbit', 'phone']
+// Phone first, then Fitbit, and the Watch only when neither of those wrote —
+// REVERSED from the original 2026-07-21 "wrist beats pocket" call, on the
+// user's explicit 2026-08-20 decision after live data showed the Watch is now
+// barely worn (0-3 days out of every 15 carry ANY watch-tagged reading) while
+// the phone's own step/energy stream, once compared directly against a real
+// Apple Health app screenshot for the same days, tracked it within ~5-10%
+// (verified live, not assumed) — the earlier "phone overcounts from pocket
+// motion" worry did not hold up once checked against the real numbers. Fitbit
+// is worn continuously and fills in for the (increasingly common) hours the
+// phone itself has nothing, e.g. left charging or Health Auto Export hasn't
+// synced yet.
+const LADDER_CUMULATIVE: readonly StreamTier[] = ['manual', 'phone', 'fitbit', 'watch']
 
 // PHYSIOLOGICAL continuity metrics (H3 reasoning untouched — the 24/7 device
 // sees the whole night/day; a phone can't sense these at all, so 'phone' is a
@@ -96,6 +103,16 @@ const LADDER_APPLE_FIRST: readonly StreamTier[] = ['manual', 'watch', 'phone', '
 // Sleep + the physiological set that Fitbit (worn 24/7, incl. every night)
 // should lead. sleep_analysis is here as an explicit user requirement, not a
 // tuning choice.
+//
+// oxygen_saturation and skin_temperature were previously Fitbit-only in
+// PRACTICE (the user's old Watch SE 2 had neither an SpO2 nor a wrist-
+// temperature sensor at all) but were never Fitbit-EXCLUSIVE by design —
+// 'watch' already sits at rung 2 here. After the 20/08/2026 upgrade to a
+// Series 11 (which has both sensors), Apple data can start competing for
+// these two the moment Health Auto Export actually exports it under these
+// exact metric names — no code change needed, this ladder was already
+// correct for that case. See docs/fitbit-air-integration.md §5a for what's
+// still unconfirmed (whether/how HAE exports SpO2 and wrist temperature).
 const FITBIT_FIRST: ReadonlySet<string> = new Set([
   'sleep_analysis',
   'sleeping_heart_rate',
