@@ -119,7 +119,13 @@ CREATE UNIQUE INDEX tasks_user_google_task_id ON public.tasks (user_id, google_t
 CREATE TABLE public.google_tasks_outbox (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id       UUID        NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
-  task_id       UUID        NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
+  -- Deliberately NO FK to tasks(id). A 'delete' row is enqueued by the AFTER
+  -- DELETE trigger for the exact task_id that JUST stopped existing in
+  -- tasks — a FK (even ON DELETE CASCADE) would reject that INSERT outright,
+  -- since constraint checking happens immediately, not at commit, and the
+  -- referenced row is already gone by the time the trigger fires. The
+  -- trigger's own DELETE branch is the cleanup mechanism here, not a FK.
+  task_id       UUID        NOT NULL,
   operation     TEXT        NOT NULL CHECK (operation IN ('create', 'update', 'delete')),
   payload       JSONB       NOT NULL DEFAULT '{}'::jsonb,
   attempts      INTEGER     NOT NULL DEFAULT 0,
@@ -227,7 +233,9 @@ BEGIN
   IF TG_OP = 'DELETE' THEN
     IF OLD.google_task_id IS NOT NULL AND OLD.google_sync_enabled IS TRUE THEN
       INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
-      VALUES (OLD.user_id, OLD.id, 'delete', jsonb_build_object('google_task_id', OLD.google_task_id));
+      VALUES (OLD.user_id, OLD.id, 'delete', jsonb_build_object(
+        'google_task_id', OLD.google_task_id, 'google_tasklist_id', OLD.google_tasklist_id
+      ));
     END IF;
     RETURN OLD;
   END IF;
@@ -266,7 +274,9 @@ BEGIN
   -- for the same reason as the opt-in branch above.
   IF NEW.google_sync_enabled IS NOT TRUE AND OLD.google_sync_enabled IS TRUE AND OLD.google_task_id IS NOT NULL THEN
     INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
-    VALUES (NEW.user_id, NEW.id, 'delete', jsonb_build_object('google_task_id', OLD.google_task_id));
+    VALUES (NEW.user_id, NEW.id, 'delete', jsonb_build_object(
+      'google_task_id', OLD.google_task_id, 'google_tasklist_id', OLD.google_tasklist_id
+    ));
     RETURN NEW;
   END IF;
 
@@ -283,7 +293,9 @@ BEGIN
       -- to remove it there (mirrors 047's local soft-cancel philosophy —
       -- the LOCAL row stays, reversible; only the Google-side copy goes).
       INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
-      VALUES (NEW.user_id, NEW.id, 'delete', jsonb_build_object('google_task_id', NEW.google_task_id));
+      VALUES (NEW.user_id, NEW.id, 'delete', jsonb_build_object(
+        'google_task_id', NEW.google_task_id, 'google_tasklist_id', NEW.google_tasklist_id
+      ));
 
     ELSIF public.google_task_status_bucket(OLD.status) = 'none'
           AND public.google_task_status_bucket(NEW.status) <> 'none' THEN
