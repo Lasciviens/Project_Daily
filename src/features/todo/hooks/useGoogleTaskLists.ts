@@ -37,10 +37,23 @@ export function useCreateGoogleTaskList() {
     action: 'create_google_task_list',
     mutationFn: async (title: string) => {
       const token = requireToken()
-      const remote = await createGoogleTaskList(token, title)
+      const trimmed = title.trim()
       const { data: userData } = await supabase.auth.getUser()
       const userId = userData.user?.id
       if (!userId) throw new Error('Not signed in')
+
+      // Real gap fixed: this had NO dedup check at all (not even exact-
+      // match) — typing "work" here when "Work" already existed always
+      // created a second Google list. Case-insensitive, matching
+      // resolveOrCreateGoogleTaskListId's rule (and migration 076's DB-level
+      // backstop) — but this is an explicit "Add" action, so an existing
+      // match is reported as an error rather than silently reused.
+      const { data: existing } = await supabase.from('google_task_lists').select('title').eq('user_id', userId)
+      if ((existing ?? []).some(l => l.title.trim().toLowerCase() === trimmed.toLowerCase())) {
+        throw new Error(`A list named "${trimmed}" already exists`)
+      }
+
+      const remote = await createGoogleTaskList(token, trimmed)
       const { error } = await supabase.from('google_task_lists').insert({
         user_id: userId, google_id: remote.id, title: remote.title,
         is_default: false, google_etag: remote.etag, google_updated_at: remote.updated,

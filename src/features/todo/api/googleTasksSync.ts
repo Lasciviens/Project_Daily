@@ -75,22 +75,45 @@ export async function syncGoogleTaskLists(token: string): Promise<LocalTaskList[
 // creating a brand-new one on Google (then mirroring it locally) otherwise.
 // Used by UnifiedPlanModal's save path — a task's list is now something the
 // user types/picks per task, not a fixed mapping off `domain`.
+//
+// The initial read-then-create is a TOCTOU race on its own (two near-
+// simultaneous calls for the same name could both see no match and both
+// create) — migration 076's case-insensitive UNIQUE index is the real
+// backstop: the loser's INSERT gets a 23505 violation instead of a
+// duplicate, and that's caught below to resolve to the winner's id instead
+// of surfacing an error.
 export async function resolveOrCreateGoogleTaskListId(token: string, title: string): Promise<string> {
   const trimmed = title.trim()
   const { data: userData } = await supabase.auth.getUser()
   const userId = userData.user?.id
   if (!userId) throw new Error('Not signed in')
 
-  const { data: existing } = await supabase.from('google_task_lists').select('id, title').eq('user_id', userId)
-  const match = (existing ?? []).find(l => l.title.trim().toLowerCase() === trimmed.toLowerCase())
-  if (match) return match.id
+  const findExisting = async (): Promise<string | null> => {
+    const { data: existing } = await supabase.from('google_task_lists').select('id, title').eq('user_id', userId)
+    return (existing ?? []).find(l => l.title.trim().toLowerCase() === trimmed.toLowerCase())?.id ?? null
+  }
+
+  const existingId = await findExisting()
+  if (existingId) return existingId
 
   const remote = await createGoogleTaskList(token, trimmed)
   const { data, error } = await supabase.from('google_task_lists').insert({
     user_id: userId, google_id: remote.id, title: remote.title,
     is_default: false, google_etag: remote.etag, google_updated_at: remote.updated,
   }).select('id').single()
-  if (error) throw error
+
+  if (error) {
+    // 23505 = unique_violation — another concurrent call won the race for
+    // this exact (case-insensitive) name. The list now exists on Google
+    // TWICE (this call's own create already went through, no undo for
+    // that), but the local mirror stays singular by resolving to whichever
+    // row won, rather than throwing or leaving an orphaned duplicate row.
+    if (error.code === '23505') {
+      const winnerId = await findExisting()
+      if (winnerId) return winnerId
+    }
+    throw error
+  }
   return data.id
 }
 
