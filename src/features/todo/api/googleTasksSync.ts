@@ -5,11 +5,22 @@ import {
   type GoogleRemoteTask,
 } from './googleTasksApi'
 
+interface LocalTaskList { id: string; google_id: string }
+
 // ── Task lists (google_task_lists mirror) ───────────────────────────────────
 // The TaskList resource carries no "is this the default list" flag — resolve
 // it by fetching the @default alias and matching its real id, never by
 // assuming a list's own id is literally the string "@default".
-export async function syncGoogleTaskLists(token: string): Promise<void> {
+//
+// Also reconciles STALE lists: a list deleted on Google's side used to keep
+// its local row forever (upsert-only, nothing ever removed it), so every
+// future pull kept including it in the target set and erroring on it — a
+// real incident this exact shape almost caused in the cron poller (a single
+// deleted list would freeze that run's sync-state watermark permanently,
+// since the per-list error never clears on its own). Returns the confirmed
+// current rows so callers build their target set from THIS fetch, not a
+// second DB query that could race with the delete below.
+export async function syncGoogleTaskLists(token: string): Promise<LocalTaskList[]> {
   const { data: userData } = await supabase.auth.getUser()
   const userId = userData.user?.id
   if (!userId) throw new Error('Not signed in')
@@ -19,17 +30,30 @@ export async function syncGoogleTaskLists(token: string): Promise<void> {
     fetchDefaultGoogleTaskList(token),
   ])
 
+  const localRows: LocalTaskList[] = []
   for (const l of lists) {
-    const { error } = await supabase.from('google_task_lists').upsert({
+    const { data, error } = await supabase.from('google_task_lists').upsert({
       user_id:           userId,
       google_id:         l.id,
       title:             l.title,
       is_default:        l.id === defaultList.id,
       google_etag:       l.etag,
       google_updated_at: l.updated,
-    }, { onConflict: 'user_id,google_id' })
+    }, { onConflict: 'user_id,google_id' }).select('id, google_id').single()
     if (error) throw error
+    if (data) localRows.push(data)
   }
+
+  const { data: existing } = await supabase.from('google_task_lists').select('id, google_id').eq('user_id', userId)
+  const currentGoogleIds = new Set(lists.map(l => l.id))
+  const staleIds = (existing ?? []).filter(row => !currentGoogleIds.has(row.google_id)).map(row => row.id)
+  if (staleIds.length) {
+    // ON DELETE SET NULL (migration 071) — tasks that belonged to a deleted
+    // list fall back to the default list rather than being orphaned.
+    await supabase.from('google_task_lists').delete().in('id', staleIds)
+  }
+
+  return localRows
 }
 
 async function localGoogleTaskListId(googleListId: string): Promise<string | null> {
@@ -71,10 +95,8 @@ export interface PullResult {
 // parent/subtask relationships in a second pass once every sibling in the
 // batch has a local id.
 export async function pullGoogleTasks(token: string): Promise<PullResult> {
-  await syncGoogleTaskLists(token)
-
-  const { data: lists } = await supabase.from('google_task_lists').select('id, google_id')
-  const targets = lists?.length ? lists : [{ id: null as string | null, google_id: '@default' }]
+  const lists = await syncGoogleTaskLists(token)
+  const targets = lists.length ? lists : [{ id: null as string | null, google_id: '@default' }]
 
   let imported = 0
 
@@ -90,16 +112,24 @@ export async function pullGoogleTasks(token: string): Promise<PullResult> {
       }
     }
 
+    // Every task gets a parent resolution pass, not just the ones WITH a
+    // `parent` — a task moved back to top-level on Google's side (parent
+    // removed) still needs its LOCAL parent_task_id cleared to match, and
+    // `continue`-ing past that case (the original bug here) left it stuck
+    // showing as a subtask forever, silently diverging from Google's truth.
     for (const rt of remoteTasks) {
-      if (!rt.parent) continue
-      const localId       = idMap.get(rt.id)
-      const parentLocalId = idMap.get(rt.parent)
-      if (localId && parentLocalId) {
-        const { error } = await supabase.rpc('set_task_parent_from_google', {
-          p_task_id: localId, p_parent_task_id: parentLocalId,
-        })
-        if (error) throw error
-      }
+      const localId = idMap.get(rt.id)
+      if (!localId) continue
+      const parentLocalId = rt.parent ? idMap.get(rt.parent) ?? null : null
+      // Skip only when a `parent` was named but couldn't be resolved in
+      // THIS batch (shouldn't happen for a full pull — every sibling is in
+      // the same batch — but never clear a real parent based on a lookup
+      // miss, only on Google genuinely reporting none).
+      if (rt.parent && !parentLocalId) continue
+      const { error } = await supabase.rpc('set_task_parent_from_google', {
+        p_task_id: localId, p_parent_task_id: parentLocalId,
+      })
+      if (error) throw error
     }
   }
 

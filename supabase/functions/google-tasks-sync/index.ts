@@ -225,13 +225,16 @@ async function processDelete(token: string, userId: string, row: OutboxRow) {
   })
 }
 
+// Claims via FOR UPDATE SKIP LOCKED (migration 073) rather than a plain
+// SELECT — this poller and the browser's real-time drain can otherwise both
+// pick up the SAME pending row (a genuine race, not hypothetical: Google's
+// own HTTP round-trip is exactly where the window lives) and both call
+// Google for the same 'create', producing a real duplicate task.
 async function drainOutbox(token: string, userId: string): Promise<{ drained: number; failed: number }> {
-  const { data: rows } = await supabase
-    .from('google_tasks_outbox')
-    .select('*')
-    .eq('user_id', userId)
-    .lte('next_retry_at', new Date().toISOString())
-    .order('created_at', { ascending: true })
+  const { data: rows, error } = await supabase.rpc('claim_google_tasks_outbox', {
+    p_respect_backoff: true, p_user_id: userId,
+  })
+  if (error) throw error
 
   let drained = 0, failed = 0
   for (const row of (rows ?? []) as OutboxRow[]) {
@@ -248,6 +251,7 @@ async function drainOutbox(token: string, userId: string): Promise<{ drained: nu
       await supabase.from('google_tasks_outbox').update({
         attempts, last_error: (e as Error).message,
         next_retry_at: new Date(Date.now() + backoffSeconds * 1000).toISOString(),
+        claimed_at: null, // release the claim so a later retry can pick it up again
       }).eq('id', row.id)
     }
   }
@@ -255,14 +259,35 @@ async function drainOutbox(token: string, userId: string): Promise<{ drained: nu
 }
 
 // ── Pull (Google → local) ───────────────────────────────────────────────────
-async function syncGoogleTaskLists(token: string, userId: string) {
+// Also reconciles STALE lists: a list deleted on Google's side used to keep
+// its local row forever (upsert-only, nothing ever removed it) — every
+// future run then kept including it in the target set and erroring on it,
+// and since the sync-state watermark only advances on a fully clean run
+// (see below), one deleted list would freeze it PERMANENTLY. Returns the
+// confirmed current rows so pullTasks builds its target set from THIS
+// fetch, never a second query that could race with the delete below.
+async function syncGoogleTaskLists(token: string, userId: string): Promise<{ id: string; google_id: string }[]> {
   const [lists, defaultList] = await Promise.all([fetchGoogleTaskLists(token), fetchDefaultGoogleTaskList(token)])
+
+  const localRows: { id: string; google_id: string }[] = []
   for (const l of lists) {
-    await supabase.from('google_task_lists').upsert({
+    const { data } = await supabase.from('google_task_lists').upsert({
       user_id: userId, google_id: l.id, title: l.title,
       is_default: l.id === defaultList.id, google_etag: l.etag, google_updated_at: l.updated,
-    }, { onConflict: 'user_id,google_id' })
+    }, { onConflict: 'user_id,google_id' }).select('id, google_id').maybeSingle()
+    if (data) localRows.push(data)
   }
+
+  const { data: existing } = await supabase.from('google_task_lists').select('id, google_id').eq('user_id', userId)
+  const currentGoogleIds = new Set(lists.map((l: AnyRecord) => l.id))
+  const staleIds = (existing ?? []).filter((row: AnyRecord) => !currentGoogleIds.has(row.google_id)).map((row: AnyRecord) => row.id)
+  if (staleIds.length) {
+    // ON DELETE SET NULL (migration 071) — tasks that belonged to a deleted
+    // list fall back to the default list rather than being orphaned.
+    await supabase.from('google_task_lists').delete().in('id', staleIds)
+  }
+
+  return localRows
 }
 
 async function upsertOne(rt: AnyRecord, userId: string, googleTasklistLocalId: string | null): Promise<string | null> {
@@ -285,9 +310,8 @@ async function upsertOne(rt: AnyRecord, userId: string, googleTasklistLocalId: s
 // same run — each list gets its own try/catch, and the caller decides
 // whether ANY per-list error should hold back the sync-state watermark.
 async function pullTasks(token: string, userId: string, sinceIso: string | null): Promise<{ imported: number; listErrors: AnyRecord }> {
-  await syncGoogleTaskLists(token, userId)
-  const { data: lists } = await supabase.from('google_task_lists').select('id, google_id').eq('user_id', userId)
-  const targets = lists?.length ? lists : [{ id: null as string | null, google_id: '@default' }]
+  const lists = await syncGoogleTaskLists(token, userId)
+  const targets = lists.length ? lists : [{ id: null as string | null, google_id: '@default' }]
 
   let imported = 0
   const listErrors: AnyRecord = {}
@@ -304,16 +328,23 @@ async function pullTasks(token: string, userId: string, sinceIso: string | null)
         const localId = await upsertOne(rt, userId, list.id)
         if (localId) imported++
       }
-      // Parent resolution is a second pass over the DB (not just this batch's
-      // Map) so an incremental sync's parent — synced in an EARLIER run —
+      // Every task gets a parent resolution pass, not just the ones WITH a
+      // `parent` — a task moved back to top-level on Google's side (parent
+      // removed) still needs its LOCAL parent_task_id cleared to match;
+      // `continue`-ing past that case (the original bug here) left it stuck
+      // showing as a subtask forever. Resolved via the DB (not a batch-local
+      // map) so an incremental sync's parent — synced in an EARLIER run —
       // still resolves correctly, not only within one delta.
       for (const rt of remoteTasks) {
-        if (!rt.parent) continue
-        const { data: child }  = await supabase.from('tasks').select('id').eq('user_id', userId).eq('google_task_id', rt.id).maybeSingle()
-        const { data: parent } = await supabase.from('tasks').select('id').eq('user_id', userId).eq('google_task_id', rt.parent).maybeSingle()
-        if (child?.id && parent?.id) {
-          await supabase.rpc('set_task_parent_from_google', { p_task_id: child.id, p_parent_task_id: parent.id, p_user_id: userId })
+        const { data: child } = await supabase.from('tasks').select('id').eq('user_id', userId).eq('google_task_id', rt.id).maybeSingle()
+        if (!child?.id) continue
+        let parentLocalId: string | null = null
+        if (rt.parent) {
+          const { data: parent } = await supabase.from('tasks').select('id').eq('user_id', userId).eq('google_task_id', rt.parent).maybeSingle()
+          if (!parent?.id) continue // named a parent we haven't synced yet — don't clear a real one on a lookup miss
+          parentLocalId = parent.id
         }
+        await supabase.rpc('set_task_parent_from_google', { p_task_id: child.id, p_parent_task_id: parentLocalId, p_user_id: userId })
       }
     } catch (e) {
       listErrors[list.google_id] = (e as Error).message

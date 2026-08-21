@@ -25,6 +25,19 @@ interface OutboxRow {
   attempts:   number
 }
 
+// Both this browser drain and the cron drain (google-tasks-sync edge
+// function) can run close enough in time to read the SAME pending row
+// before either finishes processing it — a plain SELECT-then-process would
+// let both call Google for the same 'create', producing a real duplicate
+// task nothing cleans up. claim_google_tasks_outbox (migration 073) uses
+// FOR UPDATE SKIP LOCKED so two concurrent claimers can never end up with
+// the same row.
+async function claimRows(): Promise<OutboxRow[]> {
+  const { data, error } = await supabase.rpc('claim_google_tasks_outbox', { p_respect_backoff: false })
+  if (error) throw error
+  return (data ?? []) as OutboxRow[]
+}
+
 async function resolveGoogleListId(googleTasklistId: string | null): Promise<string> {
   if (!googleTasklistId) return '@default'
   const { data } = await supabase.from('google_task_lists').select('google_id').eq('id', googleTasklistId).maybeSingle()
@@ -137,16 +150,12 @@ export interface DrainResult {
 }
 
 export async function drainGoogleTasksOutbox(token: string): Promise<DrainResult> {
-  const { data: rows, error } = await supabase
-    .from('google_tasks_outbox')
-    .select('*')
-    .order('created_at', { ascending: true })
-  if (error) throw error
+  const rows = await claimRows()
 
   let drained = 0
   let failed  = 0
 
-  for (const row of (rows ?? []) as OutboxRow[]) {
+  for (const row of rows) {
     try {
       if (row.operation === 'create')      await processCreate(token, row)
       else if (row.operation === 'update') await processUpdate(token, row)
@@ -166,6 +175,7 @@ export async function drainGoogleTasksOutbox(token: string): Promise<DrainResult
           attempts,
           last_error:    message,
           next_retry_at: new Date(Date.now() + backoffSeconds * 1000).toISOString(),
+          claimed_at:    null, // release the claim so a later retry can pick it up again
         })
         .eq('id', row.id)
     }
