@@ -21,6 +21,12 @@ verify_jwt = false
 [functions.google-health-sync]
 verify_jwt = false
 
+# Same dual-auth shape as google-health-sync, one line up — x-sync-secret
+# (GOOGLE_TASKS_SYNC_SECRET) for the cron path, user JWT for a future manual
+# "Sync now" button.
+[functions.google-tasks-sync]
+verify_jwt = false
+
 # Dual-auth: browser user JWT (validated in-code by getUser) OR the iPhone
 # device secret (x-phone-secret === PHONE_GATEWAY_SECRET → acts as the single
 # user). The secret path is not a Supabase JWT, so platform verification is off

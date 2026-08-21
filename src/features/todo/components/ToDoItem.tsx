@@ -10,6 +10,7 @@ import { isOverdue, dueLabel } from '../taskRules'
 import { windowRangeLabel } from '../../../shared/components/windowChips'
 import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
 import { SetParentTaskSheet } from './SetParentTaskSheet'
+import { MoveToListSheet } from './MoveToListSheet'
 
 function dueDateCls(dateStr: string, isDone: boolean): string {
   if (isDone) return 'bg-ink-100 text-ink-400'
@@ -32,6 +33,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
   const [hovered, setHovered] = useState(false)
   const [editing, setEditing] = useState(false)
   const [pickingParent, setPickingParent] = useState(false)
+  const [pickingList, setPickingList] = useState(false)
   const [subtasksOpen, setSubtasksOpen] = useState(false)
   const toggle = useToggleTask()
   const remove = useDeleteTask()
@@ -212,6 +214,12 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
                 className="w-full text-left px-3 min-h-[44px] text-sm text-ink-700 data-[focus]:bg-ink-100"
               >↳ Set parent…</button>
             </MenuItem>
+            <MenuItem>
+              <button
+                onClick={() => setPickingList(true)}
+                className="w-full text-left px-3 min-h-[44px] text-sm text-ink-700 data-[focus]:bg-ink-100"
+              >📋 Move to list…</button>
+            </MenuItem>
             {task.google_web_view_link && (
               <MenuItem>
                 <a
@@ -269,6 +277,11 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
               className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-xs"
               title="Set parent task"
             >↳</button>
+            <button
+              onClick={e => { e.stopPropagation(); setPickingList(true) }}
+              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[10px]"
+              title="Move to list"
+            >📋</button>
             {task.google_web_view_link && (
               <a
                 href={task.google_web_view_link}
@@ -319,6 +332,12 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
         onClose={() => setPickingParent(false)}
         task={task}
         hasSubtasks={subtasks.length > 0}
+      />
+
+      <MoveToListSheet
+        open={pickingList}
+        onClose={() => setPickingList(false)}
+        task={task}
       />
     </>
   )
