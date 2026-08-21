@@ -18,6 +18,7 @@ import {
 } from '../api/tasksApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { pullGoogleTasks } from '../api/googleTasksSync'
+import { supabase } from '../../../integrations/supabase/client'
 import { useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
@@ -251,11 +252,25 @@ export function useSyncFromGoogleTasks() {
   })
 }
 
-// Catch-up action for tasks created before Google was connected (or whose
-// create-time sync silently failed): flips google_sync_enabled on for those
-// tasks, which migration 071's trigger turns into a fresh outbox 'create'
-// row regardless of google_local_edit_at (flipping the flag isn't itself a
-// content edit), then drains.
+// Catch-up action for tasks created before Google was connected, OR whose
+// create-time sync silently failed (a real incident: the ambiguous-overload
+// RPC bug, fixed separately, could leave google_sync_enabled=true with
+// google_task_id still NULL for anything created during that window — the
+// task never actually reached Google despite looking "already synced").
+//
+// The real signal for "not yet on Google" is the absence of google_task_id,
+// NOT google_sync_enabled — that flag reflects INTENT (set at create time,
+// before any Google call happens), not outcome. The old filter checked only
+// google_sync_enabled, so it silently skipped exactly the stuck-create case
+// this action exists to catch, always reporting "All tasks already in
+// Google Tasks" for them.
+//
+// Calendar-linked tasks (google_sync_enabled=false BY DESIGN — see
+// UnifiedPlanModal's skipGoogleTasks) also have no google_task_id, so
+// they're excluded by checking for a linked time_blocks row with its own
+// google_calendar_event_id — pushing those would recreate the exact
+// "task duplicated as both a Calendar event and a Task" bug that flag exists
+// to prevent.
 export function usePushToGoogleTasks() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
@@ -264,10 +279,26 @@ export function usePushToGoogleTasks() {
       const token = useCalendarStore.getState().accessToken
       if (!token) throw new Error('Google account not connected')
 
-      const candidates = tasks.filter(t =>
-        !t.google_sync_enabled && t.status !== 'done' && t.status !== 'cancelled')
+      const notYetSynced = tasks.filter(t =>
+        !t.google_task_id && t.status !== 'done' && t.status !== 'cancelled')
+
+      const { data: linkedBlocks } = notYetSynced.length
+        ? await supabase
+            .from('time_blocks')
+            .select('source_id')
+            .eq('source_type', 'task')
+            .not('google_calendar_event_id', 'is', null)
+            .in('source_id', notYetSynced.map(t => t.id))
+        : { data: [] }
+      const calendarLinkedIds = new Set((linkedBlocks ?? []).map(b => b.source_id))
+      const candidates = notYetSynced.filter(t => !calendarLinkedIds.has(t.id))
 
       for (const t of candidates) {
+        // A task already marked google_sync_enabled=true (the stuck-create
+        // case) needs an explicit false→true transition to re-trigger
+        // migration 071's opt-in branch — setting true→true is a no-op the
+        // trigger doesn't see as a change at all.
+        if (t.google_sync_enabled) await updateTask(t.id, { google_sync_enabled: false })
         await updateTask(t.id, { google_sync_enabled: true })
       }
 
