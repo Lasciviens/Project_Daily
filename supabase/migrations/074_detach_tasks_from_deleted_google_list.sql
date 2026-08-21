@@ -43,7 +43,14 @@ BEGIN
     google_etag          = NULL,
     google_position      = NULL,
     google_web_view_link = NULL,
-    google_updated_at    = NULL
+    google_updated_at    = NULL,
+    -- Full reset, not just the identity fields — a detached task is meant
+    -- to read as a plain local-only task with no trace of ever having been
+    -- on Google, not one carrying stale hidden/deleted/links metadata from
+    -- a Google list that no longer exists.
+    google_links          = NULL,
+    google_hidden         = false,
+    google_deleted        = false
   WHERE google_tasklist_id = p_google_tasklist_id
     AND user_id = public.effective_user_id(p_user_id);
 END;
