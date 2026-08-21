@@ -76,7 +76,6 @@ import { toast, useCalendarStore } from '../../../app/store'
 import { useCreateTimeBlock, useCreateScheduleBlock } from '../../../features/daily/hooks/useSchedule'
 import { updateTimeBlock, deleteTimeBlock } from '../../../features/daily/api/scheduleApi'
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
-import { deleteGoogleTask, removeGoogleTaskMapping, getGoogleTaskId } from '../../../features/todo/api/googleTasksApi'
 import { createCalendarEvent } from '../../../features/calendar/api/calendarApi'
 import { logError } from '../../utils/logError'
 import { supabase } from '../../../integrations/supabase/client'
@@ -316,17 +315,17 @@ export function UnifiedPlanModal({
       }
       // Once the task lives on Google Calendar as a linked EVENT, drop any
       // separate Google Task for it — otherwise the same task shows twice on
-      // the calendar (Task + event). Best-effort; the event is the canonical
-      // two-way-linked record. Covers the edit path (Bug 2) and cleans up rows
-      // created before the create-path suppression landed.
+      // the calendar (Task + event). Flipping google_sync_enabled off is all
+      // this needs now — migration 071's trigger turns that transition into
+      // an outbox 'delete' row (see its "newly opted OUT" branch), and
+      // useUpdateTask drains it. Covers the edit path (Bug 2) and cleans up
+      // rows created before the create-path suppression landed.
       if (calToken && googleTaskId) {
         const { data: linkedBlock } = await supabase
           .from('time_blocks').select('google_calendar_event_id').eq('id', blockId).single()
         if (linkedBlock?.google_calendar_event_id) {
           try {
-            await deleteGoogleTask(calToken, googleTaskId)
-            removeGoogleTaskMapping(taskId)
-            await supabase.from('tasks').update({ google_task_id: null }).eq('id', taskId)
+            await updateTask.mutateAsync({ id: taskId, patch: { google_sync_enabled: false } })
           } catch (err) {
             logError(`Google Task cleanup failed: ${(err as Error).message}`, { action: 'dedupe_google_task', taskId })
           }
@@ -360,7 +359,7 @@ export function UnifiedPlanModal({
       })
       // Pass the task's existing Google Task id so syncTaskBlock can drop it
       // once the task gains a linked calendar event (edit → add-to-calendar).
-      await syncTaskBlock(task.id, task.google_task_id ?? getGoogleTaskId(task.id))
+      await syncTaskBlock(task.id, task.google_task_id)
       onSaved?.({ tab: 'task', taskId: task.id })
       return
     }

@@ -132,14 +132,42 @@ export async function fetchTasksByMonth(monthStart: string, monthEnd: string): P
   return data ?? []
 }
 
-// tasks.start_date lands in migration 069. Until it's applied, any write
-// carrying it 400s with "column not found" (PGRST204 / 42703) — detect that
-// specific case and retry without it so a pre-migration browser can still save
-// (the recipes fiber_g / is_temp precedent). Every other error propagates.
-function missingStartDate(err: unknown): boolean {
+// Migration 069 (start_date) and 071 (Google Tasks full-surface — 8 new
+// columns: parent_task_id, google_tasklist_id, google_sync_enabled, etc.)
+// both land as manual migrations, so a deployed browser can hit either
+// before its migration is applied. Rather than one hand-written guard per
+// column (the old missingStartDate), parse the missing column's name straight
+// out of PostgREST's error and strip just that key, retrying — bounded so a
+// genuinely different error can't loop forever.
+function missingColumnName(err: unknown): string | null {
   const e = err as { code?: string; message?: string }
-  return (e?.code === 'PGRST204' || e?.code === '42703')
-    && (e?.message ?? '').toLowerCase().includes('start_date')
+  if (e?.code !== 'PGRST204' && e?.code !== '42703') return null
+  const m = /column ["']?(\w+)["']?/i.exec(e?.message ?? '')
+  return m?.[1] ?? null
+}
+
+async function insertTaskWithFallback(row: Record<string, unknown>): Promise<Task> {
+  const mutable = { ...row }
+  for (let attempt = 0; attempt < 15; attempt++) {
+    const { data, error } = await supabase.from('tasks').insert(mutable).select().single()
+    if (!error) return data
+    const col = missingColumnName(error)
+    if (!col || !(col in mutable)) throw error
+    delete mutable[col]
+  }
+  throw new Error('createTask: exceeded missing-column retry budget')
+}
+
+async function updateTaskWithFallback(id: string, row: Record<string, unknown>): Promise<Task> {
+  const mutable = { ...row }
+  for (let attempt = 0; attempt < 15; attempt++) {
+    const { data, error } = await supabase.from('tasks').update(mutable).eq('id', id).select().single()
+    if (!error) return data
+    const col = missingColumnName(error)
+    if (!col || !(col in mutable)) throw error
+    delete mutable[col]
+  }
+  throw new Error('updateTask: exceeded missing-column retry budget')
 }
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
@@ -173,25 +201,19 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
     source_id:   input.source_id   ?? null,
   }
   if (input.start_date !== undefined) row.start_date = input.start_date ?? null
+  if (input.parent_task_id !== undefined) row.parent_task_id = input.parent_task_id ?? null
+  if (input.google_tasklist_id !== undefined) row.google_tasklist_id = input.google_tasklist_id ?? null
+  // Only ever written true at create time (see Task.google_sync_enabled) —
+  // omit rather than send `false` so pre-migration inserts aren't forced
+  // through the fallback loop for a value that already defaults to false.
+  if (input.google_sync_enabled) row.google_sync_enabled = true
 
-  let { data, error } = await supabase.from('tasks').insert(row).select().single()
-  if (error && missingStartDate(error)) {
-    delete row.start_date
-    ;({ data, error } = await supabase.from('tasks').insert(row).select().single())
-  }
-  if (error) throw error
-  return data
+  return insertTaskWithFallback(row)
 }
 
 export async function updateTask(id: string, patch: UpdateTaskInput): Promise<Task> {
   const row: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() }
-  let { data, error } = await supabase.from('tasks').update(row).eq('id', id).select().single()
-  if (error && missingStartDate(error)) {
-    delete row.start_date
-    ;({ data, error } = await supabase.from('tasks').update(row).eq('id', id).select().single())
-  }
-  if (error) throw error
-  return data
+  return updateTaskWithFallback(id, row)
 }
 
 export async function swapTaskOrder(id1: string, id2: string): Promise<void> {
