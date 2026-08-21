@@ -208,8 +208,17 @@ export function useSetParentTask() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'set_parent_task',
-    mutationFn: ({ id, parentTaskId }: { id: string; parentTaskId: string | null }) =>
-      updateTask(id, { parent_task_id: parentTaskId }),
+    mutationFn: async ({ id, parentTaskId }: { id: string; parentTaskId: string | null }) => {
+      const task = await updateTask(id, { parent_task_id: parentTaskId })
+      // A parent_task_id change is a Google-visible field (migration 071's
+      // trigger enqueues 'update'/'move' for it) — every other mutation here
+      // drains right away instead of waiting for the next unrelated drain;
+      // this one was missed and left "Set parent" pending until something
+      // else happened to trigger a drain.
+      const token = useCalendarStore.getState().accessToken
+      if (token) await drainBestEffort(token, { taskId: id })
+      return task
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }

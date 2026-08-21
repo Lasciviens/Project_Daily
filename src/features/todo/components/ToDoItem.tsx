@@ -318,6 +318,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
         open={pickingParent}
         onClose={() => setPickingParent(false)}
         task={task}
+        hasSubtasks={subtasks.length > 0}
       />
     </>
   )
