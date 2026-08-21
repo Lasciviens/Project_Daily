@@ -16,6 +16,25 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-08-21 · v7 · Free-text "Google Task list" field (GoogleListField.tsx,
+//                    Task tab, gated on gcalAvailable). NOT a fixed picker over
+//                    `domain` — that enum (personal/work/media) is coarser than
+//                    the nav categories a user thinks in (Training/Projects
+//                    both collapse to domain='personal' today), so this is a
+//                    genuinely free field: seeded from the domain label as a
+//                    guess, editable per task, autocompletes over existing
+//                    Google Task lists via a native <datalist>, and resolves
+//                    (creating the list on Google if it doesn't already exist,
+//                    matched case-insensitively so a typed name never
+//                    duplicates) at save time via resolveOrCreateGoogleTaskListId
+//                    — BEFORE create, so the very first outbox sync already
+//                    targets the right list. Edit mode corrects the seeded
+//                    guess to the task's REAL current list once
+//                    useGoogleTaskLists loads (can't resolve synchronously in
+//                    buildInitialForm). Scoped to the Task tab's own save path
+//                    only — saveSchedule's "also create task" branch derives
+//                    its task's domain from `category`, a field the user never
+//                    sees this control next to, so it does not also apply here.
 //  2026-07-31 · v6 · Task windows + two save-path fixes.
 //                    (a) `startDate` joins PlanForm/PlanDefaults/TaskField and is
 //                    written to tasks.start_date on BOTH save paths — a task can
@@ -76,6 +95,8 @@ import { toast, useCalendarStore } from '../../../app/store'
 import { useCreateTimeBlock, useCreateScheduleBlock } from '../../../features/daily/hooks/useSchedule'
 import { updateTimeBlock, deleteTimeBlock } from '../../../features/daily/api/scheduleApi'
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
+import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
+import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
 import { createCalendarEvent } from '../../../features/calendar/api/calendarApi'
 import { logError } from '../../utils/logError'
 import { supabase } from '../../../integrations/supabase/client'
@@ -122,6 +143,7 @@ export function UnifiedPlanModal({
   const createTask  = useCreateTask()
   const updateTask  = useUpdateTask()
   const deleteTask  = useDeleteTask()
+  const { data: googleTaskLists = [] } = useGoogleTaskLists()
 
   // Re-seed whenever the modal (re)opens or its inputs change.
   useEffect(() => {
@@ -148,6 +170,19 @@ export function UnifiedPlanModal({
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, task])
+
+  // buildInitialForm seeds googleListTitle from `domain` synchronously (a
+  // guess) because the task's REAL current list title lives in
+  // google_task_lists, which isn't loaded yet on first render. Once
+  // useGoogleTaskLists resolves, correct it — but only while editing an
+  // existing task that already has a list; a brand-new task keeps the
+  // domain-derived guess as its real starting value.
+  useEffect(() => {
+    if (!open || !task?.google_tasklist_id) return
+    const list = googleTaskLists.find(l => l.id === task.google_tasklist_id)
+    if (list) setForm(f => ({ ...f, googleListTitle: list.title }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, task, googleTaskLists])
 
   const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
 
@@ -338,9 +373,27 @@ export function UnifiedPlanModal({
     qc.invalidateQueries({ queryKey: ['calendar'] })
   }
 
+  // Resolves the free-typed "Google Task list" field to a local
+  // google_task_lists id, creating the list on Google (matched
+  // case-insensitively against existing ones first, so a name that's
+  // already there never duplicates) when it doesn't exist yet. Returns
+  // undefined when there's nothing meaningful to resolve (not connected, or
+  // the field was cleared) — callers omit the key entirely in that case
+  // rather than force a null onto a task that may already have a list.
+  async function resolveGoogleListField(): Promise<string | undefined> {
+    if (!calToken || !form.googleListTitle.trim()) return undefined
+    try {
+      return await resolveOrCreateGoogleTaskListId(calToken, form.googleListTitle)
+    } catch (err) {
+      toast.error(`Couldn't set up "${form.googleListTitle.trim()}" on Google: ${(err as Error).message}`)
+      return undefined
+    }
+  }
+
   async function saveTask() {
     const title = form.title.trim()
     if (editMode && task) {
+      const googleTasklistId = await resolveGoogleListField()
       await updateTask.mutateAsync({
         id: task.id,
         patch: {
@@ -355,6 +408,7 @@ export function UnifiedPlanModal({
           ...(form.startDate || task.start_date ? { start_date: form.startDate || null } : {}),
           due_date:    form.dueDate || null,
           due_time:    form.dueTime ? `${form.dueTime}:00` : null,
+          ...(googleTasklistId !== undefined ? { google_tasklist_id: googleTasklistId } : {}),
         },
       })
       // Pass the task's existing Google Task id so syncTaskBlock can drop it
@@ -363,6 +417,11 @@ export function UnifiedPlanModal({
       onSaved?.({ tab: 'task', taskId: task.id })
       return
     }
+
+    // Resolved BEFORE create so the very first Google sync (the outbox
+    // trigger's 'create' row, drained right after) already targets the
+    // right list — no separate move() needed for a brand-new task.
+    const googleTasklistId = await resolveGoogleListField()
 
     // A personal task with a due date AND time earns a linked calendar event in
     // syncTaskBlock; when that event is created, suppress the duplicate Google
@@ -382,6 +441,7 @@ export function UnifiedPlanModal({
       due_time:    form.dueTime ? `${form.dueTime}:00` : null,
       source_type: source?.taskSourceType,
       source_id:   source?.sourceId,
+      google_tasklist_id: googleTasklistId,
       skipGoogleTasks: willBeCalendarEvent,
     })
     if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)

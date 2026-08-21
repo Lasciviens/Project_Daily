@@ -1,6 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import {
-  fetchGoogleTaskLists, fetchDefaultGoogleTaskList,
+  fetchGoogleTaskLists, fetchDefaultGoogleTaskList, createGoogleTaskList,
   fullGoogleTasksSync, googleDueToLocalDate,
   type GoogleRemoteTask,
 } from './googleTasksApi'
@@ -67,6 +67,31 @@ export async function syncGoogleTaskLists(token: string): Promise<LocalTaskList[
   }
 
   return localRows
+}
+
+// Resolves a free-typed list NAME (from the task-creation "Google Task list"
+// field) to a local google_task_lists id — matching an existing list
+// case-insensitively so a name that's already there never duplicates, and
+// creating a brand-new one on Google (then mirroring it locally) otherwise.
+// Used by UnifiedPlanModal's save path — a task's list is now something the
+// user types/picks per task, not a fixed mapping off `domain`.
+export async function resolveOrCreateGoogleTaskListId(token: string, title: string): Promise<string> {
+  const trimmed = title.trim()
+  const { data: userData } = await supabase.auth.getUser()
+  const userId = userData.user?.id
+  if (!userId) throw new Error('Not signed in')
+
+  const { data: existing } = await supabase.from('google_task_lists').select('id, title').eq('user_id', userId)
+  const match = (existing ?? []).find(l => l.title.trim().toLowerCase() === trimmed.toLowerCase())
+  if (match) return match.id
+
+  const remote = await createGoogleTaskList(token, trimmed)
+  const { data, error } = await supabase.from('google_task_lists').insert({
+    user_id: userId, google_id: remote.id, title: remote.title,
+    is_default: false, google_etag: remote.etag, google_updated_at: remote.updated,
+  }).select('id').single()
+  if (error) throw error
+  return data.id
 }
 
 async function localGoogleTaskListId(googleListId: string): Promise<string | null> {
