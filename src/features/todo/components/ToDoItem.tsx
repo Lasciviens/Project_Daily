@@ -240,6 +240,22 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
                 >⊘ Cancel</button>
               </MenuItem>
             )}
+            {/* Real gap: Cancel had no reverse. A task cancelled either by hand
+                or because a pull discovered it deleted on Google's side
+                (upsert_task_from_google's own google_deleted branch) had no
+                way back to active — reopening also re-fires migration 071's
+                "un-cancelled" trigger branch, which enqueues a fresh outbox
+                'create' since Google Tasks has no undelete of its own. */}
+            {isCancelled && (
+              <MenuItem>
+                <button
+                  onClick={() => update.mutate({ id: task.id, patch: { status: 'open' } })}
+                  disabled={update.isPending}
+                  className="w-full text-left px-3 min-h-[44px] text-sm text-accent-600 data-[focus]:bg-ink-100"
+                  title="Reopen — re-creates it on Google Tasks if connected"
+                >↺ Reopen</button>
+              </MenuItem>
+            )}
             <MenuItem>
               <button
                 onClick={() => remove.mutate(task.id)}
@@ -299,6 +315,14 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
                 className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-orange-500 transition-colors duration-150 text-xs"
                 title="Cancel (keeps a record, unlike Delete)"
               >⊘</button>
+            )}
+            {isCancelled && (
+              <button
+                onClick={e => { e.stopPropagation(); update.mutate({ id: task.id, patch: { status: 'open' } }) }}
+                disabled={update.isPending}
+                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-xs"
+                title="Reopen (re-creates it on Google Tasks if connected)"
+              >↺</button>
             )}
             <button
               onClick={e => { e.stopPropagation(); remove.mutate(task.id) }}
