@@ -20,6 +20,15 @@ interface LocalTaskList { id: string; google_id: string }
 // since the per-list error never clears on its own). Returns the confirmed
 // current rows so callers build their target set from THIS fetch, not a
 // second DB query that could race with the delete below.
+//
+// Before dropping a stale list's row, every task that belonged to it is
+// DETACHED (google_task_id/google_tasklist_id/google_sync_enabled all
+// cleared together — migration 074). ON DELETE SET NULL alone would only
+// clear google_tasklist_id and leave a real google_task_id behind — a task
+// has no identity independent of its list in this API (every endpoint
+// addresses one via /lists/{tasklist}/tasks/{task}), so that combination is
+// actively broken: the next edit would PATCH /lists/@default/tasks/<id> for
+// an id that never existed in @default, and Google 404s every time.
 export async function syncGoogleTaskLists(token: string): Promise<LocalTaskList[]> {
   const { data: userData } = await supabase.auth.getUser()
   const userId = userData.user?.id
@@ -47,9 +56,13 @@ export async function syncGoogleTaskLists(token: string): Promise<LocalTaskList[
   const { data: existing } = await supabase.from('google_task_lists').select('id, google_id').eq('user_id', userId)
   const currentGoogleIds = new Set(lists.map(l => l.id))
   const staleIds = (existing ?? []).filter(row => !currentGoogleIds.has(row.google_id)).map(row => row.id)
+  for (const staleId of staleIds) {
+    const { error: detachError } = await supabase.rpc('detach_tasks_from_deleted_google_list', {
+      p_google_tasklist_id: staleId,
+    })
+    if (detachError) throw detachError
+  }
   if (staleIds.length) {
-    // ON DELETE SET NULL (migration 071) — tasks that belonged to a deleted
-    // list fall back to the default list rather than being orphaned.
     await supabase.from('google_task_lists').delete().in('id', staleIds)
   }
 

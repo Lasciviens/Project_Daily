@@ -266,6 +266,15 @@ async function drainOutbox(token: string, userId: string): Promise<{ drained: nu
 // (see below), one deleted list would freeze it PERMANENTLY. Returns the
 // confirmed current rows so pullTasks builds its target set from THIS
 // fetch, never a second query that could race with the delete below.
+//
+// Before dropping a stale list's row, every task that belonged to it is
+// DETACHED (google_task_id/google_tasklist_id/google_sync_enabled all
+// cleared together — migration 074). A Task has no identity independent of
+// its list in this API (every endpoint addresses one via
+// /lists/{tasklist}/tasks/{task}), so ON DELETE SET NULL alone (clearing
+// only google_tasklist_id) would leave a real google_task_id pointing at a
+// task that only ever existed inside the now-deleted list — the next PATCH
+// against '@default' (resolveGoogleListId's fallback) 404s every time.
 async function syncGoogleTaskLists(token: string, userId: string): Promise<{ id: string; google_id: string }[]> {
   const [lists, defaultList] = await Promise.all([fetchGoogleTaskLists(token), fetchDefaultGoogleTaskList(token)])
 
@@ -281,9 +290,13 @@ async function syncGoogleTaskLists(token: string, userId: string): Promise<{ id:
   const { data: existing } = await supabase.from('google_task_lists').select('id, google_id').eq('user_id', userId)
   const currentGoogleIds = new Set(lists.map((l: AnyRecord) => l.id))
   const staleIds = (existing ?? []).filter((row: AnyRecord) => !currentGoogleIds.has(row.google_id)).map((row: AnyRecord) => row.id)
+  for (const staleId of staleIds) {
+    const { error: detachError } = await supabase.rpc('detach_tasks_from_deleted_google_list', {
+      p_google_tasklist_id: staleId, p_user_id: userId,
+    })
+    if (detachError) throw detachError
+  }
   if (staleIds.length) {
-    // ON DELETE SET NULL (migration 071) — tasks that belonged to a deleted
-    // list fall back to the default list rather than being orphaned.
     await supabase.from('google_task_lists').delete().in('id', staleIds)
   }
 
