@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { isToday, isTomorrow, isPast } from 'date-fns'
 import type { Task } from '../types'
-import { useToggleTask, useDeleteTask, useUpdateTask } from '../hooks/useTodos'
+import { useToggleTask, useDeleteTask, useUpdateTask, useTaskById, useSubtasks } from '../hooks/useTodos'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
 import { PRIORITY_DOT_CLASS as PRIORITY_DOT } from '../../../shared/utils/priorityColors'
 import { isOverdue, dueLabel } from '../taskRules'
 import { windowRangeLabel } from '../../../shared/components/windowChips'
 import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
+import { SetParentTaskSheet } from './SetParentTaskSheet'
 
 function dueDateCls(dateStr: string, isDone: boolean): string {
   if (isDone) return 'bg-ink-100 text-ink-400'
@@ -30,6 +31,8 @@ interface Props {
 export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }: Props) {
   const [hovered, setHovered] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [pickingParent, setPickingParent] = useState(false)
+  const [subtasksOpen, setSubtasksOpen] = useState(false)
   const toggle = useToggleTask()
   const remove = useDeleteTask()
   const update = useUpdateTask()
@@ -39,6 +42,13 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
   // already has hover-revealed action buttons including delete, so the
   // swipe gesture would just be redundant clutter there.
   const swipe = useSwipeToReveal()
+
+  const { data: parentTask } = useTaskById(task.parent_task_id)
+  // Always fetched (cheap, indexed by parent_task_id) rather than gated on
+  // subtasksOpen — the count badge needs a number even before the row is
+  // ever expanded, and react-query dedupes this against the same key the
+  // expanded view reads, so expanding costs no extra request.
+  const { data: subtasks = [] } = useSubtasks(task.id)
 
   return (
     <>
@@ -137,6 +147,20 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
           {task.description && (
             <p className="text-[11px] text-ink-500 line-clamp-1 w-full mt-0.5 ml-3">{task.description}</p>
           )}
+          {parentTask && (
+            <p className="text-[11px] text-ink-400 mt-0.5 ml-3 truncate">
+              ↳ Subtask of <span className="text-ink-500">{parentTask.title}</span>
+            </p>
+          )}
+          {subtasks.length > 0 && (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setSubtasksOpen(o => !o) }}
+              className="text-[11px] font-medium text-accent-600 hover:text-accent-700 mt-1 ml-3"
+            >
+              {subtasksOpen ? '▾' : '▸'} {subtasks.length} subtask{subtasks.length === 1 ? '' : 's'}
+            </button>
+          )}
         </div>
 
         {/* Mobile: ONE 44px ⋯ menu instead of up to five side-by-side icon
@@ -182,6 +206,22 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
                 >↓ Move down</button>
               </MenuItem>
             )}
+            <MenuItem>
+              <button
+                onClick={() => setPickingParent(true)}
+                className="w-full text-left px-3 min-h-[44px] text-sm text-ink-700 data-[focus]:bg-ink-100"
+              >↳ Set parent…</button>
+            </MenuItem>
+            {task.google_web_view_link && (
+              <MenuItem>
+                <a
+                  href={task.google_web_view_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full block text-left px-3 min-h-[44px] leading-[44px] text-sm text-ink-700 data-[focus]:bg-ink-100"
+                >Open in Google Tasks ↗</a>
+              </MenuItem>
+            )}
             {!isCancelled && (
               <MenuItem>
                 <button
@@ -224,6 +264,21 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
               className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
               title="Edit"
             >✎</button>
+            <button
+              onClick={e => { e.stopPropagation(); setPickingParent(true) }}
+              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-xs"
+              title="Set parent task"
+            >↳</button>
+            {task.google_web_view_link && (
+              <a
+                href={task.google_web_view_link}
+                target="_blank"
+                rel="noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[10px]"
+                title="Open in Google Tasks"
+              >↗</a>
+            )}
             {!isCancelled && (
               <button
                 onClick={e => { e.stopPropagation(); update.mutate({ id: task.id, patch: { status: 'cancelled' } }) }}
@@ -243,11 +298,27 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
         </div>
       </div>
 
+      {/* Google's own subtask depth cap (a subtask can't itself be a parent —
+          verified against the Tasks API v1 discovery doc) means this never
+          recurses more than one level, so plain reuse of ToDoItem is safe. */}
+      {subtasksOpen && subtasks.length > 0 && (
+        <div className="ml-6 mt-1 flex flex-col gap-1 border-l border-ink-100 pl-2">
+          {subtasks.map(st => <ToDoItem key={st.id} task={st} />)}
+        </div>
+      )}
+
       <UnifiedPlanModal
         open={editing}
         onClose={() => setEditing(false)}
         config={{ tabs: ['task', 'schedule'], heading: 'Edit Task' }}
         task={task}
+      />
+
+      <SetParentTaskSheet
+        open={pickingParent}
+        onClose={() => setPickingParent(false)}
+        task={task}
+        hasSubtasks={subtasks.length > 0}
       />
     </>
   )
