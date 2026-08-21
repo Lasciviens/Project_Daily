@@ -14,23 +14,12 @@ import {
   deleteTask,
   swapTaskOrder,
 } from '../api/tasksApi'
-import {
-  fetchGoogleTasks,
-  googleDueToLocalDate,
-  getSupabaseIdByGoogleTaskId,
-  createGoogleTask,
-  updateGoogleTask,
-  completeGoogleTask,
-  reopenGoogleTask,
-  deleteGoogleTask,
-  saveGoogleTaskMapping,
-  getGoogleTaskId,
-  removeGoogleTaskMapping,
-} from '../api/googleTasksApi'
+import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
+import { pullGoogleTasks } from '../api/googleTasksSync'
 import { useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import type { CreateTaskInput, UpdateTaskInput } from '../types'
+import type { CreateTaskInput, UpdateTaskInput, Task } from '../types'
 
 // Aggregated overview of every active task (+ recently done) — the Daily "Tasks"
 // tab groups these into Overdue / Today / Upcoming / No date / Done.
@@ -85,6 +74,23 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
   })
 }
 
+// Best-effort: drain whatever migration 071's DB triggers just enqueued so a
+// create/edit/toggle/delete still feels instant when Google is reachable.
+// The outbox (populated atomically with the tasks write, not by this call)
+// is the actual safety net — a failure here just means "will retry later",
+// never a lost operation.
+async function drainBestEffort(token: string | null, context: Record<string, unknown>): Promise<string | null> {
+  if (!token) return null
+  try {
+    const { failed } = await drainGoogleTasksOutbox(token)
+    return failed > 0 ? `${failed} Google Tasks sync operation(s) failed — will retry` : null
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logError(`Google Tasks outbox drain failed: ${message}`, context)
+    return message
+  }
+}
+
 export function useCreateTask() {
   const qc = useQueryClient()
   return useMutation({
@@ -94,23 +100,14 @@ export function useCreateTask() {
     // Google Task, once as the event — the "task duplicate" bug. The calendar
     // event is the canonical two-way-linked record (time_blocks
     // .google_calendar_event_id + migrations 038/043), so the Google Task copy
-    // is suppressed in that case.
+    // is suppressed in that case via google_sync_enabled: false.
     mutationFn: async ({ skipGoogleTasks, ...input }: CreateTaskInput & { skipGoogleTasks?: boolean }) => {
-      const task = await createTask(input)
-      // Sync to Google Tasks — soft failure (never blocks the Supabase write)
       const token = useCalendarStore.getState().accessToken
-      let googleTaskError: string | null = null
-      if (token && !skipGoogleTasks) {
-        try {
-          const googleTaskId = await createGoogleTask(token, task)
-          // Persist to Supabase (cross-device) and localStorage (fallback)
-          await updateTask(task.id, { google_task_id: googleTaskId })
-          saveGoogleTaskMapping(task.id, googleTaskId)
-        } catch (err) {
-          googleTaskError = err instanceof Error ? err.message : 'Google Tasks sync failed'
-          logError(`Google Tasks create failed: ${googleTaskError}`, { taskId: task.id })
-        }
-      }
+      const googleSyncEnabled = !!token && !skipGoogleTasks
+      const task = await createTask({ ...input, google_sync_enabled: googleSyncEnabled })
+      // The INSERT's own trigger already enqueued the outbox row atomically —
+      // this just delivers it promptly instead of waiting for the next drain.
+      const googleTaskError = googleSyncEnabled ? await drainBestEffort(token, { taskId: task.id }) : null
       return { task, googleTaskError }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
@@ -122,19 +119,13 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: UpdateTaskInput }) => {
       const task = await updateTask(id, patch)
-      // Real gap fixed 20/08/2026: only create/toggle-done/delete used to sync
-      // to Google Tasks — a plain edit (reschedule the due date, fix a typo,
-      // add notes) never did, so the Google-side copy went stale immediately.
-      // Only bother Google when a synced field actually changed; skip a
-      // priority/section-only edit that Google Tasks has no field for anyway.
-      const syncedFieldChanged = patch.title !== undefined || patch.description !== undefined || patch.due_date !== undefined
-      if (syncedFieldChanged && task.google_task_id) {
-        const token = useCalendarStore.getState().accessToken
-        if (token) {
-          try { await updateGoogleTask(token, task.google_task_id, task) }
-          catch (err) { logError(`Google Tasks update failed: ${err instanceof Error ? err.message : String(err)}`, { taskId: id }) }
-        }
-      }
+      // Whether this edit actually touched a Google-synced field (and
+      // whether it crossed a status bucket boundary, e.g. done vs in_progress
+      // vs waiting) is decided by migration 071's DB trigger, not here — it
+      // has the OLD/NEW row and the single source of truth for that
+      // condition. This call only delivers whatever got enqueued.
+      const token = useCalendarStore.getState().accessToken
+      if (token) await drainBestEffort(token, { taskId: id })
       return task
     },
     onSuccess: () => {
@@ -151,19 +142,8 @@ export function useToggleTask() {
   return useMutation({
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
       const task = await toggleTaskDone(id, isDone)
-      // Prefer google_task_id from Supabase (cross-device), fall back to localStorage
-      const googleTaskId = task.google_task_id ?? getGoogleTaskId(id)
-      if (googleTaskId) {
-        const token = useCalendarStore.getState().accessToken
-        if (token) {
-          try {
-            if (isDone) await completeGoogleTask(token, googleTaskId)
-            else        await reopenGoogleTask(token, googleTaskId)
-          } catch (err) {
-            logError(`Google Tasks toggle failed: ${err instanceof Error ? err.message : String(err)}`, { taskId: id })
-          }
-        }
-      }
+      const token = useCalendarStore.getState().accessToken
+      if (token) await drainBestEffort(token, { taskId: id })
       return task
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
@@ -183,21 +163,14 @@ export function useSwapTaskOrder() {
 export function useDeleteTask() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (taskOrId: string | import('../types').Task) => {
+    mutationFn: async (taskOrId: string | Task) => {
       const id = typeof taskOrId === 'string' ? taskOrId : taskOrId.id
-      // Prefer google_task_id from passed task object, then localStorage fallback
-      const googleTaskId = (typeof taskOrId === 'object' ? taskOrId.google_task_id : null)
-        ?? getGoogleTaskId(id)
-      if (googleTaskId) {
-        const token = useCalendarStore.getState().accessToken
-        if (token) {
-          try { await deleteGoogleTask(token, googleTaskId) } catch (err) {
-            logError(`Google Tasks delete failed: ${err instanceof Error ? err.message : String(err)}`, { taskId: id })
-          }
-        }
-        removeGoogleTaskMapping(id)
-      }
-      return deleteTask(id)
+      // A hard delete's outbox 'delete' row (if the task was google_sync_enabled)
+      // is enqueued atomically by the trigger BEFORE the row is gone — no
+      // client-side lookup of google_task_id needed here any more.
+      await deleteTask(id)
+      const token = useCalendarStore.getState().accessToken
+      if (token) await drainBestEffort(token, { taskId: id })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
@@ -214,11 +187,11 @@ export function useWorkTasks() {
   })
 }
 
-// Pull tasks from Google Tasks → import new ones to inbox. Was defined but
-// unreachable from any UI (CLAUDE.md's "known side effect" of the old To-Do
-// drawer's removal) — wired up 20/08/2026 via GoogleTasksSyncButtons. Also
-// fixed a real drop here: `rt.notes` (a task's notes/detail written in the
-// Google Tasks app) was fetched but never carried into the imported row.
+// Full pull from Google Tasks (every list, real pagination, tombstones
+// included) — reconciles local against Google's true state rather than
+// only ever importing genuinely-new tasks. Was unreachable from any UI
+// before 20/08/2026 (CLAUDE.md's "known side effect" of the old To-Do
+// drawer's removal); wired up via GoogleTasksSyncButtons.
 export function useSyncFromGoogleTasks() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
@@ -226,61 +199,42 @@ export function useSyncFromGoogleTasks() {
     mutationFn: async () => {
       const token = useCalendarStore.getState().accessToken
       if (!token) throw new Error('Google account not connected')
-      const remoteTasks = await fetchGoogleTasks(token)
-      let imported = 0
-      for (const rt of remoteTasks) {
-        if (getSupabaseIdByGoogleTaskId(rt.id)) continue
-        const newTask = await createTask({
-          title:       rt.title,
-          description: rt.notes ?? null,
-          section:     'inbox',
-          priority:    'medium',
-          domain:      'personal',
-          due_date:    rt.due ? googleDueToLocalDate(rt.due) : undefined,
-        })
-        saveGoogleTaskMapping(newTask.id, rt.id)
-        // Persist to Supabase for cross-device sync
-        try { await updateTask(newTask.id, { google_task_id: rt.id }) } catch { /* non-fatal */ }
-        imported++
-      }
+      const { imported } = await pullGoogleTasks(token)
       return imported
     },
-    successMessage: (imported: number) => imported > 0 ? `Imported ${imported} task${imported === 1 ? '' : 's'} from Google ✓` : 'No new tasks in Google Tasks',
+    successMessage: (count: number) =>
+      count > 0 ? `Synced ${count} task${count === 1 ? '' : 's'} from Google ✓` : 'Google Tasks already up to date',
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }
 
-// Push local tasks not yet in Google Tasks → create them there. Same
-// unreachable-until-20/08/2026 story as the pull direction above. This is a
-// "catch up" action for tasks created before Google was connected, or whose
-// create-time sync silently failed (useCreateTask never blocks on it) — every
-// NEW task already gets pushed automatically going forward.
+// Catch-up action for tasks created before Google was connected (or whose
+// create-time sync silently failed): flips google_sync_enabled on for those
+// tasks, which migration 071's trigger turns into a fresh outbox 'create'
+// row regardless of google_local_edit_at (flipping the flag isn't itself a
+// content edit), then drains.
 export function usePushToGoogleTasks() {
+  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'push_to_google_tasks',
-    mutationFn: async (tasks: import('../types').Task[]) => {
+    mutationFn: async (tasks: Task[]) => {
       const token = useCalendarStore.getState().accessToken
       if (!token) throw new Error('Google account not connected')
-      let pushed = 0
-      let failed = 0
-      for (const task of tasks) {
-        if (getGoogleTaskId(task.id)) continue
-        if (task.status === 'done' || task.status === 'cancelled') continue
-        try {
-          const googleTaskId = await createGoogleTask(token, task)
-          saveGoogleTaskMapping(task.id, googleTaskId)
-          // Persist to Supabase for cross-device sync
-          try { await updateTask(task.id, { google_task_id: googleTaskId }) } catch { /* non-fatal */ }
-          pushed++
-        } catch {
-          failed++
-        }
+
+      const candidates = tasks.filter(t =>
+        !t.google_sync_enabled && t.status !== 'done' && t.status !== 'cancelled')
+
+      for (const t of candidates) {
+        await updateTask(t.id, { google_sync_enabled: true })
       }
-      return { pushed, failed }
+
+      const { failed } = await drainGoogleTasksOutbox(token)
+      return { pushed: candidates.length - failed, failed }
     },
     successMessage: (r: { pushed: number; failed: number }) =>
       r.pushed === 0 && r.failed === 0 ? 'All tasks already in Google Tasks'
       : r.failed > 0 ? `Pushed ${r.pushed}, ${r.failed} failed ⚠`
       : `Pushed ${r.pushed} task${r.pushed === 1 ? '' : 's'} to Google ✓`,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }

@@ -104,6 +104,12 @@ COMMENT ON COLUMN public.tasks.google_hidden IS
 
 CREATE INDEX tasks_user_parent         ON public.tasks (user_id, parent_task_id);
 CREATE INDEX tasks_user_google_tasklist ON public.tasks (user_id, google_tasklist_id);
+-- Partial unique index (not a plain UNIQUE, since most rows have NULL and
+-- Postgres treats every NULL as distinct anyway — WHERE makes the intent
+-- explicit) — lets upsert_task_from_google() below use a real ON CONFLICT
+-- instead of a manual SELECT-then-branch, and guarantees the "one task =
+-- one Google entry" invariant at the database level, not just in app logic.
+CREATE UNIQUE INDEX tasks_user_google_task_id ON public.tasks (user_id, google_task_id) WHERE google_task_id IS NOT NULL;
 
 -- ── C. google_tasks_outbox ──────────────────────────────────────────────────
 -- A row's mere existence means "pending" — success deletes the row, so no
@@ -241,6 +247,29 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- UPDATE, newly opted in (the "Push" catch-up action turning sync on for a
+  -- task created before Google was connected): needs a fresh create
+  -- regardless of google_local_edit_at — flipping google_sync_enabled isn't
+  -- itself a content edit, so the BEFORE trigger never bumped that clock.
+  IF NEW.google_sync_enabled IS TRUE AND OLD.google_sync_enabled IS NOT TRUE AND NEW.google_task_id IS NULL THEN
+    INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
+    VALUES (NEW.user_id, NEW.id, 'create', jsonb_build_object(
+      'title', NEW.title, 'notes', NEW.description, 'due_date', NEW.due_date,
+      'parent_task_id', NEW.parent_task_id, 'google_tasklist_id', NEW.google_tasklist_id
+    ));
+    RETURN NEW;
+  END IF;
+
+  -- UPDATE, newly opted OUT (e.g. a task that gains a linked Google Calendar
+  -- event and must drop its now-redundant Google Task copy — "one task = ONE
+  -- Google entry"): remove it from Google. Independent of google_local_edit_at
+  -- for the same reason as the opt-in branch above.
+  IF NEW.google_sync_enabled IS NOT TRUE AND OLD.google_sync_enabled IS TRUE AND OLD.google_task_id IS NOT NULL THEN
+    INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
+    VALUES (NEW.user_id, NEW.id, 'delete', jsonb_build_object('google_task_id', OLD.google_task_id));
+    RETURN NEW;
+  END IF;
+
   -- UPDATE: trg_stamp_google_local_edit already decided whether a
   -- Google-visible field changed (bucket-aware for status) — reuse that
   -- instead of re-checking the same condition here.
@@ -312,7 +341,13 @@ CREATE OR REPLACE FUNCTION public.apply_google_task_snapshot(
   p_google_links       JSONB       DEFAULT NULL,
   p_google_hidden      BOOLEAN     DEFAULT NULL,
   p_google_deleted     BOOLEAN     DEFAULT NULL,
-  p_content            JSONB       DEFAULT NULL  -- {title, notes, due_date, status, completed_at, parent_task_id}
+  p_content            JSONB       DEFAULT NULL, -- {title, notes, due_date, status, completed_at, parent_task_id}
+  -- COALESCE(p_google_task_id, google_task_id) means passing NULL normally
+  -- means "leave it alone" — but the drain's post-delete cleanup needs to
+  -- actually NULL it out (the Google-side id is dead, no undelete exists).
+  -- This flag is the explicit "really clear it" escape hatch for that one
+  -- caller; every other caller leaves it false and gets the COALESCE.
+  p_clear_google_task_id BOOLEAN   DEFAULT false
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -330,7 +365,8 @@ BEGIN
   ) INTO v_has_pending;
 
   UPDATE public.tasks SET
-    google_task_id       = COALESCE(p_google_task_id, google_task_id),
+    google_task_id       = CASE WHEN p_clear_google_task_id THEN NULL
+                                 ELSE COALESCE(p_google_task_id, google_task_id) END,
     google_updated_at    = p_google_updated_at,
     google_etag          = COALESCE(p_google_etag, google_etag),
     google_position      = COALESCE(p_google_position, google_position),
@@ -360,5 +396,118 @@ BEGIN
     parent_task_id = CASE WHEN NOT v_has_pending AND p_content IS NOT NULL AND p_content ? 'parent_task_id'
                         THEN (p_content ->> 'parent_task_id')::uuid ELSE parent_task_id END
   WHERE id = p_task_id AND user_id = (SELECT auth.uid());
+END;
+$$;
+
+-- ── H. upsert_task_from_google — the pull-side counterpart to apply_google_
+-- task_snapshot. Used when importing tasks that exist on Google but have no
+-- local row yet (or reconciling a full sync). Relies on the partial unique
+-- index above for a real ON CONFLICT instead of a racy SELECT-then-branch.
+-- parent_task_id is resolved by the CALLER (two-pass google_id→local uuid
+-- mapping is application logic, not SQL — see googleTasksSync.ts) and passed
+-- pre-resolved, exactly like apply_google_task_snapshot.
+CREATE OR REPLACE FUNCTION public.upsert_task_from_google(
+  p_google_task_id       TEXT,
+  p_title                TEXT,
+  p_notes                TEXT,
+  p_due_date             DATE,
+  p_status               TEXT,
+  p_google_updated_at    TIMESTAMPTZ,
+  p_google_tasklist_id   UUID        DEFAULT NULL,
+  p_parent_task_id       UUID        DEFAULT NULL,
+  p_completed_at         TIMESTAMPTZ DEFAULT NULL,
+  p_google_etag          TEXT        DEFAULT NULL,
+  p_google_position      TEXT        DEFAULT NULL,
+  p_google_web_view_link TEXT        DEFAULT NULL,
+  p_google_hidden        BOOLEAN     DEFAULT false,
+  p_google_deleted       BOOLEAN     DEFAULT false
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_id UUID := (SELECT auth.uid());
+  v_id      UUID;
+  v_has_pending BOOLEAN;
+BEGIN
+  PERFORM set_config('app.google_sync_write', 'true', true);
+
+  SELECT id INTO v_id FROM public.tasks
+   WHERE user_id = v_user_id AND google_task_id = p_google_task_id;
+
+  IF v_id IS NOT NULL THEN
+    SELECT EXISTS (SELECT 1 FROM public.google_tasks_outbox WHERE task_id = v_id)
+      INTO v_has_pending;
+
+    UPDATE public.tasks SET
+      title              = CASE WHEN NOT v_has_pending THEN p_title ELSE title END,
+      description        = CASE WHEN NOT v_has_pending THEN p_notes ELSE description END,
+      due_date           = CASE WHEN NOT v_has_pending THEN p_due_date ELSE due_date END,
+      status             = CASE
+                              WHEN p_google_deleted AND status <> 'cancelled' THEN 'cancelled'
+                              WHEN NOT v_has_pending THEN
+                                CASE WHEN p_status = 'completed' THEN 'done' ELSE
+                                  CASE WHEN status = 'done' THEN 'open' ELSE status END
+                                END
+                              ELSE status
+                            END,
+      completed_at       = CASE WHEN NOT v_has_pending THEN p_completed_at ELSE completed_at END,
+      parent_task_id     = CASE WHEN NOT v_has_pending THEN p_parent_task_id ELSE parent_task_id END,
+      google_tasklist_id = COALESCE(p_google_tasklist_id, google_tasklist_id),
+      google_updated_at  = p_google_updated_at,
+      google_etag        = COALESCE(p_google_etag, google_etag),
+      google_position    = COALESCE(p_google_position, google_position),
+      google_web_view_link = COALESCE(p_google_web_view_link, google_web_view_link),
+      google_hidden      = p_google_hidden,
+      google_deleted     = p_google_deleted,
+      google_sync_enabled = true
+    WHERE id = v_id;
+
+    RETURN v_id;
+  END IF;
+
+  -- Genuinely new to us — a task created directly in the Google Tasks app.
+  -- A deleted/hidden task we've never seen locally needs no local row at all.
+  IF p_google_deleted OR p_google_hidden THEN
+    RETURN NULL;
+  END IF;
+
+  INSERT INTO public.tasks (
+    user_id, title, description, domain, section, priority, status,
+    due_date, source_type, parent_task_id, google_task_id, google_tasklist_id,
+    google_updated_at, google_etag, google_position, google_web_view_link,
+    google_hidden, google_deleted, google_sync_enabled, completed_at, sort_order
+  ) VALUES (
+    v_user_id, p_title, p_notes, 'personal', 'inbox', 'medium',
+    CASE WHEN p_status = 'completed' THEN 'done' ELSE 'open' END,
+    p_due_date, 'manual', p_parent_task_id, p_google_task_id, p_google_tasklist_id,
+    p_google_updated_at, p_google_etag, p_google_position, p_google_web_view_link,
+    p_google_hidden, p_google_deleted, true, p_completed_at, 0
+  )
+  RETURNING id INTO v_id;
+
+  RETURN v_id;
+END;
+$$;
+
+-- ── I. set_task_parent_from_google — pass 2 of the pull's two-pass parent
+-- resolution (pass 1 upserts every task without parent_task_id since a
+-- sibling referenced by `parent` may not have a local row yet within the
+-- same batch; pass 2 sets it once every row in the batch has one). A plain
+-- client-side UPDATE would work data-wise but would incorrectly look like a
+-- local edit to the enqueue trigger and queue a pointless move() back to
+-- Google for a value Google already has.
+CREATE OR REPLACE FUNCTION public.set_task_parent_from_google(p_task_id UUID, p_parent_task_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM set_config('app.google_sync_write', 'true', true);
+  UPDATE public.tasks SET parent_task_id = p_parent_task_id
+   WHERE id = p_task_id AND user_id = (SELECT auth.uid());
 END;
 $$;
