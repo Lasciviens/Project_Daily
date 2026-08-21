@@ -6,6 +6,7 @@
 
 import { FieldLabel, PillGroup, Time24Field } from './fields'
 import { TaskWindowField } from './TaskWindowField'
+import { GoogleListField } from './GoogleListField'
 import { DateInput } from '../DateInput'
 import { isTaskFieldHidden, isTaskFieldLocked, shiftTime, nextPlanTime } from './planModal.config'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
@@ -109,6 +110,16 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
           <FieldLabel>Domain</FieldLabel>
           <PillGroup options={DOMAINS} value={form.domain} onChange={v => patch({ domain: v })} locked={locked('domain')} />
         </div>
+      )}
+
+      {/* Google connection required — this field is meaningless without one,
+          same gating as the gcal checkbox further down. */}
+      {!hidden('googleList') && gcalAvailable && (
+        <GoogleListField
+          value={form.googleListTitle}
+          onChange={v => patch({ googleListTitle: v })}
+          locked={locked('googleList')}
+        />
       )}
 
       {(!hidden('dueDate') || !hidden('dueTime')) && (

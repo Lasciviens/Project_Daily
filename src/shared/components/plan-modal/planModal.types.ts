@@ -34,6 +34,8 @@ export type TaskField =
   | 'dueDate'
   | 'dueTime'
   | 'gcal'
+  /** Free-text Google Task list picker/creator (writes google_tasklist_id). */
+  | 'googleList'
 
 export type RecurrenceMode = 'none' | 'daily' | 'weekdays' | 'weekly'
 

@@ -7,6 +7,7 @@
 import type { TimeBlock, TimeBlockCategory } from '../../../features/daily/types'
 import type { Task, TaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
 import { todayStr, nextPlanTime, DURATION_PRESETS, WEEKDAYS } from './planModal.config'
+import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import type { PlanDefaults, RecurrenceMode } from './planModal.types'
 
 export interface PlanForm {
@@ -32,6 +33,10 @@ export interface PlanForm {
   startDate: string
   dueDate: string
   dueTime: string
+  /** Free-text Google Task list name — resolved (and auto-created on Google
+   *  if it doesn't already exist, matched case-insensitively) at save time.
+   *  Not a fixed picker over `domain`: the user can type anything. */
+  googleListTitle: string
 
   // Shared
   gcal: boolean
@@ -68,6 +73,10 @@ export function buildInitialForm(defaults?: PlanDefaults, task?: Task, timeBlock
     startDate:      task?.start_date ?? defaults?.startDate ?? '',
     dueDate:        task?.due_date ?? defaults?.dueDate ?? '',
     dueTime:        task?.due_time ? task.due_time.slice(0, 5) : (defaults?.dueTime ?? ''),
+    // Domain-derived guess for a NEW task (e.g. "Personal") — corrected to the
+    // task's REAL current list title by a UnifiedPlanModal effect once
+    // useGoogleTaskLists loads, since that lookup can't happen synchronously here.
+    googleListTitle: DOMAIN_LABEL[task?.domain ?? defaults?.domain ?? 'personal'],
 
     gcal:           defaults?.gcal ?? false,
   }
