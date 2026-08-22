@@ -30,6 +30,7 @@ const {
 } = require('../src/shared/components/plan-modal/planModal.config')
 const { buildInitialForm } = require('../src/shared/components/plan-modal/planForm')
 const { shouldSkipPendingCreate } = require('../src/features/todo/api/googleTasksOutboxRules')
+const { classifyCalendarPushFailure } = require('../src/features/daily/api/scheduleSyncRules')
 
 let passed = 0
 let failed = 0
@@ -229,6 +230,30 @@ console.log('\n== 10. needsGoogleTasksFallback — the CREATE-side mirror of nee
     needsGoogleTasksFallback(false, false) === false)
   check('never skipped, calendar happened to link anyway -> still no-op',
     needsGoogleTasksFallback(false, true) === false)
+}
+
+console.log('\n== 11. classifyCalendarPushFailure — confirmed-gone vs merely-unconfirmed ==')
+{
+  // The real bug: updateTimeBlock used to swallow EVERY push failure the
+  // same way (log + do nothing), so a caller checking the block's own
+  // google_calendar_event_id column right after a 404 still saw "confirmed
+  // linked" — editing a calendar-linked task then dedupe-deleted its real
+  // Google Task (needsGoogleTaskDedupe), leaving NEITHER Google
+  // representation. Only a CONFIRMED 404 may report 'not_linked'.
+  check('a 404-shaped message -> confirmed not_linked (safe to clear + recreate)',
+    classifyCalendarPushFailure('Calendar API 404') === 'not_linked')
+  check('a Google API error embedding "404" in its own text -> not_linked',
+    classifyCalendarPushFailure('Not Found (404): event has been deleted') === 'not_linked')
+  // Everything else must be 'unknown', NEVER 'not_linked' — the whole point
+  // being that an unconfirmed failure must never be treated as proof the
+  // link is gone (which is what would let a caller safely delete the
+  // task's Google Task on a mere network hiccup).
+  check('a 500 -> unknown, NOT not_linked', classifyCalendarPushFailure('Calendar API 500') === 'unknown')
+  check('a 429 rate limit -> unknown, NOT not_linked', classifyCalendarPushFailure('Calendar API 429') === 'unknown')
+  check('a network failure -> unknown, NOT not_linked',
+    classifyCalendarPushFailure('NetworkError when attempting to fetch resource.') === 'unknown')
+  check('an expired-token style message -> unknown, NOT not_linked',
+    classifyCalendarPushFailure('invalid_grant: Token has been expired or revoked.') === 'unknown')
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

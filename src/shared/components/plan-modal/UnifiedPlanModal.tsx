@@ -21,6 +21,25 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-08-22 · v12 · Fourth post-review pass (one correctness fix):
+//                    updateTimeBlock's remote calendar-event PATCH swallowed
+//                    ALL failures (including 404 — the remote event deleted
+//                    directly in Google Calendar), so a caller checking the
+//                    block's OWN google_calendar_event_id column right after
+//                    still saw "confirmed linked" — a live scenario where
+//                    editing a calendar-linked task would then dedupe-delete
+//                    its Google Task (needsGoogleTaskDedupe), leaving NEITHER
+//                    Google representation. updateTimeBlock now returns a
+//                    real calendarStatus ('linked'/'not_linked'/'unknown'):
+//                    a confirmed 404 clears the stale local id and reports
+//                    'not_linked' (safe to recreate); any OTHER failure
+//                    (network, rate limit, …) reports 'unknown' WITHOUT
+//                    touching the local id — the event is presumably still
+//                    fine, we just couldn't confirm it, and this must never
+//                    be the reason a task's Google Task gets deleted.
+//                    syncTaskSchedule and saveSchedule's timeBlock branch
+//                    both now trust this call's own confirmed outcome
+//                    instead of the pre-call block snapshot.
 //  2026-08-22 · v11 · Third post-review pass (correctness fixes only):
 //                    (a) shouldSkipPendingCreate's opt-out guard (google_
 //                    sync_enabled=false) is now ABSOLUTE — force_recreate
@@ -390,18 +409,33 @@ export function UnifiedPlanModal({
     const startTimeVal = `${form.startTime}:00`
 
     if (existingBlock) {
-      await updateTimeBlock(existingBlock.id, {
+      // The real bug this closes: this call's OWN remote push can discover
+      // (404) that the existing block's calendar event is gone — trust
+      // ITS confirmed outcome, not the pre-call `existingBlock` snapshot,
+      // when deciding what's actually linked right now.
+      const syncResult = await updateTimeBlock(existingBlock.id, {
         date: form.date, start_time: startTimeVal, duration_minutes: effDuration,
         title, category: form.category,
       })
-      if (form.gcal && calToken && !existingBlock.google_calendar_event_id) {
+      if (form.gcal && calToken && syncResult.calendarStatus === 'not_linked') {
+        // Never linked, or just confirmed gone (404 — cleared above) —
+        // nothing there right now, safe to (re)create one.
         return await linkCalendarEvent(existingBlock.id, form.date, form.startTime, effDuration, title)
+      }
+      if (form.gcal && calToken && syncResult.calendarStatus === 'unknown') {
+        // The push above failed WITHOUT confirming the event is gone
+        // (network, rate limit, …) — the event is presumably still fine,
+        // but we don't know for sure, and either way this must NEVER be
+        // the reason the task's Google Task gets deleted. Report
+        // "not safely confirmed linked" and take no further action —
+        // never attempt another remote call on an unconfirmed failure.
+        return false
       }
       if (!form.gcal && calToken && existingBlock.google_calendar_event_id) {
         await updateTimeBlock(existingBlock.id, { google_calendar_event_id: null })
         return false
       }
-      return form.gcal && !!existingBlock.google_calendar_event_id
+      return form.gcal && syncResult.calendarStatus === 'linked'
     }
 
     // The originating entity's source_type/source_id (movie/training_session/
@@ -538,14 +572,21 @@ export function UnifiedPlanModal({
         linkedTaskId = created.id
         skippedGoogleTasksForLinkedTask = willBeCalendarEvent
       }
-      await updateTimeBlock(timeBlock.id, {
+      // Same fix as syncTaskSchedule above: trust THIS call's own confirmed
+      // outcome, not the pre-call `timeBlock` snapshot — a 404 discovered
+      // here must not read as "still linked".
+      const syncResult = await updateTimeBlock(timeBlock.id, {
         date: form.date, start_time: startTimeVal, duration_minutes: effDuration,
         title, category: form.category,
         ...(linkedTaskId ? { task_id: linkedTaskId } : {}),
       })
-      let calendarLinked = !!timeBlock.google_calendar_event_id
-      if (form.gcal && calToken && !timeBlock.google_calendar_event_id) {
+      let calendarLinked = syncResult.calendarStatus === 'linked'
+      if (form.gcal && calToken && syncResult.calendarStatus === 'not_linked') {
         calendarLinked = await linkCalendarEvent(timeBlock.id, form.date, form.startTime, effDuration, title)
+      } else if (form.gcal && calToken && syncResult.calendarStatus === 'unknown') {
+        // Unconfirmed failure — never treat as linked, but take no further
+        // action (see updateTimeBlock's own doc comment for why).
+        calendarLinked = false
       } else if (!form.gcal && calToken && timeBlock.google_calendar_event_id) {
         await updateTimeBlock(timeBlock.id, { google_calendar_event_id: null })
         calendarLinked = false

@@ -3,10 +3,14 @@ import { requireUser } from '../../../shared/utils/requireUser'
 import { useCalendarStore } from '../../../app/store'
 import { updateCalendarEvent, deleteCalendarEvent } from '../../calendar/api/calendarApi'
 import { logError } from '../../../shared/utils/logError'
+import { classifyCalendarPushFailure } from './scheduleSyncRules'
 import type {
   ScheduleBlock, TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput,
   CreateScheduleBlockInput, UpdateScheduleBlockInput,
 } from '../types'
+import type { TimeBlockCalendarStatus } from './scheduleSyncRules'
+
+export type { TimeBlockCalendarStatus }
 
 const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -89,6 +93,12 @@ export async function createTimeBlock(input: CreateTimeBlockInput): Promise<Time
   return data
 }
 
+// See scheduleSyncRules.ts's TimeBlockCalendarStatus doc comment for the
+// three-way meaning ('linked'/'not_linked'/'unknown').
+export interface UpdateTimeBlockResult {
+  calendarStatus: TimeBlockCalendarStatus
+}
+
 // Full Google Calendar lifecycle for a one-off block (migration 077's fix —
 // the old version only pushed a remote update when date/start_time changed,
 // silently leaving a renamed or re-durationed block's event stale):
@@ -101,7 +111,18 @@ export async function createTimeBlock(input: CreateTimeBlockInput): Promise<Time
 //     network failure here must NOT silently drop the local linkage (the
 //     remote event would become a permanently untracked orphan with nothing
 //     left pointing at it) — surfaced as a real thrown error instead.
-export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): Promise<void> {
+//
+// Real bug fixed: a caller (UnifiedPlanModal's syncTaskSchedule) used to
+// treat "the block's OWN google_calendar_event_id column is non-null" as
+// proof the calendar link is still good, even right after THIS function
+// silently swallowed a failed push to that exact event. If the remote event
+// had been deleted directly in Google Calendar (a 404 on the push below),
+// the caller would still report "confirmed linked" and go on to delete the
+// task's Google Task (needsGoogleTaskDedupe) — leaving NEITHER Google
+// representation. Returning a real, honest calendarStatus (and clearing
+// the local id specifically on a CONFIRMED 404, never on an unconfirmed
+// failure) is what lets callers make that decision correctly.
+export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): Promise<UpdateTimeBlockResult> {
   const { data: before, error: beforeError } = await supabase
     .from('time_blocks')
     .select('date, start_time, duration_minutes, title, google_calendar_event_id')
@@ -128,20 +149,21 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
     .eq('id', id)
   if (error) throw error
 
-  if (unlinking || !token) return
+  if (unlinking) return { calendarStatus: 'not_linked' }
 
   const eventId = patch.google_calendar_event_id ?? before?.google_calendar_event_id
-  if (!eventId) return
+  if (!eventId) return { calendarStatus: 'not_linked' }
+  if (!token) return { calendarStatus: 'linked' } // can't verify without a token; trust the existing record as before
 
   const relevant = patch.date !== undefined || patch.start_time !== undefined
     || patch.title !== undefined || patch.duration_minutes !== undefined
-  if (!relevant) return
+  if (!relevant) return { calendarStatus: 'linked' } // nothing pushed this call; no new reason to doubt it
 
   const date         = patch.date ?? before!.date
   const startTimeVal = patch.start_time !== undefined ? patch.start_time : before!.start_time
   const title        = patch.title ?? before!.title
   const durationMins = patch.duration_minutes ?? before!.duration_minutes
-  if (!startTimeVal) return // no time set -> nothing coherent to represent as a timed remote event
+  if (!startTimeVal) return { calendarStatus: 'linked' } // no time set -> nothing coherent to push; existing id stands
 
   try {
     const start = new Date(`${date}T${startTimeVal}`)
@@ -151,8 +173,24 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
       start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
       end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
     })
+    return { calendarStatus: 'linked' }
   } catch (err) {
-    logError(`Calendar event update failed: ${(err as Error).message}`, { blockId: id })
+    const msg = (err as Error).message
+    const status = classifyCalendarPushFailure(msg)
+    if (status === 'not_linked') {
+      // Confirmed gone (deleted directly in Google Calendar, outside this
+      // app) — clear the stale local id so this block stops claiming a
+      // link that doesn't exist, and so a future save creates a fresh
+      // event instead of repeatedly failing against a dead one.
+      await supabase.from('time_blocks')
+        .update({ google_calendar_event_id: null, updated_at: new Date().toISOString() })
+        .eq('id', id)
+    } else {
+      // Transient/unknown failure — leave the local id untouched (the
+      // event is presumably still fine).
+      logError(`Calendar event update failed: ${msg}`, { blockId: id })
+    }
+    return { calendarStatus: status }
   }
 }
 
