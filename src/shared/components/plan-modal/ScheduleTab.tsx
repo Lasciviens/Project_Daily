@@ -1,7 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  UnifiedPlanModal — SCHEDULE TAB
-//  Time block (+ optional recurring schedule block, task, GCal). Pure view:
-//  reads `form`, writes via `patch`. Field visibility comes from `config`.
+//  UnifiedPlanModal — SCHEDULE EDITOR (mode='schedule')
+//  A plain one-off time_block with NO linked task — a task-linked block is
+//  always edited via mode='task' instead (see planModal.types.ts's
+//  UnifiedPlanModalProps.timeBlock comment), so "Also add to Tasks" here is
+//  now unambiguous: checking it always means "create one and link it",
+//  never a readout of an existing link. Pure view: reads `form`, writes via
+//  `patch`. Field visibility comes from `config`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -18,14 +22,9 @@ interface Props {
   config?: PlanModalConfig
   gcalAvailable: boolean
   extra?: React.ReactNode
-  /** True when editing an existing block that already has a linked task —
-   *  the checkbox becomes a truthful status readout instead of a live
-   *  toggle, since this save path (updating a plain block in place) doesn't
-   *  create or remove a task either way. */
-  taskAlreadyLinked?: boolean
 }
 
-export function ScheduleTab({ form, patch, config, gcalAvailable, extra, taskAlreadyLinked }: Props) {
+export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props) {
   const hidden = (f: Parameters<typeof isScheduleFieldHidden>[0]) => isScheduleFieldHidden(f, config)
   const locked = (f: Parameters<typeof isScheduleFieldLocked>[0]) => isScheduleFieldLocked(f, config)
 
@@ -86,6 +85,10 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra, taskAlr
         </div>
       )}
 
+      {/* CREATE only — UnifiedPlanModal hides this field via config when
+          editing an existing one-off block. Converting an existing one-off
+          record to recurring (or vice versa) is a real, separate storage-
+          migration UX this refactor deliberately does not build. */}
       {!hidden('recurrence') && (
         <div>
           <FieldLabel>Repeat</FieldLabel>
@@ -103,9 +106,7 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra, taskAlr
         {!hidden('alsoCreateTask') && (
           <CheckboxRow
             checked={form.alsoCreateTask} onChange={v => patch({ alsoCreateTask: v })}
-            label={taskAlreadyLinked ? 'Also added to To-Do ✓' : 'Also add to To-Do'}
-            disabled={taskAlreadyLinked}
-            title={taskAlreadyLinked ? 'A To-Do already exists for this plan' : undefined}
+            label="Also add to Tasks"
           />
         )}
         {!hidden('gcal') && gcalAvailable && (

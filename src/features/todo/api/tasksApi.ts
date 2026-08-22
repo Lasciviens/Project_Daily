@@ -258,24 +258,23 @@ export async function toggleTaskDone(id: string, isDone: boolean): Promise<Task>
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  // Keep the schedule consistent — remove any auto-created blocks linked to this
-  // task, and their Google Calendar events too (best-effort) so nothing is left
-  // orphaned on the calendar.
-  const { data: blocks } = await supabase
+  // Its linked one-off time_block (if any) is removed automatically by the
+  // task_id FK's ON DELETE CASCADE (migration 077) — no explicit time_blocks
+  // delete needed here any more. The Google Calendar event that block might
+  // hold is NOT something the FK can clean up (no OAuth token inside
+  // Postgres), so that best-effort cleanup still happens at this app layer,
+  // reading the linked block via task_id instead of the old
+  // source_type='task'/source_id pair.
+  const { data: block } = await supabase
     .from('time_blocks')
     .select('google_calendar_event_id')
-    .eq('source_type', 'task')
-    .eq('source_id', id)
+    .eq('task_id', id)
+    .maybeSingle()
   const token = useCalendarStore.getState().accessToken
-  if (token && blocks?.length) {
-    for (const b of blocks) {
-      if (b.google_calendar_event_id) {
-        try { await deleteCalendarEvent(token, 'primary', b.google_calendar_event_id) }
-        catch (err) { logError(`Calendar event delete failed: ${(err as Error).message}`, { taskId: id }) }
-      }
-    }
+  if (token && block?.google_calendar_event_id) {
+    try { await deleteCalendarEvent(token, 'primary', block.google_calendar_event_id) }
+    catch (err) { logError(`Calendar event delete failed: ${(err as Error).message}`, { taskId: id }) }
   }
-  await supabase.from('time_blocks').delete().eq('source_type', 'task').eq('source_id', id)
   const { error } = await supabase.from('tasks').delete().eq('id', id)
   if (error) throw error
 }

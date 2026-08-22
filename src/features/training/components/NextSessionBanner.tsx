@@ -23,7 +23,7 @@ function relativeDay(dateStr: string): string {
 /**
  * Compact banner showing the next planned training session — the soonest
  * future `time_blocks` row with category='training'. Hidden when none planned.
- * Always clickable: opens the linked task (source_type='task' blocks) or, for
+ * Always clickable: opens the linked task (blocks with a task_id) or, for
  * a plain time-block-only session, edits that block directly via
  * UnifiedPlanModal's timeBlock prop.
  */
@@ -39,12 +39,12 @@ export function NextSessionBanner() {
     .sort((a, b) => (a.date + (a.start_time ?? '')).localeCompare(b.date + (b.start_time ?? '')))
 
   const next = upcoming[0]
-  const isTaskLinked = next?.source_type === 'task' && !!next.source_id
+  const isTaskLinked = !!next?.task_id
 
   const { data: task } = useQuery({
-    queryKey: ['tasks', 'byId', next?.source_id],
+    queryKey: ['tasks', 'byId', next?.task_id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('tasks').select('*').eq('id', next!.source_id!).single()
+      const { data, error } = await supabase.from('tasks').select('*').eq('id', next!.task_id!).single()
       if (error) throw error
       return data as Task
     },
@@ -78,7 +78,7 @@ export function NextSessionBanner() {
       <UnifiedPlanModal
         open={editOpen && (isTaskLinked ? !!task : true)}
         onClose={() => setEditOpen(false)}
-        config={{ tabs: ['task', 'schedule'], heading: 'Edit Session' }}
+        config={{ heading: 'Edit Session' }}
         task={isTaskLinked ? task : undefined}
         timeBlock={!isTaskLinked ? next : undefined}
       />

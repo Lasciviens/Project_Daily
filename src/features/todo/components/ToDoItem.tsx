@@ -347,7 +347,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
       <UnifiedPlanModal
         open={editing}
         onClose={() => setEditing(false)}
-        config={{ tabs: ['task', 'schedule'], heading: 'Edit Task' }}
+        config={{ heading: 'Edit Task' }}
         task={task}
       />
 

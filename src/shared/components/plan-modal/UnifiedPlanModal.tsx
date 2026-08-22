@@ -6,35 +6,57 @@
 //  │    other modal (see useTopZIndex). Never hardcode a z-class on the Dialog.  │
 //  │ 2. CONFIG-DRIVEN. Callers shape the modal from THEIR file via `config`,      │
 //  │    `defaults`, `source`, `scheduleExtra`/`taskExtra`, `onSaved`. Adding a    │
-//  │    per-tab/per-caller variation should NOT require editing this folder —     │
-//  │    add a field key + a `hide*/lock*` entry instead.                          │
+//  │    per-caller variation should NOT require editing this folder — add a       │
+//  │    field key + a `hide*/lock*` entry instead.                                │
 //  │ 3. SINGLE SOURCE OF TRUTH. All mutable state lives in `form` (planForm.ts).  │
-//  │    Title is shared: Plan title === Task title.                               │
-//  │ 4. PRESENTATION IS SPLIT. Field widgets → fields.tsx; tab layouts →          │
-//  │    ScheduleTab/TaskTab. This file owns state + save side-effects only.       │
-//  │ 5. LOG EVERY LOGIC CHANGE in the CHANGELOG below (date · what · why).        │
+//  │ 4. PRESENTATION IS SPLIT. Field widgets → fields.tsx; entity layouts →       │
+//  │    TaskTab/ScheduleTab/RecurringTab. This file owns state + save            │
+//  │    side-effects only.                                                        │
+//  │ 5. MODE, NOT TABS. `mode` ('task'/'schedule'/'recurring') decides which      │
+//  │    entity is being created/edited — the user never picks a tab. A caller     │
+//  │    editing an existing row never needs to also pass `mode`: `task` implies   │
+//  │    'task', `timeBlock` implies 'schedule', `scheduleBlock` implies           │
+//  │    'recurring'.                                                              │
+//  │ 6. LOG EVERY LOGIC CHANGE in the CHANGELOG below (date · what · why).        │
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
-//  2026-08-21 · v7 · Free-text "Google Task list" field (GoogleListField.tsx,
-//                    Task tab, gated on gcalAvailable). NOT a fixed picker over
-//                    `domain` — that enum (personal/work/media) is coarser than
-//                    the nav categories a user thinks in (Training/Projects
-//                    both collapse to domain='personal' today), so this is a
-//                    genuinely free field: seeded from the domain label as a
-//                    guess, editable per task, autocompletes over existing
-//                    Google Task lists via a native <datalist>, and resolves
-//                    (creating the list on Google if it doesn't already exist,
-//                    matched case-insensitively so a typed name never
-//                    duplicates) at save time via resolveOrCreateGoogleTaskListId
-//                    — BEFORE create, so the very first outbox sync already
-//                    targets the right list. Edit mode corrects the seeded
-//                    guess to the task's REAL current list once
-//                    useGoogleTaskLists loads (can't resolve synchronously in
-//                    buildInitialForm). Scoped to the Task tab's own save path
-//                    only — saveSchedule's "also create task" branch derives
-//                    its task's domain from `category`, a field the user never
-//                    sees this control next to, so it does not also apply here.
+//  2026-08-22 · v8 · Tasks/Schedule model fix (migration 077) — replaces the
+//                    Task/Schedule TAB switcher entirely with explicit `mode`.
+//                    Root causes fixed together:
+//                    (a) time_blocks.source_type/source_id used to do two
+//                    jobs — "linked to a Task" AND "which real entity this
+//                    was planned from" — and creating a task+schedule
+//                    together silently overwrote the real source with
+//                    {source_type:'task', source_id:<task id>}, discarding
+//                    it. time_blocks.task_id is now the ONLY "linked to a
+//                    Task" representation (a real FK, ON DELETE CASCADE);
+//                    source_type/source_id are passed through UNCHANGED
+//                    alongside task_id now, never replaced.
+//                    (b) tasks.due_date/due_time and time_blocks.date/
+//                    start_time were kept bidirectionally equal by DB
+//                    triggers (043/047) — "the deadline" and "when I'll
+//                    actually do it" are different facts and are now fully
+//                    independent; those triggers are dropped, not disabled.
+//                    (c) Deleting/unscheduling a block no longer soft-
+//                    cancels its Task (the old block_delete_cascades_task
+//                    rule, retired) — Task survives, only the time slot
+//                    goes. The one remaining cross-table effect is
+//                    one-directional: Task hard-delete removes its linked
+//                    block (the task_id FK), and a Task title edit mirrors
+//                    onto its linked block's title (a DB trigger, so it
+//                    fires from every write door — browser, AI, Google
+//                    Tasks pull — not just this modal).
+//                    (d) Recurring schedule_blocks gained a real edit path
+//                    (RecurringTab + updateScheduleBlock) — there was no
+//                    update API for them at all before this.
+//                    The Task editor's "Add to schedule" section seeds from
+//                    a task's linked block via a ref-guarded one-time async
+//                    effect (never overwrites a user's own in-progress edit
+//                    — see hydrateLinkedBlock below). Google Calendar's
+//                    create/update/unlink lifecycle now also fires on
+//                    title/duration changes, not just date/time (see
+//                    scheduleApi.ts's updateTimeBlock).
 //  2026-07-31 · v6 · Task windows + two save-path fixes.
 //                    (a) `startDate` joins PlanForm/PlanDefaults/TaskField and is
 //                    written to tasks.start_date on BOTH save paths — a task can
@@ -86,14 +108,16 @@
 //                    (source_type='task') — fixes time_blocks_source_type_check
 //                    violation from passing 'media'. Callers now pass a VALID
 //                    time_blocks source_type for the no-task path.
-// ═════════════════════════════════════════════════════════════════════════════
+//                    [Superseded by v8 — a linked block's table link is task_id
+//                    now, never source_type='task'.]
+// ═══════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast, useCalendarStore } from '../../../app/store'
 import { useCreateTimeBlock, useCreateScheduleBlock } from '../../../features/daily/hooks/useSchedule'
-import { updateTimeBlock, deleteTimeBlock } from '../../../features/daily/api/scheduleApi'
+import { updateTimeBlock, deleteTimeBlock, updateScheduleBlock, deleteScheduleBlock } from '../../../features/daily/api/scheduleApi'
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
@@ -102,12 +126,14 @@ import { logError } from '../../utils/logError'
 import { supabase } from '../../../integrations/supabase/client'
 import { ScheduleTab } from './ScheduleTab'
 import { TaskTab } from './TaskTab'
+import { RecurringTab } from './RecurringTab'
 import { buildInitialForm } from './planForm'
 import {
-  resolveTabs, resolveDefaultTab, daysForRecurrence, endTimeFrom, sectionForDate, LOCAL_TZ,
+  daysForRecurrence, endTimeFrom, sectionForDate, LOCAL_TZ,
 } from './planModal.config'
 import type { PlanForm } from './planForm'
-import type { PlanTab, UnifiedPlanModalProps } from './planModal.types'
+import type { PlanMode, UnifiedPlanModalProps, PlanModalConfig } from './planModal.types'
+import type { TimeBlock } from '../../../features/daily/types'
 
 // ── z-index stacking — newest open modal always wins ──────────────────────────
 let zCursor = 1000
@@ -119,64 +145,81 @@ function useTopZIndex(open: boolean): number {
   return z
 }
 
-const TAB_LABELS: Record<PlanTab, string> = { schedule: 'Schedule', task: 'Task' }
+const MODE_HEADING: Record<PlanMode, { create: string; edit: string }> = {
+  task:      { create: 'New Task',     edit: 'Edit Task' },
+  schedule:  { create: 'Add to schedule', edit: 'Edit schedule' },
+  recurring: { create: 'New repeating schedule', edit: 'Edit repeating schedule' },
+}
 
 export function UnifiedPlanModal({
-  open, onClose, config, defaults, source, task, timeBlock, scheduleExtra, taskExtra, onSaved,
+  open, onClose, mode, config, defaults, source, task, timeBlock, scheduleBlock, scheduleExtra, taskExtra, onSaved,
 }: UnifiedPlanModalProps) {
-  const tabs       = resolveTabs(config)
-  const editMode   = !!task || !!timeBlock
+  // task / timeBlock / scheduleBlock presence always wins over an explicit
+  // `mode` — a caller editing an existing row never needs to think about
+  // mode, and an inconsistent pair (e.g. task set but mode='schedule') would
+  // be a caller bug we'd rather resolve predictably than surface silently.
+  const effectiveMode: PlanMode = task ? 'task' : scheduleBlock ? 'recurring' : timeBlock ? 'schedule' : (mode ?? 'task')
+  const editMode   = !!task || !!timeBlock || !!scheduleBlock
   const zIndex     = useTopZIndex(open)
 
-  const [activeTab, setActiveTab] = useState<PlanTab>(resolveDefaultTab(config, tabs))
-  const [form,      setForm]      = useState<PlanForm>(() => buildInitialForm(defaults, task, timeBlock))
+  const [form,      setForm]      = useState<PlanForm>(() => buildInitialForm(defaults, task, timeBlock, scheduleBlock))
   const [saving,    setSaving]    = useState(false)
-  // Whether the task being edited already has a linked Google Calendar event
-  // (via its time block) — lets the Task tab show a truthful "Added ✓" state
-  // instead of an unchecked toggle, and mirrors ScheduleTab's readout.
-  const [taskCalendarLinked, setTaskCalendarLinked] = useState(false)
+  // The task's linked one-off time_block, if any — fetched once per open via
+  // hydrateLinkedBlock below. null = confirmed no linked block; undefined =
+  // not fetched yet (mode='task', editMode only).
+  const [linkedBlock, setLinkedBlock] = useState<TimeBlock | null | undefined>(undefined)
 
   const qc          = useQueryClient()
   const calToken    = useCalendarStore(s => s.accessToken)
   const createBlock = useCreateTimeBlock()
   const createRecur = useCreateScheduleBlock()
   const createTask  = useCreateTask()
-  const updateTask  = useUpdateTask()
-  const deleteTask  = useDeleteTask()
+  const updateTaskM = useUpdateTask()
+  const deleteTaskM = useDeleteTask()
   const { data: googleTaskLists = [] } = useGoogleTaskLists()
 
   // Re-seed whenever the modal (re)opens or its inputs change.
   useEffect(() => {
     if (!open) return
-    setForm(buildInitialForm(defaults, task, timeBlock))
-    setActiveTab(resolveDefaultTab(config, tabs))
+    setForm(buildInitialForm(defaults, task, timeBlock, scheduleBlock))
+    setLinkedBlock(task ? undefined : null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, task, timeBlock])
+  }, [open, task, timeBlock, scheduleBlock])
 
-  // When editing a task, look up whether its linked block already carries a
-  // Google Calendar event so the Task-tab gcal control reflects reality.
+  // Fetch a Task's linked one-off block, ONCE per open, and correct the
+  // schedule sub-section's seeded guess to reality. Guarded by a ref (not
+  // just `linkedBlock === undefined`, since that's also the value while the
+  // fetch is in flight) so this never re-fires and clobbers an edit the user
+  // made while it was loading — plan requirement: "async fetch yüzünden
+  // kullanıcının editini sonradan overwrite eden useEffect yazma."
+  const hydratedRef = useRef(false)
   useEffect(() => {
-    if (!open || !task) { setTaskCalendarLinked(false); return }
+    if (!open || !task) { hydratedRef.current = false; return }
+    if (hydratedRef.current) return
     let cancelled = false
-    supabase
-      .from('time_blocks').select('google_calendar_event_id')
-      .eq('source_type', 'task').eq('source_id', task.id)
-      .then(({ data }) => {
-        if (cancelled) return
-        const linked = (data ?? []).some(b => !!b.google_calendar_event_id)
-        setTaskCalendarLinked(linked)
-        if (linked) setForm(f => ({ ...f, gcal: true }))
-      })
+    supabase.from('time_blocks').select('*').eq('task_id', task.id).maybeSingle().then(({ data }) => {
+      if (cancelled || hydratedRef.current) return
+      hydratedRef.current = true
+      setLinkedBlock(data ?? null)
+      if (data) {
+        setForm(f => ({
+          ...f,
+          scheduled: true,
+          date: data.date,
+          startTime: data.start_time ? data.start_time.slice(0, 5) : f.startTime,
+          duration: data.duration_minutes,
+          category: data.category,
+          gcal: !!data.google_calendar_event_id,
+        }))
+      }
+    })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, task])
 
-  // buildInitialForm seeds googleListTitle from `domain` synchronously (a
-  // guess) because the task's REAL current list title lives in
-  // google_task_lists, which isn't loaded yet on first render. Once
-  // useGoogleTaskLists resolves, correct it — but only while editing an
-  // existing task that already has a list; a brand-new task keeps the
-  // domain-derived guess as its real starting value.
+  // googleListTitle is seeded from the task's domain (a guess) synchronously
+  // — correct it to the task's REAL current list title once the lists load,
+  // same one-time-hydration shape as the schedule fetch above.
   useEffect(() => {
     if (!open || !task?.google_tasklist_id) return
     const list = googleTaskLists.find(l => l.id === task.google_tasklist_id)
@@ -206,7 +249,6 @@ export function UnifiedPlanModal({
         end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
       })
       await updateTimeBlock(blockId, { google_calendar_event_id: created.id })
-      qc.invalidateQueries({ queryKey: ['calendar'] })
     } catch (err) {
       // Was a hardcoded generic message with the real cause swallowed —
       // surfacing it (expired token, missing write scope, a malformed
@@ -218,168 +260,6 @@ export function UnifiedPlanModal({
     }
   }
 
-  // ── Save: Schedule tab ──────────────────────────────────────────────────────
-  //  Order matters for cross-table consistency: create the task FIRST so the
-  //  time block can link to it (source_type='task'). Only when no task is created does the block link to the
-  //  caller's source entity — whose `sourceType` MUST be a valid time_blocks
-  //  source_type ('movie'|'tv_episode'|'training_session'|'project_item'|…).
-  async function saveSchedule() {
-    const effDuration = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
-
-    // Editing an existing plain time_block (no linked task) — update it in
-    // place instead of creating a new row. No recurrence/task-creation here:
-    // we're editing one specific block, not turning it into a series.
-    if (timeBlock && !task) {
-      await updateTimeBlock(timeBlock.id, {
-        date:             form.date,
-        title:            form.title.trim(),
-        start_time:       `${form.startTime}:00`,
-        duration_minutes: effDuration,
-        category:         form.category,
-      })
-      // updateTimeBlock auto-syncs an existing linked calendar event; if the
-      // block has none yet and the user just turned gcal on, create+link one.
-      if (form.gcal && calToken && !timeBlock.google_calendar_event_id) {
-        await linkCalendarEvent(timeBlock.id, form.date, form.startTime, effDuration, form.title.trim())
-      }
-      qc.invalidateQueries({ queryKey: ['schedule'] })
-      qc.invalidateQueries({ queryKey: ['calendar'] })
-      onSaved?.({ tab: 'schedule', timeBlockCreated: false })
-      return
-    }
-
-    let recurringCreated = false
-    let linkedTaskId: string | undefined
-    let createdBlockId: string | undefined
-
-    if (form.alsoCreateTask) {
-      // Caller can pin the domain/priority; otherwise derive domain from category.
-      const taskDomain = defaults?.domain
-        ?? (form.category === 'work' ? 'work' : form.category === 'media' ? 'media' : 'personal')
-      // A single-occurrence block earns a linked Google Calendar event below, so
-      // suppress the duplicate Google Task in that case (one task ⇄ one event).
-      const willBeCalendarEvent = form.gcal && !!calToken && form.recurrence === 'none'
-      const { task: created, googleTaskError } = await createTask.mutateAsync({
-        title:       form.title.trim(),
-        section:     sectionForDate(form.date),
-        domain:      taskDomain,
-        priority:    defaults?.priority ?? 'medium',
-        due_date:    form.date,
-        source_type: source?.taskSourceType,
-        source_id:   source?.sourceId,
-        skipGoogleTasks: willBeCalendarEvent,
-      })
-      if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
-      linkedTaskId = created.id
-    }
-
-    if (form.recurrence === 'none') {
-      const link = linkedTaskId
-        ? { source_type: 'task', source_id: linkedTaskId }
-        : { source_type: source?.sourceType, source_id: source?.sourceId }
-      // Only present for a single-episode plan (see PlanSource.episodeInfo) —
-      // lets a DB trigger match this exact episode being marked watched back
-      // to this exact block, which plain source_id (show-level only) can't.
-      const episodeFields = source?.episodeInfo
-        ? { season_number: source.episodeInfo.seasonNumber, episode_number: source.episodeInfo.episodeNumber }
-        : {}
-      const block = await createBlock.mutateAsync({
-        date:             form.date,
-        title:            form.title.trim(),
-        start_time:       `${form.startTime}:00`,
-        duration_minutes: effDuration,
-        color:            defaults?.color,
-        category:         form.category,
-        ...link,
-        ...episodeFields,
-      })
-      createdBlockId = block.id
-    } else {
-      await createRecur.mutateAsync({
-        title:        form.title.trim(),
-        days_of_week: daysForRecurrence(form.recurrence, form.weeklyDays),
-        start_time:   `${form.startTime}:00`,
-        end_time:     `${endTimeFrom(form.startTime, effDuration)}:00`,
-        color:        defaults?.color ?? 'blue',
-      })
-      recurringCreated = true
-    }
-
-    if (form.gcal && calToken && form.recurrence === 'none' && createdBlockId) {
-      await linkCalendarEvent(createdBlockId, form.date, form.startTime, effDuration, form.title.trim())
-    }
-
-    onSaved?.({ tab: 'schedule', taskId: linkedTaskId, timeBlockCreated: !recurringCreated, recurringCreated })
-  }
-
-  // ── Save: Task tab ───────────────────────────────────────────────────────────
-  // Keep a task's linked schedule block in sync. A personal task earns a block
-  // ONLY when it has both a due date AND a due time (no more 17:00 pile-ups);
-  // otherwise any existing auto-block is removed. Idempotent: update / create /
-  // delete to converge on the desired state.
-  async function syncTaskBlock(taskId: string, googleTaskId?: string | null) {
-    const title     = form.title.trim()
-    const startTime = form.dueTime ? `${form.dueTime}:00` : null
-    const wantBlock = form.domain === 'personal' && !!form.dueDate && !!startTime
-
-    const { data: existing } = await supabase
-      .from('time_blocks').select('id, google_calendar_event_id')
-      .eq('source_type', 'task').eq('source_id', taskId)
-    const blocks = existing ?? []
-
-    if (wantBlock) {
-      let blockId: string
-      let existingEventId: string | null = null
-      if (blocks.length) {
-        // updateTimeBlock auto-syncs the calendar event when time/date changed.
-        await updateTimeBlock(blocks[0].id, { date: form.dueDate, start_time: startTime!, title })
-        for (const b of blocks.slice(1)) await deleteTimeBlock(b.id)   // drop dupes
-        blockId = blocks[0].id
-        existingEventId = blocks[0].google_calendar_event_id ?? null
-      } else {
-        const block = await createBlock.mutateAsync({
-          date: form.dueDate, title, start_time: startTime!, duration_minutes: 60,
-          color: 'accent', category: 'daily', source_type: 'task', source_id: taskId,
-        })
-        blockId = block.id
-      }
-      // Create a NEW calendar event only when the block doesn't already have one
-      // (linkCalendarEvent is itself idempotent; an existing event was updated above).
-      if (form.gcal && calToken && !existingEventId) {
-        await linkCalendarEvent(blockId, form.dueDate, form.dueTime, 60, title)
-      }
-      // Once the task lives on Google Calendar as a linked EVENT, drop any
-      // separate Google Task for it — otherwise the same task shows twice on
-      // the calendar (Task + event). Flipping google_sync_enabled off is all
-      // this needs now — migration 071's trigger turns that transition into
-      // an outbox 'delete' row (see its "newly opted OUT" branch), and
-      // useUpdateTask drains it. Covers the edit path (Bug 2) and cleans up
-      // rows created before the create-path suppression landed.
-      if (calToken && googleTaskId) {
-        const { data: linkedBlock } = await supabase
-          .from('time_blocks').select('google_calendar_event_id').eq('id', blockId).single()
-        if (linkedBlock?.google_calendar_event_id) {
-          try {
-            await updateTask.mutateAsync({ id: taskId, patch: { google_sync_enabled: false } })
-          } catch (err) {
-            logError(`Google Task cleanup failed: ${(err as Error).message}`, { action: 'dedupe_google_task', taskId })
-          }
-        }
-      }
-    } else {
-      for (const b of blocks) await deleteTimeBlock(b.id)   // also removes their calendar events
-    }
-    qc.invalidateQueries({ queryKey: ['schedule'] })
-    qc.invalidateQueries({ queryKey: ['calendar'] })
-  }
-
-  // Resolves the free-typed "Google Task list" field to a local
-  // google_task_lists id, creating the list on Google (matched
-  // case-insensitively against existing ones first, so a name that's
-  // already there never duplicates) when it doesn't exist yet. Returns
-  // undefined when there's nothing meaningful to resolve (not connected, or
-  // the field was cleared) — callers omit the key entirely in that case
-  // rather than force a null onto a task that may already have a list.
   async function resolveGoogleListField(): Promise<string | undefined> {
     if (!calToken || !form.googleListTitle.trim()) return undefined
     try {
@@ -390,11 +270,53 @@ export function UnifiedPlanModal({
     }
   }
 
+  // ── Save: mode='task' — Task fields + at most one linked one-off block ────
+  async function syncTaskSchedule(taskId: string, existingBlock: TimeBlock | null) {
+    const title = form.title.trim()
+    if (!form.scheduled) {
+      // "Unschedule": the time slot goes, the Task never does.
+      if (existingBlock) await deleteTimeBlock(existingBlock.id)
+      return
+    }
+
+    const effDuration  = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
+    const startTimeVal = `${form.startTime}:00`
+
+    if (existingBlock) {
+      await updateTimeBlock(existingBlock.id, {
+        date: form.date, start_time: startTimeVal, duration_minutes: effDuration,
+        title, category: form.category,
+      })
+      if (form.gcal && calToken && !existingBlock.google_calendar_event_id) {
+        await linkCalendarEvent(existingBlock.id, form.date, form.startTime, effDuration, title)
+      } else if (!form.gcal && calToken && existingBlock.google_calendar_event_id) {
+        await updateTimeBlock(existingBlock.id, { google_calendar_event_id: null })
+      }
+    } else {
+      // The originating entity's source_type/source_id (movie/training_session/
+      // project_item/tv_episode) travels alongside task_id, never replaced by
+      // it — the real bug this migration fixes.
+      const episodeFields = source?.episodeInfo
+        ? { season_number: source.episodeInfo.seasonNumber, episode_number: source.episodeInfo.episodeNumber }
+        : {}
+      const block = await createBlock.mutateAsync({
+        date: form.date, title, start_time: startTimeVal, duration_minutes: effDuration,
+        category: form.category, color: 'accent', task_id: taskId,
+        source_type: source?.sourceType, source_id: source?.sourceId,
+        ...episodeFields,
+      })
+      if (form.gcal && calToken) {
+        await linkCalendarEvent(block.id, form.date, form.startTime, effDuration, title)
+      }
+    }
+  }
+
   async function saveTask() {
     const title = form.title.trim()
+    const googleTasklistId = await resolveGoogleListField()
+
     if (editMode && task) {
-      const googleTasklistId = await resolveGoogleListField()
-      await updateTask.mutateAsync({
+      await updateTaskM.mutateAsync({
         id: task.id,
         patch: {
           title,
@@ -402,40 +324,27 @@ export function UnifiedPlanModal({
           section:     form.section,
           priority:    form.priority,
           domain:      form.domain,
-          // Sent only when there is something to say — a window was set, or an
-          // existing one is being cleared. Keeps an ordinary edit off tasksApi's
-          // pre-migration retry-without-start_date path.
           ...(form.startDate || task.start_date ? { start_date: form.startDate || null } : {}),
           due_date:    form.dueDate || null,
           due_time:    form.dueTime ? `${form.dueTime}:00` : null,
           ...(googleTasklistId !== undefined ? { google_tasklist_id: googleTasklistId } : {}),
         },
       })
-      // Pass the task's existing Google Task id so syncTaskBlock can drop it
-      // once the task gains a linked calendar event (edit → add-to-calendar).
-      await syncTaskBlock(task.id, task.google_task_id)
-      onSaved?.({ tab: 'task', taskId: task.id })
+      await syncTaskSchedule(task.id, linkedBlock ?? null)
+      onSaved?.({ mode: 'task', taskId: task.id })
       return
     }
 
-    // Resolved BEFORE create so the very first Google sync (the outbox
-    // trigger's 'create' row, drained right after) already targets the
-    // right list — no separate move() needed for a brand-new task.
-    const googleTasklistId = await resolveGoogleListField()
-
-    // A personal task with a due date AND time earns a linked calendar event in
-    // syncTaskBlock; when that event is created, suppress the duplicate Google
-    // Task so the task appears on Google Calendar exactly once.
-    const willBeCalendarEvent =
-      form.gcal && !!calToken && form.domain === 'personal' && !!form.dueDate && !!form.dueTime
+    // A scheduled task with a linked Google Calendar event suppresses the
+    // duplicate Google Task (one task, one Google entry) — same policy as
+    // before, now keyed off `scheduled` + `gcal` instead of domain==='personal'.
+    const willBeCalendarEvent = form.scheduled && form.gcal && !!calToken
     const { task: created, googleTaskError } = await createTask.mutateAsync({
       title,
       description: form.notes.trim() || null,
       section:     form.section,
       priority:    form.priority,
       domain:      form.domain,
-      // Omitted (not null) when unset, so a pre-migration insert never needs
-      // tasksApi's retry-without-start_date round trip.
       start_date:  form.startDate || undefined,
       due_date:    form.dueDate || null,
       due_time:    form.dueTime ? `${form.dueTime}:00` : null,
@@ -445,8 +354,109 @@ export function UnifiedPlanModal({
       skipGoogleTasks: willBeCalendarEvent,
     })
     if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
-    await syncTaskBlock(created.id)
-    onSaved?.({ tab: 'task', taskId: created.id })
+    await syncTaskSchedule(created.id, null)
+    onSaved?.({ mode: 'task', taskId: created.id })
+  }
+
+  // ── Save: mode='schedule' — a standalone one-off block (never task-linked;
+  // a task-linked block is always edited via mode='task' instead — see
+  // planModal.types.ts). "Also add to Tasks" is therefore unambiguous here:
+  // it always means create-and-link, never a readout of an existing link.
+  async function saveSchedule() {
+    const title = form.title.trim()
+    const effDuration = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
+    const startTimeVal = `${form.startTime}:00`
+
+    if (timeBlock) {
+      let linkedTaskId: string | undefined
+      if (form.alsoCreateTask) {
+        const { task: created, googleTaskError } = await createTask.mutateAsync({
+          title, section: sectionForDate(form.date), domain: defaults?.domain ?? 'personal',
+          priority: defaults?.priority ?? 'medium', due_date: form.date,
+          source_type: source?.taskSourceType, source_id: source?.sourceId,
+        })
+        if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
+        linkedTaskId = created.id
+      }
+      await updateTimeBlock(timeBlock.id, {
+        date: form.date, start_time: startTimeVal, duration_minutes: effDuration,
+        title, category: form.category,
+        ...(linkedTaskId ? { task_id: linkedTaskId } : {}),
+      })
+      if (form.gcal && calToken && !timeBlock.google_calendar_event_id) {
+        await linkCalendarEvent(timeBlock.id, form.date, form.startTime, effDuration, title)
+      } else if (!form.gcal && calToken && timeBlock.google_calendar_event_id) {
+        await updateTimeBlock(timeBlock.id, { google_calendar_event_id: null })
+      }
+      onSaved?.({ mode: 'schedule', taskId: linkedTaskId, timeBlockCreated: false })
+      return
+    }
+
+    // CREATE — recurrence decides the target table, exactly like before;
+    // "also create task" only applies to the one-off path (there is no
+    // recurring-Task concept in this app).
+    if (form.recurrence !== 'none') {
+      await createRecur.mutateAsync({
+        title, days_of_week: daysForRecurrence(form.recurrence, form.weeklyDays),
+        start_time: startTimeVal, end_time: endTimeFrom(form.startTime, effDuration),
+        color: defaults?.color ?? 'blue', category: form.category,
+      })
+      onSaved?.({ mode: 'schedule', recurringCreated: true })
+      return
+    }
+
+    let linkedTaskId: string | undefined
+    if (form.alsoCreateTask) {
+      const taskDomain = defaults?.domain
+        ?? (form.category === 'work' ? 'work' : form.category === 'media' ? 'media' : 'personal')
+      const willBeCalendarEvent = form.gcal && !!calToken
+      const { task: created, googleTaskError } = await createTask.mutateAsync({
+        title, section: sectionForDate(form.date), domain: taskDomain,
+        priority: defaults?.priority ?? 'medium', due_date: form.date,
+        source_type: source?.taskSourceType, source_id: source?.sourceId,
+        skipGoogleTasks: willBeCalendarEvent,
+      })
+      if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
+      linkedTaskId = created.id
+    }
+
+    const episodeFields = source?.episodeInfo
+      ? { season_number: source.episodeInfo.seasonNumber, episode_number: source.episodeInfo.episodeNumber }
+      : {}
+    const block = await createBlock.mutateAsync({
+      date: form.date, title, start_time: startTimeVal, duration_minutes: effDuration,
+      color: defaults?.color, category: form.category,
+      task_id: linkedTaskId,
+      source_type: source?.sourceType, source_id: source?.sourceId,
+      ...episodeFields,
+    })
+    if (form.gcal && calToken) {
+      await linkCalendarEvent(block.id, form.date, form.startTime, effDuration, title)
+    }
+    onSaved?.({ mode: 'schedule', taskId: linkedTaskId, timeBlockCreated: true })
+  }
+
+  // ── Save: mode='recurring' — schedule_blocks. No GCal (never implemented —
+  // the field is hidden entirely, not shown-but-inert), no linked Task.
+  async function saveRecurring() {
+    const title = form.title.trim()
+    const effDuration = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
+    const startTimeVal = `${form.startTime}:00`
+    const days = daysForRecurrence(form.recurrence === 'none' ? 'weekly' : form.recurrence, form.weeklyDays)
+
+    if (scheduleBlock) {
+      await updateScheduleBlock(scheduleBlock.id, {
+        title, days_of_week: days, start_time: startTimeVal,
+        end_time: endTimeFrom(form.startTime, effDuration), category: form.category,
+      })
+      onSaved?.({ mode: 'recurring' })
+      return
+    }
+    await createRecur.mutateAsync({
+      title, days_of_week: days, start_time: startTimeVal,
+      end_time: endTimeFrom(form.startTime, effDuration), color: defaults?.color ?? 'blue', category: form.category,
+    })
+    onSaved?.({ mode: 'recurring', recurringCreated: true })
   }
 
   async function handleSave() {
@@ -454,9 +464,13 @@ export function UnifiedPlanModal({
     setSaving(true)
     const tid = toast.loading(editMode ? 'Saving…' : 'Planning…')
     try {
-      if (activeTab === 'schedule') await saveSchedule()
-      else                          await saveTask()
+      if (effectiveMode === 'task')            await saveTask()
+      else if (effectiveMode === 'schedule')   await saveSchedule()
+      else                                     await saveRecurring()
       toast.dismiss(tid); toast.success(editMode ? 'Saved ✓' : 'Planned ✓')
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['schedule'] })
+      qc.invalidateQueries({ queryKey: ['calendar'] })
       onClose()
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
@@ -470,7 +484,20 @@ export function UnifiedPlanModal({
       if (!confirm('Delete this task?')) return
       const tid = toast.loading('Deleting…')
       try {
-        await deleteTask.mutateAsync(task)
+        await deleteTaskM.mutateAsync(task)
+        toast.dismiss(tid); toast.success('Deleted ✓')
+        onClose()
+      } catch (err) {
+        toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
+      }
+      return
+    }
+    if (scheduleBlock) {
+      if (!confirm('Delete this repeating schedule?')) return
+      const tid = toast.loading('Deleting…')
+      try {
+        await deleteScheduleBlock(scheduleBlock.id)
+        qc.invalidateQueries({ queryKey: ['schedule', 'blocks'] })
         toast.dismiss(tid); toast.success('Deleted ✓')
         onClose()
       } catch (err) {
@@ -479,7 +506,7 @@ export function UnifiedPlanModal({
       return
     }
     if (timeBlock) {
-      if (!confirm('Delete this session?')) return
+      if (!confirm('Delete this schedule?')) return
       const tid = toast.loading('Deleting…')
       try {
         await deleteTimeBlock(timeBlock.id)
@@ -495,9 +522,15 @@ export function UnifiedPlanModal({
 
   const primaryLabel = saving
     ? (editMode ? 'Saving…' : 'Planning…')
-    : activeTab === 'task'
-    ? (editMode ? 'Save Changes' : 'Add Task')
-    : (timeBlock && !task ? 'Save Changes' : 'Plan it')
+    : (editMode ? 'Save Changes' : (effectiveMode === 'task' ? 'Add Task' : effectiveMode === 'recurring' ? 'Save Repeat' : 'Plan it'))
+
+  // Editing an existing one-off block never offers recurrence (no silent
+  // one-off <-> recurring conversion — a real, separate storage-migration UX
+  // this refactor deliberately does not build) — merged with whatever the
+  // caller already hides so neither side has to know about the other.
+  const effectiveScheduleConfig: PlanModalConfig | undefined = effectiveMode === 'schedule' && !!timeBlock
+    ? { ...config, hideScheduleFields: [...(config?.hideScheduleFields ?? []), 'recurrence'] }
+    : config
 
   return (
     <Dialog open={open} onClose={onClose} className="relative" style={{ zIndex }}>
@@ -510,36 +543,29 @@ export function UnifiedPlanModal({
           transition
           className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
         >
-          {/* Header */}
+          {/* Header — no tab switcher any more; mode decides the content */}
           <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-100 sticky top-0 bg-cream-50 z-10">
-            <h2 className="text-base font-bold text-ink-900">{config?.heading ?? 'Plan'}</h2>
+            <h2 className="text-base font-bold text-ink-900">
+              {config?.heading ?? MODE_HEADING[effectiveMode][editMode ? 'edit' : 'create']}
+            </h2>
             <button
               type="button" onClick={onClose}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl"
             >×</button>
           </div>
 
-          {/* Tabs — only when more than one is available */}
-          {tabs.length > 1 && (
-            <div className="flex gap-1 mx-5 mt-4 bg-cream-100 p-1 rounded-lg">
-              {tabs.map(t => (
-                <button
-                  key={t} type="button" onClick={() => setActiveTab(t)}
-                  className={`flex-1 text-xs min-h-[40px] rounded-md font-medium transition-colors ${
-                    activeTab === t ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500'
-                  }`}
-                >{TAB_LABELS[t]}</button>
-              ))}
-            </div>
+          {effectiveMode === 'task' && (
+            <TaskTab
+              form={form} patch={patch} config={config} gcalAvailable={!!calToken} editMode={editMode}
+              calendarLinked={!!linkedBlock?.google_calendar_event_id} extra={taskExtra}
+            />
           )}
-
-          {activeTab === 'schedule'
-            ? <ScheduleTab
-                form={form} patch={patch} config={config} gcalAvailable={!!calToken} extra={scheduleExtra}
-                taskAlreadyLinked={!!timeBlock && !task && timeBlock.source_type === 'task'}
-              />
-            : <TaskTab form={form} patch={patch} config={config} gcalAvailable={!!calToken} editMode={editMode} calendarLinked={taskCalendarLinked} extra={taskExtra} />
-          }
+          {effectiveMode === 'schedule' && (
+            <ScheduleTab form={form} patch={patch} config={effectiveScheduleConfig} gcalAvailable={!!calToken} extra={scheduleExtra} />
+          )}
+          {effectiveMode === 'recurring' && (
+            <RecurringTab form={form} patch={patch} extra={scheduleExtra} />
+          )}
 
           {/* Footer */}
           <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-cream-50">
@@ -553,12 +579,14 @@ export function UnifiedPlanModal({
             >{primaryLabel}</button>
           </div>
 
-          {((activeTab === 'task' && !!task) || (activeTab === 'schedule' && !!timeBlock && !task)) && (
+          {editMode && (
             <div className="px-5 pb-5">
               <button
                 type="button" onClick={handleDelete} disabled={saving}
                 className="w-full min-h-[44px] text-sm font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
-              >{task ? 'Delete Task' : 'Delete Session'}</button>
+              >
+                {task ? 'Delete Task' : scheduleBlock ? 'Delete Repeating Schedule' : 'Delete Schedule'}
+              </button>
             </div>
           )}
         </DialogPanel>

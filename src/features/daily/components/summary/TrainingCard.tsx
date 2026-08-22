@@ -85,7 +85,8 @@ export function TrainingCard({ date }: { date: string }) {
         <UnifiedPlanModal
           open
           onClose={() => setPlanning(null)}
-          config={{ tabs: ['schedule', 'task'], heading: 'Plan routine' }}
+          mode="schedule"
+          config={{ heading: 'Plan routine' }}
           defaults={{ title: planning.title, date, category: 'training', color: 'accent', alsoCreateTask: true }}
           source={{ sourceType: 'training_session', sourceId: planning.id, taskSourceType: 'training_session' }}
           onSaved={() => { setPlanning(null); setShowPicker(false) }}

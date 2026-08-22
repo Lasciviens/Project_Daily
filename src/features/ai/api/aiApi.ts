@@ -83,7 +83,7 @@ Workflow rules:
 - Refer to a row by name? db_query for its id first, then update/delete by that id.
 - Training: read from hevy_workouts / hevy_routines / hevy_body_measurements / strava_activities (read-only). A PLANNED training session is a time_blocks row with category="training".
 - Recipes vs Shop: a food recipe/dish (ingredients + how to prepare it) ALWAYS goes in the recipes table (+ recipe_ingredients), NEVER in shop_items — a recipe is not a purchase. Store recipe title/ingredients/instructions in Turkish (translate if needed).
-- Deleting a task: also db_delete its linked time_blocks (source_type="task", source_id=<task id>).
+- Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE) — no separate time_blocks delete needed.
 - Respect enums and rules in the catalog (they're enforced by the DB and will error if violated).
 - DELETES ALWAYS NEED CONFIRMATION FIRST. Never call db_delete (or delete via any tool) unless the user has, in a previous message, explicitly approved this specific deletion. If they ask to delete something, first tell them exactly what would be deleted and ask them to confirm — then stop and wait. Only delete after they say yes.
 - Announce before you act. Before any create/update/delete, briefly state in your reply what you are about to do ("Şunu şunu yapacağım: …"). For creates/updates you may then proceed in the same turn; for deletes you must wait for approval as above.

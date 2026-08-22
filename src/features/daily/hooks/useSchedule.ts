@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchScheduleBlocks,
   createScheduleBlock,
+  updateScheduleBlock,
   deleteScheduleBlock,
   fetchTimeBlocks,
   fetchTrainingBlocksRange,
@@ -10,7 +11,9 @@ import {
   deleteTimeBlock,
 } from '../api/scheduleApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import type { CreateTimeBlockInput, CreateScheduleBlockInput } from '../types'
+import type {
+  CreateTimeBlockInput, UpdateTimeBlockInput, CreateScheduleBlockInput, UpdateScheduleBlockInput,
+} from '../types'
 
 export function useScheduleBlocks() {
   return useQuery({
@@ -28,6 +31,19 @@ export function useCreateScheduleBlock() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateScheduleBlockInput) => createScheduleBlock(input),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['schedule', 'blocks'] }),
+  })
+}
+
+// Real gap fixed (migration 077 completed the recurring model): there was no
+// way to edit an existing recurring template at all before this — only
+// create/delete existed at the API layer, so a schedule_blocks row, once
+// created, was permanently stuck as-is short of deleting and recreating it.
+export function useUpdateScheduleBlock() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:     'update_schedule_block',
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateScheduleBlockInput }) => updateScheduleBlock(id, patch),
     onSuccess:  () => qc.invalidateQueries({ queryKey: ['schedule', 'blocks'] }),
   })
 }
@@ -60,14 +76,15 @@ export function useTrainingBlocks(from: string, to: string) {
 // All three invalidate the WHOLE 'schedule' namespace (day + training-range +
 // blocks) so every consumer refreshes — the Work timeline, Training calendar,
 // Home's next-session card all read schedule under different sub-keys. Also
-// refresh 'calendar' since a block change may have synced a Google event.
+// refresh 'calendar' since a block change may have synced a Google event, and
+// 'tasks' since a block's title is mirrored FROM its linked task (never the
+// other way — migration 077 retired the old bidirectional date/time sync and
+// the delete-cascade-to-task behavior; the only remaining cross-table effect
+// is the one-way task-title-to-block-title trigger, plus the task_id FK
+// itself cascading a Task hard-delete onto its block).
 function invalidateSchedule(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['schedule'] })
   qc.invalidateQueries({ queryKey: ['calendar'] })
-  // A block edit/delete can cascade to its linked task via migration 043's
-  // sync_task_from_time_block trigger (date/time propagation on update,
-  // soft-cancel on delete), so task views must refresh too — mirrors the
-  // reverse direction (useUpdateTask/useDeleteTask already invalidate schedule).
   qc.invalidateQueries({ queryKey: ['tasks'] })
 }
 
@@ -85,12 +102,18 @@ export function useCreateTimeBlock() {
 // Covers drag-reposition, postpone, and inline rename — all frequent,
 // autosave-like edits, so success stays silent (matches the rest of the
 // app's "edits feel live" convention) while failures always toast + log.
+//
+// Real gap fixed (migration 077): this used to silently drop
+// duration_minutes/category/color/google_calendar_event_id even though the
+// underlying API function already accepted them — a title or duration edit
+// never reached a linked Google Calendar event's remote copy, only date/time
+// changes did. Every field the row has now passes through.
 export function useUpdateTimeBlock() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action:     'update_time_block',
-    mutationFn: ({ id, start_time, date, title }: { id: string; start_time?: string; date?: string; title?: string; dateStr: string; newDateStr?: string }) =>
-      updateTimeBlock(id, { start_time, date, title }),
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateTimeBlockInput; dateStr?: string; newDateStr?: string }) =>
+      updateTimeBlock(id, patch),
     onSuccess: () => invalidateSchedule(qc),
   })
 }
@@ -100,7 +123,7 @@ export function useDeleteTimeBlock() {
   return useMutationWithFeedback({
     action:         'delete_time_block',
     successMessage: 'Deleted',
-    mutationFn:     ({ id, dateStr: _dateStr }: { id: string; dateStr: string }) => deleteTimeBlock(id),
+    mutationFn:     ({ id, dateStr: _dateStr }: { id: string; dateStr?: string }) => deleteTimeBlock(id),
     onSuccess:      () => invalidateSchedule(qc),
   })
 }

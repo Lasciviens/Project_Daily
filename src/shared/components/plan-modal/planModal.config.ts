@@ -9,7 +9,7 @@ import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { TaskSection } from '../../../features/todo/types'
 import { todayStr, tomorrowStr } from '../../utils/dateUtils'
 import type {
-  PlanModalConfig, PlanTab, ScheduleField, TaskField, RecurrenceMode,
+  PlanModalConfig, ScheduleField, TaskField, RecurrenceMode,
 } from './planModal.types'
 
 export { todayStr, tomorrowStr }
@@ -107,17 +107,46 @@ export function daysForRecurrence(mode: RecurrenceMode, weeklyDays: number[]): n
   return []
 }
 
+/** The inverse of daysForRecurrence — needed to EDIT an existing recurring
+ *  schedule_blocks row, which stores only days_of_week, never the mode the
+ *  user originally picked. [0..6] -> daily, [1..5] -> weekdays, any other
+ *  non-empty set -> weekly (with those exact days pre-checked). */
+export function inferRecurrenceMode(daysOfWeek: number[]): RecurrenceMode {
+  const sorted = [...new Set(daysOfWeek)].sort((a, b) => a - b)
+  if (sorted.length === 7 && EVERY_DAY.every(d => sorted.includes(d))) return 'daily'
+  if (sorted.length === 5 && WEEKDAYS.every(d => sorted.includes(d)))  return 'weekdays'
+  return 'weekly'
+}
+
+/** Minutes between two HH:MM times, wrapping past midnight (23:30-00:30 =
+ *  60 minutes, never negative) — schedule_blocks stores start_time/end_time,
+ *  not a duration, so this is how the editor derives one to show/edit. */
+export function minutesBetweenWrapping(startHHMM: string, endHHMM: string): number {
+  const [sh, sm] = startHHMM.split(':').map(Number)
+  const [eh, em] = endHHMM.split(':').map(Number)
+  const diff = (eh * 60 + em) - (sh * 60 + sm)
+  return diff > 0 ? diff : diff + 1440
+}
+
+/** Sensible default schedule category for a Task, derived from its real
+ *  origin (when it has one) before falling back to its domain. Mirrors what
+ *  the Training/Projects/Media planning flows already picked by hand at
+ *  their own call sites — this just makes the SAME defaulting available
+ *  inside the Task editor's own "Add to schedule" section, since any task
+ *  (not just ones planned from a contextual entity) can now be scheduled. */
+export function defaultScheduleCategory(domain: string, taskSourceType?: string | null): TimeBlockCategory {
+  if (taskSourceType === 'training_session') return 'training'
+  if (taskSourceType === 'project_item')      return 'projects'
+  if (taskSourceType === 'movie' || taskSourceType === 'tv_series') return 'media'
+  if (domain === 'work')  return 'work'
+  if (domain === 'media') return 'media'
+  return 'other'
+}
+
 // ── Config resolution ─────────────────────────────────────────────────────────
-
-export function resolveTabs(config?: PlanModalConfig): PlanTab[] {
-  const tabs = config?.tabs && config.tabs.length ? config.tabs : (['schedule', 'task'] as PlanTab[])
-  return tabs
-}
-
-export function resolveDefaultTab(config: PlanModalConfig | undefined, tabs: PlanTab[]): PlanTab {
-  if (config?.defaultTab && tabs.includes(config.defaultTab)) return config.defaultTab
-  return tabs[0]
-}
+// Note: there is no more resolveTabs/resolveDefaultTab — `mode` (task /
+// schedule / recurring) replaces the old tab switcher entirely; a caller
+// decides which entity it wants edited, not the user via a tab click.
 
 export function isScheduleFieldHidden(field: ScheduleField, config?: PlanModalConfig): boolean {
   return !!config?.hideScheduleFields?.includes(field)

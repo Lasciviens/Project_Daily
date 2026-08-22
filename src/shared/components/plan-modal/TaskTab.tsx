@@ -1,14 +1,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  UnifiedPlanModal — TASK TAB
-//  To-Do creation/editing. Pure view: reads `form`, writes via `patch`.
-//  Field visibility comes from `config`.
+//  UnifiedPlanModal — TASK EDITOR (mode='task')
+//  To-Do creation/editing, PLUS an optional "Add to schedule" section for at
+//  most one linked one-off time_block. Pure view: reads `form`, writes via
+//  `patch`. Field visibility comes from `config`.
+//
+//  The schedule section here is deliberately NOT the deadline (dueDate/
+//  dueTime above it) — "due Friday 5pm" and "working on it Thursday
+//  1-2:30pm" are two independent facts (migration 077). Toggling it off
+//  removes the linked block on save; the Task itself is never affected.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { FieldLabel, PillGroup, Time24Field } from './fields'
+import {
+  FieldLabel, PillGroup, Time24Field, DateStepperField, DurationField, CategorySelect, CheckboxRow,
+} from './fields'
 import { TaskWindowField } from './TaskWindowField'
 import { GoogleListField } from './GoogleListField'
 import { DateInput } from '../DateInput'
-import { isTaskFieldHidden, isTaskFieldLocked, shiftTime, nextPlanTime } from './planModal.config'
+import { isTaskFieldHidden, isTaskFieldLocked, shiftTime, nextPlanTime, stepDate } from './planModal.config'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import type { PlanModalConfig } from './planModal.types'
 import type { PlanForm } from './planForm'
@@ -48,9 +56,10 @@ interface Props {
   config?: PlanModalConfig
   gcalAvailable: boolean
   editMode: boolean
-  /** True when editing a task that already has a linked Google Calendar event —
-   *  the control becomes a truthful "Added ✓" readout instead of a live toggle
-   *  (the idempotent save path won't create a second event either way). */
+  /** True when the linked block already has a Google Calendar event — the
+   *  control becomes a truthful "Added ✓" readout instead of a live toggle,
+   *  since flipping it here doesn't itself create/remove the event (that
+   *  happens on Save via UnifiedPlanModal's syncTaskSchedule). */
   calendarLinked?: boolean
   extra?: React.ReactNode
 }
@@ -124,7 +133,7 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
 
       {(!hidden('dueDate') || !hidden('dueTime')) && (
         <>
-          <SectionDivider>When</SectionDivider>
+          <SectionDivider>Deadline</SectionDivider>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {!hidden('dueDate') && (
               <div>
@@ -190,24 +199,68 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
         </div>
       )}
 
+      {/* ── Add to schedule — an OPTIONAL, separate fact from the deadline
+          above. At most one linked one-off time_block per task (DB-enforced,
+          migration 077); toggling off removes it on save, the Task survives. */}
+      {!hidden('scheduled') && (
+        <>
+          <SectionDivider>Schedule</SectionDivider>
+          <CheckboxRow
+            checked={form.scheduled} onChange={v => patch({ scheduled: v })}
+            label={form.scheduled ? 'Scheduled' : 'Add to schedule'}
+            disabled={locked('scheduled')}
+          />
+          {form.scheduled && (
+            <div className="flex flex-col gap-4 pl-1 border-l-2 border-ink-100 ml-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-3">
+                <div>
+                  <FieldLabel>Date</FieldLabel>
+                  <DateStepperField
+                    value={form.date} onChange={v => patch({ date: v })}
+                    onStep={dir => patch({ date: stepDate(form.date, dir) })} locked={locked('scheduled')}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Start time (24h)</FieldLabel>
+                  <Time24Field
+                    value={form.startTime} onChange={v => patch({ startTime: v })}
+                    onShift={delta => patch({ startTime: shiftTime(form.startTime, delta) })} locked={locked('scheduled')}
+                  />
+                </div>
+              </div>
+              <div className="pl-3">
+                <FieldLabel>Duration</FieldLabel>
+                <DurationField
+                  duration={form.duration} customMin={form.customMin}
+                  onPreset={v => patch({ duration: v })} onCustom={v => patch({ customMin: v })}
+                  locked={locked('scheduled')}
+                />
+              </div>
+              <div className="pl-3">
+                <FieldLabel>Category</FieldLabel>
+                <CategorySelect value={form.category} onChange={v => patch({ category: v })} locked={locked('scheduled')} />
+              </div>
+              {!hidden('gcal') && gcalAvailable && (
+                <div className="pl-3">
+                  <label className={`flex items-center gap-3 min-h-[44px] ${calendarLinked ? 'cursor-default' : 'cursor-pointer'}`}>
+                    <input
+                      type="checkbox" checked={form.gcal} disabled={locked('scheduled')}
+                      onChange={e => patch({ gcal: e.target.checked })}
+                      className="w-4 h-4 accent-accent-500 rounded disabled:opacity-60"
+                    />
+                    <span className="text-sm text-ink-700">
+                      {calendarLinked ? 'Added to Google Calendar ✓' : 'Add to Google Calendar'}
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
       {/* Caller-injected extra fields (Yol 1) */}
       {extra}
-
-      {/* Available on create AND edit (a task planned without a calendar entry
-          can be added later) — needs a due date since an event needs a date.
-          When already linked it's a disabled "Added ✓" readout. */}
-      {!hidden('gcal') && gcalAvailable && form.dueDate && (
-        <label className={`flex items-center gap-3 min-h-[44px] ${calendarLinked ? 'cursor-default' : 'cursor-pointer'}`}>
-          <input
-            type="checkbox" checked={form.gcal} disabled={calendarLinked}
-            onChange={e => patch({ gcal: e.target.checked })}
-            className="w-4 h-4 accent-accent-500 rounded disabled:opacity-60"
-          />
-          <span className="text-sm text-ink-700">
-            {calendarLinked ? 'Added to Google Calendar ✓' : 'Add to Google Calendar'}
-          </span>
-        </label>
-      )}
     </div>
   )
 }

@@ -54,7 +54,7 @@ export default function WorkDayTimeline({ workTasks }: Props) {
     !b.source_type ||
     b.source_type === 'manual' ||
     b.source_type === 'calendar' ||
-    (b.source_type === 'task' && b.source_id && workTaskIds.has(b.source_id))
+    (b.task_id && workTaskIds.has(b.task_id))
   )
 
   const timedBlocks = blocks.filter(b => b.start_time)

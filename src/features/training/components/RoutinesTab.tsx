@@ -178,7 +178,8 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
       <UnifiedPlanModal
         open={planOpen}
         onClose={() => setPlanOpen(false)}
-        config={{ tabs: ['schedule', 'task'], heading: 'Plan routine' }}
+        mode="schedule"
+        config={{ heading: 'Plan routine' }}
         defaults={{ title: routine.title, category: 'training', color: 'accent', alsoCreateTask: true }}
         source={{ sourceType: 'training_session', sourceId: routine.id, taskSourceType: 'training_session' }}
       />

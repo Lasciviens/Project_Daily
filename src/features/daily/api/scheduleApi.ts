@@ -3,7 +3,10 @@ import { requireUser } from '../../../shared/utils/requireUser'
 import { useCalendarStore } from '../../../app/store'
 import { updateCalendarEvent, deleteCalendarEvent } from '../../calendar/api/calendarApi'
 import { logError } from '../../../shared/utils/logError'
-import type { ScheduleBlock, TimeBlock, TimeBlockCategory, CreateTimeBlockInput, CreateScheduleBlockInput } from '../types'
+import type {
+  ScheduleBlock, TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput,
+  CreateScheduleBlockInput, UpdateScheduleBlockInput,
+} from '../types'
 
 const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -26,6 +29,20 @@ export async function createScheduleBlock(input: CreateScheduleBlockInput): Prom
   const { data, error } = await supabase
     .from('schedule_blocks')
     .insert({ ...input, user_id: user.id })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Recurring templates have no Google Calendar support (never implemented —
+// the modal deliberately hides that checkbox in recurring mode rather than
+// show a control that silently does nothing), so this is a plain DB update.
+export async function updateScheduleBlock(id: string, patch: UpdateScheduleBlockInput): Promise<ScheduleBlock> {
+  const { data, error } = await supabase
+    .from('schedule_blocks')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
     .select()
     .single()
   if (error) throw error
@@ -72,31 +89,65 @@ export async function createTimeBlock(input: CreateTimeBlockInput): Promise<Time
   return data
 }
 
-export async function updateTimeBlock(id: string, patch: { start_time?: string; date?: string; title?: string; duration_minutes?: number; category?: TimeBlockCategory; color?: string; google_calendar_event_id?: string | null }): Promise<void> {
+// Full Google Calendar lifecycle for a one-off block (migration 077's fix —
+// the old version only pushed a remote update when date/start_time changed,
+// silently leaving a renamed or re-durationed block's event stale):
+//   - still linked, content changed (date/start_time/title/duration_minutes)
+//     -> push an update. Local write happens first (edits feel instant, same
+//     convention as every other mutation here); the remote push is
+//     best-effort/logged, matching this function's pre-existing behavior.
+//   - explicit unlink (patch.google_calendar_event_id === null while a link
+//     exists) -> remote-first, mirroring deleteTimeBlock's own ordering: a
+//     network failure here must NOT silently drop the local linkage (the
+//     remote event would become a permanently untracked orphan with nothing
+//     left pointing at it) — surfaced as a real thrown error instead.
+export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): Promise<void> {
+  const { data: before, error: beforeError } = await supabase
+    .from('time_blocks')
+    .select('date, start_time, duration_minutes, title, google_calendar_event_id')
+    .eq('id', id)
+    .single()
+  if (beforeError) throw beforeError
+
+  const unlinking = patch.google_calendar_event_id === null && !!before?.google_calendar_event_id
+  const token = calToken()
+
+  if (unlinking && token) {
+    try {
+      await deleteCalendarEvent(token, 'primary', before!.google_calendar_event_id!)
+    } catch (err) {
+      const msg = (err as Error).message
+      if (!msg.includes('404')) throw new Error(`Couldn't remove the Google Calendar event: ${msg}`)
+      // 404 = already gone remotely — proceed to clear the local link too.
+    }
+  }
+
   const { error } = await supabase
     .from('time_blocks')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
 
-  // Keep the linked Google Calendar event in sync when the block actually moved
-  // (time/date changed). Skip when we only wrote the event id back, or when
-  // there's no connected calendar. Non-fatal — a sync failure never breaks the
-  // local write.
-  if (patch.start_time === undefined && patch.date === undefined) return
-  const token = calToken()
-  if (!token) return
+  if (unlinking || !token) return
+
+  const eventId = patch.google_calendar_event_id ?? before?.google_calendar_event_id
+  if (!eventId) return
+
+  const relevant = patch.date !== undefined || patch.start_time !== undefined
+    || patch.title !== undefined || patch.duration_minutes !== undefined
+  if (!relevant) return
+
+  const date         = patch.date ?? before!.date
+  const startTimeVal = patch.start_time !== undefined ? patch.start_time : before!.start_time
+  const title        = patch.title ?? before!.title
+  const durationMins = patch.duration_minutes ?? before!.duration_minutes
+  if (!startTimeVal) return // no time set -> nothing coherent to represent as a timed remote event
+
   try {
-    const { data: row } = await supabase
-      .from('time_blocks')
-      .select('date, start_time, duration_minutes, title, google_calendar_event_id')
-      .eq('id', id)
-      .single()
-    if (!row?.google_calendar_event_id || !row.start_time) return
-    const start = new Date(`${row.date}T${row.start_time}`)
-    const end   = new Date(start.getTime() + (row.duration_minutes ?? 60) * 60_000)
-    await updateCalendarEvent(token, 'primary', row.google_calendar_event_id, {
-      summary: row.title,
+    const start = new Date(`${date}T${startTimeVal}`)
+    const end   = new Date(start.getTime() + durationMins * 60_000)
+    await updateCalendarEvent(token, 'primary', eventId, {
+      summary: title,
       start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
       end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
     })

@@ -202,7 +202,8 @@ export function ItemRow({ item, onUpdate, onDelete, onEdit, isPending }: Props) 
       <UnifiedPlanModal
         open={planOpen}
         onClose={() => setPlanOpen(false)}
-        config={{ tabs: ['schedule', 'task'], heading: 'Plan item' }}
+        mode="schedule"
+        config={{ heading: 'Plan item' }}
         defaults={{
           title:          item.title,
           category:       'projects',

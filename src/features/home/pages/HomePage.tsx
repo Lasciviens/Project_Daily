@@ -152,7 +152,7 @@ export function HomePage() {
       <UnifiedPlanModal
         open={!!editingTask}
         onClose={() => setEditingTask(null)}
-        config={{ tabs: ['task', 'schedule'], heading: 'Edit Task' }}
+        config={{ heading: 'Edit Task' }}
         task={editingTask ?? undefined}
       />
     </div>

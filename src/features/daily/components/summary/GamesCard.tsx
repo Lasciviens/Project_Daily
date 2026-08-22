@@ -50,7 +50,8 @@ export function GamesCard({ date }: { date: string }) {
         <UnifiedPlanModal
           open
           onClose={() => setPlanning(null)}
-          config={{ tabs: ['schedule'], heading: 'Plan a gaming session' }}
+          mode="schedule"
+          config={{ heading: 'Plan a gaming session' }}
           defaults={{ title: `🎮 ${planning.title}`, date, duration: 60, category: 'other', color: 'purple' }}
         />
       )}

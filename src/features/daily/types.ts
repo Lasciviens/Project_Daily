@@ -6,7 +6,9 @@ export interface ScheduleBlock {
   start_time:   string      // 'HH:MM:SS'
   end_time:     string
   color:        string
+  category:     TimeBlockCategory
   created_at:   string
+  updated_at:   string
 }
 
 export type TimeBlockCategory = 'daily' | 'training' | 'media' | 'games' | 'work' | 'projects' | 'other'
@@ -20,6 +22,13 @@ export interface TimeBlock {
   duration_minutes: number
   color:            string
   category:         TimeBlockCategory
+  /** The ONLY representation of "linked to a Task" (migration 077) — never
+   *  source_type='task'. At most one block per task (DB-enforced). */
+  task_id?:         string | null
+  /** The originating real-world entity this block was planned FROM (movie /
+   *  training_session / project_item / tv_episode / calendar / manual) —
+   *  independent of task_id, and never 'task' (migration 077 removed that
+   *  value from the CHECK — it was a polymorphic overload of this column). */
   source_type?:     string | null
   source_id?:       string | null
   // Only stamped when a single specific TV episode was planned (never for a
@@ -41,10 +50,28 @@ export interface CreateTimeBlockInput {
   duration_minutes: number
   color?:           string
   category?:        TimeBlockCategory
+  task_id?:         string
   source_type?:     string
   source_id?:       string
   season_number?:   number
   episode_number?:  number
+}
+
+/** Patch for an existing one-off time_block — every field the row actually
+ *  has, so a title/duration/category edit can propagate to a linked Google
+ *  Calendar event exactly like a date/time edit already does. */
+export interface UpdateTimeBlockInput {
+  date?:                      string
+  start_time?:                string | null
+  title?:                     string
+  duration_minutes?:          number
+  category?:                  TimeBlockCategory
+  color?:                     string
+  google_calendar_event_id?:  string | null
+  /** Only ever set on an edit that links a previously-standalone block to a
+   *  freshly-created Task ("Also add to Tasks" on an existing block) — see
+   *  ScheduleTab's own comment for why this is now unambiguous. */
+  task_id?:                   string | null
 }
 
 export interface CreateScheduleBlockInput {
@@ -53,4 +80,14 @@ export interface CreateScheduleBlockInput {
   start_time:   string
   end_time:     string
   color?:       string
+  category?:    TimeBlockCategory
+}
+
+export interface UpdateScheduleBlockInput {
+  title?:        string
+  days_of_week?: number[]
+  start_time?:   string
+  end_time?:     string
+  color?:        string
+  category?:     TimeBlockCategory
 }

@@ -172,7 +172,8 @@ export function DayView({ date }: Props) {
       <UnifiedPlanModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        config={{ tabs: ['task', 'schedule'], heading: 'New Task' }}
+        mode="task"
+        config={{ heading: 'New Task' }}
         defaults={{ section, date: format(date, 'yyyy-MM-dd'), dueDate: format(date, 'yyyy-MM-dd') }}
       />
 

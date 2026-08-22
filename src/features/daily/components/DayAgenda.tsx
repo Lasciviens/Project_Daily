@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { format, getDay, isToday } from 'date-fns'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock } from '../hooks/useSchedule'
-import { useUpdateTask } from '../../todo/hooks/useTodos'
+import {
+  useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock,
+  useDeleteScheduleBlock,
+} from '../hooks/useSchedule'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
@@ -10,6 +12,8 @@ import { supabase } from '../../../integrations/supabase/client'
 import { useCalendarStore, toast } from '../../../app/store'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import type { CalendarEvent } from '../../calendar/types'
+import type { TimeBlock, ScheduleBlock } from '../types'
+import type { Task } from '../../todo/types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DayAgenda — replaces the old 24h × 52px pixel-grid DayTimeline. Design
@@ -20,6 +24,15 @@ import type { CalendarEvent } from '../../calendar/types'
 //  ONE information-dense row (time · duration · title · badges · actions),
 //  scales from empty to busy days, and gives night hours (<06:00) their own
 //  labelled group instead of pretending 03:00 is "morning".
+//
+//  Migration 077 click-routing (no more Task/Schedule tab dichotomy): ✎ on a
+//  row opens the ONE modal in the mode that matches what was actually
+//  clicked — a calendar event opens EditCalendarEventModal (unchanged), a
+//  recurring template opens UnifiedPlanModal in 'recurring' mode, a
+//  task-linked one-off block opens the Task itself (mode='task' — the
+//  Schedule section lives inside it now), and a standalone one-off block
+//  opens 'schedule' mode directly. Nothing here decides which tab to show;
+//  the caller (this file) decides which ENTITY was clicked.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const NIGHT_END = 6 // hours before this belong to the night, not the morning
@@ -45,15 +58,13 @@ function hourToTimeStr(h: number): string {
 
 interface AgendaBlock {
   id:             string
+  kind:           'recurring' | 'block' | 'calendar'
   title:          string
   startHour:      number
   endHour:        number
   edgeClass:      string
-  recurring:      boolean
-  deletable:      boolean
   dateStr:        string
-  sourceType?:    string | null
-  sourceId?:      string | null
+  taskId?:        string | null
   calendarEvent?: CalendarEvent
   allDay?:        boolean
 }
@@ -64,21 +75,22 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   const dateStr   = format(date, 'yyyy-MM-dd')
   const dayOfWeek = getDay(date)
 
-  const [modal,      setModal]      = useState(false)
-  const [clickTime,  setClickTime]  = useState<string | undefined>(undefined)
-  const [editEvent,  setEditEvent]  = useState<CalendarEvent | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [editingId,  setEditingId]  = useState<string | null>(null)
-  const [editTitle,  setEditTitle]  = useState('')
+  const [modal,             setModal]             = useState(false)
+  const [clickTime,         setClickTime]         = useState<string | undefined>(undefined)
+  const [editEvent,         setEditEvent]         = useState<CalendarEvent | null>(null)
+  const [editTask,          setEditTask]          = useState<Task | null>(null)
+  const [editTimeBlock,     setEditTimeBlock]     = useState<TimeBlock | null>(null)
+  const [editScheduleBlock, setEditScheduleBlock] = useState<ScheduleBlock | null>(null)
+  const [selectedId,        setSelectedId]        = useState<string | null>(null)
 
   const { data: schedBlocks = [] } = useScheduleBlocks()
   const { data: timeBlocks  = [] } = useTimeBlocks(dateStr)
   const { data: calEvents, isFetching: calFetching } = useCalendarEventsForDay(dateStr)
-  const deleteBlock = useDeleteTimeBlock()
-  const updateBlock = useUpdateTimeBlock()
-  const updateTask  = useUpdateTask()
-  const qc          = useQueryClient()
-  const calToken    = useCalendarStore(s => s.accessToken)
+  const deleteBlock         = useDeleteTimeBlock()
+  const updateBlock         = useUpdateTimeBlock()
+  const deleteScheduleBlock = useDeleteScheduleBlock()
+  const qc                  = useQueryClient()
+  const calToken            = useCalendarStore(s => s.accessToken)
 
   async function handleCalRefresh() {
     const tid = toast.loading('Syncing calendar…')
@@ -90,26 +102,31 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     }
   }
 
-  const taskSourceIds = timeBlocks
-    .filter(b => b.source_type === 'task' && b.source_id)
-    .map(b => b.source_id!)
-  const { data: linkedTaskNotes = [] } = useQuery({
-    queryKey: ['tasks', 'notes', dateStr, taskSourceIds.join(',')],
+  // Full linked-Task rows (not just notes) — needed both for the 📝 preview
+  // and so ✎ can open the Task editor immediately with no extra round trip.
+  const linkedTaskIds = timeBlocks.filter(b => b.task_id).map(b => b.task_id!)
+  const { data: linkedTasksFull = [] } = useQuery({
+    queryKey: ['tasks', 'by-ids', dateStr, linkedTaskIds.join(',')],
     queryFn:  async () => {
-      const { data } = await supabase.from('tasks').select('id, description').in('id', taskSourceIds)
-      return data ?? []
+      const { data } = await supabase.from('tasks').select('*').in('id', linkedTaskIds)
+      return (data ?? []) as Task[]
     },
-    enabled:   taskSourceIds.length > 0,
+    enabled:   linkedTaskIds.length > 0,
     staleTime: 5 * 60_000,
   })
-  const taskNotesMap = new Map(linkedTaskNotes.map(t => [t.id, t.description as string | null]))
+  const linkedTaskMap = new Map(linkedTasksFull.map(t => [t.id, t]))
+
+  // A block's own google_calendar_event_id already represents its Google
+  // Calendar presence — an event fetched separately from the Calendar API
+  // for the same id would otherwise render the same thing twice.
+  const linkedGCalIds = new Set(timeBlocks.map(b => b.google_calendar_event_id).filter(Boolean))
 
   // ── Assemble the unified block list (same sources as the old timeline) ──
   const blocks: AgendaBlock[] = []
   for (const b of schedBlocks) {
     if (!b.days_of_week.includes(dayOfWeek)) continue
     blocks.push({
-      id: b.id, title: b.title, dateStr, recurring: true, deletable: false,
+      id: b.id, kind: 'recurring', title: b.title, dateStr,
       startHour: timeStrToHour(b.start_time), endHour: timeStrToHour(b.end_time),
       edgeClass: COLOR_EDGE[b.color] ?? COLOR_EDGE.blue,
     })
@@ -119,24 +136,25 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     // shown in its own "unscheduled" group instead of being dropped.
     const start = b.start_time ? timeStrToHour(b.start_time) : null
     blocks.push({
-      id: b.id, title: b.title, dateStr, recurring: false, deletable: true,
+      id: b.id, kind: 'block', title: b.title, dateStr,
       startHour: start ?? -1, endHour: start != null ? start + b.duration_minutes / 60 : -1,
       edgeClass: COLOR_EDGE[b.color] ?? COLOR_EDGE.accent,
-      sourceType: b.source_type, sourceId: b.source_id,
+      taskId: b.task_id,
     })
   }
   for (const e of calEvents ?? []) {
+    if (linkedGCalIds.has(e.id)) continue
     if (e.start.dateTime) {
       const s = new Date(e.start.dateTime)
       const en = new Date(e.end.dateTime ?? e.start.dateTime)
       blocks.push({
-        id: e.id, title: e.summary ?? '(no title)', dateStr, recurring: false, deletable: false,
+        id: e.id, kind: 'calendar', title: e.summary ?? '(no title)', dateStr,
         startHour: s.getHours() + s.getMinutes() / 60, endHour: en.getHours() + en.getMinutes() / 60,
         edgeClass: COLOR_EDGE.green, calendarEvent: e,
       })
     } else if (e.start.date) {
       blocks.push({
-        id: e.id, title: e.summary ?? '(no title)', dateStr, recurring: false, deletable: false,
+        id: e.id, kind: 'calendar', title: e.summary ?? '(no title)', dateStr,
         startHour: -1, endHour: -1, edgeClass: COLOR_EDGE.green, calendarEvent: e, allDay: true,
       })
     }
@@ -165,42 +183,47 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
 
   function openAdd(time?: string) { setClickTime(time); setModal(true) }
 
+  // ✎ opens the ONE editor for whichever entity this row actually is — see
+  // the file-header comment for the routing rule.
+  function openEditor(block: AgendaBlock) {
+    if (block.kind === 'recurring') {
+      const sb = schedBlocks.find(s => s.id === block.id)
+      if (sb) setEditScheduleBlock(sb)
+      return
+    }
+    if (block.taskId) {
+      const t = linkedTaskMap.get(block.taskId)
+      if (t) setEditTask(t)
+      return
+    }
+    const tb = timeBlocks.find(b => b.id === block.id)
+    if (tb) setEditTimeBlock(tb)
+  }
+
   // ── Row renderer (plain render function, not a nested component —
   //     react-hooks/static-components: components created during render get a
   //     new identity every render and remount their subtree) ──
   function renderRow(block: AgendaBlock) {
     const isSelected = selectedId === block.id
-    const isEditing  = editingId === block.id
-    const isCal      = !!block.calendarEvent
+    const isCal       = block.kind === 'calendar'
+    const isRecurring = block.kind === 'recurring'
     const durationMins = Math.round((block.endHour - block.startHour) * 60)
-    const taskNotes  = block.sourceType === 'task' && block.sourceId ? taskNotesMap.get(block.sourceId) : null
+    const taskNotes  = block.taskId ? linkedTaskMap.get(block.taskId)?.description : null
     const isPast     = today && block.endHour <= nowHour
     const isActive   = today && block.startHour <= nowHour && block.endHour > nowHour
 
-    function saveEdit() {
-      const trimmed = editTitle.trim()
-      if (trimmed && trimmed !== block.title) {
-        updateBlock.mutate({ id: block.id, title: trimmed, dateStr: block.dateStr })
-      }
-      setEditingId(null)
-    }
     function postpone30m() {
-      updateBlock.mutate({ id: block.id, start_time: `${hourToTimeStr(Math.min(23.5, block.startHour + 0.5))}:00`, dateStr: block.dateStr })
+      updateBlock.mutate({ id: block.id, patch: { start_time: `${hourToTimeStr(Math.min(23.5, block.startHour + 0.5))}:00` } })
     }
     function postpone1d() {
       const d = new Date(block.dateStr + 'T00:00:00')
       d.setDate(d.getDate() + 1)
       const newDate = format(d, 'yyyy-MM-dd')
-      updateBlock.mutate({ id: block.id, date: newDate, dateStr: block.dateStr, newDateStr: newDate })
-      if (block.sourceType === 'task' && block.sourceId) {
-        const dow = d.getDay()
-        const section = dow === 0 || dow === 6 ? 'this_week'
-          : newDate === format(new Date(), 'yyyy-MM-dd') ? 'today' : 'tomorrow'
-        updateTask.mutate(
-          { id: block.sourceId, patch: { due_date: newDate, section } },
-          { onError: e => toast.error(`Block moved but its task's date didn't update: ${(e as Error).message}`) }
-        )
-      }
+      // Moves only this block's own schedule — a task's deadline (due_date)
+      // and its schedule slot are independent facts (migration 077); postponing
+      // where a task-linked block sits on the calendar must never move when
+      // the task itself is due.
+      updateBlock.mutate({ id: block.id, patch: { date: newDate } })
       setSelectedId(null)
     }
 
@@ -227,36 +250,35 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
             )}
           </div>
           <div className="flex-1 min-w-0">
-            {isEditing ? (
-              <input
-                autoFocus value={editTitle} onChange={e => setEditTitle(e.target.value)}
-                onBlur={saveEdit}
-                onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null) }}
-                onClick={e => e.stopPropagation()}
-                className="w-full bg-cream-100 text-xs font-semibold rounded px-1 py-0.5 outline-none"
-              />
-            ) : (
-              <p className="text-xs font-semibold text-ink-800 truncate leading-snug">
-                {block.title}
-                {block.recurring && <span className="ml-1.5 text-[9px] font-normal text-ink-500" title="Recurring">⟳</span>}
-                {isCal && <span className="ml-1.5 text-[9px] font-normal text-green-600" title="Google Calendar">◈</span>}
-                {taskNotes && <span className="ml-1 text-[9px] opacity-40">📝</span>}
-                {overlappingIds.has(block.id) && <span className="ml-1 text-[10px] text-red-500" title="Overlaps another block">⚠</span>}
-                {isActive && <span className="ml-1.5 text-[9px] font-medium text-accent-600">now</span>}
-              </p>
-            )}
+            <p className="text-xs font-semibold text-ink-800 truncate leading-snug">
+              {block.title}
+              {isRecurring && <span className="ml-1.5 text-[9px] font-normal text-ink-500" title="Recurring">⟳</span>}
+              {isCal && <span className="ml-1.5 text-[9px] font-normal text-green-600" title="Google Calendar">◈</span>}
+              {taskNotes && <span className="ml-1 text-[9px] opacity-40">📝</span>}
+              {overlappingIds.has(block.id) && <span className="ml-1 text-[10px] text-red-500" title="Overlaps another block">⚠</span>}
+              {isActive && <span className="ml-1.5 text-[9px] font-medium text-accent-600">now</span>}
+            </p>
             {isSelected && taskNotes && (
               <p className="text-[10px] text-ink-500 mt-0.5 line-clamp-2">{taskNotes}</p>
             )}
           </div>
-          {isSelected && block.deletable && !isEditing && (
+          {isSelected && !isCal && (
             <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-              {block.startHour >= 0 && (
+              {block.kind === 'block' && block.startHour >= 0 && (
                 <button onClick={postpone30m} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+30m</button>
               )}
-              <button onClick={postpone1d} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+1d</button>
-              <button onClick={() => { setEditingId(block.id); setEditTitle(block.title) }} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">✎</button>
-              <button onClick={() => { deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:text-red-500 hover:border-red-300">✕</button>
+              {block.kind === 'block' && (
+                <button onClick={postpone1d} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+1d</button>
+              )}
+              <button onClick={() => openEditor(block)} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">✎</button>
+              <button
+                onClick={() => {
+                  if (isRecurring) deleteScheduleBlock.mutate(block.id)
+                  else deleteBlock.mutate({ id: block.id, dateStr: block.dateStr })
+                  setSelectedId(null)
+                }}
+                className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:text-red-500 hover:border-red-300"
+              >✕</button>
             </div>
           )}
         </div>
@@ -359,12 +381,36 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         )}
       </div>
 
+      {/* "+ Add" — always creates a standalone one-off block (schedule mode);
+          "Also add to Tasks" is offered inside ScheduleTab itself. */}
       <UnifiedPlanModal
         open={modal}
         onClose={() => { setModal(false); setClickTime(undefined) }}
-        config={{ tabs: ['schedule', 'task'], heading: 'Add time block' }}
+        mode="schedule"
+        config={{ heading: 'Add time block' }}
         defaults={{ date: dateStr, startTime: clickTime, category: 'daily' }}
       />
+
+      {/* ✎ editors — exactly one entity per open, routed by openEditor() */}
+      <UnifiedPlanModal
+        open={!!editTask}
+        onClose={() => setEditTask(null)}
+        config={{ heading: 'Edit Task' }}
+        task={editTask ?? undefined}
+      />
+      <UnifiedPlanModal
+        open={!!editTimeBlock}
+        onClose={() => setEditTimeBlock(null)}
+        config={{ heading: 'Edit block' }}
+        timeBlock={editTimeBlock ?? undefined}
+      />
+      <UnifiedPlanModal
+        open={!!editScheduleBlock}
+        onClose={() => setEditScheduleBlock(null)}
+        config={{ heading: 'Edit recurring block' }}
+        scheduleBlock={editScheduleBlock ?? undefined}
+      />
+
       {editEvent && <EditCalendarEventModal mode="edit" event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
   )

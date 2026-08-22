@@ -442,7 +442,8 @@ export function GameDetailModal({ gameId, onClose, updateGame }: Props) {
       <UnifiedPlanModal
         open={planOpen}
         onClose={() => setPlanOpen(false)}
-        config={{ tabs: ['schedule', 'task'], heading: 'Plan session' }}
+        mode="schedule"
+        config={{ heading: 'Plan session' }}
         defaults={{ title: game.title, category: 'games', color: 'blue' }}
       />
     )}

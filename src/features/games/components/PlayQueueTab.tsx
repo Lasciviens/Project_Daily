@@ -242,7 +242,8 @@ export function PlayQueueTab() {
       <UnifiedPlanModal
         open={!!scheduleGame}
         onClose={() => setScheduleGame(null)}
-        config={{ tabs: ['schedule', 'task'], heading: 'Schedule session' }}
+        mode="schedule"
+        config={{ heading: 'Schedule session' }}
         defaults={{ title: scheduleGame?.title ?? '', category: 'games', color: 'blue' }}
       />
     </div>

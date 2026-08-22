@@ -281,13 +281,23 @@ which door the write came through.
   plausibly varies per rule (e.g. `block_delete_cascades_task`'s
   `auto_task_source_types` array — which `tasks.source_type` values count as
   "this task only exists because a plan created it"; as of migration 047 that
-  array is `training_session` + `movie` + `project_item`). **This cascade
-  SOFT-CANCELS, it does not delete** (migration 047): when a plan's block is
-  deleted, the linked task becomes `status='cancelled'` (reversible, visible),
-  never a hard `DELETE` — the deliberate mitigation against silent, irreversible
-  data loss. The actual matching
-  logic per relationship shape (task↔block by id, episode→block by
-  season/episode number, project_item→block by id) stays explicit SQL in
+  array was `training_session` + `movie` + `project_item`). **This cascade
+  SOFT-CANCELED, it did not delete** (migration 047): when a plan's block was
+  deleted, the linked task became `status='cancelled'` (reversible, visible),
+  never a hard `DELETE`.
+  **⚠️ RETIRED by migration 077 (2026-08-22):** `block_delete_cascades_task`
+  and its sibling `block_task_date_sync` (the trigger that kept
+  `tasks.due_date`/`due_time` and `time_blocks.date`/`start_time`
+  bidirectionally equal) are now `enabled=false` with a "RETIRED" description
+  — a Task's deadline and its optional one-off schedule slot are independent
+  facts now, by explicit user decision (the Tasks/Schedule model fix): deleting
+  or moving a task-linked block never touches the task any more, and the
+  reverse (task hard-delete → its block is removed) is a real FK
+  (`time_blocks.task_id ON DELETE CASCADE`), not a trigger. The rows are
+  disabled + redescribed, not dropped, so the history stays legible. The
+  matching
+  logic per relationship shape (episode→block by season/episode number,
+  project_item→block by id) still stays explicit SQL in
   typed trigger functions — Postgres has no safe generic polymorphic join
   without dynamic SQL, and dynamic SQL is a correctness/security risk not
   worth taking here. Adding a new "auto-created" task source_type, or turning
@@ -295,10 +305,21 @@ which door the write came through.
 - **Hub tables**: `time_blocks` and `tasks` both carry `source_type`/
   `source_id` pointing at whatever they were created from — this is the
   existing polymorphic-association pattern (see `time_blocks_source` index
-  from migration 010), not something migration 043 introduced.
-- **Trigger functions** (`sync_task_from_time_block`, `sync_time_block_from_task`,
-  `cleanup_block_on_episode_watched`, `cleanup_block_on_project_item_delete`):
-  each checks `link_rule_enabled('...')` at the top before doing anything.
+  from migration 010), not something migration 043 introduced. **As of
+  migration 077, `time_blocks.source_type` never equals `'task'`** — "linked
+  to a Task" is `time_blocks.task_id` (a real FK) exclusively, so
+  `source_type`/`source_id` on a task-linked block always describe the block's
+  REAL originating entity (or are null for a plain manual block), never the
+  task itself.
+- **Trigger functions** (`cleanup_block_on_episode_watched`,
+  `cleanup_block_on_project_item_delete`): each checks `link_rule_enabled('...')`
+  at the top before doing anything. **`sync_task_from_time_block` and
+  `sync_time_block_from_task` were DROPPED entirely by migration 077** (not
+  just disabled) — they implemented the retired bidirectional due-date/
+  schedule-date sync above. The one surviving Task↔block cross-effect is
+  one-directional: `sync_time_block_title_from_task` mirrors a Task title
+  edit onto its linked block's title (`AFTER UPDATE ON tasks`, guarded by
+  `pg_trigger_depth() = 1` like the others).
 - **Recursion guard**: `time_blocks` → `tasks` and `tasks` → `time_blocks`
   sync can each cause the other to fire. Guarded with `pg_trigger_depth() = 1`
   — a direct user edit propagates to the other side exactly once; that

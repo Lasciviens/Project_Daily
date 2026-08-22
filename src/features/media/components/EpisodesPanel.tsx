@@ -244,7 +244,8 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
       <UnifiedPlanModal
         open={planModal}
         onClose={() => { setPlanModal(false); setSelected(new Set()) }}
-        config={{ tabs: ['schedule'], heading: 'Plan episodes' }}
+        mode="schedule"
+        config={{ heading: 'Plan episodes' }}
         defaults={{
           title:    planTitle,
           date:     TODAY,

@@ -604,7 +604,7 @@ export function TrainingCalendar() {
       <UnifiedPlanModal
         open={!!selectedPlanBlock}
         onClose={() => setSelectedPlanBlock(null)}
-        config={{ tabs: ['schedule'], heading: 'Edit Session' }}
+        config={{ heading: 'Edit Session' }}
         timeBlock={selectedPlanBlock ?? undefined}
       />
     </div>
