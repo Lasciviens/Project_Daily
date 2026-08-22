@@ -25,9 +25,10 @@ require('sucrase/register')
 
 const {
   inferRecurrenceMode, minutesBetweenWrapping, defaultScheduleCategory, daysForRecurrence,
-  blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe,
+  blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
 } = require('../src/shared/components/plan-modal/planModal.config')
 const { buildInitialForm } = require('../src/shared/components/plan-modal/planForm')
+const { shouldSkipPendingCreate } = require('../src/features/todo/api/googleTasksOutboxRules')
 
 let passed = 0
 let failed = 0
@@ -95,9 +96,13 @@ console.log('\n== 4. Round trip: daysForRecurrence(inferRecurrenceMode(days)) ==
 
 console.log('\n== 5. blockSourceTypeForTask / taskSourceTypeForBlock (source-fallback mapping) ==')
 {
-  // The one asymmetric pair — the whole reason a mapping function exists
-  // instead of passing the value straight through.
-  check('task tv_series -> block tv_episode', blockSourceTypeForTask('tv_series') === 'tv_episode')
+  // task 'tv_series' -> block is now deliberately undefined, NOT
+  // 'tv_episode' — a generic fallback (no episodeInfo, no season/episode
+  // numbers) can't back up an episode-specific claim. The reverse (block
+  // 'tv_episode' -> task 'tv_series') is lossless and stays mapped: a real
+  // episode block always rolls up cleanly to a show-level task.
+  check('task tv_series has NO generic block equivalent (would overclaim episode identity)',
+    blockSourceTypeForTask('tv_series') === undefined)
   check('block tv_episode -> task tv_series', taskSourceTypeForBlock('tv_episode') === 'tv_series')
 
   // Everything else is a straight pass-through in both directions.
@@ -120,15 +125,17 @@ console.log('\n== 6. needsGoogleTaskDedupe — "one task = one Google entry" on 
 {
   // The real bug: editing an ALREADY Google-synced task into a
   // calendar-linked schedule used to skip the dedupe entirely (it only ran
-  // at create time).
+  // at create time). Signature deliberately dropped the googleTaskId param
+  // — see §8's pending-create scenario for why requiring one was itself a
+  // second, related bug.
   check('synced task gaining a GCal schedule -> needs dedupe',
-    needsGoogleTaskDedupe(true, true, 'gtask_123') === true)
+    needsGoogleTaskDedupe(true, true) === true)
   check('not becoming a calendar event -> no dedupe needed',
-    needsGoogleTaskDedupe(false, true, 'gtask_123') === false)
+    needsGoogleTaskDedupe(false, true) === false)
   check('never synced to Google -> nothing to dedupe',
-    needsGoogleTaskDedupe(true, false, null) === false)
-  check('sync enabled but no real google_task_id yet -> nothing to remove',
-    needsGoogleTaskDedupe(true, true, null) === false)
+    needsGoogleTaskDedupe(true, false) === false)
+  check('sync enabled but no real google_task_id yet (pending create) -> STILL needs dedupe',
+    needsGoogleTaskDedupe(true, true) === true)
 }
 
 console.log('\n== 7. buildInitialForm — gcal seeded from the REAL entity, not a blind default ==')
@@ -153,6 +160,44 @@ console.log('\n== 7. buildInitialForm — gcal seeded from the REAL entity, not 
     buildInitialForm({ gcal: true }, undefined, undefined, undefined).gcal === true)
   check('CREATE (no timeBlock), no defaults -> gcal=false',
     buildInitialForm(undefined, undefined, undefined, undefined).gcal === false)
+}
+
+console.log('\n== 8. shouldSkipPendingCreate — the outbox drain half of the dedupe-ordering fix ==')
+{
+  // The exact scenario needsGoogleTaskDedupe(true, true) said "yes, opt out"
+  // for in §6: sync was enabled, no google_task_id yet (a 'create' is still
+  // pending/undrained). Once the opt-out patch lands, that pending create
+  // must become a no-op — this is what stops it firing anyway.
+  check('pending create (no google_task_id), opted out since -> skip',
+    shouldSkipPendingCreate({ google_sync_enabled: false, google_task_id: null }, false) === true)
+  // Already created for real — the original guard's whole purpose (don't
+  // duplicate after a partial earlier failure).
+  check('already created (has google_task_id), still enabled -> skip',
+    shouldSkipPendingCreate({ google_sync_enabled: true, google_task_id: 'gtask_1' }, false) === true)
+  // The normal, legitimate path — nothing here should ever block a real create.
+  check('genuinely new + still enabled -> proceed (do NOT skip)',
+    shouldSkipPendingCreate({ google_sync_enabled: true, google_task_id: null }, false) === false)
+  // force_recreate (migration 078) bypasses BOTH guards for the Reopen case.
+  check('force_recreate bypasses the "already has an id" guard (Reopen — id is dead)',
+    shouldSkipPendingCreate({ google_sync_enabled: true, google_task_id: 'dead_gtask' }, true) === false)
+  check('force_recreate task is always sync-enabled anyway (un-cancel sets it in the same write)',
+    shouldSkipPendingCreate({ google_sync_enabled: true, google_task_id: null }, true) === false)
+}
+
+console.log('\n== 9. shouldCreateLinkedTask — the TrainingCalendar duplicate-task guard ==')
+{
+  // The real bug: TrainingCalendar opened a task-linked plan block via
+  // `timeBlock` (not `task`), which seeds alsoCreateTask=true (buildInitialForm
+  // has no idea a task already exists for it) — Save then created a SECOND
+  // task and re-pointed the block's task_id at it, orphaning the original.
+  check('block is ALREADY task-linked -> never create a second task, even if the form checkbox is on',
+    shouldCreateLinkedTask(true, 'existing_task_id') === false)
+  check('standalone block, checkbox on -> create (the normal, intended path)',
+    shouldCreateLinkedTask(true, null) === true)
+  check('standalone block, checkbox on, undefined existing id -> create',
+    shouldCreateLinkedTask(true, undefined) === true)
+  check('checkbox off -> never create regardless of link state',
+    shouldCreateLinkedTask(false, null) === false && shouldCreateLinkedTask(false, 'existing_task_id') === false)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

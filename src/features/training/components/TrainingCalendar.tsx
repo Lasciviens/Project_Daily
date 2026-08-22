@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useTrainingBlocks } from '../../daily/hooks/useSchedule'
@@ -6,8 +7,10 @@ import { HevyWorkoutDetail } from './HevyWorkoutDetail'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DateNav } from '../../../shared/components/DateNav'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
+import { supabase } from '../../../integrations/supabase/client'
 import type { HevyWorkout, StravaActivity } from '../types.hevy'
 import type { TimeBlock } from '../../daily/types'
+import type { Task } from '../../todo/types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -514,6 +517,25 @@ export function TrainingCalendar() {
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
   const [selectedPlanBlock, setSelectedPlanBlock] = useState<TimeBlock | null>(null)
 
+  // A task-linked plan block must open the TASK (mode='task', where its
+  // Schedule section lives) — NOT the block directly via `timeBlock`, which
+  // is contractually a standalone-only prop (planModal.types.ts). Opening a
+  // task-linked block with `timeBlock` seeded `alsoCreateTask` misleadingly
+  // (buildInitialForm has no idea a task already exists) and Save then
+  // created a SECOND task and re-pointed the block's task_id at it — the
+  // real duplicate-task bug. Same pattern as NextSessionBanner.
+  const isPlanTaskLinked = !!selectedPlanBlock?.task_id
+  const { data: selectedPlanTask } = useQuery({
+    queryKey: ['tasks', 'byId', selectedPlanBlock?.task_id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('tasks').select('*').eq('id', selectedPlanBlock!.task_id!).single()
+      if (error) throw error
+      return data as Task
+    },
+    enabled: isPlanTaskLinked,
+    staleTime: 60_000,
+  })
+
   const { data: workouts = [] } = useHevyWorkouts({ limit: 200 })
   const { data: activities = [] } = useStravaActivities({ limit: 200 })
 
@@ -602,10 +624,11 @@ export function TrainingCalendar() {
       />
 
       <UnifiedPlanModal
-        open={!!selectedPlanBlock}
+        open={!!selectedPlanBlock && (isPlanTaskLinked ? !!selectedPlanTask : true)}
         onClose={() => setSelectedPlanBlock(null)}
         config={{ heading: 'Edit Session' }}
-        timeBlock={selectedPlanBlock ?? undefined}
+        task={isPlanTaskLinked ? selectedPlanTask : undefined}
+        timeBlock={!isPlanTaskLinked ? (selectedPlanBlock ?? undefined) : undefined}
       />
     </div>
   )

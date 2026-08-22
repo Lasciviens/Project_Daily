@@ -1251,6 +1251,12 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
   // NOTE: tasks.source_type uses 'tv_series' but time_blocks.source_type's
   // CHECK (migration 077) only allows 'tv_episode' — the two vocabularies
   // differ on TV specifically; using 'tv_series' here would 400 on the CHECK.
+  // season_number/episode_number are the columns cleanup_block_on_episode_
+  // watched actually keys off (migration 043) — only stamp them when the AI
+  // was given a SPECIFIC episode (mirrors EpisodesPanel's own single-episode
+  // rule: never stamped for an unspecified/batch watch, which just means
+  // "watch some of this show", not "this exact episode").
+  const knownEpisode = isTV && season != null && episode != null
   const { error: blockErr } = await supabase.from('time_blocks').insert({
     user_id:          userId,
     date,
@@ -1261,6 +1267,7 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
     task_id:          task.id,
     source_type:      isTV ? 'tv_episode' : 'movie',
     source_id:        args.entry_id ?? null,
+    ...(knownEpisode ? { season_number: season, episode_number: episode } : {}),
     updated_at:       new Date().toISOString(),
   })
 

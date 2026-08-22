@@ -21,6 +21,42 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-08-22 · v10 · Second post-review pass (correctness fixes only):
+//                    (a) linkCalendarEvent/syncTaskSchedule now return
+//                    whether the block ended up ACTUALLY calendar-linked.
+//                    saveTask's edit branch no longer decides the Google
+//                    Task dedupe (google_sync_enabled: false) before that
+//                    outcome is known — deciding first meant useUpdateTask's
+//                    synchronous outbox drain could delete the real Google
+//                    Task moments before a failed calendar link, leaving
+//                    the task with NEITHER Google representation. The
+//                    dedupe is now a SEPARATE mutation, applied only after
+//                    confirmation. needsGoogleTaskDedupe dropped its
+//                    googleTaskId parameter (a pending, undrained 'create'
+//                    has google_sync_enabled=true with google_task_id still
+//                    NULL — requiring an id meant that pending create was
+//                    never cancelled); shouldSkipPendingCreate (a new
+//                    import-free pure module, googleTasksOutboxRules.ts) is
+//                    the matching fix on the drain side, in both
+//                    processCreate implementations.
+//                    (b) blockSourceTypeForTask no longer maps task
+//                    'tv_series' -> block 'tv_episode' — a context-free
+//                    fallback can't back up episode-specificity it has no
+//                    season/episode numbers for. ai-proxy's planMedia now
+//                    stamps season_number/episode_number when the AI was
+//                    given a specific episode (mirrors EpisodesPanel's own
+//                    rule), so cleanup_block_on_episode_watched can match
+//                    an AI-planned episode block at all.
+//                    (c) saveSchedule's "Also add to Tasks" branch gained a
+//                    shouldCreateLinkedTask defensive guard: never create a
+//                    second task when the `timeBlock` passed in already has
+//                    one (should be structurally unreachable, but this is
+//                    what stops a caller bug from doing it silently) — the
+//                    exact TrainingCalendar bug this pass found and fixed
+//                    (it opened a task-linked plan block via `timeBlock`
+//                    instead of `task`, so buildInitialForm seeded
+//                    alsoCreateTask=true with no idea a task already
+//                    existed, and Save minted a duplicate).
 //  2026-08-22 · v9 · Post-review fixes on top of v8 (real runtime gaps, not
 //                    architecture changes):
 //                    (a) A standalone timeBlock's `gcal` wasn't seeded from
@@ -154,7 +190,7 @@ import { RecurringTab } from './RecurringTab'
 import { buildInitialForm } from './planForm'
 import {
   daysForRecurrence, endTimeFrom, sectionForDate, LOCAL_TZ,
-  blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe,
+  blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
 } from './planModal.config'
 import type { PlanForm } from './planForm'
 import type { PlanMode, UnifiedPlanModalProps, PlanModalConfig } from './planModal.types'
@@ -259,13 +295,16 @@ export function UnifiedPlanModal({
   // orphaned/duplicate events). Idempotent BY CONSTRUCTION: it re-reads the
   // block first and NEVER creates a second event when one already exists — so
   // re-saving (e.g. edit → add-to-calendar) can't duplicate, regardless of what
-  // the call site checked. Best-effort — never blocks the save.
-  async function linkCalendarEvent(blockId: string, dateStr: string, timeHHMM: string, durationMin: number, title: string) {
-    if (!calToken) return
+  // the call site checked. Best-effort — never THROWS — but now returns
+  // whether the block actually ended up calendar-linked, so a caller that's
+  // about to drop the task's OTHER Google representation (its Google Task)
+  // can wait for real confirmation instead of assuming success.
+  async function linkCalendarEvent(blockId: string, dateStr: string, timeHHMM: string, durationMin: number, title: string): Promise<boolean> {
+    if (!calToken) return false
     try {
       const { data: current } = await supabase
         .from('time_blocks').select('google_calendar_event_id').eq('id', blockId).single()
-      if (current?.google_calendar_event_id) return
+      if (current?.google_calendar_event_id) return true
       const start = new Date(`${dateStr}T${timeHHMM}:00`)
       const end   = new Date(start.getTime() + durationMin * 60_000)
       const created = await createCalendarEvent(calToken, 'primary', {
@@ -274,6 +313,7 @@ export function UnifiedPlanModal({
         end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
       })
       await updateTimeBlock(blockId, { google_calendar_event_id: created.id })
+      return true
     } catch (err) {
       // Was a hardcoded generic message with the real cause swallowed —
       // surfacing it (expired token, missing write scope, a malformed
@@ -282,6 +322,7 @@ export function UnifiedPlanModal({
       // needing a code change every time to find out why.
       toast.error(`Planned locally, Google Calendar sync failed: ${(err as Error).message}`)
       logError((err as Error).message, { action: 'link_calendar_event' })
+      return false
     }
   }
 
@@ -296,12 +337,16 @@ export function UnifiedPlanModal({
   }
 
   // ── Save: mode='task' — Task fields + at most one linked one-off block ────
-  async function syncTaskSchedule(taskId: string, existingBlock: TimeBlock | null) {
+  // Returns whether the linked block ends up ACTUALLY calendar-linked after
+  // this call — the caller (saveTask) needs the real, confirmed outcome
+  // (not the mere intent `form.gcal`) before it's safe to drop the task's
+  // Google Task representation; see needsGoogleTaskDedupe's doc comment.
+  async function syncTaskSchedule(taskId: string, existingBlock: TimeBlock | null): Promise<boolean> {
     const title = form.title.trim()
     if (!form.scheduled) {
       // "Unschedule": the time slot goes, the Task never does.
       if (existingBlock) await deleteTimeBlock(existingBlock.id)
-      return
+      return false
     }
 
     const effDuration  = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
@@ -313,33 +358,37 @@ export function UnifiedPlanModal({
         title, category: form.category,
       })
       if (form.gcal && calToken && !existingBlock.google_calendar_event_id) {
-        await linkCalendarEvent(existingBlock.id, form.date, form.startTime, effDuration, title)
-      } else if (!form.gcal && calToken && existingBlock.google_calendar_event_id) {
+        return await linkCalendarEvent(existingBlock.id, form.date, form.startTime, effDuration, title)
+      }
+      if (!form.gcal && calToken && existingBlock.google_calendar_event_id) {
         await updateTimeBlock(existingBlock.id, { google_calendar_event_id: null })
+        return false
       }
-    } else {
-      // The originating entity's source_type/source_id (movie/training_session/
-      // project_item/tv_episode) travels alongside task_id, never replaced by
-      // it — the real bug this migration fixes. When the caller passed no
-      // `source` at all (common for a plain To-Do being scheduled for the
-      // first time, e.g. from ToDoItem's edit modal) fall back to the
-      // EXISTING task's own source_type/source_id — an editor with no
-      // explicit source prop must not silently drop a real origin the task
-      // already carries (e.g. a project_item task gaining a schedule).
-      const episodeFields = source?.episodeInfo
-        ? { season_number: source.episodeInfo.seasonNumber, episode_number: source.episodeInfo.episodeNumber }
-        : {}
-      const block = await createBlock.mutateAsync({
-        date: form.date, title, start_time: startTimeVal, duration_minutes: effDuration,
-        category: form.category, color: 'accent', task_id: taskId,
-        source_type: source?.sourceType ?? blockSourceTypeForTask(task?.source_type),
-        source_id:   source?.sourceId   ?? task?.source_id ?? undefined,
-        ...episodeFields,
-      })
-      if (form.gcal && calToken) {
-        await linkCalendarEvent(block.id, form.date, form.startTime, effDuration, title)
-      }
+      return form.gcal && !!existingBlock.google_calendar_event_id
     }
+
+    // The originating entity's source_type/source_id (movie/training_session/
+    // project_item/tv_episode) travels alongside task_id, never replaced by
+    // it — the real bug this migration fixes. When the caller passed no
+    // `source` at all (common for a plain To-Do being scheduled for the
+    // first time, e.g. from ToDoItem's edit modal) fall back to the
+    // EXISTING task's own source_type/source_id — an editor with no
+    // explicit source prop must not silently drop a real origin the task
+    // already carries (e.g. a project_item task gaining a schedule).
+    const episodeFields = source?.episodeInfo
+      ? { season_number: source.episodeInfo.seasonNumber, episode_number: source.episodeInfo.episodeNumber }
+      : {}
+    const block = await createBlock.mutateAsync({
+      date: form.date, title, start_time: startTimeVal, duration_minutes: effDuration,
+      category: form.category, color: 'accent', task_id: taskId,
+      source_type: source?.sourceType ?? blockSourceTypeForTask(task?.source_type),
+      source_id:   source?.sourceId   ?? task?.source_id ?? undefined,
+      ...episodeFields,
+    })
+    if (form.gcal && calToken) {
+      return await linkCalendarEvent(block.id, form.date, form.startTime, effDuration, title)
+    }
+    return false
   }
 
   async function saveTask() {
@@ -347,16 +396,15 @@ export function UnifiedPlanModal({
     const googleTasklistId = await resolveGoogleListField()
 
     if (editMode && task) {
-      // "One task = ONE Google entry" (the create-path policy — see
-      // createTask's skipGoogleTasks) also has to hold when a task that was
-      // ALREADY a synced Google Task later gains a calendar-linked schedule
-      // on an EDIT — without this, it ends up represented on Google twice
-      // (a Task AND an Event) since the create-time dedupe never runs again.
-      // Setting google_sync_enabled: false re-fires migration 071's opt-out
-      // trigger branch, which enqueues the outbox 'delete' that removes the
-      // now-redundant Google Task copy.
-      const willBeCalendarEvent = form.scheduled && form.gcal && !!calToken
-      const needsGoogleTaskCleanup = needsGoogleTaskDedupe(willBeCalendarEvent, task.google_sync_enabled, task.google_task_id)
+      // Content fields ONLY here — google_sync_enabled is deliberately NOT
+      // touched yet. "One task = ONE Google entry" has to hold when an
+      // ALREADY google_sync_enabled task later gains a calendar-linked
+      // schedule on an EDIT, but opting OUT before the calendar event is
+      // actually confirmed linked would be a real data-loss ordering bug:
+      // useUpdateTask drains the outbox (and would delete the Google Task)
+      // IMMEDIATELY on this mutation resolving, while syncTaskSchedule (and
+      // its own linkCalendarEvent call) only runs AFTER — a failed calendar
+      // link would then leave the task with NEITHER Google representation.
       await updateTaskM.mutateAsync({
         id: task.id,
         patch: {
@@ -369,10 +417,16 @@ export function UnifiedPlanModal({
           due_date:    form.dueDate || null,
           due_time:    form.dueTime ? `${form.dueTime}:00` : null,
           ...(googleTasklistId !== undefined ? { google_tasklist_id: googleTasklistId } : {}),
-          ...(needsGoogleTaskCleanup ? { google_sync_enabled: false } : {}),
         },
       })
-      await syncTaskSchedule(task.id, linkedBlock ?? null)
+      const nowCalendarLinked = await syncTaskSchedule(task.id, linkedBlock ?? null)
+      // Only NOW — with the calendar link outcome actually known — decide
+      // whether to drop the now-redundant Google Task. A second, separate
+      // mutation on purpose: bundling it into the update above would have
+      // meant deciding before the outcome existed.
+      if (needsGoogleTaskDedupe(nowCalendarLinked, task.google_sync_enabled)) {
+        await updateTaskM.mutateAsync({ id: task.id, patch: { google_sync_enabled: false } })
+      }
       onSaved?.({ mode: 'task', taskId: task.id })
       return
     }
@@ -411,7 +465,16 @@ export function UnifiedPlanModal({
 
     if (timeBlock) {
       let linkedTaskId: string | undefined
-      if (form.alsoCreateTask) {
+      // Defensive: `timeBlock` is contractually a STANDALONE block (never
+      // task-linked — planModal.types.ts's own comment on the prop), so
+      // shouldCreateLinkedTask should be structurally impossible to return
+      // true here for an already-linked block already. Guarding on the
+      // real column anyway means a caller bug (passing an already
+      // task-linked block through `timeBlock` instead of `task` — the
+      // exact TrainingCalendar bug this migration's review caught) can
+      // never silently mint a SECOND task and re-point this block at it —
+      // it just does nothing instead.
+      if (shouldCreateLinkedTask(form.alsoCreateTask, timeBlock.task_id)) {
         // This block IS (or, per the checkbox below, is about to become) a
         // Google Calendar event whenever form.gcal is on — "one task = one
         // Google entry" means the new Task must not ALSO become a Google

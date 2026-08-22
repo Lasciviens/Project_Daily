@@ -167,14 +167,20 @@ async function applySnapshot(taskId: string, userId: string, remote: AnyRecord, 
 // such urgency and must not hammer a task that's mid-backoff.
 interface OutboxRow { id: string; task_id: string; operation: 'create' | 'update' | 'delete'; payload: AnyRecord; attempts: number }
 
+// Mirrors src/features/todo/api/googleTasksOutboxRules.ts's
+// shouldSkipPendingCreate() exactly — Deno can't import that file (no
+// _shared/ imports per this repo's edge-function convention), so keep any
+// change to that logic mirrored here by hand.
+function shouldSkipPendingCreate(task: AnyRecord, forceRecreate: boolean): boolean {
+  if (!task.google_sync_enabled && !forceRecreate) return true
+  if (task.google_task_id && !forceRecreate) return true
+  return false
+}
+
 async function processCreate(token: string, userId: string, row: OutboxRow) {
   const { data: task } = await supabase.from('tasks').select('*').eq('id', row.task_id).maybeSingle()
   if (!task) return
-  // See googleTasksOutbox.ts's processCreate (browser drain) for why this
-  // guard has an exception: migration 078's Reopen fix enqueues 'create'
-  // with force_recreate=true whose google_task_id is a KNOWN-DEAD id
-  // (Google Tasks has no undelete) — that case must proceed, not skip.
-  if (task.google_task_id && !row.payload.force_recreate) return
+  if (shouldSkipPendingCreate(task, !!row.payload.force_recreate)) return
   const listId = await resolveGoogleListId(task.google_tasklist_id)
   const parent = await resolveGoogleParentId(task.parent_task_id)
   const remote = await createGoogleTask(token, listId, task, { parent })

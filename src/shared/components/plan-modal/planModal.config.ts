@@ -154,10 +154,16 @@ export function defaultScheduleCategory(domain: string, taskSourceType?: string 
 const BLOCK_SOURCE_TYPES = ['training_session', 'movie', 'project_item', 'calendar', 'manual'] as const
 
 /** tasks.source_type -> the matching time_blocks.source_type (or undefined
- *  when there's no valid equivalent, e.g. 'media'/'ai'). */
+ *  when there's no valid equivalent, e.g. 'media'/'ai'). Deliberately does
+ *  NOT map 'tv_series' -> 'tv_episode': that direction would invent
+ *  episode-specificity this generic fallback has no way to back up (no
+ *  season/episode numbers to go with it) — a caller that actually knows
+ *  the episode (e.g. via `source.episodeInfo`) sets 'tv_episode' itself,
+ *  explicitly, alongside real season_number/episode_number. Falling back
+ *  from a bare 'tv_series' task with no further context is safer as "no
+ *  block source" than as a falsely episode-specific one. */
 export function blockSourceTypeForTask(taskSourceType?: string | null): string | undefined {
   if (!taskSourceType) return undefined
-  if (taskSourceType === 'tv_series') return 'tv_episode'
   return (BLOCK_SOURCE_TYPES as readonly string[]).includes(taskSourceType) ? taskSourceType : undefined
 }
 
@@ -173,15 +179,32 @@ export function taskSourceTypeForBlock(blockSourceType?: string | null): TaskSou
 }
 
 /** "One task = ONE Google entry" — whether an EDIT that makes a task
- *  calendar-linked must also drop its now-redundant Google Task copy.
+ *  calendar-linked must also opt it OUT of Google Tasks.
  *  create-time dedupe (skipGoogleTasks) only runs once at INSERT; without
- *  this check, a task that was already google_sync_enabled with a real
- *  google_task_id and later gains a GCal schedule ends up on Google TWICE
- *  (a Task AND an Event) — the real bug this closes on the edit path. */
-export function needsGoogleTaskDedupe(
-  willBeCalendarEvent: boolean, googleSyncEnabled: boolean, googleTaskId: string | null | undefined,
-): boolean {
-  return willBeCalendarEvent && googleSyncEnabled && !!googleTaskId
+ *  this check, a task that was already google_sync_enabled and later gains
+ *  a GCal schedule ends up on Google TWICE (a Task AND an Event) — the real
+ *  bug this closes on the edit path. Deliberately does NOT require an
+ *  existing `google_task_id`: a task can be google_sync_enabled=true with
+ *  google_task_id still NULL (a 'create' outbox row enqueued but not yet
+ *  drained) — that pending create must be cancelled too, or it silently
+ *  fires later and creates the now-unwanted Google Task anyway. Call this
+ *  ONLY after the calendar event is confirmed actually linked (never
+ *  speculatively) — flipping the flag off before that would leave the task
+ *  with NEITHER Google representation if the calendar link then fails. */
+export function needsGoogleTaskDedupe(willBeCalendarEvent: boolean, googleSyncEnabled: boolean): boolean {
+  return willBeCalendarEvent && googleSyncEnabled
+}
+
+/** saveSchedule's "Also add to Tasks" branch (mode='schedule', editing a
+ *  `timeBlock`) should only ever create a NEW linked task — `timeBlock` is
+ *  contractually a standalone-only prop (a task-linked block is always
+ *  edited via `task` instead), so `existingTaskId` should never be set
+ *  here in practice. This is the last line of defense against a caller bug
+ *  (e.g. passing a task-linked block through `timeBlock`) silently minting
+ *  a SECOND task and re-pointing the block at it instead of updating the
+ *  one real linked task that already exists. */
+export function shouldCreateLinkedTask(alsoCreateTask: boolean, existingTaskId?: string | null): boolean {
+  return alsoCreateTask && !existingTaskId
 }
 
 // ── Config resolution ─────────────────────────────────────────────────────────
