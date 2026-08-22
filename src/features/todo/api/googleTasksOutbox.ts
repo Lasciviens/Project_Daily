@@ -2,7 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { logError } from '../../../shared/utils/logError'
 import {
   createGoogleTask, updateGoogleTask, deleteGoogleTask, moveGoogleTask,
-  completeGoogleTask, reopenGoogleTask, isGoogleTaskNotFound,
+  getGoogleTask, completeGoogleTask, reopenGoogleTask, isGoogleTaskNotFound,
   type GoogleRemoteTask,
 } from './googleTasksApi'
 import { shouldSkipPendingCreate } from './googleTasksOutboxRules'
@@ -41,16 +41,31 @@ async function claimRows(): Promise<OutboxRow[]> {
   return (data ?? []) as OutboxRow[]
 }
 
+// A DB read error here used to be indistinguishable from "no row found" —
+// both left `data` as null/undefined, and every caller treated that as a
+// legitimate "nothing to resolve, fall back to the default" case. That's
+// correct for an ACTUAL missing row, but silently wrong for a transient DB
+// failure (a real bug: a task could get "no list found → @default" or a
+// parent link could get dropped, purely because a read happened to fail,
+// not because the referenced row doesn't exist).
 async function resolveGoogleListId(googleTasklistId: string | null): Promise<string> {
   if (!googleTasklistId) return '@default'
-  const { data } = await supabase.from('google_task_lists').select('google_id').eq('id', googleTasklistId).maybeSingle()
+  const { data, error } = await supabase.from('google_task_lists').select('google_id').eq('id', googleTasklistId).maybeSingle()
+  if (error) throw error
   return data?.google_id ?? '@default'
 }
 
 async function resolveGoogleParentId(parentTaskId: string | null): Promise<string | undefined> {
   if (!parentTaskId) return undefined
-  const { data } = await supabase.from('tasks').select('google_task_id').eq('id', parentTaskId).maybeSingle()
+  const { data, error } = await supabase.from('tasks').select('google_task_id').eq('id', parentTaskId).maybeSingle()
+  if (error) throw error
   return data?.google_task_id ?? undefined
+}
+
+async function fetchTask(taskId: string) {
+  const { data, error } = await supabase.from('tasks').select('*').eq('id', taskId).maybeSingle()
+  if (error) throw error
+  return data
 }
 
 async function applySnapshot(taskId: string, remote: GoogleRemoteTask) {
@@ -80,85 +95,171 @@ async function clearGoogleTaskIdIfMatches(taskId: string, expectedGoogleTaskId: 
   return !!data
 }
 
-// A durable retry row for an orphan Google Task this run couldn't clean up
-// itself (the compensation delete below failed) — inserted as a plain
-// 'delete' outbox row so the NEXT drain (this browser, or the cron poller)
-// retries it with the exact same machinery, instead of the cleanup attempt
-// living only in a log line that nothing ever revisits. task_id has no FK
-// (see migration 071's table comment), so this is safe to insert even if
-// the local task row is already gone.
-async function enqueueOrphanCleanup(userId: string, taskId: string, googleTaskId: string, googleTasklistId: string | null) {
-  const { error } = await supabase.from('google_tasks_outbox').insert({
-    user_id: userId, task_id: taskId, operation: 'delete',
-    payload: { google_task_id: googleTaskId, google_tasklist_id: googleTasklistId },
-  })
-  if (error) logError(`Failed to enqueue orphan Google Task cleanup: ${error.message}`, { taskId, googleTaskId })
+async function patchPayload(rowId: string, payload: Record<string, unknown>): Promise<void> {
+  const { error } = await supabase.from('google_tasks_outbox').update({ payload }).eq('id', rowId)
+  if (error) throw error
 }
 
-async function processCreate(token: string, row: OutboxRow): Promise<void> {
-  const { data: task } = await supabase.from('tasks').select('*').eq('id', row.task_id).maybeSingle()
-  if (!task) return // hard-deleted since this row was enqueued — nothing to create
-  // See googleTasksOutboxRules.ts for the full rationale on both guards.
-  // Returning without creating anything still lets the outer drain loop
-  // delete this now-moot outbox row — a clean no-op, not a failure.
-  if (shouldSkipPendingCreate(task, !!row.payload.force_recreate)) return
+// ─────────────────────────────────────────────────────────────────────────────
+// processCreate — checkpoint-in-place, never a second outbox row.
+//
+// Real bug fixed (found reviewing this file again, independently of the
+// earlier applySnapshot-failure fix): the ORIGINAL fix for "createGoogleTask
+// succeeds but applySnapshot fails" compensated by calling
+// enqueueOrphanCleanup — INSERTING A NEW 'delete' row — when the
+// compensation delete itself also failed. Under migration 079's per-task
+// FIFO claim (added in the SAME review pass as this fix), that new row
+// always sorts AFTER the original (still-outstanding, still-retrying)
+// 'create' row for the same task_id — and FIFO means the newer row can
+// NEVER be claimed while the older one is still outstanding. The result:
+// the stale 'create' row keeps retrying (each retry POSTing AGAIN, since
+// nothing recorded that a remote task already exists) and compounds a new
+// orphan on every attempt, while the cleanup row queued behind it can never
+// even run. A second outbox row for the SAME task's own cleanup is a
+// design bug, not a rare edge case — this rewrite never creates one.
+//
+// Fixed by keeping ALL of this row's own state — including "a remote task
+// already exists, here it is" and "that remote task must be deleted, not
+// adopted" — in THIS row's own `payload`, checkpointed via patchPayload
+// before any state transition. A retry of this SAME row (which, being the
+// oldest outstanding row for its task, is exactly what 079's FIFO claims
+// next) always resumes from that checkpoint instead of re-POSTing blindly:
+//   - payload.created_remote_task absent → no remote task exists yet from
+//     this row's own attempts; safe to POST fresh (after the normal
+//     shouldSkipPendingCreate guard).
+//   - payload.created_remote_task present, payload.abandon falsy → a
+//     remote task already exists (created by an earlier attempt of THIS
+//     row); reuse it, never re-POST.
+//   - payload.abandon true → the existing remote task must be deleted (the
+//     live tasks row opted out/cancelled while a create was in flight, or
+//     checkpointing its id locally failed) and NOT adopted; retry only the
+//     delete, never a create, until it lands.
+export async function processCreate(token: string, row: OutboxRow): Promise<void> {
+  let remote = row.payload.created_remote_task as GoogleRemoteTask | undefined
+  // The list a checkpointed remote task actually lives in — resolved ONCE,
+  // at create time, and checkpointed alongside created_remote_task (see
+  // below). Real subtlety this avoids: re-resolving from either the
+  // enqueue-time payload OR the task's LIVE google_tasklist_id on every
+  // retry could point at a list the task has since MOVED to (a separate
+  // 'update' row handles moving an existing remote task between lists —
+  // see processUpdate's moveGoogleTask branch), which is not where this
+  // already-created remote task lives until that move actually runs.
+  let listId = row.payload.created_remote_tasklist as string | undefined
 
-  const listId = await resolveGoogleListId(task.google_tasklist_id)
-  const parent = await resolveGoogleParentId(task.parent_task_id)
-  const remote = await createGoogleTask(token, listId, task, { parent })
+  if (remote && row.payload.abandon) {
+    // A previous attempt (this task opted out mid-flight, or the checkpoint
+    // write below failed) already decided this remote task must go. Retry
+    // ONLY the delete — never re-POST — until it's confirmed gone. This row
+    // stays the oldest outstanding row for its task under 079's FIFO claim,
+    // correctly blocking any newer create/update for the same task until
+    // Google's side is confirmed clean.
+    try {
+      await deleteGoogleTask(token, listId!, remote.id)
+    } catch (err) {
+      if (!isGoogleTaskNotFound(err)) throw err
+    }
+    return // cleanup landed — the drain loop deletes this row, done.
+  }
 
-  // The POST above is a real network round trip — the user (or another
-  // write door) can cancel/delete/opt this task back out WHILE it's in
-  // flight. Re-check the LIVE row before writing the new id anywhere:
-  // resurrecting a Google representation the user just asked to remove
-  // would be a real bug, not a harmless race.
-  const { data: liveTask } = await supabase
+  // Whether `remote` is being REUSED from a prior attempt's checkpoint
+  // (true) vs. about to be freshly POSTed right below (false) — a fresh
+  // POST always uses the task's CURRENT fields, so it needs no follow-up
+  // sync; a reused remote might not (see the in-flight-edit note below).
+  const wasReused = !!remote
+
+  if (!remote) {
+    const task = await fetchTask(row.task_id)
+    if (!task) return // hard-deleted since this row was enqueued — nothing to create
+    // See googleTasksOutboxRules.ts for the full rationale on both guards.
+    if (shouldSkipPendingCreate(task, !!row.payload.force_recreate)) return
+
+    // Resolved LIVE (the task's CURRENT google_tasklist_id), not from the
+    // enqueue-time payload — matches this function's pre-rewrite behavior
+    // and reflects a list change that landed before this row happened to
+    // drain (its own 'update' row, if any, still runs afterward per FIFO —
+    // irrelevant here since a fresh create always uses wherever the task
+    // is NOW).
+    listId = await resolveGoogleListId(task.google_tasklist_id)
+    const parent = await resolveGoogleParentId(task.parent_task_id)
+    remote = await createGoogleTask(token, listId, task, { parent })
+
+    try {
+      // Checkpoint immediately, INTO THIS SAME ROW — not a new one. If the
+      // write itself fails, mark the remote task for abandonment (also in
+      // THIS row) rather than deleting it synchronously here: the delete
+      // gets its own dedicated, retried code path above instead of a
+      // second failure mode inline in the happy path. created_remote_tasklist
+      // is checkpointed alongside the remote task itself — the list a
+      // retry must act against is wherever THIS remote task actually lives,
+      // which is fixed at creation time, not re-derived later.
+      await patchPayload(row.id, { ...row.payload, created_remote_task: remote, created_remote_tasklist: listId })
+    } catch (checkpointError) {
+      logError(`Failed to checkpoint Google Task create: ${(checkpointError as Error).message}`, { taskId: row.task_id })
+      await patchPayload(row.id, { ...row.payload, created_remote_task: remote, created_remote_tasklist: listId, abandon: true }).catch(() => {
+        // Best-effort — if THIS also fails, the row's payload is unchanged
+        // (no created_remote_task recorded at all) and the next retry will
+        // simply re-POST, exactly like today's behavior for any other
+        // create failure. That residual risk is Google Tasks' own
+        // documented limitation (insert() takes no client id / requestId,
+        // unlike Calendar's events.insert), not something this code can
+        // close further without one.
+      })
+      throw checkpointError
+    }
+  }
+
+  // The POST is a real network round trip — the user (or another write
+  // door) can cancel/delete/opt this task back out WHILE it's in flight, or
+  // between retries of a checkpointed row. Re-check the LIVE row every time
+  // before adopting remote: resurrecting a Google representation the user
+  // just asked to remove would be a real bug, not a harmless race.
+  const { data: liveTask, error: liveTaskError } = await supabase
     .from('tasks').select('id, google_sync_enabled, status').eq('id', row.task_id).maybeSingle()
+  if (liveTaskError) throw liveTaskError
   const stillWantsThisTask = !!liveTask && liveTask.google_sync_enabled && liveTask.status !== 'cancelled'
 
   if (!stillWantsThisTask) {
-    await compensateOrphanCreate(token, listId, remote.id, row.user_id, row.task_id, task.google_tasklist_id)
-    return // never write the new remote id onto a task that opted out
-  }
-
-  try {
-    await applySnapshot(task.id, remote)
-  } catch (err) {
-    // The remote task now exists for real, but recording its id locally
-    // failed — task.google_task_id is STILL NULL. Left alone, the next
-    // drain retry would see no id, pass shouldSkipPendingCreate, and call
-    // createGoogleTask AGAIN: a genuine duplicate (the exact failure class
-    // migration 075's own header comment already documented once for this
-    // same snapshot step). Compensate exactly like the opted-out case above
-    // — delete the orphan (or durably queue its cleanup) — then rethrow so
-    // this attempt is still recorded as failed/backed-off, but the NEXT
-    // retry starts from a clean slate and creates exactly one task.
-    await compensateOrphanCreate(token, listId, remote.id, row.user_id, row.task_id, task.google_tasklist_id)
-    throw err
-  }
-  if (task.status === 'done') {
-    const completed = await completeGoogleTask(token, listId, remote.id)
-    await applySnapshot(task.id, completed)
-  }
-}
-
-async function compensateOrphanCreate(
-  token: string, listId: string, remoteTaskId: string, userId: string, taskId: string, googleTasklistId: string | null,
-): Promise<void> {
-  try {
-    await deleteGoogleTask(token, listId, remoteTaskId)
-  } catch (err) {
-    if (!isGoogleTaskNotFound(err)) {
-      // Compensation failed — don't just log it and move on. A durable
-      // retry row means a later drain finishes the cleanup instead of
-      // leaving an orphan Google Task nothing ever revisits.
-      await enqueueOrphanCleanup(userId, taskId, remoteTaskId, googleTasklistId)
+    try {
+      await deleteGoogleTask(token, listId!, remote.id)
+      return // clean, in one pass — nothing to check on a later retry
+    } catch (err) {
+      if (isGoogleTaskNotFound(err)) return // already gone
+      await patchPayload(row.id, { ...row.payload, created_remote_task: remote, created_remote_tasklist: listId, abandon: true })
+      throw err
     }
   }
+
+  const task = await fetchTask(row.task_id)
+
+  // In-flight-edit gap fixed: a title/notes/due edit that lands strictly
+  // between the original POST (whose fields are now stale, frozen at
+  // creation time) and THIS retry finally persisting the id would
+  // otherwise never reach Google at all — the DB trigger only enqueues an
+  // 'update' row once tasks.google_task_id is actually set, which is
+  // exactly the thing this retry loop hasn't managed to do yet. Pushing a
+  // fresh PATCH with the task's CURRENT fields on every reused-checkpoint
+  // pass (idempotent — PATCH always sends the full field set, never a
+  // diff) closes that window; a freshly-POSTed remote already has current
+  // fields and needs no such catch-up.
+  if (wasReused && task) {
+    remote = await updateGoogleTask(token, listId!, remote.id, task)
+  }
+
+  // remote is checkpointed in this row's own payload by now — a retry of
+  // JUST this step (applySnapshot failing) re-enters above, finds
+  // created_remote_task, and skips straight back here without a second POST.
+  await applySnapshot(row.task_id, remote)
+
+  if (task?.status === 'done') {
+    const completed = await completeGoogleTask(token, listId!, remote.id)
+    await applySnapshot(row.task_id, completed)
+  }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// processUpdate
 async function processUpdate(token: string, row: OutboxRow): Promise<void> {
-  const { data: task } = await supabase.from('tasks').select('*').eq('id', row.task_id).maybeSingle()
+  const task = await fetchTask(row.task_id)
   if (!task || !task.google_task_id) return // never actually created, or hard-deleted since
 
   const prevParent   = (row.payload.prev_parent_task_id as string | null | undefined) ?? null
@@ -174,10 +275,25 @@ async function processUpdate(token: string, row: OutboxRow): Promise<void> {
   if (parentChanged || tasklistChanged) {
     const originListId = tasklistChanged ? await resolveGoogleListId(prevTasklist) : currentListId
     const parent = await resolveGoogleParentId(task.parent_task_id)
-    const moved = await moveGoogleTask(token, originListId, task.google_task_id, {
-      destinationTasklist: tasklistChanged ? currentListId : undefined,
-      parent,
-    })
+
+    // Idempotent-move check (real gap fixed): a retry of this SAME row —
+    // e.g. the move above succeeded on a prior attempt but the PATCH below
+    // or its own applySnapshot failed — used to call moveGoogleTask AGAIN
+    // unconditionally. tasks.move has no documented no-op guarantee when
+    // the task is already at the target parent/list; reordering side
+    // effects on a redundant move are plausible, not just theoretical.
+    // Fetching the current remote state first and skipping the call
+    // entirely when it already matches the target makes every retry of
+    // this branch genuinely idempotent.
+    const currentRemote = await getGoogleTask(token, originListId, task.google_task_id)
+    const alreadyAtTarget = (currentRemote.parent ?? null) === (parent ?? null)
+      && !tasklistChanged // a list move has no cheap "already there" signal from a single-list GET — always attempt it
+    const moved = alreadyAtTarget
+      ? currentRemote
+      : await moveGoogleTask(token, originListId, task.google_task_id, {
+          destinationTasklist: tasklistChanged ? currentListId : undefined,
+          parent,
+        })
     await applySnapshot(task.id, moved)
   }
 
@@ -233,7 +349,15 @@ export async function drainGoogleTasksOutbox(token: string): Promise<DrainResult
       else if (row.operation === 'update') await processUpdate(token, row)
       else                                 await processDelete(token, row)
 
-      await supabase.from('google_tasks_outbox').delete().eq('id', row.id)
+      // The row's own delete result is now checked: a failure here used to
+      // still increment `drained` and let the caller believe the operation
+      // fully completed, when in fact the outbox row (and whatever
+      // idempotency state it carried — e.g. a create's checkpointed
+      // created_remote_task) was still sitting there. Falling through to
+      // the catch block below re-schedules a real retry instead of a false
+      // "done".
+      const { error: deleteError } = await supabase.from('google_tasks_outbox').delete().eq('id', row.id)
+      if (deleteError) throw deleteError
       drained++
     } catch (err) {
       failed++

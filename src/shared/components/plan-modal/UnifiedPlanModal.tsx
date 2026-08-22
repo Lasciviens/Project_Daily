@@ -223,7 +223,11 @@ import { updateTimeBlock, deleteTimeBlock, updateScheduleBlock, deleteScheduleBl
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
-import { createCalendarEvent, deleteCalendarEvent, isCalendarNotFound } from '../../../features/calendar/api/calendarApi'
+import {
+  createCalendarEvent, deleteCalendarEvent, getCalendarEvent,
+  isCalendarNotFound, isCalendarConflict,
+} from '../../../features/calendar/api/calendarApi'
+import { ensureValidCalendarToken } from '../../../features/calendar/api/calendarTokenSync'
 import { logError } from '../../utils/logError'
 import { supabase } from '../../../integrations/supabase/client'
 import { ScheduleTab } from './ScheduleTab'
@@ -233,7 +237,7 @@ import { buildInitialForm } from './planForm'
 import {
   daysForRecurrence, endTimeFrom, sectionForDate, LOCAL_TZ,
   blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
-  needsGoogleTasksFallback, hasValidRecurrenceSelection,
+  needsGoogleTasksFallback, hasValidRecurrenceSelection, clampDurationMinutes,
 } from './planModal.config'
 import type { PlanForm } from './planForm'
 import type { PlanMode, UnifiedPlanModalProps, PlanModalConfig } from './planModal.types'
@@ -344,19 +348,45 @@ export function UnifiedPlanModal({
   // about to drop (or mint) the task's OTHER Google representation gets a
   // real, confirmed answer instead of an assumption.
   async function linkCalendarEvent(blockId: string, dateStr: string, timeHHMM: string, durationMin: number, title: string): Promise<TimeBlockCalendarStatus> {
-    if (!calToken) return 'unknown' // nothing here is verified without a token
+    // ensureValidCalendarToken (not the reactive `calToken` above) so this
+    // still works right after the stored token expired, instead of quietly
+    // reporting 'unknown' the way a raw, unrefreshed token would.
+    const token = await ensureValidCalendarToken()
+    if (!token) return 'unknown' // nothing here is verified without a token
     try {
-      const { data: current } = await supabase
+      const { data: current, error: lookupError } = await supabase
         .from('time_blocks').select('google_calendar_event_id').eq('id', blockId).single()
+      // A real bug fixed: this read's error was never checked, so a DB
+      // failure here (network, RLS, …) looked identical to "no event
+      // linked yet" and this function would go on to create a SECOND
+      // event for a block that already had one.
+      if (lookupError) throw lookupError
       if (current?.google_calendar_event_id) return 'linked'
 
       const start = new Date(`${dateStr}T${timeHHMM}:00`)
       const end   = new Date(start.getTime() + durationMin * 60_000)
-      const created = await createCalendarEvent(calToken, 'primary', {
-        summary: title,
-        start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
-        end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
-      })
+      // A deterministic, client-supplied event id (this block's own uuid,
+      // dashes stripped — hex-only, a valid subset of Calendar's base32hex
+      // id charset) makes the create itself retry-safe: if a PRIOR attempt's
+      // POST actually landed on Google but its response never reached us
+      // (a network timeout — Calendar's events.insert offers no other way
+      // to tell "did that already happen?"), retrying with the SAME id
+      // 409s instead of silently minting a second event for this block.
+      const eventId = blockId.replace(/-/g, '')
+      let created
+      try {
+        created = await createCalendarEvent(token, 'primary', {
+          id: eventId,
+          summary: title,
+          start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
+          end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
+        })
+      } catch (createErr) {
+        if (!isCalendarConflict(createErr)) throw createErr
+        // Already exists on Google under this id — a previous attempt's
+        // create landed after all. Adopt it instead of failing.
+        created = await getCalendarEvent(token, 'primary', eventId)
+      }
 
       try {
         await updateTimeBlock(blockId, { google_calendar_event_id: created.id })
@@ -368,7 +398,7 @@ export function UnifiedPlanModal({
         // local ever points at.
         logError(`Local link persistence failed after remote create: ${(persistErr as Error).message}`, { action: 'link_calendar_event', blockId })
         try {
-          await deleteCalendarEvent(calToken, 'primary', created.id)
+          await deleteCalendarEvent(token, 'primary', created.id)
           return 'not_linked' // compensation confirmed the orphan is gone (or a 404 means it already was)
         } catch (compErr) {
           if (isCalendarNotFound(compErr)) return 'not_linked'
@@ -427,7 +457,7 @@ export function UnifiedPlanModal({
       return 'not_linked'
     }
 
-    const effDuration  = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
+    const effDuration  = clampDurationMinutes(form.customMin !== '' ? Number(form.customMin) || 60 : form.duration)
     const startTimeVal = `${form.startTime}:00`
 
     if (existingBlock) {
@@ -565,7 +595,7 @@ export function UnifiedPlanModal({
   // it always means create-and-link, never a readout of an existing link.
   async function saveSchedule() {
     const title = form.title.trim()
-    const effDuration = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
+    const effDuration = clampDurationMinutes(form.customMin !== '' ? Number(form.customMin) || 60 : form.duration)
     const startTimeVal = `${form.startTime}:00`
 
     if (timeBlock) {
@@ -679,7 +709,7 @@ export function UnifiedPlanModal({
   // the field is hidden entirely, not shown-but-inert), no linked Task.
   async function saveRecurring() {
     const title = form.title.trim()
-    const effDuration = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
+    const effDuration = clampDurationMinutes(form.customMin !== '' ? Number(form.customMin) || 60 : form.duration)
     const startTimeVal = `${form.startTime}:00`
     // A recurring template is never "no repeat" — RecurringTab never offers
     // picking 'none' (RECURRING_EDIT_OPTIONS), and inferRecurrenceMode

@@ -30,6 +30,29 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ── A. FIFO-ordered claim ───────────────────────────────────────────────────
+-- Real bug found reviewing this migration a second time, confirmed against a
+-- live EXPLAIN: the original version below computed the per-task rn=1
+-- filter in a `ranked` CTE (a row_number() window function), then applied
+-- `FOR UPDATE SKIP LOCKED` in a SEPARATE `claimable` CTE that selects only
+-- `id FROM ranked` — not directly from the base table. Postgres's locking
+-- clause does NOT propagate INTO a WITH query from a query that merely
+-- selects from it (this is documented Postgres behavior, not a fluke of
+-- this query): "FOR UPDATE ... does not lock rows that are referenced only
+-- through a WITH query; the clause must be attached to the individual
+-- SELECT inside the WITH query itself to have that effect." The EXPLAIN
+-- plan for the old version confirmed this directly — no LockRows node
+-- anywhere in it — meaning the claim had silently stopped providing any
+-- concurrency guarantee at all: two workers could both "claim" the same
+-- row, each thinking SKIP LOCKED protected them, and both call Google for
+-- the same 'create' (exactly the migration-073 duplicate this whole claim
+-- function exists to prevent).
+--
+-- Fixed by moving `FOR UPDATE OF o SKIP LOCKED` onto a CTE that selects
+-- DIRECTLY from the base table (an anti-join against "any older
+-- outstanding row for the same task", equivalent to rn=1 but without a
+-- window function in the same query block as the lock clause) — this is
+-- the same shape migration 073's original (correct, lock-bearing) query
+-- used, just with the anti-join added for per-task ordering.
 CREATE OR REPLACE FUNCTION public.claim_google_tasks_outbox(
   p_respect_backoff BOOLEAN DEFAULT true,
   p_user_id         UUID    DEFAULT NULL
@@ -43,23 +66,25 @@ DECLARE
   v_user_id UUID := public.effective_user_id(p_user_id);
 BEGIN
   RETURN QUERY
-  WITH ranked AS (
-    -- row_number() per task, oldest first — rn=1 is the ONLY row of this
-    -- task that may ever be claimed, regardless of every other row's own
-    -- backoff/claimed state. This is what makes cross-row ordering for the
-    -- same task absolute rather than "usually fine".
-    SELECT o.*,
-           row_number() OVER (PARTITION BY o.task_id ORDER BY o.created_at, o.id) AS rn
+  WITH claimable AS (
+    SELECT o.id
       FROM public.google_tasks_outbox o
      WHERE o.user_id = v_user_id
-  ),
-  claimable AS (
-    SELECT id FROM ranked
-     WHERE rn = 1
-       AND (NOT p_respect_backoff OR next_retry_at <= now())
-       AND (claimed_at IS NULL OR claimed_at < now() - interval '5 minutes')
-     ORDER BY created_at
-     FOR UPDATE SKIP LOCKED
+       AND (NOT p_respect_backoff OR o.next_retry_at <= now())
+       AND (o.claimed_at IS NULL OR o.claimed_at < now() - interval '5 minutes')
+       -- The FIFO half: no OLDER outstanding row for the SAME task may be
+       -- skipped over — this row is claimable only if it's the oldest one
+       -- for its task_id, full stop (regardless of that older row's own
+       -- backoff/claimed state).
+       AND NOT EXISTS (
+         SELECT 1
+           FROM public.google_tasks_outbox older
+          WHERE older.user_id = o.user_id
+            AND older.task_id = o.task_id
+            AND (older.created_at, older.id) < (o.created_at, o.id)
+       )
+     ORDER BY o.created_at
+     FOR UPDATE OF o SKIP LOCKED
   )
   UPDATE public.google_tasks_outbox o
      SET claimed_at = now()
@@ -68,6 +93,11 @@ BEGIN
   RETURNING o.*;
 END;
 $$;
+
+-- Supports the anti-join's (task_id, created_at, id) comparison above —
+-- without it, every claim scans the whole outbox per candidate row.
+CREATE INDEX IF NOT EXISTS idx_google_tasks_outbox_task_order
+  ON public.google_tasks_outbox (task_id, created_at, id);
 
 -- ── B. Conditional id clear — the stale-delete-safety net ─────────────────
 -- Returns TRUE only if a row was actually updated (the expected id still

@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { useCalendarStore } from '../../../app/store'
 import { updateCalendarEvent, deleteCalendarEvent, isCalendarNotFound } from '../../calendar/api/calendarApi'
+import { ensureValidCalendarToken, ensureLinkedCalendarEventRemoved } from '../../calendar/api/calendarTokenSync'
 import { logError } from '../../../shared/utils/logError'
 import { classifyCalendarPushFailure } from './scheduleSyncRules'
 import type {
@@ -13,11 +13,6 @@ import type { TimeBlockCalendarStatus } from './scheduleSyncRules'
 export type { TimeBlockCalendarStatus }
 
 const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
-
-// Google Calendar token lives in the (vanilla-accessible) Zustand store.
-function calToken(): string | null {
-  return useCalendarStore.getState().accessToken
-}
 
 export async function fetchScheduleBlocks(): Promise<ScheduleBlock[]> {
   const { data, error } = await supabase
@@ -134,7 +129,13 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
   if (beforeError) throw beforeError
 
   const unlinking = patch.google_calendar_event_id === null && !!before?.google_calendar_event_id
-  const token = calToken()
+  // ensureValidCalendarToken (not calToken()) so a write that lands right
+  // after the stored token expired refreshes instead of silently acting as
+  // if Calendar were disconnected — real gap fixed: the read-side query
+  // hooks (useCalendar.ts) already refresh proactively on a timer, but the
+  // write side had nothing of its own and could 401 on an access token the
+  // store still happened to be holding, expired.
+  const token = await ensureValidCalendarToken()
 
   if (unlinking) {
     if (!token) {
@@ -224,29 +225,31 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
   }
 }
 
-// Remote-first, mirroring updateTimeBlock's own explicit-unlink ordering:
-// a non-404 delete failure (network, 401/403, 429, 5xx) MUST NOT be
-// swallowed here. The old behavior logged it and deleted the local row
-// anyway — since the local row (and its google_calendar_event_id) is the
-// ONLY thing that ever pointed at that remote event, doing so left a real,
-// permanently untracked orphan on the user's Google Calendar. A confirmed
-// 404 (already gone remotely) still proceeds to the local delete.
+// Remote-first, mirroring updateTimeBlock's own explicit-unlink ordering —
+// AND a second real gap closed on top of that: the block's own
+// google_calendar_event_id is now read UNCONDITIONALLY, before ever
+// checking for a token. The old code only looked for a linked event AT ALL
+// when a token happened to already be present — if there was no token (or
+// a stale one calToken() didn't know was expired), a linked event was
+// never even considered, and the local row (its only pointer to that
+// event) was deleted anyway. Now: no linked event at all → delete locally,
+// no token needed. A linked event exists → a token MUST be obtained (via
+// ensureValidCalendarToken, which refreshes) and the remote event MUST be
+// confirmed gone (a non-404 failure throws) before the local delete is
+// even attempted — this can never silently orphan a real Google Calendar
+// event again.
 export async function deleteTimeBlock(id: string): Promise<void> {
-  const token = calToken()
-  if (token) {
-    const { data: row } = await supabase
-      .from('time_blocks')
-      .select('google_calendar_event_id')
-      .eq('id', id)
-      .single()
-    if (row?.google_calendar_event_id) {
-      try {
-        await deleteCalendarEvent(token, 'primary', row.google_calendar_event_id)
-      } catch (err) {
-        if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`)
-      }
-    }
+  const { data: row, error: readError } = await supabase
+    .from('time_blocks')
+    .select('google_calendar_event_id')
+    .eq('id', id)
+    .single()
+  if (readError) throw readError
+
+  if (row?.google_calendar_event_id) {
+    await ensureLinkedCalendarEventRemoved(row.google_calendar_event_id)
   }
+
   const { error } = await supabase.from('time_blocks').delete().eq('id', id)
   if (error) throw error
 }

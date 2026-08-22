@@ -97,6 +97,61 @@ export function projectOneOffBlocksForDay(
   return out
 }
 
+export interface CalendarEventLike {
+  start: { dateTime?: string; date?: string }
+  end:   { dateTime?: string; date?: string }
+}
+
+export interface ProjectedCalendarEvent {
+  /** Hours, clipped to [0, 24) for THIS day. */
+  startHour: number
+  /** Hours, clipped to (startHour, 24] for THIS day. */
+  endHour:   number
+  /** True when the event actually STARTED on a previous day and this is
+   *  the portion spilling into the projected day. */
+  spillover: boolean
+}
+
+/** Clips one Calendar event onto ONE calendar day (`dateStr`, local
+ *  'yyyy-MM-dd'). Returns null for an all-day event (no `dateTime`, handled
+ *  separately by the caller) or for an event that doesn't actually overlap
+ *  this day at all (shouldn't happen given how these events are normally
+ *  fetched — Google's events.list only ever returns events that overlap
+ *  the QUERIED day's window in the first place — but a defensive result
+ *  here is cheap and avoids ever rendering a nonsensical negative-duration
+ *  row if a caller's day and its event list ever get out of sync).
+ *
+ *  Real bug this fixes: a cross-midnight Calendar event (e.g. 23:00
+ *  yesterday → 01:00 today) used to be converted straight from
+ *  `Date.getHours()` on each of its raw start/end instants — the RIGHT
+ *  hour value for each instant individually, but assembled into a single
+ *  startHour=23/endHour=1 pair for TODAY's render, which is not a valid
+ *  [start, end) interval on a 0–24 scale at all: every downstream duration
+ *  (`endHour - startHour` = -22h) and overlap check
+ *  (`start < otherEnd && end > otherStart`) built on real one-off/recurring
+ *  blocks silently broke the moment a Calendar event was mixed into the
+ *  same list. This mirrors projectOneOffBlocksForDay's own clipping
+ *  exactly, just from absolute instants instead of a same-day
+ *  start_time+duration pair. */
+export function projectCalendarEventForDay(dateStr: string, event: CalendarEventLike): ProjectedCalendarEvent | null {
+  if (!event.start.dateTime) return null // all-day — no hour-of-day concept
+  const dayStart = new Date(`${dateStr}T00:00:00`)
+  const nextDayStart = new Date(dayStart)
+  nextDayStart.setDate(nextDayStart.getDate() + 1)
+
+  const start = new Date(event.start.dateTime)
+  const end   = new Date(event.end.dateTime ?? event.start.dateTime)
+  if (end.getTime() <= dayStart.getTime() || start.getTime() >= nextDayStart.getTime()) return null
+
+  const clippedStartMs = Math.max(start.getTime(), dayStart.getTime())
+  const clippedEndMs   = Math.min(end.getTime(), nextDayStart.getTime())
+  return {
+    startHour: (clippedStartMs - dayStart.getTime()) / 3_600_000,
+    endHour:   (clippedEndMs   - dayStart.getTime()) / 3_600_000,
+    spillover: start.getTime() < dayStart.getTime(),
+  }
+}
+
 export interface RecurringBlockLike {
   id:           string
   title:        string

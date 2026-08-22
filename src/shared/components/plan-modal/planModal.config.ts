@@ -19,6 +19,24 @@ export { todayStr, tomorrowStr }
 
 export const DURATION_PRESETS = [30, 60, 90, 120, 180] as const
 
+// A one-off time_blocks row has no multi-day model anywhere downstream —
+// dayAgendaProjection.ts clips every block onto ONLY the day it starts on
+// plus a single-day spillover tail into the NEXT day (never further),
+// TrainingCalendar/HomePage next-session logic assumes a same-day slot, and
+// the DB column itself carries no day-count. A raw custom-duration input
+// (min=1, no upper bound, no DB constraint) could save 0/negative/25h+
+// values that silently broke that model — the input's own `min` attribute
+// doesn't block a form submit, and nothing downstream re-validated it.
+// 1440 = 24h, the largest value the single-spillover-day model can still
+// represent correctly.
+export const MIN_DURATION_MINUTES = 1
+export const MAX_DURATION_MINUTES = 1440
+
+export function clampDurationMinutes(raw: number): number {
+  if (!Number.isFinite(raw)) return 60
+  return Math.min(MAX_DURATION_MINUTES, Math.max(MIN_DURATION_MINUTES, Math.round(raw)))
+}
+
 export const CATEGORY_LABELS: Record<TimeBlockCategory, string> = {
   daily:    'Daily',
   training: 'Training',

@@ -148,6 +148,10 @@ export async function incrementalGoogleTasksSync(token: string, googleListId: st
   })
 }
 
+export async function getGoogleTask(token: string, googleListId: string, googleTaskId: string): Promise<GoogleRemoteTask> {
+  return request(token, `/lists/${googleListId}/tasks/${googleTaskId}`) as Promise<GoogleRemoteTask>
+}
+
 export async function createGoogleTask(
   token: string, googleListId: string, task: Task,
   opts?: { parent?: string; previous?: string },

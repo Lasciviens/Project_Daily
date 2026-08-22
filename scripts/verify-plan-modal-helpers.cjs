@@ -26,14 +26,14 @@ require('sucrase/register')
 const {
   inferRecurrenceMode, minutesBetweenWrapping, defaultScheduleCategory, daysForRecurrence,
   blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
-  needsGoogleTasksFallback, hasValidRecurrenceSelection,
+  needsGoogleTasksFallback, hasValidRecurrenceSelection, clampDurationMinutes,
 } = require('../src/shared/components/plan-modal/planModal.config')
 const { buildInitialForm } = require('../src/shared/components/plan-modal/planForm')
 const { shouldSkipPendingCreate } = require('../src/features/todo/api/googleTasksOutboxRules')
 const { classifyCalendarPushFailure } = require('../src/features/daily/api/scheduleSyncRules')
 const { CalendarApiError, isCalendarNotFound } = require('../src/features/calendar/api/calendarApi')
 const { GoogleTasksApiError, isGoogleTaskNotFound } = require('../src/features/todo/api/googleTasksApi')
-const { projectOneOffBlocksForDay, projectRecurringBlocksForDay } = require('../src/features/daily/components/dayAgendaProjection')
+const { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } = require('../src/features/daily/components/dayAgendaProjection')
 
 let passed = 0
 let failed = 0
@@ -347,6 +347,54 @@ console.log('\n== 14. DayAgenda cross-midnight projection ==')
   const earlyTuesdayEvent = { startHour: 0.5, endHour: 1.5 }
   const overlaps = spillover.startHour < earlyTuesdayEvent.endHour && spillover.endHour > earlyTuesdayEvent.startHour
   check('a Tuesday 00:30 event is detected as overlapping the spillover row', overlaps === true)
+}
+
+console.log('\n== 15. projectCalendarEventForDay (Google Calendar cross-midnight) ==')
+{
+  // Built via local-time Date construction (never a hardcoded 'Z'/offset
+  // string) so this test is timezone-agnostic — exactly what the review
+  // flagged as the real bug: startHour/endHour used to come straight from
+  // each instant's OWN .getHours(), which is correct per-instant but not
+  // as an [start,end) pair once assembled for a single day.
+  const day1 = '2026-08-24'
+  const day2 = '2026-08-25'
+  const crossMidnightEvent = {
+    start: { dateTime: new Date(`${day1}T23:00:00`).toISOString() },
+    end:   { dateTime: new Date(`${day2}T01:00:00`).toISOString() },
+  }
+
+  const onDay1 = projectCalendarEventForDay(day1, crossMidnightEvent)
+  check('day1 shows only its own 23:00-24:00 portion, not a negative range',
+    onDay1 && onDay1.startHour === 23 && onDay1.endHour === 24 && onDay1.spillover === false)
+
+  const onDay2 = projectCalendarEventForDay(day2, crossMidnightEvent)
+  check('day2 shows the spillover tail 00:00-01:00',
+    onDay2 && onDay2.startHour === 0 && onDay2.endHour === 1 && onDay2.spillover === true)
+
+  const dayAfter = '2026-08-26'
+  check('a day the event never touches at all returns null (defensive, not a negative range)',
+    projectCalendarEventForDay(dayAfter, crossMidnightEvent) === null)
+
+  const sameDayEvent = {
+    start: { dateTime: new Date(`${day1}T09:00:00`).toISOString() },
+    end:   { dateTime: new Date(`${day1}T09:30:00`).toISOString() },
+  }
+  const sameDayProjected = projectCalendarEventForDay(day1, sameDayEvent)
+  check('a normal same-day event projects unchanged (no spillover)',
+    sameDayProjected && sameDayProjected.startHour === 9 && sameDayProjected.endHour === 9.5 && !sameDayProjected.spillover)
+
+  check('an all-day event (no dateTime) returns null — handled separately by the caller',
+    projectCalendarEventForDay(day1, { start: { date: day1 }, end: { date: day2 } }) === null)
+}
+
+console.log('\n== 16. clampDurationMinutes ==')
+{
+  check('a normal value passes through unchanged', clampDurationMinutes(90) === 90)
+  check('zero is clamped up to the 1-minute floor', clampDurationMinutes(0) === 1)
+  check('a negative custom entry is clamped up to 1, never left negative', clampDurationMinutes(-30) === 1)
+  check('a >24h custom entry (1500) is clamped down to 1440 (the single-spillover-day ceiling)', clampDurationMinutes(1500) === 1440)
+  check('exactly 1440 (24h) passes through unchanged — the ceiling is inclusive', clampDurationMinutes(1440) === 1440)
+  check('a non-finite input (NaN) falls back to the 60-minute default, not 1 or 1440', clampDurationMinutes(NaN) === 60)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

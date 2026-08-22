@@ -12,7 +12,7 @@ import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEv
 import { supabase } from '../../../integrations/supabase/client'
 import { useCalendarStore, toast } from '../../../app/store'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
-import { projectOneOffBlocksForDay, projectRecurringBlocksForDay } from './dayAgendaProjection'
+import { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } from './dayAgendaProjection'
 import type { CalendarEvent } from '../../calendar/types'
 import type { TimeBlock, ScheduleBlock } from '../types'
 
@@ -138,8 +138,19 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
 
   // A block's own google_calendar_event_id already represents its Google
   // Calendar presence — an event fetched separately from the Calendar API
-  // for the same id would otherwise render the same thing twice.
-  const linkedGCalIds = new Set(timeBlocks.map(b => b.google_calendar_event_id).filter(Boolean))
+  // for the same id would otherwise render the same thing twice. Real bug
+  // fixed: this used to build the set from `timeBlocks` alone. A block
+  // whose OWN date is YESTERDAY but that crosses midnight into today
+  // renders a spillover row today (via projectOneOffBlocksForDay's
+  // `previousDayBlocks` argument) sourced from `prevTimeBlocks` — and its
+  // linked Calendar event, per Google's own events.list window semantics
+  // (an event matches a day's query whenever event.end > that day's
+  // timeMin), is ALSO returned by today's own `useCalendarEventsForDay`
+  // fetch. Without prevTimeBlocks in this set, that event rendered a
+  // second time as a separate 'calendar' row alongside its own spillover.
+  const linkedGCalIds = new Set(
+    [...timeBlocks, ...prevTimeBlocks].map(b => b.google_calendar_event_id).filter(Boolean)
+  )
 
   // ── Assemble the unified block list ─────────────────────────────────────
   const blocks: AgendaBlock[] = []
@@ -163,12 +174,21 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   for (const e of calEvents ?? []) {
     if (linkedGCalIds.has(e.id)) continue
     if (e.start.dateTime) {
-      const s = new Date(e.start.dateTime)
-      const en = new Date(e.end.dateTime ?? e.start.dateTime)
+      // Real bug fixed: this used to build startHour/endHour straight from
+      // each instant's own `.getHours()+.getMinutes()/60` — correct for
+      // each instant in isolation, but assembled into one startHour/endHour
+      // pair for TODAY's render, a cross-midnight event (23:00 yesterday →
+      // 01:00 today) produced startHour=23 > endHour=1: a negative-duration
+      // "row" that broke the overlap check and the booked-minutes sum the
+      // moment a Calendar event crossed midnight. projectCalendarEventForDay
+      // clips it onto THIS day exactly like the one-off/recurring block
+      // helpers already do for their own cross-midnight rows.
+      const projected = projectCalendarEventForDay(dateStr, e)
+      if (!projected) continue
       blocks.push({
         id: e.id, canonicalId: e.id, kind: 'calendar', title: e.summary ?? '(no title)', dateStr,
-        startHour: s.getHours() + s.getMinutes() / 60, endHour: en.getHours() + en.getMinutes() / 60,
-        edgeClass: COLOR_EDGE.green, calendarEvent: e, spillover: false,
+        startHour: projected.startHour, endHour: projected.endHour,
+        edgeClass: COLOR_EDGE.green, calendarEvent: e, spillover: projected.spillover,
       })
     } else if (e.start.date) {
       blocks.push({

@@ -22,6 +22,12 @@
 -- of bailing out. Every other 'create' row (no force_recreate key) keeps the
 -- exact same idempotency guard as before — this does not touch normal retry
 -- behavior at all.
+--
+-- Second real bug, found reviewing this migration again before it ever went
+-- live: the SAME `force_recreate` mechanism is also what the opt-IN branch
+-- (further down) needed and didn't have. See that branch's own comment —
+-- opting back in while an earlier opt-out's 'delete' row is still
+-- outstanding used to enqueue nothing at all.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 CREATE OR REPLACE FUNCTION public.enqueue_google_tasks_outbox()
@@ -64,11 +70,30 @@ BEGIN
   -- task created before Google was connected): needs a fresh create
   -- regardless of google_local_edit_at — flipping google_sync_enabled isn't
   -- itself a content edit, so the BEFORE trigger never bumped that clock.
-  IF NEW.google_sync_enabled IS TRUE AND OLD.google_sync_enabled IS NOT TRUE AND NEW.google_task_id IS NULL THEN
+  --
+  -- Real race fixed (found reviewing this migration a second time): this
+  -- branch used to require NEW.google_task_id IS NULL. But a row that was
+  -- JUST opted out (the branch below this one enqueues a 'delete' for its
+  -- current google_task_id — WITHOUT clearing that column locally; only
+  -- the drain's own clear_google_task_id_if_matches does that, once the
+  -- delete actually runs) still HAS a non-null google_task_id until that
+  -- delete drains. Opting back in before it drains hit this branch's
+  -- `IS NULL` guard and enqueued NOTHING — the task ended up
+  -- google_sync_enabled=true with a google_task_id that's either about to
+  -- be cleared (delete lands) or already stale, and no create was ever
+  -- queued to replace it. Fixed: enqueue a create on EVERY opt-in
+  -- transition, not just when google_task_id happens to be NULL, stamping
+  -- `force_recreate: true` whenever a task_id is still present (migration
+  -- 079's per-task FIFO claim guarantees any earlier pending 'delete' for
+  -- this SAME task drains first — force_recreate is what then lets THIS
+  -- create proceed once that delete has cleared the id, or immediately if
+  -- it hadn't been set to begin with).
+  IF NEW.google_sync_enabled IS TRUE AND OLD.google_sync_enabled IS NOT TRUE THEN
     INSERT INTO public.google_tasks_outbox (user_id, task_id, operation, payload)
     VALUES (NEW.user_id, NEW.id, 'create', jsonb_build_object(
       'title', NEW.title, 'notes', NEW.description, 'due_date', NEW.due_date,
-      'parent_task_id', NEW.parent_task_id, 'google_tasklist_id', NEW.google_tasklist_id
+      'parent_task_id', NEW.parent_task_id, 'google_tasklist_id', NEW.google_tasklist_id,
+      'force_recreate', NEW.google_task_id IS NOT NULL
     ));
     RETURN NEW;
   END IF;

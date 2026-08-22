@@ -1,8 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { useCalendarStore } from '../../../app/store'
-import { deleteCalendarEvent } from '../../calendar/api/calendarApi'
-import { logError } from '../../../shared/utils/logError'
+import { ensureLinkedCalendarEventRemoved } from '../../calendar/api/calendarTokenSync'
 import type { Task, CreateTaskInput, UpdateTaskInput } from '../types'
 
 // All active tasks (+ done, so the UI can show a "recently done" group) for the
@@ -262,19 +260,31 @@ export async function deleteTask(id: string): Promise<void> {
   // task_id FK's ON DELETE CASCADE (migration 077) — no explicit time_blocks
   // delete needed here any more. The Google Calendar event that block might
   // hold is NOT something the FK can clean up (no OAuth token inside
-  // Postgres), so that best-effort cleanup still happens at this app layer,
-  // reading the linked block via task_id instead of the old
-  // source_type='task'/source_id pair.
-  const { data: block } = await supabase
+  // Postgres), so that cleanup still happens at this app layer, reading the
+  // linked block via task_id instead of the old source_type='task'/
+  // source_id pair.
+  //
+  // Remote-first (real bug, fixed): this used to read whatever token
+  // happened to be sitting in the store (no refresh, no expiry check) and,
+  // if it was missing OR the Calendar delete failed for ANY reason, still
+  // deleted the task regardless — which cascades the linked time_blocks row
+  // away via its FK, destroying the only local pointer to that Calendar
+  // event and leaving it a permanent, untracked orphan. Now: no linked
+  // event → delete the task, no token needed. A linked event exists → it
+  // MUST be confirmed removed (ensureLinkedCalendarEventRemoved refreshes
+  // the token if needed and throws on anything but a confirmed 404) before
+  // the task delete is even attempted.
+  const { data: block, error: readError } = await supabase
     .from('time_blocks')
     .select('google_calendar_event_id')
     .eq('task_id', id)
     .maybeSingle()
-  const token = useCalendarStore.getState().accessToken
-  if (token && block?.google_calendar_event_id) {
-    try { await deleteCalendarEvent(token, 'primary', block.google_calendar_event_id) }
-    catch (err) { logError(`Calendar event delete failed: ${(err as Error).message}`, { taskId: id }) }
+  if (readError) throw readError
+
+  if (block?.google_calendar_event_id) {
+    await ensureLinkedCalendarEventRemoved(block.google_calendar_event_id)
   }
+
   const { error } = await supabase.from('tasks').delete().eq('id', id)
   if (error) throw error
 }

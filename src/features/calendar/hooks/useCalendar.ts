@@ -170,7 +170,11 @@ export function useCalendarEventDatesForRange(startDate: Date, endDate: Date) {
     queryFn:  async () => {
       const activeToken = await ensureToken(token, setAccessToken)
       const timeMin = new Date(startStr + 'T00:00:00').toISOString()
-      const timeMax = new Date(endStr   + 'T23:59:59').toISOString()
+      // Exclusive upper bound (see calendarApi.ts's fetchEventsForDay) —
+      // next-day midnight after endStr, not endStr's own 23:59:59.
+      const timeMaxDate = new Date(endStr + 'T00:00:00')
+      timeMaxDate.setDate(timeMaxDate.getDate() + 1)
+      const timeMax = timeMaxDate.toISOString()
 
       const results = await Promise.all(
         calIds.map(id => fetchEventsForRange(activeToken, timeMin, timeMax, id))
