@@ -21,6 +21,29 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-08-22 · v11 · Third post-review pass (correctness fixes only):
+//                    (a) shouldSkipPendingCreate's opt-out guard (google_
+//                    sync_enabled=false) is now ABSOLUTE — force_recreate
+//                    (migration 078's Reopen fix) bypasses ONLY the "already
+//                    has an id" guard, never the opt-out one. Previously
+//                    both guards shared the same `!forceRecreate` condition,
+//                    so a force_recreate row bypassed opt-out too — a real
+//                    sequence (Reopen enqueues a force_recreate 'create',
+//                    then before it drains the task opts out via a
+//                    calendar-linked schedule) could still put an unwanted
+//                    Google Task back.
+//                    (b) The CREATE-side mirror of v10(a)'s edit-path
+//                    ordering fix: saveTask's plain create, saveSchedule's
+//                    timeBlock+"Also add to Tasks" branch, and saveSchedule's
+//                    plain create+"Also add to Tasks" branch all pass
+//                    skipGoogleTasks=willBeCalendarEvent to useCreateTask
+//                    SPECULATIVELY, before the calendar link is attempted —
+//                    if that link then fails, the task had NEITHER Google
+//                    representation. All three now call the new
+//                    reenableGoogleTasksIfCalendarFailed after the real,
+//                    confirmed outcome is known, re-enabling google_sync_
+//                    enabled (pushing the task to Google Tasks as a
+//                    fallback) exactly when the bet didn't pay off.
 //  2026-08-22 · v10 · Second post-review pass (correctness fixes only):
 //                    (a) linkCalendarEvent/syncTaskSchedule now return
 //                    whether the block ended up ACTUALLY calendar-linked.
@@ -191,6 +214,7 @@ import { buildInitialForm } from './planForm'
 import {
   daysForRecurrence, endTimeFrom, sectionForDate, LOCAL_TZ,
   blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
+  needsGoogleTasksFallback,
 } from './planModal.config'
 import type { PlanForm } from './planForm'
 import type { PlanMode, UnifiedPlanModalProps, PlanModalConfig } from './planModal.types'
@@ -336,6 +360,19 @@ export function UnifiedPlanModal({
     }
   }
 
+  // The CREATE-side mirror of the edit-path dedupe-ordering fix above: every
+  // create path that makes a new task ALONGSIDE a schedule speculatively
+  // passes skipGoogleTasks=willBeCalendarEvent to useCreateTask, betting the
+  // calendar link will succeed. If it then doesn't, the task would be left
+  // with NEITHER Google representation. Call this AFTER the real calendar
+  // outcome is known — flipping google_sync_enabled back to true re-fires
+  // migration 071's opt-in branch, pushing the task to Google Tasks as a
+  // fallback instead of silently losing it there.
+  async function reenableGoogleTasksIfCalendarFailed(taskId: string | undefined, skippedGoogleTasks: boolean, calendarLinked: boolean) {
+    if (!taskId || !needsGoogleTasksFallback(skippedGoogleTasks, calendarLinked)) return
+    await updateTaskM.mutateAsync({ id: taskId, patch: { google_sync_enabled: true } })
+  }
+
   // ── Save: mode='task' — Task fields + at most one linked one-off block ────
   // Returns whether the linked block ends up ACTUALLY calendar-linked after
   // this call — the caller (saveTask) needs the real, confirmed outcome
@@ -450,7 +487,11 @@ export function UnifiedPlanModal({
       skipGoogleTasks: willBeCalendarEvent,
     })
     if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
-    await syncTaskSchedule(created.id, null)
+    const nowCalendarLinked = await syncTaskSchedule(created.id, null)
+    // The mirror of the edit-path fix above: if the calendar link this task
+    // was created betting on didn't actually happen, push it to Google
+    // Tasks after all rather than leaving it with no Google presence at all.
+    await reenableGoogleTasksIfCalendarFailed(created.id, willBeCalendarEvent, nowCalendarLinked)
     onSaved?.({ mode: 'task', taskId: created.id })
   }
 
@@ -465,6 +506,7 @@ export function UnifiedPlanModal({
 
     if (timeBlock) {
       let linkedTaskId: string | undefined
+      let skippedGoogleTasksForLinkedTask = false
       // Defensive: `timeBlock` is contractually a STANDALONE block (never
       // task-linked — planModal.types.ts's own comment on the prop), so
       // shouldCreateLinkedTask should be structurally impossible to return
@@ -494,17 +536,21 @@ export function UnifiedPlanModal({
         })
         if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
         linkedTaskId = created.id
+        skippedGoogleTasksForLinkedTask = willBeCalendarEvent
       }
       await updateTimeBlock(timeBlock.id, {
         date: form.date, start_time: startTimeVal, duration_minutes: effDuration,
         title, category: form.category,
         ...(linkedTaskId ? { task_id: linkedTaskId } : {}),
       })
+      let calendarLinked = !!timeBlock.google_calendar_event_id
       if (form.gcal && calToken && !timeBlock.google_calendar_event_id) {
-        await linkCalendarEvent(timeBlock.id, form.date, form.startTime, effDuration, title)
+        calendarLinked = await linkCalendarEvent(timeBlock.id, form.date, form.startTime, effDuration, title)
       } else if (!form.gcal && calToken && timeBlock.google_calendar_event_id) {
         await updateTimeBlock(timeBlock.id, { google_calendar_event_id: null })
+        calendarLinked = false
       }
+      await reenableGoogleTasksIfCalendarFailed(linkedTaskId, skippedGoogleTasksForLinkedTask, calendarLinked)
       onSaved?.({ mode: 'schedule', taskId: linkedTaskId, timeBlockCreated: false })
       return
     }
@@ -523,6 +569,7 @@ export function UnifiedPlanModal({
     }
 
     let linkedTaskId: string | undefined
+    let skippedGoogleTasksForLinkedTask = false
     if (form.alsoCreateTask) {
       const taskDomain = defaults?.domain
         ?? (form.category === 'work' ? 'work' : form.category === 'media' ? 'media' : 'personal')
@@ -535,6 +582,7 @@ export function UnifiedPlanModal({
       })
       if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
       linkedTaskId = created.id
+      skippedGoogleTasksForLinkedTask = willBeCalendarEvent
     }
 
     const episodeFields = source?.episodeInfo
@@ -547,9 +595,11 @@ export function UnifiedPlanModal({
       source_type: source?.sourceType, source_id: source?.sourceId,
       ...episodeFields,
     })
+    let calendarLinked = false
     if (form.gcal && calToken) {
-      await linkCalendarEvent(block.id, form.date, form.startTime, effDuration, title)
+      calendarLinked = await linkCalendarEvent(block.id, form.date, form.startTime, effDuration, title)
     }
+    await reenableGoogleTasksIfCalendarFailed(linkedTaskId, skippedGoogleTasksForLinkedTask, calendarLinked)
     onSaved?.({ mode: 'schedule', taskId: linkedTaskId, timeBlockCreated: true })
   }
 

@@ -24,18 +24,21 @@ export interface PendingCreateGuardInput {
  *  trigger's own opt-out delete-branch to act on (that branch only fires
  *  when OLD.google_task_id IS NOT NULL) — without this check it would fire
  *  anyway and put the task back on Google as an unwanted duplicate.
+ *  **ABSOLUTE — never bypassed, not even by `forceRecreate`.** A real
+ *  sequence this closes: Reopen enqueues a `force_recreate` 'create', then
+ *  (before it drains) the task gains a calendar-linked schedule and opts
+ *  out — that 'create' must stay dead; `forceRecreate` only ever means
+ *  "this specific id is known-stale", never "ignore the current opt-out".
  *
  *  Guard 2 — already created (re-processed after a partial earlier
- *  failure) — skip, don't duplicate.
- *
- *  `forceRecreate` (migration 078's Reopen fix) bypasses BOTH: an
- *  un-cancel always sets google_sync_enabled TRUE in the same write (so
- *  guard 1 never actually excludes it — kept explicit for clarity and so
- *  the two guards' ordering is never accidentally swapped), and its
- *  google_task_id is a KNOWN-DEAD id (Google Tasks has no undelete) that
- *  guard 2 must not treat as "already created". */
+ *  failure) — skip, don't duplicate. `forceRecreate` (migration 078's
+ *  Reopen fix) bypasses ONLY this one: its google_task_id is a KNOWN-DEAD
+ *  id (Google Tasks has no undelete) that must not be treated as "already
+ *  created". A normal Reopen also happens to satisfy guard 1 on its own
+ *  (un-cancelling sets google_sync_enabled TRUE in the same write) — this
+ *  guard's bypass is what actually lets the recreate through. */
 export function shouldSkipPendingCreate(task: PendingCreateGuardInput, forceRecreate: boolean): boolean {
-  if (!task.google_sync_enabled && !forceRecreate) return true
+  if (!task.google_sync_enabled) return true
   if (task.google_task_id && !forceRecreate) return true
   return false
 }

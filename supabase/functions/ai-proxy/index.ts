@@ -1255,7 +1255,12 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
   // watched actually keys off (migration 043) — only stamp them when the AI
   // was given a SPECIFIC episode (mirrors EpisodesPanel's own single-episode
   // rule: never stamped for an unspecified/batch watch, which just means
-  // "watch some of this show", not "this exact episode").
+  // "watch some of this show", not "this exact episode"). When the episode
+  // ISN'T known, don't write source_type='tv_episode' either — that value
+  // means "this specific episode" and nothing here can back that claim up
+  // without the two columns above (mirrors blockSourceTypeForTask's own
+  // reasoning on the client: a context-free TV reference is safer as "no
+  // block source" than as a falsely episode-specific one).
   const knownEpisode = isTV && season != null && episode != null
   const { error: blockErr } = await supabase.from('time_blocks').insert({
     user_id:          userId,
@@ -1265,8 +1270,8 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
     duration_minutes: isTV ? 45 : 120,
     color:            isTV ? 'blue' : 'purple',
     task_id:          task.id,
-    source_type:      isTV ? 'tv_episode' : 'movie',
-    source_id:        args.entry_id ?? null,
+    source_type:      isTV ? (knownEpisode ? 'tv_episode' : null) : 'movie',
+    source_id:        isTV ? (knownEpisode ? (args.entry_id ?? null) : null) : (args.entry_id ?? null),
     ...(knownEpisode ? { season_number: season, episode_number: episode } : {}),
     updated_at:       new Date().toISOString(),
   })

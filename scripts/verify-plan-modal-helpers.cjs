@@ -26,6 +26,7 @@ require('sucrase/register')
 const {
   inferRecurrenceMode, minutesBetweenWrapping, defaultScheduleCategory, daysForRecurrence,
   blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
+  needsGoogleTasksFallback,
 } = require('../src/shared/components/plan-modal/planModal.config')
 const { buildInitialForm } = require('../src/shared/components/plan-modal/planForm')
 const { shouldSkipPendingCreate } = require('../src/features/todo/api/googleTasksOutboxRules')
@@ -177,11 +178,23 @@ console.log('\n== 8. shouldSkipPendingCreate — the outbox drain half of the de
   // The normal, legitimate path — nothing here should ever block a real create.
   check('genuinely new + still enabled -> proceed (do NOT skip)',
     shouldSkipPendingCreate({ google_sync_enabled: true, google_task_id: null }, false) === false)
-  // force_recreate (migration 078) bypasses BOTH guards for the Reopen case.
+  // force_recreate (migration 078) bypasses ONLY the "already has an id"
+  // guard — this is Reopen's normal case (un-cancel sets google_sync_enabled
+  // TRUE in the same write, so opt-out never applies here anyway).
   check('force_recreate bypasses the "already has an id" guard (Reopen — id is dead)',
     shouldSkipPendingCreate({ google_sync_enabled: true, google_task_id: 'dead_gtask' }, true) === false)
   check('force_recreate task is always sync-enabled anyway (un-cancel sets it in the same write)',
     shouldSkipPendingCreate({ google_sync_enabled: true, google_task_id: null }, true) === false)
+  // THE REGRESSION THIS PASS FIXES: force_recreate must NEVER bypass the
+  // opt-out guard. Sequence: Reopen enqueues a force_recreate 'create',
+  // then — before it drains — the task opts back out (e.g. gains a
+  // calendar-linked schedule). That 'create' must stay dead regardless of
+  // the force_recreate flag; the flag only ever means "this id is stale",
+  // never "ignore the current opt-out".
+  check('force_recreate does NOT bypass opt-out — google_sync_enabled=false always skips',
+    shouldSkipPendingCreate({ google_sync_enabled: false, google_task_id: 'dead_gtask' }, true) === true)
+  check('force_recreate + opted out + no id either -> still skip',
+    shouldSkipPendingCreate({ google_sync_enabled: false, google_task_id: null }, true) === true)
 }
 
 console.log('\n== 9. shouldCreateLinkedTask — the TrainingCalendar duplicate-task guard ==')
@@ -198,6 +211,24 @@ console.log('\n== 9. shouldCreateLinkedTask — the TrainingCalendar duplicate-t
     shouldCreateLinkedTask(true, undefined) === true)
   check('checkbox off -> never create regardless of link state',
     shouldCreateLinkedTask(false, null) === false && shouldCreateLinkedTask(false, 'existing_task_id') === false)
+}
+
+console.log('\n== 10. needsGoogleTasksFallback — the CREATE-side mirror of needsGoogleTaskDedupe ==')
+{
+  // The real bug: saveTask's plain create and both of saveSchedule's
+  // "Also add to Tasks" branches passed skipGoogleTasks=willBeCalendarEvent
+  // to useCreateTask SPECULATIVELY, before the calendar link was even
+  // attempted. If that link then failed, the task ended up with NEITHER
+  // Google representation — this is what pushes it to Google Tasks after
+  // the fact instead.
+  check('skipped Google Tasks, calendar link then FAILED -> must fall back',
+    needsGoogleTasksFallback(true, false) === true)
+  check('skipped Google Tasks, calendar link SUCCEEDED -> no fallback needed',
+    needsGoogleTasksFallback(true, true) === false)
+  check('never skipped (no calendar intent at all) -> nothing to fall back from',
+    needsGoogleTasksFallback(false, false) === false)
+  check('never skipped, calendar happened to link anyway -> still no-op',
+    needsGoogleTasksFallback(false, true) === false)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

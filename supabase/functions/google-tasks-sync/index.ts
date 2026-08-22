@@ -172,7 +172,10 @@ interface OutboxRow { id: string; task_id: string; operation: 'create' | 'update
 // _shared/ imports per this repo's edge-function convention), so keep any
 // change to that logic mirrored here by hand.
 function shouldSkipPendingCreate(task: AnyRecord, forceRecreate: boolean): boolean {
-  if (!task.google_sync_enabled && !forceRecreate) return true
+  // Opt-out is absolute — never bypassed, not even by forceRecreate.
+  if (!task.google_sync_enabled) return true
+  // Already created — skip, don't duplicate. forceRecreate bypasses ONLY
+  // this guard (a Reopen's google_task_id is known-dead).
   if (task.google_task_id && !forceRecreate) return true
   return false
 }

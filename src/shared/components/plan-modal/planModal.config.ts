@@ -195,6 +195,20 @@ export function needsGoogleTaskDedupe(willBeCalendarEvent: boolean, googleSyncEn
   return willBeCalendarEvent && googleSyncEnabled
 }
 
+/** The CREATE-side mirror of the same ordering hazard needsGoogleTaskDedupe
+ *  closes on EDIT. Every create path that creates a new task ALONGSIDE a
+ *  schedule (saveTask's plain create, saveSchedule's "Also add to Tasks"
+ *  branches) speculatively passes `skipGoogleTasks: willBeCalendarEvent` to
+ *  `useCreateTask` — deciding to suppress the Google Task BEFORE the
+ *  calendar link is even attempted. If that link then fails, the task
+ *  would end up with NEITHER Google representation. This is whether that
+ *  speculative skip must now be reversed (re-enable google_sync_enabled,
+ *  which re-fires migration 071's opt-in branch and pushes the task to
+ *  Google Tasks as a fallback) once the REAL outcome is known. */
+export function needsGoogleTasksFallback(skippedGoogleTasks: boolean, calendarLinked: boolean): boolean {
+  return skippedGoogleTasks && !calendarLinked
+}
+
 /** saveSchedule's "Also add to Tasks" branch (mode='schedule', editing a
  *  `timeBlock`) should only ever create a NEW linked task — `timeBlock` is
  *  contractually a standalone-only prop (a task-linked block is always
