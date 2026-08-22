@@ -506,6 +506,10 @@ export function UnifiedPlanModal({
           ...(googleTasklistId !== undefined ? { google_tasklist_id: googleTasklistId } : {}),
         },
       })
+      // Snapshot BEFORE syncTaskSchedule runs — needed below to detect the
+      // REVERSE transition (was calendar-linked, this edit just removed
+      // that link) as distinct from "was never linked at all".
+      const wasCalendarLinked = !!linkedBlock?.google_calendar_event_id
       const calendarStatus = await syncTaskSchedule(task.id, linkedBlock ?? null)
       // Only NOW — with the calendar link outcome actually known — decide
       // whether to drop the now-redundant Google Task. A second, separate
@@ -513,6 +517,16 @@ export function UnifiedPlanModal({
       // meant deciding before the outcome existed.
       if (needsGoogleTaskDedupe(calendarStatus, task.google_sync_enabled)) {
         await updateTaskM.mutateAsync({ id: task.id, patch: { google_sync_enabled: false } })
+      } else if (!task.google_sync_enabled && needsGoogleTasksFallback(wasCalendarLinked, calendarStatus)) {
+        // The mirror of the block above, for the OPPOSITE transition: this
+        // task was calendar-linked (so Google Tasks sync was suppressed by
+        // the dedupe path on an earlier save) and THIS edit just confirmed
+        // there's no calendar link any more (unscheduled, or GCal turned
+        // off) — with google_sync_enabled already false, the task would be
+        // left with NEITHER Google representation. Real gap this closes:
+        // only the "gained a calendar link" direction re-fired the opt-out
+        // trigger; "lost the calendar link" never re-fired the opt-in one.
+        await updateTaskM.mutateAsync({ id: task.id, patch: { google_sync_enabled: true } })
       }
       onSaved?.({ mode: 'task', taskId: task.id })
       return

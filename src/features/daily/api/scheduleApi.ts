@@ -224,22 +224,27 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
   }
 }
 
+// Remote-first, mirroring updateTimeBlock's own explicit-unlink ordering:
+// a non-404 delete failure (network, 401/403, 429, 5xx) MUST NOT be
+// swallowed here. The old behavior logged it and deleted the local row
+// anyway — since the local row (and its google_calendar_event_id) is the
+// ONLY thing that ever pointed at that remote event, doing so left a real,
+// permanently untracked orphan on the user's Google Calendar. A confirmed
+// 404 (already gone remotely) still proceeds to the local delete.
 export async function deleteTimeBlock(id: string): Promise<void> {
-  // Remove the linked Google Calendar event first (best-effort) so deleting a
-  // block/task doesn't leave an orphaned event behind.
   const token = calToken()
   if (token) {
-    try {
-      const { data: row } = await supabase
-        .from('time_blocks')
-        .select('google_calendar_event_id')
-        .eq('id', id)
-        .single()
-      if (row?.google_calendar_event_id) {
+    const { data: row } = await supabase
+      .from('time_blocks')
+      .select('google_calendar_event_id')
+      .eq('id', id)
+      .single()
+    if (row?.google_calendar_event_id) {
+      try {
         await deleteCalendarEvent(token, 'primary', row.google_calendar_event_id)
+      } catch (err) {
+        if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`)
       }
-    } catch (err) {
-      logError(`Calendar event delete failed: ${(err as Error).message}`, { blockId: id })
     }
   }
   const { error } = await supabase.from('time_blocks').delete().eq('id', id)

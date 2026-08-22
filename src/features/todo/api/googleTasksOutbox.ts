@@ -117,23 +117,43 @@ async function processCreate(token: string, row: OutboxRow): Promise<void> {
   const stillWantsThisTask = !!liveTask && liveTask.google_sync_enabled && liveTask.status !== 'cancelled'
 
   if (!stillWantsThisTask) {
-    try {
-      await deleteGoogleTask(token, listId, remote.id)
-    } catch (err) {
-      if (!isGoogleTaskNotFound(err)) {
-        // Compensation failed — don't just log it and move on. A durable
-        // retry row means a later drain finishes the cleanup instead of
-        // leaving an orphan Google Task nothing ever revisits.
-        await enqueueOrphanCleanup(row.user_id, row.task_id, remote.id, task.google_tasklist_id)
-      }
-    }
+    await compensateOrphanCreate(token, listId, remote.id, row.user_id, row.task_id, task.google_tasklist_id)
     return // never write the new remote id onto a task that opted out
   }
 
-  await applySnapshot(task.id, remote)
+  try {
+    await applySnapshot(task.id, remote)
+  } catch (err) {
+    // The remote task now exists for real, but recording its id locally
+    // failed — task.google_task_id is STILL NULL. Left alone, the next
+    // drain retry would see no id, pass shouldSkipPendingCreate, and call
+    // createGoogleTask AGAIN: a genuine duplicate (the exact failure class
+    // migration 075's own header comment already documented once for this
+    // same snapshot step). Compensate exactly like the opted-out case above
+    // — delete the orphan (or durably queue its cleanup) — then rethrow so
+    // this attempt is still recorded as failed/backed-off, but the NEXT
+    // retry starts from a clean slate and creates exactly one task.
+    await compensateOrphanCreate(token, listId, remote.id, row.user_id, row.task_id, task.google_tasklist_id)
+    throw err
+  }
   if (task.status === 'done') {
     const completed = await completeGoogleTask(token, listId, remote.id)
     await applySnapshot(task.id, completed)
+  }
+}
+
+async function compensateOrphanCreate(
+  token: string, listId: string, remoteTaskId: string, userId: string, taskId: string, googleTasklistId: string | null,
+): Promise<void> {
+  try {
+    await deleteGoogleTask(token, listId, remoteTaskId)
+  } catch (err) {
+    if (!isGoogleTaskNotFound(err)) {
+      // Compensation failed — don't just log it and move on. A durable
+      // retry row means a later drain finishes the cleanup instead of
+      // leaving an orphan Google Task nothing ever revisits.
+      await enqueueOrphanCleanup(userId, taskId, remoteTaskId, googleTasklistId)
+    }
   }
 }
 

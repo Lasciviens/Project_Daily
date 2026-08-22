@@ -185,11 +185,18 @@ async function applySnapshot(taskId: string, userId: string, remote: AnyRecord, 
 // such urgency and must not hammer a task that's mid-backoff.
 interface OutboxRow { id: string; user_id: string; task_id: string; operation: 'create' | 'update' | 'delete'; payload: AnyRecord; attempts: number }
 
-// Migration 079's stale-delete-safety net — mirrors googleTasksOutbox.ts's
-// clearGoogleTaskIdIfMatches exactly.
-async function clearGoogleTaskIdIfMatches(taskId: string, expectedGoogleTaskId: string): Promise<boolean> {
+// Migration 079's stale-delete-safety net. UNLIKE the browser drain's
+// version (a real user JWT, so auth.uid() resolves the caller), this
+// service-role caller has NO JWT at all — effective_user_id(p_user_id)
+// returns p_user_id verbatim for service_role, and NULL if it's omitted.
+// Passing p_user_id here is not optional: without it the UPDATE's
+// `user_id = v_user_id` becomes `user_id = NULL`, which matches ZERO rows
+// (real bug, caught in review) — the clear would silently no-op on every
+// single cron-drained delete, leaving 079's whole stale-delete guard dead
+// on this path while still working from the browser.
+async function clearGoogleTaskIdIfMatches(taskId: string, expectedGoogleTaskId: string, userId: string): Promise<boolean> {
   const { data, error } = await supabase.rpc('clear_google_task_id_if_matches', {
-    p_task_id: taskId, p_expected_google_task_id: expectedGoogleTaskId,
+    p_task_id: taskId, p_expected_google_task_id: expectedGoogleTaskId, p_user_id: userId,
   })
   if (error) throw error
   return !!data
@@ -240,20 +247,38 @@ async function processCreate(token: string, userId: string, row: OutboxRow) {
   const stillWantsThisTask = !!liveTask && liveTask.google_sync_enabled && liveTask.status !== 'cancelled'
 
   if (!stillWantsThisTask) {
-    try {
-      await deleteGoogleTask(token, listId, remote!.id)
-    } catch (err) {
-      if (!isGoogleTaskNotFound(err)) {
-        await enqueueOrphanCleanup(userId, row.task_id, remote!.id, task.google_tasklist_id)
-      }
-    }
+    await compensateOrphanCreate(token, listId, remote!.id, userId, row.task_id, task.google_tasklist_id)
     return // never write the new remote id onto a task that opted out
   }
 
-  await applySnapshot(task.id, userId, remote!)
+  try {
+    await applySnapshot(task.id, userId, remote!)
+  } catch (err) {
+    // Mirrors googleTasksOutbox.ts's browser-side fix exactly: the remote
+    // task now exists for real, but recording its id locally failed —
+    // task.google_task_id is still NULL, so an unmodified retry would call
+    // createGoogleTask AGAIN (a genuine duplicate — the exact failure class
+    // migration 075's header comment already documented once). Compensate
+    // then rethrow so this attempt is recorded as failed/backed-off, but
+    // the next retry starts clean.
+    await compensateOrphanCreate(token, listId, remote!.id, userId, row.task_id, task.google_tasklist_id)
+    throw err
+  }
   if (task.status === 'done') {
     const completed = await completeGoogleTask(token, listId, remote!.id)
     await applySnapshot(task.id, userId, completed!)
+  }
+}
+
+async function compensateOrphanCreate(
+  token: string, listId: string, remoteTaskId: string, userId: string, taskId: string, googleTasklistId: string | null,
+): Promise<void> {
+  try {
+    await deleteGoogleTask(token, listId, remoteTaskId)
+  } catch (err) {
+    if (!isGoogleTaskNotFound(err)) {
+      await enqueueOrphanCleanup(userId, taskId, remoteTaskId, googleTasklistId)
+    }
   }
 }
 
@@ -286,7 +311,7 @@ async function processUpdate(token: string, userId: string, row: OutboxRow) {
   }
 }
 
-async function processDelete(token: string, _userId: string, row: OutboxRow) {
+async function processDelete(token: string, userId: string, row: OutboxRow) {
   const googleTaskId = row.payload.google_task_id as string | undefined
   if (!googleTaskId) return
   const listId = await resolveGoogleListId((row.payload.google_tasklist_id as string | null) ?? null)
@@ -299,7 +324,7 @@ async function processDelete(token: string, _userId: string, row: OutboxRow) {
   // it STILL matches what THIS delete targeted (mirrors googleTasksOutbox.ts
   // exactly; no longer the unconditional apply_google_task_snapshot(p_clear_
   // google_task_id=true) call, which had no such guard).
-  await clearGoogleTaskIdIfMatches(row.task_id, googleTaskId)
+  await clearGoogleTaskIdIfMatches(row.task_id, googleTaskId, userId)
 }
 
 // Claims via FOR UPDATE SKIP LOCKED (migration 073) rather than a plain
