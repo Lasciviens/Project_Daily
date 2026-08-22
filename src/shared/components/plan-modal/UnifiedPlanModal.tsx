@@ -21,6 +21,30 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-08-22 · v9 · Post-review fixes on top of v8 (real runtime gaps, not
+//                    architecture changes):
+//                    (a) A standalone timeBlock's `gcal` wasn't seeded from
+//                    its own google_calendar_event_id (planForm.ts) — saving
+//                    an already-calendar-linked block unchanged silently
+//                    unlinked its real Google Calendar event.
+//                    (b) "One task = one Google entry" only held on CREATE.
+//                    Editing an ALREADY Google-synced task into a
+//                    calendar-linked schedule, and checking "Also add to
+//                    Tasks" on an already-calendar-linked standalone block,
+//                    both skipped the skipGoogleTasks dedupe — now fixed on
+//                    both save paths.
+//                    (c) When no `source` prop is passed (common — most
+//                    editors don't have one), a NEW block/task created for
+//                    an EXISTING task/timeBlock now falls back to that
+//                    entity's own source_type/source_id (mapped through
+//                    blockSourceTypeForTask/taskSourceTypeForBlock) instead
+//                    of silently going source-less.
+//                    (d) Save is now blocked (button disabled + a guard in
+//                    handleSave) while a Task's linked block is still being
+//                    fetched (linkedBlock === undefined) — saving mid-fetch
+//                    used to make syncTaskSchedule think no block existed
+//                    yet and CREATE a second one, instantly violating the
+//                    at-most-one-per-task DB constraint.
 //  2026-08-22 · v8 · Tasks/Schedule model fix (migration 077) — replaces the
 //                    Task/Schedule TAB switcher entirely with explicit `mode`.
 //                    Root causes fixed together:
@@ -130,6 +154,7 @@ import { RecurringTab } from './RecurringTab'
 import { buildInitialForm } from './planForm'
 import {
   daysForRecurrence, endTimeFrom, sectionForDate, LOCAL_TZ,
+  blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe,
 } from './planModal.config'
 import type { PlanForm } from './planForm'
 import type { PlanMode, UnifiedPlanModalProps, PlanModalConfig } from './planModal.types'
@@ -295,14 +320,20 @@ export function UnifiedPlanModal({
     } else {
       // The originating entity's source_type/source_id (movie/training_session/
       // project_item/tv_episode) travels alongside task_id, never replaced by
-      // it — the real bug this migration fixes.
+      // it — the real bug this migration fixes. When the caller passed no
+      // `source` at all (common for a plain To-Do being scheduled for the
+      // first time, e.g. from ToDoItem's edit modal) fall back to the
+      // EXISTING task's own source_type/source_id — an editor with no
+      // explicit source prop must not silently drop a real origin the task
+      // already carries (e.g. a project_item task gaining a schedule).
       const episodeFields = source?.episodeInfo
         ? { season_number: source.episodeInfo.seasonNumber, episode_number: source.episodeInfo.episodeNumber }
         : {}
       const block = await createBlock.mutateAsync({
         date: form.date, title, start_time: startTimeVal, duration_minutes: effDuration,
         category: form.category, color: 'accent', task_id: taskId,
-        source_type: source?.sourceType, source_id: source?.sourceId,
+        source_type: source?.sourceType ?? blockSourceTypeForTask(task?.source_type),
+        source_id:   source?.sourceId   ?? task?.source_id ?? undefined,
         ...episodeFields,
       })
       if (form.gcal && calToken) {
@@ -316,6 +347,16 @@ export function UnifiedPlanModal({
     const googleTasklistId = await resolveGoogleListField()
 
     if (editMode && task) {
+      // "One task = ONE Google entry" (the create-path policy — see
+      // createTask's skipGoogleTasks) also has to hold when a task that was
+      // ALREADY a synced Google Task later gains a calendar-linked schedule
+      // on an EDIT — without this, it ends up represented on Google twice
+      // (a Task AND an Event) since the create-time dedupe never runs again.
+      // Setting google_sync_enabled: false re-fires migration 071's opt-out
+      // trigger branch, which enqueues the outbox 'delete' that removes the
+      // now-redundant Google Task copy.
+      const willBeCalendarEvent = form.scheduled && form.gcal && !!calToken
+      const needsGoogleTaskCleanup = needsGoogleTaskDedupe(willBeCalendarEvent, task.google_sync_enabled, task.google_task_id)
       await updateTaskM.mutateAsync({
         id: task.id,
         patch: {
@@ -328,6 +369,7 @@ export function UnifiedPlanModal({
           due_date:    form.dueDate || null,
           due_time:    form.dueTime ? `${form.dueTime}:00` : null,
           ...(googleTasklistId !== undefined ? { google_tasklist_id: googleTasklistId } : {}),
+          ...(needsGoogleTaskCleanup ? { google_sync_enabled: false } : {}),
         },
       })
       await syncTaskSchedule(task.id, linkedBlock ?? null)
@@ -370,10 +412,22 @@ export function UnifiedPlanModal({
     if (timeBlock) {
       let linkedTaskId: string | undefined
       if (form.alsoCreateTask) {
+        // This block IS (or, per the checkbox below, is about to become) a
+        // Google Calendar event whenever form.gcal is on — "one task = one
+        // Google entry" means the new Task must not ALSO become a Google
+        // Task in that case (the exact policy useCreateTask's skipGoogleTasks
+        // already exists for on every other create path; this branch was the
+        // one place that forgot to pass it).
+        const willBeCalendarEvent = form.gcal && !!calToken
         const { task: created, googleTaskError } = await createTask.mutateAsync({
           title, section: sectionForDate(form.date), domain: defaults?.domain ?? 'personal',
           priority: defaults?.priority ?? 'medium', due_date: form.date,
-          source_type: source?.taskSourceType, source_id: source?.sourceId,
+          // No explicit `source` on this call site (common — e.g. a
+          // Training/Media block that predates this edit) falls back to the
+          // BLOCK's own real origin rather than creating a source-less Task.
+          source_type: source?.taskSourceType ?? taskSourceTypeForBlock(timeBlock.source_type),
+          source_id:   source?.sourceId       ?? timeBlock.source_id ?? undefined,
+          skipGoogleTasks: willBeCalendarEvent,
         })
         if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
         linkedTaskId = created.id
@@ -459,8 +513,19 @@ export function UnifiedPlanModal({
     onSaved?.({ mode: 'recurring', recurringCreated: true })
   }
 
+  // While editing a Task, `linkedBlock` starts `undefined` ("not fetched
+  // yet") and only becomes `null`/a real block once hydrateLinkedBlock
+  // resolves. Saving before that resolves would make syncTaskSchedule treat
+  // an actually-linked block as "none" (existingBlock=null) — CREATING a
+  // second block instead of updating the real one, immediately violating
+  // the DB's own at-most-one-per-task constraint. Not just cosmetic: this
+  // is the difference between "update in place" and "insert" in
+  // syncTaskSchedule.
+  const scheduleStillLoading = effectiveMode === 'task' && !!task && linkedBlock === undefined
+
   async function handleSave() {
     if (!form.title.trim()) { toast.error('Title is required'); return }
+    if (scheduleStillLoading) { toast.error('Still loading this task’s schedule — try again in a moment'); return }
     setSaving(true)
     const tid = toast.loading(editMode ? 'Saving…' : 'Planning…')
     try {
@@ -574,9 +639,9 @@ export function UnifiedPlanModal({
               className="flex-1 min-h-[44px] border border-ink-200 text-ink-700 rounded-xl text-sm font-medium hover:bg-cream-50 transition-colors"
             >Cancel</button>
             <button
-              type="button" onClick={handleSave} disabled={saving || !form.title.trim()}
+              type="button" onClick={handleSave} disabled={saving || !form.title.trim() || scheduleStillLoading}
               className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >{primaryLabel}</button>
+            >{scheduleStillLoading ? 'Loading…' : primaryLabel}</button>
           </div>
 
           {editMode && (

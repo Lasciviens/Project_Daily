@@ -99,6 +99,13 @@ export function buildInitialForm(
     googleListTitle: DOMAIN_LABEL[domain],
     scheduled:  defaults?.scheduled ?? false,
 
-    gcal: defaults?.gcal ?? false,
+    // A standalone timeBlock's own google_calendar_event_id is available
+    // synchronously (unlike mode='task', where the linked block itself is
+    // fetched async — see UnifiedPlanModal's hydrateLinkedBlock effect,
+    // which corrects this field for that case once it loads). Without this,
+    // opening an already-calendar-linked block seeded gcal=false, and
+    // Save's "toggle went from checked to unchecked" branch unlinked the
+    // real Google Calendar event the user never touched.
+    gcal: timeBlock ? !!timeBlock.google_calendar_event_id : (defaults?.gcal ?? false),
   }
 }

@@ -1248,6 +1248,9 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
   // ONLY representation of "linked to a Task" (migration 077); source_type/
   // source_id here carry the REAL originating entity, preserved from above
   // rather than overwritten — the pre-077 bug this fixed.
+  // NOTE: tasks.source_type uses 'tv_series' but time_blocks.source_type's
+  // CHECK (migration 077) only allows 'tv_episode' — the two vocabularies
+  // differ on TV specifically; using 'tv_series' here would 400 on the CHECK.
   const { error: blockErr } = await supabase.from('time_blocks').insert({
     user_id:          userId,
     date,
@@ -1256,7 +1259,7 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
     duration_minutes: isTV ? 45 : 120,
     color:            isTV ? 'blue' : 'purple',
     task_id:          task.id,
-    source_type:      isTV ? 'tv_series' : 'movie',
+    source_type:      isTV ? 'tv_episode' : 'movie',
     source_id:        args.entry_id ?? null,
     updated_at:       new Date().toISOString(),
   })

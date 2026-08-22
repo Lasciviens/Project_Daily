@@ -170,7 +170,11 @@ interface OutboxRow { id: string; task_id: string; operation: 'create' | 'update
 async function processCreate(token: string, userId: string, row: OutboxRow) {
   const { data: task } = await supabase.from('tasks').select('*').eq('id', row.task_id).maybeSingle()
   if (!task) return
-  if (task.google_task_id) return
+  // See googleTasksOutbox.ts's processCreate (browser drain) for why this
+  // guard has an exception: migration 078's Reopen fix enqueues 'create'
+  // with force_recreate=true whose google_task_id is a KNOWN-DEAD id
+  // (Google Tasks has no undelete) — that case must proceed, not skip.
+  if (task.google_task_id && !row.payload.force_recreate) return
   const listId = await resolveGoogleListId(task.google_tasklist_id)
   const parent = await resolveGoogleParentId(task.parent_task_id)
   const remote = await createGoogleTask(token, listId, task, { parent })

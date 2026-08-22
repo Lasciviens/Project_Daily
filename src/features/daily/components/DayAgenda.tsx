@@ -125,9 +125,17 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   const blocks: AgendaBlock[] = []
   for (const b of schedBlocks) {
     if (!b.days_of_week.includes(dayOfWeek)) continue
+    const startHour = timeStrToHour(b.start_time)
+    let endHour = timeStrToHour(b.end_time)
+    // Cross-midnight recurring block (e.g. 23:00-01:00): end_time's own clock
+    // reading is BEFORE start_time's, so a plain parse gives a negative
+    // duration. Add 24h so downstream duration/overlap math stays correct —
+    // display re-wraps with `% 24` in renderRow (mirrors minutesBetweenWrapping's
+    // same wrap rule in planModal.config.ts).
+    if (endHour <= startHour) endHour += 24
     blocks.push({
       id: b.id, kind: 'recurring', title: b.title, dateStr,
-      startHour: timeStrToHour(b.start_time), endHour: timeStrToHour(b.end_time),
+      startHour, endHour,
       edgeClass: COLOR_EDGE[b.color] ?? COLOR_EDGE.blue,
     })
   }
@@ -227,9 +235,13 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
       setSelectedId(null)
     }
 
+    // A row tap opens the right editor DIRECTLY — no select-then-✎ second
+    // step. The small ⋯ toggle (always visible, its own 44px target) is the
+    // ONLY way to reach the quick actions (postpone/delete) without leaving
+    // the agenda; it stops propagation so it never also opens the editor.
     return (
       <div
-        onClick={() => isCal ? setEditEvent(block.calendarEvent!) : setSelectedId(isSelected ? null : block.id)}
+        onClick={() => isCal ? setEditEvent(block.calendarEvent!) : openEditor(block)}
         className={`group rounded-md border-l-2 ${block.edgeClass} px-2.5 py-1.5 cursor-pointer transition-colors ${
           isActive || isSelected ? 'bg-cream-100' : 'hover:bg-cream-100/70'
         } ${isPast ? 'opacity-50' : ''} ${overlappingIds.has(block.id) ? 'ring-1 ring-red-300' : ''}`}
@@ -244,7 +256,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
             ) : (
               <>
                 <span className="font-semibold text-ink-800">{hourToTimeStr(block.startHour)}</span>
-                <span className="text-ink-500">–{hourToTimeStr(block.endHour)}</span>
+                <span className="text-ink-500">–{hourToTimeStr(block.endHour % 24)}</span>
                 <span className="block text-[10px] text-ink-500">{formatDurationMinutes(durationMins)}</span>
               </>
             )}
@@ -262,23 +274,29 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
               <p className="text-[10px] text-ink-500 mt-0.5 line-clamp-2">{taskNotes}</p>
             )}
           </div>
-          {isSelected && !isCal && (
+          {!isCal && (
             <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-              {block.kind === 'block' && block.startHour >= 0 && (
+              {isSelected && block.kind === 'block' && block.startHour >= 0 && (
                 <button onClick={postpone30m} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+30m</button>
               )}
-              {block.kind === 'block' && (
+              {isSelected && block.kind === 'block' && (
                 <button onClick={postpone1d} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+1d</button>
               )}
-              <button onClick={() => openEditor(block)} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">✎</button>
+              {isSelected && (
+                <button
+                  onClick={() => {
+                    if (isRecurring) deleteScheduleBlock.mutate(block.id)
+                    else deleteBlock.mutate({ id: block.id, dateStr: block.dateStr })
+                    setSelectedId(null)
+                  }}
+                  className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:text-red-500 hover:border-red-300"
+                >✕</button>
+              )}
               <button
-                onClick={() => {
-                  if (isRecurring) deleteScheduleBlock.mutate(block.id)
-                  else deleteBlock.mutate({ id: block.id, dateStr: block.dateStr })
-                  setSelectedId(null)
-                }}
-                className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:text-red-500 hover:border-red-300"
-              >✕</button>
+                onClick={() => setSelectedId(isSelected ? null : block.id)}
+                title={isSelected ? 'Hide quick actions' : 'Quick actions (postpone/delete)'}
+                className="w-[28px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700"
+              >⋯</button>
             </div>
           )}
         </div>

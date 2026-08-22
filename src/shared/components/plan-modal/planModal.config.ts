@@ -6,7 +6,7 @@
 
 import { format, addDays, parseISO, isToday, isTomorrow } from 'date-fns'
 import type { TimeBlockCategory } from '../../../features/daily/types'
-import type { TaskSection } from '../../../features/todo/types'
+import type { TaskSection, TaskSourceType } from '../../../features/todo/types'
 import { todayStr, tomorrowStr } from '../../utils/dateUtils'
 import type {
   PlanModalConfig, ScheduleField, TaskField, RecurrenceMode,
@@ -141,6 +141,47 @@ export function defaultScheduleCategory(domain: string, taskSourceType?: string 
   if (domain === 'work')  return 'work'
   if (domain === 'media') return 'media'
   return 'other'
+}
+
+// The two source_type vocabularies overlap but aren't identical:
+// tasks.source_type has 'tv_series'/'media'/'ai' and no 'tv_episode';
+// time_blocks.source_type (migration 077) has 'tv_episode' and no
+// 'tv_series'/'media'/'ai' (and never 'task' — that's task_id's job).
+// A caller that already has ONE side's real entity but no explicit
+// PlanSource (e.g. editing an existing task/block with no `source` prop)
+// should carry that entity across rather than silently dropping it — these
+// are the two directions of that translation.
+const BLOCK_SOURCE_TYPES = ['training_session', 'movie', 'project_item', 'calendar', 'manual'] as const
+
+/** tasks.source_type -> the matching time_blocks.source_type (or undefined
+ *  when there's no valid equivalent, e.g. 'media'/'ai'). */
+export function blockSourceTypeForTask(taskSourceType?: string | null): string | undefined {
+  if (!taskSourceType) return undefined
+  if (taskSourceType === 'tv_series') return 'tv_episode'
+  return (BLOCK_SOURCE_TYPES as readonly string[]).includes(taskSourceType) ? taskSourceType : undefined
+}
+
+/** time_blocks.source_type -> the matching tasks.source_type (or undefined
+ *  when there's no valid equivalent — every block source_type but
+ *  'tv_episode' maps directly). */
+export function taskSourceTypeForBlock(blockSourceType?: string | null): TaskSourceType | undefined {
+  if (!blockSourceType) return undefined
+  if (blockSourceType === 'tv_episode') return 'tv_series'
+  return (BLOCK_SOURCE_TYPES as readonly string[]).includes(blockSourceType)
+    ? (blockSourceType as TaskSourceType)
+    : undefined
+}
+
+/** "One task = ONE Google entry" — whether an EDIT that makes a task
+ *  calendar-linked must also drop its now-redundant Google Task copy.
+ *  create-time dedupe (skipGoogleTasks) only runs once at INSERT; without
+ *  this check, a task that was already google_sync_enabled with a real
+ *  google_task_id and later gains a GCal schedule ends up on Google TWICE
+ *  (a Task AND an Event) — the real bug this closes on the edit path. */
+export function needsGoogleTaskDedupe(
+  willBeCalendarEvent: boolean, googleSyncEnabled: boolean, googleTaskId: string | null | undefined,
+): boolean {
+  return willBeCalendarEvent && googleSyncEnabled && !!googleTaskId
 }
 
 // ── Config resolution ─────────────────────────────────────────────────────────

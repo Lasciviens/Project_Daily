@@ -102,17 +102,23 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
       {/* Caller-injected extra fields (Yol 1) */}
       {extra}
 
-      <div className="flex flex-col gap-2">
-        {!hidden('alsoCreateTask') && (
-          <CheckboxRow
-            checked={form.alsoCreateTask} onChange={v => patch({ alsoCreateTask: v })}
-            label="Also add to Tasks"
-          />
-        )}
-        {!hidden('gcal') && gcalAvailable && (
-          <CheckboxRow checked={form.gcal} onChange={v => patch({ gcal: v })} label="Add to Google Calendar" />
-        )}
-      </div>
+      {/* Save ignores both of these once a repeat is picked — CREATE always
+          targets schedule_blocks then (no recurring-Task concept, no GCal
+          support for recurring templates), so a control that would silently
+          do nothing on save must not render at all. */}
+      {form.recurrence === 'none' && (
+        <div className="flex flex-col gap-2">
+          {!hidden('alsoCreateTask') && (
+            <CheckboxRow
+              checked={form.alsoCreateTask} onChange={v => patch({ alsoCreateTask: v })}
+              label="Also add to Tasks"
+            />
+          )}
+          {!hidden('gcal') && gcalAvailable && (
+            <CheckboxRow checked={form.gcal} onChange={v => patch({ gcal: v })} label="Add to Google Calendar" />
+          )}
+        </div>
+      )}
     </div>
   )
 }

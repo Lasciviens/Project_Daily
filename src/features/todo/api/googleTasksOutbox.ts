@@ -68,7 +68,12 @@ async function applySnapshot(taskId: string, remote: GoogleRemoteTask) {
 async function processCreate(token: string, row: OutboxRow): Promise<void> {
   const { data: task } = await supabase.from('tasks').select('*').eq('id', row.task_id).maybeSingle()
   if (!task) return // hard-deleted since this row was enqueued — nothing to create
-  if (task.google_task_id) return // already created (re-processed after a partial earlier failure)
+  // A google_task_id here normally means "already created" (re-processed
+  // after a partial earlier failure) — skip, don't duplicate. But migration
+  // 078's Reopen fix enqueues 'create' with force_recreate=true after an
+  // uncancel, whose google_task_id is a KNOWN-DEAD id (Google Tasks has no
+  // undelete) — that case must proceed and overwrite it, not skip.
+  if (task.google_task_id && !row.payload.force_recreate) return
 
   const listId = await resolveGoogleListId(task.google_tasklist_id)
   const parent = await resolveGoogleParentId(task.parent_task_id)
