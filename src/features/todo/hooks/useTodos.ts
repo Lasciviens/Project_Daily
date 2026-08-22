@@ -19,7 +19,7 @@ import {
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { pullGoogleTasks } from '../api/googleTasksSync'
 import { supabase } from '../../../integrations/supabase/client'
-import { updateCalendarEvent } from '../../calendar/api/calendarApi'
+import { updateTimeBlock } from '../../daily/api/scheduleApi'
 import { useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
@@ -135,14 +135,20 @@ export function useUpdateTask() {
       // the linked time_block's OWN title in sync regardless of which door
       // wrote it, but the REMOTE Google Calendar event needs an explicit
       // push here since a trigger has no OAuth token to reach it with.
+      // Routed through scheduleApi's updateTimeBlock (not a direct
+      // updateCalendarEvent call) so this shares the SAME typed-status
+      // lifecycle as every other calendar push — a confirmed 404 here
+      // clears the stale link exactly like it would from the plan modal,
+      // instead of a second, inconsistent "log and forget" path for the
+      // same remote event.
       if (patch.title !== undefined && token) {
         const { data: linked } = await supabase
           .from('time_blocks')
-          .select('google_calendar_event_id')
+          .select('id')
           .eq('task_id', id)
           .maybeSingle()
-        if (linked?.google_calendar_event_id) {
-          try { await updateCalendarEvent(token, 'primary', linked.google_calendar_event_id, { summary: task.title }) }
+        if (linked?.id) {
+          try { await updateTimeBlock(linked.id, { title: task.title }) }
           catch (err) { logError(`Calendar event title sync failed: ${(err as Error).message}`, { taskId: id }) }
         }
       }

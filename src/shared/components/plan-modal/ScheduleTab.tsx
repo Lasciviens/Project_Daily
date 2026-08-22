@@ -12,7 +12,7 @@ import {
   FieldLabel, TextField, DateStepperField, Time24Field, DurationField,
   CategorySelect, RecurrenceField, CheckboxRow,
 } from './fields'
-import { stepDate, shiftTime, isScheduleFieldHidden, isScheduleFieldLocked } from './planModal.config'
+import { stepDate, shiftTime, isScheduleFieldHidden, isScheduleFieldLocked, hasValidRecurrenceSelection } from './planModal.config'
 import type { PlanModalConfig } from './planModal.types'
 import type { PlanForm } from './planForm'
 
@@ -96,6 +96,9 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
             mode={form.recurrence} weeklyDays={form.weeklyDays}
             onMode={m => patch({ recurrence: m })} onToggleDay={toggleDay} locked={locked('recurrence')}
           />
+          {!hasValidRecurrenceSelection(form.recurrence, form.weeklyDays) && (
+            <p className="mt-1.5 text-[11px] text-red-500">Pick at least one day.</p>
+          )}
         </div>
       )}
 

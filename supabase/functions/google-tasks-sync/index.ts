@@ -54,6 +54,24 @@ type AnyRecord = Record<string, any>
 
 const TASKS_BASE = 'https://www.googleapis.com/tasks/v1'
 
+// Mirrors src/features/todo/api/googleTasksApi.ts's GoogleTasksApiError /
+// isGoogleTaskNotFound exactly — Deno can't import that file (no _shared/
+// imports per this repo's edge-function convention), so keep any change to
+// this class mirrored here by hand. Carries the real HTTP status so "was
+// this task genuinely deleted, or did the request merely fail?" is decided
+// on the status, never a message substring match.
+class GoogleTasksApiError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'GoogleTasksApiError'
+    this.status = status
+  }
+}
+function isGoogleTaskNotFound(error: unknown): boolean {
+  return error instanceof GoogleTasksApiError && error.status === 404
+}
+
 async function googleRequest(token: string, path: string, options: RequestInit = {}): Promise<AnyRecord | null> {
   const res = await fetch(`${TASKS_BASE}${path}`, {
     ...options,
@@ -65,7 +83,7 @@ async function googleRequest(token: string, path: string, options: RequestInit =
   })
   if (res.status === 204) return null
   const data = await res.json().catch(() => null)
-  if (!res.ok) throw new Error(data?.error?.message ?? `Google Tasks error ${res.status}`)
+  if (!res.ok) throw new GoogleTasksApiError(res.status, data?.error?.message ?? `Google Tasks error ${res.status}`)
   return data
 }
 
@@ -165,7 +183,32 @@ async function applySnapshot(taskId: string, userId: string, remote: AnyRecord, 
 // one respects next_retry_at (the browser's manual drain deliberately
 // ignores it — "a human just asked for it"); the scheduled poller has no
 // such urgency and must not hammer a task that's mid-backoff.
-interface OutboxRow { id: string; task_id: string; operation: 'create' | 'update' | 'delete'; payload: AnyRecord; attempts: number }
+interface OutboxRow { id: string; user_id: string; task_id: string; operation: 'create' | 'update' | 'delete'; payload: AnyRecord; attempts: number }
+
+// Migration 079's stale-delete-safety net — mirrors googleTasksOutbox.ts's
+// clearGoogleTaskIdIfMatches exactly.
+async function clearGoogleTaskIdIfMatches(taskId: string, expectedGoogleTaskId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('clear_google_task_id_if_matches', {
+    p_task_id: taskId, p_expected_google_task_id: expectedGoogleTaskId,
+  })
+  if (error) throw error
+  return !!data
+}
+
+// A durable retry row for an orphan Google Task this run couldn't clean up
+// itself — mirrors googleTasksOutbox.ts's enqueueOrphanCleanup exactly.
+async function enqueueOrphanCleanup(userId: string, taskId: string, googleTaskId: string, googleTasklistId: string | null) {
+  const { error } = await supabase.from('google_tasks_outbox').insert({
+    user_id: userId, task_id: taskId, operation: 'delete',
+    payload: { google_task_id: googleTaskId, google_tasklist_id: googleTasklistId },
+  })
+  if (error) {
+    await supabase.from('app_error_logs').insert({
+      user_id: userId, message: `Failed to enqueue orphan Google Task cleanup: ${error.message}`,
+      context: { taskId, googleTaskId },
+    }).then(() => {}, () => {})
+  }
+}
 
 // Mirrors src/features/todo/api/googleTasksOutboxRules.ts's
 // shouldSkipPendingCreate() exactly — Deno can't import that file (no
@@ -187,6 +230,26 @@ async function processCreate(token: string, userId: string, row: OutboxRow) {
   const listId = await resolveGoogleListId(task.google_tasklist_id)
   const parent = await resolveGoogleParentId(task.parent_task_id)
   const remote = await createGoogleTask(token, listId, task, { parent })
+
+  // The POST above is a real network round trip — re-check the LIVE row
+  // before writing the new id anywhere, in case the task was cancelled/
+  // deleted/opted out while the create was in flight (mirrors
+  // googleTasksOutbox.ts's browser-side fix exactly).
+  const { data: liveTask } = await supabase
+    .from('tasks').select('id, google_sync_enabled, status').eq('id', row.task_id).maybeSingle()
+  const stillWantsThisTask = !!liveTask && liveTask.google_sync_enabled && liveTask.status !== 'cancelled'
+
+  if (!stillWantsThisTask) {
+    try {
+      await deleteGoogleTask(token, listId, remote!.id)
+    } catch (err) {
+      if (!isGoogleTaskNotFound(err)) {
+        await enqueueOrphanCleanup(userId, row.task_id, remote!.id, task.google_tasklist_id)
+      }
+    }
+    return // never write the new remote id onto a task that opted out
+  }
+
   await applySnapshot(task.id, userId, remote!)
   if (task.status === 'done') {
     const completed = await completeGoogleTask(token, listId, remote!.id)
@@ -223,19 +286,20 @@ async function processUpdate(token: string, userId: string, row: OutboxRow) {
   }
 }
 
-async function processDelete(token: string, userId: string, row: OutboxRow) {
+async function processDelete(token: string, _userId: string, row: OutboxRow) {
   const googleTaskId = row.payload.google_task_id as string | undefined
   if (!googleTaskId) return
   const listId = await resolveGoogleListId((row.payload.google_tasklist_id as string | null) ?? null)
   try {
     await deleteGoogleTask(token, listId, googleTaskId)
-  } catch (e) {
-    if (!(e instanceof Error && e.message.includes('404'))) throw e
+  } catch (err) {
+    if (!isGoogleTaskNotFound(err)) throw err
   }
-  await supabase.rpc('apply_google_task_snapshot', {
-    p_task_id: row.task_id, p_google_task_id: null, p_google_updated_at: null,
-    p_clear_google_task_id: true, p_user_id: userId,
-  })
+  // Migration 079's stale-delete-safety net — only clears the local id if
+  // it STILL matches what THIS delete targeted (mirrors googleTasksOutbox.ts
+  // exactly; no longer the unconditional apply_google_task_snapshot(p_clear_
+  // google_task_id=true) call, which had no such guard).
+  await clearGoogleTaskIdIfMatches(row.task_id, googleTaskId)
 }
 
 // Claims via FOR UPDATE SKIP LOCKED (migration 073) rather than a plain

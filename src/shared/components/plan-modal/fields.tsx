@@ -191,18 +191,22 @@ export function CategorySelect({
 // ── Recurrence — mode pills + (weekly) day picker ─────────────────────────────
 
 export function RecurrenceField({
-  mode, weeklyDays, onMode, onToggleDay, locked,
+  mode, weeklyDays, onMode, onToggleDay, locked, options = RECURRENCE_OPTIONS,
 }: {
   mode: RecurrenceMode
   weeklyDays: number[]
   onMode: (m: RecurrenceMode) => void
   onToggleDay: (day: number) => void
   locked?: boolean
+  /** Defaults to the full list (incl. "No repeat") — RecurringTab passes
+   *  RECURRING_EDIT_OPTIONS instead, since an existing recurring template
+   *  must never offer converting itself into a one-off block. */
+  options?: { value: RecurrenceMode; label: string }[]
 }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
-        {RECURRENCE_OPTIONS.map(o => (
+        {options.map(o => (
           <button
             key={o.value} type="button" disabled={locked} onClick={() => onMode(o.value)}
             className={`min-h-[44px] px-3 text-xs font-medium rounded-lg border transition-colors disabled:opacity-40 ${

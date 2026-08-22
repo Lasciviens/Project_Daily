@@ -26,11 +26,14 @@ require('sucrase/register')
 const {
   inferRecurrenceMode, minutesBetweenWrapping, defaultScheduleCategory, daysForRecurrence,
   blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
-  needsGoogleTasksFallback,
+  needsGoogleTasksFallback, hasValidRecurrenceSelection,
 } = require('../src/shared/components/plan-modal/planModal.config')
 const { buildInitialForm } = require('../src/shared/components/plan-modal/planForm')
 const { shouldSkipPendingCreate } = require('../src/features/todo/api/googleTasksOutboxRules')
 const { classifyCalendarPushFailure } = require('../src/features/daily/api/scheduleSyncRules')
+const { CalendarApiError, isCalendarNotFound } = require('../src/features/calendar/api/calendarApi')
+const { GoogleTasksApiError, isGoogleTaskNotFound } = require('../src/features/todo/api/googleTasksApi')
+const { projectOneOffBlocksForDay, projectRecurringBlocksForDay } = require('../src/features/daily/components/dayAgendaProjection')
 
 let passed = 0
 let failed = 0
@@ -123,21 +126,21 @@ console.log('\n== 5. blockSourceTypeForTask / taskSourceTypeForBlock (source-fal
     && taskSourceTypeForBlock(undefined) === undefined && taskSourceTypeForBlock(null) === undefined)
 }
 
-console.log('\n== 6. needsGoogleTaskDedupe — "one task = one Google entry" on EDIT ==')
+console.log('\n== 6. needsGoogleTaskDedupe — "one task = one Google entry" on EDIT (tri-state) ==')
 {
   // The real bug: editing an ALREADY Google-synced task into a
   // calendar-linked schedule used to skip the dedupe entirely (it only ran
-  // at create time). Signature deliberately dropped the googleTaskId param
-  // — see §8's pending-create scenario for why requiring one was itself a
-  // second, related bug.
-  check('synced task gaining a GCal schedule -> needs dedupe',
-    needsGoogleTaskDedupe(true, true) === true)
-  check('not becoming a calendar event -> no dedupe needed',
-    needsGoogleTaskDedupe(false, true) === false)
-  check('never synced to Google -> nothing to dedupe',
-    needsGoogleTaskDedupe(true, false) === false)
-  check('sync enabled but no real google_task_id yet (pending create) -> STILL needs dedupe',
-    needsGoogleTaskDedupe(true, true) === true)
+  // at create time). Signature now takes the real TimeBlockCalendarStatus
+  // ('linked'/'not_linked'/'unknown'), not a boolean — dedupe may proceed
+  // ONLY on a CONFIRMED 'linked', never on 'not_linked' or 'unknown'.
+  check("calendarStatus='linked' + sync enabled -> needs dedupe",
+    needsGoogleTaskDedupe('linked', true) === true)
+  check("calendarStatus='not_linked' -> no dedupe (nothing confirmed linked)",
+    needsGoogleTaskDedupe('not_linked', true) === false)
+  check("calendarStatus='unknown' -> NEVER dedupe, even if sync enabled",
+    needsGoogleTaskDedupe('unknown', true) === false)
+  check('never synced to Google -> nothing to dedupe even if linked',
+    needsGoogleTaskDedupe('linked', false) === false)
 }
 
 console.log('\n== 7. buildInitialForm — gcal seeded from the REAL entity, not a blind default ==')
@@ -214,46 +217,136 @@ console.log('\n== 9. shouldCreateLinkedTask — the TrainingCalendar duplicate-t
     shouldCreateLinkedTask(false, null) === false && shouldCreateLinkedTask(false, 'existing_task_id') === false)
 }
 
-console.log('\n== 10. needsGoogleTasksFallback — the CREATE-side mirror of needsGoogleTaskDedupe ==')
+console.log('\n== 10. needsGoogleTasksFallback — the CREATE-side mirror of needsGoogleTaskDedupe (tri-state) ==')
 {
   // The real bug: saveTask's plain create and both of saveSchedule's
   // "Also add to Tasks" branches passed skipGoogleTasks=willBeCalendarEvent
   // to useCreateTask SPECULATIVELY, before the calendar link was even
-  // attempted. If that link then failed, the task ended up with NEITHER
-  // Google representation — this is what pushes it to Google Tasks after
-  // the fact instead.
-  check('skipped Google Tasks, calendar link then FAILED -> must fall back',
-    needsGoogleTasksFallback(true, false) === true)
-  check('skipped Google Tasks, calendar link SUCCEEDED -> no fallback needed',
-    needsGoogleTasksFallback(true, true) === false)
+  // attempted. Fallback may proceed ONLY on a CONFIRMED 'not_linked' —
+  // 'unknown' must NEVER trigger it (that would risk a SECOND
+  // representation the moment the calendar link turns out to have
+  // actually succeeded after all).
+  check("skipped Google Tasks, calendarStatus='not_linked' -> must fall back",
+    needsGoogleTasksFallback(true, 'not_linked') === true)
+  check("skipped Google Tasks, calendarStatus='linked' -> no fallback needed",
+    needsGoogleTasksFallback(true, 'linked') === false)
+  check("skipped Google Tasks, calendarStatus='unknown' -> NEVER fall back",
+    needsGoogleTasksFallback(true, 'unknown') === false)
   check('never skipped (no calendar intent at all) -> nothing to fall back from',
-    needsGoogleTasksFallback(false, false) === false)
-  check('never skipped, calendar happened to link anyway -> still no-op',
-    needsGoogleTasksFallback(false, true) === false)
+    needsGoogleTasksFallback(false, 'not_linked') === false)
 }
 
-console.log('\n== 11. classifyCalendarPushFailure — confirmed-gone vs merely-unconfirmed ==')
+console.log('\n== 11. classifyCalendarPushFailure / isCalendarNotFound — real typed errors, never string matching ==')
 {
   // The real bug: updateTimeBlock used to swallow EVERY push failure the
   // same way (log + do nothing), so a caller checking the block's own
   // google_calendar_event_id column right after a 404 still saw "confirmed
   // linked" — editing a calendar-linked task then dedupe-deleted its real
-  // Google Task (needsGoogleTaskDedupe), leaving NEITHER Google
-  // representation. Only a CONFIRMED 404 may report 'not_linked'.
-  check('a 404-shaped message -> confirmed not_linked (safe to clear + recreate)',
-    classifyCalendarPushFailure('Calendar API 404') === 'not_linked')
-  check('a Google API error embedding "404" in its own text -> not_linked',
-    classifyCalendarPushFailure('Not Found (404): event has been deleted') === 'not_linked')
-  // Everything else must be 'unknown', NEVER 'not_linked' — the whole point
-  // being that an unconfirmed failure must never be treated as proof the
-  // link is gone (which is what would let a caller safely delete the
-  // task's Google Task on a mere network hiccup).
-  check('a 500 -> unknown, NOT not_linked', classifyCalendarPushFailure('Calendar API 500') === 'unknown')
-  check('a 429 rate limit -> unknown, NOT not_linked', classifyCalendarPushFailure('Calendar API 429') === 'unknown')
-  check('a network failure -> unknown, NOT not_linked',
-    classifyCalendarPushFailure('NetworkError when attempting to fetch resource.') === 'unknown')
-  check('an expired-token style message -> unknown, NOT not_linked',
-    classifyCalendarPushFailure('invalid_grant: Token has been expired or revoked.') === 'unknown')
+  // Google Task, leaving NEITHER Google representation. Only a CONFIRMED
+  // 404 (the real HTTP status on a real CalendarApiError — never a string
+  // match against the message) may report 'not_linked'.
+  check('status=404, message is JUST "Not Found" (no digits at all) -> still not_linked',
+    classifyCalendarPushFailure(new CalendarApiError(404, 'Not Found')) === 'not_linked')
+  check('isCalendarNotFound agrees', isCalendarNotFound(new CalendarApiError(404, 'Not Found')) === true)
+  check('status=404 with a message that also happens to contain "404" -> not_linked either way',
+    classifyCalendarPushFailure(new CalendarApiError(404, 'Error 404: gone')) === 'not_linked')
+
+  // Everything else must be 'unknown', NEVER 'not_linked' — an unconfirmed
+  // failure must never be treated as proof the link is gone.
+  check('status=500 -> unknown, NOT not_linked', classifyCalendarPushFailure(new CalendarApiError(500, 'Internal error')) === 'unknown')
+  check('status=429 (rate limit) -> unknown', classifyCalendarPushFailure(new CalendarApiError(429, 'Too many requests')) === 'unknown')
+  check('status=401 -> unknown', classifyCalendarPushFailure(new CalendarApiError(401, 'Unauthorized')) === 'unknown')
+  check('status=403 -> unknown', classifyCalendarPushFailure(new CalendarApiError(403, 'Forbidden')) === 'unknown')
+  check('a plain network Error (no status at all) -> unknown',
+    classifyCalendarPushFailure(new Error('NetworkError when attempting to fetch resource.')) === 'unknown')
+  // The exact inverse trap this whole fix closes: a message that CONTAINS
+  // "404" as a substring but is NOT a CalendarApiError (so has no real
+  // status) must NOT classify as not_linked — proves classification is on
+  // the typed status, never a string match.
+  check('a plain Error whose MESSAGE happens to contain "404" is still unknown (no real status to trust)',
+    classifyCalendarPushFailure(new Error('a coincidental 404 in some other unrelated text')) === 'unknown')
+}
+
+console.log('\n== 12. GoogleTasksApiError / isGoogleTaskNotFound — the Tasks-API mirror of §11 ==')
+{
+  check('status=404, bare "Not Found" message -> isGoogleTaskNotFound true',
+    isGoogleTaskNotFound(new GoogleTasksApiError(404, 'Not Found')) === true)
+  check('status=500 -> isGoogleTaskNotFound false', isGoogleTaskNotFound(new GoogleTasksApiError(500, 'Server error')) === false)
+  check('a plain Error whose message contains "404" -> isGoogleTaskNotFound false (no real status)',
+    isGoogleTaskNotFound(new Error('looks like a 404 but is not')) === false)
+}
+
+console.log('\n== 13. hasValidRecurrenceSelection / daysForRecurrence — no more silent Mon-Fri fallback ==')
+{
+  // The real bug: daysForRecurrence used to substitute Mon-Fri when
+  // weeklyDays was empty, so unchecking every day and hitting Save quietly
+  // became "every weekday" instead of being rejected.
+  check('weekly with zero days -> INVALID (must block Save)', hasValidRecurrenceSelection('weekly', []) === false)
+  check('weekly with at least one day -> valid', hasValidRecurrenceSelection('weekly', [2]) === true)
+  check("'daily' needs no days at all -> always valid", hasValidRecurrenceSelection('daily', []) === true)
+  check("'weekdays' needs no days at all -> always valid", hasValidRecurrenceSelection('weekdays', []) === true)
+  check("'none' (one-off CREATE only) -> always valid", hasValidRecurrenceSelection('none', []) === true)
+
+  check('daysForRecurrence no longer invents Mon-Fri for an empty weekly selection',
+    JSON.stringify(daysForRecurrence('weekly', [])) === JSON.stringify([]))
+  check('daysForRecurrence still returns the real days when weekly days ARE picked',
+    JSON.stringify(daysForRecurrence('weekly', [2, 4])) === JSON.stringify([2, 4]))
+}
+
+console.log('\n== 14. DayAgenda cross-midnight projection ==')
+{
+  // The exact scenario from the review: a Monday 23:00-01:00 (Tuesday)
+  // one-off block. Monday's OWN page must show only the Monday portion
+  // (60 min, clipped at midnight); Tuesday's page must show the spillover
+  // tail (60 min) as its own row — never both full 120 minutes on either
+  // day, and never missing from Tuesday entirely.
+  const mondayBlock = { id: 'blk1', title: 'Late call', start_time: '23:00:00', duration_minutes: 120, task_id: null }
+
+  const mondayProjection = projectOneOffBlocksForDay([mondayBlock], [])
+  check('Monday shows its own block, clipped to 60 min (23:00-24:00)',
+    mondayProjection.length === 1 && mondayProjection[0].startHour === 23 && mondayProjection[0].endHour === 24
+    && !mondayProjection[0].spillover)
+
+  const tuesdayProjection = projectOneOffBlocksForDay([], [mondayBlock])
+  check('Tuesday shows a spillover row for the 00:00-01:00 tail',
+    tuesdayProjection.length === 1 && tuesdayProjection[0].startHour === 0 && tuesdayProjection[0].endHour === 1
+    && tuesdayProjection[0].spillover === true && tuesdayProjection[0].canonicalId === 'blk1')
+  check('the spillover row has its OWN id, distinct from the canonical block id (no collision)',
+    tuesdayProjection[0].id !== 'blk1')
+
+  // A same-day (non-crossing) block must regress to exactly the old
+  // behavior: no spillover row generated anywhere.
+  const daytimeBlock = { id: 'blk2', title: 'Standup', start_time: '09:00:00', duration_minutes: 30, task_id: null }
+  check('a normal same-day block produces no spillover on the NEXT day',
+    projectOneOffBlocksForDay([], [daytimeBlock]).length === 0)
+  check('a normal same-day block projects unchanged on its own day',
+    projectOneOffBlocksForDay([daytimeBlock], []).length === 1
+    && projectOneOffBlocksForDay([daytimeBlock], [])[0].startHour === 9
+    && projectOneOffBlocksForDay([daytimeBlock], [])[0].endHour === 9.5)
+
+  // The same scenario for a RECURRING template — Monday-only, 23:00-01:00.
+  const recurringTemplate = { id: 'rec1', title: 'Late shift', start_time: '23:00:00', end_time: '01:00:00', days_of_week: [1] } // Monday=1
+
+  const mondayRecurring = projectRecurringBlocksForDay(1, [recurringTemplate])
+  check('Monday (dayOfWeek=1) shows the template clipped to 23:00-24:00',
+    mondayRecurring.length === 1 && mondayRecurring[0].startHour === 23 && mondayRecurring[0].endHour === 24 && !mondayRecurring[0].spillover)
+
+  const tuesdayRecurring = projectRecurringBlocksForDay(2, [recurringTemplate])
+  check('Tuesday (dayOfWeek=2) shows the spillover tail 00:00-01:00',
+    tuesdayRecurring.length === 1 && tuesdayRecurring[0].startHour === 0 && tuesdayRecurring[0].endHour === 1 && tuesdayRecurring[0].spillover === true)
+
+  const wednesdayRecurring = projectRecurringBlocksForDay(3, [recurringTemplate])
+  check('Wednesday (not Monday or Tuesday) shows nothing at all',
+    wednesdayRecurring.length === 0)
+
+  // Overlap detection downstream (DayAgenda's own pairwise check) works off
+  // startHour/endHour directly — proving a spillover row's clipped range
+  // (0-1) genuinely overlaps a real 00:30 event is enough to prove the
+  // projection feeds that check correctly.
+  const spillover = tuesdayProjection[0]
+  const earlyTuesdayEvent = { startHour: 0.5, endHour: 1.5 }
+  const overlaps = spillover.startHour < earlyTuesdayEvent.endHour && spillover.endHour > earlyTuesdayEvent.startHour
+  check('a Tuesday 00:30 event is detected as overlapping the spillover row', overlaps === true)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

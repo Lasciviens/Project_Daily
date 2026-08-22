@@ -223,7 +223,7 @@ import { updateTimeBlock, deleteTimeBlock, updateScheduleBlock, deleteScheduleBl
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
-import { createCalendarEvent } from '../../../features/calendar/api/calendarApi'
+import { createCalendarEvent, deleteCalendarEvent, isCalendarNotFound } from '../../../features/calendar/api/calendarApi'
 import { logError } from '../../utils/logError'
 import { supabase } from '../../../integrations/supabase/client'
 import { ScheduleTab } from './ScheduleTab'
@@ -233,11 +233,12 @@ import { buildInitialForm } from './planForm'
 import {
   daysForRecurrence, endTimeFrom, sectionForDate, LOCAL_TZ,
   blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
-  needsGoogleTasksFallback,
+  needsGoogleTasksFallback, hasValidRecurrenceSelection,
 } from './planModal.config'
 import type { PlanForm } from './planForm'
 import type { PlanMode, UnifiedPlanModalProps, PlanModalConfig } from './planModal.types'
 import type { TimeBlock } from '../../../features/daily/types'
+import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
 
 // ── z-index stacking — newest open modal always wins ──────────────────────────
 let zCursor = 1000
@@ -338,16 +339,17 @@ export function UnifiedPlanModal({
   // orphaned/duplicate events). Idempotent BY CONSTRUCTION: it re-reads the
   // block first and NEVER creates a second event when one already exists — so
   // re-saving (e.g. edit → add-to-calendar) can't duplicate, regardless of what
-  // the call site checked. Best-effort — never THROWS — but now returns
-  // whether the block actually ended up calendar-linked, so a caller that's
-  // about to drop the task's OTHER Google representation (its Google Task)
-  // can wait for real confirmation instead of assuming success.
-  async function linkCalendarEvent(blockId: string, dateStr: string, timeHHMM: string, durationMin: number, title: string): Promise<boolean> {
-    if (!calToken) return false
+  // the call site checked. Best-effort — never THROWS — but returns the same
+  // three-way TimeBlockCalendarStatus as updateTimeBlock, so a caller that's
+  // about to drop (or mint) the task's OTHER Google representation gets a
+  // real, confirmed answer instead of an assumption.
+  async function linkCalendarEvent(blockId: string, dateStr: string, timeHHMM: string, durationMin: number, title: string): Promise<TimeBlockCalendarStatus> {
+    if (!calToken) return 'unknown' // nothing here is verified without a token
     try {
       const { data: current } = await supabase
         .from('time_blocks').select('google_calendar_event_id').eq('id', blockId).single()
-      if (current?.google_calendar_event_id) return true
+      if (current?.google_calendar_event_id) return 'linked'
+
       const start = new Date(`${dateStr}T${timeHHMM}:00`)
       const end   = new Date(start.getTime() + durationMin * 60_000)
       const created = await createCalendarEvent(calToken, 'primary', {
@@ -355,8 +357,26 @@ export function UnifiedPlanModal({
         start:   { dateTime: start.toISOString(), timeZone: LOCAL_TZ },
         end:     { dateTime: end.toISOString(),   timeZone: LOCAL_TZ },
       })
-      await updateTimeBlock(blockId, { google_calendar_event_id: created.id })
-      return true
+
+      try {
+        await updateTimeBlock(blockId, { google_calendar_event_id: created.id })
+        return 'linked'
+      } catch (persistErr) {
+        // The remote event was created successfully, but writing its id
+        // back locally failed — compensate by deleting the orphan we just
+        // created rather than leaving a real Google Calendar event nothing
+        // local ever points at.
+        logError(`Local link persistence failed after remote create: ${(persistErr as Error).message}`, { action: 'link_calendar_event', blockId })
+        try {
+          await deleteCalendarEvent(calToken, 'primary', created.id)
+          return 'not_linked' // compensation confirmed the orphan is gone (or a 404 means it already was)
+        } catch (compErr) {
+          if (isCalendarNotFound(compErr)) return 'not_linked'
+          logError(`Compensation delete failed: ${(compErr as Error).message}`, { action: 'link_calendar_event', blockId })
+          toast.error('Google Calendar sync is in an uncertain state — please check your calendar.')
+          return 'unknown' // can't confirm the orphan is gone; never treat this as a clean answer either way
+        }
+      }
     } catch (err) {
       // Was a hardcoded generic message with the real cause swallowed —
       // surfacing it (expired token, missing write scope, a malformed
@@ -364,8 +384,8 @@ export function UnifiedPlanModal({
       // sent, etc.) so a sync failure is actually diagnosable instead of
       // needing a code change every time to find out why.
       toast.error(`Planned locally, Google Calendar sync failed: ${(err as Error).message}`)
-      logError((err as Error).message, { action: 'link_calendar_event' })
-      return false
+      logError((err as Error).message, { action: 'link_calendar_event', blockId })
+      return 'unknown'
     }
   }
 
@@ -387,22 +407,24 @@ export function UnifiedPlanModal({
   // outcome is known — flipping google_sync_enabled back to true re-fires
   // migration 071's opt-in branch, pushing the task to Google Tasks as a
   // fallback instead of silently losing it there.
-  async function reenableGoogleTasksIfCalendarFailed(taskId: string | undefined, skippedGoogleTasks: boolean, calendarLinked: boolean) {
-    if (!taskId || !needsGoogleTasksFallback(skippedGoogleTasks, calendarLinked)) return
+  async function reenableGoogleTasksIfCalendarFailed(taskId: string | undefined, skippedGoogleTasks: boolean, calendarStatus: TimeBlockCalendarStatus) {
+    if (!taskId || !needsGoogleTasksFallback(skippedGoogleTasks, calendarStatus)) return
     await updateTaskM.mutateAsync({ id: taskId, patch: { google_sync_enabled: true } })
   }
 
   // ── Save: mode='task' — Task fields + at most one linked one-off block ────
-  // Returns whether the linked block ends up ACTUALLY calendar-linked after
-  // this call — the caller (saveTask) needs the real, confirmed outcome
-  // (not the mere intent `form.gcal`) before it's safe to drop the task's
-  // Google Task representation; see needsGoogleTaskDedupe's doc comment.
-  async function syncTaskSchedule(taskId: string, existingBlock: TimeBlock | null): Promise<boolean> {
+  // Returns the block's REAL, confirmed calendarStatus after this call — the
+  // caller (saveTask) needs this (not the mere intent `form.gcal`) before
+  // it's safe to drop the task's Google Task representation; see
+  // needsGoogleTaskDedupe's doc comment. Policy this enforces throughout:
+  // 'linked' -> dedupe may proceed; 'not_linked' -> a create-time fallback
+  // may proceed; 'unknown' -> NEITHER — never guess in either direction.
+  async function syncTaskSchedule(taskId: string, existingBlock: TimeBlock | null): Promise<TimeBlockCalendarStatus> {
     const title = form.title.trim()
     if (!form.scheduled) {
       // "Unschedule": the time slot goes, the Task never does.
       if (existingBlock) await deleteTimeBlock(existingBlock.id)
-      return false
+      return 'not_linked'
     }
 
     const effDuration  = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
@@ -422,20 +444,14 @@ export function UnifiedPlanModal({
         // nothing there right now, safe to (re)create one.
         return await linkCalendarEvent(existingBlock.id, form.date, form.startTime, effDuration, title)
       }
-      if (form.gcal && calToken && syncResult.calendarStatus === 'unknown') {
-        // The push above failed WITHOUT confirming the event is gone
-        // (network, rate limit, …) — the event is presumably still fine,
-        // but we don't know for sure, and either way this must NEVER be
-        // the reason the task's Google Task gets deleted. Report
-        // "not safely confirmed linked" and take no further action —
-        // never attempt another remote call on an unconfirmed failure.
-        return false
-      }
       if (!form.gcal && calToken && existingBlock.google_calendar_event_id) {
-        await updateTimeBlock(existingBlock.id, { google_calendar_event_id: null })
-        return false
+        const unlinkResult = await updateTimeBlock(existingBlock.id, { google_calendar_event_id: null })
+        return unlinkResult.calendarStatus
       }
-      return form.gcal && syncResult.calendarStatus === 'linked'
+      // form.gcal && calToken && syncResult.calendarStatus === 'unknown' falls
+      // through to here too: never attempt another remote call on an
+      // unconfirmed failure, and never report anything but the real status.
+      return form.gcal ? syncResult.calendarStatus : 'not_linked'
     }
 
     // The originating entity's source_type/source_id (movie/training_session/
@@ -459,7 +475,7 @@ export function UnifiedPlanModal({
     if (form.gcal && calToken) {
       return await linkCalendarEvent(block.id, form.date, form.startTime, effDuration, title)
     }
-    return false
+    return 'not_linked'
   }
 
   async function saveTask() {
@@ -490,12 +506,12 @@ export function UnifiedPlanModal({
           ...(googleTasklistId !== undefined ? { google_tasklist_id: googleTasklistId } : {}),
         },
       })
-      const nowCalendarLinked = await syncTaskSchedule(task.id, linkedBlock ?? null)
+      const calendarStatus = await syncTaskSchedule(task.id, linkedBlock ?? null)
       // Only NOW — with the calendar link outcome actually known — decide
       // whether to drop the now-redundant Google Task. A second, separate
       // mutation on purpose: bundling it into the update above would have
       // meant deciding before the outcome existed.
-      if (needsGoogleTaskDedupe(nowCalendarLinked, task.google_sync_enabled)) {
+      if (needsGoogleTaskDedupe(calendarStatus, task.google_sync_enabled)) {
         await updateTaskM.mutateAsync({ id: task.id, patch: { google_sync_enabled: false } })
       }
       onSaved?.({ mode: 'task', taskId: task.id })
@@ -521,11 +537,11 @@ export function UnifiedPlanModal({
       skipGoogleTasks: willBeCalendarEvent,
     })
     if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
-    const nowCalendarLinked = await syncTaskSchedule(created.id, null)
+    const calendarStatus = await syncTaskSchedule(created.id, null)
     // The mirror of the edit-path fix above: if the calendar link this task
     // was created betting on didn't actually happen, push it to Google
     // Tasks after all rather than leaving it with no Google presence at all.
-    await reenableGoogleTasksIfCalendarFailed(created.id, willBeCalendarEvent, nowCalendarLinked)
+    await reenableGoogleTasksIfCalendarFailed(created.id, willBeCalendarEvent, calendarStatus)
     onSaved?.({ mode: 'task', taskId: created.id })
   }
 
@@ -580,18 +596,19 @@ export function UnifiedPlanModal({
         title, category: form.category,
         ...(linkedTaskId ? { task_id: linkedTaskId } : {}),
       })
-      let calendarLinked = syncResult.calendarStatus === 'linked'
+      let calendarStatus: TimeBlockCalendarStatus = syncResult.calendarStatus
       if (form.gcal && calToken && syncResult.calendarStatus === 'not_linked') {
-        calendarLinked = await linkCalendarEvent(timeBlock.id, form.date, form.startTime, effDuration, title)
-      } else if (form.gcal && calToken && syncResult.calendarStatus === 'unknown') {
-        // Unconfirmed failure — never treat as linked, but take no further
-        // action (see updateTimeBlock's own doc comment for why).
-        calendarLinked = false
+        calendarStatus = await linkCalendarEvent(timeBlock.id, form.date, form.startTime, effDuration, title)
       } else if (!form.gcal && calToken && timeBlock.google_calendar_event_id) {
-        await updateTimeBlock(timeBlock.id, { google_calendar_event_id: null })
-        calendarLinked = false
+        const unlinkResult = await updateTimeBlock(timeBlock.id, { google_calendar_event_id: null })
+        calendarStatus = unlinkResult.calendarStatus
+      } else if (!form.gcal) {
+        calendarStatus = 'not_linked'
       }
-      await reenableGoogleTasksIfCalendarFailed(linkedTaskId, skippedGoogleTasksForLinkedTask, calendarLinked)
+      // form.gcal && calToken && syncResult.calendarStatus === 'unknown' falls
+      // through unchanged: never attempt another remote call, never claim
+      // anything but the real, unconfirmed status.
+      await reenableGoogleTasksIfCalendarFailed(linkedTaskId, skippedGoogleTasksForLinkedTask, calendarStatus)
       onSaved?.({ mode: 'schedule', taskId: linkedTaskId, timeBlockCreated: false })
       return
     }
@@ -636,11 +653,11 @@ export function UnifiedPlanModal({
       source_type: source?.sourceType, source_id: source?.sourceId,
       ...episodeFields,
     })
-    let calendarLinked = false
+    let calendarStatus: TimeBlockCalendarStatus = 'not_linked'
     if (form.gcal && calToken) {
-      calendarLinked = await linkCalendarEvent(block.id, form.date, form.startTime, effDuration, title)
+      calendarStatus = await linkCalendarEvent(block.id, form.date, form.startTime, effDuration, title)
     }
-    await reenableGoogleTasksIfCalendarFailed(linkedTaskId, skippedGoogleTasksForLinkedTask, calendarLinked)
+    await reenableGoogleTasksIfCalendarFailed(linkedTaskId, skippedGoogleTasksForLinkedTask, calendarStatus)
     onSaved?.({ mode: 'schedule', taskId: linkedTaskId, timeBlockCreated: true })
   }
 
@@ -650,7 +667,15 @@ export function UnifiedPlanModal({
     const title = form.title.trim()
     const effDuration = form.customMin !== '' ? Number(form.customMin) || 60 : form.duration
     const startTimeVal = `${form.startTime}:00`
-    const days = daysForRecurrence(form.recurrence === 'none' ? 'weekly' : form.recurrence, form.weeklyDays)
+    // A recurring template is never "no repeat" — RecurringTab never offers
+    // picking 'none' (RECURRING_EDIT_OPTIONS), and inferRecurrenceMode
+    // (which seeds this form when editing an existing row) never returns
+    // it either. The old `form.recurrence === 'none' ? 'weekly' : ...`
+    // silently substituted a value the user never picked; removed rather
+    // than kept as a "just in case" fallback — handleSave's
+    // hasValidRecurrenceSelection guard is what actually protects against
+    // an incomplete selection now.
+    const days = daysForRecurrence(form.recurrence, form.weeklyDays)
 
     if (scheduleBlock) {
       await updateScheduleBlock(scheduleBlock.id, {
@@ -677,9 +702,18 @@ export function UnifiedPlanModal({
   // syncTaskSchedule.
   const scheduleStillLoading = effectiveMode === 'task' && !!task && linkedBlock === undefined
 
+  // A weekly recurrence (mode='recurring', or mode='schedule' CREATE with a
+  // repeat picked) with zero days checked used to save anyway —
+  // daysForRecurrence silently substituted Mon-Fri, so unchecking every day
+  // quietly became "every weekday" instead of being rejected. Applies to
+  // both surfaces that can carry a 'weekly' recurrence value.
+  const recurrenceIncomplete = (effectiveMode === 'recurring' || effectiveMode === 'schedule')
+    && !hasValidRecurrenceSelection(form.recurrence, form.weeklyDays)
+
   async function handleSave() {
     if (!form.title.trim()) { toast.error('Title is required'); return }
     if (scheduleStillLoading) { toast.error('Still loading this task’s schedule — try again in a moment'); return }
+    if (recurrenceIncomplete) { toast.error('Pick at least one day for the weekly repeat.'); return }
     setSaving(true)
     const tid = toast.loading(editMode ? 'Saving…' : 'Planning…')
     try {
@@ -793,7 +827,7 @@ export function UnifiedPlanModal({
               className="flex-1 min-h-[44px] border border-ink-200 text-ink-700 rounded-xl text-sm font-medium hover:bg-cream-50 transition-colors"
             >Cancel</button>
             <button
-              type="button" onClick={handleSave} disabled={saving || !form.title.trim() || scheduleStillLoading}
+              type="button" onClick={handleSave} disabled={saving || !form.title.trim() || scheduleStillLoading || recurrenceIncomplete}
               className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >{scheduleStillLoading ? 'Loading…' : primaryLabel}</button>
           </div>

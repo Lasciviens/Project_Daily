@@ -4,18 +4,51 @@ import type { CalendarEvent, CalendarListEntry } from '../types'
 
 const BASE = 'https://www.googleapis.com/calendar/v3'
 
-async function gcalFetch<T>(path: string, token: string, params: Record<string, string> = {}): Promise<T> {
-  const url = new URL(`${BASE}${path}`)
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
+// A typed error carrying the real HTTP status, so callers can make
+// correctness decisions (e.g. "was this event genuinely deleted, or did the
+// request merely fail?") on the STATUS, never on brittle substring matching
+// against an error message that may not even mention the status at all
+// (some Google error bodies carry only a human message like "Not Found").
+export interface CalendarApiErrorBody {
+  error?: { message?: string; code?: number; errors?: unknown[] }
+}
+export class CalendarApiError extends Error {
+  readonly status: number
+  readonly body?: CalendarApiErrorBody
+  constructor(status: number, message: string, body?: CalendarApiErrorBody) {
+    super(message)
+    this.name = 'CalendarApiError'
+    this.status = status
+    this.body = body
+  }
+}
+/** The ONE place that decides "is this a confirmed 404" — every caller
+ *  (scheduleApi.ts, scheduleSyncRules.ts) must go through this rather than
+ *  re-deriving it from the error message. */
+export function isCalendarNotFound(error: unknown): boolean {
+  return error instanceof CalendarApiError && error.status === 404
+}
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
+async function gcalRequest<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init.headers ?? {}),
+    },
   })
+  if (res.status === 204) return undefined as T
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message ?? `Calendar API ${res.status}`)
+    const body: CalendarApiErrorBody | undefined = await res.json().catch(() => undefined)
+    throw new CalendarApiError(res.status, body?.error?.message ?? `Calendar API ${res.status}`, body)
   }
   return res.json() as Promise<T>
+}
+
+async function gcalFetch<T>(path: string, token: string, params: Record<string, string> = {}): Promise<T> {
+  const qs = new URLSearchParams(params).toString()
+  return gcalRequest<T>(qs ? `${path}?${qs}` : path, token)
 }
 
 export async function fetchCalendarList(token: string): Promise<CalendarListEntry[]> {
@@ -89,19 +122,11 @@ export async function updateCalendarEvent(
   eventId: string,
   patch: Record<string, unknown>
 ): Promise<CalendarEvent> {
-  const res = await fetch(
-    `${BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-    {
-      method:  'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify(patch),
-    }
+  return gcalRequest<CalendarEvent>(
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    token,
+    { method: 'PATCH', body: JSON.stringify(patch) }
   )
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message ?? `Calendar API ${res.status}`)
-  }
-  return res.json() as Promise<CalendarEvent>
 }
 
 export async function deleteCalendarEvent(
@@ -109,17 +134,11 @@ export async function deleteCalendarEvent(
   calendarId: string,
   eventId: string,
 ): Promise<void> {
-  const res = await fetch(
-    `${BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-    {
-      method:  'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    }
+  await gcalRequest<void>(
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    token,
+    { method: 'DELETE' }
   )
-  if (!res.ok && res.status !== 204) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message ?? `Calendar API ${res.status}`)
-  }
 }
 
 export async function createCalendarEvent(
@@ -132,17 +151,9 @@ export async function createCalendarEvent(
     end:         { dateTime: string; timeZone: string }
   }
 ): Promise<CalendarEvent> {
-  const res = await fetch(
-    `${BASE}/calendars/${encodeURIComponent(calendarId)}/events`,
-    {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify(event),
-    }
+  return gcalRequest<CalendarEvent>(
+    `/calendars/${encodeURIComponent(calendarId)}/events`,
+    token,
+    { method: 'POST', body: JSON.stringify(event) }
   )
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message ?? `Calendar API ${res.status}`)
-  }
-  return res.json() as Promise<CalendarEvent>
 }

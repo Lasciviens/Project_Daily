@@ -3,6 +3,24 @@ import type { Task } from '../types'
 
 const BASE = 'https://www.googleapis.com/tasks/v1'
 
+// A typed error carrying the real HTTP status — mirrors calendarApi.ts's
+// CalendarApiError/isCalendarNotFound. Every "was this task genuinely
+// deleted, or did the request merely fail?" decision must go through
+// isGoogleTaskNotFound, never a string match against the error message
+// (a Google error body can carry only a human message like "Not Found"
+// with no digits in it at all).
+export class GoogleTasksApiError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'GoogleTasksApiError'
+    this.status = status
+  }
+}
+export function isGoogleTaskNotFound(error: unknown): boolean {
+  return error instanceof GoogleTasksApiError && error.status === 404
+}
+
 async function request(token: string, path: string, options: RequestInit = {}): Promise<unknown> {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
@@ -14,7 +32,7 @@ async function request(token: string, path: string, options: RequestInit = {}): 
   })
   if (res.status === 204) return null
   const data = await res.json()
-  if (!res.ok) throw new Error(data?.error?.message ?? `Google Tasks error ${res.status}`)
+  if (!res.ok) throw new GoogleTasksApiError(res.status, data?.error?.message ?? `Google Tasks error ${res.status}`)
   return data
 }
 

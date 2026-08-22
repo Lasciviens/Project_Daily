@@ -2,7 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { logError } from '../../../shared/utils/logError'
 import {
   createGoogleTask, updateGoogleTask, deleteGoogleTask, moveGoogleTask,
-  completeGoogleTask, reopenGoogleTask,
+  completeGoogleTask, reopenGoogleTask, isGoogleTaskNotFound,
   type GoogleRemoteTask,
 } from './googleTasksApi'
 import { shouldSkipPendingCreate } from './googleTasksOutboxRules'
@@ -20,6 +20,7 @@ import { shouldSkipPendingCreate } from './googleTasksOutboxRules'
 
 interface OutboxRow {
   id:         string
+  user_id:    string
   task_id:    string
   operation:  'create' | 'update' | 'delete'
   payload:    Record<string, unknown>
@@ -30,9 +31,10 @@ interface OutboxRow {
 // function) can run close enough in time to read the SAME pending row
 // before either finishes processing it — a plain SELECT-then-process would
 // let both call Google for the same 'create', producing a real duplicate
-// task nothing cleans up. claim_google_tasks_outbox (migration 073) uses
-// FOR UPDATE SKIP LOCKED so two concurrent claimers can never end up with
-// the same row.
+// task nothing cleans up. claim_google_tasks_outbox (migration 073, FIFO
+// ordering added in 079) uses FOR UPDATE SKIP LOCKED so two concurrent
+// claimers can never end up with the same row, AND never claims a newer row
+// for a task while an older one for that SAME task is still outstanding.
 async function claimRows(): Promise<OutboxRow[]> {
   const { data, error } = await supabase.rpc('claim_google_tasks_outbox', { p_respect_backoff: false })
   if (error) throw error
@@ -66,6 +68,33 @@ async function applySnapshot(taskId: string, remote: GoogleRemoteTask) {
   if (error) throw error
 }
 
+// Migration 079's stale-delete-safety net — only clears tasks.google_task_id
+// when it STILL equals what THIS delete targeted, so a delete that (despite
+// the FIFO claim ordering) somehow still runs after a newer create can never
+// wipe the new id out from under it.
+async function clearGoogleTaskIdIfMatches(taskId: string, expectedGoogleTaskId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('clear_google_task_id_if_matches', {
+    p_task_id: taskId, p_expected_google_task_id: expectedGoogleTaskId,
+  })
+  if (error) throw error
+  return !!data
+}
+
+// A durable retry row for an orphan Google Task this run couldn't clean up
+// itself (the compensation delete below failed) — inserted as a plain
+// 'delete' outbox row so the NEXT drain (this browser, or the cron poller)
+// retries it with the exact same machinery, instead of the cleanup attempt
+// living only in a log line that nothing ever revisits. task_id has no FK
+// (see migration 071's table comment), so this is safe to insert even if
+// the local task row is already gone.
+async function enqueueOrphanCleanup(userId: string, taskId: string, googleTaskId: string, googleTasklistId: string | null) {
+  const { error } = await supabase.from('google_tasks_outbox').insert({
+    user_id: userId, task_id: taskId, operation: 'delete',
+    payload: { google_task_id: googleTaskId, google_tasklist_id: googleTasklistId },
+  })
+  if (error) logError(`Failed to enqueue orphan Google Task cleanup: ${error.message}`, { taskId, googleTaskId })
+}
+
 async function processCreate(token: string, row: OutboxRow): Promise<void> {
   const { data: task } = await supabase.from('tasks').select('*').eq('id', row.task_id).maybeSingle()
   if (!task) return // hard-deleted since this row was enqueued — nothing to create
@@ -77,8 +106,31 @@ async function processCreate(token: string, row: OutboxRow): Promise<void> {
   const listId = await resolveGoogleListId(task.google_tasklist_id)
   const parent = await resolveGoogleParentId(task.parent_task_id)
   const remote = await createGoogleTask(token, listId, task, { parent })
-  await applySnapshot(task.id, remote)
 
+  // The POST above is a real network round trip — the user (or another
+  // write door) can cancel/delete/opt this task back out WHILE it's in
+  // flight. Re-check the LIVE row before writing the new id anywhere:
+  // resurrecting a Google representation the user just asked to remove
+  // would be a real bug, not a harmless race.
+  const { data: liveTask } = await supabase
+    .from('tasks').select('id, google_sync_enabled, status').eq('id', row.task_id).maybeSingle()
+  const stillWantsThisTask = !!liveTask && liveTask.google_sync_enabled && liveTask.status !== 'cancelled'
+
+  if (!stillWantsThisTask) {
+    try {
+      await deleteGoogleTask(token, listId, remote.id)
+    } catch (err) {
+      if (!isGoogleTaskNotFound(err)) {
+        // Compensation failed — don't just log it and move on. A durable
+        // retry row means a later drain finishes the cleanup instead of
+        // leaving an orphan Google Task nothing ever revisits.
+        await enqueueOrphanCleanup(row.user_id, row.task_id, remote.id, task.google_tasklist_id)
+      }
+    }
+    return // never write the new remote id onto a task that opted out
+  }
+
+  await applySnapshot(task.id, remote)
   if (task.status === 'done') {
     const completed = await completeGoogleTask(token, listId, remote.id)
     await applySnapshot(task.id, completed)
@@ -131,21 +183,17 @@ async function processDelete(token: string, row: OutboxRow): Promise<void> {
     await deleteGoogleTask(token, listId, googleTaskId)
   } catch (err) {
     // Already gone on Google's side (e.g. deleted from the phone app too) —
-    // that's the outcome we wanted, not a failure worth retrying.
-    if (!(err instanceof Error && err.message.includes('404'))) throw err
+    // that's the outcome we wanted, not a failure worth retrying. Real
+    // status, never a message substring match.
+    if (!isGoogleTaskNotFound(err)) throw err
   }
 
-  // The id is dead either way (no undelete exists) — clear it locally via
-  // the sync-write-flagged RPC so this write doesn't re-enqueue itself. A
-  // no-op if the tasks row was hard-deleted in the meantime (WHERE matches
-  // nothing).
-  const { error } = await supabase.rpc('apply_google_task_snapshot', {
-    p_task_id:            row.task_id,
-    p_google_task_id:     null,
-    p_google_updated_at:  null,
-    p_clear_google_task_id: true,
-  })
-  if (error) throw error
+  // Only clear the local id if it STILL matches what THIS delete targeted
+  // (migration 079) — a stale delete processed out of order relative to a
+  // later force_recreate must never wipe a fresh id a newer create already
+  // wrote. The unconditional apply_google_task_snapshot(p_clear_google_
+  // task_id=true) this used to call had no such guard.
+  await clearGoogleTaskIdIfMatches(row.task_id, googleTaskId)
 }
 
 export interface DrainResult {

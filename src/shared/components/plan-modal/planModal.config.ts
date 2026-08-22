@@ -7,6 +7,7 @@
 import { format, addDays, parseISO, isToday, isTomorrow } from 'date-fns'
 import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { TaskSection, TaskSourceType } from '../../../features/todo/types'
+import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
 import { todayStr, tomorrowStr } from '../../utils/dateUtils'
 import type {
   PlanModalConfig, ScheduleField, TaskField, RecurrenceMode,
@@ -34,6 +35,14 @@ export const RECURRENCE_OPTIONS: { value: RecurrenceMode; label: string }[] = [
   { value: 'weekdays', label: 'Weekdays' },
   { value: 'weekly',   label: 'Weekly' },
 ]
+
+// RecurringTab (editing an EXISTING schedule_blocks row) must never offer
+// "No repeat" — a recurring template converting itself to a one-off block
+// mid-edit is a real storage-migration UX this refactor deliberately does
+// not build (see UnifiedPlanModal's own comment on the reverse case). The
+// ScheduleTab CREATE flow keeps the full list — there, 'none' genuinely
+// means "make a plain one-off time_block instead".
+export const RECURRING_EDIT_OPTIONS = RECURRENCE_OPTIONS.filter(o => o.value !== 'none')
 
 export const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const   // 0=Sun … 6=Sat
 export const WEEKDAYS   = [1, 2, 3, 4, 5]
@@ -99,12 +108,24 @@ export function sectionForDate(iso: string): TaskSection {
   }
 }
 
-/** Resolve a recurrence mode + explicit weekly days into the days_of_week array. */
+/** Resolve a recurrence mode + explicit weekly days into the days_of_week
+ *  array. Deliberately does NOT fall back to Mon-Fri when weeklyDays is
+ *  empty — that silent substitution used to let "uncheck every day, hit
+ *  Save" quietly become "every weekday" instead of being rejected.
+ *  hasValidRecurrenceSelection is the gate that must run BEFORE this. */
 export function daysForRecurrence(mode: RecurrenceMode, weeklyDays: number[]): number[] {
   if (mode === 'daily')    return EVERY_DAY
   if (mode === 'weekdays') return WEEKDAYS
-  if (mode === 'weekly')   return weeklyDays.length ? weeklyDays : WEEKDAYS
+  if (mode === 'weekly')   return weeklyDays
   return []
+}
+
+/** Whether a recurrence selection is complete enough to save. Only 'weekly'
+ *  needs at least one day checked — 'daily'/'weekdays' are fully determined
+ *  by their mode alone, and 'none' (one-off CREATE only — never valid while
+ *  editing an existing recurring template) has no days concept at all. */
+export function hasValidRecurrenceSelection(mode: RecurrenceMode, weeklyDays: number[]): boolean {
+  return mode !== 'weekly' || weeklyDays.length > 0
 }
 
 /** The inverse of daysForRecurrence — needed to EDIT an existing recurring
@@ -191,8 +212,8 @@ export function taskSourceTypeForBlock(blockSourceType?: string | null): TaskSou
  *  ONLY after the calendar event is confirmed actually linked (never
  *  speculatively) — flipping the flag off before that would leave the task
  *  with NEITHER Google representation if the calendar link then fails. */
-export function needsGoogleTaskDedupe(willBeCalendarEvent: boolean, googleSyncEnabled: boolean): boolean {
-  return willBeCalendarEvent && googleSyncEnabled
+export function needsGoogleTaskDedupe(calendarStatus: TimeBlockCalendarStatus, googleSyncEnabled: boolean): boolean {
+  return calendarStatus === 'linked' && googleSyncEnabled
 }
 
 /** The CREATE-side mirror of the same ordering hazard needsGoogleTaskDedupe
@@ -204,9 +225,14 @@ export function needsGoogleTaskDedupe(willBeCalendarEvent: boolean, googleSyncEn
  *  would end up with NEITHER Google representation. This is whether that
  *  speculative skip must now be reversed (re-enable google_sync_enabled,
  *  which re-fires migration 071's opt-in branch and pushes the task to
- *  Google Tasks as a fallback) once the REAL outcome is known. */
-export function needsGoogleTasksFallback(skippedGoogleTasks: boolean, calendarLinked: boolean): boolean {
-  return skippedGoogleTasks && !calendarLinked
+ *  Google Tasks as a fallback) once the REAL outcome is known.
+ *  Deliberately requires a CONFIRMED 'not_linked', not just "not linked
+ *  yet" — an 'unknown' outcome (network failure, no token, …) must never
+ *  trigger a fallback either, or a task could end up with a real Calendar
+ *  event AND a Google Task (a SECOND representation) the moment the
+ *  calendar link turns out to have actually succeeded after all. */
+export function needsGoogleTasksFallback(skippedGoogleTasks: boolean, calendarStatus: TimeBlockCalendarStatus): boolean {
+  return skippedGoogleTasks && calendarStatus === 'not_linked'
 }
 
 /** saveSchedule's "Also add to Tasks" branch (mode='schedule', editing a

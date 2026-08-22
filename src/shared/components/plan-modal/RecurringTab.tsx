@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { FieldLabel, TextField, Time24Field, DurationField, CategorySelect, RecurrenceField } from './fields'
-import { shiftTime } from './planModal.config'
+import { shiftTime, RECURRING_EDIT_OPTIONS, hasValidRecurrenceSelection } from './planModal.config'
 import type { PlanForm } from './planForm'
 
 interface Props {
@@ -26,6 +26,15 @@ export function RecurringTab({ form, patch, extra }: Props) {
     patch({ weeklyDays: next })
   }
 
+  // A recurring template is never "no repeat" — RECURRING_EDIT_OPTIONS
+  // (no 'none' pill) makes that unselectable at the UI level. The mode
+  // itself should never actually BE 'none' here (buildInitialForm infers
+  // it via inferRecurrenceMode, which only ever returns daily/weekdays/
+  // weekly for an existing scheduleBlock), so no display fallback is
+  // needed — unlike before, when 'none' silently displayed as 'weekly'
+  // while saveRecurring quietly converted the real value behind it.
+  const showZeroDaysWarning = form.recurrence === 'weekly' && !hasValidRecurrenceSelection('weekly', form.weeklyDays)
+
   return (
     <div className="px-5 py-4 flex flex-col gap-4">
       <div>
@@ -36,11 +45,15 @@ export function RecurringTab({ form, patch, extra }: Props) {
       <div>
         <FieldLabel>Repeat</FieldLabel>
         <RecurrenceField
-          mode={form.recurrence === 'none' ? 'weekly' : form.recurrence}
+          mode={form.recurrence}
           weeklyDays={form.weeklyDays}
           onMode={m => patch({ recurrence: m })}
           onToggleDay={toggleDay}
+          options={RECURRING_EDIT_OPTIONS}
         />
+        {showZeroDaysWarning && (
+          <p className="mt-1.5 text-[11px] text-red-500">Pick at least one day.</p>
+        )}
       </div>
 
       <div>

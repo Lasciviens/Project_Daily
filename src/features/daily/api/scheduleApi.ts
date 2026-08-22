@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { useCalendarStore } from '../../../app/store'
-import { updateCalendarEvent, deleteCalendarEvent } from '../../calendar/api/calendarApi'
+import { updateCalendarEvent, deleteCalendarEvent, isCalendarNotFound } from '../../calendar/api/calendarApi'
 import { logError } from '../../../shared/utils/logError'
 import { classifyCalendarPushFailure } from './scheduleSyncRules'
 import type {
@@ -99,29 +99,32 @@ export interface UpdateTimeBlockResult {
   calendarStatus: TimeBlockCalendarStatus
 }
 
-// Full Google Calendar lifecycle for a one-off block (migration 077's fix —
-// the old version only pushed a remote update when date/start_time changed,
-// silently leaving a renamed or re-durationed block's event stale):
-//   - still linked, content changed (date/start_time/title/duration_minutes)
-//     -> push an update. Local write happens first (edits feel instant, same
-//     convention as every other mutation here); the remote push is
-//     best-effort/logged, matching this function's pre-existing behavior.
-//   - explicit unlink (patch.google_calendar_event_id === null while a link
-//     exists) -> remote-first, mirroring deleteTimeBlock's own ordering: a
-//     network failure here must NOT silently drop the local linkage (the
-//     remote event would become a permanently untracked orphan with nothing
-//     left pointing at it) — surfaced as a real thrown error instead.
-//
-// Real bug fixed: a caller (UnifiedPlanModal's syncTaskSchedule) used to
-// treat "the block's OWN google_calendar_event_id column is non-null" as
-// proof the calendar link is still good, even right after THIS function
-// silently swallowed a failed push to that exact event. If the remote event
-// had been deleted directly in Google Calendar (a 404 on the push below),
-// the caller would still report "confirmed linked" and go on to delete the
-// task's Google Task (needsGoogleTaskDedupe) — leaving NEITHER Google
-// representation. Returning a real, honest calendarStatus (and clearing
-// the local id specifically on a CONFIRMED 404, never on an unconfirmed
-// failure) is what lets callers make that decision correctly.
+// Full Google Calendar lifecycle for a one-off block. calendarStatus is a
+// REAL, CONFIRMED answer — never inferred from "the local column happens to
+// hold an id" — because a caller (UnifiedPlanModal's needsGoogleTaskDedupe /
+// needsGoogleTasksFallback) uses it to decide whether it's safe to touch the
+// SAME task's other Google representation (its Google Task). Getting this
+// wrong either loses a still-good link or deletes a still-needed Google
+// Task, so every branch below is deliberate about what it can and can't
+// confirm:
+//   - still linked, content changed -> push an update. A CONFIRMED 404
+//     clears the stale local id (report 'not_linked') — but only if that
+//     clear write itself succeeds; if the write fails, report 'unknown'
+//     rather than claim a confirmed answer we couldn't actually persist.
+//     Any OTHER failure (network, 401/403, 429, 5xx) leaves the local id
+//     untouched and reports 'unknown' — the event is presumably still
+//     fine, we simply couldn't confirm it.
+//   - no Calendar token at all -> 'unknown', even if a local id exists —
+//     without a token nothing here is verified, only assumed.
+//   - explicit unlink (patch.google_calendar_event_id === null while a
+//     link exists): remote-first. Without a token, the remote event can't
+//     be deleted and the local link must NOT be silently dropped either
+//     (that would abandon tracking of a link we can no longer act on) —
+//     every other patch field is still applied, but the id stays, and this
+//     reports 'unknown'. With a token, a non-404 delete failure throws (the
+//     remote event would become a permanently untracked orphan otherwise);
+//     a confirmed 404 or a successful delete both proceed to clear locally
+//     and report 'not_linked'.
 export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): Promise<UpdateTimeBlockResult> {
   const { data: before, error: beforeError } = await supabase
     .from('time_blocks')
@@ -133,14 +136,33 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
   const unlinking = patch.google_calendar_event_id === null && !!before?.google_calendar_event_id
   const token = calToken()
 
-  if (unlinking && token) {
+  if (unlinking) {
+    if (!token) {
+      // Can't verify or act on the remote side without a token — apply
+      // every OTHER field in this patch, but do NOT silently clear the
+      // local link (fix: this used to happen unconditionally via the plain
+      // `{...patch}` write below, abandoning tracking of a link nothing
+      // can now act on). Reported as 'unknown', not 'not_linked' — we
+      // genuinely don't know the remote event's fate.
+      const { google_calendar_event_id: _drop, ...rest } = patch
+      const { error } = await supabase.from('time_blocks')
+        .update({ ...rest, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
+      return { calendarStatus: 'unknown' }
+    }
     try {
       await deleteCalendarEvent(token, 'primary', before!.google_calendar_event_id!)
     } catch (err) {
-      const msg = (err as Error).message
-      if (!msg.includes('404')) throw new Error(`Couldn't remove the Google Calendar event: ${msg}`)
-      // 404 = already gone remotely — proceed to clear the local link too.
+      if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`)
+      // Confirmed 404 = already gone remotely — proceed to clear locally too.
     }
+    const { error } = await supabase
+      .from('time_blocks')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+    return { calendarStatus: 'not_linked' }
   }
 
   const { error } = await supabase
@@ -149,11 +171,13 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
     .eq('id', id)
   if (error) throw error
 
-  if (unlinking) return { calendarStatus: 'not_linked' }
-
   const eventId = patch.google_calendar_event_id ?? before?.google_calendar_event_id
   if (!eventId) return { calendarStatus: 'not_linked' }
-  if (!token) return { calendarStatus: 'linked' } // can't verify without a token; trust the existing record as before
+  // No token -> nothing here is verified. Real bug fixed: this used to
+  // report 'linked' (trusting the local column blindly), which is exactly
+  // what let a caller safely-but-wrongly dedupe a task's Google Task while
+  // Calendar wasn't even connected to confirm anything with.
+  if (!token) return { calendarStatus: 'unknown' }
 
   const relevant = patch.date !== undefined || patch.start_time !== undefined
     || patch.title !== undefined || patch.duration_minutes !== undefined
@@ -175,22 +199,28 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
     })
     return { calendarStatus: 'linked' }
   } catch (err) {
-    const msg = (err as Error).message
-    const status = classifyCalendarPushFailure(msg)
+    const status = classifyCalendarPushFailure(err)
     if (status === 'not_linked') {
       // Confirmed gone (deleted directly in Google Calendar, outside this
       // app) — clear the stale local id so this block stops claiming a
       // link that doesn't exist, and so a future save creates a fresh
-      // event instead of repeatedly failing against a dead one.
-      await supabase.from('time_blocks')
+      // event instead of repeatedly failing against a dead one. If THIS
+      // write itself fails, we can no longer claim a confirmed answer —
+      // downgrade to 'unknown' rather than report 'not_linked' for a
+      // clear that never actually landed.
+      const { error: clearError } = await supabase.from('time_blocks')
         .update({ google_calendar_event_id: null, updated_at: new Date().toISOString() })
         .eq('id', id)
-    } else {
-      // Transient/unknown failure — leave the local id untouched (the
-      // event is presumably still fine).
-      logError(`Calendar event update failed: ${msg}`, { blockId: id })
+      if (clearError) {
+        logError(`Failed to clear stale calendar link: ${clearError.message}`, { blockId: id })
+        return { calendarStatus: 'unknown' }
+      }
+      return { calendarStatus: 'not_linked' }
     }
-    return { calendarStatus: status }
+    // Transient/unknown failure — leave the local id untouched (the
+    // event is presumably still fine).
+    logError(`Calendar event update failed: ${(err as Error).message}`, { blockId: id })
+    return { calendarStatus: 'unknown' }
   }
 }
 
