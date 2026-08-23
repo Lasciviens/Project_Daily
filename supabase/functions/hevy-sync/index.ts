@@ -147,13 +147,8 @@ async function closeMatchingTrainingTask(
 
   // Mirrors the client's deleteTask (tasksApi.ts) minus Google Calendar
   // cleanup — no user OAuth token is available from this server context.
-  const { error: blockErr } = await supabase
-    .from('time_blocks')
-    .delete()
-    .eq('source_type', 'task')
-    .in('source_id', taskIds)
-  if (blockErr) throw blockErr
-
+  // time_blocks.task_id is ON DELETE CASCADE (migration 077), so deleting the
+  // task alone also removes its linked block — no separate time_blocks delete.
   const { error: delTaskErr } = await supabase
     .from('tasks')
     .delete()

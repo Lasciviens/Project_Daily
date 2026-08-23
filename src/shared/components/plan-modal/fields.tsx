@@ -158,7 +158,11 @@ export function DurationField({
         >{formatDurationMinutes(d)}</button>
       ))}
       <input
-        type="number" min={1} value={customMin} disabled={locked}
+        // min/max alone don't block a form submit (a real bug: `min` was
+        // 1 with no `max` at all, and nothing downstream re-validated it —
+        // the actual clamp is UnifiedPlanModal's clampDurationMinutes,
+        // this is only the visible hint matching that same [1,1440] range).
+        type="number" min={1} max={1440} value={customMin} disabled={locked}
         onChange={e => onCustom(e.target.value)} placeholder="Custom"
         className="min-h-[44px] w-20 bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-400 disabled:opacity-60"
       />
@@ -191,18 +195,22 @@ export function CategorySelect({
 // ── Recurrence — mode pills + (weekly) day picker ─────────────────────────────
 
 export function RecurrenceField({
-  mode, weeklyDays, onMode, onToggleDay, locked,
+  mode, weeklyDays, onMode, onToggleDay, locked, options = RECURRENCE_OPTIONS,
 }: {
   mode: RecurrenceMode
   weeklyDays: number[]
   onMode: (m: RecurrenceMode) => void
   onToggleDay: (day: number) => void
   locked?: boolean
+  /** Defaults to the full list (incl. "No repeat") — RecurringTab passes
+   *  RECURRING_EDIT_OPTIONS instead, since an existing recurring template
+   *  must never offer converting itself into a one-off block. */
+  options?: { value: RecurrenceMode; label: string }[]
 }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
-        {RECURRENCE_OPTIONS.map(o => (
+        {options.map(o => (
           <button
             key={o.value} type="button" disabled={locked} onClick={() => onMode(o.value)}
             className={`min-h-[44px] px-3 text-xs font-medium rounded-lg border transition-colors disabled:opacity-40 ${

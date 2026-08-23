@@ -1,15 +1,20 @@
-import { useState } from 'react'
-import { format, getDay, isToday } from 'date-fns'
+import { useEffect, useState } from 'react'
+import { format, getDay, isToday, subDays } from 'date-fns'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock } from '../hooks/useSchedule'
-import { useUpdateTask } from '../../todo/hooks/useTodos'
+import {
+  useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock,
+  useDeleteScheduleBlock,
+} from '../hooks/useSchedule'
+import { useTaskById } from '../../todo/hooks/useTodos'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
 import { supabase } from '../../../integrations/supabase/client'
 import { useCalendarStore, toast } from '../../../app/store'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
+import { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } from './dayAgendaProjection'
 import type { CalendarEvent } from '../../calendar/types'
+import type { TimeBlock, ScheduleBlock } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DayAgenda — replaces the old 24h × 52px pixel-grid DayTimeline. Design
@@ -20,6 +25,23 @@ import type { CalendarEvent } from '../../calendar/types'
 //  ONE information-dense row (time · duration · title · badges · actions),
 //  scales from empty to busy days, and gives night hours (<06:00) their own
 //  labelled group instead of pretending 03:00 is "morning".
+//
+//  Migration 077 click-routing (no more Task/Schedule tab dichotomy): a row
+//  tap opens the ONE modal in the mode that matches what was actually
+//  clicked — a calendar event opens EditCalendarEventModal (unchanged), a
+//  recurring template opens UnifiedPlanModal in 'recurring' mode, a
+//  task-linked one-off block opens the Task itself (mode='task' — the
+//  Schedule section lives inside it now), and a standalone one-off block
+//  opens 'schedule' mode directly. Nothing here decides which tab to show;
+//  the caller (this file) decides which ENTITY was clicked. A task-linked
+//  row is opened by id + a real fetch (useTaskById), NEVER by a lookup into
+//  a preloaded map — the map can still be loading (or briefly stale) when
+//  the tap happens, and a lookup miss used to silently do nothing at all.
+//
+//  Cross-midnight projection (dayAgendaProjection.ts): every one-off block
+//  and recurring template is projected onto EVERY day it actually occupies,
+//  each showing only its own [0,24) portion — see that file's header
+//  comment for the full rationale.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const NIGHT_END = 6 // hours before this belong to the night, not the morning
@@ -33,10 +55,6 @@ const COLOR_EDGE: Record<string, string> = {
   red:    'border-l-red-400',
 }
 
-function timeStrToHour(t: string): number {
-  const [h, m] = t.split(':').map(Number)
-  return h + m / 60
-}
 function hourToTimeStr(h: number): string {
   const hh = Math.floor(h)
   const mm = Math.round((h - hh) * 60)
@@ -44,41 +62,55 @@ function hourToTimeStr(h: number): string {
 }
 
 interface AgendaBlock {
-  id:             string
+  id:             string  // unique within this day's render — may be a synthetic spillover id
+  canonicalId:    string  // the REAL row id — every mutation routes through this
+  kind:           'recurring' | 'block' | 'calendar'
   title:          string
   startHour:      number
   endHour:        number
   edgeClass:      string
-  recurring:      boolean
-  deletable:      boolean
   dateStr:        string
-  sourceType?:    string | null
-  sourceId?:      string | null
+  taskId?:        string | null
   calendarEvent?: CalendarEvent
   allDay?:        boolean
+  spillover:      boolean
 }
 
 // `bare` — render as a chrome-less pane inside a parent surface (Daily's hero
 // panel provides the card); default keeps the own-card look (Month tab).
 export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }) {
-  const dateStr   = format(date, 'yyyy-MM-dd')
-  const dayOfWeek = getDay(date)
+  const dateStr     = format(date, 'yyyy-MM-dd')
+  const prevDateStr = format(subDays(date, 1), 'yyyy-MM-dd')
+  const dayOfWeek   = getDay(date)
 
-  const [modal,      setModal]      = useState(false)
-  const [clickTime,  setClickTime]  = useState<string | undefined>(undefined)
-  const [editEvent,  setEditEvent]  = useState<CalendarEvent | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [editingId,  setEditingId]  = useState<string | null>(null)
-  const [editTitle,  setEditTitle]  = useState('')
+  const [modal,             setModal]             = useState(false)
+  const [clickTime,         setClickTime]         = useState<string | undefined>(undefined)
+  const [editEvent,         setEditEvent]         = useState<CalendarEvent | null>(null)
+  const [editTaskId,        setEditTaskId]        = useState<string | null>(null)
+  const [editTimeBlock,     setEditTimeBlock]     = useState<TimeBlock | null>(null)
+  const [editScheduleBlock, setEditScheduleBlock] = useState<ScheduleBlock | null>(null)
+  const [selectedId,        setSelectedId]        = useState<string | null>(null)
 
   const { data: schedBlocks = [] } = useScheduleBlocks()
   const { data: timeBlocks  = [] } = useTimeBlocks(dateStr)
+  const { data: prevTimeBlocks = [] } = useTimeBlocks(prevDateStr)
   const { data: calEvents, isFetching: calFetching } = useCalendarEventsForDay(dateStr)
-  const deleteBlock = useDeleteTimeBlock()
-  const updateBlock = useUpdateTimeBlock()
-  const updateTask  = useUpdateTask()
-  const qc          = useQueryClient()
-  const calToken    = useCalendarStore(s => s.accessToken)
+  const deleteBlock         = useDeleteTimeBlock()
+  const updateBlock         = useUpdateTimeBlock()
+  const deleteScheduleBlock = useDeleteScheduleBlock()
+  const qc                  = useQueryClient()
+  const calToken            = useCalendarStore(s => s.accessToken)
+
+  // Task-linked row click: fetch the task by id directly rather than
+  // depending on a preloaded map (see file header comment) — a real query,
+  // with real loading/error feedback, so a tap never silently does nothing.
+  const { data: editTaskData, isFetching: editTaskLoading, isError: editTaskFailed } = useTaskById(editTaskId)
+  useEffect(() => {
+    if (editTaskId && editTaskFailed) {
+      toast.error('Could not load this task')
+      setEditTaskId(null)
+    }
+  }, [editTaskId, editTaskFailed])
 
   async function handleCalRefresh() {
     const tid = toast.loading('Syncing calendar…')
@@ -90,54 +122,78 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     }
   }
 
-  const taskSourceIds = timeBlocks
-    .filter(b => b.source_type === 'task' && b.source_id)
-    .map(b => b.source_id!)
-  const { data: linkedTaskNotes = [] } = useQuery({
-    queryKey: ['tasks', 'notes', dateStr, taskSourceIds.join(',')],
+  // Full linked-Task rows (not just notes) — used for the 📝 preview only
+  // now; navigation no longer depends on this map being loaded (see above).
+  const linkedTaskIds = [...timeBlocks, ...prevTimeBlocks].filter(b => b.task_id).map(b => b.task_id!)
+  const { data: linkedTasksFull = [] } = useQuery({
+    queryKey: ['tasks', 'by-ids', dateStr, linkedTaskIds.join(',')],
     queryFn:  async () => {
-      const { data } = await supabase.from('tasks').select('id, description').in('id', taskSourceIds)
+      const { data } = await supabase.from('tasks').select('id, description').in('id', linkedTaskIds)
       return data ?? []
     },
-    enabled:   taskSourceIds.length > 0,
+    enabled:   linkedTaskIds.length > 0,
     staleTime: 5 * 60_000,
   })
-  const taskNotesMap = new Map(linkedTaskNotes.map(t => [t.id, t.description as string | null]))
+  const taskNotesMap = new Map(linkedTasksFull.map(t => [t.id, t.description as string | null]))
 
-  // ── Assemble the unified block list (same sources as the old timeline) ──
+  // A block's own google_calendar_event_id already represents its Google
+  // Calendar presence — an event fetched separately from the Calendar API
+  // for the same id would otherwise render the same thing twice. Real bug
+  // fixed: this used to build the set from `timeBlocks` alone. A block
+  // whose OWN date is YESTERDAY but that crosses midnight into today
+  // renders a spillover row today (via projectOneOffBlocksForDay's
+  // `previousDayBlocks` argument) sourced from `prevTimeBlocks` — and its
+  // linked Calendar event, per Google's own events.list window semantics
+  // (an event matches a day's query whenever event.end > that day's
+  // timeMin), is ALSO returned by today's own `useCalendarEventsForDay`
+  // fetch. Without prevTimeBlocks in this set, that event rendered a
+  // second time as a separate 'calendar' row alongside its own spillover.
+  const linkedGCalIds = new Set(
+    [...timeBlocks, ...prevTimeBlocks].map(b => b.google_calendar_event_id).filter(Boolean)
+  )
+
+  // ── Assemble the unified block list ─────────────────────────────────────
   const blocks: AgendaBlock[] = []
-  for (const b of schedBlocks) {
-    if (!b.days_of_week.includes(dayOfWeek)) continue
+
+  for (const p of projectRecurringBlocksForDay(dayOfWeek, schedBlocks)) {
+    const original = schedBlocks.find(s => s.id === p.canonicalId)
     blocks.push({
-      id: b.id, title: b.title, dateStr, recurring: true, deletable: false,
-      startHour: timeStrToHour(b.start_time), endHour: timeStrToHour(b.end_time),
-      edgeClass: COLOR_EDGE[b.color] ?? COLOR_EDGE.blue,
+      id: p.id, canonicalId: p.canonicalId, kind: p.kind, title: p.title, dateStr,
+      startHour: p.startHour, endHour: p.endHour, taskId: p.taskId, spillover: p.spillover,
+      edgeClass: COLOR_EDGE[original?.color ?? 'blue'] ?? COLOR_EDGE.blue,
     })
   }
-  for (const b of timeBlocks) {
-    // NULL start_time exists in real data (a plan saved without a time) —
-    // shown in its own "unscheduled" group instead of being dropped.
-    const start = b.start_time ? timeStrToHour(b.start_time) : null
+  for (const p of projectOneOffBlocksForDay(timeBlocks, prevTimeBlocks)) {
+    const original = (p.spillover ? prevTimeBlocks : timeBlocks).find(b => b.id === p.canonicalId)
     blocks.push({
-      id: b.id, title: b.title, dateStr, recurring: false, deletable: true,
-      startHour: start ?? -1, endHour: start != null ? start + b.duration_minutes / 60 : -1,
-      edgeClass: COLOR_EDGE[b.color] ?? COLOR_EDGE.accent,
-      sourceType: b.source_type, sourceId: b.source_id,
+      id: p.id, canonicalId: p.canonicalId, kind: p.kind, title: p.title, dateStr,
+      startHour: p.startHour, endHour: p.endHour, taskId: p.taskId, spillover: p.spillover,
+      edgeClass: COLOR_EDGE[original?.color ?? 'accent'] ?? COLOR_EDGE.accent,
     })
   }
   for (const e of calEvents ?? []) {
+    if (linkedGCalIds.has(e.id)) continue
     if (e.start.dateTime) {
-      const s = new Date(e.start.dateTime)
-      const en = new Date(e.end.dateTime ?? e.start.dateTime)
+      // Real bug fixed: this used to build startHour/endHour straight from
+      // each instant's own `.getHours()+.getMinutes()/60` — correct for
+      // each instant in isolation, but assembled into one startHour/endHour
+      // pair for TODAY's render, a cross-midnight event (23:00 yesterday →
+      // 01:00 today) produced startHour=23 > endHour=1: a negative-duration
+      // "row" that broke the overlap check and the booked-minutes sum the
+      // moment a Calendar event crossed midnight. projectCalendarEventForDay
+      // clips it onto THIS day exactly like the one-off/recurring block
+      // helpers already do for their own cross-midnight rows.
+      const projected = projectCalendarEventForDay(dateStr, e)
+      if (!projected) continue
       blocks.push({
-        id: e.id, title: e.summary ?? '(no title)', dateStr, recurring: false, deletable: false,
-        startHour: s.getHours() + s.getMinutes() / 60, endHour: en.getHours() + en.getMinutes() / 60,
-        edgeClass: COLOR_EDGE.green, calendarEvent: e,
+        id: e.id, canonicalId: e.id, kind: 'calendar', title: e.summary ?? '(no title)', dateStr,
+        startHour: projected.startHour, endHour: projected.endHour,
+        edgeClass: COLOR_EDGE.green, calendarEvent: e, spillover: projected.spillover,
       })
     } else if (e.start.date) {
       blocks.push({
-        id: e.id, title: e.summary ?? '(no title)', dateStr, recurring: false, deletable: false,
-        startHour: -1, endHour: -1, edgeClass: COLOR_EDGE.green, calendarEvent: e, allDay: true,
+        id: e.id, canonicalId: e.id, kind: 'calendar', title: e.summary ?? '(no title)', dateStr,
+        startHour: -1, endHour: -1, edgeClass: COLOR_EDGE.green, calendarEvent: e, allDay: true, spillover: false,
       })
     }
   }
@@ -157,6 +213,10 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     }
   }
 
+  // Every row's endHour/startHour is already clipped to this day's own
+  // [0,24) window by the projection helpers, so summing them here can never
+  // double-count a minute that also appears (as a separate spillover row)
+  // on the adjacent day.
   const totalBookedMin = timed.reduce((s, b) => s + Math.max(0, (b.endHour - b.startHour) * 60), 0)
   const now = new Date()
   const nowHour = now.getHours() + now.getMinutes() / 60
@@ -165,48 +225,59 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
 
   function openAdd(time?: string) { setClickTime(time); setModal(true) }
 
+  // Opens the ONE editor for whichever entity this row actually is — see
+  // the file-header comment for the routing rule. Always routes through
+  // canonicalId, never the (possibly synthetic) spillover row id.
+  function openEditor(block: AgendaBlock) {
+    if (block.kind === 'recurring') {
+      const sb = schedBlocks.find(s => s.id === block.canonicalId)
+      if (sb) setEditScheduleBlock(sb)
+      return
+    }
+    if (block.taskId) {
+      setEditTaskId(block.taskId)
+      return
+    }
+    const tb = [...timeBlocks, ...prevTimeBlocks].find(b => b.id === block.canonicalId)
+    if (tb) setEditTimeBlock(tb)
+  }
+
   // ── Row renderer (plain render function, not a nested component —
   //     react-hooks/static-components: components created during render get a
   //     new identity every render and remount their subtree) ──
   function renderRow(block: AgendaBlock) {
     const isSelected = selectedId === block.id
-    const isEditing  = editingId === block.id
-    const isCal      = !!block.calendarEvent
+    const isCal       = block.kind === 'calendar'
+    const isRecurring = block.kind === 'recurring'
     const durationMins = Math.round((block.endHour - block.startHour) * 60)
-    const taskNotes  = block.sourceType === 'task' && block.sourceId ? taskNotesMap.get(block.sourceId) : null
+    const taskNotes  = block.taskId ? taskNotesMap.get(block.taskId) : null
     const isPast     = today && block.endHour <= nowHour
     const isActive   = today && block.startHour <= nowHour && block.endHour > nowHour
 
-    function saveEdit() {
-      const trimmed = editTitle.trim()
-      if (trimmed && trimmed !== block.title) {
-        updateBlock.mutate({ id: block.id, title: trimmed, dateStr: block.dateStr })
-      }
-      setEditingId(null)
-    }
     function postpone30m() {
-      updateBlock.mutate({ id: block.id, start_time: `${hourToTimeStr(Math.min(23.5, block.startHour + 0.5))}:00`, dateStr: block.dateStr })
+      updateBlock.mutate({ id: block.canonicalId, patch: { start_time: `${hourToTimeStr(Math.min(23.5, block.startHour + 0.5))}:00` } })
     }
     function postpone1d() {
       const d = new Date(block.dateStr + 'T00:00:00')
       d.setDate(d.getDate() + 1)
       const newDate = format(d, 'yyyy-MM-dd')
-      updateBlock.mutate({ id: block.id, date: newDate, dateStr: block.dateStr, newDateStr: newDate })
-      if (block.sourceType === 'task' && block.sourceId) {
-        const dow = d.getDay()
-        const section = dow === 0 || dow === 6 ? 'this_week'
-          : newDate === format(new Date(), 'yyyy-MM-dd') ? 'today' : 'tomorrow'
-        updateTask.mutate(
-          { id: block.sourceId, patch: { due_date: newDate, section } },
-          { onError: e => toast.error(`Block moved but its task's date didn't update: ${(e as Error).message}`) }
-        )
-      }
+      // Moves only this block's own schedule — a task's deadline (due_date)
+      // and its schedule slot are independent facts (migration 077); postponing
+      // where a task-linked block sits on the calendar must never move when
+      // the task itself is due.
+      updateBlock.mutate({ id: block.canonicalId, patch: { date: newDate } })
       setSelectedId(null)
     }
 
+    // A row tap opens the right editor DIRECTLY — no select-then-✎ second
+    // step. The small ⋯ toggle (always visible, its own 44px target) is the
+    // ONLY way to reach the quick actions (postpone/delete) without leaving
+    // the agenda; it stops propagation so it never also opens the editor.
+    // A spillover row (the tail of yesterday's block) is still clickable —
+    // it edits the SAME canonical block yesterday's own row would.
     return (
       <div
-        onClick={() => isCal ? setEditEvent(block.calendarEvent!) : setSelectedId(isSelected ? null : block.id)}
+        onClick={() => isCal ? setEditEvent(block.calendarEvent!) : openEditor(block)}
         className={`group rounded-md border-l-2 ${block.edgeClass} px-2.5 py-1.5 cursor-pointer transition-colors ${
           isActive || isSelected ? 'bg-cream-100' : 'hover:bg-cream-100/70'
         } ${isPast ? 'opacity-50' : ''} ${overlappingIds.has(block.id) ? 'ring-1 ring-red-300' : ''}`}
@@ -227,36 +298,42 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
             )}
           </div>
           <div className="flex-1 min-w-0">
-            {isEditing ? (
-              <input
-                autoFocus value={editTitle} onChange={e => setEditTitle(e.target.value)}
-                onBlur={saveEdit}
-                onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null) }}
-                onClick={e => e.stopPropagation()}
-                className="w-full bg-cream-100 text-xs font-semibold rounded px-1 py-0.5 outline-none"
-              />
-            ) : (
-              <p className="text-xs font-semibold text-ink-800 truncate leading-snug">
-                {block.title}
-                {block.recurring && <span className="ml-1.5 text-[9px] font-normal text-ink-500" title="Recurring">⟳</span>}
-                {isCal && <span className="ml-1.5 text-[9px] font-normal text-green-600" title="Google Calendar">◈</span>}
-                {taskNotes && <span className="ml-1 text-[9px] opacity-40">📝</span>}
-                {overlappingIds.has(block.id) && <span className="ml-1 text-[10px] text-red-500" title="Overlaps another block">⚠</span>}
-                {isActive && <span className="ml-1.5 text-[9px] font-medium text-accent-600">now</span>}
-              </p>
-            )}
+            <p className="text-xs font-semibold text-ink-800 truncate leading-snug">
+              {block.spillover && <span className="mr-1 text-[9px] font-normal text-ink-400" title="Continued from yesterday">↳</span>}
+              {block.title}
+              {isRecurring && <span className="ml-1.5 text-[9px] font-normal text-ink-500" title="Recurring">⟳</span>}
+              {isCal && <span className="ml-1.5 text-[9px] font-normal text-green-600" title="Google Calendar">◈</span>}
+              {taskNotes && <span className="ml-1 text-[9px] opacity-40">📝</span>}
+              {overlappingIds.has(block.id) && <span className="ml-1 text-[10px] text-red-500" title="Overlaps another block">⚠</span>}
+              {isActive && <span className="ml-1.5 text-[9px] font-medium text-accent-600">now</span>}
+            </p>
             {isSelected && taskNotes && (
               <p className="text-[10px] text-ink-500 mt-0.5 line-clamp-2">{taskNotes}</p>
             )}
           </div>
-          {isSelected && block.deletable && !isEditing && (
+          {!isCal && (
             <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-              {block.startHour >= 0 && (
+              {isSelected && block.kind === 'block' && !block.spillover && block.startHour >= 0 && (
                 <button onClick={postpone30m} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+30m</button>
               )}
-              <button onClick={postpone1d} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+1d</button>
-              <button onClick={() => { setEditingId(block.id); setEditTitle(block.title) }} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">✎</button>
-              <button onClick={() => { deleteBlock.mutate({ id: block.id, dateStr: block.dateStr }); setSelectedId(null) }} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:text-red-500 hover:border-red-300">✕</button>
+              {isSelected && block.kind === 'block' && !block.spillover && (
+                <button onClick={postpone1d} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+1d</button>
+              )}
+              {isSelected && (
+                <button
+                  onClick={() => {
+                    if (isRecurring) deleteScheduleBlock.mutate(block.canonicalId)
+                    else deleteBlock.mutate({ id: block.canonicalId, dateStr: block.dateStr })
+                    setSelectedId(null)
+                  }}
+                  className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:text-red-500 hover:border-red-300"
+                >✕</button>
+              )}
+              <button
+                onClick={() => setSelectedId(isSelected ? null : block.id)}
+                title={isSelected ? 'Hide quick actions' : 'Quick actions (postpone/delete)'}
+                className="w-[28px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700"
+              >⋯</button>
             </div>
           )}
         </div>
@@ -359,12 +436,44 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         )}
       </div>
 
+      {/* "+ Add" — always creates a standalone one-off block (schedule mode);
+          "Also add to Tasks" is offered inside ScheduleTab itself. */}
       <UnifiedPlanModal
         open={modal}
         onClose={() => { setModal(false); setClickTime(undefined) }}
-        config={{ tabs: ['schedule', 'task'], heading: 'Add time block' }}
+        mode="schedule"
+        config={{ heading: 'Add time block' }}
         defaults={{ date: dateStr, startTime: clickTime, category: 'daily' }}
       />
+
+      {/* ✎ editors — exactly one entity per open, routed by openEditor().
+          The Task editor opens ONLY once its fetch actually resolves — a
+          loading tap (editTaskId set, editTaskData not yet in) shows a tiny
+          overlay instead of doing nothing at all. */}
+      {editTaskId && editTaskLoading && !editTaskData && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-ink-950/10">
+          <div className="bg-cream-50 rounded-xl px-4 py-2.5 text-sm text-ink-600 shadow-lg border border-ink-200">Loading…</div>
+        </div>
+      )}
+      <UnifiedPlanModal
+        open={!!editTaskId && !!editTaskData}
+        onClose={() => setEditTaskId(null)}
+        config={{ heading: 'Edit Task' }}
+        task={editTaskData ?? undefined}
+      />
+      <UnifiedPlanModal
+        open={!!editTimeBlock}
+        onClose={() => setEditTimeBlock(null)}
+        config={{ heading: 'Edit block' }}
+        timeBlock={editTimeBlock ?? undefined}
+      />
+      <UnifiedPlanModal
+        open={!!editScheduleBlock}
+        onClose={() => setEditScheduleBlock(null)}
+        config={{ heading: 'Edit recurring block' }}
+        scheduleBlock={editScheduleBlock ?? undefined}
+      />
+
       {editEvent && <EditCalendarEventModal mode="edit" event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
   )

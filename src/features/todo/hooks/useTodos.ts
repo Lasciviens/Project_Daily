@@ -19,6 +19,7 @@ import {
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { pullGoogleTasks } from '../api/googleTasksSync'
 import { supabase } from '../../../integrations/supabase/client'
+import { updateTimeBlock } from '../../daily/api/scheduleApi'
 import { useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
@@ -129,6 +130,28 @@ export function useUpdateTask() {
       // condition. This call only delivers whatever got enqueued.
       const token = useCalendarStore.getState().accessToken
       if (token) await drainBestEffort(token, { taskId: id })
+
+      // Task title is canonical (migration 077) — a DB trigger already kept
+      // the linked time_block's OWN title in sync regardless of which door
+      // wrote it, but the REMOTE Google Calendar event needs an explicit
+      // push here since a trigger has no OAuth token to reach it with.
+      // Routed through scheduleApi's updateTimeBlock (not a direct
+      // updateCalendarEvent call) so this shares the SAME typed-status
+      // lifecycle as every other calendar push — a confirmed 404 here
+      // clears the stale link exactly like it would from the plan modal,
+      // instead of a second, inconsistent "log and forget" path for the
+      // same remote event.
+      if (patch.title !== undefined && token) {
+        const { data: linked } = await supabase
+          .from('time_blocks')
+          .select('id')
+          .eq('task_id', id)
+          .maybeSingle()
+        if (linked?.id) {
+          try { await updateTimeBlock(linked.id, { title: task.title }) }
+          catch (err) { logError(`Calendar event title sync failed: ${(err as Error).message}`, { taskId: id }) }
+        }
+      }
       return task
     },
     onSuccess: () => {
@@ -136,6 +159,7 @@ export function useUpdateTask() {
       // A task edit can move/retitle a linked schedule block — keep schedule
       // views in sync (the plan modal syncs the block itself).
       qc.invalidateQueries({ queryKey: ['schedule'] })
+      qc.invalidateQueries({ queryKey: ['calendar'] })
     },
   })
 }
@@ -285,12 +309,11 @@ export function usePushToGoogleTasks() {
       const { data: linkedBlocks } = notYetSynced.length
         ? await supabase
             .from('time_blocks')
-            .select('source_id')
-            .eq('source_type', 'task')
+            .select('task_id')
             .not('google_calendar_event_id', 'is', null)
-            .in('source_id', notYetSynced.map(t => t.id))
+            .in('task_id', notYetSynced.map(t => t.id))
         : { data: [] }
-      const calendarLinkedIds = new Set((linkedBlocks ?? []).map(b => b.source_id))
+      const calendarLinkedIds = new Set((linkedBlocks ?? []).map(b => b.task_id))
       const candidates = notYetSynced.filter(t => !calendarLinkedIds.has(t.id))
 
       for (const t of candidates) {

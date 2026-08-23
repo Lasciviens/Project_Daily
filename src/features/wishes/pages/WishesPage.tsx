@@ -129,7 +129,8 @@ export function WishesPage() {
         <UnifiedPlanModal
           open
           onClose={() => setPlanning(null)}
-          config={{ tabs: ['task', 'schedule'], heading: 'Plan this wish' }}
+          mode="task"
+          config={{ heading: 'Plan this wish' }}
           defaults={{ title: planning.title }}
           onSaved={result => {
             update.mutate({

@@ -322,7 +322,7 @@ export function WorkPage() {
       <UnifiedPlanModal
         open={addOpen || !!editTask}
         onClose={() => { setAddOpen(false); setEditTask(null) }}
-        config={{ tabs: ['task', 'schedule'], heading: editTask ? 'Edit Task' : 'New Task' }}
+        config={{ heading: editTask ? 'Edit Task' : 'New Task' }}
         defaults={{ domain: 'work', section: 'today' }}
         task={editTask ?? undefined}
       />

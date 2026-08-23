@@ -346,7 +346,7 @@ const TOOLS = [
       },
       {
         name: 'db_delete',
-        description: 'Delete rows matching filters from a writable table. Automatically scoped to the current user. Filters are required and must be non-empty. When deleting a task, also delete its linked time_blocks (source_type="task", source_id=<task id>).',
+        description: 'Delete rows matching filters from a writable table. Automatically scoped to the current user. Filters are required and must be non-empty. Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE) — no separate time_blocks delete needed.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -1244,7 +1244,24 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
 
   if (taskErr) return { success: false, error: taskErr.message }
 
-  // Create time block: movie=2h purple, TV=45min blue at 20:00
+  // Create time block: movie=2h purple, TV=45min blue at 20:00. task_id is the
+  // ONLY representation of "linked to a Task" (migration 077); source_type/
+  // source_id here carry the REAL originating entity, preserved from above
+  // rather than overwritten — the pre-077 bug this fixed.
+  // NOTE: tasks.source_type uses 'tv_series' but time_blocks.source_type's
+  // CHECK (migration 077) only allows 'tv_episode' — the two vocabularies
+  // differ on TV specifically; using 'tv_series' here would 400 on the CHECK.
+  // season_number/episode_number are the columns cleanup_block_on_episode_
+  // watched actually keys off (migration 043) — only stamp them when the AI
+  // was given a SPECIFIC episode (mirrors EpisodesPanel's own single-episode
+  // rule: never stamped for an unspecified/batch watch, which just means
+  // "watch some of this show", not "this exact episode"). When the episode
+  // ISN'T known, don't write source_type='tv_episode' either — that value
+  // means "this specific episode" and nothing here can back that claim up
+  // without the two columns above (mirrors blockSourceTypeForTask's own
+  // reasoning on the client: a context-free TV reference is safer as "no
+  // block source" than as a falsely episode-specific one).
+  const knownEpisode = isTV && season != null && episode != null
   const { error: blockErr } = await supabase.from('time_blocks').insert({
     user_id:          userId,
     date,
@@ -1252,8 +1269,10 @@ async function planMedia(supabase: AnyRecord, userId: string, args: AnyRecord): 
     start_time:       '20:00:00',
     duration_minutes: isTV ? 45 : 120,
     color:            isTV ? 'blue' : 'purple',
-    source_type:      'task',
-    source_id:        task.id,
+    task_id:          task.id,
+    source_type:      isTV ? (knownEpisode ? 'tv_episode' : null) : 'movie',
+    source_id:        isTV ? (knownEpisode ? (args.entry_id ?? null) : null) : (args.entry_id ?? null),
+    ...(knownEpisode ? { season_number: season, episode_number: episode } : {}),
     updated_at:       new Date().toISOString(),
   })
 
@@ -2027,13 +2046,13 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     access: 'rw',
     purpose: 'To-do tasks (the To-Do feature IS this table).',
     columns: 'id, title, description, domain(personal|work|media), section(inbox|today|tomorrow|this_week|backlog), status(open|in_progress|waiting|done|cancelled), priority(low|medium|high), start_date(date; optional opening edge of a window — with due_date it means "do this between A and B"), due_date(date), due_time(time), waiting_for(text), is_focused(bool), source_type(manual|movie|tv_series|media|calendar|ai|training_session|project_item), source_id(uuid), sort_order, created_at, updated_at',
-    rules: 'When deleting a task, also db_delete from time_blocks where source_type="task" and source_id=<task id> to avoid orphaned schedule blocks. due_date is the SOLE deadline — a task with a due_date can be late. If the user just wants to be reminded of something during a period ("go to the hytte this winter") with no date it must be done by, that is a wish_items row, not a task.',
+    rules: 'Deleting a task automatically deletes its linked time_blocks row too (task_id is ON DELETE CASCADE — no separate cleanup db_delete needed). due_date is the SOLE deadline — a task with a due_date can be late; a task\'s optional schedule slot (time_blocks linked via task_id) is a separate fact and never implies or changes due_date. If the user just wants to be reminded of something during a period ("go to the hytte this winter") with no date it must be done by, that is a wish_items row, not a task.',
   },
   time_blocks: {
     access: 'rw',
     purpose: 'One-off day schedule / timeline blocks for a specific date.',
-    columns: 'id, date(date), title, start_time(time HH:MM:SS), duration_minutes(int), color(blue|green|orange|purple|accent|red), category(daily|training|media|games|work|projects|other), source_type(task|training_session|movie|tv_episode|project_item|calendar|manual), source_id(uuid), notes, created_at, updated_at',
-    rules: 'Set category to match the block type (e.g. "training" for a planned workout) — training/media/work calendar views filter by it. To reschedule to another day, update the date column.',
+    columns: 'id, date(date), title, start_time(time HH:MM:SS), duration_minutes(int), color(blue|green|orange|purple|accent|red), category(daily|training|media|games|work|projects|other), task_id(uuid; the ONLY representation of "linked to a Task" — never source_type), source_type(training_session|movie|tv_episode|project_item|calendar|manual; the REAL originating entity, independent of task_id, never "task"), source_id(uuid), notes, created_at, updated_at',
+    rules: 'Set category to match the block type (e.g. "training" for a planned workout) — training/media/work calendar views filter by it. To reschedule to another day, update the date column. To link a block to a task, set task_id — never set source_type to "task".',
   },
   recipes: {
     access: 'rw',

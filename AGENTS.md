@@ -281,13 +281,23 @@ which door the write came through.
   plausibly varies per rule (e.g. `block_delete_cascades_task`'s
   `auto_task_source_types` array — which `tasks.source_type` values count as
   "this task only exists because a plan created it"; as of migration 047 that
-  array is `training_session` + `movie` + `project_item`). **This cascade
-  SOFT-CANCELS, it does not delete** (migration 047): when a plan's block is
-  deleted, the linked task becomes `status='cancelled'` (reversible, visible),
-  never a hard `DELETE` — the deliberate mitigation against silent, irreversible
-  data loss. The actual matching
-  logic per relationship shape (task↔block by id, episode→block by
-  season/episode number, project_item→block by id) stays explicit SQL in
+  array was `training_session` + `movie` + `project_item`). **This cascade
+  SOFT-CANCELED, it did not delete** (migration 047): when a plan's block was
+  deleted, the linked task became `status='cancelled'` (reversible, visible),
+  never a hard `DELETE`.
+  **⚠️ RETIRED by migration 077 (2026-08-22):** `block_delete_cascades_task`
+  and its sibling `block_task_date_sync` (the trigger that kept
+  `tasks.due_date`/`due_time` and `time_blocks.date`/`start_time`
+  bidirectionally equal) are now `enabled=false` with a "RETIRED" description
+  — a Task's deadline and its optional one-off schedule slot are independent
+  facts now, by explicit user decision (the Tasks/Schedule model fix): deleting
+  or moving a task-linked block never touches the task any more, and the
+  reverse (task hard-delete → its block is removed) is a real FK
+  (`time_blocks.task_id ON DELETE CASCADE`), not a trigger. The rows are
+  disabled + redescribed, not dropped, so the history stays legible. The
+  matching
+  logic per relationship shape (episode→block by season/episode number,
+  project_item→block by id) still stays explicit SQL in
   typed trigger functions — Postgres has no safe generic polymorphic join
   without dynamic SQL, and dynamic SQL is a correctness/security risk not
   worth taking here. Adding a new "auto-created" task source_type, or turning
@@ -295,10 +305,25 @@ which door the write came through.
 - **Hub tables**: `time_blocks` and `tasks` both carry `source_type`/
   `source_id` pointing at whatever they were created from — this is the
   existing polymorphic-association pattern (see `time_blocks_source` index
-  from migration 010), not something migration 043 introduced.
-- **Trigger functions** (`sync_task_from_time_block`, `sync_time_block_from_task`,
-  `cleanup_block_on_episode_watched`, `cleanup_block_on_project_item_delete`):
-  each checks `link_rule_enabled('...')` at the top before doing anything.
+  from migration 010), not something migration 043 introduced. **As of
+  migration 077, `time_blocks.source_type` never equals `'task'`** — "linked
+  to a Task" is `time_blocks.task_id` (a real FK) exclusively, so
+  `source_type`/`source_id` on a task-linked block always describe the block's
+  REAL originating entity (or are null for a plain manual block), never the
+  task itself.
+- **Trigger functions** (`cleanup_block_on_episode_watched`,
+  `cleanup_block_on_project_item_delete`): each checks `link_rule_enabled('...')`
+  at the top before doing anything. **`sync_task_from_time_block` and
+  `sync_time_block_from_task` were DROPPED entirely by migration 077** (not
+  just disabled) — they implemented the retired bidirectional due-date/
+  schedule-date sync above. The one surviving Task↔block cross-effect is
+  one-directional: `sync_time_block_title_from_task` mirrors a Task title
+  edit onto its linked block's title (`AFTER UPDATE ON tasks`, guarded by
+  `pg_trigger_depth() = 1` like the others).
+- **Migration 077's backfill — duplicate-safe, and never invents episode identity.** Before the `time_blocks_one_per_task` unique index is created, the backfill processes every legacy `source_type='task'` row OLDEST FIRST (`created_at, id`): the first row for a given task becomes its canonical linked block (`task_id` set); every LATER row for the SAME task — a duplicate the pre-077 model had no constraint against — is detached to a standalone block exactly like an orphan (task gone), never deleted. Do this ordering (backfill+dedup, THEN create the unique index) for any future migration that introduces a new uniqueness constraint over data that predates it — creating the index first and hoping the data is already clean is how a migration fails halfway on an environment you didn't audit. Separately: recovering `tv_series` → `tv_episode` for a legacy block only happens when that SPECIFIC block already carries real `season_number`/`episode_number` — a block with neither keeps `task_id` (the real link) but gets `source_type`/`source_id` left NULL, never a guessed `'tv_episode'` with no episode numbers behind it. The migration ends with a `RAISE EXCEPTION`-based assertion block (row count preserved, zero `source_type='task'` rows, zero orphan/duplicate `task_id` links, the unique index + both surviving triggers + `schedule_blocks`' new columns all present) — a migration that can silently leave a half-correct schema behind should fail loudly instead, not rely on a human re-reading the SQL to notice.
+- **The Google Tasks outbox's per-task ordering (migration 079) is the same class of bug as the Hevy incremental-sync race, generalized**: `FOR UPDATE SKIP LOCKED` (migration 073) only ever guaranteed no two workers claim the SAME row — it never guaranteed rows for the SAME task drain in the order they were enqueued. `claim_google_tasks_outbox`'s per-task ordering is expressed as a `NOT EXISTS` anti-join (`older.task_id = o.task_id AND (older.created_at, older.id) < (o.created_at, o.id)`) inside the SAME CTE the `FOR UPDATE OF o SKIP LOCKED` clause is attached to — concurrency across DIFFERENT tasks is untouched; only same-task ordering became absolute. `clear_google_task_id_if_matches(task_id, expected_google_task_id, p_user_id)` is the belt-and-suspenders half: a conditional `UPDATE ... WHERE google_task_id = expected` that reports `FOUND` back to the caller, so a stale delete processed out of order (despite the FIFO fix) still can't wipe a fresher id written after it. Any future outbox/queue-style table in this app should default to this same two-layer pattern (ordering at the claim level, a conditional write as the backstop) rather than trusting FOR UPDATE SKIP LOCKED alone to imply ordering it was never designed to provide.
+  - **A `row_number() OVER (...)` window function must NEVER sit in the same query as (or upstream of, via a CTE selected-from-rather-than-locked-in) a `FOR UPDATE`/`FOR SHARE` clause — the ORIGINAL version of `claim_google_tasks_outbox` got exactly this wrong and it was caught only by running a live `EXPLAIN` against it.** That version computed `row_number() OVER (PARTITION BY task_id ORDER BY created_at, id)` in a `ranked` CTE, then applied `FOR UPDATE SKIP LOCKED` in a separate `claimable` CTE that selected `id FROM ranked` — not from the base table. Postgres does not propagate a locking clause into a WITH query that a query merely selects from; the clause must be attached to the SELECT INSIDE the WITH query itself. The `EXPLAIN` plan for that version had no `LockRows` node anywhere in it — the claim function had silently stopped providing any row-locking guarantee at all, while still reading as correct from the SQL alone. **Any future per-row-ordering claim query in this app must express the ordering as a `NOT EXISTS` anti-join (or otherwise keep the row-number logic OUT of a separate CTE from the lock clause) — never a window function upstream of `FOR UPDATE`.** A live `EXPLAIN` check for a `LockRows` node is the concrete way to verify a claim query like this actually locks anything, not just that it parses and returns rows.
+- **`p_user_id` is not optional for a service-role caller — real bug, fixed.** Every RPC scoped through `effective_user_id(p_user_id)` (migration 072: `service_role` → `p_user_id` verbatim, anything else → `auth.uid()`) silently scopes to `NULL` if the caller omits `p_user_id`, because a service-role call carries no JWT for `auth.uid()` to fall back on. `google-tasks-sync`'s `clearGoogleTaskIdIfMatches` helper omitted it, so the cron drain's calls to `clear_google_task_id_if_matches` matched zero rows on every call — 079's stale-delete guard was live from the browser (a real user JWT, so `auth.uid()` resolves regardless of what's passed) and a complete no-op from the cron poller. Fixed by threading `userId` through the helper and its one call site in `processDelete`. **Any new RPC added behind `effective_user_id` must have its `p_user_id` argument audited at every service-role call site — the browser call site being correct proves nothing about the cron one.**
 - **Recursion guard**: `time_blocks` → `tasks` and `tasks` → `time_blocks`
   sync can each cause the other to fire. Guarded with `pg_trigger_depth() = 1`
   — a direct user edit propagates to the other side exactly once; that

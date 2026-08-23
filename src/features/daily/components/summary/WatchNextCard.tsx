@@ -162,7 +162,8 @@ export function WatchNextCard({ date }: { date: string }) {
         <UnifiedPlanModal
           open={planOpen}
           onClose={() => setPlanOpen(false)}
-          config={{ tabs: ['schedule'], heading: 'Plan episode' }}
+          mode="schedule"
+          config={{ heading: 'Plan episode' }}
           defaults={{
             title:    `📺 ${series.title} · S${pad(n.season)}E${pad(n.episode)}`,
             date,

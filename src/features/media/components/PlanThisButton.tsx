@@ -19,7 +19,6 @@ export function PlanThisButton({ entryId, title, runtimeMinutes }: Props) {
   const [open, setOpen] = useState(false)
 
   const config: PlanModalConfig = {
-    tabs:    ['schedule'],
     heading: 'Plan to watch',
   }
   const defaults: PlanDefaults = {
@@ -47,6 +46,7 @@ export function PlanThisButton({ entryId, title, runtimeMinutes }: Props) {
       <UnifiedPlanModal
         open={open}
         onClose={() => setOpen(false)}
+        mode="schedule"
         config={config}
         defaults={defaults}
         source={source}
