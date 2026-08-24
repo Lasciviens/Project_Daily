@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { isToday, isTomorrow, isPast } from 'date-fns'
 import type { Task } from '../types'
+import { toast } from '../../../app/store'
 import { useToggleTask, useDeleteTask, useUpdateTask, useTaskById, useSubtasks } from '../hooks/useTodos'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
@@ -52,6 +53,45 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
   // expanded view reads, so expanding costs no extra request.
   const { data: subtasks = [] } = useSubtasks(task.id)
 
+  // Local toast wrappers around the shared hooks — MANDATORY per the toast
+  // rule ("every async action must show feedback on completion"), but the
+  // hooks themselves stay bare on purpose: UnifiedPlanModal.handleDelete
+  // already wraps the SAME useDeleteTask()/useUpdateTask() in its own
+  // toast.loading/success/error block, so adding one inside the hook would
+  // double-toast that path (see CLAUDE.md's migration rule for useTodos.ts).
+  // Wrapping only at this row's own call sites is the "manual pattern for
+  // a one-off async action" the same doc explicitly allows.
+  async function handleDelete() {
+    const tid = toast.loading('Deleting…')
+    try {
+      await remove.mutateAsync(task.id)
+      toast.dismiss(tid); toast.success('Deleted ✓')
+    } catch (err) {
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to delete')
+    }
+  }
+  async function handleToggle() {
+    try {
+      await toggle.mutateAsync({ id: task.id, isDone: !isDone })
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Failed to update task')
+    }
+  }
+  async function handleCancel() {
+    try {
+      await update.mutateAsync({ id: task.id, patch: { status: 'cancelled' } })
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Failed to cancel task')
+    }
+  }
+  async function handleReopen() {
+    try {
+      await update.mutateAsync({ id: task.id, patch: { status: 'open' } })
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Failed to reopen task')
+    }
+  }
+
   return (
     <>
       <div className="relative overflow-hidden rounded-lg">
@@ -61,7 +101,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             leaked a pink antialiased arc at its top-right corner. Hiding it
             also stops screen readers announcing a Delete button per row. */}
         <button
-          onClick={() => { remove.mutate(task.id); swipe.close() }}
+          onClick={() => { handleDelete(); swipe.close() }}
           disabled={remove.isPending}
           aria-hidden={!swipe.isOpen}
           tabIndex={swipe.isOpen ? undefined : -1}
@@ -88,7 +128,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
         >
         {/* Circle checkbox — matches Google Tasks iPhone style */}
         <button
-          onClick={e => { e.stopPropagation(); toggle.mutate({ id: task.id, isDone: !isDone }) }}
+          onClick={e => { e.stopPropagation(); handleToggle() }}
           disabled={toggle.isPending}
           aria-label={isDone ? 'Mark as open' : 'Mark as done'}
           className="flex-shrink-0 flex items-center justify-center min-w-[44px] min-h-[44px] lg:min-w-0 lg:min-h-0 lg:w-auto lg:h-auto -ml-3 lg:ml-0 lg:mt-0.5"
@@ -233,7 +273,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             {!isCancelled && (
               <MenuItem>
                 <button
-                  onClick={() => update.mutate({ id: task.id, patch: { status: 'cancelled' } })}
+                  onClick={() => handleCancel()}
                   disabled={update.isPending}
                   className="w-full text-left px-3 min-h-[44px] text-sm text-orange-600 data-[focus]:bg-ink-100"
                   title="Cancel keeps a record, unlike Delete"
@@ -249,7 +289,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             {isCancelled && (
               <MenuItem>
                 <button
-                  onClick={() => update.mutate({ id: task.id, patch: { status: 'open' } })}
+                  onClick={() => handleReopen()}
                   disabled={update.isPending}
                   className="w-full text-left px-3 min-h-[44px] text-sm text-accent-600 data-[focus]:bg-ink-100"
                   title="Reopen — re-creates it on Google Tasks if connected"
@@ -258,7 +298,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             )}
             <MenuItem>
               <button
-                onClick={() => remove.mutate(task.id)}
+                onClick={() => handleDelete()}
                 disabled={remove.isPending}
                 className="w-full text-left px-3 min-h-[44px] text-sm text-red-600 data-[focus]:bg-ink-100"
               >✕ Delete</button>
@@ -310,7 +350,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             )}
             {!isCancelled && (
               <button
-                onClick={e => { e.stopPropagation(); update.mutate({ id: task.id, patch: { status: 'cancelled' } }) }}
+                onClick={e => { e.stopPropagation(); handleCancel() }}
                 disabled={update.isPending}
                 className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-orange-500 transition-colors duration-150 text-xs"
                 title="Cancel (keeps a record, unlike Delete)"
@@ -318,14 +358,14 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
             )}
             {isCancelled && (
               <button
-                onClick={e => { e.stopPropagation(); update.mutate({ id: task.id, patch: { status: 'open' } }) }}
+                onClick={e => { e.stopPropagation(); handleReopen() }}
                 disabled={update.isPending}
                 className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-xs"
                 title="Reopen (re-creates it on Google Tasks if connected)"
               >↺</button>
             )}
             <button
-              onClick={e => { e.stopPropagation(); remove.mutate(task.id) }}
+              onClick={e => { e.stopPropagation(); handleDelete() }}
               disabled={remove.isPending}
               className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
               title="Delete"
