@@ -1,6 +1,6 @@
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
+import { shiftStr } from './dateNav'
 import { computeDailySeries } from '../../healthAggregate'
-import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
 import { BarLineChart } from './BarLineChart'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { BODY_EXTRA_METRICS } from './miniMetrics'
@@ -39,11 +39,14 @@ function BodyMiniChart({ title, icon, unit, color, series, decimals = 1 }: MiniC
   )
 }
 
-export function BodySection() {
+export function BodySection({ dateStr }: { dateStr: string }) {
   // Weight/body composition metrics are sparse, event-based (only update when
   // you step on the scale) — a wide window so charts aren't mostly empty.
-  const from = daysAgoStr(89)
-  const to = todayStr()
+  // The window ENDS at the day being viewed (Health's one shared day
+  // selector) rather than always at today, so stepping back a day moves this
+  // section with the rest of the page instead of ignoring the control.
+  const to = dateStr
+  const from = shiftStr(dateStr, -89)
   const { data: weightPoints = [] } = useHealthMetricSeries('weight_body_mass', from, to)
   const { data: fatPoints = [] } = useHealthMetricSeries('body_fat_percentage', from, to)
   const { data: bmiPoints = [] } = useHealthMetricSeries('body_mass_index', from, to)

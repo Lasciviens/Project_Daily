@@ -3,11 +3,9 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { PeriodToggle, type Period } from './PeriodToggle'
 import { SourceToggle, type SourceSelection } from './SourceToggle'
-import { DateNav } from './DateNav'
-import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
-import { useAnchorDate } from './useAnchorDate'
+import type { HealthRange } from './sectionTypes'
+import { rangeForAnchor, labelForAnchor } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { STEPS_EXTRA_METRICS, RUNNING_EXTRA_METRICS } from './miniMetrics'
 import { compactAxisTick } from './axisFormat'
@@ -16,12 +14,11 @@ function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
 }
 
-export function StepsSection() {
+export function StepsSection({ range }: { range: HealthRange }) {
   const today = todayStr()
-  const [period, setPeriod] = useState<Period>('week')
   const [source, setSource] = useState<SourceSelection>('auto')
   const src = source === 'auto' ? undefined : source
-  const [anchor, setAnchor] = useAnchorDate()
+  const { anchor, setAnchor, period, setPeriod } = range
 
   // Headline follows the SELECTED PERIOD, not always a single day: Day →
   // that day's total; Week/Month → daily average + period totals, computed
@@ -113,16 +110,7 @@ export function StepsSection() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <DateNav
-          label={labelForAnchor(period, anchor)}
-          onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
-          onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
-          canGoNext={anchor !== today}
-          value={anchor}
-          onPick={setAnchor}
-        />
-        <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
+      <div className="flex items-center flex-wrap gap-2">
         <SourceToggle value={source} onChange={setSource} />
       </div>
 

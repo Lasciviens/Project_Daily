@@ -7,6 +7,12 @@ export interface ScheduleBlock {
   end_time:     string
   color:        string
   category:     TimeBlockCategory
+  /** First date this template may render on (migration 081, 'yyyy-MM-dd') —
+   *  a recurring block used to have NO date bounds and so fabricated
+   *  occurrences all the way back through history. Optional in the type
+   *  because a pre-081 row simply doesn't carry it, and the projection
+   *  treats that as "no lower bound" (the old behaviour). */
+  effective_from?: string
   created_at:   string
   updated_at:   string
 }
