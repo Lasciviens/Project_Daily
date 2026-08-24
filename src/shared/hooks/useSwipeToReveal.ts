@@ -25,13 +25,21 @@ export function useSwipeToReveal() {
     startY.current = e.clientY
     axisLocked.current = null
     setDragging(true)
-    // Without this, a fast real-finger swipe (routine on an actual device,
-    // rare in a slow simulated drag) can move the pointer outside this
-    // row's bounds mid-gesture — pointer events without capture are
-    // re-hit-tested on every move, so they'd stop reaching this element
-    // entirely and the row could get stuck mid-drag, never receiving the
-    // pointerup that finalizes open/closed state.
-    e.currentTarget.setPointerCapture(e.pointerId)
+    // Real bug, fixed: this used to call e.currentTarget.setPointerCapture()
+    // unconditionally, right here, on EVERY pointerdown — including one that
+    // started on a nested interactive child (the checkbox, or any of the
+    // ✎/↳/📋/⊘/✕ action buttons), since pointerdown bubbles up to this row's
+    // handler regardless of which descendant it started on. Once a pointer
+    // is captured, the browser retargets that pointer's subsequent
+    // pointerup AND the click it synthesizes to the CAPTURING element (this
+    // row) — never wherever the pointer physically is — so a plain tap on
+    // any button inside the row fired the ROW's own onClick (open edit)
+    // instead of the button's: the checkbox never toggled, Delete never
+    // deleted, every action silently became "open edit". Capture is now
+    // deferred to onPointerMove, and only once a genuine horizontal swipe is
+    // confirmed (axisLocked === 'x') — a plain tap never moves enough to
+    // reach that branch, so its click reaches its real target untouched;
+    // only an actual swipe gesture ever captures the pointer.
   }, [])
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
@@ -44,6 +52,14 @@ export function useSwipeToReveal() {
     if (!axisLocked.current) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
       axisLocked.current = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+      if (axisLocked.current === 'x') {
+        // NOW it's a confirmed horizontal swipe — capture so a fast
+        // real-finger swipe that carries the pointer outside the row's
+        // bounds mid-gesture still reaches this handler (and the
+        // pointerup/pointercancel that finalizes open/closed state)
+        // instead of getting stuck. Never reached by a plain tap/click.
+        e.currentTarget.setPointerCapture(e.pointerId)
+      }
     }
     if (axisLocked.current === 'y') return
 
