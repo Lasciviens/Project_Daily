@@ -8,7 +8,6 @@ import WorkBoard from '../components/WorkBoard'
 import WorkListView from '../components/WorkListView'
 import WorkTaskCard from '../components/WorkTaskCard'
 import FocusStrip from '../components/FocusStrip'
-import WorkDayTimeline from '../components/WorkDayTimeline'
 import WorkSidebar from '../components/WorkSidebar'
 import { isOverdue, isCompletedToday, matchesSearch, sortTasks, OVERDUE_COLOR } from '../components/workMeta'
 import { toast } from '../../../app/store'
@@ -168,7 +167,6 @@ export function WorkPage() {
         {/* ── Main column ── */}
         <div className="flex flex-col min-h-0 overflow-y-auto lg:overflow-hidden">
           <div className="px-4 sm:px-6 pt-3 pb-2 space-y-2">
-            <WorkDayTimeline workTasks={tasks} />
             <FocusStrip
               tasks={focusedTasks}
               onMarkDone={handleMarkDone}
