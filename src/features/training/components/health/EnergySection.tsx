@@ -3,11 +3,9 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { PeriodToggle, type Period } from './PeriodToggle'
 import { SourceToggle, type SourceSelection } from './SourceToggle'
-import { DateNav } from './DateNav'
-import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
-import { useAnchorDate } from './useAnchorDate'
+import type { HealthRange } from './sectionTypes'
+import { rangeForAnchor, labelForAnchor } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { ENERGY_EXTRA_METRICS } from './miniMetrics'
 import { compactAxisTick } from './axisFormat'
@@ -16,23 +14,41 @@ function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
 }
 
-export function EnergySection() {
+export function EnergySection({ range }: { range: HealthRange }) {
   const today = todayStr()
-  const [period, setPeriod] = useState<Period>('week')
   const [source, setSource] = useState<SourceSelection>('auto')
   const src = source === 'auto' ? undefined : source
-  const [anchor, setAnchor] = useAnchorDate()
+  const { anchor, setAnchor, period, setPeriod } = range
 
   const isDay = period === 'day'
   // Measured values only — the synthetic per-hour basal top-up (median of the
   // same hour over the prior week when the Watch was off) was REMOVED
-  // 2026-07-21: the Fitbit Air is worn 24/7, so Watch-off hours are now
-  // gap-filled with REAL device data by the source resolver instead of an
-  // estimate.
+  // 2026-07-21 on the "no derived metrics" principle, on the plan that the
+  // 24/7-worn Air would gap-fill Watch-off hours with REAL data instead.
+  //
+  // That gap-fill DOES NOT HAPPEN for basal energy, verified against
+  // production: google-health-sync fetches basal-energy-burned (path id,
+  // union field and filter token all match the live-verified API surface
+  // doc) yet has never produced a single source_family='fitbit' row, while
+  // every other metric it fetches has. So Apple is still the only basal
+  // source and its stream has real holes whenever the Watch is off the
+  // wrist — on a day the Watch charged through the morning, the hours
+  // 06:00-15:00 simply have no basal rows at all.
+  //
+  // Summing only the hours that exist and printing it as "basal" states a
+  // partial number as a whole-day one. Rather than re-introducing the
+  // rejected estimate, the coverage is shown next to the value (see
+  // basalCoverage below) so an incomplete day reads as incomplete.
   const { data: anchorActive = [], isLoading } = useHealthMetricSeries('active_energy', anchor, anchor, src)
   const { data: anchorBasal = [] } = useHealthMetricSeries('basal_energy_burned', anchor, anchor, src)
   const activeToday = Math.round(computeDailySeries('active_energy', anchorActive)[0]?.value ?? 0)
   const basalToday = Math.round(computeDailySeries('basal_energy_burned', anchorBasal)[0]?.value ?? 0)
+  // Basal metabolic rate is continuous BY DEFINITION — you burn it every hour,
+  // awake or asleep — so an hour with no row is a measurement gap, never a
+  // real zero. Counting the hours that actually carry a value is what turns
+  // "444 kcal" into the honest "444 kcal, 6 of 24 hours measured".
+  const basalHoursCovered = computeHourlyBuckets('basal_energy_burned', anchorBasal)
+    .filter(b => b.value > 0).length
 
   const { from, to } = rangeForAnchor(period, anchor)
   const { data: activePoints = [] } = useHealthMetricSeries('active_energy', from, to, src)
@@ -116,20 +132,22 @@ export function EnergySection() {
           <div>
             <p className="text-lg font-bold text-ink-500">{headBasal}</p>
             <p className="text-[10px] text-ink-400">{isDay ? 'basal' : 'avg basal'}</p>
+            {/* Only on a real, incomplete day — never on a period average
+                (where "hours covered" has no single meaning) and never on a
+                fully-measured day (nothing to warn about). */}
+            {isDay && !isLoading && basalHoursCovered > 0 && basalHoursCovered < 24 && (
+              <p
+                className="text-[10px] font-medium text-amber-600"
+                title={`Basal energy is only recorded for ${basalHoursCovered} of 24 hours on this day — the rest has no measurement (typically the Watch off the wrist). The figure above is the measured hours only, never an estimate.`}
+              >
+                {basalHoursCovered}/24 h measured
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <DateNav
-          label={labelForAnchor(period, anchor)}
-          onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
-          onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
-          canGoNext={anchor !== today}
-          value={anchor}
-          onPick={setAnchor}
-        />
-        <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
+      <div className="flex items-center flex-wrap gap-2">
         <SourceToggle value={source} onChange={setSource} />
       </div>
 

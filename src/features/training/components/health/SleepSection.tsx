@@ -4,12 +4,10 @@ import { DateInput } from '../../../../shared/components/DateInput'
 import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
 import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions } from '../../healthAggregate'
 import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
-import { DateNav } from './DateNav'
-import { shiftStr, rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
-import { PeriodToggle, type Period } from './PeriodToggle'
+import { shiftStr, rangeForAnchor } from './dateNav'
 import { SourceToggle, type SourceSelection } from './SourceToggle'
+import type { HealthRange } from './sectionTypes'
 import { FitbitHypnogram } from './FitbitHypnogram'
-import { useAnchorDate } from './useAnchorDate'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { SLEEP_EXTRA_METRICS } from './miniMetrics'
 import { compactAxisTick } from './axisFormat'
@@ -143,12 +141,11 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
   }
 }
 
-export function SleepSection() {
+export function SleepSection({ range }: { range: HealthRange }) {
   const today = todayStr()
-  const [period, setPeriod] = useState<Period>('week')
   const [source, setSource] = useState<SourceSelection>('auto')
   const src = source === 'auto' ? undefined : source
-  const [anchor, setAnchor] = useAnchorDate()
+  const { anchor, setAnchor, period, setPeriod } = range
 
   // In Day mode the chart still shows a 7-night CONTEXT window ending at the
   // anchor (a 1-bar chart is useless) while the detail block below reflects
@@ -365,16 +362,7 @@ export function SleepSection() {
         </>
       )}
 
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <DateNav
-          label={labelForAnchor(period, anchor)}
-          onPrev={() => { setPinned(null); setAnchor(a => stepAnchor(period, a, -1)) }}
-          onNext={() => { setPinned(null); setAnchor(a => stepAnchor(period, a, 1)) }}
-          canGoNext={anchor !== today}
-          value={anchor}
-          onPick={a => { setPinned(null); setAnchor(a) }}
-        />
-        <PeriodToggle value={period} onChange={p => { setPinned(null); setPeriod(p); setAnchor(today) }} />
+      <div className="flex items-center flex-wrap gap-2">
         <SourceToggle value={source} onChange={setSource} />
       </div>
 

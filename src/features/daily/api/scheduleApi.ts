@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { updateCalendarEvent, deleteCalendarEvent, isCalendarNotFound } from '../../calendar/api/calendarApi'
 import { ensureValidCalendarToken, ensureLinkedCalendarEventRemoved } from '../../calendar/api/calendarTokenSync'
 import { logError } from '../../../shared/utils/logError'
@@ -23,15 +24,26 @@ export async function fetchScheduleBlocks(): Promise<ScheduleBlock[]> {
   return data ?? []
 }
 
+// effective_from is stamped HERE, not at any call site: "a new recurring
+// template starts today, never retroactively" is a property of the entity, so
+// every writer gets it for free (and the one existing caller —
+// UnifiedPlanModal's saveRecurring — needs no change). The client's own LOCAL
+// today is sent rather than relying on the column's CURRENT_DATE default,
+// which is the SERVER's UTC day and lands on yesterday for Oslo between 00:00
+// and 02:00. Retries once without the column so the app still works before
+// migration 081 is applied (the established 42703/PGRST204 fallback pattern).
 export async function createScheduleBlock(input: CreateScheduleBlockInput): Promise<ScheduleBlock> {
   const user = await requireUser()
-  const { data, error } = await supabase
-    .from('schedule_blocks')
-    .insert({ ...input, user_id: user.id })
-    .select()
-    .single()
-  if (error) throw error
-  return data
+  const row: Record<string, unknown> = {
+    ...input, user_id: user.id, effective_from: todayStr(),
+  }
+  const { data, error } = await supabase.from('schedule_blocks').insert(row).select().single()
+  if (!error) return data
+  if (error.code !== 'PGRST204' && error.code !== '42703') throw error
+  const { effective_from: _drop, ...withoutColumn } = row
+  const retry = await supabase.from('schedule_blocks').insert(withoutColumn).select().single()
+  if (retry.error) throw retry.error
+  return retry.data
 }
 
 // Recurring templates have no Google Calendar support (never implemented —

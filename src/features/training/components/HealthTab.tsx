@@ -8,6 +8,11 @@ import { HeartSection } from './health/HeartSection'
 import { SleepSection } from './health/SleepSection'
 import { BodySection } from './health/BodySection'
 import { SECTIONS, type SectionId } from './health/sectionTypes'
+import { DateNav } from './health/DateNav'
+import { PeriodToggle, type Period } from './health/PeriodToggle'
+import { useAnchorDate } from './health/useAnchorDate'
+import { stepAnchor, labelForAnchor } from './health/dateNav'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { HealthWorkout } from '../api/healthApi'
 
 // Apple Health-inspired browse view: activity rings + dedicated sections per
@@ -122,6 +127,18 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
   const section = controlledSection ?? localSection
   const setSection = onSectionChange ?? setLocalSection
 
+  // ONE day + period selection for the whole Health tab, owned here and
+  // rendered above the section pills. Was per-section state: Steps, Energy,
+  // Heart and Sleep each held their own anchor/period and rendered their own
+  // DateNav inside the section body, so changing the day in one left the
+  // others on a different date, the control sat at a different scroll depth
+  // in every section, and Overview/Body had no day control at all. Switching
+  // section now keeps the day you were looking at.
+  const today = todayStr()
+  const [anchor, setAnchor] = useAnchorDate()
+  const [period, setPeriod] = useState<Period>('week')
+  const range = { anchor, setAnchor, period, setPeriod }
+
   // The pill strip scrolls on a phone and the right-edge fade paints over
   // whatever sits under it — an ACTIVE (near-black) pill under that gradient
   // reads as a corrupted button. Keep the active pill scrolled into view so it
@@ -133,6 +150,24 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
 
   return (
     <div className="flex flex-col gap-4">
+      {/* The ONE day/period control for every section, above the pills so it
+          reads as "which day am I looking at" for the whole tab rather than a
+          per-section setting. Changing the period resets to today, matching
+          the behaviour each section had on its own before. SourceToggle
+          deliberately stays per-section — it's a display choice about that
+          section's own chart (Auto/Apple/Google), not a page-wide one. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <DateNav
+          label={labelForAnchor(period, anchor)}
+          onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
+          onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
+          canGoNext={anchor !== today}
+          value={anchor}
+          onPick={setAnchor}
+        />
+        <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
+      </div>
+
       {/* Section pills — a right-edge fade cues the strip scrolls on a phone
           (mobile only; all pills fit on desktop). */}
       <div className="relative">
@@ -159,15 +194,15 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
 
       {section === 'overview' && (
         <div className="flex flex-col gap-3">
-          <ActivityRings />
+          <ActivityRings dateStr={anchor} />
           <WorkoutsList />
         </div>
       )}
-      {section === 'steps' && <StepsSection />}
-      {section === 'energy' && <EnergySection />}
-      {section === 'heart' && <HeartSection />}
-      {section === 'sleep' && <SleepSection />}
-      {section === 'body' && <BodySection />}
+      {section === 'steps'  && <StepsSection  range={range} />}
+      {section === 'energy' && <EnergySection range={range} />}
+      {section === 'heart'  && <HeartSection  range={range} />}
+      {section === 'sleep'  && <SleepSection  range={range} />}
+      {section === 'body'   && <BodySection   dateStr={anchor} />}
     </div>
   )
 }

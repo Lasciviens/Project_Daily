@@ -155,7 +155,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   // ── Assemble the unified block list ─────────────────────────────────────
   const blocks: AgendaBlock[] = []
 
-  for (const p of projectRecurringBlocksForDay(dayOfWeek, schedBlocks)) {
+  for (const p of projectRecurringBlocksForDay(dateStr, dayOfWeek, schedBlocks)) {
     const original = schedBlocks.find(s => s.id === p.canonicalId)
     blocks.push({
       id: p.id, canonicalId: p.canonicalId, kind: p.kind, title: p.title, dateStr,

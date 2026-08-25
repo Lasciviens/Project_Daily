@@ -327,15 +327,15 @@ console.log('\n== 14. DayAgenda cross-midnight projection ==')
   // The same scenario for a RECURRING template — Monday-only, 23:00-01:00.
   const recurringTemplate = { id: 'rec1', title: 'Late shift', start_time: '23:00:00', end_time: '01:00:00', days_of_week: [1] } // Monday=1
 
-  const mondayRecurring = projectRecurringBlocksForDay(1, [recurringTemplate])
+  const mondayRecurring = projectRecurringBlocksForDay('2026-08-24', 1, [recurringTemplate])
   check('Monday (dayOfWeek=1) shows the template clipped to 23:00-24:00',
     mondayRecurring.length === 1 && mondayRecurring[0].startHour === 23 && mondayRecurring[0].endHour === 24 && !mondayRecurring[0].spillover)
 
-  const tuesdayRecurring = projectRecurringBlocksForDay(2, [recurringTemplate])
+  const tuesdayRecurring = projectRecurringBlocksForDay('2026-08-25', 2, [recurringTemplate])
   check('Tuesday (dayOfWeek=2) shows the spillover tail 00:00-01:00',
     tuesdayRecurring.length === 1 && tuesdayRecurring[0].startHour === 0 && tuesdayRecurring[0].endHour === 1 && tuesdayRecurring[0].spillover === true)
 
-  const wednesdayRecurring = projectRecurringBlocksForDay(3, [recurringTemplate])
+  const wednesdayRecurring = projectRecurringBlocksForDay('2026-08-26', 3, [recurringTemplate])
   check('Wednesday (not Monday or Tuesday) shows nothing at all',
     wednesdayRecurring.length === 0)
 
@@ -395,6 +395,50 @@ console.log('\n== 16. clampDurationMinutes ==')
   check('a >24h custom entry (1500) is clamped down to 1440 (the single-spillover-day ceiling)', clampDurationMinutes(1500) === 1440)
   check('exactly 1440 (24h) passes through unchanged — the ceiling is inclusive', clampDurationMinutes(1440) === 1440)
   check('a non-finite input (NaN) falls back to the 60-minute default, not 1 or 1440', clampDurationMinutes(NaN) === 60)
+}
+
+console.log('\n== 17. Recurring effective_from (no fabricated past occurrences) ==')
+{
+  // 2026-08-24 is a Monday, 08-25 Tuesday, 08-17 the Monday a week earlier.
+  // A weekday template created on Mon 24 Aug must render from 24 Aug onward
+  // and NEVER on 17 Aug - the exact reported bug ("weekly secince gecmise
+  // yonelik de kayit atiyor").
+  const weekdayTpl = {
+    id: 'rec-eff', title: 'Upper B', start_time: '16:30:00', end_time: '17:30:00',
+    days_of_week: [1, 2, 3, 4, 5], effective_from: '2026-08-24',
+  }
+  check('renders on its own effective_from day (boundary is INCLUSIVE)',
+    projectRecurringBlocksForDay('2026-08-24', 1, [weekdayTpl]).length === 1)
+  check('renders on a later matching weekday',
+    projectRecurringBlocksForDay('2026-08-25', 2, [weekdayTpl]).length === 1)
+  check('does NOT render on a matching weekday BEFORE effective_from (the reported bug)',
+    projectRecurringBlocksForDay('2026-08-17', 1, [weekdayTpl]).length === 0)
+  check('still does not render on a non-matching weekday after effective_from',
+    projectRecurringBlocksForDay('2026-08-30', 0, [weekdayTpl]).length === 0)
+
+  // Pre-migration-081 rows carry no effective_from at all -> old behaviour
+  // (no lower bound), so the UI degrades instead of hiding everything.
+  const legacyTpl = { ...weekdayTpl, effective_from: undefined }
+  check('a row with no effective_from keeps the old unbounded behaviour',
+    projectRecurringBlocksForDay('2026-08-17', 1, [legacyTpl]).length === 1)
+  check('null effective_from is treated the same as absent',
+    projectRecurringBlocksForDay('2026-08-17', 1, [{ ...weekdayTpl, effective_from: null }]).length === 1)
+
+  // A cross-midnight template must gate its spillover on the PREVIOUS day -
+  // the day that occurrence actually starts on - so its own first day never
+  // shows a bogus "continued from yesterday" tail.
+  const nightTpl = {
+    id: 'rec-night', title: 'Late shift', start_time: '23:00:00', end_time: '01:00:00',
+    days_of_week: [1], effective_from: '2026-08-24', // Monday
+  }
+  const firstDay = projectRecurringBlocksForDay('2026-08-24', 1, [nightTpl])
+  check('effective_from day shows only its own occurrence, no spillover from the day before',
+    firstDay.length === 1 && firstDay[0].spillover === false)
+  const dayAfter = projectRecurringBlocksForDay('2026-08-25', 2, [nightTpl])
+  check('the day AFTER shows the spillover tail (its origin day is effective)',
+    dayAfter.length === 1 && dayAfter[0].spillover === true)
+  check('the Tuesday BEFORE effective_from shows no spillover either',
+    projectRecurringBlocksForDay('2026-08-18', 2, [nightTpl]).length === 0)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

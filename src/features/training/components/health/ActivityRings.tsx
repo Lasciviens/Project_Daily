@@ -1,6 +1,5 @@
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries } from '../../healthAggregate'
-import { todayStr } from '../../../../shared/utils/dateUtils'
 
 // Inspired by Apple Health's activity rings (Move/Exercise/Stand) — own
 // palette, own goal defaults (no per-user goal setting exists yet).
@@ -10,9 +9,12 @@ const RINGS = [
   { key: 'apple_stand_hour',    label: 'Stand',     unit: 'hr',   goal: 12,  color: '#38bdf8', icon: '🧍' },
 ] as const
 
-function useRingValue(metricKey: string) {
-  const today = todayStr()
-  const { data: points = [], isLoading } = useHealthMetricSeries(metricKey, today, today)
+// Takes the day being viewed rather than hardcoding today: the rings are
+// part of the Overview section, and Health now has ONE shared day selector
+// at the top, so "go back a day" has to move this too — it used to stay
+// pinned to today no matter what the rest of the page was showing.
+function useRingValue(metricKey: string, dateStr: string) {
+  const { data: points = [], isLoading } = useHealthMetricSeries(metricKey, dateStr, dateStr)
   const series = computeDailySeries(metricKey, points)
   return { value: series[0]?.value ?? 0, isLoading }
 }
@@ -36,10 +38,10 @@ function RingArc({ cx, cy, r, pct, color, strokeWidth }: {
   )
 }
 
-export function ActivityRings() {
-  const move = useRingValue('active_energy')
-  const exercise = useRingValue('apple_exercise_time')
-  const stand = useRingValue('apple_stand_hour')
+export function ActivityRings({ dateStr }: { dateStr: string }) {
+  const move = useRingValue('active_energy', dateStr)
+  const exercise = useRingValue('apple_exercise_time', dateStr)
+  const stand = useRingValue('apple_stand_hour', dateStr)
   const values = [move.value, exercise.value, stand.value]
   const loading = move.isLoading || exercise.isLoading || stand.isLoading
 

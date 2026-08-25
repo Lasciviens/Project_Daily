@@ -115,13 +115,28 @@ function activeZoneMin(body: AnyRecord): number | null {
   return raw * weight
 }
 
+// Per-dataType platform accounting. `skipped.nonFitbit` alone was a single
+// GLOBAL counter, which makes a "why are there zero rows for metric X?"
+// question unanswerable: a metric that returned nothing at all and one whose
+// every point was dropped by the FITBIT allowlist look identical from the
+// outside. Real case this is for: basal_energy_burned has never produced a
+// single Fitbit row in production despite the path id + union field + filter
+// token all matching the live-verified surface doc (so the shape is NOT a
+// guess to "fix" blindly) and the sync reporting no error — the two
+// possibilities are "the Air doesn't publish this type" vs "it does, but
+// only mirrored from HealthKit, and gate 2 correctly drops all of it". These
+// counters separate them on the very next run instead of another round of
+// speculation.
+interface PlatformDiag { raw: number; kept: number; dropped: number }
+
 async function listDataPoints(
   accessToken: string,
   dataType: string,       // kebab-case path id
   filter: string,
-  skipped: { nonFitbit: number },
+  diag: Record<string, PlatformDiag>,
 ): Promise<AnyRecord[]> {
   const out: AnyRecord[] = []
+  const d = diag[dataType] ??= { raw: 0, kept: 0, dropped: 0 }
   let pageToken = ''
   for (let page = 0; page < 30; page++) {
     const url = `${API}/dataTypes/${dataType}/dataPoints?pageSize=10000&filter=${encodeURIComponent(filter)}` +
@@ -133,9 +148,10 @@ async function listDataPoints(
     }
     const j = await res.json()
     for (const p of j.dataPoints ?? []) {
+      d.raw++
       // Gate 2 — strict allowlist. Unknown/missing platform is dropped too.
-      if (p?.dataSource?.platform === 'FITBIT') out.push(p)
-      else skipped.nonFitbit++
+      if (p?.dataSource?.platform === 'FITBIT') { out.push(p); d.kept++ }
+      else d.dropped++
     }
     pageToken = j.nextPageToken ?? ''
     if (!pageToken) break
@@ -222,7 +238,7 @@ Deno.serve(async (req) => {
   }
   const { access_token } = await tokenRes.json()
 
-  const skipped = { nonFitbit: 0 }
+  const platformDiag: Record<string, PlatformDiag> = {}
   const counts: AnyRecord = {}
   const metricRows: AnyRecord[] = []
   const SOURCE = 'Fitbit Air'
@@ -242,7 +258,7 @@ Deno.serve(async (req) => {
     metric: string, unit: string, conv: (b: AnyRecord) => number | null,
   ) {
     const pts = await listDataPoints(access_token, pathId,
-      `${filterTok}.interval.start_time >= "${fromIso}" AND ${filterTok}.interval.start_time < "${toIso}"`, skipped)
+      `${filterTok}.interval.start_time >= "${fromIso}" AND ${filterTok}.interval.start_time < "${toIso}"`, platformDiag)
     const byHour = new Map<string, { date: string; sum: number }>()
     for (const p of pts) {
       const body = p[unionField]
@@ -286,7 +302,7 @@ Deno.serve(async (req) => {
       ['active-energy-burned', 'active_energy_burned', 'active_energy', 'kcal', 'kcal'],
     ] as const) {
       const pts = await listDataPoints(access_token, pathId,
-        `${filterTok}.interval.start_time >= "${fromIso}" AND ${filterTok}.interval.start_time < "${toIso}"`, skipped)
+        `${filterTok}.interval.start_time >= "${fromIso}" AND ${filterTok}.interval.start_time < "${toIso}"`, platformDiag)
       const byHour = new Map<string, { date: string; sum: number }>()
       for (const p of pts) {
         const body = p[pathId === 'steps' ? 'steps' : 'activeEnergyBurned']
@@ -322,7 +338,7 @@ Deno.serve(async (req) => {
   // ── Heart rate samples → one {Min,Avg,Max} row per hour ──
   await guarded('heart_rate', async () => {
     const pts = await listDataPoints(access_token, 'heart-rate',
-      `heart_rate.sample_time.physical_time >= "${fromIso}" AND heart_rate.sample_time.physical_time < "${toIso}"`, skipped)
+      `heart_rate.sample_time.physical_time >= "${fromIso}" AND heart_rate.sample_time.physical_time < "${toIso}"`, platformDiag)
     const byHour = new Map<string, { date: string; min: number; max: number; sum: number; n: number }>()
     for (const p of pts) {
       const hr = p.heartRate
@@ -346,7 +362,7 @@ Deno.serve(async (req) => {
   await guarded('resting_heart_rate', async () => {
     const fromDate = fromIso.slice(0, 10)
     const pts = await listDataPoints(access_token, 'daily-resting-heart-rate',
-      `daily_resting_heart_rate.date >= "${fromDate}"`, skipped)
+      `daily_resting_heart_rate.date >= "${fromDate}"`, platformDiag)
     let n = 0
     for (const p of pts) {
       const d = p.dailyRestingHeartRate
@@ -372,7 +388,7 @@ Deno.serve(async (req) => {
   await guarded('heart_rate_variability', async () => {
     const fromDate = fromIso.slice(0, 10)
     const pts = await listDataPoints(access_token, 'daily-heart-rate-variability',
-      `daily_heart_rate_variability.date >= "${fromDate}"`, skipped)
+      `daily_heart_rate_variability.date >= "${fromDate}"`, platformDiag)
     let n = 0
     for (const p of pts) {
       const d = p.dailyHeartRateVariability
@@ -392,7 +408,7 @@ Deno.serve(async (req) => {
   await guarded('respiratory_rate', async () => {
     const fromDate = fromIso.slice(0, 10)
     const pts = await listDataPoints(access_token, 'daily-respiratory-rate',
-      `daily_respiratory_rate.date >= "${fromDate}"`, skipped)
+      `daily_respiratory_rate.date >= "${fromDate}"`, platformDiag)
     let n = 0
     for (const p of pts) {
       const d = p.dailyRespiratoryRate
@@ -415,7 +431,7 @@ Deno.serve(async (req) => {
   await guarded('vo2_max', async () => {
     const fromDate = fromIso.slice(0, 10)
     const pts = await listDataPoints(access_token, 'daily-vo2-max',
-      `daily_vo2_max.date >= "${fromDate}"`, skipped)
+      `daily_vo2_max.date >= "${fromDate}"`, platformDiag)
     let n = 0
     for (const p of pts) {
       const d = p.dailyVo2Max
@@ -442,7 +458,7 @@ Deno.serve(async (req) => {
   await guarded('skin_temperature', async () => {
     const fromDate = fromIso.slice(0, 10)
     const pts = await listDataPoints(access_token, 'daily-sleep-temperature-derivations',
-      `daily_sleep_temperature_derivations.date >= "${fromDate}"`, skipped)
+      `daily_sleep_temperature_derivations.date >= "${fromDate}"`, platformDiag)
     let n = 0
     for (const p of pts) {
       const d = p.dailySleepTemperatureDerivations
@@ -471,7 +487,7 @@ Deno.serve(async (req) => {
     )
     // Path A: oxygen-saturation samples → hourly Min/Avg/Max (minmaxavg).
     const samples = await listDataPoints(access_token, 'oxygen-saturation',
-      `oxygen_saturation.sample_time.physical_time >= "${fromIso}" AND oxygen_saturation.sample_time.physical_time < "${toIso}"`, skipped)
+      `oxygen_saturation.sample_time.physical_time >= "${fromIso}" AND oxygen_saturation.sample_time.physical_time < "${toIso}"`, platformDiag)
     const byHour = new Map<string, { date: string; min: number; max: number; sum: number; n: number }>()
     for (const p of samples) {
       const o = p.oxygenSaturation
@@ -495,7 +511,7 @@ Deno.serve(async (req) => {
       // Path B: daily-oxygen-saturation summary → one Min/Avg/Max row per day.
       const fromDate = fromIso.slice(0, 10)
       const daily = await listDataPoints(access_token, 'daily-oxygen-saturation',
-        `daily_oxygen_saturation.date >= "${fromDate}"`, skipped)
+        `daily_oxygen_saturation.date >= "${fromDate}"`, platformDiag)
       let n = 0
       for (const p of daily) {
         const d = p.dailyOxygenSaturation
@@ -517,7 +533,7 @@ Deno.serve(async (req) => {
   // ── Sleep sessions → stage segments + one aggregate sleep_analysis row ──
   await guarded('sleep', async () => {
     const pts = await listDataPoints(access_token, 'sleep',
-      `sleep.interval.end_time >= "${fromIso}" AND sleep.interval.end_time < "${toIso}"`, skipped)
+      `sleep.interval.end_time >= "${fromIso}" AND sleep.interval.end_time < "${toIso}"`, platformDiag)
     let n = 0
     const STAGE_MAP: Record<string, string> = {
       LIGHT: 'light', DEEP: 'deep', REM: 'rem', WAKE: 'wake', AWAKE: 'wake', ASLEEP: 'asleep',
@@ -597,7 +613,12 @@ Deno.serve(async (req) => {
   await recordState({ last_success_at: syncedAt, last_error: null, last_error_at: null })
   return new Response(JSON.stringify({
     ok: true, window_days: days, rows: metricRows.length, counts,
-    skipped_non_fitbit: skipped.nonFitbit,
+    skipped_non_fitbit: Object.values(platformDiag).reduce((a, d) => a + d.dropped, 0),
+    // Per-dataType {raw,kept,dropped}: `raw: 0` means Google returned nothing
+    // for that type at all, while `raw > 0, kept: 0` means it returned data
+    // that was ALL non-FITBIT (HealthKit mirror) and correctly dropped by
+    // gate 2. See listDataPoints' comment for why this distinction matters.
+    platform_diag: platformDiag,
     ...(errorKeys.length > 0 ? { partial_errors: errors } : {}),
   }), { status: 200, headers: jsonHeaders })
 })

@@ -2,12 +2,10 @@ import { useState } from 'react'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeHeartRateDailySeries, computeHeartRateHourlySeries, computeDailySeries } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { PeriodToggle, type Period } from './PeriodToggle'
 import { SourceToggle, type SourceSelection } from './SourceToggle'
+import type { HealthRange } from './sectionTypes'
 import { BarLineChart } from './BarLineChart'
-import { DateNav } from './DateNav'
-import { rangeForAnchor, stepAnchor, labelForAnchor } from './dateNav'
-import { useAnchorDate } from './useAnchorDate'
+import { rangeForAnchor, labelForAnchor } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { HEART_EXTRA_METRICS } from './miniMetrics'
 
@@ -15,12 +13,11 @@ function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
 }
 
-export function HeartSection() {
+export function HeartSection({ range }: { range: HealthRange }) {
   const today = todayStr()
-  const [period, setPeriod] = useState<Period>('week')
   const [source, setSource] = useState<SourceSelection>('auto')
   const src = source === 'auto' ? undefined : source
-  const [anchor, setAnchor] = useAnchorDate()
+  const { anchor, setAnchor, period, setPeriod } = range
 
   // Headline follows the SELECTED PERIOD: Day → that day's min–max + resting
   // + HRV; Week/Month → period averages of the daily values, from the same
@@ -86,16 +83,7 @@ export function HeartSection() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <DateNav
-          label={labelForAnchor(period, anchor)}
-          onPrev={() => setAnchor(a => stepAnchor(period, a, -1))}
-          onNext={() => setAnchor(a => stepAnchor(period, a, 1))}
-          canGoNext={anchor !== today}
-          value={anchor}
-          onPick={setAnchor}
-        />
-        <PeriodToggle value={period} onChange={p => { setPeriod(p); setAnchor(today) }} />
+      <div className="flex items-center flex-wrap gap-2">
         <SourceToggle value={source} onChange={setSource} />
       </div>
 
