@@ -76,6 +76,7 @@ export const METRIC_AGGREGATION: Record<string, AggType> = {
   weight_body_mass: 'latest',
   body_fat_percentage: 'latest',
   body_mass_index: 'latest',
+  lean_body_mass: 'latest',
   resting_heart_rate: 'latest',
   cardio_recovery: 'latest',
   vo2_max: 'latest',
