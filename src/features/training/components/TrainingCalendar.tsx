@@ -2,15 +2,32 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useStravaActivities } from '../hooks/useStravaActivities'
-import { useTrainingBlocks } from '../../daily/hooks/useSchedule'
+import { useTrainingBlocks, useScheduleBlocks } from '../../daily/hooks/useSchedule'
+import { projectRecurringBlocksForDay } from '../../daily/components/dayAgendaProjection'
 import { HevyWorkoutDetail } from './HevyWorkoutDetail'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { DateNav } from '../../../shared/components/DateNav'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { supabase } from '../../../integrations/supabase/client'
 import type { HevyWorkout, StravaActivity } from '../types.hevy'
-import type { TimeBlock } from '../../daily/types'
+import type { TimeBlock, ScheduleBlock } from '../../daily/types'
 import type { Task } from '../../todo/types'
+
+// A calendar "plan" entry is either a real one-off time_blocks row, or a
+// PROJECTED occurrence of a recurring schedule_blocks template (e.g. "every
+// Mon/Wed/Fri 16:30") — the calendar used to only ever fetch one-off training
+// blocks (useTrainingBlocks), so a recurring training routine never showed up
+// here at all even though DayAgenda already projects it correctly. A
+// recurring occurrence has no row of its own for a given day (it's derived,
+// not stored), so it carries a reference to the REAL schedule_blocks row for
+// editing instead of a synthetic time_blocks shape.
+interface CalendarPlanItem {
+  id:    string
+  title: string
+  kind:  'block' | 'recurring'
+  timeBlock?:     TimeBlock
+  scheduleBlock?: ScheduleBlock
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,7 +108,7 @@ interface DayData {
   date: Date
   workouts: HevyWorkout[]
   activities: StravaActivity[]
-  plans: TimeBlock[]
+  plans: CalendarPlanItem[]
 }
 
 interface DayCellProps {
@@ -101,7 +118,7 @@ interface DayCellProps {
   todayStr: string
   onSelect: (d: string) => void
   onOpenWorkout: (id: string) => void
-  onOpenPlan: (b: TimeBlock) => void
+  onOpenPlan: (p: CalendarPlanItem) => void
 }
 
 function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWorkout, onOpenPlan }: DayCellProps) {
@@ -136,10 +153,10 @@ function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWor
             type="button"
             onClick={e => { e.stopPropagation(); onOpenPlan(p) }}
             className="flex items-center gap-1 rounded px-1.5 py-0.5 bg-cream-100 text-ink-600 text-[10px] font-medium leading-tight truncate hover:bg-cream-200 transition-colors text-left"
-            title={`Planned: ${p.title} — click to edit`}
+            title={`${p.kind === 'recurring' ? 'Recurring plan' : 'Planned'}: ${p.title} — click to edit`}
           >
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${planDotClass(dateStr, todayStr)}`} />
-            <span className="truncate">{p.title}</span>
+            <span className="truncate">{p.kind === 'recurring' && '⟳ '}{p.title}</span>
           </button>
         ))}
 
@@ -176,7 +193,7 @@ interface SelectedDay {
   date:       Date
   workouts:   HevyWorkout[]
   activities: StravaActivity[]
-  plans:      TimeBlock[]
+  plans:      CalendarPlanItem[]
 }
 
 // Shared by WeekView and MonthView — was pixel-for-pixel duplicated in both.
@@ -187,7 +204,7 @@ function DayDetailPanel({
   dateKey:       string
   todayStr:      string
   onOpenWorkout: (id: string) => void
-  onOpenPlan:    (b: TimeBlock) => void
+  onOpenPlan:    (p: CalendarPlanItem) => void
 }) {
   if (!selectedDay || (selectedDay.workouts.length === 0 && selectedDay.activities.length === 0 && selectedDay.plans.length === 0)) {
     return null
@@ -211,7 +228,7 @@ function DayDetailPanel({
                 className="w-full text-left flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg hover:bg-cream-200 transition-colors min-h-[44px]"
               >
                 <span className={`w-2 h-2 rounded-full shrink-0 ${planDotClass(dateKey, todayStr)}`} />
-                <span className="text-sm font-medium text-ink-900">{p.title}</span>
+                <span className="text-sm font-medium text-ink-900">{p.kind === 'recurring' && '⟳ '}{p.title}</span>
               </button>
             ))}
           </div>
@@ -263,7 +280,7 @@ interface WeekViewProps {
   weekStart: Date
   workouts: HevyWorkout[]
   activities: StravaActivity[]
-  plansByDate: Map<string, TimeBlock[]>
+  plansByDate: Map<string, CalendarPlanItem[]>
   todayStr: string
   today: Date
   onPrev: () => void
@@ -271,7 +288,7 @@ interface WeekViewProps {
   onToday: () => void
   onSwitchToMonth: () => void
   onOpenWorkout: (id: string) => void
-  onOpenPlan: (b: TimeBlock) => void
+  onOpenPlan: (p: CalendarPlanItem) => void
 }
 
 function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, today, onPrev, onNext, onToday, onSwitchToMonth, onOpenWorkout, onOpenPlan }: WeekViewProps) {
@@ -360,7 +377,7 @@ interface MonthViewProps {
   month: number   // 0-based
   workouts: HevyWorkout[]
   activities: StravaActivity[]
-  plansByDate: Map<string, TimeBlock[]>
+  plansByDate: Map<string, CalendarPlanItem[]>
   todayStr: string
   today: Date
   onPrevMonth: () => void
@@ -368,7 +385,7 @@ interface MonthViewProps {
   onToday: () => void
   onSwitchToWeek: () => void
   onOpenWorkout: (id: string) => void
-  onOpenPlan: (b: TimeBlock) => void
+  onOpenPlan: (p: CalendarPlanItem) => void
 }
 
 function MonthView({ year, month, workouts, activities, plansByDate, todayStr, today, onPrevMonth, onNextMonth, onToday, onSwitchToWeek, onOpenWorkout, onOpenPlan }: MonthViewProps) {
@@ -515,7 +532,8 @@ export function TrainingCalendar() {
   }))
 
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
-  const [selectedPlanBlock, setSelectedPlanBlock] = useState<TimeBlock | null>(null)
+  const [selectedPlanItem, setSelectedPlanItem] = useState<CalendarPlanItem | null>(null)
+  const selectedPlanBlock = selectedPlanItem?.kind === 'block' ? selectedPlanItem.timeBlock : undefined
 
   // A task-linked plan block must open the TASK (mode='task', where its
   // Schedule section lives) — NOT the block directly via `timeBlock`, which
@@ -523,7 +541,9 @@ export function TrainingCalendar() {
   // task-linked block with `timeBlock` seeded `alsoCreateTask` misleadingly
   // (buildInitialForm has no idea a task already exists) and Save then
   // created a SECOND task and re-pointed the block's task_id at it — the
-  // real duplicate-task bug. Same pattern as NextSessionBanner.
+  // real duplicate-task bug. Same pattern as NextSessionBanner. A recurring
+  // occurrence (kind='recurring') has no task concept at all — schedule_blocks
+  // rows can never be task-linked — so this only ever applies to a real block.
   const isPlanTaskLinked = !!selectedPlanBlock?.task_id
   const { data: selectedPlanTask } = useQuery({
     queryKey: ['tasks', 'byId', selectedPlanBlock?.task_id],
@@ -552,16 +572,55 @@ export function TrainingCalendar() {
 
   const { data: planBlocks = [] } = useTrainingBlocks(rangeFrom, rangeTo)
 
-  // date → planned training blocks for that day
+  // Recurring training templates (e.g. "every Mon/Wed/Fri 16:30") — fetched
+  // once (all schedule_blocks, cheap/small, cached 10min by useScheduleBlocks)
+  // and PROJECTED onto the visible range below with the same pure helper
+  // DayAgenda already uses. Real gap fixed: this calendar used to only ever
+  // read one-off time_blocks (useTrainingBlocks), so a recurring routine
+  // never showed up here at all even though it renders correctly on Daily.
+  const { data: allScheduleBlocks = [] } = useScheduleBlocks()
+  const trainingScheduleBlocks = useMemo(
+    () => allScheduleBlocks.filter(b => b.category === 'training'),
+    [allScheduleBlocks],
+  )
+
+  // date → planned training sessions for that day (one-off rows + projected
+  // recurring occurrences, merged into one list).
   const plansByDate = useMemo(() => {
-    const m = new Map<string, TimeBlock[]>()
+    const m = new Map<string, CalendarPlanItem[]>()
+
     for (const b of planBlocks) {
       const bucket = m.get(b.date) ?? []
-      bucket.push(b)
+      bucket.push({ id: b.id, title: b.title, kind: 'block', timeBlock: b })
       m.set(b.date, bucket)
     }
+
+    if (trainingScheduleBlocks.length) {
+      // Walk every date in the visible range once, day by day — cheap even
+      // for a full month (≤31 iterations × a handful of templates).
+      let cursor = new Date(`${rangeFrom}T00:00:00`)
+      const end = new Date(`${rangeTo}T00:00:00`)
+      while (cursor <= end) {
+        const dateStr   = ymd(cursor)
+        const dayOfWeek = cursor.getDay()
+        for (const p of projectRecurringBlocksForDay(dateStr, dayOfWeek, trainingScheduleBlocks)) {
+          // A spillover tail (a session crossing midnight) is DayAgenda's own
+          // per-minute agenda concept — this calendar shows one entry per day
+          // a session STARTS on, matching how a one-off block already behaves
+          // here (no spillover duplication exists for those either).
+          if (p.spillover) continue
+          const scheduleBlock = trainingScheduleBlocks.find(s => s.id === p.canonicalId)
+          if (!scheduleBlock) continue
+          const bucket = m.get(dateStr) ?? []
+          bucket.push({ id: `${p.canonicalId}__${dateStr}`, title: p.title, kind: 'recurring', scheduleBlock })
+          m.set(dateStr, bucket)
+        }
+        cursor = addDays(cursor, 1)
+      }
+    }
+
     return m
-  }, [planBlocks])
+  }, [planBlocks, trainingScheduleBlocks, rangeFrom, rangeTo])
 
   const todayStr = ymd(today)
 
@@ -598,7 +657,7 @@ export function TrainingCalendar() {
           onToday={handleTodayWeek}
           onSwitchToMonth={() => setView('month')}
           onOpenWorkout={setSelectedWorkoutId}
-          onOpenPlan={setSelectedPlanBlock}
+          onOpenPlan={setSelectedPlanItem}
         />
       ) : (
         <MonthView
@@ -614,7 +673,7 @@ export function TrainingCalendar() {
           onToday={handleTodayMonth}
           onSwitchToWeek={() => setView('week')}
           onOpenWorkout={setSelectedWorkoutId}
-          onOpenPlan={setSelectedPlanBlock}
+          onOpenPlan={setSelectedPlanItem}
         />
       )}
 
@@ -624,11 +683,12 @@ export function TrainingCalendar() {
       />
 
       <UnifiedPlanModal
-        open={!!selectedPlanBlock && (isPlanTaskLinked ? !!selectedPlanTask : true)}
-        onClose={() => setSelectedPlanBlock(null)}
-        config={{ heading: 'Edit Session' }}
+        open={!!selectedPlanItem && (isPlanTaskLinked ? !!selectedPlanTask : true)}
+        onClose={() => setSelectedPlanItem(null)}
+        config={{ heading: selectedPlanItem?.kind === 'recurring' ? 'Edit Recurring Session' : 'Edit Session' }}
         task={isPlanTaskLinked ? selectedPlanTask : undefined}
-        timeBlock={!isPlanTaskLinked ? (selectedPlanBlock ?? undefined) : undefined}
+        timeBlock={selectedPlanItem?.kind === 'block' && !isPlanTaskLinked ? selectedPlanBlock : undefined}
+        scheduleBlock={selectedPlanItem?.kind === 'recurring' ? selectedPlanItem.scheduleBlock : undefined}
       />
     </div>
   )
