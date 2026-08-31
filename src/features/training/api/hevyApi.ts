@@ -184,12 +184,18 @@ export async function fetchMuscleVolume(fromISO: string, toISO: string): Promise
 // mirrors fetchMuscleVolume's own "fetch once, derive many views client-side"
 // shape rather than a separate round trip per chart.
 import type { ProgressSetRow, ProgressTemplateRow } from '../progressAggregate'
+import { fetchHealthMetricSeries } from './healthApi'
+import { computeDailySeries } from '../healthAggregate'
 
 // The aggregation functions only need `id`/`type`; the exercise-picker UI
 // also needs a name and muscle group to render/filter/group by.
+// `secondary_muscle_groups` (added for the weekly-sets-per-muscle trend) —
+// same `hevy_exercise_template_muscles` join fetchHevyExerciseTemplates
+// already does, so a muscle-attributed exercise never needs a second query.
 export interface TrainingExerciseTemplate extends ProgressTemplateRow {
   title: string
   primary_muscle_group: string | null
+  secondary_muscle_groups: string[]
 }
 
 export interface TrainingHistory {
@@ -261,7 +267,58 @@ export async function fetchTrainingHistory(fromISO: string, toISO: string): Prom
     .in('id', templateIds)
   if (tErr) throw tErr
 
-  return { sets, templates: (templates ?? []) as TrainingExerciseTemplate[] }
+  // Same join fetchHevyExerciseTemplates already does for the Exercises tab —
+  // reused here so the weekly-sets-per-muscle trend credits secondary
+  // muscles exactly like the Muscles tab does, with no separate mapping.
+  const { data: muscleRows, error: mErr } = await supabase
+    .from('hevy_exercise_template_muscles')
+    .select('exercise_template_id, muscle_group')
+    .in('exercise_template_id', templateIds)
+  if (mErr) throw mErr
+  const secondariesByTemplate = new Map<string, string[]>()
+  for (const m of (muscleRows ?? []) as { exercise_template_id: string; muscle_group: string }[]) {
+    const bucket = secondariesByTemplate.get(m.exercise_template_id) ?? []
+    bucket.push(m.muscle_group)
+    secondariesByTemplate.set(m.exercise_template_id, bucket)
+  }
+
+  const fullTemplates: TrainingExerciseTemplate[] = (templates ?? []).map(t => ({
+    ...t,
+    secondary_muscle_groups: secondariesByTemplate.get(t.id) ?? [],
+  }))
+
+  return { sets, templates: fullTemplates }
+}
+
+// ─── Bodyweight history (Relative Strength chart) ────────────────────────────
+// Unions the user's own manual body-measurement log (hevy_body_measurements)
+// with an automated scale reading synced through Apple Health/Fitbit
+// (health_metrics.weight_body_mass). Per a same-day conflict this app's own
+// established convention ("manual" always outranks a device — see
+// healthSourceDefaults.ts) is applied: hevy_body_measurements wins, the
+// health-metrics reading only fills days the manual log has no entry for.
+export interface BodyweightAnchor { date: string; kg: number }
+
+export async function fetchBodyweightHistory(fromDate: string, toDate: string): Promise<BodyweightAnchor[]> {
+  const { data: hevyRows, error } = await supabase
+    .from('hevy_body_measurements')
+    .select('date, weight_kg')
+    .gte('date', fromDate)
+    .lte('date', toDate)
+    .not('weight_kg', 'is', null)
+  if (error) throw error
+
+  const byDate = new Map<string, number>()
+  for (const r of (hevyRows ?? []) as { date: string; weight_kg: number }[]) byDate.set(r.date, r.weight_kg)
+
+  const healthPoints = await fetchHealthMetricSeries('weight_body_mass', fromDate, toDate)
+  for (const { date, value } of computeDailySeries('weight_body_mass', healthPoints)) {
+    if (!byDate.has(date)) byDate.set(date, value)
+  }
+
+  return [...byDate.entries()]
+    .map(([date, kg]) => ({ date, kg }))
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | null> {

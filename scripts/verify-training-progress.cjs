@@ -18,6 +18,20 @@
  *   7. computeConsistencyByWeek / currentStreakWeeks — session-per-week
  *      counting and streak termination at a real gap.
  *
+ * Follow-up review (2026-08-31) — three originally-deferred charts plus each
+ * agent's own top "extra" recommendation:
+ *   8. resolveBodyweightForDate / computeRelativeStrengthTrend — the
+ *      interpolate/nearest-within-14-days/no-extrapolation-before-history
+ *      ladder, and est1rm-only eligibility.
+ *   9. computeRepRangeDistribution — bucket boundaries, warmup exclusion,
+ *      dropset/failure inclusion, muscle-group filtering.
+ *  10. computeWeeklyChangeFlags — new-exercise detection, load/volume median
+ *      comparison, the minimum-prior-weeks gate.
+ *  11. computeWeeklySetsPerMuscleTrend — primary+secondary credit via the
+ *      same contribution() seam the Muscles tab uses.
+ *  12. recoveryAggregate.ts — weekly sleep/resting-HR aggregation and the
+ *      minimum-nights/days-per-week gate.
+ *
  *   Run:  node scripts/verify-training-progress.cjs
  */
 require('sucrase/register')
@@ -25,7 +39,10 @@ require('sucrase/register')
 const {
   est1RM, metricKindForExerciseType, computeExerciseProgression, repRangeVariedSignificantly,
   computeWeeklyVolumeTrend, rollingAverage, computeConsistencyByWeek, currentStreakWeeks,
+  resolveBodyweightForDate, computeRelativeStrengthTrend, REP_BUCKETS, computeRepRangeDistribution,
+  computeWeeklyChangeFlags, computeWeeklySetsPerMuscleTrend, mondayOf,
 } = require('../src/features/training/progressAggregate')
+const { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } = require('../src/features/training/recoveryAggregate')
 
 let passed = 0
 let failed = 0
@@ -169,6 +186,148 @@ console.log('\n== 7. computeConsistencyByWeek / currentStreakWeeks ==')
     currentStreakWeeks(weeks, 1) === 1)
   check('a stricter minSessions=2 threshold breaks the streak (last week only had 1 session)',
     currentStreakWeeks(weeks, 2) === 0)
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+console.log('\n== 8. resolveBodyweightForDate / computeRelativeStrengthTrend ==')
+{
+  const anchors = [{ date: '2026-07-01', kg: 80 }, { date: '2026-07-15', kg: 78 }]
+  const exact = resolveBodyweightForDate('2026-07-01', anchors)
+  check('exact same-day match is NOT estimated', exact.kg === 80 && exact.estimated === false)
+
+  const mid = resolveBodyweightForDate('2026-07-08', anchors) // exactly halfway, 14-day bracket
+  check('interpolates linearly between two anchors ≤21 days apart', mid.kg === 79 && mid.estimated === true, JSON.stringify(mid))
+
+  const wideAnchors = [{ date: '2026-06-01', kg: 82 }, { date: '2026-08-01', kg: 75 }] // 61 days apart
+  const nearSide = resolveBodyweightForDate('2026-06-05', wideAnchors) // 4 days from the near anchor
+  check('bracket too wide (>21d) falls back to nearest-within-14', nearSide && nearSide.kg === 82 && nearSide.estimated === true)
+  const noSide = resolveBodyweightForDate('2026-07-10', wideAnchors) // ~39d / ~22d from either anchor
+  check('no anchor within 14 days and bracket too wide -> null, never a guess', noSide === null)
+
+  const beforeHistory = resolveBodyweightForDate('2026-05-01', [{ date: '2026-07-01', kg: 80 }]) // 61 days before the only anchor
+  check('far before the only anchor -> null (never extrapolate across a large gap)', beforeHistory === null)
+
+  check('no anchors at all -> null', resolveBodyweightForDate('2026-07-01', []) === null)
+
+  const points = [
+    { date: '2026-07-01', topValue: 100, volume: 500, topWeightKg: 100, topReps: 5 },
+    { date: '2026-07-08', topValue: 105, volume: 525, topWeightKg: 105, topReps: 5 },
+    { date: '2026-09-01', topValue: 110, volume: 550, topWeightKg: 110, topReps: 5 }, // no nearby bodyweight
+  ]
+  const trend = computeRelativeStrengthTrend(points, anchors)
+  check('sessions with no usable nearby bodyweight are DROPPED, not guessed', trend.length === 2)
+  check('ratio = est1RM ÷ resolved bodyweight, rounded to 2dp', trend[0].ratio === 1.25 && trend[0].bodyweightKg === 80)
+  check('the interpolated point is flagged estimated', trend[1].estimated === true)
+}
+
+console.log('\n== 9. computeRepRangeDistribution ==')
+{
+  check('bucket boundaries are 1-5 / 6-12 / 13-20 / 21-30 / 31+ (sports-scientist review, not the coach\'s original 6-8/9-12 split)',
+    REP_BUCKETS.map(b => b.key).join(',') === '1-5,6-12,13-20,21-30,31+')
+
+  const mk = (over) => ({ workout_id: 'w1', date: '2026-08-01', exercise_template_id: 't1', set_type: 'normal', weight_kg: 1, reps: null, duration_seconds: null, distance_meters: null, ...over })
+  const sets = [
+    mk({ set_type: 'warmup', reps: 3 }),          // excluded — warmup
+    mk({ reps: 5 }),                              // 1-5
+    mk({ reps: 8 }),                              // 6-12
+    mk({ set_type: 'dropset', reps: 15 }),        // 13-20 — dropsets DO count
+    mk({ set_type: 'failure', reps: 25 }),        // 21-30 — failure sets DO count
+    mk({ reps: 40 }),                             // 31+
+    mk({ reps: null, duration_seconds: 60 }),     // excluded — no rep count (duration-type)
+    mk({ exercise_template_id: 't2', reps: 8 }),  // different exercise
+  ]
+  const dist = computeRepRangeDistribution(sets)
+  const byKey = Object.fromEntries(dist.map(d => [d.key, d.count]))
+  check('warmup excluded', byKey['1-5'] === 1)
+  check('dropset counted', byKey['13-20'] === 1)
+  check('failure set counted', byKey['21-30'] === 1)
+  check('reps=null (duration-type) excluded', dist.reduce((a, b) => a + b.count, 0) === 6)
+
+  const filtered = computeRepRangeDistribution(sets, new Set(['t1']))
+  check('templateIds filter narrows to one exercise', filtered.reduce((a, b) => a + b.count, 0) === 5)
+}
+
+console.log('\n== 10. computeWeeklyChangeFlags ("Big changes this week") ==')
+{
+  const today = '2026-08-31'
+  const thisWeek = mondayOf(today)
+  const w1 = addDays(thisWeek, -7)
+  const w2 = addDays(thisWeek, -14)
+  const w3 = addDays(thisWeek, -21)
+  const templates = [{ id: 'squat', type: 'weight_reps' }, { id: 'new-move', type: 'weight_reps' }]
+
+  const mkSet = (tid, date, weight, reps) => ({ workout_id: 'w', date, exercise_template_id: tid, set_type: 'normal', weight_kg: weight, reps, duration_seconds: null, distance_meters: null })
+
+  const sets = [
+    // squat: steady ~100kg x5 for 3 prior weeks, then a real jump this week
+    mkSet('squat', w3, 100, 5), mkSet('squat', w3, 100, 5),
+    mkSet('squat', w2, 100, 5), mkSet('squat', w2, 100, 5),
+    mkSet('squat', w1, 102, 5), mkSet('squat', w1, 102, 5),
+    mkSet('squat', thisWeek, 115, 5), mkSet('squat', thisWeek, 115, 5), // +~13% load vs median ~101
+    // new-move: only trained this week -> should flag 'new'
+    mkSet('new-move', thisWeek, 40, 8),
+  ]
+  const flags = computeWeeklyChangeFlags(sets, templates, today)
+  const bySquat = flags.filter(f => f.templateId === 'squat')
+  const byNew = flags.filter(f => f.templateId === 'new-move')
+
+  check('a never-trained-before exercise is flagged "new" unconditionally', byNew.length === 1 && byNew[0].kind === 'new')
+  check('a real top-set load jump (>=10% vs 4-wk median) is flagged "load"', bySquat.some(f => f.kind === 'load'))
+  check('an exercise with too little prior history (<3 weeks) produces no load/volume flag',
+    computeWeeklyChangeFlags(
+      [mkSet('brandnew', w1, 50, 5), mkSet('brandnew', thisWeek, 80, 5)], // only 1 prior week
+      [{ id: 'brandnew', type: 'weight_reps' }], today,
+    ).every(f => f.kind === 'new' || f.templateId !== 'brandnew'))
+
+  const noChangeSets = [
+    mkSet('flat', w3, 100, 5), mkSet('flat', w2, 100, 5), mkSet('flat', w1, 100, 5), mkSet('flat', thisWeek, 101, 5),
+  ]
+  const flatFlags = computeWeeklyChangeFlags(noChangeSets, [{ id: 'flat', type: 'weight_reps' }], today)
+  check('a steady exercise with no real jump produces no flag', flatFlags.length === 0, JSON.stringify(flatFlags))
+}
+
+console.log('\n== 11. computeWeeklySetsPerMuscleTrend ==')
+{
+  const contributionFn = (_id, _slug, role) => (role === 'primary' ? 1 : 0.5)
+  const templateMuscles = new Map([
+    ['bench', { primarySlug: 'chest', secondarySlugs: ['triceps'] }],
+    ['fly',   { primarySlug: 'chest', secondarySlugs: [] }],
+  ])
+  const mk = (tid, date, type = 'normal') => ({ workout_id: 'w', date, exercise_template_id: tid, set_type: type, weight_kg: 1, reps: 1, duration_seconds: null, distance_meters: null })
+  const sets = [
+    mk('bench', '2026-08-03'), mk('bench', '2026-08-03', 'warmup'), // warmup excluded
+    mk('fly', '2026-08-03'),
+    mk('bench', '2026-08-10'),
+  ]
+  const chest = computeWeeklySetsPerMuscleTrend(sets, templateMuscles, 'chest', contributionFn)
+  check('two weeks produced', chest.length === 2)
+  check('primary credit only (1.0) for bench + fly the first week, warmup excluded', chest[0].sets === 2, JSON.stringify(chest))
+
+  const triceps = computeWeeklySetsPerMuscleTrend(sets, templateMuscles, 'triceps', contributionFn)
+  check('secondary credit (0.5) for a muscle only trained indirectly, both weeks bench appears',
+    triceps.length === 2 && triceps.every(w => w.sets === 0.5), JSON.stringify(triceps))
+}
+
+console.log('\n== 12. recoveryAggregate — weekly sleep / resting-HR gating ==')
+{
+  const week = mondayOf('2026-08-03')
+  const nights = (n, hours) => Array.from({ length: n }, (_, i) => ({ date: addDays(week, i), core: 0, rem: 0, deep: 0, awake: 0, total: hours }))
+  const fullWeek = computeWeeklySleepTrend(nights(5, 7))
+  check('5 tracked nights -> a real average is shown', fullWeek[0].avgHours === 7 && fullWeek[0].nights === 5)
+
+  const sparseWeek = computeWeeklySleepTrend(nights(2, 7))
+  check('fewer than 4 nights -> null, not a misleading partial average', sparseWeek[0].avgHours === null && sparseWeek[0].nights === 2)
+
+  const days = (n, bpm) => Array.from({ length: n }, (_, i) => ({ date: addDays(week, i), value: bpm }))
+  const fullRhr = computeWeeklyRestingHRTrend(days(5, 60))
+  check('5 tracked days -> a real median is shown', fullRhr[0].medianBpm === 60)
+  const sparseRhr = computeWeeklyRestingHRTrend(days(3, 60))
+  check('fewer than 4 days -> null', sparseRhr[0].medianBpm === null)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

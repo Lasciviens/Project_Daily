@@ -26,7 +26,10 @@ function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
-const METRIC_META: Record<ProgressMetricKind, { label: string; unit: string; color: string; invert?: boolean }> = {
+// Exported so WeeklyChangesPanel ("Big changes this week") reports load
+// jumps in the same unit/label as this chart — one lookup table for what
+// each metric kind is called, not two.
+export const METRIC_META: Record<ProgressMetricKind, { label: string; unit: string; color: string; invert?: boolean }> = {
   est1rm:         { label: 'Est. 1RM',        unit: 'kg',   color: '#7c3aed' },
   reps:           { label: 'Top set reps',    unit: 'reps', color: '#0ea5e9' },
   addedWeight:    { label: 'Added weight',    unit: 'kg',   color: '#7c3aed' },

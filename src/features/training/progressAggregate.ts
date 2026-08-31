@@ -189,8 +189,11 @@ function isoWeekKey(dateStr: string): string {
 }
 
 /** Monday date ('yyyy-MM-dd') of the week a given date falls in — used as the
- *  chart's x-axis label instead of the raw ISO week string. */
-function mondayOf(dateStr: string): string {
+ *  chart's x-axis label instead of the raw ISO week string. Exported so
+ *  recoveryAggregate.ts (sleep/resting-HR weekly grouping) and the
+ *  weekly-change-flags helper below key their own weeks identically to this
+ *  file's — one definition of "a week" for the whole Progress tab. */
+export function mondayOf(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')
   const day = (d.getDay() + 6) % 7
   d.setDate(d.getDate() - day)
@@ -286,4 +289,286 @@ export function currentStreakWeeks(weeks: ConsistencyWeek[], minSessions = 1): n
     else break
   }
   return streak
+}
+
+// ── Relative strength vs bodyweight ─────────────────────────────────────────
+// Added from a follow-up sports-scientist + strength-coach review
+// (2026-08-31), reconciling their two proposals: only 'est1rm'-type exercises
+// are eligible (bodyweight_weighted's "total load" variant was considered and
+// dropped — two different ratio formulas on one chart is exactly the kind of
+// silent misread this file exists to prevent), and the bodyweight-resolution
+// ladder below is the sports-scientist's stricter version (interpolate
+// between two close anchors, else nearest-within-14-days, else a real gap —
+// never an indefinite carry-forward, which would flatten the denominator
+// across a cut/bulk and make the ratio lie about which side changed).
+export interface BodyweightAnchor { date: string; kg: number }
+
+const MAX_INTERPOLATION_GAP_DAYS = 21
+const MAX_NEAREST_ANCHOR_DAYS = 14
+
+function daysBetween(a: string, b: string): number {
+  return Math.round((new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86_400_000)
+}
+
+/** Resolves a session date to a bodyweight, or null when nothing nearby
+ *  justifies a guess. `anchors` must be sorted ascending by date.
+ *  `estimated` is true whenever the value isn't an exact same-day weigh-in —
+ *  callers render those as a visually distinct (hollow) point. */
+export function resolveBodyweightForDate(
+  dateStr: string,
+  anchors: BodyweightAnchor[],
+): { kg: number; estimated: boolean } | null {
+  if (anchors.length === 0) return null
+
+  const exact = anchors.find(a => a.date === dateStr)
+  if (exact) return { kg: exact.kg, estimated: false }
+
+  let prev: BodyweightAnchor | null = null
+  let next: BodyweightAnchor | null = null
+  for (const a of anchors) {
+    if (a.date < dateStr) prev = a
+    else if (a.date > dateStr && !next) next = a
+  }
+
+  if (prev && next) {
+    const span = daysBetween(prev.date, next.date)
+    if (span <= MAX_INTERPOLATION_GAP_DAYS) {
+      const t = daysBetween(prev.date, dateStr) / span
+      return { kg: Math.round((prev.kg + t * (next.kg - prev.kg)) * 10) / 10, estimated: true }
+    }
+  }
+
+  // No usable bracket (or too wide a gap) — fall back to whichever single
+  // anchor is nearest, but only within 14 days. Never extrapolate before the
+  // very first weigh-in: a bodyweight history usually starts because
+  // something changed (a bulk, a cut), so backfilling assumes the opposite
+  // of what's most likely true right where it matters most.
+  const candidates = [prev, next].filter((a): a is BodyweightAnchor => a != null)
+  if (candidates.length === 0) return null
+  const nearest = candidates.reduce((best, a) =>
+    Math.abs(daysBetween(dateStr, a.date)) < Math.abs(daysBetween(dateStr, best.date)) ? a : best)
+  const gap = Math.abs(daysBetween(dateStr, nearest.date))
+  return gap <= MAX_NEAREST_ANCHOR_DAYS ? { kg: nearest.kg, estimated: true } : null
+}
+
+export interface RelativeStrengthPoint {
+  date: string
+  ratio: number
+  bodyweightKg: number
+  est1rmValue: number
+  estimated: boolean
+}
+
+/** Combines one exercise's own session points (from computeExerciseProgression
+ *  with metricKind='est1rm') with resolved bodyweight to produce a
+ *  strength-per-bodyweight trend. Sessions with no usable bodyweight nearby
+ *  are dropped rather than guessed — see resolveBodyweightForDate. */
+export function computeRelativeStrengthTrend(
+  points: ExerciseSessionPoint[],
+  anchors: BodyweightAnchor[],
+): RelativeStrengthPoint[] {
+  const sorted = [...anchors].sort((a, b) => a.date.localeCompare(b.date))
+  const out: RelativeStrengthPoint[] = []
+  for (const p of points) {
+    if (p.topValue == null) continue
+    const bw = resolveBodyweightForDate(p.date, sorted)
+    if (!bw) continue
+    out.push({ date: p.date, ratio: Math.round((p.topValue / bw.kg) * 100) / 100, bodyweightKg: bw.kg, est1rmValue: p.topValue, estimated: bw.estimated })
+  }
+  return out
+}
+
+// ── Rep-range distribution ──────────────────────────────────────────────────
+// Boundaries are the sports-scientist review's call, not the strength-coach's
+// originally-proposed 1-5/6-8/9-12/13-20/21+ split: Schoenfeld et al. 2017
+// (JSCR 31(12):3508-3523) and Morton et al. 2016 (J Appl Physiol 121(1):
+// 129-138) find hypertrophy roughly EQUIVALENT from ~5 to ~30 reps taken near
+// failure, with heavy loads specifically favouring maximal strength — there is
+// no evidence for a boundary at rep 8, so this file deliberately does not draw
+// one, and the buckets carry neutral rep-count labels rather than a
+// "hypertrophy range" claim the literature doesn't support.
+export interface RepBucket { key: string; min: number; max: number; label: string }
+export const REP_BUCKETS: RepBucket[] = [
+  { key: '1-5',  min: 1,  max: 5,        label: '1–5 reps' },
+  { key: '6-12', min: 6,  max: 12,       label: '6–12 reps' },
+  { key: '13-20',min: 13, max: 20,       label: '13–20 reps' },
+  { key: '21-30',min: 21, max: 30,       label: '21–30 reps' },
+  { key: '31+',  min: 31, max: Infinity, label: '31+ reps' },
+]
+
+function bucketForReps(reps: number): RepBucket {
+  return REP_BUCKETS.find(b => reps >= b.min && reps <= b.max) ?? REP_BUCKETS[REP_BUCKETS.length - 1]
+}
+
+export interface RepBucketCount { key: string; label: string; count: number }
+
+/** Whole-set counts per rep bucket. Warmups excluded (this file's standing
+ *  convention); dropsets and failure sets ARE counted — a real dose, matching
+ *  computeExerciseProgression's own eligibility — which does bias toward the
+ *  higher buckets when a lifter uses them heavily (flagged in the UI copy).
+ *  `templateFilter` narrows to one muscle group's primary-attributed exercises
+ *  only — deliberately NOT the Muscles tab's fractional secondary credit
+ *  (ROLE_WEIGHTS): a histogram counts whole sets, and crediting half a set to
+ *  a second bar would double-count it. */
+export function computeRepRangeDistribution(
+  sets: ProgressSetRow[],
+  templateIds?: Set<string>,
+): RepBucketCount[] {
+  const counts = new Map(REP_BUCKETS.map(b => [b.key, 0]))
+  for (const s of sets) {
+    if (s.set_type === 'warmup') continue
+    if (s.reps == null || s.reps < 1) continue
+    if (templateIds && !templateIds.has(s.exercise_template_id)) continue
+    const bucket = bucketForReps(s.reps)
+    counts.set(bucket.key, (counts.get(bucket.key) ?? 0) + 1)
+  }
+  return REP_BUCKETS.map(b => ({ key: b.key, label: b.label, count: counts.get(b.key) ?? 0 }))
+}
+
+// ── Weekly change flags ("Big changes this week") ───────────────────────────
+// Ships INSTEAD OF an acute:chronic workload ratio (ACWR) — a strength-coach
+// review explicitly advised against ACWR here: its injury-prediction evidence
+// is team-sport running/GPS load, it has drawn sustained statistical
+// criticism (mathematical coupling between the acute and chronic windows,
+// unstable "sweet spot" thresholds), and this app's OWN Weekly Volume
+// guardrail already tells the user tonnage conflates load and reps — you
+// can't build a risk flag on a quantity already documented as ambiguous, and
+// a solo lifter's log has none of the sample size the original research
+// relied on. This mechanical, per-exercise, no-score, no-colour alternative
+// only ever asks "did this go up sharply versus your OWN last month" — never
+// "is this risky".
+export type WeeklyChangeKind = 'new' | 'load' | 'volume'
+export interface WeeklyChangeFlag {
+  templateId: string
+  kind: WeeklyChangeKind
+  /** Present for 'load'/'volume' — fraction, e.g. 0.12 for +12%. */
+  pct?: number
+  thisWeekValue?: number
+  priorMedian?: number
+}
+
+const LOAD_JUMP_PCT = 0.10
+const SET_JUMP_PCT = 0.30
+const MIN_PRIOR_WEEKS = 3
+const NOVEL_GAP_WEEKS = 8
+
+function median(nums: number[]): number {
+  const sorted = [...nums].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+/** Per-exercise week-over-week change detection for the exercises trained in
+ *  the week containing `anchorDate`. Compares this week's top-set metric and
+ *  working-set count against the MEDIAN of up to the 4 preceding weeks this
+ *  exercise appears in (median, not mean, so one deload week can't manufacture
+ *  a flag on the return). An exercise with no appearance in the last
+ *  NOVEL_GAP_WEEKS weeks (or ever) is flagged 'new' unconditionally — no
+ *  threshold needed, since unfamiliar-movement soreness is a real, common,
+ *  and otherwise-invisible pattern in this data. */
+export function computeWeeklyChangeFlags(
+  sets: ProgressSetRow[],
+  templates: ProgressTemplateRow[],
+  anchorDate: string,
+): WeeklyChangeFlag[] {
+  const typeById = new Map(templates.map(t => [t.id, t.type]))
+  const currentWeek = mondayOf(anchorDate)
+
+  interface WeekEntry { best: number | null; setCount: number }
+  const weeklyByTemplate = new Map<string, Map<string, WeekEntry>>()
+
+  for (const s of sets) {
+    if (s.set_type === 'warmup') continue
+    const type = typeById.get(s.exercise_template_id)
+    if (!type) continue
+    const metricKind = metricKindForExerciseType(type)
+    const week = mondayOf(s.date)
+
+    let byWeek = weeklyByTemplate.get(s.exercise_template_id)
+    if (!byWeek) { byWeek = new Map(); weeklyByTemplate.set(s.exercise_template_id, byWeek) }
+    let entry = byWeek.get(week)
+    if (!entry) { entry = { best: null, setCount: 0 }; byWeek.set(week, entry) }
+    entry.setCount++
+
+    let score: number | null = null
+    if (metricKind === 'est1rm' && s.weight_kg != null && s.reps != null) score = est1RM(s.weight_kg, s.reps)
+    else if (metricKind === 'reps' && s.reps != null) score = s.reps
+    else if (metricKind === 'addedWeight' && s.weight_kg != null) score = s.weight_kg
+    else if (metricKind === 'assistedWeight' && s.weight_kg != null) score = -s.weight_kg
+    else if (metricKind === 'duration' && s.duration_seconds != null) score = s.duration_seconds
+    else if (metricKind === 'distance' && s.distance_meters != null) score = s.distance_meters
+    if (score != null && (entry.best == null || score > entry.best)) entry.best = score
+  }
+
+  const out: WeeklyChangeFlag[] = []
+  for (const [templateId, byWeek] of weeklyByTemplate) {
+    const thisWeek = byWeek.get(currentWeek)
+    if (!thisWeek) continue
+
+    const priorWeekKeys = [...byWeek.keys()].filter(w => w < currentWeek).sort()
+    const lastTrainedWeek = priorWeekKeys[priorWeekKeys.length - 1]
+    const weeksSinceLast = lastTrainedWeek
+      ? Math.round(daysBetween(lastTrainedWeek, currentWeek) / 7)
+      : Infinity
+
+    if (!lastTrainedWeek || weeksSinceLast >= NOVEL_GAP_WEEKS) {
+      out.push({ templateId, kind: 'new' })
+      continue
+    }
+
+    const window = priorWeekKeys.slice(-4)
+    if (window.length < MIN_PRIOR_WEEKS) continue
+
+    const priorBests = window.map(w => byWeek.get(w)!.best).filter((v): v is number => v != null)
+    if (priorBests.length > 0 && thisWeek.best != null) {
+      const medianBest = median(priorBests)
+      if (medianBest > 0) {
+        const pct = thisWeek.best / medianBest - 1
+        if (pct >= LOAD_JUMP_PCT) out.push({ templateId, kind: 'load', pct, thisWeekValue: thisWeek.best, priorMedian: medianBest })
+      }
+    }
+
+    const priorSetCounts = window.map(w => byWeek.get(w)!.setCount)
+    const medianSets = median(priorSetCounts)
+    if (medianSets > 0) {
+      const pct = thisWeek.setCount / medianSets - 1
+      if (pct >= SET_JUMP_PCT) out.push({ templateId, kind: 'volume', pct, thisWeekValue: thisWeek.setCount, priorMedian: medianSets })
+    }
+  }
+
+  return out
+}
+
+// ── Weekly sets per muscle (trend, not a snapshot) ──────────────────────────
+// The Muscles tab already shows weekly-equivalent sets/muscle for a single
+// rolling window (30/90 days). This is the sports-scientist review's top
+// pick for "what else": the SAME currency — hard sets/muscle/week, the one
+// training measure in this app with an actual dose-response meta-analysis
+// behind it (Schoenfeld 2017; Pelland 2025) — but as a per-week TREND, reusing
+// muscleMap.ts's contribution()/HEVY_TO_SLUG exactly rather than a second,
+// parallel volume model.
+export interface MuscleWeekEntry { templateId: string; primarySlug: string | null; secondarySlugs: string[] }
+export interface MuscleWeeklyPoint { weekStart: string; sets: number }
+
+export function computeWeeklySetsPerMuscleTrend(
+  sets: ProgressSetRow[],
+  templateMuscles: Map<string, { primarySlug: string | null; secondarySlugs: string[] }>,
+  slug: string,
+  contributionFn: (templateId: string, slug: string, role: 'primary' | 'secondary') => number,
+): MuscleWeeklyPoint[] {
+  const byWeek = new Map<string, number>()
+  for (const s of sets) {
+    if (s.set_type === 'warmup') continue
+    const muscles = templateMuscles.get(s.exercise_template_id)
+    if (!muscles) continue
+    let credit = 0
+    if (muscles.primarySlug === slug) credit += contributionFn(s.exercise_template_id, slug, 'primary')
+    if (muscles.secondarySlugs.includes(slug)) credit += contributionFn(s.exercise_template_id, slug, 'secondary')
+    if (credit === 0) continue
+    const week = mondayOf(s.date)
+    byWeek.set(week, (byWeek.get(week) ?? 0) + credit)
+  }
+  return [...byWeek.entries()]
+    .map(([weekStart, total]) => ({ weekStart, sets: Math.round(total * 10) / 10 }))
+    .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
 }
