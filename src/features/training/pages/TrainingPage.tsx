@@ -10,7 +10,7 @@ import { HealthStatsPanel } from '../components/health/HealthStatsPanel'
 import type { SectionId } from '../components/health/sectionTypes'
 
 type Tab = 'hevy' | 'strava' | 'health' | 'coach'
-type HevySub = 'workouts' | 'routines' | 'prs' | 'muscles' | 'body' | 'exercises'
+type HevySub = 'workouts' | 'routines' | 'prs' | 'progress' | 'muscles' | 'body' | 'exercises'
 
 const TAB_LABELS: Record<Tab, string> = { hevy: 'Hevy', strava: 'Strava', health: 'Health', coach: 'Coach' }
 // Emoji is decoration, and on a 393px phone the pill strip has ~237px for
