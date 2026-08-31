@@ -13,13 +13,15 @@ import { BodyMeasurementsTab } from './BodyMeasurementsTab'
 import { ExerciseTemplatesTab } from './ExerciseTemplatesTab'
 import { LogHevyWorkoutModal } from './LogHevyWorkoutModal'
 import { WorkedMuscles } from './WorkedMuscles'
+import { ProgressTab } from './ProgressTab'
 
-type SubTab = 'workouts' | 'routines' | 'prs' | 'muscles' | 'body' | 'exercises'
+type SubTab = 'workouts' | 'routines' | 'prs' | 'progress' | 'muscles' | 'body' | 'exercises'
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'workouts',  label: 'Workouts'         },
   { id: 'routines',  label: 'Routines'          },
   { id: 'prs',       label: 'Personal Records'  },
+  { id: 'progress',  label: 'Progress'          },
   { id: 'muscles',   label: 'Muscles'           },
   { id: 'body',      label: 'Body'              },
   { id: 'exercises', label: 'Exercises'         },
@@ -282,6 +284,7 @@ export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => v
         {activeTab === 'workouts'  && <WorkoutsSubTab />}
         {activeTab === 'routines'  && <RoutinesTab />}
         {activeTab === 'prs'       && <PRsSubTab />}
+        {activeTab === 'progress'  && <ProgressTab />}
         {activeTab === 'muscles'   && <WorkedMuscles />}
         {activeTab === 'body'      && <BodyMeasurementsTab />}
         {activeTab === 'exercises' && <ExerciseTemplatesTab />}

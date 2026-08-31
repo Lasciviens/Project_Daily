@@ -179,6 +179,91 @@ export async function fetchMuscleVolume(fromISO: string, toISO: string): Promise
     .filter(r => r.templateId)
 }
 
+// ─── Progress (exercise progression / weekly volume / consistency) ───────────
+// One bulk fetch feeding all of progressAggregate.ts's pure functions —
+// mirrors fetchMuscleVolume's own "fetch once, derive many views client-side"
+// shape rather than a separate round trip per chart.
+import type { ProgressSetRow, ProgressTemplateRow } from '../progressAggregate'
+
+// The aggregation functions only need `id`/`type`; the exercise-picker UI
+// also needs a name and muscle group to render/filter/group by.
+export interface TrainingExerciseTemplate extends ProgressTemplateRow {
+  title: string
+  primary_muscle_group: string | null
+}
+
+export interface TrainingHistory {
+  sets:      ProgressSetRow[]
+  templates: TrainingExerciseTemplate[]
+}
+
+export async function fetchTrainingHistory(fromISO: string, toISO: string): Promise<TrainingHistory> {
+  const inRange = `and(start_time.gte.${fromISO},start_time.lte.${toISO})`
+  const nullFallback = `and(start_time.is.null,hevy_created_at.gte.${fromISO},hevy_created_at.lte.${toISO})`
+
+  const { data: workouts, error: wErr } = await supabase
+    .from('hevy_workouts')
+    .select('id, start_time, hevy_created_at')
+    .or(`${inRange},${nullFallback}`)
+  if (wErr) throw wErr
+  if (!workouts?.length) return { sets: [], templates: [] }
+
+  // Workout day is the raw ISO date's own leading 10 chars — matches
+  // TrainingCalendar's own workoutDay() convention exactly, so a session
+  // lands on the same calendar day here as it does on that calendar.
+  const dateByWorkout = new Map<string, string>()
+  for (const w of workouts as { id: string; start_time: string | null; hevy_created_at: string }[]) {
+    dateByWorkout.set(w.id, (w.start_time ?? w.hevy_created_at).slice(0, 10))
+  }
+
+  const { data: exercises, error: eErr } = await supabase
+    .from('hevy_workout_exercises')
+    .select('id, hevy_workout_id, exercise_template_id')
+    .in('hevy_workout_id', [...dateByWorkout.keys()])
+  if (eErr) throw eErr
+  if (!exercises?.length) return { sets: [], templates: [] }
+  const exRows = exercises as { id: string; hevy_workout_id: string; exercise_template_id: string }[]
+  const workoutIdByExercise = new Map(exRows.map(e => [e.id, e.hevy_workout_id]))
+  const exIds = exRows.map(e => e.id)
+
+  const sets: ProgressSetRow[] = []
+  const PAGE = 1000
+  for (let offset = 0; ; offset += PAGE) {
+    const { data: page, error: sErr } = await supabase
+      .from('hevy_sets')
+      .select('hevy_exercise_id, exercise_template_id, type, weight_kg, reps, duration_seconds, distance_meters')
+      .in('hevy_exercise_id', exIds)
+      .range(offset, offset + PAGE - 1)
+    if (sErr) throw sErr
+    const rows = (page ?? []) as {
+      hevy_exercise_id: string; exercise_template_id: string
+      type: 'normal' | 'warmup' | 'dropset' | 'failure'
+      weight_kg: number | null; reps: number | null
+      duration_seconds: number | null; distance_meters: number | null
+    }[]
+    for (const s of rows) {
+      const workoutId = workoutIdByExercise.get(s.hevy_exercise_id)
+      const date = workoutId ? dateByWorkout.get(workoutId) : undefined
+      if (!workoutId || !date) continue
+      sets.push({
+        workout_id: workoutId, date, exercise_template_id: s.exercise_template_id,
+        set_type: s.type, weight_kg: s.weight_kg, reps: s.reps,
+        duration_seconds: s.duration_seconds, distance_meters: s.distance_meters,
+      })
+    }
+    if (rows.length < PAGE) break
+  }
+
+  const templateIds = [...new Set(sets.map(s => s.exercise_template_id))]
+  const { data: templates, error: tErr } = await supabase
+    .from('hevy_exercise_templates')
+    .select('id, title, type, primary_muscle_group')
+    .in('id', templateIds)
+  if (tErr) throw tErr
+
+  return { sets, templates: (templates ?? []) as TrainingExerciseTemplate[] }
+}
+
 export async function fetchHevyWorkoutDetail(id: string): Promise<HevyWorkout | null> {
   const { data: workout, error: workoutErr } = await supabase
     .from('hevy_workouts')
