@@ -6,6 +6,7 @@ import { computeSleepSummary, computeDailySeries } from '../healthAggregate'
 import { computeWeeklyVolumeTrend } from '../progressAggregate'
 import { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } from '../recoveryAggregate'
 import { lastCompleteWeek } from '../trainingInsights'
+import { fmtWeekRange } from '../dateFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Recovery vs Load — a follow-up sports-scientist review (2026-08-31) of the
@@ -22,6 +23,15 @@ const WINDOW_DAYS = 182
 
 function fmtWeek(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+// A single date ("3 Aug") is ambiguous for a WEEKLY value — real user
+// confusion (2026-09-01) asked for the week's own Mon-Sun range instead.
+// Shared across all three lanes' Tooltips below.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts labelFormatter's props type is awkward to import cleanly.
+function weekRangeLabelFormatter(_label: any, payload: any): string {
+  const weekStart = payload?.[0]?.payload?.weekStart
+  return weekStart ? fmtWeekRange(weekStart) : _label
 }
 
 // A pure auto-domain on a physiological line lane (sleep hours, resting HR)
@@ -113,7 +123,7 @@ export function RecoveryLoadPanel() {
                 real week of training look like a near-empty sliver. */}
             <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={[0, 'auto']} />
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly. */}
-            <Tooltip cursor={false} formatter={(v: any) => [`${Number(v).toLocaleString('en-GB')} kg`, 'Tonnage']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+            <Tooltip cursor={false} formatter={(v: any) => [`${Number(v).toLocaleString('en-GB')} kg`, 'Tonnage']} labelFormatter={weekRangeLabelFormatter} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
             <Bar dataKey="tonnageKg" fill="#7c3aed" fillOpacity={0.35} radius={[3, 3, 0, 0]} barSize={10} />
           </BarChart>
         </ResponsiveContainer>
@@ -130,6 +140,7 @@ export function RecoveryLoadPanel() {
               cursor={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
               formatter={(v: any, _n: any, entry: any) => [v == null ? 'not enough nights tracked' : `${v} h (${entry?.payload?.sleepNights}/7 nights)`, 'Sleep']}
+              labelFormatter={weekRangeLabelFormatter}
               contentStyle={{ fontSize: 11, borderRadius: 8 }}
             />
             <Line dataKey="sleepHours" stroke="#0ea5e9" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
@@ -148,6 +159,7 @@ export function RecoveryLoadPanel() {
               cursor={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
               formatter={(v: any, _n: any, entry: any) => [v == null ? 'not enough days tracked' : `${v} bpm (${entry?.payload?.rhrDays}/7 days)`, 'Resting HR']}
+              labelFormatter={weekRangeLabelFormatter}
               contentStyle={{ fontSize: 11, borderRadius: 8 }}
             />
             <Line dataKey="rhrBpm" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
