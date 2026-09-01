@@ -23,3 +23,18 @@ export function fmtTrainingTime(iso: string | null): string {
 export function fmtTrainingDateTime(iso: string | null): string {
   return iso ? `${formatTrainingDate(new Date(iso))} · ${formatTrainingTime(new Date(iso))}` : '—'
 }
+
+/** Monday→Sunday range for a week chart's tooltip — a single date (e.g.
+ *  "3 Aug") is ambiguous about what it means for a WEEKLY value (start?
+ *  end? the day it was logged?), which real user confusion (2026-09-01)
+ *  confirmed: several Progress-tab weekly charts showed a bare Monday date
+ *  as the whole tooltip header. Every weekly chart's tooltip should use
+ *  this instead of a single date; short single-date labels stay fine on
+ *  the X-AXIS itself, where space is tight. */
+export function fmtWeekRange(weekStartIso: string): string {
+  const start = new Date(weekStartIso + 'T00:00:00')
+  const end = new Date(start)
+  end.setDate(end.getDate() + 6)
+  const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return `${fmt(start)} – ${fmt(end)}`
+}

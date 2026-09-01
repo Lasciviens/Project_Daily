@@ -3,6 +3,7 @@ import { Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChar
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import { computeConsistencyByWeek, currentStreakWeeks } from '../progressAggregate'
+import { fmtWeekRange } from '../dateFormat'
 
 // Sessions-per-week — a sports-scientist review's #2-priority chart, and
 // deliberately the cheapest/least speculative one: it's a direct count of a
@@ -49,7 +50,7 @@ export function TrainingConsistencyCalendar() {
   const last12 = weeks.slice(-12)
   const weeksWith2Plus = last12.filter(w => w.sessionCount >= 2).length
   const target = profile?.training_days_per_week ?? null
-  const chartData = weeks.slice(-16).map(w => ({ label: fmtWeek(w.weekStart), sessions: w.sessionCount }))
+  const chartData = weeks.slice(-16).map(w => ({ label: fmtWeek(w.weekStart), weekStart: w.weekStart, sessions: w.sessionCount }))
 
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-2">
@@ -71,6 +72,11 @@ export function TrainingConsistencyCalendar() {
               cursor={{ fill: 'rgb(var(--ink-100))' }}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
               formatter={(v: any) => [`${v} session${v === 1 ? '' : 's'}`, 'That week']}
+              // A single date ("3 Aug") is ambiguous for a WEEKLY bar — real
+              // user confusion (2026-09-01) asked for the week's own
+              // Mon-Sun range instead.
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts labelFormatter's props type is awkward to import cleanly.
+              labelFormatter={(_label: any, payload: any) => { const ws = payload?.[0]?.payload?.weekStart; return ws ? fmtWeekRange(ws) : _label }}
               contentStyle={{ fontSize: 11, borderRadius: 8 }}
             />
             {target != null && (

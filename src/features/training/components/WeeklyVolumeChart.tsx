@@ -3,6 +3,7 @@ import { Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, C
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { computeWeeklyVolumeTrend, rollingAverage } from '../progressAggregate'
 import { lastCompleteWeek } from '../trainingInsights'
+import { fmtWeekRange } from '../dateFormat'
 import { compactAxisTick } from './health/axisFormat'
 
 // Weekly total tonnage (Σ weight×reps, warm-ups excluded, weight-based
@@ -20,14 +21,17 @@ function fmtWeek(dateStr: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; only a few fields are read.
-function VolumeTooltip({ active, payload, label }: any) {
+function VolumeTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
+  const weekStart = payload[0]?.payload?.weekStart
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
-      <p className="text-ink-400 font-medium">{label}</p>
+      {/* A single date is ambiguous for a WEEKLY value — is it the start, the
+          end, the day it was logged? Always show the full Mon-Sun range. */}
+      <p className="text-ink-400 font-medium">{weekStart ? fmtWeekRange(weekStart) : ''}</p>
       {payload.map((p: { dataKey: string; value: number; color: string }) => (
         <p key={p.dataKey} style={{ color: p.color }} className="font-semibold">
-          {p.value.toLocaleString('en-GB')} kg {p.dataKey === 'avg4wk' ? '· 4-week avg' : '· that week'}
+          {p.dataKey === 'avg4wk' ? '4-week rolling average: ' : 'That week: '}{p.value.toLocaleString('en-GB')} kg
         </p>
       ))}
     </div>
@@ -46,7 +50,7 @@ export function WeeklyVolumeChart() {
     const last = lastCompleteWeek(new Date().toISOString().slice(0, 10))
     const weeks = computeWeeklyVolumeTrend(data.sets, data.templates).filter(w => w.weekStart <= last)
     const avg = rollingAverage(weeks, 4)
-    return weeks.map((w, i) => ({ label: fmtWeek(w.weekStart), tonnage: w.tonnageKg, avg4wk: avg[i] ?? undefined }))
+    return weeks.map((w, i) => ({ label: fmtWeek(w.weekStart), weekStart: w.weekStart, tonnage: w.tonnageKg, avg4wk: avg[i] ?? undefined }))
   }, [data])
 
   if (isLoading) return <div className="h-40 rounded-2xl bg-cream-200 animate-pulse" />
