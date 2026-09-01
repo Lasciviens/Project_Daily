@@ -142,7 +142,7 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
                 .slice(0, showAllExercises ? undefined : EXERCISES_PREVIEW)
                 .map((ex, exIdx) => (
                   <div key={ex.id} className="flex items-start gap-2.5 rounded-lg border border-ink-100 bg-cream-100/60 px-2.5 py-2">
-                    <ExerciseThumb title={ex.title} size={52} />
+                    <ExerciseThumb title={ex.title} templateId={ex.exercise_template_id} size={52} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-ink-800 leading-snug">
                         <span className="text-ink-400 font-semibold mr-1">{exIdx + 1}.</span>

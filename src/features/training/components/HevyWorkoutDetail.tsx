@@ -83,7 +83,7 @@ export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
                         {/* Animated demo GIF (same fuzzy-match layer as Routines/
                             Exercises — tap to enlarge with instructions) */}
                         <div className="flex items-center gap-2.5">
-                          <ExerciseThumb title={ex.title} size={44} />
+                          <ExerciseThumb title={ex.title} templateId={ex.exercise_template_id} size={44} />
                           <div className="min-w-0">
                             <h3 className="text-sm font-semibold text-ink-900">{ex.title}</h3>
                             {ex.notes && (

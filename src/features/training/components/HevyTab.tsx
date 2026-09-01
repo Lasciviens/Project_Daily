@@ -74,7 +74,7 @@ function BestLiftsCard() {
               </button>
               {open && (
                 <div className="absolute z-30 left-0 right-0 top-full mt-1 p-3 rounded-xl border border-ink-200 bg-cream-50 shadow-xl flex items-center gap-3 animate-fadeSlideIn">
-                  <ExerciseThumb title={pr.title} size={72} />
+                  <ExerciseThumb title={pr.title} templateId={pr.exercise_template_id} size={72} />
                   <div className="flex flex-col gap-0.5 text-xs min-w-0">
                     <span className="font-semibold text-ink-900">{pr.title}</span>
                     <span className="text-ink-600">Best: <strong>{pr.max_weight_kg} kg{pr.reps_at_max != null ? ` × ${pr.reps_at_max}` : ''}</strong></span>
