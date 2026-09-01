@@ -26,12 +26,11 @@ import { TrainingInsightsPanel } from './TrainingInsightsPanel'
 //    against (see that file's header comment for why)
 //
 // Deliberately still NOT built, and why:
-//  - An HRV lane on RecoveryLoadPanel — Apple (SDNN) and Fitbit (RMSSD)
-//    measure different things and must never share a line/average, and this
-//    app's own house rule is to verify an external field shape live before
-//    shipping copy that names it (docs/fitbit-air-integration.md flags the
-//    SpO2 shape the same way) — add it once that's confirmed against a real
-//    payload, not before.
+//  - An HRV lane on RecoveryLoadPanel — different HRV measures (e.g. SDNN vs
+//    RMSSD) must never share a line/average, and this app's own house rule
+//    is to verify an external field shape live before shipping copy that
+//    names it — add it once that's confirmed against a real payload, not
+//    before.
 //  - A "Stalled & Progressing" exercise roll-up table (strength-coach's other
 //    suggestion) — real value, but a genuinely new UI surface (a sortable
 //    table + an OLS-slope helper) rather than an extension of what's here;

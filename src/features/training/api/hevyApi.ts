@@ -294,9 +294,9 @@ export async function fetchTrainingHistory(fromISO: string, toISO: string): Prom
 // Unions the user's own manual body-measurement log (hevy_body_measurements)
 // with an automated scale reading synced through Apple Health/Fitbit
 // (health_metrics.weight_body_mass). Per a same-day conflict this app's own
-// established convention ("manual" always outranks a device — see
-// healthSourceDefaults.ts) is applied: hevy_body_measurements wins, the
-// health-metrics reading only fills days the manual log has no entry for.
+// established convention ("manual" always outranks a device) is applied:
+// hevy_body_measurements wins, the health-metrics reading only fills days
+// the manual log has no entry for.
 export interface BodyweightAnchor { date: string; kg: number }
 
 export async function fetchBodyweightHistory(fromDate: string, toDate: string): Promise<BodyweightAnchor[]> {

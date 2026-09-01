@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchHealthWorkouts, fetchHealthMetrics, fetchHealthMetricSeries, fetchSleepSegments, upsertManualSleepEntry, type ManualSleepInput } from '../api/healthApi'
+import { fetchHealthWorkouts, fetchHealthMetrics, fetchHealthMetricSeries, upsertManualSleepEntry, type ManualSleepInput } from '../api/healthApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 
 export function useHealthWorkouts(opts: { limit?: number; offset?: number } = {}) {
@@ -24,20 +24,10 @@ export function useHealthMetricSeries(
   metricName: string,
   fromDate: string,
   toDate: string,
-  sourceFamily?: 'apple' | 'fitbit',
 ) {
   return useQuery({
-    queryKey: ['health', 'metric-series', metricName, fromDate, toDate, sourceFamily ?? 'all'],
-    queryFn:  () => fetchHealthMetricSeries(metricName, fromDate, toDate, sourceFamily),
-    staleTime: 5 * 60_000,
-  })
-}
-
-// Fitbit sleep-stage segments overlapping [fromIso, toIso].
-export function useSleepSegments(fromIso: string, toIso: string) {
-  return useQuery({
-    queryKey: ['health', 'sleep-segments', fromIso, toIso],
-    queryFn:  () => fetchSleepSegments(fromIso, toIso),
+    queryKey: ['health', 'metric-series', metricName, fromDate, toDate],
+    queryFn:  () => fetchHealthMetricSeries(metricName, fromDate, toDate),
     staleTime: 5 * 60_000,
   })
 }

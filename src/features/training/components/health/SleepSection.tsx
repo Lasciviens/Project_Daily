@@ -5,9 +5,7 @@ import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthE
 import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions } from '../../healthAggregate'
 import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { shiftStr, rangeForAnchor } from './dateNav'
-import { SourceToggle, type SourceSelection } from './SourceToggle'
 import type { HealthRange } from './sectionTypes'
-import { FitbitHypnogram } from './FitbitHypnogram'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { SLEEP_EXTRA_METRICS } from './miniMetrics'
 import { compactAxisTick } from './axisFormat'
@@ -143,8 +141,6 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
 
 export function SleepSection({ range }: { range: HealthRange }) {
   const today = todayStr()
-  const [source, setSource] = useState<SourceSelection>('auto')
-  const src = source === 'auto' ? undefined : source
   const { anchor, setAnchor, period, setPeriod } = range
 
   // In Day mode the chart still shows a 7-night CONTEXT window ending at the
@@ -153,7 +149,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
   const chartRange = period === 'day'
     ? { from: shiftStr(anchor, -6), to: anchor }
     : rangeForAnchor(period, anchor)
-  const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', chartRange.from, chartRange.to, src)
+  const { data: points = [], isLoading } = useHealthMetricSeries('sleep_analysis', chartRange.from, chartRange.to)
   const summary = computeSleepSummary(points)
   const summaryByDate = new Map(summary.map(s => [s.date, s]))
 
@@ -287,7 +283,6 @@ export function SleepSection({ range }: { range: HealthRange }) {
       {/* Day mode: the ONE "when you slept" clock timeline, right under the
           headline (period modes show the multi-night trend chart lower down). */}
       {isDay && detailSessions.length > 0 && <NightChart sessions={detailSessions} />}
-      {isDay && <FitbitHypnogram nightDate={anchor} />}
 
       {showManualForm && (
         // pr-12 keeps the fields clear of the absolutely-positioned 44px
@@ -361,10 +356,6 @@ export function SleepSection({ range }: { range: HealthRange }) {
           </div>
         </>
       )}
-
-      <div className="flex items-center flex-wrap gap-2">
-        <SourceToggle value={source} onChange={setSource} />
-      </div>
 
       {/* Day mode gets the NIGHT CHART below instead; the multi-bar trend is
           only for Week/Month. Hover = value tooltip only; CLICK a bar pins a

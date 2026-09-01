@@ -3,125 +3,7 @@
 // numbers for rings/summary cards/charts. Kept separate from healthApi.ts
 // (which only fetches) so these are trivially unit-testable without a DB.
 import { getAggregationType } from './healthMetrics'
-import { strategyFor, ladderFor } from './healthSourceDefaults'
 import type { HealthMetric } from './api/healthApi'
-
-// ── Source resolution (Fitbit Air integration, Phase 0 — redesigned) ────────
-// CARDINAL RULE (docs/fitbit-air-integration.md): both Apple and Fitbit data
-// live in the DB in full. For DISPLAY, every resolution window (hour, day, or
-// night — the metric's strategy in healthSourceDefaults.ts) picks exactly ONE
-// winning STREAM (one raw `source` string); streams are never blended inside a
-// window, and a window the winner didn't cover falls to the next ladder rung —
-// gap-filling union without double-counting.
-//
-// Stream-level (not family-level) competition is empirically required: live
-// data showed the iPhone ('Lasci') and the Watch writing the SAME hours of
-// step_count (app showed 10,355 steps on a ~5,700-step day), and active_energy
-// arriving as identical duplicates under two Watch-labelled strings. So this
-// resolver also fixes a real pre-existing within-Apple double-count — the
-// "zero drift" guarantee is: output identical EXCEPT where the old output was
-// that proven bug (PM-ratified redefinition, 2026-07-21).
-
-export type StreamTier = 'manual' | 'watch' | 'fitbit' | 'phone'
-
-// A missing/legacy source_family is 'apple' — every row written before
-// migration 062 (and every row through the Apple webhook) is Apple-family.
-function isFitbit(p: HealthMetric): boolean {
-  return p.source_family === 'fitbit'
-}
-
-// Exported for the verification script.
-export function streamTierOf(p: HealthMetric): StreamTier {
-  if (p.source === 'manual') return 'manual'
-  if (isFitbit(p)) return 'fitbit'
-  return p.source.toLowerCase().includes('watch') ? 'watch' : 'phone'
-}
-
-function streamKeyOf(p: HealthMetric): string {
-  return `${isFitbit(p) ? 'fitbit' : 'apple'}|${p.source}`
-}
-
-// Resolves every window to its single winning stream and returns the winners'
-// POINTS flattened back into one array — aggregation itself stays in the
-// existing (verified) aggregateGroup/rangeFromPoints/sleep merges, so this is
-// correct for every agg type (sum/average/minmaxavg/latest/sleep) without
-// special-casing. Exported for the verification script; nothing outside this
-// module resolves per-caller (the C1/H2 invariant).
-//
-// `nightKeyFn` is only passed by the sleep callers (sleepNightKey) — for the
-// 'night' strategy the window is the attributed night, for 'day' the calendar
-// date, for 'bucket' the exact hour (date+hour from recorded_at, so a Watch
-// morning and a Fitbit evening coexist within one day without ever sharing a
-// window).
-export function resolveSourcePoints(
-  points: HealthMetric[],
-  metricName: string,
-  nightKeyFn?: (p: HealthMetric) => string,
-): HealthMetric[] {
-  // Fast-path: a single distinct stream (today's normal case for most
-  // metrics) has nothing to resolve — return the SAME array, so output stays
-  // byte-identical to the pre-resolver behavior.
-  let firstStream: string | null = null
-  let multi = false
-  for (const p of points) {
-    const k = streamKeyOf(p)
-    if (firstStream === null) firstStream = k
-    else if (k !== firstStream) { multi = true; break }
-  }
-  if (!multi) return points
-
-  const strategy = strategyFor(metricName)
-  const ladder = ladderFor(metricName)
-  // Bucket key is the raw UTC-hour slice of recorded_at, while the display
-  // layer (computeHourlyBuckets) buckets by LOCAL hour — deliberately fine:
-  // Oslo's UTC offset is a whole hour year-round (CET/CEST), so the two hour
-  // grids share boundaries and a window never straddles a local hour.
-  const windowKey: (p: HealthMetric) => string =
-    strategy === 'bucket' ? p => p.recorded_at.slice(0, 13)
-    : strategy === 'night' ? (nightKeyFn ?? (p => p.date))
-    : p => p.date
-
-  const byWindow = new Map<string, HealthMetric[]>()
-  for (const p of points) {
-    const k = windowKey(p)
-    const arr = byWindow.get(k)
-    if (arr) arr.push(p)
-    else byWindow.set(k, [p])
-  }
-
-  const out: HealthMetric[] = []
-  for (const group of byWindow.values()) {
-    // Streams present in this window, keyed by stream, with their tier.
-    const streams = new Map<string, { tier: StreamTier; pts: HealthMetric[] }>()
-    for (const p of group) {
-      const k = streamKeyOf(p)
-      let s = streams.get(k)
-      if (!s) { s = { tier: streamTierOf(p), pts: [] }; streams.set(k, s) }
-      s.pts.push(p)
-    }
-    if (streams.size === 1) { out.push(...group); continue }
-
-    // Winning tier = first ladder rung any stream occupies.
-    const present = new Set([...streams.values()].map(s => s.tier))
-    const winnerTier = ladder.find(t => present.has(t)) as StreamTier
-
-    // If several streams share the winning tier (live case: active_energy
-    // delivered identically under two Watch-labelled strings), keep exactly
-    // ONE — the stream with the most points in this window (a merged/richer
-    // string carries more data), tie-broken deterministically by key.
-    let winner: { pts: HealthMetric[] } | null = null
-    let winnerKey = ''
-    for (const [k, s] of streams) {
-      if (s.tier !== winnerTier) continue
-      if (!winner || s.pts.length > winner.pts.length ||
-          (s.pts.length === winner.pts.length && k < winnerKey)) {
-        winner = s; winnerKey = k
-      }
-    }
-    out.push(...(winner as { pts: HealthMetric[] }).pts)
-  }
-  return out
-}
 
 // ── Intra-stream duplicate collapse (display-level, sum metrics only) ───────
 // A SINGLE stream can carry overlapping samples of the same physical activity:
@@ -131,19 +13,22 @@ export function resolveSourcePoints(
 // interval-overlap dedup can't be replicated here. Live proof (2026-07-20,
 // 16–17h, watch stream): 88 of 94 minutes had TWO points with essentially the
 // same qty (106.86025364796929 vs …26 — float-noise twins), inflating the day
-// by thousands of steps even though only one stream was involved (so the
-// cross-stream resolver above correctly left it alone).
+// by thousands of steps even though only one stream was involved.
 //
 // Backstop rule: within one stream, one MINUTE keeps only its LARGEST point —
 // overlapping same-minute samples are the same seconds counted twice, and the
 // larger one is the fuller window. Applied only to 'sum'-type metrics (for
 // average/minmaxavg/latest, duplicate values don't distort the result). This
-// is display-level only: the DB keeps every raw point (CARDINAL RULE), and the
-// ROOT fix is Health Auto Export's "Aggregate Data" export setting — this
-// backstop protects whatever raw shape actually arrives. Cross-minute window
-// overlap (a ~2-min sample every ~40s) is NOT fully recoverable without
-// interval ends; expect residual inflation until the source exports
-// pre-aggregated data.
+// is display-level only: the DB keeps every raw point — the ROOT fix is
+// Health Auto Export's "Aggregate Data" export setting; this backstop
+// protects whatever raw shape actually arrives. Cross-minute window overlap
+// (a ~2-min sample every ~40s) is NOT fully recoverable without interval
+// ends; expect residual inflation until the source exports pre-aggregated
+// data.
+function streamKeyOf(p: HealthMetric): string {
+  return p.source
+}
+
 function collapseIntraStreamMinuteDuplicates(points: HealthMetric[]): HealthMetric[] {
   const byKey = new Map<string, HealthMetric>()
   const passthrough: HealthMetric[] = []
@@ -189,10 +74,8 @@ function groupByDate(points: HealthMetric[]): Map<string, HealthMetric[]> {
 }
 
 // Collapses a group of points into a single number per the metric's
-// aggregation type. Callers pass points that already went through
-// resolveSourcePoints (one winning stream per window) — this function itself
-// stays source-blind on purpose: all cross-stream policy lives in the
-// resolver, all math lives here.
+// aggregation type. Apple Health is the sole data source, so this stays
+// source-blind on purpose — no cross-stream resolution needed.
 function aggregateGroup(points: HealthMetric[], metricName: string): number | null {
   const aggType = getAggregationType(metricName)
   const qtys = points.map(p => qtyOf(p, metricName)).filter((v): v is number => v != null)
@@ -216,7 +99,7 @@ export interface DailyValue { date: string; value: number }
 
 // One number per day for sum/average/latest-type metrics.
 export function computeDailySeries(metricName: string, points: HealthMetric[]): DailyValue[] {
-  let resolved = resolveSourcePoints(points, metricName)
+  let resolved = points
   if (getAggregationType(metricName) === 'sum') resolved = collapseIntraStreamMinuteDuplicates(resolved)
   const byDate = groupByDate(resolved)
   const result: DailyValue[] = []
@@ -233,7 +116,7 @@ export interface HourlyValue { hour: number; label: string; value: number }
 // Steps/Energy sections' hourly bar charts. Uses the browser's local timezone
 // to bucket (recorded_at is an absolute instant either way).
 export function computeHourlyBuckets(metricName: string, points: HealthMetric[]): HourlyValue[] {
-  let resolved = resolveSourcePoints(points, metricName)
+  let resolved = points
   if (getAggregationType(metricName) === 'sum') resolved = collapseIntraStreamMinuteDuplicates(resolved)
   const byHour = new Map<number, HealthMetric[]>()
   for (const p of resolved) {
@@ -266,7 +149,7 @@ function rangeFromPoints(pts: HealthMetric[]): { min: number; max: number; avg: 
 // heart_rate-shaped points ({Min,Avg,Max} per point) — a real day range needs
 // the min of all mins / max of all maxes, not just the last window's numbers.
 export function computeHeartRateDailySeries(points: HealthMetric[]): DailyRange[] {
-  const byDate = groupByDate(resolveSourcePoints(points, 'heart_rate'))
+  const byDate = groupByDate(points)
   const result: DailyRange[] = []
   for (const [date, pts] of byDate) {
     const range = rangeFromPoints(pts)
@@ -281,7 +164,7 @@ export interface HourlyRange { hour: number; label: string; min: number; max: nu
 // single day's "Day" view.
 export function computeHeartRateHourlySeries(points: HealthMetric[]): HourlyRange[] {
   const byHour = new Map<number, HealthMetric[]>()
-  for (const p of resolveSourcePoints(points, 'heart_rate')) {
+  for (const p of points) {
     const h = new Date(p.recorded_at).getHours()
     const arr = byHour.get(h)
     if (arr) arr.push(p)
@@ -314,21 +197,9 @@ const SLEEP_STAGE_KEYS = ['Core', 'REM', 'Deep', 'Awake', 'Asleep'] as const
 // (manual entries, raw segments) keep their stored date.
 function sleepNightKey(p: HealthMetric): string {
   const end = p.value?.sleepEnd
-  if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end)) {
+  if (typeof end === 'string' && /^\d{4}-\d{2}-\d{2}/.test(end) && /[+-]\d{2}:?\d{2}$/.test(end.trim())) {
     // Apple exports a local-time string with an explicit offset ("...+0200") —
     // its date part IS the local wake day, use it directly (no tz math).
-    if (/[+-]\d{2}:?\d{2}$/.test(end.trim())) return end.slice(0, 10)
-    // Fitbit (Google Health) exports UTC ("...Z"), whose raw date part can be
-    // the PREVIOUS calendar day for a late-evening end (e.g. 23:32Z = 01:32
-    // local next day). Slicing it split one night's overlapping sub-sessions
-    // across two night keys → they never overlap-merged and the night showed
-    // only a tiny fragment (live: 2026-07-22 Fitbit night showed 0.8h instead
-    // of 7.4h). Convert to the LOCAL wake day so both sub-sessions cluster.
-    const ms = sessionMs(end)
-    if (ms != null) {
-      const d = new Date(ms)
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    }
     return end.slice(0, 10)
   }
   return p.date
@@ -369,18 +240,11 @@ function sessionMs(s: unknown): number | null {
 // DELIVERY gap (HAE's aggregate + "Since Last Sync" mode split the night and
 // dropped the early piece), not a merge win. Two aggregate rows carry no
 // per-segment timestamps, so a lost sub-session is unrecoverable from them —
-// the merge can only dedupe what actually arrived. Mitigations: run HAE's
+// the merge can only dedupe what actually arrived. Mitigation: run HAE's
 // "Previous 7 Days" reconciliation automation (re-sends a complete night as
-// ONE row, as the clean 2026-07-18 00:51→09:55/8.64h row proves), and/or move
-// sleep to Fitbit (below). Do NOT "fix" this by summing overlapping rows —
-// that double-counts the genuine duplicate-redelivery case.
-//
-// ⚠️ FITBIT NOTE (the durable fix — Fitbit becomes the sleep source): Google
-// Health API returns sleep as timestamped stage SEGMENTS (stages[],
-// light/deep/rem/wake), so the true night is reconstructable with no aggregate
-// ambiguity. It also reports one "main sleep" log plus separate NON-overlapping
-// nap logs (those must keep summing) and exposes its own efficiency. Re-verify
-// this merge against real Fitbit payloads before trusting it for that source.
+// ONE row, as the clean 2026-07-18 00:51→09:55/8.64h row proves). Do NOT
+// "fix" this by summing overlapping rows — that double-counts the genuine
+// duplicate-redelivery case.
 function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
   interface Sess { p: HealthMetric; start: number; end: number; total: number }
   const timed: Sess[] = []
@@ -423,8 +287,7 @@ export interface SleepSessionInterval { startMs: number; endMs: number; totalSle
 // per-stage segment timing (verified against every live row), so this is the
 // finest honest granularity available.
 export function extractSleepSessions(points: HealthMetric[], nightKey: string): SleepSessionInterval[] {
-  const pts = resolveSourcePoints(points, 'sleep_analysis', sleepNightKey)
-    .filter(p => sleepNightKey(p) === nightKey && typeof p.value?.totalSleep === 'number')
+  const pts = points.filter(p => sleepNightKey(p) === nightKey && typeof p.value?.totalSleep === 'number')
   return mergeSleepSessions(pts)
     .map(p => {
       const start = sessionMs(p.value?.sleepStart)
@@ -440,13 +303,11 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
 // (Derived sleep metrics used to live here — a heuristic 0–100 "sleep score"
 // and a clinical sleep-efficiency % — BOTH removed on explicit user decision:
 // only measured values are shown for sleep. Don't reintroduce derived sleep
-// metrics without asking. If a future source exports its own score/efficiency
-// natively — Fitbit's API does for efficiency — showing THAT value is fine;
-// computing our own is what was rejected.)
+// metrics without asking.)
 
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = new Map<string, HealthMetric[]>()
-  for (const p of resolveSourcePoints(points, 'sleep_analysis', sleepNightKey)) {
+  for (const p of points) {
     const key = sleepNightKey(p)
     const arr = byDate.get(key)
     if (arr) arr.push(p)
@@ -457,10 +318,10 @@ export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
     // A manual entry is a deliberate correction for that specific night — it
     // must win over synced Watch data for the same date, not just get summed
     // or shadowed by it. Real bug this fixes: whenever ANY Watch point (even
-    // a pre-aggregated one, regardless of source) existed for a date, the
-    // branch below took it unconditionally and never looked at the manual
-    // per-segment rows for that same date, so a manual backfill silently
-    // never showed up whenever the Watch had already reported something.
+    // a pre-aggregated one) existed for a date, the branch below took it
+    // unconditionally and never looked at the manual per-segment rows for
+    // that same date, so a manual backfill silently never showed up whenever
+    // the Watch had already reported something.
     const manualPts = pts.filter(p => p.source === 'manual')
     const sourcePts = manualPts.length > 0 ? manualPts : pts
 
@@ -515,8 +376,3 @@ export function estimateSleepStageProportions(summaries: SleepSummary[]): { deep
   const avgOf = (key: 'deep' | 'core' | 'rem') => fractions.reduce((sum, f) => sum + f[key], 0) / fractions.length
   return { deep: avgOf('deep'), core: avgOf('core'), rem: avgOf('rem') }
 }
-
-// (The synthetic basal-energy per-hour top-up — median of the same hour over
-// the prior week for Watch-off hours — was REMOVED 2026-07-21: the Fitbit Air
-// is worn 24/7, so those hours are gap-filled with REAL fitbit-family points
-// by resolveSourcePoints instead of an estimate. Measured values only.)

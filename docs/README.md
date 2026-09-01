@@ -33,8 +33,6 @@ cross-AI task board → `codex-shortcuts.md`.
 
 | File | Purpose | Last verified |
 |---|---|---|
-| `google-health-api-surface.md` | The live-verified (21/07/2026) Google Health API v4 surface: `users/me` prefix, kebab-case dataType path ids, snake_case filter tokens, camelCase JSON, the 40-type union, real payload shapes. `google-health-sync` is written against this — confirm any new dataType here before using it. | 25/07/2026 |
-| `fitbit-air-integration.md` | The single Fitbit doc: as-built integration, the cardinal rule, resolver rules, measured evidence, OAuth facts, open items. | 25/07/2026 |
 | `ai-cost-capability-analysis.md` | AI layer cost + capability reference as shipped: the prompt-caching contract, `db_aggregate`/`semantic_search`/`run_read_query` design, tool slicing, model routing, security invariants, pricing snapshot. Read before any `ai-proxy`/`aiApi.ts` cost or capability work. | 25/07/2026 |
 | `iphone-web-integration.md` | Why the iPhone integration is shaped this way: the auth model, hard iOS platform limits, and the options evaluated and rejected. | 25/07/2026 |
 
