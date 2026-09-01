@@ -1,0 +1,37 @@
+-- ============================================================
+-- 083 — remove the Google Health (Fitbit Air) integration
+-- ============================================================
+-- User decision (2026-09-01): the Fitbit Air has not been worn for several
+-- days and won't be going forward — Apple Health/HealthKit (via Health Auto
+-- Export) is now the sole health data source for this app. The entire
+-- google-health-sync poller, its cross-source priority-ladder resolver
+-- (src/features/training/healthSourceDefaults.ts + the resolver in
+-- healthAggregate.ts/ai-proxy), the "⟳ Fitbit" sync button, the Fitbit
+-- hypnogram, and the per-section Auto/Apple/Google source toggle were all
+-- removed from the codebase in the same change as this migration.
+--
+-- This migration drops the two tables that existed ONLY to support that
+-- integration and have no other reader:
+--   - health_sleep_segments: Fitbit's timestamped sleep-stage segments (the
+--     hypnogram source). Apple/HAE never delivers per-segment stage timing,
+--     so this table was fitbit-only in practice and is read ONLY by the
+--     now-deleted FitbitHypnogram.tsx.
+--   - google_health_sync_state: reconnect/staleness bookkeeping written only
+--     by the now-deleted google-health-sync edge function. No frontend file
+--     ever read it (the migration-063 "future UI reconnect banner" comment
+--     was aspirational and never built).
+--
+-- Deliberately NOT touched by this migration:
+--   - health_metrics / health_workouts keep their `source_family` column and
+--     CHECK ('apple','fitbit','manual') constraint as-is. Historical rows
+--     tagged 'fitbit' stay in the DB (CARDINAL RULE: raw data is never
+--     deleted), and the Apple webhook still writes 'apple' explicitly.
+--     Narrowing the CHECK would either delete history or need a backfill
+--     neither of which the user asked for — 'fitbit' simply stops being
+--     written going forward.
+--   - Active Zone Minutes, Sleeping Heart Rate, HRV, SpO2 and skin
+--     temperature metrics/cards are explicitly UNCHANGED (user instruction)
+--     — Apple Watch (Series 8+/11) provides these natively too.
+
+DROP TABLE IF EXISTS public.health_sleep_segments;
+DROP TABLE IF EXISTS public.google_health_sync_state;

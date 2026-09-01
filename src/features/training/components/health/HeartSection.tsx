@@ -1,8 +1,6 @@
-import { useState } from 'react'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeHeartRateDailySeries, computeHeartRateHourlySeries, computeDailySeries } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { SourceToggle, type SourceSelection } from './SourceToggle'
 import type { HealthRange } from './sectionTypes'
 import { BarLineChart } from './BarLineChart'
 import { rangeForAnchor, labelForAnchor } from './dateNav'
@@ -15,8 +13,6 @@ function fmtDay(dateStr: string): string {
 
 export function HeartSection({ range }: { range: HealthRange }) {
   const today = todayStr()
-  const [source, setSource] = useState<SourceSelection>('auto')
-  const src = source === 'auto' ? undefined : source
   const { anchor, setAnchor, period, setPeriod } = range
 
   // Headline follows the SELECTED PERIOD: Day → that day's min–max + resting
@@ -25,9 +21,9 @@ export function HeartSection({ range }: { range: HealthRange }) {
   // is fetched vs the old anchor-only queries).
   const isDay = period === 'day'
   const { from, to } = rangeForAnchor(period, anchor)
-  const { data: rangePoints = [], isLoading } = useHealthMetricSeries('heart_rate', from, to, src)
-  const { data: restingPoints = [] } = useHealthMetricSeries('resting_heart_rate', from, to, src)
-  const { data: hrvPoints = [] } = useHealthMetricSeries('heart_rate_variability', from, to, src)
+  const { data: rangePoints = [], isLoading } = useHealthMetricSeries('heart_rate', from, to)
+  const { data: restingPoints = [] } = useHealthMetricSeries('resting_heart_rate', from, to)
+  const { data: hrvPoints = [] } = useHealthMetricSeries('heart_rate_variability', from, to)
 
   const hrDaily = computeHeartRateDailySeries(rangePoints)
   const restingDaily = computeDailySeries('resting_heart_rate', restingPoints)
@@ -81,10 +77,6 @@ export function HeartSection({ range }: { range: HealthRange }) {
             </div>
           )}
         </div>
-      </div>
-
-      <div className="flex items-center flex-wrap gap-2">
-        <SourceToggle value={source} onChange={setSource} />
       </div>
 
       <BarLineChart

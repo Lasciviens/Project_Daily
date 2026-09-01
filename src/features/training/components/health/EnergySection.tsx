@@ -1,9 +1,7 @@
-import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { SourceToggle, type SourceSelection } from './SourceToggle'
 import type { HealthRange } from './sectionTypes'
 import { rangeForAnchor, labelForAnchor } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
@@ -16,31 +14,17 @@ function fmtDay(dateStr: string): string {
 
 export function EnergySection({ range }: { range: HealthRange }) {
   const today = todayStr()
-  const [source, setSource] = useState<SourceSelection>('auto')
-  const src = source === 'auto' ? undefined : source
   const { anchor, setAnchor, period, setPeriod } = range
 
   const isDay = period === 'day'
-  // Measured values only — the synthetic per-hour basal top-up (median of the
-  // same hour over the prior week when the Watch was off) was REMOVED
-  // 2026-07-21 on the "no derived metrics" principle, on the plan that the
-  // 24/7-worn Air would gap-fill Watch-off hours with REAL data instead.
-  //
-  // That gap-fill DOES NOT HAPPEN for basal energy, verified against
-  // production: google-health-sync fetches basal-energy-burned (path id,
-  // union field and filter token all match the live-verified API surface
-  // doc) yet has never produced a single source_family='fitbit' row, while
-  // every other metric it fetches has. So Apple is still the only basal
-  // source and its stream has real holes whenever the Watch is off the
-  // wrist — on a day the Watch charged through the morning, the hours
-  // 06:00-15:00 simply have no basal rows at all.
-  //
-  // Summing only the hours that exist and printing it as "basal" states a
-  // partial number as a whole-day one. Rather than re-introducing the
-  // rejected estimate, the coverage is shown next to the value (see
-  // basalCoverage below) so an incomplete day reads as incomplete.
-  const { data: anchorActive = [], isLoading } = useHealthMetricSeries('active_energy', anchor, anchor, src)
-  const { data: anchorBasal = [] } = useHealthMetricSeries('basal_energy_burned', anchor, anchor, src)
+  // Measured values only — no synthetic top-up for a Watch-off hour (e.g. the
+  // Watch charging through the morning). Basal energy is continuous by
+  // definition, so an hour with no row is a real measurement gap, not a
+  // zero — summing only the hours that exist and printing it as "basal"
+  // would state a partial number as a whole-day one, so the coverage is
+  // shown next to the value instead (see basalCoverage below).
+  const { data: anchorActive = [], isLoading } = useHealthMetricSeries('active_energy', anchor, anchor)
+  const { data: anchorBasal = [] } = useHealthMetricSeries('basal_energy_burned', anchor, anchor)
   const activeToday = Math.round(computeDailySeries('active_energy', anchorActive)[0]?.value ?? 0)
   const basalToday = Math.round(computeDailySeries('basal_energy_burned', anchorBasal)[0]?.value ?? 0)
   // Basal metabolic rate is continuous BY DEFINITION — you burn it every hour,
@@ -51,8 +35,8 @@ export function EnergySection({ range }: { range: HealthRange }) {
     .filter(b => b.value > 0).length
 
   const { from, to } = rangeForAnchor(period, anchor)
-  const { data: activePoints = [] } = useHealthMetricSeries('active_energy', from, to, src)
-  const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', from, to, src)
+  const { data: activePoints = [] } = useHealthMetricSeries('active_energy', from, to)
+  const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', from, to)
 
   let chartData: { label: string; date?: string; active: number; basal: number }[]
   if (period === 'day') {
@@ -145,10 +129,6 @@ export function EnergySection({ range }: { range: HealthRange }) {
             )}
           </div>
         </div>
-      </div>
-
-      <div className="flex items-center flex-wrap gap-2">
-        <SourceToggle value={source} onChange={setSource} />
       </div>
 
       <div className="h-40">

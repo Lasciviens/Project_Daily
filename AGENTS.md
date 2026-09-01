@@ -380,7 +380,6 @@ working (the long-standing Hevy/Health gotcha). Current set:
 |---|---|---|
 | `hevy-sync` | false | `Authorization: Bearer <HEVY_WEBHOOK_SECRET>` (Hevy's webhook) |
 | `health-export-webhook` | false | `Authorization: Bearer <HEALTH_EXPORT_WEBHOOK_SECRET>` |
-| `google-health-sync` | false | user JWT **or** `x-sync-secret` == `GOOGLE_HEALTH_SYNC_SECRET` (cron) |
 | `ai-proxy` | false | user JWT via `getUser` **or** `x-phone-secret` == `PHONE_GATEWAY_SECRET` |
 | `phone-gateway` | false | `x-phone-secret` only, then acts as `HEVY_USER_ID` via the service role |
 | `push-send` | false | user JWT **or** `x-cron-secret` == `PUSH_CRON_SECRET` (pg_cron) |

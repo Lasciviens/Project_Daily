@@ -11,8 +11,8 @@ import { GoogleTaskListsSheet } from './GoogleTaskListsSheet'
 //   phone, never touched in this app.
 // - Push: a task created before Google was connected, or whose create-time
 //   sync silently failed (useCreateTask never blocks the Supabase write on it).
-// Mirrors FitbitSyncButton's small-pill styling for a consistent "extra sync
-// action under a connected integration" pattern.
+// Small-pill styling for a consistent "extra sync action under a connected
+// integration" pattern.
 export function GoogleTasksSyncButtons() {
   const { data: tasks = [] } = useAllTasks()
   const pull = useSyncFromGoogleTasks()

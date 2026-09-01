@@ -26,11 +26,10 @@ export interface HealthMetric {
   recorded_at: string
   unit:        string | null
   source:      string
-  // Which device/source stream this row belongs to. Optional here because rows
-  // fetched before migration 062 is applied won't have the column — the
-  // aggregation layer treats a missing family as 'apple' (every legacy row is
-  // Apple). 'fitbit' rows arrive from the Google Health poller (Phase 3).
-  source_family?: 'apple' | 'fitbit' | 'manual'
+  // Which device/source stream this row belongs to. Apple Health is the sole
+  // data source (the Fitbit/Google Health integration was removed
+  // 2026-09-01) — every row is 'apple' except a manual correction.
+  source_family?: 'apple' | 'manual'
   // deno-lint-ignore no-explicit-any
   value:       Record<string, any>
   synced_at:   string
@@ -87,31 +86,21 @@ const MAX_ROWS_PER_PAGE = 1000
 // yesterday) fell off the end entirely. This showed up as "Day view has
 // data, Week view doesn't" (a single day rarely hits the cap; a week/month
 // range routinely does).
-// `sourceFamily` (optional): restrict to one source stream ('apple' | 'fitbit').
-// Omitted → every source (today's behavior, unchanged). This is inert
-// scaffolding for the Phase 4 source switch — no caller passes it yet. When it
-// IS passed, migration 062 (which adds the source_family column) must already
-// be applied, or the .eq() errors with 42703; that ordering is guaranteed
-// because the Phase 4 UI ships after 062.
 export async function fetchHealthMetricSeries(
   metricName: string,
   fromDate: string,
   toDate: string,
-  sourceFamily?: 'apple' | 'fitbit',
 ): Promise<HealthMetric[]> {
   const all: HealthMetric[] = []
   let offset = 0
 
   for (;;) {
-    let query = supabase
+    const { data, error } = await supabase
       .from('health_metrics')
       .select('*')
       .eq('metric_name', metricName)
       .gte('date', fromDate)
       .lte('date', toDate)
-    if (sourceFamily) query = query.eq('source_family', sourceFamily)
-
-    const { data, error } = await query
       .order('recorded_at', { ascending: true })
       .range(offset, offset + MAX_ROWS_PER_PAGE - 1)
 
@@ -123,30 +112,6 @@ export async function fetchHealthMetricSeries(
   }
 
   return all
-}
-
-export interface SleepSegment {
-  id:               string
-  start_at:         string
-  end_at:           string
-  stage:            'light' | 'deep' | 'rem' | 'wake' | 'asleep'
-  source:           string | null
-  source_family:    'apple' | 'fitbit' | 'manual'
-  source_record_id: string | null
-}
-
-// Fitbit's timestamped sleep-stage segments (written by google-health-sync) —
-// the true hypnogram source. Apple/HAE never delivers per-segment stages, so
-// this table is fitbit-family in practice.
-export async function fetchSleepSegments(fromIso: string, toIso: string): Promise<SleepSegment[]> {
-  const { data, error } = await supabase
-    .from('health_sleep_segments')
-    .select('id, start_at, end_at, stage, source, source_family, source_record_id')
-    .gte('end_at', fromIso)
-    .lte('start_at', toIso)
-    .order('start_at', { ascending: true })
-  if (error) throw error
-  return (data ?? []) as SleepSegment[]
 }
 
 export interface ManualSleepInput {

@@ -1340,9 +1340,7 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
 // overlapping [start,end] windows — duplicate/subset re-reports of one night),
 // NOT a qty sum, so it's computed separately from the metric loop. Overlap is
 // absolute-time (timezone-independent); each kept night is then attributed to
-// its Oslo wake day. Real bug this fixes: Fitbit ends are UTC ("...Z"), so a
-// late-evening sub-session (23:32Z) keyed by raw date split off from its main
-// session (06:12Z next day) → the night showed a 0.8h fragment instead of 7.4h.
+// its Oslo wake day.
 async function computeSleepNights(supabase: AnyRecord, userId: string, since: string): Promise<AnyRecord[]> {
   const { data } = await supabase.from('health_metrics')
     .select('value').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
@@ -1395,50 +1393,10 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
   const kcal = (qty: number, unit: string | null, metric: string) =>
     (metric === 'active_energy' || metric === 'basal_energy_burned') && unit?.toLowerCase().includes('kj') ? qty / 4.184 : qty
 
-  // ── Source resolution (mirrors src/features/training/healthAggregate.ts,
-  // 2026-07-21) — with both Apple and Fitbit rows in the table, summing every
-  // row would double-count. Each window (hour for flow metrics, day for
-  // point-in-time) keeps exactly ONE stream (raw source string), picked by a
-  // per-metric tier ladder; same-tier duplicate streams keep the richest one.
-  type Tier = 'manual' | 'watch' | 'fitbit' | 'phone'
-  const tierOf = (r: AnyRecord): Tier =>
-    r.source === 'manual' ? 'manual'
-    : r.source_family === 'fitbit' ? 'fitbit'
-    : String(r.source ?? '').toLowerCase().includes('watch') ? 'watch' : 'phone'
-  const LADDER_CUMULATIVE: Tier[] = ['manual', 'watch', 'fitbit', 'phone']
-  const LADDER_FITBIT_FIRST: Tier[] = ['manual', 'fitbit', 'watch', 'phone']
-  const ladderFor = (m: string) =>
-    m === 'heart_rate' || m === 'resting_heart_rate' ? LADDER_FITBIT_FIRST : LADDER_CUMULATIVE
-  const windowOf = (r: AnyRecord) =>
-    r.metric_name === 'resting_heart_rate' ? r.date : String(r.recorded_at ?? '').slice(0, 13)
-  const resolved: AnyRecord[] = []
-  {
-    const byWindow = new Map<string, AnyRecord[]>()
-    for (const r of rows) {
-      const k = `${r.metric_name}|${windowOf(r)}`
-      const arr = byWindow.get(k)
-      if (arr) arr.push(r); else byWindow.set(k, [r])
-    }
-    for (const group of byWindow.values()) {
-      const streams = new Map<string, AnyRecord[]>()
-      for (const r of group) {
-        const k = `${r.source_family === 'fitbit' ? 'f' : 'a'}|${r.source}`
-        const arr = streams.get(k)
-        if (arr) arr.push(r); else streams.set(k, [r])
-      }
-      if (streams.size === 1) { resolved.push(...group); continue }
-      const ladder = ladderFor(group[0].metric_name)
-      const present = new Set([...streams.values()].map(g => tierOf(g[0])))
-      const winTier = ladder.find(t => present.has(t))
-      let win: AnyRecord[] | null = null
-      let winKey = ''
-      for (const [k, g] of streams) {
-        if (tierOf(g[0]) !== winTier) continue
-        if (!win || g.length > win.length || (g.length === win.length && k < winKey)) { win = g; winKey = k }
-      }
-      if (win) resolved.push(...win)
-    }
-  }
+  // Apple Health is the sole data source (the Fitbit/Google Health cross-
+  // stream resolver was removed 2026-09-01 along with that whole integration)
+  // — no per-window stream competition needed, every row is summed as-is.
+  const resolved: AnyRecord[] = rows
 
   const byDate = new Map<string, AnyRecord[]>()
   for (const r of resolved) {

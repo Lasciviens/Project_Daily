@@ -1,9 +1,7 @@
-import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { SourceToggle, type SourceSelection } from './SourceToggle'
 import type { HealthRange } from './sectionTypes'
 import { rangeForAnchor, labelForAnchor } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
@@ -16,8 +14,6 @@ function fmtDay(dateStr: string): string {
 
 export function StepsSection({ range }: { range: HealthRange }) {
   const today = todayStr()
-  const [source, setSource] = useState<SourceSelection>('auto')
-  const src = source === 'auto' ? undefined : source
   const { anchor, setAnchor, period, setPeriod } = range
 
   // Headline follows the SELECTED PERIOD, not always a single day: Day →
@@ -26,8 +22,8 @@ export function StepsSection({ range }: { range: HealthRange }) {
   // these queries dedupe with what the old anchor-only queries fetched).
   const isDay = period === 'day'
   const { from, to } = rangeForAnchor(period, anchor)
-  const { data: rangePoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', from, to, src)
-  const { data: rangeDistPoints = [] } = useHealthMetricSeries('walking_running_distance', from, to, src)
+  const { data: rangePoints = [], isLoading: stepsLoading } = useHealthMetricSeries('step_count', from, to)
+  const { data: rangeDistPoints = [] } = useHealthMetricSeries('walking_running_distance', from, to)
 
   const stepDays = computeDailySeries('step_count', rangePoints)
   const distDays = computeDailySeries('walking_running_distance', rangeDistPoints)
@@ -108,10 +104,6 @@ export function StepsSection({ range }: { range: HealthRange }) {
             </div>
           )}
         </div>
-      </div>
-
-      <div className="flex items-center flex-wrap gap-2">
-        <SourceToggle value={source} onChange={setSource} />
       </div>
 
       <div className="h-32">

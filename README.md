@@ -3,8 +3,8 @@
 A single-user personal dashboard built with React + Supabase. It covers daily
 planning and to-dos, a food/nutrition diary with bodyweight-driven coaching,
 media tracking (movies/TV via TMDB), a work task board, projects, a games
-library, training and health (Hevy, Strava, Apple Health, Fitbit Air via the
-Google Health API), Google Calendar sync, Oslo transit and weather, an AI
+library, training and health (Hevy, Strava, Apple Health), Google Calendar
+sync, Oslo transit and weather, an AI
 assistant with generic database access, an iPhone control surface (Shortcuts,
 Siri, Scriptable widgets) and lock-screen push notifications.
 
@@ -95,7 +95,6 @@ flowchart LR
     subgraph APIs["External services"]
         GEMINI[Gemini 3.5 Flash<br/>+ 4-model fallback]
         HEVY[Hevy API]
-        GHEALTH[Google Health API<br/>Fitbit Air]
         HAE[Health Auto Export<br/>iOS app]
         STRAVA[Strava]
         KASSAL[Kassalapp<br/>NO branded groceries]
@@ -119,7 +118,6 @@ flowchart LR
     EF -->|proxied| GEMINI
     EF -->|proxied| HEVY
     HEVY -->|webhook| EF
-    EF -->|poll| GHEALTH
     HAE -->|webhook| EF
     EF -->|proxied| STRAVA
     EF -->|proxied| KASSAL
@@ -147,7 +145,7 @@ Two things the diagram is deliberate about:
   `calendar-oauth`/`calendar-token`, while the Calendar and Tasks API calls
   themselves are direct from the client with the bearer token.
 - **`pg_cron` is load-bearing**, not decoration: it drives the morning Web Push
-  brief and the Fitbit/Google Health poll.
+  brief.
 
 ---
 
@@ -158,8 +156,8 @@ barcode + online food search, supplements, water) with a bodyweight-driven
 nutrition coach, a shop/wishlist, media tracking (movies/TV via TMDB with
 per-episode progress), a work kanban/list board, projects, a games library,
 training and health (Hevy workouts/routines/PRs, Strava, Apple Health via
-Health Auto Export, Fitbit Air via the Google Health API, plus an AI PT coach),
-Google Calendar sync, Oslo transit and weather, a Developer page (audit trail +
+Health Auto Export, plus an AI PT coach), Google Calendar sync, Oslo transit
+and weather, a Developer page (audit trail +
 error logs) and an in-app Dev Requests backlog.
 
 Cross-cutting surfaces:
@@ -298,7 +296,7 @@ Create a `.env.local` at the project root. (`.env.example` and
 | `VITE_SUPABASE_URL` | Main Supabase project URL | **Yes** — the app throws at import without it |
 | `VITE_SUPABASE_ANON_KEY` | Main Supabase anon key | **Yes** — same |
 | `VITE_TMDB_API_KEY` | TMDB key, client-safe | Media features throw at call time without it |
-| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID — one consent covering Calendar, Tasks and the three Google Health (Fitbit) read scopes | Optional; Google features are hidden without it |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID — one consent covering Calendar and Tasks | Optional; Google features are hidden without it |
 | `VITE_STRAVA_CLIENT_ID` | Strava OAuth client ID | Optional; Strava connect only |
 | `VITE_OXR_APP_ID` | Open Exchange Rates app id | Optional; the Currency widget errors without it |
 | `VITE_RP5_SUPABASE_URL` | RP5 games Supabase URL | Optional; Games is disabled without it |
@@ -310,7 +308,7 @@ All nine are set as GitHub Actions secrets for the deploy build.
 Server-side secrets live in **Supabase Vault / Edge Function secrets only,
 never in the client** — the Gemini API key (`GEMINI_API_KEY`), Google OAuth
 client secret, `HEVY_*`, `HEALTH_EXPORT_WEBHOOK_SECRET`,
-`GOOGLE_HEALTH_SYNC_SECRET`, `KASSALAPP_API_KEY`, `PHONE_GATEWAY_SECRET`,
+`KASSALAPP_API_KEY`, `PHONE_GATEWAY_SECRET`,
 `VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`, `PUSH_CRON_SECRET`, `STRAVA_CLIENT_SECRET`.
 CLAUDE.md's Environment Variables table is the full list.
 
