@@ -39,7 +39,7 @@ require('sucrase/register')
 const {
   est1RM, metricKindForExerciseType, computeExerciseProgression, repRangeVariedSignificantly,
   computeWeeklyVolumeTrend, rollingAverage, computeConsistencyByWeek, currentStreakWeeks,
-  resolveBodyweightForDate, computeRelativeStrengthTrend, REP_BUCKETS, computeRepRangeDistribution,
+  resolveBodyweightForDate, computeRelativeStrengthTrend, indexRelativeStrengthTrend, REP_BUCKETS, computeRepRangeDistribution,
   computeWeeklyChangeFlags, computeWeeklySetsPerMuscleTrend, mondayOf,
 } = require('../src/features/training/progressAggregate')
 const { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } = require('../src/features/training/recoveryAggregate')
@@ -235,6 +235,14 @@ console.log('\n== 8. resolveBodyweightForDate / computeRelativeStrengthTrend =='
   check('sessions with no usable nearby bodyweight are DROPPED, not guessed', trend.length === 2)
   check('ratio = est1RM ÷ resolved bodyweight, rounded to 2dp', trend[0].ratio === 1.25 && trend[0].bodyweightKg === 80)
   check('the interpolated point is flagged estimated', trend[1].estimated === true)
+
+  // indexRelativeStrengthTrend — both series rebased to 100 at the FIRST point.
+  const indexed = indexRelativeStrengthTrend(trend)
+  check('the first point is always indexed to exactly 100 on both series', indexed[0].strengthIndex === 100 && indexed[0].bodyweightIndex === 100)
+  const expectedStrengthIndex = Math.round((trend[1].est1rmValue / trend[0].est1rmValue) * 1000) / 10
+  check('a later point is indexed proportionally to the first point\'s raw value', indexed[1].strengthIndex === expectedStrengthIndex, JSON.stringify(indexed))
+  check('estimated flag carries through unchanged', indexed[1].estimated === trend[1].estimated)
+  check('an empty input produces an empty output, not a crash', indexRelativeStrengthTrend([]).length === 0)
 }
 
 console.log('\n== 9. computeRepRangeDistribution ==')

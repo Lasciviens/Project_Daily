@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, LabelList } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { computeRepRangeDistribution } from '../progressAggregate'
 import { slugForHevyGroup, labelForSlug, MAJOR_MUSCLES } from '../muscleMap'
-import { compactAxisTick } from './health/axisFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Rep-Range Distribution — a follow-up sports-scientist review (2026-08-31)
@@ -13,9 +11,29 @@ import { compactAxisTick } from './health/axisFormat'
 //  129-138) found hypertrophy roughly equivalent from ~5 to ~30 reps taken
 //  near failure — there's no evidence for a boundary at rep 8, so this chart
 //  describes what was trained, not a scorecard against a target shape.
+//
+//  A second review (2026-09-01) replaced the vertical bar histogram with a
+//  single 100%-STACKED HORIZONTAL BAR — the underlying finding logic
+//  (computeRepRangeFindings) reasons entirely in proportions ("81% sat in
+//  6-12 reps"), and a follow-up research pass found this is exactly
+//  MacroFactor's own precedent for proportion-based dashboards (stacked
+//  horizontal bars, segment width = share) — plus the documented industry
+//  caveat that a 100%-stacked bar can make a viewer forget they're looking
+//  at a PROPORTION, not an absolute count, which is why the total working-set
+//  count stays printed next to the bar rather than only living in a tooltip.
+//  Colours are deliberately CATEGORICAL, never a green→red ramp — a ramp
+//  would assert a "good" and "bad" end the literature doesn't support.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Period = 30 | 90 | 182
+
+const BUCKET_COLOR: Record<string, string> = {
+  '1-5':   '#7c3aed',
+  '6-12':  '#0ea5e9',
+  '13-20': '#16a34a',
+  '21-30': '#f59e0b',
+  '31+':   '#ec4899',
+}
 
 export function RepRangeDistributionChart() {
   const { data, isLoading } = useTrainingHistory()
@@ -90,35 +108,30 @@ export function RepRangeDistributionChart() {
         <p className="text-xs text-ink-300 py-8 text-center">No working sets with a rep count logged in this window{muscle ? ` for ${labelForSlug(muscle)}` : ''}.</p>
       ) : (
         <>
-          {/* On-bar percentage labels + a capped bar width — at only 5
-              categories the default (uncapped) bar width filled almost the
-              whole plot area with a blocky rectangle per bucket; readers
-              also had to round-trip through the tooltip just to see the
-              share each bucket takes, which the guardrail text below is
-              explicitly about. */}
-          <div style={{ height: 160 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 18, right: 4, left: -4, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-                <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} tickFormatter={compactAxisTick} />
-                <Tooltip
-                  cursor={{ fill: 'rgb(var(--ink-100))' }}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
-                  formatter={(v: any) => [`${v} set${v === 1 ? '' : 's'} (${totalSets ? Math.round((v / totalSets) * 100) : 0}%)`, 'Sets']}
-                  contentStyle={{ fontSize: 11, borderRadius: 8 }}
-                />
-                <Bar dataKey="count" fill="#0ea5e9" fillOpacity={0.7} radius={[4, 4, 0, 0]} maxBarSize={56}>
-                  <LabelList
-                    dataKey="count"
-                    position="top"
-                    style={{ fontSize: 10, fill: 'rgb(var(--ink-500))', fontWeight: 600 }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts LabelList's formatter prop type is awkward to import cleanly.
-                    formatter={(v: any) => (v > 0 && totalSets ? `${Math.round((v / totalSets) * 100)}%` : '')}
-                  />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <p className="text-[11px] text-ink-500">{totalSets} working sets in this window</p>
+
+          {/* The stacked bar itself — a single row, segment width = share of
+              totalSets. Zero-count buckets contribute no segment (nothing to
+              render, nothing to hover). */}
+          <div className="flex h-8 rounded-lg overflow-hidden border border-ink-200">
+            {chartData.filter(b => b.count > 0).map(b => (
+              <div
+                key={b.key}
+                style={{ width: `${(b.count / totalSets) * 100}%`, backgroundColor: BUCKET_COLOR[b.key] }}
+                title={`${b.label}: ${b.count} sets (${Math.round((b.count / totalSets) * 100)}%)`}
+              />
+            ))}
+          </div>
+
+          {/* Legend doubles as the per-bucket count/percentage readout — no
+              tooltip round-trip needed to see a share. */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {chartData.map(b => (
+              <span key={b.key} className="flex items-center gap-1.5 text-[11px] text-ink-600">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: BUCKET_COLOR[b.key] }} />
+                {b.label} · {b.count} ({totalSets ? Math.round((b.count / totalSets) * 100) : 0}%)
+              </span>
+            ))}
           </div>
 
           <div className="flex flex-col gap-1 text-[11px] text-ink-400">
@@ -131,7 +144,7 @@ export function RepRangeDistributionChart() {
               <p>Sets are filed by the exercise&apos;s primary muscle only (no secondary-muscle credit) — for total weekly dose per muscle, see the Muscles tab.</p>
             )}
             <p className="text-ink-300">
-              There&apos;s no &quot;right&quot; shape and no target line here on purpose — muscle growth is roughly equivalent from about 5 to 30 reps when sets are
+              There&apos;s no &quot;right&quot; shape here on purpose — muscle growth is roughly equivalent from about 5 to 30 reps when sets are
               taken close to failure (Schoenfeld 2017; Morton 2016), so a spread across 6–20 and a concentration at 8 can both be fine. Use this to spot drift you
               didn&apos;t intend, not to chase a specific distribution.
             </p>

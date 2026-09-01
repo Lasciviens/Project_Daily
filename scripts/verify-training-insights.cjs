@@ -23,6 +23,11 @@
  *      restriction reframe — the correctness fix a follow-up sports-scientist
  *      review flagged as this suite's most serious defect: a muscle finding
  *      must acknowledge an active limitation, never silently contradict it.
+ *  10. groupFindings — actionability grouping (working/attention/unassessable),
+ *      added from a second review + research pass (2026-09-01): nothing is
+ *      dropped, and the insufficient-data/rep-range-varied cases get their
+ *      own always-visible "unassessable" group rather than being buried in a
+ *      flat tier-sorted list.
  *
  *   Run:  node scripts/verify-training-insights.cjs
  */
@@ -30,7 +35,7 @@ require('sucrase/register')
 
 const {
   lastCompleteWeek, computeConsistencyFindings, computeVolumeFindings, computeMuscleFindings,
-  computeRepRangeFindings, computeRelativeStrengthFindings, computeExerciseTrendFindings, sortFindings,
+  computeRepRangeFindings, computeRelativeStrengthFindings, computeExerciseTrendFindings, sortFindings, groupFindings,
 } = require('../src/features/training/trainingInsights')
 const { mondayOf } = require('../src/features/training/progressAggregate')
 const { limitedSlugsFromLimitations } = require('../src/features/training/muscleMap')
@@ -222,6 +227,25 @@ console.log('\n== 9. limitedSlugsFromLimitations ==')
     { movement_pattern: 'lunge', severity: 'limit', active: true },   // quadriceps: limit (would downgrade if order mattered)
   ])
   check('avoid never gets downgraded to limit by a later, weaker limitation on the same muscle', worstCaseWins.get('quadriceps') === 'avoid')
+}
+
+console.log('\n== 10. groupFindings ==')
+{
+  const findings = [
+    { id: 'exercise-progressing-A', tier: 'measured', positive: true, text: '' },
+    { id: 'exercise-regressing-B', tier: 'measured', positive: false, text: '' },
+    { id: 'volume-flat', tier: 'measured', positive: null, text: '' },
+    { id: 'relative-strength-null', tier: 'measured', positive: null, text: '' },
+    { id: 'exercise-varied-C', tier: 'measured', positive: null, text: '' },
+  ]
+  const grouped = groupFindings(findings)
+  check('a positive finding lands in "working"', grouped.working.map(f => f.id).includes('exercise-progressing-A'))
+  check('a negative finding lands in "attention"', grouped.attention.map(f => f.id).includes('exercise-regressing-B'))
+  check('a neutral (null) informational finding is folded into "attention", not its own bucket', grouped.attention.map(f => f.id).includes('volume-flat'))
+  check('the insufficient-bodyweight-data finding is pulled into its own "unassessable" group', grouped.unassessable.map(f => f.id).includes('relative-strength-null'))
+  check('a rep-range-varied skip is also "unassessable" (NEVER_HIDES payoff, never silently dropped)', grouped.unassessable.map(f => f.id).includes('exercise-varied-C'))
+  check('nothing is dropped — every finding lands in exactly one group',
+    grouped.working.length + grouped.attention.length + grouped.unassessable.length === findings.length)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
