@@ -32,7 +32,11 @@
 CREATE TABLE IF NOT EXISTS public.exercise_gif_overrides (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id               uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
-  exercise_template_id  uuid NOT NULL REFERENCES public.hevy_exercise_templates(id) ON DELETE CASCADE,
+  -- hevy_exercise_templates.id is TEXT (Hevy's own id format, e.g.
+  -- "084A67CA") — NOT a uuid, confirmed live against production data after
+  -- the first version of this migration failed with "Key columns
+  -- exercise_template_id and id are of incompatible types: uuid and text".
+  exercise_template_id  text NOT NULL REFERENCES public.hevy_exercise_templates(id) ON DELETE CASCADE,
   gif_url               text NOT NULL,
   source                text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'exercisegymgifsdb')),
   created_at            timestamptz NOT NULL DEFAULT now(),
