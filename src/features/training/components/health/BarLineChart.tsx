@@ -61,7 +61,7 @@ function makeTooltipContent(unit: string, onPointClick?: (point: ChartPoint) => 
 }
 
 export function BarLineChart({
-  data, dataKey, color, unit, tooltipLabel, height = 112, xInterval, rangeKey, onPointClick,
+  data, dataKey, color, unit, tooltipLabel, height = 112, xInterval, rangeKey, onPointClick, yDomain = ['auto', 'auto'],
 }: {
   data: ChartPoint[]
   dataKey: string
@@ -74,6 +74,16 @@ export function BarLineChart({
   // Fires with the clicked point's raw data (e.g. { date: '2026-07-06', ... })
   // — used to jump a week/month chart to that day's Day view.
   onPointClick?: (point: ChartPoint) => void
+  // Health tab's own charts (heart rate, weight) deliberately zoom into a
+  // narrow range — an 'auto' domain is the right call there. But a Bar
+  // sharing the SAME dataKey as the Line (this component's whole point)
+  // draws from whatever the axis's computed minimum is, not from zero — for
+  // a trend like "my squat 1RM over time" that makes bars near the axis
+  // floor look almost invisible while later ones look disproportionately
+  // tall, which reads as broken rather than zoomed-in. Progress-tab callers
+  // pass [0, 'auto'] to opt into a true-to-magnitude bar; every existing
+  // Health-tab call site is untouched (default unchanged).
+  yDomain?: [number | 'auto' | 'dataMin', number | 'auto' | 'dataMax']
 }) {
   return (
     <div style={{ height }}>
@@ -83,7 +93,7 @@ export function BarLineChart({
           <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
           {/* width/margin: 2-digit bpm ticks fitted by luck — a 3-digit or
               4-digit axis clipped to slivers of glyphs. See axisFormat.ts. */}
-          <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} domain={['auto', 'auto']} />
+          <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} domain={yDomain} />
           {/* Hover trigger (default): per explicit user request, the value
               must appear the moment the pointer is over a point — no click
               needed. On touch, the first tap acts as hover and still shows

@@ -139,25 +139,37 @@ export function computeVolumeFindings(weekly: WeeklyVolumePoint[], anchorDate: s
 // ── C. Weekly sets per muscle vs landmarks ──────────────────────────────────
 const MUSCLE_CLAUSE = 'MEV/MAV/MRV are a practitioner framework (Renaissance Periodization), not measured thresholds — what\'s well supported is the shape (more weekly sets → more growth, with diminishing returns; Schoenfeld 2017; Pelland 2025), not the specific numbers.'
 
-export interface MuscleFindingInput { slug: string; label: string; weekly: { weekStart: string; sets: number }[]; landmarks: Landmarks | undefined }
+export interface MuscleFindingInput {
+  slug: string; label: string; weekly: { weekStart: string; sets: number }[]; landmarks: Landmarks | undefined
+  /** From muscleMap.ts's `limitedSlugsFromLimitations` — an active
+   *  restriction on this muscle. When set, a "you're under-dosing this"
+   *  finding is REFRAMED to acknowledge it rather than silently issuing
+   *  advice that contradicts a restriction the app already stores
+   *  (sports-scientist review, 2026-09-01) — never suppressed outright,
+   *  per NEVER_HIDES: a deliberately low number is still a real number. */
+  restriction?: 'avoid' | 'limit'
+}
 
 export function computeMuscleFindings(inputs: MuscleFindingInput[], anchorDate: string): Finding[] {
   const last = lastCompleteWeek(anchorDate)
   const out: Finding[] = []
-  for (const { label, weekly, landmarks } of inputs) {
+  for (const { label, weekly, landmarks, restriction } of inputs) {
     const byWeek = new Map(weekly.map(w => [w.weekStart, w.sets]))
     const last8 = Array.from({ length: 8 }, (_, i) => byWeek.get(shiftWeek(last, -i)) ?? 0)
     const meanSets = mean(last8)
+    const restrictionClause = restriction
+      ? ` You have an active ${restriction} restriction that reaches this muscle — this may be exactly why, and if so there's nothing to act on here.`
+      : ''
 
     if (last8.every(v => v === 0)) {
-      out.push({ id: `muscle-zero-${label}`, tier: 'measured', positive: false, text: `${label} received zero credited working sets in the last 8 weeks. No threshold is involved in that observation — you haven't trained it. If that's deliberate, ignore this.` })
+      out.push({ id: `muscle-zero-${label}`, tier: 'measured', positive: false, text: `${label} received zero credited working sets in the last 8 weeks. No threshold is involved in that observation — you haven't trained it.${restriction ? restrictionClause : ' If that\'s deliberate, ignore this.'}` })
       continue
     }
     if (!landmarks) continue
 
     const underCount = last8.filter(v => v < landmarks.mev).length
     if (underCount >= 6 && meanSets < landmarks.mev) {
-      out.push({ id: `muscle-under-${label}`, tier: 'heuristic', positive: false, text: `${label} averaged ${round1(meanSets)} sets/week over the last 8 weeks and was below ${landmarks.mev} (this app's MEV convention) in ${underCount} of those weeks. At this dose you're most likely maintaining rather than building. ${MUSCLE_CLAUSE}` })
+      out.push({ id: `muscle-under-${label}`, tier: 'heuristic', positive: false, text: `${label} averaged ${round1(meanSets)} sets/week over the last 8 weeks and was below ${landmarks.mev} (this app's MEV convention) in ${underCount} of those weeks. At this dose you're most likely maintaining rather than building.${restrictionClause} ${MUSCLE_CLAUSE}` })
     }
     const overCount = last8.filter(v => v > landmarks.mrv).length
     if (overCount >= 4) {

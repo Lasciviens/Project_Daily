@@ -152,7 +152,12 @@ export function ExerciseProgressChart() {
             )}
           </div>
 
-          <BarLineChart data={chartData} dataKey="value" color={meta.color} unit={meta.unit} tooltipLabel={meta.label} height={140} />
+          {/* Zero-based bar baseline — matches this app's "magnitude a bar
+              represents is honest" convention (see WeeklyVolumeChart) —
+              EXCEPT for the inverted assisted-exercise metric, whose plotted
+              values are deliberately negative; [0,'auto'] there would clip
+              every point off the chart entirely. */}
+          <BarLineChart data={chartData} dataKey="value" color={meta.color} unit={meta.unit} tooltipLabel={meta.label} height={140} yDomain={invert ? ['auto', 'auto'] : [0, 'auto']} />
 
           {/* Guardrail copy — a strength-coach + sports-scientist review's exact
               wording, kept blunt and always visible rather than buried in an

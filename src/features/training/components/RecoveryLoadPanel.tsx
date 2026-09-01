@@ -5,6 +5,7 @@ import { useHealthMetricSeries } from '../hooks/useHealthExport'
 import { computeSleepSummary, computeDailySeries } from '../healthAggregate'
 import { computeWeeklyVolumeTrend } from '../progressAggregate'
 import { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } from '../recoveryAggregate'
+import { lastCompleteWeek } from '../trainingInsights'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Recovery vs Load — a follow-up sports-scientist review (2026-08-31) of the
@@ -21,6 +22,23 @@ const WINDOW_DAYS = 182
 
 function fmtWeek(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+// A pure auto-domain on a physiological line lane (sleep hours, resting HR)
+// zooms a genuinely small week-to-week wobble into a visual cliff — the
+// same "two arbitrary scales can be tuned to look coupled" hazard this
+// panel's own header comment rejects for a dual-axis chart, just committed
+// by accident here (sports-scientist review, 2026-09-01). Enforcing a
+// minimum span keeps normal noise looking like noise.
+function domainWithMinSpan(values: (number | null)[], minSpan: number): [number, number] {
+  const real = values.filter((v): v is number => v != null)
+  if (real.length === 0) return [0, minSpan]
+  const min = Math.min(...real)
+  const max = Math.max(...real)
+  const span = max - min
+  if (span >= minSpan) return [min, max]
+  const pad = (minSpan - span) / 2
+  return [Math.round((min - pad) * 10) / 10, Math.round((max + pad) * 10) / 10]
 }
 
 export function RecoveryLoadPanel() {
@@ -49,16 +67,24 @@ export function RecoveryLoadPanel() {
     const sleepByWeek = new Map(sleep.map(w => [w.weekStart, w]))
     const rhrByWeek = new Map(rhr.map(w => [w.weekStart, w]))
 
-    return sortedWeeks.map(weekStart => ({
-      weekStart,
-      label: fmtWeek(weekStart),
-      tonnageKg: tonnageByWeek.get(weekStart) ?? 0,
-      sleepHours: sleepByWeek.get(weekStart)?.avgHours ?? null,
-      sleepNights: sleepByWeek.get(weekStart)?.nights ?? 0,
-      rhrBpm: rhrByWeek.get(weekStart)?.medianBpm ?? null,
-      rhrDays: rhrByWeek.get(weekStart)?.days ?? 0,
-    }))
-  }, [training, sleepPoints, rhrPoints])
+    // Exclude the current, still-in-progress week — same partial-week
+    // caveat as WeeklyVolumeChart/WeeklySetsPerMuscleChart now guard against.
+    const last = lastCompleteWeek(toStr)
+    return sortedWeeks
+      .filter(weekStart => weekStart <= last)
+      .map(weekStart => ({
+        weekStart,
+        label: fmtWeek(weekStart),
+        tonnageKg: tonnageByWeek.get(weekStart) ?? 0,
+        sleepHours: sleepByWeek.get(weekStart)?.avgHours ?? null,
+        sleepNights: sleepByWeek.get(weekStart)?.nights ?? 0,
+        rhrBpm: rhrByWeek.get(weekStart)?.medianBpm ?? null,
+        rhrDays: rhrByWeek.get(weekStart)?.days ?? 0,
+      }))
+  }, [training, sleepPoints, rhrPoints, toStr])
+
+  const sleepDomain = useMemo(() => domainWithMinSpan(weeks.map(w => w.sleepHours), 2), [weeks])
+  const rhrDomain = useMemo(() => domainWithMinSpan(weeks.map(w => w.rhrBpm), 10), [weeks])
 
   if (isLoading) return <div className="h-56 rounded-2xl bg-cream-200 animate-pulse" />
   if (weeks.length === 0) {
@@ -82,7 +108,10 @@ export function RecoveryLoadPanel() {
           <BarChart data={weeks} margin={{ top: 2, right: 4, left: -4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} />
+            {/* Zero-based on purpose — a Bar's height needs to mean "how big
+                is this number", and an auto-computed non-zero minimum made a
+                real week of training look like a near-empty sliver. */}
+            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={[0, 'auto']} />
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly. */}
             <Tooltip cursor={false} formatter={(v: any) => [`${Number(v).toLocaleString('en-GB')} kg`, 'Tonnage']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
             <Bar dataKey="tonnageKg" fill="#7c3aed" fillOpacity={0.35} radius={[3, 3, 0, 0]} barSize={10} />
@@ -96,7 +125,7 @@ export function RecoveryLoadPanel() {
           <LineChart data={weeks} margin={{ top: 2, right: 4, left: -4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={['auto', 'auto']} />
+            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={sleepDomain} />
             <Tooltip
               cursor={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
@@ -114,7 +143,7 @@ export function RecoveryLoadPanel() {
           <ComposedChart data={weeks} margin={{ top: 2, right: 4, left: -4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
             <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={['auto', 'auto']} />
+            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={rhrDomain} />
             <Tooltip
               cursor={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.

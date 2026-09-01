@@ -178,16 +178,6 @@ export function repRangeVariedSignificantly(points: ExerciseSessionPoint[]): boo
 // otherwise silently mix apples and oranges into one number.
 const TONNAGE_TYPES = new Set(['weight_reps', 'short_distance_weight', 'bodyweight_weighted'])
 
-function isoWeekKey(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  // ISO week: Thursday of the current week determines the week-year.
-  const day = (d.getDay() + 6) % 7 // Mon=0..Sun=6
-  d.setDate(d.getDate() - day + 3)
-  const firstThursday = new Date(d.getFullYear(), 0, 4)
-  const weekNum = 1 + Math.round(((d.getTime() - firstThursday.getTime()) / 86_400_000 - 3 + ((firstThursday.getDay() + 6) % 7)) / 7)
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
-}
-
 /** Monday date ('yyyy-MM-dd') of the week a given date falls in — used as the
  *  chart's x-axis label instead of the raw ISO week string. Exported so
  *  recoveryAggregate.ts (sleep/resting-HR weekly grouping) and the
@@ -216,23 +206,31 @@ export function computeWeeklyVolumeTrend(
     if (s.weight_kg == null || s.reps == null) continue
     const type = typeById.get(s.exercise_template_id)
     if (!type || !TONNAGE_TYPES.has(type)) continue
-    const wk = isoWeekKey(s.date)
+    const wk = mondayOf(s.date)
     byWeek.set(wk, (byWeek.get(wk) ?? 0) + s.weight_kg * s.reps)
   }
-  // Re-key by Monday date for display, carrying the ISO week's total.
-  const byMonday = new Map<string, number>()
-  const mondayForIsoWeek = new Map<string, string>()
-  for (const s of sets) {
-    const wk = isoWeekKey(s.date)
-    if (!mondayForIsoWeek.has(wk)) mondayForIsoWeek.set(wk, mondayOf(s.date))
+  if (byWeek.size === 0) return []
+
+  // DENSE series — every week from the first tonnage week to the last,
+  // untrained-for-tonnage weeks included as an explicit zero. Real bug this
+  // fixes (sports-scientist review, 2026-09-01): a sparse series (only weeks
+  // with tonnage) meant `rollingAverage` silently averaged the last N ARRAY
+  // ENTRIES rather than the last N CALENDAR weeks — after a break, a
+  // "4-week average" could quietly span 7+ real weeks — and the chart's own
+  // x-axis spacing didn't correspond to elapsed time. Same technique as
+  // computeConsistencyByWeek; this is also what lets trainingInsights.ts's
+  // calendar-anchored `shiftWeek` lookups and this chart agree on the exact
+  // same number for the same week.
+  const weeks = [...byWeek.keys()].sort()
+  const out: WeeklyVolumePoint[] = []
+  let cursor = new Date(weeks[0] + 'T00:00:00')
+  const last = new Date(weeks[weeks.length - 1] + 'T00:00:00')
+  while (cursor <= last) {
+    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
+    out.push({ weekStart: key, tonnageKg: Math.round(byWeek.get(key) ?? 0) })
+    cursor.setDate(cursor.getDate() + 7)
   }
-  for (const [wk, total] of byWeek) {
-    const monday = mondayForIsoWeek.get(wk) ?? wk
-    byMonday.set(monday, total)
-  }
-  return [...byMonday.entries()]
-    .map(([weekStart, tonnageKg]) => ({ weekStart, tonnageKg: Math.round(tonnageKg) }))
-    .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+  return out
 }
 
 /** Trailing N-week simple moving average, aligned to the same weekStart keys

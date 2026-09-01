@@ -19,6 +19,10 @@
  *   7. computeExerciseTrendFindings — progressing/stalled/regressing, and
  *      the rep-range-varied skip.
  *   8. sortFindings — measured before evidence-based before heuristic.
+ *   9. muscleMap.ts's limitedSlugsFromLimitations + computeMuscleFindings'
+ *      restriction reframe — the correctness fix a follow-up sports-scientist
+ *      review flagged as this suite's most serious defect: a muscle finding
+ *      must acknowledge an active limitation, never silently contradict it.
  *
  *   Run:  node scripts/verify-training-insights.cjs
  */
@@ -29,6 +33,7 @@ const {
   computeRepRangeFindings, computeRelativeStrengthFindings, computeExerciseTrendFindings, sortFindings,
 } = require('../src/features/training/trainingInsights')
 const { mondayOf } = require('../src/features/training/progressAggregate')
+const { limitedSlugsFromLimitations } = require('../src/features/training/muscleMap')
 
 let passed = 0
 let failed = 0
@@ -116,6 +121,15 @@ console.log('\n== 4. computeMuscleFindings ==')
   const inRangeWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 14 })) // inside mev-mav
   const inRange = computeMuscleFindings([{ slug: 'chest', label: 'Chest', weekly: inRangeWeekly, landmarks }], today)
   check('a muscle inside its MEV-MAV band produces no finding at all (no news is not bad news)', inRange.length === 0)
+
+  // The athlete_limitations cross-check (a follow-up review's #1 correctness fix):
+  // an under-MEV muscle with an active restriction must acknowledge it, never
+  // silently tell the user to add volume to a muscle they've deliberately limited.
+  const restricted = computeMuscleFindings([{ slug: 'hamstring', label: 'Hamstrings', weekly: underWeekly, landmarks, restriction: 'limit' }], today)
+  const restrictedFinding = restricted.find(f => f.id === 'muscle-under-Hamstrings')
+  check('an under-MEV finding with an active restriction acknowledges it instead of just recommending more volume',
+    restrictedFinding && restrictedFinding.text.includes('active limit restriction'), JSON.stringify(restrictedFinding))
+  check('the finding is NEVER_HIDES-compliant — still emitted, not suppressed, when restricted', restricted.length > 0)
 }
 
 console.log('\n== 5. computeRepRangeFindings ==')
@@ -185,6 +199,29 @@ console.log('\n== 8. sortFindings ==')
   ]
   const sorted = sortFindings(mixed)
   check('measured -> evidence-based -> heuristic, in that order', sorted.map(f => f.id).join(',') === 'm,e,h')
+}
+
+console.log('\n== 9. limitedSlugsFromLimitations ==')
+{
+  const avoidSquat = limitedSlugsFromLimitations([{ movement_pattern: 'squat', severity: 'avoid', active: true }])
+  check('an active "avoid" limitation maps to its PATTERN_AFFECTED_SLUGS entries', avoidSquat.get('quadriceps') === 'avoid' && avoidSquat.get('gluteal') === 'limit')
+
+  const inactive = limitedSlugsFromLimitations([{ movement_pattern: 'squat', severity: 'avoid', active: false }])
+  check('an inactive limitation contributes nothing', inactive.size === 0)
+
+  const monitorOnly = limitedSlugsFromLimitations([{ movement_pattern: 'squat', severity: 'monitor', active: true }])
+  check('"monitor" severity contributes nothing — it means watch it, not restricted', monitorOnly.size === 0)
+
+  const unmatched = limitedSlugsFromLimitations([{ movement_pattern: 'unilateral_balance_left', severity: 'limit', active: true }])
+  check('a free-text movement_pattern that matches no MovementPattern key produces no match, same as WorkedMuscles.tsx\'s own lookup', unmatched.size === 0)
+
+  // 'avoid' from one limitation must never be downgraded to 'limit' by a
+  // second limitation touching the same muscle.
+  const worstCaseWins = limitedSlugsFromLimitations([
+    { movement_pattern: 'squat', severity: 'avoid', active: true },   // quadriceps: avoid
+    { movement_pattern: 'lunge', severity: 'limit', active: true },   // quadriceps: limit (would downgrade if order mattered)
+  ])
+  check('avoid never gets downgraded to limit by a later, weaker limitation on the same muscle', worstCaseWins.get('quadriceps') === 'avoid')
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

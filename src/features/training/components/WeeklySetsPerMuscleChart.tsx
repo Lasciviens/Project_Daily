@@ -3,6 +3,7 @@ import { Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, 
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import { computeWeeklySetsPerMuscleTrend } from '../progressAggregate'
+import { lastCompleteWeek } from '../trainingInsights'
 import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, bandForWeeklySets, BANDS_META } from '../muscleMap'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,7 +30,13 @@ export function WeeklySetsPerMuscleChart() {
 
   const chartData = useMemo(() => {
     if (!data) return []
+    // Exclude the current, still-in-progress week — its badge (below) is the
+    // most prominent number on this card, and sourcing it from a partial
+    // week understates real weekly volume until the week is actually over
+    // (sports-scientist review, 2026-09-01).
+    const last = lastCompleteWeek(new Date().toISOString().slice(0, 10))
     return computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution)
+      .filter(p => p.weekStart <= last)
       .map(p => ({ ...p, label: fmtWeek(p.weekStart) }))
   }, [data, templateMuscles, slug])
 
