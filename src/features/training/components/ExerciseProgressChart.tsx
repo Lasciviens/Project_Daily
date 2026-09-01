@@ -54,10 +54,18 @@ export function ExerciseProgressChart() {
 
   const exercises = useMemo(() => {
     if (!data) return []
-    const seen = new Set(data.sets.map(s => s.exercise_template_id))
+    // Most-recently-trained first — the exercise you're most likely looking
+    // for right after a session is the one you just did, not alphabetical
+    // order. lastUsed is the exercise's own latest logged date; ties (same
+    // day) fall back to title for a stable order.
+    const lastUsed = new Map<string, string>()
+    for (const s of data.sets) {
+      const prev = lastUsed.get(s.exercise_template_id)
+      if (!prev || s.date > prev) lastUsed.set(s.exercise_template_id, s.date)
+    }
     return data.templates
-      .filter(t => seen.has(t.id))
-      .sort((a, b) => a.title.localeCompare(b.title))
+      .filter(t => lastUsed.has(t.id))
+      .sort((a, b) => lastUsed.get(b.id)!.localeCompare(lastUsed.get(a.id)!) || a.title.localeCompare(b.title))
   }, [data])
 
   const filtered = query.trim()
