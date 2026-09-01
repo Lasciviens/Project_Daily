@@ -54,7 +54,7 @@ const PRESETS: { id: Exclude<Period, 'custom'>; label: string; days: number }[] 
   { id: '90d', label: '90 days', days: 90 },
 ]
 
-interface ExerciseHit { sets: number; credited: number; role: MuscleRole; lastDate: string }
+interface ExerciseHit { sets: number; credited: number; role: MuscleRole; lastDate: string; templateId: string }
 interface SlugAgg { credited: number; dates: Set<string>; directDates: Set<string>; exercises: Map<string, ExerciseHit> }
 type VolumeRow = { templateId: string; workoutId: string; workoutDate: string; workingSets: number }
 type Tpl = { primary: Slug | null; secondaries: Slug[]; title: string }
@@ -116,15 +116,15 @@ const BAND_WORD = ['—', 'low', 'maintain', 'good', 'high', 'over'] as const
 // Aggregate credited working sets per slug from one window's volume rows.
 function aggregate(volume: VolumeRow[], tplById: Map<string, Tpl>) {
   const acc: Record<string, SlugAgg> = {}
-  const add = (slug: string, credit: number, date: string, title: string, ws: number, role: MuscleRole, direct: boolean) => {
+  const add = (slug: string, credit: number, date: string, title: string, ws: number, role: MuscleRole, direct: boolean, templateId: string) => {
     const e = acc[slug] ?? (acc[slug] = { credited: 0, dates: new Set(), directDates: new Set(), exercises: new Map() })
     e.credited += credit
     const day = date ? date.slice(0, 10) : ''
     if (day) { e.dates.add(day); if (direct) e.directDates.add(day) }
     const prev = e.exercises.get(title)
     e.exercises.set(title, prev
-      ? { sets: prev.sets + ws, credited: prev.credited + credit, role: prev.role === 'primary' ? 'primary' : role, lastDate: day > prev.lastDate ? day : prev.lastDate }
-      : { sets: ws, credited: credit, role, lastDate: day })
+      ? { sets: prev.sets + ws, credited: prev.credited + credit, role: prev.role === 'primary' ? 'primary' : role, lastDate: day > prev.lastDate ? day : prev.lastDate, templateId }
+      : { sets: ws, credited: credit, role, lastDate: day, templateId })
   }
   let unattributedSets = 0
   const unattributedTitles = new Set<string>()
@@ -136,13 +136,13 @@ function aggregate(volume: VolumeRow[], tplById: Map<string, Tpl>) {
     workouts.add(row.workoutId)
     totalWorkingSets += row.workingSets
     if (t.primary) {
-      add(t.primary, row.workingSets * contribution(row.templateId, t.primary, 'primary'), row.workoutDate, t.title, row.workingSets, 'primary', true)
+      add(t.primary, row.workingSets * contribution(row.templateId, t.primary, 'primary'), row.workoutDate, t.title, row.workingSets, 'primary', true, row.templateId)
     } else {
       unattributedSets += row.workingSets
       if (row.workingSets > 0) unattributedTitles.add(t.title)
     }
     for (const s of t.secondaries) {
-      add(s, row.workingSets * contribution(row.templateId, s, 'secondary'), row.workoutDate, t.title, row.workingSets, 'secondary', false)
+      add(s, row.workingSets * contribution(row.templateId, s, 'secondary'), row.workoutDate, t.title, row.workingSets, 'secondary', false, row.templateId)
     }
   }
   return {
@@ -767,7 +767,7 @@ export function WorkedMuscles() {
                                 </div>
                                 {open && (
                                   <div className="flex items-center gap-3 px-2 pb-2 pt-0.5">
-                                    <ExerciseThumb title={name} size={64} />
+                                    <ExerciseThumb title={name} templateId={hit.templateId} size={64} />
                                     <div className="text-xs text-ink-500">
                                       <p className="font-medium text-ink-700">{name}</p>
                                       <p>Last trained {formatDistanceToNow(new Date(`${hit.lastDate}T00:00:00`), { addSuffix: true })}</p>

@@ -131,7 +131,7 @@ export function HevyPRList() {
               {/* Peek card — GIF + everything secondary, zero permanent cost */}
               {isOpen && (
                 <div className="absolute z-30 left-0 right-0 top-full mt-1 p-3 rounded-xl border border-ink-200 bg-cream-50 shadow-xl flex items-start gap-3 animate-fadeSlideIn">
-                  <ExerciseThumb title={pr.title} size={72} />
+                  <ExerciseThumb title={pr.title} templateId={pr.exercise_template_id} size={72} />
                   <div className="flex flex-col gap-1 min-w-0 text-xs">
                     <span className="font-semibold text-ink-900">{pr.title}</span>
                     {pr.primary_muscle_group && (
