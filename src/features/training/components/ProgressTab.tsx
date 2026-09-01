@@ -6,6 +6,7 @@ import { RepRangeDistributionChart } from './RepRangeDistributionChart'
 import { WeeklySetsPerMuscleChart } from './WeeklySetsPerMuscleChart'
 import { WeeklyChangesPanel } from './WeeklyChangesPanel'
 import { RecoveryLoadPanel } from './RecoveryLoadPanel'
+import { TrainingInsightsPanel } from './TrainingInsightsPanel'
 
 // New Hevy sub-tab (2026-08-28, strength-coach + sports-scientist agent
 // review): progress/history charts, distinct from Personal Records (all-time
@@ -35,9 +36,18 @@ import { RecoveryLoadPanel } from './RecoveryLoadPanel'
 //    suggestion) — real value, but a genuinely new UI surface (a sortable
 //    table + an OLS-slope helper) rather than an extension of what's here;
 //    tracked as a fast-follow, not silently dropped.
+//
+// Second follow-up (2026-09-01, sports-scientist review): TrainingInsightsPanel
+// ("Training Analysis") — a written, deterministic answer to "what am I doing
+// well/poorly, what could I do better", placed FIRST so it's read before the
+// charts it summarizes. Explicitly a fixed rules engine, not an AI call — see
+// trainingInsights.ts's header comment for why a standing analytical view
+// needs reproducibility an LLM can't guarantee, unlike PT Coach's dated
+// one-shot opinion.
 export function ProgressTab() {
   return (
     <div className="flex flex-col gap-3">
+      <TrainingInsightsPanel />
       <ExerciseProgressChart />
       <RelativeStrengthChart />
       <WeeklyVolumeChart />

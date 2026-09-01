@@ -44,6 +44,24 @@ export function slugForHevyGroup(group: string | null | undefined): Slug | null 
   return HEVY_TO_SLUG[group.trim().toLowerCase()] ?? null
 }
 
+/** Shared shape for the two consumers (WeeklySetsPerMuscleChart, Training
+ *  Analysis) that need "which slugs does this exercise credit" per template —
+ *  one mapping built once instead of two near-identical inline loops. */
+export interface TemplateMuscleCredit { primarySlug: Slug | null; secondarySlugs: Slug[] }
+
+export function buildTemplateMuscleMap(
+  templates: { id: string; primary_muscle_group: string | null; secondary_muscle_groups: string[] }[],
+): Map<string, TemplateMuscleCredit> {
+  const m = new Map<string, TemplateMuscleCredit>()
+  for (const t of templates) {
+    m.set(t.id, {
+      primarySlug: slugForHevyGroup(t.primary_muscle_group),
+      secondarySlugs: t.secondary_muscle_groups.map(slugForHevyGroup).filter((s): s is Slug => s != null),
+    })
+  }
+  return m
+}
+
 // ── Contribution seam (future-proofing) ─────────────────────────────────────
 // The fraction of a working set a muscle earns for a given exercise, by role.
 // PRIMARY 1.0, SECONDARY 0.5, TERTIARY 0.25.

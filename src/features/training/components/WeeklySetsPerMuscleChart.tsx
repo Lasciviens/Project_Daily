@@ -3,7 +3,7 @@ import { Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, 
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import { computeWeeklySetsPerMuscleTrend } from '../progressAggregate'
-import { slugForHevyGroup, labelForSlug, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, bandForWeeklySets, BANDS_META } from '../muscleMap'
+import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, bandForWeeklySets, BANDS_META } from '../muscleMap'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Weekly Sets per Muscle — the sports-scientist review's top-priority "what
@@ -25,17 +25,7 @@ export function WeeklySetsPerMuscleChart() {
   const { data: profile } = useAthleteProfile()
   const [slug, setSlug] = useState<string>('chest')
 
-  const templateMuscles = useMemo(() => {
-    if (!data) return new Map<string, { primarySlug: string | null; secondarySlugs: string[] }>()
-    const m = new Map<string, { primarySlug: string | null; secondarySlugs: string[] }>()
-    for (const t of data.templates) {
-      m.set(t.id, {
-        primarySlug: slugForHevyGroup(t.primary_muscle_group),
-        secondarySlugs: t.secondary_muscle_groups.map(slugForHevyGroup).filter((s): s is NonNullable<typeof s> => s != null),
-      })
-    }
-    return m
-  }, [data])
+  const templateMuscles = useMemo(() => buildTemplateMuscleMap(data?.templates ?? []), [data])
 
   const chartData = useMemo(() => {
     if (!data) return []
