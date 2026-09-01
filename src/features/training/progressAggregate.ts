@@ -376,6 +376,39 @@ export function computeRelativeStrengthTrend(
   return out
 }
 
+export interface IndexedStrengthPoint {
+  date: string
+  /** Both indexed to 100 at the window's FIRST point — "+6%"/"-4%" reads
+   *  directly with no mental division, and both series share ONE axis. A
+   *  follow-up sports-scientist + research review (2026-09-01) replaced the
+   *  original ratio-plus-separate-bodyweight-line chart with this: the
+   *  ratio forced the reader to do the attribution in their head (exactly
+   *  what the chart exists to prevent), and index-to-100 is the standard
+   *  finance/data-viz technique for comparing two differently-scaled series
+   *  (confirmed against real precedent — no fitness app does this for a
+   *  strength context specifically, but it's well-validated elsewhere and
+   *  strictly clearer than a raw ratio here). */
+  strengthIndex: number
+  bodyweightIndex: number
+  estimated: boolean
+}
+
+/** Rebase computeRelativeStrengthTrend's own est1rmValue/bodyweightKg series
+ *  to 100 at the first point. Deliberately built ON TOP of the existing
+ *  ratio points rather than a parallel computation — one source of the raw
+ *  numbers, two presentations of them. */
+export function indexRelativeStrengthTrend(points: RelativeStrengthPoint[]): IndexedStrengthPoint[] {
+  if (points.length === 0) return []
+  const baseStrength = points[0].est1rmValue
+  const baseBodyweight = points[0].bodyweightKg
+  return points.map(p => ({
+    date: p.date,
+    strengthIndex: Math.round((p.est1rmValue / baseStrength) * 1000) / 10,
+    bodyweightIndex: Math.round((p.bodyweightKg / baseBodyweight) * 1000) / 10,
+    estimated: p.estimated,
+  }))
+}
+
 // ── Rep-range distribution ──────────────────────────────────────────────────
 // Boundaries are the sports-scientist review's call, not the strength-coach's
 // originally-proposed 1-5/6-8/9-12/13-20/21+ split: Schoenfeld et al. 2017

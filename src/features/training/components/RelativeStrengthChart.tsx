@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
-import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
 import { useTrainingHistory, useBodyweightHistory } from '../hooks/useTrainingProgress'
 import {
-  computeExerciseProgression, metricKindForExerciseType, computeRelativeStrengthTrend,
+  computeExerciseProgression, metricKindForExerciseType, computeRelativeStrengthTrend, indexRelativeStrengthTrend,
 } from '../progressAggregate'
 import { fmtTrainingDate as formatDate } from '../dateFormat'
 
@@ -14,7 +14,15 @@ import { fmtTrainingDate as formatDate } from '../dateFormat'
 //  bodyweight-normalized ratio is a defensible practitioner convention for a
 //  loaded barbell/dumbbell lift, and meaningless for a rep-count/duration/
 //  distance exercise. Two things move this line — strength AND bodyweight —
-//  so both are always plotted, never just the ratio.
+//  so both are always plotted, never just one.
+//
+//  A second review (2026-09-01) replaced the original ratio-line-plus-
+//  separate-bodyweight-line (dual y-axis) with BOTH series indexed to 100 at
+//  the window's first point, sharing ONE axis — a real research pass found
+//  this is the standard finance/data-viz technique for exactly this problem
+//  (comparing two differently-scaled series without forcing the reader to do
+//  the division themselves), and no fitness app was found doing better for
+//  a strength-vs-bodyweight context specifically.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function fmtDay(dateStr: string): string {
@@ -24,7 +32,7 @@ function fmtDay(dateStr: string): string {
 const MIN_POINTS = 3
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts dot renderer prop is awkward to type cleanly.
-function RatioDot(props: any) {
+function StrengthDot(props: any) {
   const { cx, cy, payload } = props
   if (cx == null || cy == null) return null
   return (
@@ -37,15 +45,18 @@ function RatioDot(props: any) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly.
-function RatioTooltip({ active, payload, label }: any) {
+function IndexedTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   const p = payload[0]?.payload
   if (!p) return null
+  const strengthDelta = Math.round((p.strengthIndex - 100) * 10) / 10
+  const bwDelta = Math.round((p.bodyweightIndex - 100) * 10) / 10
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
       <p className="text-ink-400 font-medium">{label}</p>
-      <p className="font-semibold text-accent-700">{p.ratio}× bodyweight</p>
-      <p className="text-ink-500">Est. 1RM {p.est1rmValue} kg · bodyweight {p.bodyweightKg} kg{p.estimated ? ' (estimated)' : ''}</p>
+      <p className="font-semibold text-accent-700">Strength {strengthDelta >= 0 ? '+' : ''}{strengthDelta}%</p>
+      <p className="font-semibold text-ink-500">Bodyweight {bwDelta >= 0 ? '+' : ''}{bwDelta}%</p>
+      <p className="text-ink-400">Est. 1RM {p.est1rmValue} kg · bodyweight {p.bodyweightKg} kg{p.estimated ? ' (estimated)' : ''}</p>
     </div>
   )
 }
@@ -83,7 +94,9 @@ export function RelativeStrengthChart() {
   const chartData = useMemo(() => {
     if (!data || !selected || !anchors) return []
     const points = computeExerciseProgression(data.sets, selected.id, 'est1rm')
-    return computeRelativeStrengthTrend(points, anchors).map(p => ({ ...p, label: fmtDay(p.date) }))
+    const ratioPoints = computeRelativeStrengthTrend(points, anchors)
+    const indexed = indexRelativeStrengthTrend(ratioPoints)
+    return ratioPoints.map((p, i) => ({ ...p, ...indexed[i], label: fmtDay(p.date) }))
   }, [data, selected, anchors])
 
   const estimatedCount = chartData.filter(p => p.estimated).length
@@ -140,23 +153,24 @@ export function RelativeStrengthChart() {
               <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
                 <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={Math.ceil(chartData.length / 8)} />
-                <YAxis yAxisId="ratio" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
-                <YAxis yAxisId="bw" orientation="right" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={['auto', 'auto']} />
-                <Tooltip cursor={false} content={RatioTooltip} />
-                <Line yAxisId="ratio" dataKey="ratio" name="Ratio" stroke="#7c3aed" strokeWidth={2} dot={<RatioDot />} activeDot={{ r: 6 }} />
-                <Line yAxisId="bw" dataKey="bodyweightKg" name="Bodyweight" stroke="rgb(var(--ink-300))" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+                <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={34} domain={['auto', 'auto']} tickFormatter={(v: number) => `${v}`} />
+                <Tooltip cursor={false} content={IndexedTooltip} />
+                <ReferenceLine y={100} stroke="rgb(var(--ink-300))" strokeDasharray="2 2" />
+                <Line dataKey="strengthIndex" name="Strength" stroke="#7c3aed" strokeWidth={2} dot={<StrengthDot />} activeDot={{ r: 6 }} />
+                <Line dataKey="bodyweightIndex" name="Bodyweight" stroke="rgb(var(--ink-300))" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
           <div className="flex items-center gap-3 text-[10px] text-ink-400">
-            <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-accent-600" /> Strength ÷ bodyweight</span>
-            <span className="flex items-center gap-1"><span className="inline-block w-3 h-px border-t border-dashed border-ink-300" /> Bodyweight (kg)</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-full bg-accent-600" /> Strength (indexed to 100)</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-3 h-px border-t border-dashed border-ink-300" /> Bodyweight (indexed to 100)</span>
           </div>
 
           <div className="flex flex-col gap-1 text-[11px] text-ink-400">
             <p>
-              This line has two moving parts. It goes up when you get stronger <em>or</em> when you lose weight, and down when you gain weight even if your lift
-              didn&apos;t change — the dashed bodyweight line is drawn alongside it on purpose, so you can see which one actually moved.
+              Both lines start at 100 on {formatDate(chartData[0]!.date)} — a value of 106 means +6% from that point, whichever line it&apos;s on. Strength can rise
+              because you got stronger <em>or</em> because you lost weight, and the dashed bodyweight line is drawn on the SAME scale on purpose, so which one
+              actually moved is a direct visual comparison, not mental division.
             </p>
             <p>
               Bodyweight is taken from a weigh-in within 14 days, or interpolated between two weigh-ins less than 3 weeks apart.{' '}

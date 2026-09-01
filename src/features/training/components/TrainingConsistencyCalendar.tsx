@@ -1,32 +1,34 @@
 import { useMemo } from 'react'
+import { Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, ReferenceLine } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
+import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import { computeConsistencyByWeek, currentStreakWeeks } from '../progressAggregate'
 
-// Session-count-per-week heatmap — a sports-scientist review's #2-priority
-// chart, and deliberately the cheapest/least speculative one: it's a direct
-// count of a real event (a logged workout), not a derived construct. Every
-// volume/frequency finding this app's Muscles feature already leans on
-// (Schoenfeld/Ogborn/Krieger 2017 dose-response; Schoenfeld/Grgic/Krieger
-// 2019 on frequency) presumes the sets actually got trained — this is the
+// Sessions-per-week — a sports-scientist review's #2-priority chart, and
+// deliberately the cheapest/least speculative one: it's a direct count of a
+// real event (a logged workout), not a derived construct. Every volume/
+// frequency finding this app's Muscles feature already leans on (Schoenfeld/
+// Ogborn/Krieger 2017 dose-response; Schoenfeld/Grgic/Krieger 2019 on
+// frequency) presumes the sets actually got trained — this is the
 // precondition check for that, not a claim that MORE sessions itself drives
 // gains (frequency was null at equated volume in that 2019 finding).
+//
+// A follow-up review (2026-09-01) replaced the original diverging week-cell
+// heat-strip with a plain bar chart + a reference line at the user's own
+// declared `athlete_profile.training_days_per_week` — a real-app precedent
+// search found Strava's own Relative Effort view uses exactly this shape
+// (a weekly bar against a target/suggested-range band) rather than a
+// GitHub-contribution-style heatmap, and no fitness app was found using a
+// heat-strip for this; a bar's HEIGHT is directly readable with zero legend
+// lookup, where the old strip needed a fill-depth legend per cell.
 
 function fmtWeek(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
-// Diverging by session count, not a single "did/didn't train" binary — a
-// 4-session week reads differently from a 1-session week at a glance.
-function cellClass(count: number): string {
-  if (count === 0) return 'bg-ink-100'
-  if (count === 1) return 'bg-accent-200'
-  if (count === 2) return 'bg-accent-400'
-  if (count === 3) return 'bg-accent-600'
-  return 'bg-accent-800'
-}
-
 export function TrainingConsistencyCalendar() {
   const { data, isLoading } = useTrainingHistory()
+  const { data: profile } = useAthleteProfile()
 
   const { weeks, streak } = useMemo(() => {
     if (!data) return { weeks: [], streak: 0 }
@@ -46,6 +48,8 @@ export function TrainingConsistencyCalendar() {
 
   const last12 = weeks.slice(-12)
   const weeksWith2Plus = last12.filter(w => w.sessionCount >= 2).length
+  const target = profile?.training_days_per_week ?? null
+  const chartData = weeks.slice(-16).map(w => ({ label: fmtWeek(w.weekStart), sessions: w.sessionCount }))
 
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-2">
@@ -57,23 +61,30 @@ export function TrainingConsistencyCalendar() {
         </div>
       </div>
 
-      {/* One column per week, one cell — session-count is the fill depth, not
-          a permanent day-grid, since Hevy doesn't need per-day resolution here. */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {weeks.slice(-26).map(w => (
-          <div key={w.weekStart} className="flex flex-col items-center gap-1 shrink-0" title={`${fmtWeek(w.weekStart)}: ${w.sessionCount} session${w.sessionCount === 1 ? '' : 's'}`}>
-            <div className={`w-4 h-4 rounded ${cellClass(w.sessionCount)}`} />
-          </div>
-        ))}
+      <div style={{ height: 110 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
+            <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={Math.ceil(chartData.length / 8)} />
+            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={20} allowDecimals={false} domain={[0, 'auto']} />
+            <Tooltip
+              cursor={{ fill: 'rgb(var(--ink-100))' }}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
+              formatter={(v: any) => [`${v} session${v === 1 ? '' : 's'}`, 'That week']}
+              contentStyle={{ fontSize: 11, borderRadius: 8 }}
+            />
+            {target != null && (
+              <ReferenceLine y={target} stroke="rgb(var(--ink-400))" strokeDasharray="4 3" label={{ value: `Your target: ${target}/wk`, position: 'insideTopRight', fontSize: 9, fill: 'rgb(var(--ink-400))' }} />
+            )}
+            <Bar dataKey="sessions" fill="#f59e0b" fillOpacity={0.75} radius={[3, 3, 0, 0]} maxBarSize={22} />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
-      <div className="flex items-center gap-1.5 text-[10px] text-ink-400">
-        <span>Fewer</span>
-        {[0, 1, 2, 3, 4].map(n => <div key={n} className={`w-3 h-3 rounded ${cellClass(n)}`} />)}
-        <span>More sessions/week</span>
-      </div>
+
       <p className="text-[11px] text-ink-400">
         Consistency is a precondition for volume adding up over time, not a claim that more sessions itself drives gains
         — training frequency alone showed no benefit at equal weekly volume.
+        {target == null && ' Set a weekly training-days target in Training → Coach → Profile to see it plotted here.'}
       </p>
     </div>
   )

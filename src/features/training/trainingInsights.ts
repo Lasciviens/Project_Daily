@@ -37,6 +37,36 @@ export function sortFindings(findings: Finding[]): Finding[] {
   return [...findings].sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier])
 }
 
+// ── Grouping by actionability ────────────────────────────────────────────────
+// A second sports-scientist review (2026-09-01) flagged the flat tier-sorted
+// list as optimising for the wrong axis — a reader wants "what should I do",
+// not "how was this derived" — and a follow-up research pass found real
+// precedent for actionability-first grouping (WHOOP's Weekly Performance
+// Assessment buckets a week into "met goals" vs "opportunities to improve").
+// The tier stays, but as a per-item pill rather than the primary sort key.
+//
+// One documented simplification: the underlying `positive` field is
+// three-valued (true/false/null-as-neutral-fact), but real precedent groups
+// in TWO actionable buckets, not three — so neutral facts (a flat trend, an
+// over-MRV note that explicitly says "nothing to fix if you're recovering
+// fine") are folded into "What to look at" alongside genuine regressions,
+// rather than getting their own ignored-in-practice third bucket. The one
+// group that DOES get pulled out on its own is "Can't assess yet" — an
+// explicit NEVER_HIDES payoff a flat list buries mid-scroll.
+export type FindingGroup = 'working' | 'attention' | 'unassessable'
+const UNASSESSABLE_IDS = new Set(['relative-strength-null'])
+
+function findingGroup(f: Finding): FindingGroup {
+  if (UNASSESSABLE_IDS.has(f.id) || f.id.startsWith('exercise-varied-')) return 'unassessable'
+  return f.positive === true ? 'working' : 'attention'
+}
+
+export function groupFindings(findings: Finding[]): Record<FindingGroup, Finding[]> {
+  const out: Record<FindingGroup, Finding[]> = { working: [], attention: [], unassessable: [] }
+  for (const f of sortFindings(findings)) out[findingGroup(f)].push(f)
+  return out
+}
+
 function shiftWeek(weekStart: string, weeks: number): string {
   const d = new Date(weekStart + 'T00:00:00')
   d.setDate(d.getDate() + weeks * 7)

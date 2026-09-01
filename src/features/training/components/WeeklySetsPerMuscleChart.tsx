@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, ReferenceLine } from 'recharts'
+import { useMemo } from 'react'
+import { Line, YAxis, Tooltip, ResponsiveContainer, ComposedChart, ReferenceLine, ReferenceArea } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import { computeWeeklySetsPerMuscleTrend } from '../progressAggregate'
@@ -15,35 +15,100 @@ import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES, MUSC
 //  per-week TREND rather than a single rolling-window snapshot. Reuses
 //  muscleMap.ts's contribution()/MUSCLE_LANDMARKS/scaleLandmarksForExperience
 //  exactly, no parallel volume model.
+//
+//  A second review (2026-09-01) replaced the one-at-a-time chip picker with a
+//  SMALL-MULTIPLES GRID — one tiny sparkline per muscle, all visible at once —
+//  after a research pass found real precedent for exactly this (Hevy's own
+//  Statistics tab already overlays multiple muscle groups on one graph;
+//  Garmin's Training Load Focus renders separate mini-panels per category
+//  side by side). "Which muscles am I under-dosing" is a comparison question;
+//  a one-at-a-time picker forced holding numbers in memory across clicks.
+//  Also replaced the MEV-MAV band's stacked-Area hack with `ReferenceArea`
+//  (semantically a background, not a data series) and made the MRV line
+//  neutral grey rather than red — red asserts a danger the guardrail copy
+//  immediately retracts ("whether that's too much depends on... nothing here
+//  measures").
 // ─────────────────────────────────────────────────────────────────────────────
 
-function fmtWeek(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+interface MuscleCardData {
+  slug: string
+  label: string
+  weekly: { weekStart: string; sets: number }[]
+  scaled: { mev: number; mav: number; mrv: number } | null
+  latest: number | null
+  band: number
+}
+
+function MuscleSparkline({ card, experienceLevel }: { card: MuscleCardData; experienceLevel: string | null | undefined }) {
+  const { label, weekly, scaled, latest, band } = card
+  const chartData = weekly.map(w => ({ ...w }))
+
+  return (
+    <div className="border border-ink-200 rounded-xl p-2.5 flex flex-col gap-1.5 bg-cream-50">
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-xs font-semibold text-ink-800 truncate">{label}</p>
+        {latest != null && (
+          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: `${BANDS_META[band].color}22`, color: BANDS_META[band].color }}>
+            {latest}/wk
+          </span>
+        )}
+      </div>
+
+      {chartData.length === 0 ? (
+        <p className="text-[10px] text-ink-300 py-4 text-center">No sets logged</p>
+      ) : (
+        <div style={{ height: 56 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 0 }}>
+              <YAxis hide domain={[0, 'auto']} />
+              <Tooltip
+                cursor={false}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
+                formatter={(v: any) => [`${v} sets`, label]}
+                contentStyle={{ fontSize: 10, borderRadius: 6, padding: '2px 6px' }}
+              />
+              {scaled && (
+                <>
+                  <ReferenceArea y1={scaled.mev} y2={scaled.mav} fill="#22c55e" fillOpacity={0.14} strokeWidth={0} />
+                  <ReferenceLine y={scaled.mrv} stroke="rgb(var(--ink-400))" strokeDasharray="2 2" strokeOpacity={0.6} />
+                </>
+              )}
+              <Line dataKey="sets" stroke="#0ea5e9" strokeWidth={1.75} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {scaled && (
+        <p className="text-[9px] text-ink-300 leading-tight">
+          MEV–MAV {scaled.mev}–{scaled.mav} · MRV {scaled.mrv}{experienceLevel ? ' (adj.)' : ''}
+        </p>
+      )}
+    </div>
+  )
 }
 
 export function WeeklySetsPerMuscleChart() {
   const { data, isLoading } = useTrainingHistory()
   const { data: profile } = useAthleteProfile()
-  const [slug, setSlug] = useState<string>('chest')
 
   const templateMuscles = useMemo(() => buildTemplateMuscleMap(data?.templates ?? []), [data])
 
-  const chartData = useMemo(() => {
+  const cards = useMemo<MuscleCardData[]>(() => {
     if (!data) return []
-    // Exclude the current, still-in-progress week — its badge (below) is the
-    // most prominent number on this card, and sourcing it from a partial
-    // week understates real weekly volume until the week is actually over
+    // Exclude the current, still-in-progress week — the badge is the most
+    // prominent number on each card, and sourcing it from a partial week
+    // understates real weekly volume until the week is actually over
     // (sports-scientist review, 2026-09-01).
     const last = lastCompleteWeek(new Date().toISOString().slice(0, 10))
-    return computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution)
-      .filter(p => p.weekStart <= last)
-      .map(p => ({ ...p, label: fmtWeek(p.weekStart) }))
-  }, [data, templateMuscles, slug])
-
-  const landmarks = MUSCLE_LANDMARKS[slug]
-  const scaled = landmarks ? scaleLandmarksForExperience(landmarks, profile?.experience_level) : null
-  const latest = chartData[chartData.length - 1]
-  const band = latest ? bandForWeeklySets(slug, latest.sets) : 0
+    return [...MAJOR_MUSCLES].map(slug => {
+      const weekly = computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution).filter(p => p.weekStart <= last)
+      const landmarks = MUSCLE_LANDMARKS[slug]
+      const scaled = landmarks ? scaleLandmarksForExperience(landmarks, profile?.experience_level) : null
+      const latest = weekly.length > 0 ? weekly[weekly.length - 1].sets : null
+      return { slug, label: labelForSlug(slug), weekly, scaled, latest, band: latest != null ? bandForWeeklySets(slug, latest) : 0 }
+    })
+  }, [data, templateMuscles, profile])
 
   if (isLoading) return <div className="h-40 rounded-2xl bg-cream-200 animate-pulse" />
 
@@ -51,78 +116,22 @@ export function WeeklySetsPerMuscleChart() {
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
       <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">🎯 Weekly Sets per Muscle</p>
 
-      <div className="flex flex-wrap gap-1.5">
-        {[...MAJOR_MUSCLES].map(s => (
-          <button
-            key={s} type="button" onClick={() => setSlug(s)}
-            className={`px-2.5 min-h-[36px] rounded-full text-[11px] font-semibold border transition-colors ${
-              slug === s ? 'bg-ink-950 text-white border-ink-950' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'
-            }`}
-          >
-            {labelForSlug(s)}
-          </button>
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+        {cards.map(card => <MuscleSparkline key={card.slug} card={card} experienceLevel={profile?.experience_level} />)}
       </div>
 
-      {chartData.length === 0 ? (
-        <p className="text-xs text-ink-300 py-8 text-center">No {labelForSlug(slug)} sets logged in the last 6 months.</p>
-      ) : (
-        <>
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <p className="text-sm font-semibold text-ink-800">{labelForSlug(slug)}</p>
-            {latest && (
-              <span className="px-2 py-1 rounded-md text-[11px] font-semibold" style={{ backgroundColor: `${BANDS_META[band].color}22`, color: BANDS_META[band].color }}>
-                {latest.sets}/wk · {BANDS_META[band].label}
-              </span>
-            )}
-          </div>
-
-          <div style={{ height: 140 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-                <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={Math.ceil(chartData.length / 8)} />
-                <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={28} allowDecimals={false} domain={[0, 'auto']} />
-                <Tooltip
-                  cursor={false}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
-                  formatter={(v: any) => [`${v} sets`, 'This week']}
-                  contentStyle={{ fontSize: 11, borderRadius: 8 }}
-                />
-                {/* MEV–MAV band, shaded via a stacked-Area trick: an invisible
-                    base up to mev, then a tinted slice from mev to mav. */}
-                {scaled && (
-                  <>
-                    <Area dataKey={() => scaled.mev} stackId="band" stroke="none" fill="transparent" isAnimationActive={false} />
-                    <Area dataKey={() => scaled.mav - scaled.mev} stackId="band" stroke="none" fill="#22c55e" fillOpacity={0.12} isAnimationActive={false} />
-                    <ReferenceLine y={scaled.mrv} stroke="#ef4444" strokeDasharray="3 3" strokeOpacity={0.5} />
-                  </>
-                )}
-                <Line dataKey="sets" name="Weekly sets" stroke="#0ea5e9" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-
-          {scaled && (
-            <p className="text-[10px] text-ink-400">
-              Shaded band = MEV–MAV ({scaled.mev}–{scaled.mav}/wk) · red dashed line = MRV ({scaled.mrv}/wk)
-              {profile?.experience_level ? ' — adjusted ±15% for your experience level' : ''}.
-            </p>
-          )}
-
-          <div className="flex flex-col gap-1 text-[11px] text-ink-400">
-            <p>
-              Hard working sets per week — each exercise credits its primary muscle 1 set and each secondary muscle half a set, a reasonable convention
-              (RP framework), not a measured contribution.
-            </p>
-            <p>
-              The shaded band is a practitioner model, not a measured threshold, and{profile?.experience_level ? ' is' : ' would be'} adjusted ±15% for
-              experience level — an unvalidated adjustment on top of an already-heuristic baseline.
-            </p>
-            <p className="text-ink-300">Sets don&apos;t capture effort, tempo or range of motion, none of which are logged. Read the trend, not any single week.</p>
-          </div>
-        </>
-      )}
+      <div className="flex flex-col gap-1 text-[11px] text-ink-400">
+        <p>
+          Hard working sets per week — each exercise credits its primary muscle 1 set and each secondary muscle half a set, a reasonable convention
+          (RP framework), not a measured contribution.
+        </p>
+        <p>
+          The shaded band (MEV–MAV) and the grey dashed line (MRV) are a practitioner model, not a measured threshold
+          {profile?.experience_level ? ', adjusted ±15% for your experience level' : ''} — an unvalidated adjustment on top of an already-heuristic baseline.
+          MRV isn&apos;t coloured as a warning: going over it isn&apos;t asserted harmful, since effort, sleep and recovery (all unmeasured here) decide that.
+        </p>
+        <p className="text-ink-300">Sets don&apos;t capture effort, tempo or range of motion, none of which are logged. Read the trend, not any single week.</p>
+      </div>
     </div>
   )
 }
