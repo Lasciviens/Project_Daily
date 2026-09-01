@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
-import { Line, YAxis, Tooltip, ResponsiveContainer, ComposedChart, ReferenceLine, ReferenceArea } from 'recharts'
+import { Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ComposedChart, ReferenceLine, ReferenceArea } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import { computeWeeklySetsPerMuscleTrend } from '../progressAggregate'
 import { lastCompleteWeek } from '../trainingInsights'
+import { fmtWeekRange } from '../dateFormat'
 import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, bandForWeeklySets, BANDS_META } from '../muscleMap'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,11 +61,20 @@ function MuscleSparkline({ card, experienceLevel }: { card: MuscleCardData; expe
         <div style={{ height: 56 }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 0 }}>
+              {/* Hidden but present — with no XAxis at all, recharts had no
+                  category to key the tooltip's header off, so hovering
+                  showed a number with no date attached to it (real user
+                  confusion, 2026-09-01). dataKey="weekStart" gives the
+                  tooltip a real value to format via labelFormatter below;
+                  the axis itself stays invisible, this is a sparkline. */}
+              <XAxis dataKey="weekStart" hide />
               <YAxis hide domain={[0, 'auto']} />
               <Tooltip
                 cursor={false}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
                 formatter={(v: any) => [`${v} sets`, label]}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts labelFormatter's props type is awkward to import cleanly.
+                labelFormatter={(weekStart: any) => fmtWeekRange(weekStart)}
                 contentStyle={{ fontSize: 10, borderRadius: 6, padding: '2px 6px' }}
               />
               {scaled && (
