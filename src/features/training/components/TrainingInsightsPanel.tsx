@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useTrainingHistory, useBodyweightHistory } from '../hooks/useTrainingProgress'
-import { useAthleteProfile } from '../hooks/useAthleteProfile'
+import { useAthleteProfile, useAthleteLimitations } from '../hooks/useAthleteProfile'
 import {
   computeConsistencyByWeek, computeWeeklyVolumeTrend, computeRepRangeDistribution,
   computeExerciseProgression, computeRelativeStrengthTrend, metricKindForExerciseType,
@@ -12,7 +12,7 @@ import {
   lastCompleteWeek as lastCompleteWeekOf,
   type Finding, type MuscleFindingInput, type RelativeStrengthFindingInput, type ExerciseTrendFindingInput,
 } from '../trainingInsights'
-import { buildTemplateMuscleMap, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, labelForSlug } from '../muscleMap'
+import { buildTemplateMuscleMap, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, labelForSlug, limitedSlugsFromLimitations } from '../muscleMap'
 import { METRIC_META } from './ExerciseProgressChart'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,6 +49,7 @@ export function TrainingInsightsPanel() {
   const { data, isLoading: loadingHistory } = useTrainingHistory()
   const { data: anchors, isLoading: loadingBw } = useBodyweightHistory()
   const { data: profile } = useAthleteProfile()
+  const { data: limitations } = useAthleteLimitations(true)
 
   const isLoading = loadingHistory || loadingBw
   const today = todayStr()
@@ -66,10 +67,12 @@ export function TrainingInsightsPanel() {
     out.push(...computeVolumeFindings(computeWeeklyVolumeTrend(data.sets, data.templates), today))
 
     const templateMuscles = buildTemplateMuscleMap(data.templates)
+    const limitedSlugs = limitedSlugsFromLimitations(limitations ?? [])
     const muscleInputs: MuscleFindingInput[] = [...MAJOR_MUSCLES].map(slug => ({
       slug, label: labelForSlug(slug),
       weekly: computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution),
       landmarks: MUSCLE_LANDMARKS[slug] ? scaleLandmarksForExperience(MUSCLE_LANDMARKS[slug], profile?.experience_level) : undefined,
+      restriction: limitedSlugs.get(slug),
     }))
     out.push(...computeMuscleFindings(muscleInputs, today))
 
@@ -91,7 +94,7 @@ export function TrainingInsightsPanel() {
     out.push(...computeExerciseTrendFindings(exerciseInputs))
 
     return sortFindings(out)
-  }, [data, anchors, profile, today])
+  }, [data, anchors, profile, limitations, today])
 
   if (isLoading) return <div className="h-40 rounded-2xl bg-cream-200 animate-pulse" />
 

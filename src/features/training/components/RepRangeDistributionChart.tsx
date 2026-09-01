@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart } from 'recharts'
+import { Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, LabelList } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { computeRepRangeDistribution } from '../progressAggregate'
 import { slugForHevyGroup, labelForSlug, MAJOR_MUSCLES } from '../muscleMap'
+import { compactAxisTick } from './health/axisFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Rep-Range Distribution — a follow-up sports-scientist review (2026-08-31)
@@ -89,19 +90,33 @@ export function RepRangeDistributionChart() {
         <p className="text-xs text-ink-300 py-8 text-center">No working sets with a rep count logged in this window{muscle ? ` for ${labelForSlug(muscle)}` : ''}.</p>
       ) : (
         <>
-          <div style={{ height: 140 }}>
+          {/* On-bar percentage labels + a capped bar width — at only 5
+              categories the default (uncapped) bar width filled almost the
+              whole plot area with a blocky rectangle per bucket; readers
+              also had to round-trip through the tooltip just to see the
+              share each bucket takes, which the guardrail text below is
+              explicitly about. */}
+          <div style={{ height: 160 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 18, right: 4, left: -4, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
                 <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={28} allowDecimals={false} />
+                <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} tickFormatter={compactAxisTick} />
                 <Tooltip
                   cursor={{ fill: 'rgb(var(--ink-100))' }}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
-                  formatter={(v: any) => [`${v} set${v === 1 ? '' : 's'}`, 'Sets']}
+                  formatter={(v: any) => [`${v} set${v === 1 ? '' : 's'} (${totalSets ? Math.round((v / totalSets) * 100) : 0}%)`, 'Sets']}
                   contentStyle={{ fontSize: 11, borderRadius: 8 }}
                 />
-                <Bar dataKey="count" fill="#0ea5e9" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="count" fill="#0ea5e9" fillOpacity={0.7} radius={[4, 4, 0, 0]} maxBarSize={56}>
+                  <LabelList
+                    dataKey="count"
+                    position="top"
+                    style={{ fontSize: 10, fill: 'rgb(var(--ink-500))', fontWeight: 600 }}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts LabelList's formatter prop type is awkward to import cleanly.
+                    formatter={(v: any) => (v > 0 && totalSets ? `${Math.round((v / totalSets) * 100)}%` : '')}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

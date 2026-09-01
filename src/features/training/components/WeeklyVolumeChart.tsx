@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { computeWeeklyVolumeTrend, rollingAverage } from '../progressAggregate'
+import { lastCompleteWeek } from '../trainingInsights'
 import { compactAxisTick } from './health/axisFormat'
 
 // Weekly total tonnage (Σ weight×reps, warm-ups excluded, weight-based
@@ -38,7 +39,12 @@ export function WeeklyVolumeChart() {
 
   const chartData = useMemo(() => {
     if (!data) return []
-    const weeks = computeWeeklyVolumeTrend(data.sets, data.templates)
+    // The current, still-in-progress week is excluded — plotted alongside
+    // finished weeks it always reads as a cliff (sports-scientist review,
+    // 2026-09-01: this is the exact partial-week bug trainingInsights.ts
+    // already guards against; the chart hadn't).
+    const last = lastCompleteWeek(new Date().toISOString().slice(0, 10))
+    const weeks = computeWeeklyVolumeTrend(data.sets, data.templates).filter(w => w.weekStart <= last)
     const avg = rollingAverage(weeks, 4)
     return weeks.map((w, i) => ({ label: fmtWeek(w.weekStart), tonnage: w.tonnageKg, avg4wk: avg[i] ?? undefined }))
   }, [data])

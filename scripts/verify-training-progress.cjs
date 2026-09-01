@@ -158,6 +158,18 @@ console.log('\n== 5. computeWeeklyVolumeTrend ==')
   check('exactly one week produced', weeks.length === 1)
   check('warmup excluded and non-tonnage exercise type excluded — only the 100x5 set counts',
     weeks[0].tonnageKg === 500, String(weeks[0]?.tonnageKg))
+
+  // Dense-series fix (sports-scientist review, 2026-09-01): a gap week
+  // between two tonnage weeks must appear as an explicit zero, not be
+  // skipped — otherwise rollingAverage silently averages array ENTRIES
+  // instead of calendar WEEKS.
+  const denseSets = [
+    { workout_id: 'w1', date: '2026-08-03', exercise_template_id: 'a', set_type: 'normal', weight_kg: 100, reps: 5, duration_seconds: null, distance_meters: null },
+    { workout_id: 'w2', date: '2026-08-17', exercise_template_id: 'a', set_type: 'normal', weight_kg: 100, reps: 5, duration_seconds: null, distance_meters: null },
+  ]
+  const denseWeeks = computeWeeklyVolumeTrend(denseSets, templates)
+  check('a gap week between two tonnage weeks is a dense, explicit zero entry — not skipped',
+    denseWeeks.length === 3 && denseWeeks[1].tonnageKg === 0, JSON.stringify(denseWeeks))
 }
 
 console.log('\n== 6. rollingAverage ==')

@@ -285,6 +285,35 @@ export const PATTERN_AFFECTED_SLUGS: Record<MovementPattern, { slug: Slug; weigh
   isolation: [],
 }
 
+/** Which slugs carry an active training restriction, and how hard — the
+ *  cross-check `trainingInsights.ts`'s Training Analysis panel needs before
+ *  it tells a user to add volume to a muscle they've deliberately limited
+ *  (a sports-scientist review, 2026-09-01, flagged the missing check as this
+ *  app's most serious correctness defect: the panel is presented as a
+ *  canonical verdict, and advice that contradicts a restriction the app
+ *  already stores is worse than no advice). 'monitor'-severity limitations
+ *  are excluded — that severity means "watch it", not "restricted", so it
+ *  carries no volume implication. Same exact `PATTERN_AFFECTED_SLUGS[...] ??
+ *  []` lookup WorkedMuscles.tsx already uses for its own flagged-muscle
+ *  state — one mapping, not two — which also means the same caveat applies
+ *  here: `movement_pattern` is free text on the DB side (see PATTERN_AFFECTED_SLUGS's
+ *  own header comment), so a limitation whose phrasing doesn't match one of
+ *  the nine `MovementPattern` keys exactly produces no match, same as it
+ *  already does for the Muscles tab today. Worst case wins when two
+ *  limitations disagree on one muscle ('avoid' never downgrades to 'limit'). */
+export function limitedSlugsFromLimitations(
+  limitations: { movement_pattern: string; severity: 'avoid' | 'limit' | 'monitor'; active: boolean }[],
+): Map<Slug, 'avoid' | 'limit'> {
+  const out = new Map<Slug, 'avoid' | 'limit'>()
+  for (const lim of limitations) {
+    if (!lim.active || lim.severity === 'monitor') continue
+    for (const { slug, weight } of PATTERN_AFFECTED_SLUGS[lim.movement_pattern as MovementPattern] ?? []) {
+      if (out.get(slug) !== 'avoid') out.set(slug, weight)
+    }
+  }
+  return out
+}
+
 // ── Experience-scaled landmarks ──────────────────────────────────────────────
 // RP framework: MEV/MRV shift with training age (a novice grows on less
 // volume and can't yet tolerate as much; an advanced lifter needs more to
