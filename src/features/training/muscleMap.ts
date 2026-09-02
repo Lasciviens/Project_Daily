@@ -132,9 +132,17 @@ export const BANDS_META: BandMeta[] = [
   { idx: 5, label: 'Over MRV',          color: '#ef4444', desc: 'More than typical recovery guidelines suggest. Whether it is actually "too much" depends on your effort, sleep and recovery — none of which this measures. If you are recovering fine, no need to cut.' },
 ]
 
-export function bandForWeeklySets(slug: string, weeklySets: number): number {
+// `landmarksOverride` lets a caller that already scaled the landmarks for
+// experience level (scaleLandmarksForExperience) pass that SAME object in,
+// so the band this returns always agrees with whatever band/threshold is
+// drawn on screen from it — real bug, fixed: WeeklySetsPerMuscleChart used to
+// draw its ReferenceArea/ReferenceLine from scaled landmarks but call this
+// function with no override, silently falling back to the raw unscaled
+// table for the badge color, disagreeing by exactly the ±15% experience
+// multiplier. WorkedMuscles.tsx never had this bug (it always scales first).
+export function bandForWeeklySets(slug: string, weeklySets: number, landmarksOverride?: Landmarks): number {
   if (weeklySets <= 0) return 0
-  const L = MUSCLE_LANDMARKS[slug]
+  const L = landmarksOverride ?? MUSCLE_LANDMARKS[slug]
   if (!L) return 3
   if (weeklySets < L.mv)  return 1
   if (weeklySets < L.mev) return 2

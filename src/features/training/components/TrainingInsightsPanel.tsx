@@ -63,7 +63,7 @@ export function TrainingInsightsPanel() {
     if (completeWeeks.length < MIN_COMPLETE_WEEKS) return []
 
     const out: Finding[] = []
-    out.push(...computeConsistencyFindings(consistencyWeeks, today))
+    out.push(...computeConsistencyFindings(consistencyWeeks, today, profile?.training_days_per_week))
     out.push(...computeVolumeFindings(computeWeeklyVolumeTrend(data.sets, data.templates), today))
 
     const templateMuscles = buildTemplateMuscleMap(data.templates)
