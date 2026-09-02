@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ExerciseProgressChart } from './ExerciseProgressChart'
 import { WeeklyVolumeChart } from './WeeklyVolumeChart'
 import { TrainingConsistencyCalendar } from './TrainingConsistencyCalendar'
@@ -7,6 +8,9 @@ import { WeeklySetsPerMuscleChart } from './WeeklySetsPerMuscleChart'
 import { WeeklyChangesPanel } from './WeeklyChangesPanel'
 import { RecoveryLoadPanel } from './RecoveryLoadPanel'
 import { TrainingInsightsPanel } from './TrainingInsightsPanel'
+import { ProgressOverview } from '../progress/ProgressOverview'
+import { ExerciseDecisionTable } from '../progress/ExerciseDecisionTable'
+import { MuscleDoseSummary } from '../progress/MuscleDoseSummary'
 
 // New Hevy sub-tab (2026-08-28, strength-coach + sports-scientist agent
 // review): progress/history charts, distinct from Personal Records (all-time
@@ -43,18 +47,45 @@ import { TrainingInsightsPanel } from './TrainingInsightsPanel'
 // trainingInsights.ts's header comment for why a standing analytical view
 // needs reproducibility an LLM can't guarantee, unlike PT Coach's dated
 // one-shot opinion.
+// Third follow-up (2026-09-02, user + a second independent review round —
+// see docs/progress-redesign/PLAN.md, delete once this settles and
+// CLAUDE.md documents the final architecture): the actual decision engine.
+// Everything above this point was descriptive ("here's what happened");
+// ProgressOverview/ExerciseDecisionTable/MuscleDoseSummary are prescriptive
+// ("here's the decision, and why") — per the redesign's own visual
+// hierarchy, decisions go FIRST, supporting charts move into "More detail"
+// below. TrainingInsightsPanel's written analysis and every existing chart
+// are kept, not replaced — they're real evidence, just no longer the
+// headline.
 export function ProgressTab() {
+  const [showMore, setShowMore] = useState(false)
   return (
     <div className="flex flex-col gap-3">
-      <TrainingInsightsPanel />
-      <ExerciseProgressChart />
-      <RelativeStrengthChart />
-      <WeeklyVolumeChart />
-      <WeeklySetsPerMuscleChart />
-      <RepRangeDistributionChart />
-      <TrainingConsistencyCalendar />
-      <WeeklyChangesPanel />
-      <RecoveryLoadPanel />
+      <ProgressOverview />
+      <ExerciseDecisionTable />
+      <MuscleDoseSummary />
+
+      <button
+        type="button"
+        onClick={() => setShowMore(v => !v)}
+        className="self-start min-h-[44px] px-3 text-xs font-semibold text-ink-500 hover:text-ink-800 flex items-center gap-1.5"
+      >
+        {showMore ? '▲ Hide supporting charts' : '▼ Show supporting charts & analysis'}
+      </button>
+
+      {showMore && (
+        <div className="flex flex-col gap-3">
+          <TrainingInsightsPanel />
+          <ExerciseProgressChart />
+          <RelativeStrengthChart />
+          <WeeklyVolumeChart />
+          <WeeklySetsPerMuscleChart />
+          <RepRangeDistributionChart />
+          <TrainingConsistencyCalendar />
+          <WeeklyChangesPanel />
+          <RecoveryLoadPanel />
+        </div>
+      )}
     </div>
   )
 }
