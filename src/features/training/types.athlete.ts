@@ -41,3 +41,51 @@ export interface CreateLimitationInput {
 }
 
 export type UpdateLimitationInput = Partial<Pick<AthleteLimitation, 'movement_pattern' | 'severity' | 'note' | 'active'>>
+
+// Migration 084 — sibling tables for the Progress decision-engine redesign.
+// See docs/progress-redesign/PLAN.md for the full rationale (delete once shipped).
+
+/** Explicit membership: this routine_id is part of the athlete's current
+ *  program. Never inferred from recency alone — see fetchCurrentProgramRoutines. */
+export interface CurrentProgramRoutine {
+  id: string
+  user_id: string
+  routine_id: string
+  created_at: string
+}
+
+export type MusclePreference = 'priority' | 'exclude_direct'
+
+export interface AthleteMusclePreference {
+  id: string
+  user_id: string
+  muscle_slug: string
+  preference: MusclePreference
+  created_at: string
+  updated_at: string
+}
+
+export interface UpsertMusclePreferenceInput {
+  muscle_slug: string
+  preference: MusclePreference
+}
+
+/** A user-set rep-range target for one exercise — rung 2 of the expectation
+ *  source order (routine's own target > this > a labeled generic default). */
+export interface ExerciseTargetOverride {
+  id: string
+  user_id: string
+  exercise_template_id: string
+  rep_range_start: number
+  rep_range_end: number
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface UpsertExerciseTargetInput {
+  exercise_template_id: string
+  rep_range_start: number
+  rep_range_end: number
+  note?: string | null
+}

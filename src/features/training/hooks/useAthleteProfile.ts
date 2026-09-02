@@ -7,8 +7,19 @@ import {
   createAthleteLimitation,
   updateAthleteLimitation,
   deleteAthleteLimitation,
+  fetchCurrentProgramRoutines,
+  setCurrentProgramRoutines,
+  fetchMusclePreferences,
+  upsertMusclePreference,
+  deleteMusclePreference,
+  fetchExerciseTargetOverrides,
+  upsertExerciseTargetOverride,
+  deleteExerciseTargetOverride,
 } from '../api/athleteProfileApi'
-import type { UpsertAthleteProfileInput, CreateLimitationInput, UpdateLimitationInput } from '../types.athlete'
+import type {
+  UpsertAthleteProfileInput, CreateLimitationInput, UpdateLimitationInput,
+  UpsertMusclePreferenceInput, UpsertExerciseTargetInput,
+} from '../types.athlete'
 
 // One profile row per user + a separate list of limitations. Own query
 // namespaces; every mutation invalidates its own so the Training settings UI
@@ -68,5 +79,76 @@ export function useDeleteLimitation() {
     successMessage: 'Limitation removed',
     mutationFn:     (id: string) => deleteAthleteLimitation(id),
     onSuccess:      () => qc.invalidateQueries({ queryKey: LIMITATIONS_BASE_KEY }),
+  })
+}
+
+// ─── Current program (explicit, never inferred) ─────────────────────────────
+const CURRENT_PROGRAM_KEY = ['current-program-routines'] as const
+
+export function useCurrentProgramRoutines() {
+  return useQuery({ queryKey: CURRENT_PROGRAM_KEY, queryFn: fetchCurrentProgramRoutines })
+}
+
+export function useSetCurrentProgramRoutines() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'set_current_program_routines',
+    successMessage: 'Current program saved',
+    mutationFn:     (routineIds: string[]) => setCurrentProgramRoutines(routineIds),
+    onSuccess:      () => qc.invalidateQueries({ queryKey: CURRENT_PROGRAM_KEY }),
+  })
+}
+
+// ─── Muscle preferences ──────────────────────────────────────────────────────
+const MUSCLE_PREFS_KEY = ['athlete-muscle-preferences'] as const
+
+export function useMusclePreferences() {
+  return useQuery({ queryKey: MUSCLE_PREFS_KEY, queryFn: fetchMusclePreferences })
+}
+
+export function useUpsertMusclePreference() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'upsert_muscle_preference',
+    successMessage: 'Saved',
+    mutationFn:     (input: UpsertMusclePreferenceInput) => upsertMusclePreference(input),
+    onSuccess:      () => qc.invalidateQueries({ queryKey: MUSCLE_PREFS_KEY }),
+  })
+}
+
+export function useDeleteMusclePreference() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'delete_muscle_preference',
+    successMessage: 'Removed',
+    mutationFn:     (muscleSlug: string) => deleteMusclePreference(muscleSlug),
+    onSuccess:      () => qc.invalidateQueries({ queryKey: MUSCLE_PREFS_KEY }),
+  })
+}
+
+// ─── Exercise target overrides ───────────────────────────────────────────────
+const EXERCISE_TARGETS_KEY = ['exercise-target-overrides'] as const
+
+export function useExerciseTargetOverrides() {
+  return useQuery({ queryKey: EXERCISE_TARGETS_KEY, queryFn: fetchExerciseTargetOverrides })
+}
+
+export function useUpsertExerciseTargetOverride() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'upsert_exercise_target_override',
+    successMessage: 'Target saved',
+    mutationFn:     (input: UpsertExerciseTargetInput) => upsertExerciseTargetOverride(input),
+    onSuccess:      () => qc.invalidateQueries({ queryKey: EXERCISE_TARGETS_KEY }),
+  })
+}
+
+export function useDeleteExerciseTargetOverride() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'delete_exercise_target_override',
+    successMessage: 'Target removed',
+    mutationFn:     (exerciseTemplateId: string) => deleteExerciseTargetOverride(exerciseTemplateId),
+    onSuccess:      () => qc.invalidateQueries({ queryKey: EXERCISE_TARGETS_KEY }),
   })
 }

@@ -6,6 +6,11 @@ import type {
   AthleteLimitation,
   CreateLimitationInput,
   UpdateLimitationInput,
+  CurrentProgramRoutine,
+  AthleteMusclePreference,
+  UpsertMusclePreferenceInput,
+  ExerciseTargetOverride,
+  UpsertExerciseTargetInput,
 } from '../types.athlete'
 
 // athlete_profile / athlete_limitations (migration 070) may not be applied
@@ -84,4 +89,113 @@ export async function updateAthleteLimitation(id: string, patch: UpdateLimitatio
 export async function deleteAthleteLimitation(id: string): Promise<void> {
   const { error } = await supabase.from('athlete_limitations').delete().eq('id', id)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+}
+
+// ─── Current program (migration 084) — explicit, never inferred ────────────
+const NOT_MIGRATED_084 =
+  'Progress decision-engine tables are not available yet — migration 084 has not been applied.'
+
+export async function fetchCurrentProgramRoutines(): Promise<CurrentProgramRoutine[]> {
+  const { data, error } = await supabase.from('current_program_routines').select('*')
+  if (error) {
+    if (isMissingTable(error)) return []
+    throw error
+  }
+  return data ?? []
+}
+
+/** Replaces the whole current-program set in one call (the picker UI saves
+ *  the full checked set at once, not one row at a time) — delete whatever's
+ *  no longer checked, insert whatever's newly checked, leave the rest. */
+export async function setCurrentProgramRoutines(routineIds: string[]): Promise<void> {
+  const user = await requireUser()
+  const { data: existing, error: readErr } = await supabase
+    .from('current_program_routines')
+    .select('routine_id')
+  if (readErr) throw isMissingTable(readErr) ? new Error(NOT_MIGRATED_084) : readErr
+
+  const existingIds = new Set((existing ?? []).map(r => r.routine_id as string))
+  const nextIds = new Set(routineIds)
+  const toRemove = [...existingIds].filter(id => !nextIds.has(id))
+  const toAdd = [...nextIds].filter(id => !existingIds.has(id))
+
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from('current_program_routines')
+      .delete()
+      .eq('user_id', user.id)
+      .in('routine_id', toRemove)
+    if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_084) : error
+  }
+  if (toAdd.length > 0) {
+    const { error } = await supabase
+      .from('current_program_routines')
+      .insert(toAdd.map(routine_id => ({ user_id: user.id, routine_id })))
+    if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_084) : error
+  }
+}
+
+// ─── Muscle preferences (migration 084) ─────────────────────────────────────
+export async function fetchMusclePreferences(): Promise<AthleteMusclePreference[]> {
+  const { data, error } = await supabase.from('athlete_muscle_preferences').select('*').order('muscle_slug')
+  if (error) {
+    if (isMissingTable(error)) return []
+    throw error
+  }
+  return data ?? []
+}
+
+export async function upsertMusclePreference(input: UpsertMusclePreferenceInput): Promise<AthleteMusclePreference> {
+  const user = await requireUser()
+  const { data, error } = await supabase
+    .from('athlete_muscle_preferences')
+    .upsert(
+      { user_id: user.id, muscle_slug: input.muscle_slug, preference: input.preference, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,muscle_slug' },
+    )
+    .select()
+    .single()
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_084) : error
+  return data
+}
+
+export async function deleteMusclePreference(muscleSlug: string): Promise<void> {
+  const { error } = await supabase.from('athlete_muscle_preferences').delete().eq('muscle_slug', muscleSlug)
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_084) : error
+}
+
+// ─── Exercise target overrides (migration 084) ──────────────────────────────
+export async function fetchExerciseTargetOverrides(): Promise<ExerciseTargetOverride[]> {
+  const { data, error } = await supabase.from('exercise_target_overrides').select('*')
+  if (error) {
+    if (isMissingTable(error)) return []
+    throw error
+  }
+  return data ?? []
+}
+
+export async function upsertExerciseTargetOverride(input: UpsertExerciseTargetInput): Promise<ExerciseTargetOverride> {
+  const user = await requireUser()
+  const { data, error } = await supabase
+    .from('exercise_target_overrides')
+    .upsert(
+      {
+        user_id: user.id,
+        exercise_template_id: input.exercise_template_id,
+        rep_range_start: input.rep_range_start,
+        rep_range_end: input.rep_range_end,
+        note: input.note ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,exercise_template_id' },
+    )
+    .select()
+    .single()
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_084) : error
+  return data
+}
+
+export async function deleteExerciseTargetOverride(exerciseTemplateId: string): Promise<void> {
+  const { error } = await supabase.from('exercise_target_overrides').delete().eq('exercise_template_id', exerciseTemplateId)
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_084) : error
 }
