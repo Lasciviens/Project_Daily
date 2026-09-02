@@ -26,16 +26,49 @@ in chat, this file wins, because it reflects the user's own corrections
 | 5. User feedback round 1 (own + a second "ChatGPT" review) | ✅ Incorporated below |
 | 6. Demo v1 (3 style options) | ✅ Done — user picked **Style C (Editorial Report)** |
 | 7. Demo v2 (Style C only, richer — charts, drill-down pages, hover terms) | ✅ Done |
-| 8. Fix the 2 confirmed pre-existing bugs | ⬜ Not started |
-| 9. Migration: `current_program_routines` + `athlete_muscle_preferences` + `exercise_target_overrides` | ⬜ Not started |
-| 10. API + hooks for the above | ⬜ Not started |
+| 8. Fix the 2 confirmed pre-existing bugs | ✅ Done |
+| 9. Migration: `current_program_routines` + `athlete_muscle_preferences` + `exercise_target_overrides` | ✅ Written (084), not yet applied by user |
+| 10. API + hooks for the above | ✅ Done |
 | 11. Settings UI (current-program picker + muscle-preferences sheet) | ⬜ Not started |
-| 12. `progressDecisions.ts` + `progressCopy.ts` (revised model) | ⬜ Not started |
-| 13. `scripts/verify-progress-decisions.cjs` | ⬜ Not started |
+| 12. `progressDecisions.ts` + `progressCopy.ts` (revised model) | ✅ Done |
+| 13. `scripts/verify-progress-decisions.cjs` | ✅ Done — 56/56 passing |
 | 14. Production components (Overview/Table/DrillDown/MuscleMatrix) | ⬜ Not started |
 | 15. Wire into `ProgressTab.tsx` + update `CLAUDE.md` | ⬜ Not started |
 
 **Branch:** `claude/progress-decision-engine` (fresh off `main` after PR #410 merged).
+**PR:** #411 (draft) — https://github.com/Lasciviens/Project_Daily/pull/411
+
+### What actually exists right now (verified, not aspirational)
+
+- `src/features/training/progressDecisions.ts` — the decision engine: `rpeToRir`,
+  `filterToCurrentProgram`, `computeTrendConfidence`, `resolveExpectation`,
+  `computeRpeEvidence`, `computeActionConfidence`, `computeExerciseDecision`,
+  `computeProgramDecision`.
+- `src/features/training/progressCopy.ts` — the copy formatter.
+- `supabase/migrations/084_progress_decisions.sql` — the 3 new tables (not applied).
+- `src/features/training/api/athleteProfileApi.ts` + `hooks/useAthleteProfile.ts`
+  — full CRUD for all 3 new tables, pre-migration-safe.
+- `src/features/training/types.athlete.ts` — the matching TS types.
+- `hevyApi.ts::fetchTrainingHistory` now also selects `routine_id` and `rpe`;
+  `ProgressSetRow` carries both as optional fields.
+- Two pre-existing bugs fixed in place: `muscleMap.ts::bandForWeeklySets`
+  (scale-mismatch) and `trainingInsights.ts::computeConsistencyFindings`
+  (now reads `training_days_per_week` instead of a hardcoded bar).
+- `scripts/verify-progress-decisions.cjs` — 56 assertions, all passing.
+  All 5 pre-existing verify scripts (268 assertions) still pass; `tsc` and
+  `npm run build` both clean as of the last commit on this branch.
+
+### Not built yet — do not assume these exist
+
+- No settings UI for current-program selection or muscle preferences yet
+  (API/hooks exist, no screen reads or writes them).
+- No production components (`ProgressOverview`, `ExerciseDecisionTable`,
+  `ExerciseDrillDown`, `MuscleDoseSummary`) — `progressDecisions.ts` is not
+  wired into any React component yet.
+- `ProgressTab.tsx` is UNCHANGED — the live app still shows the old
+  text-findings-only Progress tab. This whole feature is inert in
+  production until phase 14-15 land.
+- `CLAUDE.md` not yet updated.
 
 ---
 
