@@ -1,21 +1,78 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useProgressData } from '../hooks/useProgressData'
-import { statusLabel, statusVerb, confidenceLabel, composeConfidenceSentence } from '../progressCopy'
+import { decisionHeadline, statusVerb, confidenceLabel, composeConfidenceSentence } from '../progressCopy'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import type { ExerciseDecision } from '../progressDecisions'
 
 // Desktop: a dense decision table. Mobile (<640px): the same rows stack as
-// cards. A tap on any row expands its own drill-down detail in place
-// (evidence, the two confidence facets, the RPE-absent caveat when
-// relevant) rather than navigating away — "detail on demand".
+// cards. A tap on any row expands its own drill-down detail in place.
 //
-// Two real fixes from live user feedback (2026-09-02): (1) "Not enough
-// data" exercises used to sit inline in the main list, often outnumbering
-// the exercises with an actual decision — they now collapse into their own
-// closed section by default, reachable but never the first thing you see;
-// (2) the "immediate actions" strip is capped at the 5 most important
-// exercises (Increase/Watch/Plateau first — the ones that need a decision
-// — then Keep), not every current-program exercise at once.
+// Real fixes from live user testing (2026-09-02, round 3):
+//  - The old "Immediate actions" strip duplicated the table below it with
+//    no new information — removed. A single set of tabs now IS the primary
+//    navigation: Recent Changes (default, sorted by most recently trained)
+//    / Ready to Increase / Building at New Weight / Needs Attention / All.
+//  - Every row now shows the actual last-comparable-workout -> latest-
+//    workout numbers directly (never just a bare unlabeled derived number)
+//    — this is the PRIMARY evidence a user recognizes on sight.
+//  - The specific reason ("Successful load increase" vs "Rep progression"
+//    vs "Build at this weight") comes from decisionHeadline(), which reads
+//    the decision's reasonCodes — not a generic status label that hid a
+//    real, already-successful load increase behind "Keep this weight".
+//  - A name search box + a sort dropdown (recent / action priority / largest
+//    improvement / closest to progression / lowest confidence) sit above
+//    the tabs, independent of which tab is active. NOT yet built: filtering
+//    by muscle group, specific routine/workout, or a date range — the user
+//    asked for these too, but they need muscle/routine data this component
+//    doesn't have yet (see docs/progress-redesign/PLAN.md's Round 3 section
+//    for the stated fast-follow).
+
+type Tab = 'recent' | 'increase' | 'building' | 'attention' | 'all'
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'recent', label: 'Recent Changes' },
+  { id: 'increase', label: 'Ready to Increase' },
+  { id: 'building', label: 'Building at New Weight' },
+  { id: 'attention', label: 'Needs Attention' },
+  { id: 'all', label: 'All Exercises' },
+]
+
+type SortMode = 'recent' | 'action_priority' | 'largest_improvement' | 'closest_to_progression' | 'lowest_confidence'
+const SORTS: { id: SortMode; label: string }[] = [
+  { id: 'recent', label: 'Most recently trained' },
+  { id: 'action_priority', label: 'Action priority' },
+  { id: 'largest_improvement', label: 'Largest improvement' },
+  { id: 'closest_to_progression', label: 'Closest to progression' },
+  { id: 'lowest_confidence', label: 'Lowest confidence' },
+]
+
+const ACTION_PRIORITY_RANK: Record<ExerciseDecision['status'], number> = {
+  increase: 0, watch: 1, plateau: 1, keep: 2, insufficient_data: 3,
+}
+const CONFIDENCE_RANK: Record<'low' | 'medium' | 'high', number> = { low: 0, medium: 1, high: 2 }
+
+function sortDecisions(list: ExerciseDecision[], sort: SortMode): ExerciseDecision[] {
+  const arr = [...list]
+  switch (sort) {
+    case 'action_priority':
+      return arr.sort((a, b) => ACTION_PRIORITY_RANK[a.status] - ACTION_PRIORITY_RANK[b.status])
+    case 'largest_improvement':
+      return arr.sort((a, b) => (b.currentState?.loadChangePercent ?? -Infinity) - (a.currentState?.loadChangePercent ?? -Infinity))
+    case 'closest_to_progression': {
+      // Smaller gap to the target's top rep = closer to a real increase.
+      const gapToTop = (d: ExerciseDecision) => {
+        const reps = d.currentState?.latest?.reps
+        if (reps == null || d.expectation.repMax == null) return Infinity
+        return Math.max(0, d.expectation.repMax - reps)
+      }
+      return arr.sort((a, b) => gapToTop(a) - gapToTop(b))
+    }
+    case 'lowest_confidence':
+      return arr.sort((a, b) => CONFIDENCE_RANK[a.trendConfidence] - CONFIDENCE_RANK[b.trendConfidence])
+    case 'recent':
+    default:
+      return arr.sort((a, b) => (b.currentState?.latest?.date ?? '').localeCompare(a.currentState?.latest?.date ?? ''))
+  }
+}
 
 const STATUS_TONE: Record<ExerciseDecision['status'], string> = {
   increase:          'bg-green-100 text-green-700',
@@ -25,14 +82,29 @@ const STATUS_TONE: Record<ExerciseDecision['status'], string> = {
   insufficient_data: 'bg-ink-100 text-ink-500',
 }
 
-const ACTION_PRIORITY: Record<ExerciseDecision['status'], number> = {
-  increase: 0, plateau: 1, watch: 2, keep: 3, insufficient_data: 4,
-}
-const MAX_IMMEDIATE_ACTIONS = 5
-
 function ConfidencePill({ level, label }: { level: 'low' | 'medium' | 'high'; label: string }) {
   const tone = level === 'high' ? 'bg-green-100 text-green-700' : level === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-ink-100 text-ink-500'
   return <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${tone}`} title={label}>{confidenceLabel(level).replace(' confidence', '')}</span>
+}
+
+function fmtExposure(e: { weightKg: number | null; reps: number | null } | null | undefined): string {
+  if (!e) return '—'
+  if (e.weightKg != null && e.reps != null) return `${e.weightKg} kg × ${e.reps}`
+  if (e.reps != null) return `${e.reps} reps`
+  if (e.weightKg != null) return `${e.weightKg} kg`
+  return '—'
+}
+
+function ExposureLine({ decision }: { decision: ExerciseDecision }) {
+  if (!decision.currentState) return null
+  return (
+    <span className="text-xs text-ink-600 tabular-nums">
+      {fmtExposure(decision.currentState.previous)} <span className="text-ink-300">→</span> <span className="font-semibold text-ink-800">{fmtExposure(decision.currentState.latest)}</span>
+      {decision.currentState.loadChangePercent != null && decision.currentState.loadChangePercent !== 0 && (
+        <span className={decision.currentState.loadChangePercent > 0 ? 'text-green-700' : 'text-amber-700'}> ({decision.currentState.loadChangePercent > 0 ? '+' : ''}{decision.currentState.loadChangePercent}%)</span>
+      )}
+    </span>
+  )
 }
 
 function DecisionDetail({ decision }: { decision: ExerciseDecision }) {
@@ -48,10 +120,16 @@ function DecisionDetail({ decision }: { decision: ExerciseDecision }) {
           </li>
         ))}
       </ul>
+      {decision.currentState?.estimatedStrengthChange && (
+        <p className="text-[11px] text-ink-500 flex items-center gap-1">
+          Estimated strength (secondary): {decision.currentState.estimatedStrengthChange.fromKg} kg → {decision.currentState.estimatedStrengthChange.toKg} kg
+          <InfoBubble><b>Estimated 1RM</b>A rough estimate of your one-rep max, calculated from weight × reps (Epley formula) — not a tested number. Example: 10 kg for 8 reps estimates to about 12.7 kg. Useful for a rough direction only; the real sets above are what actually happened.</InfoBubble>
+        </p>
+      )}
       {decision.caveat && (
         <p className="text-xs italic text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">{decision.caveat}</p>
       )}
-      <p className="text-[11px] text-ink-400">Expectation: {decision.expectation.label} · Next check: {decision.nextCheck}</p>
+      <p className="text-[11px] text-ink-400">Expectation: {decision.expectation.label} · Next: {decision.nextCheck}</p>
     </div>
   )
 }
@@ -62,9 +140,10 @@ function DecisionRow({ decision, title }: { decision: ExerciseDecision; title: s
     <>
       <tr className="border-b border-ink-100 cursor-pointer hover:bg-cream-100" onClick={() => setOpen(v => !v)}>
         <td className="py-2.5 px-3 text-sm font-semibold text-ink-800">{title}</td>
+        <td className="py-2.5 px-3"><ExposureLine decision={decision} /></td>
         <td className="py-2.5 px-3">
           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${STATUS_TONE[decision.status]}`}>
-            {statusVerb(decision.status)} {statusLabel(decision.status)}
+            {statusVerb(decision.status)} {decisionHeadline(decision)}
           </span>
         </td>
         <td className="py-2.5 px-3"><ConfidencePill level={decision.trendConfidence} label="Trend confidence — is this exercise really progressing?" /></td>
@@ -73,7 +152,7 @@ function DecisionRow({ decision, title }: { decision: ExerciseDecision; title: s
       </tr>
       {open && (
         <tr>
-          <td colSpan={5} className="px-3 pb-2"><DecisionDetail decision={decision} /></td>
+          <td colSpan={6} className="px-3 pb-2"><DecisionDetail decision={decision} /></td>
         </tr>
       )}
     </>
@@ -87,9 +166,10 @@ function DecisionCard({ decision, title }: { decision: ExerciseDecision; title: 
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold text-ink-800">{title}</span>
         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold shrink-0 ${STATUS_TONE[decision.status]}`}>
-          {statusVerb(decision.status)} {statusLabel(decision.status)}
+          {statusVerb(decision.status)} {decisionHeadline(decision)}
         </span>
       </div>
+      <div className="mt-1"><ExposureLine decision={decision} /></div>
       <div className="flex items-center gap-2 mt-1.5">
         <ConfidencePill level={decision.trendConfidence} label="Trend confidence" />
         {decision.actionConfidence && <ConfidencePill level={decision.actionConfidence} label="Action confidence" />}
@@ -100,39 +180,33 @@ function DecisionCard({ decision, title }: { decision: ExerciseDecision; title: 
   )
 }
 
-function ImmediateActions({ decisions, titleById }: { decisions: ExerciseDecision[]; titleById: Map<string, string> }) {
-  const needsAttention = decisions
-    .filter(d => d.status !== 'insufficient_data' && d.status !== 'keep')
-    .sort((a, b) => ACTION_PRIORITY[a.status] - ACTION_PRIORITY[b.status])
-  const shown = needsAttention.slice(0, MAX_IMMEDIATE_ACTIONS)
-  if (shown.length === 0) return null
-
-  return (
-    <div className="mb-4">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-2 flex items-center gap-1.5">
-        Immediate actions
-        <InfoBubble><b>Immediate actions</b>The exercises most worth your attention right now — ready to progress, or worth watching. Exercises already holding steady aren&apos;t repeated here; see the full table below.</InfoBubble>
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-        {shown.map(d => (
-          <div key={d.templateId} className="rounded-xl border border-ink-200 p-3 bg-cream-50">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <span className="text-sm font-semibold text-ink-800 truncate">{titleById.get(d.templateId) ?? 'Unknown'}</span>
-              <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_TONE[d.status]}`}>
-                {statusVerb(d.status)} {statusLabel(d.status)}
-              </span>
-            </div>
-            <p className="text-xs text-ink-500">{d.nextCheck}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+function filterByTab(decisions: ExerciseDecision[], tab: Tab): ExerciseDecision[] {
+  const withDecision = decisions.filter(d => d.status !== 'insufficient_data')
+  switch (tab) {
+    case 'increase':  return withDecision.filter(d => d.status === 'increase')
+    case 'building':  return withDecision.filter(d => d.status === 'keep')
+    case 'attention': return withDecision.filter(d => d.status === 'watch' || d.status === 'plateau')
+    case 'all':       return withDecision
+    case 'recent':
+    default:          return withDecision
+  }
 }
 
 export function ExerciseDecisionTable() {
   const { isLoading, needsCurrentProgram, decisions, titleById } = useProgressData()
+  const [tab, setTab] = useState<Tab>('recent')
+  const [sort, setSort] = useState<SortMode>('recent')
+  const [query, setQuery] = useState('')
   const [showInsufficient, setShowInsufficient] = useState(false)
+
+  const filtered = useMemo(() => filterByTab(decisions, tab), [decisions, tab])
+  const searched = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return filtered
+    return filtered.filter(d => (titleById.get(d.templateId) ?? '').toLowerCase().includes(q))
+  }, [filtered, query, titleById])
+  const shown = useMemo(() => sortDecisions(searched, sort), [searched, sort])
+  const insufficient = useMemo(() => decisions.filter(d => d.status === 'insufficient_data'), [decisions])
 
   if (isLoading || needsCurrentProgram) return null
   if (decisions.length === 0) {
@@ -143,16 +217,45 @@ export function ExerciseDecisionTable() {
     )
   }
 
-  const withDecision = decisions.filter(d => d.status !== 'insufficient_data')
-  const insufficient = decisions.filter(d => d.status === 'insufficient_data')
-
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 sm:p-5">
-      <ImmediateActions decisions={decisions} titleById={titleById} />
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`min-h-[36px] px-3 rounded-full text-xs font-semibold transition-colors ${
+              tab === t.id ? 'bg-ink-900 text-white' : 'bg-cream-100 text-ink-600 hover:bg-cream-200'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-3">Current program · every exercise with a decision</p>
-      {withDecision.length === 0 ? (
-        <p className="text-sm text-ink-500 mb-2">No current-program exercise has enough sessions for a decision yet.</p>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search exercise…"
+          className="min-h-[36px] px-3 rounded-lg border border-ink-200 bg-cream-100 text-xs text-ink-700 max-w-[14rem] w-full sm:w-auto"
+        />
+        <label className="flex items-center gap-1.5 text-xs text-ink-500">
+          Sort:
+          <select
+            value={sort}
+            onChange={e => setSort(e.target.value as SortMode)}
+            className="min-h-[36px] px-2 rounded-lg border border-ink-200 bg-cream-100 text-xs text-ink-700"
+          >
+            {SORTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        </label>
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="text-sm text-ink-500 py-4 text-center">No exercises in this view yet.</p>
       ) : (
         <>
           {/* Desktop table */}
@@ -161,6 +264,7 @@ export function ExerciseDecisionTable() {
               <thead>
                 <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-ink-400 border-b-2 border-ink-200">
                   <th className="py-2 px-3">Exercise</th>
+                  <th className="py-2 px-3">Previous → Latest</th>
                   <th className="py-2 px-3">Decision</th>
                   <th className="py-2 px-3">
                     <span className="inline-flex items-center gap-1">Trend <InfoBubble><b>Trend confidence</b>Is this exercise really progressing? Based only on sample size, time span and consistency — never touched by effort/RPE data.</InfoBubble></span>
@@ -172,14 +276,14 @@ export function ExerciseDecisionTable() {
                 </tr>
               </thead>
               <tbody>
-                {withDecision.map(d => <DecisionRow key={d.templateId} decision={d} title={titleById.get(d.templateId) ?? 'Unknown exercise'} />)}
+                {shown.map(d => <DecisionRow key={d.templateId} decision={d} title={titleById.get(d.templateId) ?? 'Unknown exercise'} />)}
               </tbody>
             </table>
           </div>
 
           {/* Mobile stacked cards */}
           <ul className="sm:hidden flex flex-col gap-2">
-            {withDecision.map(d => <DecisionCard key={d.templateId} decision={d} title={titleById.get(d.templateId) ?? 'Unknown exercise'} />)}
+            {shown.map(d => <DecisionCard key={d.templateId} decision={d} title={titleById.get(d.templateId) ?? 'Unknown exercise'} />)}
           </ul>
         </>
       )}

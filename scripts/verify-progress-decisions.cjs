@@ -26,18 +26,26 @@
  *      corroborating signal — never from one exercise or no signal.
  *   9. progressCopy.ts — label mappings and the two-facet confidence
  *      sentence the user explicitly asked for.
+ *  7b. Round 3: previous/latest exposure display, the load-increase vs
+ *      regression classifications (successful increase / premature increase
+ *      / deload / rep progression), and that a genuine weight-change-
+ *      explained rep-range swing no longer crushes trend confidence to Low.
+ *  10. computeCurrentWeekMuscleDose — the reported mid-week muscle-dose bug
+ *      (a Wednesday judged as a deficit against the FULL week's plan): never
+ *      a deficit for an in-progress week, only an on_track/behind_pace read
+ *      against the routines actually done so far.
  *
  *   Run:  node scripts/verify-progress-decisions.cjs
  */
 require('sucrase/register')
 
-const { computeExerciseProgression } = require('../src/features/training/progressAggregate')
+const { computeExerciseProgression, computeCurrentWeekMuscleDose } = require('../src/features/training/progressAggregate')
 const {
   rpeToRir, filterToCurrentProgram, computeTrendConfidence, resolveExpectation,
   computeRpeEvidence, computeActionConfidence, computeExerciseDecision, computeProgramDecision,
 } = require('../src/features/training/progressDecisions')
 const {
-  statusLabel, confidenceLabel, progressVerdictHeadline, workloadLabel, composeConfidenceSentence,
+  statusLabel, decisionHeadline, confidenceLabel, progressVerdictHeadline, workloadLabel, composeConfidenceSentence,
 } = require('../src/features/training/progressCopy')
 
 let passed = 0
@@ -241,23 +249,126 @@ console.log('\n== 7. computeExerciseDecision (integration, via the real computeE
     const points = computeExerciseProgression(sets, 'ex1', 'est1rm')
     const d = computeExerciseDecision({ templateId: 'ex1', metricKind: 'est1rm', points, qualifyingSets: [], expectation: defaultExpectation })
     check('a declining exercise is scoped to "watch", never "review_workload"', d.status === 'watch')
-    check('evidence names the decline explicitly', d.evidence.some(e => /Trending down/.test(e)))
+    check('reasonCodes name the decline explicitly', d.reasonCodes.includes('TREND_DOWN'))
+    check('evidence names the decline explicitly', d.evidence.some(e => /drifted/.test(e)))
+  }
+}
+
+console.log('\n== 7b. Round 3: previous/latest exposure, load-increase classifications, weight-change-explained confidence ==')
+{
+  const defaultExpectation = { source: 'default', repMin: 6, repMax: 10, label: 'Default (no target saved): 6-10 reps' }
+
+  // Successful load increase: weight went up, reps dropped but stayed inside
+  // the target range — this must NEVER read as a regression (the user's own
+  // exact complaint: total reps dropping alone is not a decline).
+  {
+    const sets = [
+      set({ workout_id: 'w1', date: '2026-08-01', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w2', date: '2026-08-08', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w3', date: '2026-08-15', weight_kg: 10, reps: 8 }),
+    ]
+    const points = computeExerciseProgression(sets, 'ex1', 'est1rm')
+    const d = computeExerciseDecision({ templateId: 'ex1', metricKind: 'est1rm', points, qualifyingSets: [], expectation: defaultExpectation })
+    check('weight up + reps still inside range -> keep (never a regression)', d.status === 'keep')
+    check('reasonCodes record LOAD_INCREASED + ALL_SETS_INSIDE_TARGET_RANGE', d.reasonCodes.includes('LOAD_INCREASED') && d.reasonCodes.includes('ALL_SETS_INSIDE_TARGET_RANGE'))
+    check('decisionHeadline reads "Successful load increase"', decisionHeadline(d) === 'Successful load increase')
+    check('currentState.previous is the exact last comparable workout (8kg x 10)', d.currentState.previous.weightKg === 8 && d.currentState.previous.reps === 10)
+    check('currentState.latest is the exact newest workout (10kg x 8)', d.currentState.latest.weightKg === 10 && d.currentState.latest.reps === 8)
+    check('loadChangePercent is +25%', d.currentState.loadChangePercent === 25)
+    check('first evidence line always states the raw previous/latest numbers', /Last comparable workout:.*Latest:/.test(d.evidence[0]))
+  }
+
+  // Load increase may be premature: reps fell BELOW the target minimum.
+  {
+    const sets = [
+      set({ workout_id: 'w1', date: '2026-08-01', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w2', date: '2026-08-08', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w3', date: '2026-08-15', weight_kg: 10, reps: 4 }),
+    ]
+    const points = computeExerciseProgression(sets, 'ex1', 'est1rm')
+    const d = computeExerciseDecision({ templateId: 'ex1', metricKind: 'est1rm', points, qualifyingSets: [], expectation: defaultExpectation })
+    check('weight up but reps fall below the target minimum -> watch', d.status === 'watch')
+    check('reasonCodes record BELOW_TARGET_MINIMUM', d.reasonCodes.includes('BELOW_TARGET_MINIMUM'))
+    check('decisionHeadline reads "Load increase may be premature"', decisionHeadline(d) === 'Load increase may be premature')
+  }
+
+  // Recent deload: weight went DOWN — must never be read as a decline.
+  {
+    const sets = [
+      set({ workout_id: 'w1', date: '2026-08-01', weight_kg: 10, reps: 8 }),
+      set({ workout_id: 'w2', date: '2026-08-08', weight_kg: 10, reps: 8 }),
+      set({ workout_id: 'w3', date: '2026-08-15', weight_kg: 8, reps: 10 }),
+    ]
+    const points = computeExerciseProgression(sets, 'ex1', 'est1rm')
+    const d = computeExerciseDecision({ templateId: 'ex1', metricKind: 'est1rm', points, qualifyingSets: [], expectation: defaultExpectation })
+    check('a weight drop -> watch, not a plain decline', d.status === 'watch')
+    check('reasonCodes record LOAD_DECREASED', d.reasonCodes.includes('LOAD_DECREASED'))
+    check('decisionHeadline reads "Recent deload"', decisionHeadline(d) === 'Recent deload')
+  }
+
+  // Same weight, reps climbed -> rep progression.
+  {
+    const sets = [
+      set({ workout_id: 'w1', date: '2026-08-01', weight_kg: 8, reps: 8 }),
+      set({ workout_id: 'w2', date: '2026-08-08', weight_kg: 8, reps: 8 }),
+      set({ workout_id: 'w3', date: '2026-08-15', weight_kg: 8, reps: 9 }),
+    ]
+    const points = computeExerciseProgression(sets, 'ex1', 'est1rm')
+    const d = computeExerciseDecision({ templateId: 'ex1', metricKind: 'est1rm', points, qualifyingSets: [], expectation: defaultExpectation })
+    check('same weight, more reps -> keep / rep progression', d.status === 'keep' && d.reasonCodes.includes('REP_PROGRESSION'))
+    check('decisionHeadline reads "Rep progression"', decisionHeadline(d) === 'Rep progression')
+  }
+
+  // The reported Hammer Curl bug: 6 sessions, a genuine weight increase at the
+  // end swings the rep range by >=4 (the repRangeVariedSignificantly bar) —
+  // this must NOT force trend confidence to Low, because the swing is fully
+  // explained by the weight change, not noisy/unexplained data.
+  {
+    const sets = [
+      set({ workout_id: 'w1', date: '2026-07-01', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w2', date: '2026-07-08', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w3', date: '2026-07-15', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w4', date: '2026-07-22', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w5', date: '2026-07-29', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w6', date: '2026-08-05', weight_kg: 12, reps: 6 }),
+    ]
+    const points = computeExerciseProgression(sets, 'ex1', 'est1rm')
+    const d = computeExerciseDecision({ templateId: 'ex1', metricKind: 'est1rm', points, qualifyingSets: [], expectation: defaultExpectation })
+    check('6 sessions, weight-explained rep swing -> trend confidence is NOT crushed to Low', d.trendConfidence !== 'low')
+    check('still correctly classified as a successful load increase, not a regression', d.status === 'keep' && d.reasonCodes.includes('LOAD_INCREASED'))
+  }
+
+  // Contrast case: the SAME rep swing with NO weight change at all is real,
+  // unexplained noise and must still force Low — proves the fix only
+  // suppresses the penalty when a weight change is the actual explanation.
+  {
+    const sets = [
+      set({ workout_id: 'w1', date: '2026-07-01', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w2', date: '2026-07-08', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w3', date: '2026-07-15', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w4', date: '2026-07-22', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w5', date: '2026-07-29', weight_kg: 8, reps: 10 }),
+      set({ workout_id: 'w6', date: '2026-08-05', weight_kg: 8, reps: 6 }),
+    ]
+    const points = computeExerciseProgression(sets, 'ex1', 'est1rm')
+    const d = computeExerciseDecision({ templateId: 'ex1', metricKind: 'est1rm', points, qualifyingSets: [], expectation: defaultExpectation })
+    check('same rep swing with NO weight change -> still forced Low (unexplained noise)', d.trendConfidence === 'low')
   }
 }
 
 console.log('\n== 8. computeProgramDecision ==')
 {
-  const highIncrease = { templateId: 'a', status: 'increase', trendConfidence: 'high', evidence: [] }
-  const highKeep = { templateId: 'b', status: 'keep', trendConfidence: 'high', evidence: [] }
-  const decliningOne = { templateId: 'c', status: 'watch', trendConfidence: 'medium', evidence: ['Trending down across 4 sessions (10 -> 8).'] }
-  const decliningTwo = { templateId: 'd', status: 'watch', trendConfidence: 'medium', evidence: ['Trending down across 4 sessions (12 -> 9).'] }
-  const insufficient = { templateId: 'e', status: 'insufficient_data', trendConfidence: 'low', evidence: [] }
+  const highIncrease = { templateId: 'a', status: 'increase', trendConfidence: 'high', evidence: [], reasonCodes: ['TOP_OF_RANGE_REACHED'] }
+  const highKeep = { templateId: 'b', status: 'keep', trendConfidence: 'high', evidence: [], reasonCodes: ['LOAD_UNCHANGED', 'REP_PROGRESSION'] }
+  const decliningOne = { templateId: 'c', status: 'watch', trendConfidence: 'medium', evidence: ['Trending down across 4 sessions (10 -> 8).'], reasonCodes: ['TREND_DOWN'] }
+  const decliningTwo = { templateId: 'd', status: 'watch', trendConfidence: 'medium', evidence: ['Trending down across 4 sessions (12 -> 9).'], reasonCodes: ['TREND_DOWN'] }
+  const insufficient = { templateId: 'e', status: 'insufficient_data', trendConfidence: 'low', evidence: [], reasonCodes: ['INSUFFICIENT_SESSIONS'] }
 
   const progressing = computeProgramDecision({ decisions: [highIncrease, highKeep, insufficient], corroboratingSignal: null })
   check('all analyzable exercises improving, none declining -> progressing', progressing.progressVerdict === 'progressing')
   check('insufficient_data exercises are excluded from the analyzable count', progressing.analyzableCount === 2)
 
-  const mediumKeep = { templateId: 'f', status: 'keep', trendConfidence: 'medium', evidence: [] }
+  const mediumKeep = { templateId: 'f', status: 'keep', trendConfidence: 'medium', evidence: [], reasonCodes: ['LOAD_UNCHANGED', 'REP_PROGRESSION'] }
   const alsoProgressing = computeProgramDecision({ decisions: [highIncrease, mediumKeep, decliningOne], corroboratingSignal: null })
   check('a real majority improving (2 of 3) -> still progressing even with one declining', alsoProgressing.progressVerdict === 'progressing')
 
@@ -292,6 +403,44 @@ console.log('\n== 9. progressCopy.ts ==')
 
   const trendOnly = composeConfidenceSentence('medium', null, false)
   check('no action taken (e.g. "keep") -> only the trend sentence, no second clause', trendOnly === 'Medium confidence that performance is improving.')
+}
+
+console.log('\n== 10. computeCurrentWeekMuscleDose — the mid-week muscle-dose bug fix ==')
+{
+  // The reported bug: Wednesday, 2 of 4 workouts done, judged as a -7.5 set
+  // deficit against the FULL week's plan. The fix must never produce a
+  // deficit/gap for an in-progress week — only informational numbers plus a
+  // soft on_track/behind_pace read against what SHOULD have happened by now
+  // (from the routines actually done), never against the whole week's plan.
+  const midWeek = computeCurrentWeekMuscleDose({
+    routineExpectation: 13.5, completedSets: 6, remainingPlannedSets: 7.5, workoutsCompleted: 2, workoutsPlanned: 4,
+  })
+  check('no null/undefined result mid-week when a plan exists', midWeek !== null)
+  check('completedSets is passed through untouched', midWeek.completedSets === 6)
+  check('remainingPlannedSets is passed through untouched (not derived from a proportional guess)', midWeek.remainingPlannedSets === 7.5)
+  check('workoutsCompleted/workoutsPlanned pass through for the "N of M" readout', midWeek.workoutsCompleted === 2 && midWeek.workoutsPlanned === 4)
+  // expectedFromRoutinesDoneSoFar = 13.5 - 7.5 = 6; 6 >= 6*0.85 -> on_track.
+  check('on_track when completed sets keep pace with the routines actually done so far', midWeek.status === 'on_track')
+
+  const behindMidWeek = computeCurrentWeekMuscleDose({
+    routineExpectation: 13.5, completedSets: 2, remainingPlannedSets: 7.5, workoutsCompleted: 2, workoutsPlanned: 4,
+  })
+  check('behind_pace when completed sets fall well short of the done routines\' own share', behindMidWeek.status === 'behind_pace')
+
+  const nothingDoneYet = computeCurrentWeekMuscleDose({
+    routineExpectation: 13.5, completedSets: 0, remainingPlannedSets: 13.5, workoutsCompleted: 0, workoutsPlanned: 4,
+  })
+  check('nothing trained yet this week -> status is null, never a premature "behind"', nothingDoneYet.status === null)
+
+  const noProgram = computeCurrentWeekMuscleDose({
+    routineExpectation: null, completedSets: 0, remainingPlannedSets: 0, workoutsCompleted: 0, workoutsPlanned: 0,
+  })
+  check('no plan at all -> null result, not a fabricated status', noProgram === null)
+
+  const noExpectationForThisMuscle = computeCurrentWeekMuscleDose({
+    routineExpectation: null, completedSets: 3, remainingPlannedSets: 0, workoutsCompleted: 2, workoutsPlanned: 4,
+  })
+  check('a program exists but this muscle has no routine expectation -> still null, not a fake 0-target', noExpectationForThisMuscle === null)
 }
 
 console.log(`\n${failed === 0 ? '✅ ALL PASS' : '❌ FAILURES'} — ${passed} passed, ${failed} failed\n`)

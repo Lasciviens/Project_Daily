@@ -127,8 +127,8 @@ export function ProgressOverview() {
           info={<><b>Routine adherence</b>How many sessions you&apos;ve logged this week against your own stated weekly target — never judged before the week is actually over.</>}
         />
         <SummaryCard
-          label="Exercise progress" value={`${summary.exerciseProgress.improving}/${summary.exerciseProgress.analyzable}`} note="improving or holding steady"
-          info={<><b>Exercise progress</b>Of the exercises with enough logged sessions to judge, how many are increasing or holding at the top of their range.</>}
+          label="Exercise progress" value={`${summary.exerciseProgress.improving}/${summary.exerciseProgress.analyzable}`} note="of exercises judgeable so far"
+          info={<><b>Exercise progress</b>Of the current-program exercises with enough logged sessions to judge (the &quot;analyzable&quot; ones — see Data confidence for the full program count), how many are increasing or holding at the top of their range.</>}
         />
         <SummaryCard
           label="Bodyweight" value={bwText} valueClass={summary.bodyweightDirection && summary.bodyweightDirection.deltaKg < 0 ? 'text-green-700' : undefined}
@@ -136,8 +136,8 @@ export function ProgressOverview() {
           info={<><b>Bodyweight direction</b>A plain before/after comparison, not a smoothed trend — read the direction over months, not this one number.</>}
         />
         <SummaryCard
-          label="Data confidence" value={`${summary.dataConfidence.reliable}/${summary.dataConfidence.total}`} note="exercises with a reliable trend"
-          info={<><b>Data confidence</b>How many of your current-program exercises have enough comparable sessions (3+) to trust their trend at all.</>}
+          label="Data confidence" value={`${summary.dataConfidence.reliable}/${summary.dataConfidence.total}`} note="of ALL current-program exercises"
+          info={<><b>Data confidence</b>Out of every exercise actually in your current program&apos;s routines (a different, larger denominator than &quot;Exercise progress&quot; above, which only counts the ones already judgeable), how many have enough comparable sessions (3+) to trust their trend at all.</>}
         />
       </div>
     </div>

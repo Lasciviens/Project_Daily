@@ -612,3 +612,42 @@ export function computeWeeklySetsPerMuscleTrend(
     .map(([weekStart, total]) => ({ weekStart, sets: Math.round(total * 10) / 10 }))
     .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
 }
+
+export interface CurrentWeekMuscleDose {
+  completedSets: number
+  remainingPlannedSets: number
+  workoutsCompleted: number
+  workoutsPlanned: number
+  /** A soft read only — "have I kept pace with what's already happened this
+   *  week", never "am I behind for the week" (the week isn't over yet). */
+  status: 'on_track' | 'behind_pace' | null
+}
+
+/** The in-progress current week is judged SEPARATELY from complete weeks —
+ *  a real bug, reported live: a Wednesday with 2 of 4 workouts done showed a
+ *  "-7.5 sets" deficit against the FULL week's plan, before the week had
+ *  even happened. This never returns a deficit/gap for the current week —
+ *  only an informational completed/remaining breakdown plus a soft
+ *  "on_track"/"behind_pace" read of whether the sets actually logged keep
+ *  pace with the routines actually done so far (never with the whole week's
+ *  plan, which by definition can't be met until the week is over).
+ *  `remainingPlannedSets` must be computed from the REAL structure of
+ *  whichever routines haven't been trained yet this week (not a
+ *  proportional guess) — different routines can load a given muscle very
+ *  differently, so an even split across remaining workouts would misstate
+ *  it. `status` is null once nothing has been trained yet this week (too
+ *  early to say anything) or there's no plan to compare against at all. */
+export function computeCurrentWeekMuscleDose(params: {
+  routineExpectation: number | null
+  completedSets: number
+  remainingPlannedSets: number
+  workoutsCompleted: number
+  workoutsPlanned: number
+}): CurrentWeekMuscleDose | null {
+  const { routineExpectation, completedSets, remainingPlannedSets, workoutsCompleted, workoutsPlanned } = params
+  if (workoutsPlanned <= 0 || routineExpectation == null) return null
+  const expectedFromRoutinesDoneSoFar = Math.max(0, routineExpectation - remainingPlannedSets)
+  const status: CurrentWeekMuscleDose['status'] =
+    workoutsCompleted === 0 ? null : completedSets >= expectedFromRoutinesDoneSoFar * 0.85 ? 'on_track' : 'behind_pace'
+  return { completedSets, remainingPlannedSets, workoutsCompleted, workoutsPlanned, status }
+}
