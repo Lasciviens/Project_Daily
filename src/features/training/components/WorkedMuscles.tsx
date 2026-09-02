@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { subDays, formatDistanceToNow, format, differenceInCalendarDays } from 'date-fns'
-import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import Body, { type ExtendedBodyPart, type Slug } from 'react-muscle-highlighter'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { fetchMuscleVolume } from '../api/hevyApi'
 import { ExerciseThumb } from '../exerciseMedia'
 import { DateInput } from '../../../shared/components/DateInput'
+import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { useAthleteProfile, useAthleteLimitations } from '../hooks/useAthleteProfile'
 import type { AthleteLimitation } from '../types.athlete'
 import {
@@ -60,18 +60,9 @@ type VolumeRow = { templateId: string; workoutId: string; workoutDate: string; w
 type Tpl = { primary: Slug | null; secondaries: Slug[]; title: string }
 interface SlugFlag { weight: 'avoid' | 'limit'; limitation: AthleteLimitation }
 
-function InfoBubble({ children }: { children: React.ReactNode }) {
-  return (
-    <Popover className="relative inline-block">
-      <PopoverButton className="w-4 h-4 rounded-full bg-ink-200 text-ink-600 text-[10px] font-bold leading-none inline-flex items-center justify-center hover:bg-ink-300 focus:outline-none align-middle">
-        i
-      </PopoverButton>
-      <PopoverPanel anchor="bottom start" className="z-[70] w-72 max-w-[85vw] rounded-xl border border-ink-200 bg-cream-50 p-3 text-xs text-ink-600 leading-relaxed shadow-lg">
-        {children}
-      </PopoverPanel>
-    </Popover>
-  )
-}
+// InfoBubble moved to src/shared/components/InfoBubble.tsx (2026-09-02) —
+// every jargon term across the Progress decision engine needed the same
+// affordance, so this stopped being a single-file concern.
 
 function RatioRow({ label, a, b, warn, verdict, bubble }: { label: string; a: number; b: number; warn: boolean; verdict: string; bubble: React.ReactNode }) {
   const total = a + b || 1

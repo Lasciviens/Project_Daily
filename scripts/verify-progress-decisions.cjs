@@ -21,7 +21,7 @@
  *      without RPE), keep, watch (flat, 2 sessions), possible plateau
  *      (>=4 sessions/>=3 weeks flat), and a declining exercise landing on
  *      its own honest 'watch', never a program-level label.
- *   8. computeProgramDecision — confirmed/likely/stable, and that
+ *   8. computeProgramDecision — the 3-state progressing/mixed/insufficient_data verdict, and that
  *      review_workload needs BOTH >=2 declining exercises AND a
  *      corroborating signal — never from one exercise or no signal.
  *   9. progressCopy.ts — label mappings and the two-facet confidence
@@ -253,16 +253,16 @@ console.log('\n== 8. computeProgramDecision ==')
   const decliningTwo = { templateId: 'd', status: 'watch', trendConfidence: 'medium', evidence: ['Trending down across 4 sessions (12 -> 9).'] }
   const insufficient = { templateId: 'e', status: 'insufficient_data', trendConfidence: 'low', evidence: [] }
 
-  const confirmed = computeProgramDecision({ decisions: [highIncrease, highKeep, insufficient], corroboratingSignal: null })
-  check('all analyzable exercises improving, one at High confidence, none declining -> confirmed', confirmed.progressVerdict === 'confirmed')
-  check('insufficient_data exercises are excluded from the analyzable count', confirmed.analyzableCount === 2)
+  const progressing = computeProgramDecision({ decisions: [highIncrease, highKeep, insufficient], corroboratingSignal: null })
+  check('all analyzable exercises improving, none declining -> progressing', progressing.progressVerdict === 'progressing')
+  check('insufficient_data exercises are excluded from the analyzable count', progressing.analyzableCount === 2)
 
   const mediumKeep = { templateId: 'f', status: 'keep', trendConfidence: 'medium', evidence: [] }
-  const likely = computeProgramDecision({ decisions: [highIncrease, mediumKeep, decliningOne], corroboratingSignal: null })
-  check('a real majority improving (2 of 3) but one declining -> likely, not confirmed', likely.progressVerdict === 'likely')
+  const alsoProgressing = computeProgramDecision({ decisions: [highIncrease, mediumKeep, decliningOne], corroboratingSignal: null })
+  check('a real majority improving (2 of 3) -> still progressing even with one declining', alsoProgressing.progressVerdict === 'progressing')
 
-  const stable = computeProgramDecision({ decisions: [decliningOne, decliningTwo], corroboratingSignal: null })
-  check('no majority improving -> stable', stable.progressVerdict === 'stable')
+  const mixed = computeProgramDecision({ decisions: [decliningOne, decliningTwo], corroboratingSignal: null })
+  check('no majority improving -> mixed (the user\'s explicit simplified 3-state label, not the old confirmed/likely/stable split)', mixed.progressVerdict === 'mixed')
 
   const oneDecliningNoReview = computeProgramDecision({ decisions: [highIncrease, decliningOne], corroboratingSignal: { label: 'sleep down' } })
   check('review_workload needs >= 2 declining exercises — one is not enough even with a signal', oneDecliningNoReview.workload === 'continue')
@@ -279,7 +279,8 @@ console.log('\n== 8. computeProgramDecision ==')
 console.log('\n== 9. progressCopy.ts ==')
 {
   check('statusLabel uses the user\'s exact requested wording', statusLabel('increase') === 'Increase weight' && statusLabel('keep') === 'Keep this weight')
-  check('progressVerdictHeadline: confirmed', progressVerdictHeadline('confirmed') === 'Progress confirmed')
+  check('progressVerdictHeadline: progressing', progressVerdictHeadline('progressing') === 'Progressing')
+  check('progressVerdictHeadline: mixed', progressVerdictHeadline('mixed') === 'Mixed')
   check('workloadLabel: review_workload', workloadLabel('review_workload') === 'Review workload')
 
   const withoutRpe = composeConfidenceSentence('high', 'medium', false)

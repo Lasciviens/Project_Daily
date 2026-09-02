@@ -16,6 +16,42 @@ in chat, this file wins, because it reflects the user's own corrections
 
 ---
 
+## Round 2 (2026-09-02, same day, from live user testing of the merged PR #411)
+
+The user tried the shipped feature immediately and found the single most
+important bug: with no current program selected, the engine fell back to
+"count every logged exercise as current" — producing an unreliable verdict,
+a 40-50-row table, and old/current programs mixing again, the exact thing
+this feature was supposed to fix. Plus a real design gap: no visibility into
+muscle growth OVER TIME (only a snapshot), and zero jargon tooltips anywhere
+despite that being an explicit original requirement.
+
+Fixed, same branch cycle, new PR (`claude/progress-v2-fixes`, #411 already
+merged so this is fresh off `main`):
+1. **The gating bug** — `useProgressData` now hard-stops with
+   `needsCurrentProgram: true` and zero decisions when nothing is selected,
+   instead of silently treating everything as current.
+2. **3-state verdict** (`progressing`/`mixed`/`insufficient_data`) —
+   collapsed from the original 4-state confirmed/likely/stable split, the
+   user's explicit ask for one clear headline word.
+3. **4 summary cards** on `ProgressOverview` — routine adherence, exercise
+   progress, bodyweight direction, data confidence.
+4. **Immediate actions capped at 5**, sorted by urgency (Increase/Plateau/
+   Watch first); "Not enough data" exercises collapse into a closed section.
+5. **Muscle dose rework**: "Routine expectation" now derived from the
+   CURRENT PROGRAM'S OWN structure (one full pass through its routines), not
+   a generic MEV/MAV landmark; a 6-week sparkline per muscle so growth is
+   actually visible, not just a snapshot; `exclude_direct` renders as a
+   plain statement, nothing else.
+6. **`InfoBubble` everywhere** — extracted to `src/shared/components/`,
+   used on every technical term across the whole feature.
+
+See CLAUDE.md's Training → Progress section for the settled documentation of
+all of the above — this section is a historical record of what changed and
+why, not duplicated detail.
+
+---
+
 ## Status at a glance
 
 | Phase | Status |

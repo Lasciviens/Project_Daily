@@ -308,7 +308,13 @@ export function computeExerciseDecision(input: ExerciseDecisionInput): ExerciseD
 }
 
 // ── Program-level decision ───────────────────────────────────────────────────
-export type ProgressVerdict = 'confirmed' | 'likely' | 'stable' | 'insufficient_data'
+// Deliberately three states, not the finer confirmed/likely/stable split an
+// earlier draft used — the user's explicit correction: a page meant to be
+// read in a few seconds needs one clear word, not a taxonomy. The evidence
+// sentence underneath (built in progressCopy.ts) still carries the exact
+// ratio ("3 of 4 improved"), so nothing about HOW confident is lost, only
+// the number of headline buckets.
+export type ProgressVerdict = 'progressing' | 'mixed' | 'insufficient_data'
 export type WorkloadDecision = 'continue' | 'review_workload' | 'ease_off'
 
 export interface ProgramDecisionInput {
@@ -339,12 +345,8 @@ export function computeProgramDecision(input: ProgramDecisionInput): ProgramDeci
   if (analyzable.length === 0) {
     progressVerdict = 'insufficient_data'
   } else {
-    const highConfidenceImprovingExists = improving.some(d => d.trendConfidence === 'high')
     const majorityImproving = improving.length / analyzable.length > 0.5
-    const noneDeclining = declining.length === 0
-    if (highConfidenceImprovingExists && majorityImproving && noneDeclining) progressVerdict = 'confirmed'
-    else if (majorityImproving) progressVerdict = 'likely'
-    else progressVerdict = 'stable'
+    progressVerdict = majorityImproving ? 'progressing' : 'mixed'
   }
 
   let workload: WorkloadDecision = 'continue'

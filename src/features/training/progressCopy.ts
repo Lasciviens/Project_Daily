@@ -30,9 +30,8 @@ export function confidenceLabel(level: ConfidenceLevel): string {
 
 export function progressVerdictHeadline(verdict: ProgressVerdict): string {
   switch (verdict) {
-    case 'confirmed':         return 'Progress confirmed'
-    case 'likely':            return 'Progress likely'
-    case 'stable':            return 'Stable'
+    case 'progressing':       return 'Progressing'
+    case 'mixed':             return 'Mixed'
     case 'insufficient_data': return 'Not enough data yet'
   }
 }
