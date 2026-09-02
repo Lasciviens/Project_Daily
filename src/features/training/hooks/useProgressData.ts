@@ -7,9 +7,10 @@ import { computeSleepSummary } from '../healthAggregate'
 import { computeWeeklySleepTrend } from '../recoveryAggregate'
 import {
   computeExerciseProgression, metricKindForExerciseType, mondayOf, computeWeeklySetsPerMuscleTrend,
-  computeConsistencyByWeek,
-  type ProgressSetRow,
+  computeConsistencyByWeek, computeCurrentWeekMuscleDose,
+  type ProgressSetRow, type CurrentWeekMuscleDose,
 } from '../progressAggregate'
+import { lastCompleteWeek } from '../trainingInsights'
 import {
   filterToCurrentProgram, resolveExpectation, computeExerciseDecision, computeProgramDecision,
   type ExerciseDecision, type ProgramDecision, type RoutineTargetLookup, type UserOverrideLookup,
@@ -23,9 +24,15 @@ const RECENT_DAYS = 28
 export interface MuscleDoseCard {
   slug: string
   label: string
-  /** Last 6 weeks of credited sets, oldest first — what "growth over time"
-   *  actually looks like per muscle, not just a single latest number. */
+  /** Last up to 6 COMPLETE weeks of credited sets, oldest first — the
+   *  current, still-in-progress week is deliberately excluded (a real bug,
+   *  reported live: judging a Wednesday against a full week's target read
+   *  as a deficit before the week had even happened). This is what "growth
+   *  over time" actually looks like per muscle, not just a single latest
+   *  number, and it's ONLY ever compared against other complete weeks. */
   weeklyTrend: number[]
+  /** Last COMPLETE week's credited sets — the number `direction`/`gap`
+   *  below are actually about. Never the in-progress current week. */
   weeklySets: number
   /** Derived from the CURRENT PROGRAM'S OWN routine structure (one full
    *  pass through every routine in current_program_routines), not a generic
@@ -35,10 +42,24 @@ export interface MuscleDoseCard {
    *  mapped yet (e.g. an exercise never logged, so its muscle group is
    *  unknown) — shown as "not enough data", never a silent zero. */
   routineExpectation: number | null
+  /** Only ever compares the last COMPLETE week against the plan — never the
+   *  in-progress current week (see currentWeek below for that). */
   gap: number | null
+  /** Trend across complete weeks only — never swayed by how far into the
+   *  current week you happen to be when you open the page. */
   direction: 'improving' | 'declining' | 'flat' | null
   preference: 'priority' | 'exclude_direct' | null
   restriction: 'avoid' | 'limit' | undefined
+  /** The CURRENT, still-in-progress week — informational only, never a
+   *  deficit/gap judgment (a real bug, reported live: a Wednesday showed
+   *  "Gap: -7.5" against the full week's plan before the week was even
+   *  over). `remainingPlannedSets` is computed from the ACTUAL structure of
+   *  whichever of the current program's routines haven't been trained yet
+   *  this week — not a proportional guess — so it reflects what's really
+   *  left, not an even split of the weekly total. Null once the current
+   *  week's program has no routines to schedule against (no current
+   *  program, or this muscle isn't in any of them). */
+  currentWeek: CurrentWeekMuscleDose | null
 }
 
 export interface SummaryCards {
@@ -127,7 +148,22 @@ export function useProgressData(): ProgressData {
       return o ? { repMin: o.rep_range_start, repMax: o.rep_range_end } : null
     }
 
+    // Scoped to the CURRENT routine structure's own exercise list, not every
+    // exercise ever logged under a current-program routine_id — a real bug,
+    // reported live (a routine that has since swapped out an exercise still
+    // tagged its old logged sets with the same routine_id, so decisions kept
+    // including exercises no longer actually in the program: "6 of 44"
+    // instead of the program's real "9 of 13"). A freeform session (no
+    // routine_id) for an exercise that's part of the current structure still
+    // counts via filterToCurrentProgram above; an exercise trained only
+    // freeform and never part of any current routine is out of scope here —
+    // this view is specifically "how is my CURRENT PROGRAM going".
+    const currentExerciseIds = new Set<string>()
+    for (const r of activeRoutines) {
+      for (const ex of r.exercises ?? []) currentExerciseIds.add(ex.exercise_template_id)
+    }
     const templateIds = [...new Set(filteredSets.map(s => s.exercise_template_id))]
+      .filter(id => currentExerciseIds.has(id))
     const titleById = new Map(history.templates.map(t => [t.id, t.title]))
     const typeById = new Map(history.templates.map(t => [t.id, t.type]))
 
@@ -171,7 +207,13 @@ export function useProgressData(): ProgressData {
     }
     const prefBySlug = new Map(musclePrefs.map(p => [p.muscle_slug, p.preference]))
     const limitedSlugs = limitedSlugsFromLimitations(limitations)
-    const lastWeek = mondayOf(toStr)
+    // The current, still-in-progress week is judged SEPARATELY from complete
+    // weeks (a real bug, reported live: a Wednesday with 2 of 4 workouts done
+    // showed a "-7.5 sets" deficit against the FULL week's plan, before the
+    // week had even happened). Trend/gap below only ever look at complete
+    // weeks; `currentWeek` on each card is purely informational.
+    const currentWeekMonday = mondayOf(toStr)
+    const completeWeekCutoff = lastCompleteWeek(toStr)
 
     // One full pass through every routine in the current program = the
     // program's OWN implied weekly target per muscle. Deliberately not a
@@ -181,11 +223,18 @@ export function useProgressData(): ProgressData {
     // assumes the program is intended to be completed about once a week
     // (true for a standard N-day split); a program run more or less often
     // than weekly will read as over/under its own target even when
-    // followed exactly as written.
+    // followed exactly as written. Credit is also kept PER ROUTINE (not just
+    // summed) so "sets planned in the remaining workouts this week" reflects
+    // the actual structure of whichever routines haven't been trained yet —
+    // never a proportional guess, since different routines can load a given
+    // muscle very differently (e.g. a push day vs a pull day).
     const routineExpectationBySlug = new Map<string, number>()
+    const creditByRoutineAndSlug = new Map<string, Map<string, number>>()
     const templatesWithKnownMuscle = new Set(templateMuscles.keys())
     let anyExerciseUnmapped = false
     for (const r of activeRoutines) {
+      const perRoutine = new Map<string, number>()
+      creditByRoutineAndSlug.set(r.id, perRoutine)
       for (const ex of r.exercises ?? []) {
         const muscles = templateMuscles.get(ex.exercise_template_id)
         if (!muscles) { anyExerciseUnmapped = true; continue }
@@ -194,26 +243,49 @@ export function useProgressData(): ProgressData {
         if (muscles.primarySlug) {
           const credit = workingSets * ROLE_WEIGHTS.primary
           routineExpectationBySlug.set(muscles.primarySlug, (routineExpectationBySlug.get(muscles.primarySlug) ?? 0) + credit)
+          perRoutine.set(muscles.primarySlug, (perRoutine.get(muscles.primarySlug) ?? 0) + credit)
         }
         for (const s of muscles.secondarySlugs) {
           const credit = workingSets * ROLE_WEIGHTS.secondary
           routineExpectationBySlug.set(s, (routineExpectationBySlug.get(s) ?? 0) + credit)
+          perRoutine.set(s, (perRoutine.get(s) ?? 0) + credit)
         }
       }
     }
     void templatesWithKnownMuscle
     void anyExerciseUnmapped // surfaced via routineExpectation:null on affected muscles, not a global banner (most programs are fully mapped)
 
+    // Which of the current program's routines have already been trained at
+    // least once this week — the other side of "N of M workouts completed".
+    const doneRoutineIdsThisWeek = new Set(
+      filteredSets
+        .filter(s => s.date >= currentWeekMonday && s.date <= toStr && s.routine_id != null && currentProgramIds.has(s.routine_id))
+        .map(s => s.routine_id as string),
+    )
+    const workoutsPlannedThisWeek = activeRoutines.length
+    const workoutsCompletedThisWeek = activeRoutines.filter(r => doneRoutineIdsThisWeek.has(r.id)).length
+    const remainingRoutines = activeRoutines.filter(r => !doneRoutineIdsThisWeek.has(r.id))
+
     const muscles: MuscleDoseCard[] = [...trainedSlugs].map(slug => {
       const weekly = computeWeeklySetsPerMuscleTrend(filteredSets as ProgressSetRow[], templateMuscles, slug, contribution)
-        .filter(w => w.weekStart <= lastWeek)
-      const last6 = weekly.slice(-6)
+      const completeWeeks = weekly.filter(w => w.weekStart <= completeWeekCutoff)
+      const last6 = completeWeeks.slice(-6)
       const latest = last6[last6.length - 1]?.sets ?? 0
       const earliest = last6[0]?.sets ?? 0
       const direction: MuscleDoseCard['direction'] = last6.length < 2 ? null
         : latest > earliest * 1.1 ? 'improving' : latest < earliest * 0.9 ? 'declining' : 'flat'
 
       const routineExpectation = routineExpectationBySlug.has(slug) ? Math.round((routineExpectationBySlug.get(slug) as number) * 10) / 10 : null
+
+      const currentWeekEntry = weekly.find(w => w.weekStart === currentWeekMonday)
+      const completedSets = currentWeekEntry?.sets ?? 0
+      const remainingPlannedSets = Math.round(
+        remainingRoutines.reduce((sum, r) => sum + (creditByRoutineAndSlug.get(r.id)?.get(slug) ?? 0), 0) * 10,
+      ) / 10
+      const currentWeek = computeCurrentWeekMuscleDose({
+        routineExpectation, completedSets, remainingPlannedSets,
+        workoutsCompleted: workoutsCompletedThisWeek, workoutsPlanned: workoutsPlannedThisWeek,
+      })
 
       return {
         slug, label: labelForSlug(slug),
@@ -224,6 +296,7 @@ export function useProgressData(): ProgressData {
         direction,
         preference: prefBySlug.get(slug) ?? null,
         restriction: limitedSlugs.get(slug),
+        currentWeek,
       }
     }).sort((a, b) => a.label.localeCompare(b.label))
 

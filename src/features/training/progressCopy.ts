@@ -2,7 +2,7 @@
 // Pure, import-free (type-only imports) — the UI renders these strings, it
 // never recreates the decision logic in JSX. Matches this repo's English-
 // only rule for all production UI copy.
-import type { ExerciseStatus, ProgressVerdict, WorkloadDecision, ConfidenceLevel } from './progressDecisions'
+import type { ExerciseStatus, ProgressVerdict, WorkloadDecision, ConfidenceLevel, ExerciseDecision } from './progressDecisions'
 
 export function statusLabel(status: ExerciseStatus): string {
   switch (status) {
@@ -12,6 +12,30 @@ export function statusLabel(status: ExerciseStatus): string {
     case 'plateau':           return 'Possible plateau'
     case 'insufficient_data': return 'Not enough data'
   }
+}
+
+/** A more specific headline than the coarse `status` bucket, built from
+ *  the decision's reasonCodes — this is what actually answers "why" at a
+ *  glance (e.g. "Successful load increase" instead of a bare "Keep this
+ *  weight" that hides that a weight increase already succeeded). `status`
+ *  itself stays the coarse bucket used for filtering/sorting/tone; this is
+ *  purely a richer display label layered on top. */
+export function decisionHeadline(decision: ExerciseDecision): string {
+  const codes = decision.reasonCodes
+  if (decision.status === 'increase') return 'Ready to increase'
+  if (decision.status === 'keep') {
+    if (codes.includes('LOAD_INCREASED') && codes.includes('ALL_SETS_INSIDE_TARGET_RANGE')) return 'Successful load increase'
+    if (codes.includes('REP_PROGRESSION')) return 'Rep progression'
+    return 'Build at this weight'
+  }
+  if (decision.status === 'watch') {
+    if (codes.includes('BELOW_TARGET_MINIMUM')) return 'Load increase may be premature'
+    if (codes.includes('LOAD_DECREASED')) return 'Recent deload'
+    if (codes.includes('TREND_DOWN')) return 'Watch — trending down'
+    return 'Watch — insufficient evidence'
+  }
+  if (decision.status === 'plateau') return 'Possible plateau'
+  return 'Not enough data'
 }
 
 export function statusVerb(status: ExerciseStatus): string {

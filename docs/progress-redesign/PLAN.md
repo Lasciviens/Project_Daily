@@ -52,6 +52,105 @@ why, not duplicated detail.
 
 ---
 
+## Round 3 (2026-09-02, same day, from live user testing of the merged PR #412)
+
+Two classes of bug, both reported with exact real numbers from the user's own
+log. Branch `claude/progress-v3-fixes`, fresh off `main` (#412 already merged).
+
+**A. The decision engine's classification/confidence logic itself.**
+1. **Unlabeled derived numbers.** The evidence sentence showed a bare
+   "10.9 → 12.7" with no unit and no name — meaningless on sight. Fixed:
+   `ExerciseDecision` gained a `currentState` field (`previous`/`latest`
+   exposure as real `{weightKg, reps}`, `loadChangePercent`, and an
+   OPTIONAL, explicitly-labeled `estimatedStrengthChange` for `est1rm`-kind
+   exercises only) and the evidence array's first line is now always the
+   literal last-comparable-vs-latest-workout numbers
+   (`"Last comparable workout: 8 kg × 10, 10, 10. Latest: 10 kg × 8, 7, 6."`)
+   — raw sets are the PRIMARY result, estimated 1RM is secondary and
+   tooltip-explained, never the headline.
+2. **Weight increase read as a regression.** Total reps dropping (30→21)
+   after a weight increase used to fall through to the old flat/decline
+   branches. `computeExerciseDecision` now checks `weightChanged`/
+   `loadIncreased` FIRST, before anything else: a weight increase with reps
+   still inside the target range → "Successful load increase"; below the
+   target minimum → "Load increase may be premature"; a weight decrease →
+   "Recent deload"; same weight with more reps → "Rep progression". None of
+   these were reachable states before this round.
+3. **Trend confidence conflated with action confidence.** A genuine weight
+   increase legitimately swings the rep range (the exact thing
+   `repRangeVariedSignificantly` flags as "unexplained noise" and forces to
+   Low) — so a real, deliberate 8kg→10kg jump was crushing confidence to Low
+   on a 6-session exercise. Fixed: the caller now only forces Low when the
+   swing is UNEXPLAINED (`rawVaried && !weightChanged`) — a weight-change-
+   explained swing no longer touches trend confidence at all. Two dedicated
+   contrast tests lock this in (same rep swing, with vs without a weight
+   change).
+4. **`ReasonCode`s replace evidence-string matching.** `computeProgramDecision`'s
+   "is this exercise declining" check used to regex-match the evidence text;
+   it now reads `reasonCodes.includes('TREND_DOWN')`. `decisionHeadline()`
+   (new, `progressCopy.ts`) derives the specific on-screen label
+   ("Successful load increase" / "Rep progression" / "Load increase may be
+   premature" / "Recent deload" / …) from `status` + `reasonCodes`, so the
+   coarse status bucket (used for filtering/sorting/tone) and the
+   human-readable headline are two separate concerns, per the user's own
+   proposed "reasonCodes → dynamic explanation" architecture. Stated
+   simplification: evidence-sentence composition itself is still inline in
+   `computeExerciseDecision`, not a fully separate reasonCodes→copy renderer
+   — `decisionHeadline()` covers the "give it a name" ask without a second
+   full copy-generation layer.
+5. **Duplicate "Immediate Actions" list removed.** `ExerciseDecisionTable`
+   is now the single view: 5 tabs (Recent Changes — default, sorted most-
+   recently-trained / Ready to Increase / Building at New Weight / Needs
+   Attention / All Exercises) plus a name search box and a sort dropdown
+   (Most recently trained / Action priority / Largest improvement / Closest
+   to progression / Lowest confidence). **Not yet built**: filtering by
+   muscle group, specific routine/workout, or a date range — these need
+   per-exercise muscle/routine data this component doesn't currently
+   receive from `useProgressData`; flagged as a real fast-follow, not
+   silently dropped.
+
+**B. Decisions/muscle-dose scoped to the wrong data.**
+6. **"6 of 44" vs the program's real "9 of 13".** `useProgressData` used to
+   build its exercise list from every `exercise_template_id` ever logged
+   under a current-program `routine_id` — including exercises a routine has
+   since swapped OUT of its current structure (still tagged with the same
+   `routine_id` on old logged sets). Fixed: `templateIds` is now
+   intersected with the union of `activeRoutines[].exercises[].
+   exercise_template_id` — the routine's CURRENT exercise list, not its
+   historical one. `ProgressOverview`'s "Exercise progress" and "Data
+   confidence" cards got clarified captions/tooltips since their
+   denominators are genuinely different scopes (analyzable vs. every
+   current-program exercise with a decision at all) — the user's explicit
+   ask to label that difference rather than leave it implicit.
+7. **Muscle dose judged mid-week.** A Wednesday with 2 of 4 workouts done
+   showed `Gap: -7.5` against the FULL week's plan — judging an incomplete
+   week as deficient before it was actually complete. Fixed:
+   `MuscleDoseCard.direction`/`gap`/`weeklyTrend` now only ever look at
+   COMPLETE weeks (`lastCompleteWeek()`, reused from `trainingInsights.ts` —
+   one definition of "a week is over" for the whole tab). A new, purely
+   informational `currentWeek` object (`{completedSets, remainingPlannedSets,
+   workoutsCompleted, workoutsPlanned, status}`) covers the in-progress week
+   separately — `remainingPlannedSets` is computed from the REAL structure of
+   whichever of the current program's routines haven't been trained yet this
+   week (per-routine credit tracking, not a proportional guess across
+   remaining workouts), and `status` (`on_track`/`behind_pace`/null) is a
+   soft read against what the routines actually done so far should have
+   produced — never against the whole week's plan, and never anything at all
+   before the first workout of the week is logged. The judgmental piece
+   (`computeCurrentWeekMuscleDose`) was extracted into `progressAggregate.ts`
+   as a pure function specifically so this fix is verifiable via the repo's
+   usual sucrase-script convention, not just eyeballed in the hook.
+
+`scripts/verify-progress-decisions.cjs` grew from 57 to 85 assertions across
+this round (reasonCodes/currentState/decisionHeadline, the four load-increase
+classifications, the weight-change-explained-confidence contrast pair, and
+`computeCurrentWeekMuscleDose`'s five cases). `npx tsc --noEmit` and
+`npm run build` both clean throughout.
+
+See CLAUDE.md's Training → Progress section for the settled documentation.
+
+---
+
 ## Status at a glance
 
 | Phase | Status |

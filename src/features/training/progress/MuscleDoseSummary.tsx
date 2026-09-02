@@ -56,17 +56,37 @@ function MuscleCell({ card }: { card: MuscleDoseCard }) {
         <span className={`text-sm font-bold ${arrow.tone}`}>{arrow.symbol}</span>
       </div>
       <Sparkline values={card.weeklyTrend} />
+
+      {/* This week — informational only, NEVER a deficit/gap judgment (a
+         real bug, reported live: a Wednesday showed "Gap: -7.5" against the
+         full week's plan before the week was even over). */}
+      {card.currentWeek && (
+        <div className="mt-1.5 text-[11px] text-ink-600 tabular-nums flex flex-col gap-0.5 pb-1.5 border-b border-ink-100">
+          <span className="text-[10px] uppercase tracking-wide text-ink-400">This week ({card.currentWeek.workoutsCompleted} of {card.currentWeek.workoutsPlanned} workouts done)</span>
+          <span><b className="text-ink-800">{card.currentWeek.completedSets}</b> effective sets completed</span>
+          {card.currentWeek.workoutsPlanned - card.currentWeek.workoutsCompleted > 0 && (
+            <span><b className="text-ink-800">{card.currentWeek.remainingPlannedSets}</b> sets planned in {card.currentWeek.workoutsPlanned - card.currentWeek.workoutsCompleted} remaining workout{card.currentWeek.workoutsPlanned - card.currentWeek.workoutsCompleted === 1 ? '' : 's'}</span>
+          )}
+          {card.currentWeek.status && (
+            <span className={card.currentWeek.status === 'on_track' ? 'text-green-700' : 'text-amber-700'}>
+              Status: {card.currentWeek.status === 'on_track' ? 'On track' : 'Behind pace'}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="mt-1.5 text-[11px] text-ink-500 tabular-nums flex flex-col gap-0.5">
-        <span>Completed this week: <b className="text-ink-800">{card.weeklySets}</b></span>
         {card.routineExpectation != null ? (
           <>
-            <span>Routine expectation: <b className="text-ink-800">{card.routineExpectation}</b></span>
-            <span className={card.gap != null && card.gap < 0 ? 'text-amber-700' : 'text-green-700'}>
-              Gap: {card.gap != null && card.gap > 0 ? '+' : ''}{card.gap}
-            </span>
+            <span>Weekly plan: <b className="text-ink-800">{card.routineExpectation}</b></span>
+            {card.weeklyTrend.length > 0 && (
+              <span>Last complete week: <b className="text-ink-800">{card.weeklySets}</b>{card.gap != null && (
+                <span className={card.gap < 0 ? ' text-amber-700' : ' text-green-700'}> ({card.gap > 0 ? '+' : ''}{card.gap})</span>
+              )}</span>
+            )}
           </>
         ) : (
-          <span className="text-ink-400">Routine expectation: not enough data</span>
+          <span className="text-ink-400">Weekly plan: not enough data</span>
         )}
         {card.preference === 'priority' && <span className="text-accent-600">Priority: Yes</span>}
       </div>
@@ -88,12 +108,12 @@ export function MuscleDoseSummary() {
       <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-1 flex items-center gap-1.5">
         Weekly muscle dose
         <InfoBubble>
-          <b>Routine expectation</b>What ONE full pass through every routine in your current program calls for, per muscle per week — not a generic population minimum. Assumes you run your program roughly once a week; a faster or slower cycle will read as over/under its own target even if followed exactly.
+          <b>Weekly plan</b>What ONE full pass through every routine in your current program calls for, per muscle per week — not a generic population minimum. Assumes you run your program roughly once a week; a faster or slower cycle will read as over/under its own target even if followed exactly. <b>This week</b> is purely informational and never judged as a deficit — only a fully COMPLETE week ever gets compared against the plan.
         </InfoBubble>
       </p>
       <p className="text-xs text-ink-500 mb-3">
-        Every muscle actually trained under your current program, with the last 6 weeks&apos; trend so you can see growth, not just a snapshot.
-        Priority muscles (★) stand out; a muscle you&apos;ve excluded from direct work shows that plainly instead of a warning.
+        Every muscle actually trained under your current program. The trend line and the last-complete-week comparison only ever look at finished weeks;
+        the in-progress week shown above them is informational only. Priority muscles (★) stand out; a muscle you&apos;ve excluded from direct work shows that plainly instead of a warning.
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
         {muscles.map(m => <MuscleCell key={m.slug} card={m} />)}
