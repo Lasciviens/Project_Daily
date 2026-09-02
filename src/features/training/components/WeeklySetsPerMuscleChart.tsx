@@ -116,7 +116,7 @@ export function WeeklySetsPerMuscleChart() {
       const landmarks = MUSCLE_LANDMARKS[slug]
       const scaled = landmarks ? scaleLandmarksForExperience(landmarks, profile?.experience_level) : null
       const latest = weekly.length > 0 ? weekly[weekly.length - 1].sets : null
-      return { slug, label: labelForSlug(slug), weekly, scaled, latest, band: latest != null ? bandForWeeklySets(slug, latest) : 0 }
+      return { slug, label: labelForSlug(slug), weekly, scaled, latest, band: latest != null ? bandForWeeklySets(slug, latest, scaled ?? undefined) : 0 }
     })
   }, [data, templateMuscles, profile])
 

@@ -18,6 +18,15 @@ export interface ProgressSetRow {
   reps:             number | null
   duration_seconds: number | null
   distance_meters:  number | null
+  /** The workout's own hevy_workouts.routine_id — null for a freeform (no
+   *  routine) session. Used by progressDecisions.ts to scope "current
+   *  program" history; unused by every function in this file. */
+  routine_id?:      string | null
+  /** hevy_sets.rpe — optional effort rating (0-10), null when not logged.
+   *  100% null in this app's real data as of 2026-09-01, but the schema
+   *  supports it and progressDecisions.ts uses it as bonus evidence once
+   *  the athlete starts logging it — never a required field. */
+  rpe?:             number | null
 }
 
 export interface ProgressTemplateRow {

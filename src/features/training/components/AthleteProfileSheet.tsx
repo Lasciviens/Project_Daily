@@ -4,6 +4,8 @@ import { SegmentedControl } from '../../../shared/components/SegmentedControl'
 import { useAthleteProfile, useUpsertAthleteProfile } from '../hooks/useAthleteProfile'
 import type { Equipment, ExperienceLevel, TrainingGoal } from '../types.athlete'
 import { LimitationsList } from './LimitationsList'
+import { MusclePreferencesList } from './MusclePreferencesList'
+import { CurrentProgramPicker } from './CurrentProgramPicker'
 
 // Settings-style form, not a save-and-close dialog: every field autosaves on
 // change/blur (same convention as the Food Today Goals editor's pills/steppers
@@ -128,6 +130,15 @@ export function AthleteProfileSheet({ open, onClose }: Props) {
 
         <div className="border-t border-ink-100 pt-4">
           <LimitationsList />
+        </div>
+
+        <div className="border-t border-ink-100 pt-4">
+          <MusclePreferencesList />
+        </div>
+
+        <div className="border-t border-ink-100 pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Current program</p>
+          <CurrentProgramPicker />
         </div>
       </div>
     </Sheet>

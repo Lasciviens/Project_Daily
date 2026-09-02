@@ -86,7 +86,15 @@ function pct(n: number): string {
 // ── A. Consistency / adherence ──────────────────────────────────────────────
 const CONSISTENCY_CLAUSE = 'This counts logged workouts only — a session you did and did not log is indistinguishable from one you skipped.'
 
-export function computeConsistencyFindings(weeksAll: ConsistencyWeek[], anchorDate: string): Finding[] {
+// `targetPerWeek` (athlete_profile.training_days_per_week) is what "strong"
+// is actually measured against — a real bug, fixed: this used to hardcode
+// `median8 >= 2` regardless of the athlete's own stored target, so a 4-day
+// program and a 2-day program both needed the same fixed median to read as
+// "strong", and the chart (TrainingConsistencyCalendar) already read the
+// real target while this text engine silently didn't, so the two visibly
+// disagreed. Falls back to the old fixed threshold only when no target is
+// stored yet, so behaviour for a profile-less user is unchanged.
+export function computeConsistencyFindings(weeksAll: ConsistencyWeek[], anchorDate: string, targetPerWeek?: number | null): Finding[] {
   const last = lastCompleteWeek(anchorDate)
   const complete = weeksAll.filter(w => w.weekStart <= last)
   const out: Finding[] = []
@@ -95,7 +103,8 @@ export function computeConsistencyFindings(weeksAll: ConsistencyWeek[], anchorDa
   const last8 = complete.slice(-8)
   const trainedWeeks8 = last8.filter(w => w.sessionCount >= 1).length
   const median8 = median(last8.map(w => w.sessionCount))
-  if (last8.length >= 6 && trainedWeeks8 >= last8.length - 1 && median8 >= 2) {
+  const strongBar = targetPerWeek && targetPerWeek > 0 ? targetPerWeek * 0.5 : 2
+  if (last8.length >= 6 && trainedWeeks8 >= last8.length - 1 && median8 >= strongBar) {
     out.push({
       id: 'consistency-strong', tier: 'measured', positive: true,
       text: `You trained in ${trainedWeeks8} of the last ${last8.length} weeks, median ${median8} session${median8 === 1 ? '' : 's'} per week. This is the most reliable number on this page — a straight count of logged workouts, with no interpretation on top. ${CONSISTENCY_CLAUSE}`,
