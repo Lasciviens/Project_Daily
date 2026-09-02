@@ -32,8 +32,14 @@ in chat, this file wins, because it reflects the user's own corrections
 | 11. Settings UI (current-program picker + muscle-preferences sheet) | ⬜ Not started |
 | 12. `progressDecisions.ts` + `progressCopy.ts` (revised model) | ✅ Done |
 | 13. `scripts/verify-progress-decisions.cjs` | ✅ Done — 56/56 passing |
-| 14. Production components (Overview/Table/DrillDown/MuscleMatrix) | ⬜ Not started |
-| 15. Wire into `ProgressTab.tsx` + update `CLAUDE.md` | ⬜ Not started |
+| 14. Production components (Overview/Table/DrillDown/MuscleMatrix) | ✅ Done |
+| 15. Wire into `ProgressTab.tsx` + update `CLAUDE.md` | ✅ Done |
+
+**Feature is code-complete on this branch.** Remaining before this file can be
+deleted: user applies migration 084, exercises the feature live with their
+own login (not possible in the authoring sandbox), and either approves it
+as-is or requests changes. See "Not built yet" below for the one thing
+deliberately deferred.
 
 **Branch:** `claude/progress-decision-engine` (fresh off `main` after PR #410 merged).
 **PR:** #411 (draft) — https://github.com/Lasciviens/Project_Daily/pull/411
@@ -60,15 +66,20 @@ in chat, this file wins, because it reflects the user's own corrections
 
 ### Not built yet — do not assume these exist
 
-- No settings UI for current-program selection or muscle preferences yet
-  (API/hooks exist, no screen reads or writes them).
-- No production components (`ProgressOverview`, `ExerciseDecisionTable`,
-  `ExerciseDrillDown`, `MuscleDoseSummary`) — `progressDecisions.ts` is not
-  wired into any React component yet.
-- `ProgressTab.tsx` is UNCHANGED — the live app still shows the old
-  text-findings-only Progress tab. This whole feature is inert in
-  production until phase 14-15 land.
-- `CLAUDE.md` not yet updated.
+- **A real per-exercise chart with a true time-scaled axis + routine-change
+  markers** (the demo showed this; production `ExerciseDecisionTable`'s
+  expandable row is text/evidence only, no chart yet — `ExerciseProgressChart.tsx`
+  still uses a categorical axis with even spacing regardless of real gaps).
+  This is the one item from the original plan's chart spec (§15) not carried
+  into production in this pass — a reasonable next increment, not silently
+  dropped.
+- No dedicated exercise-target-override editor UI (the `exercise_target_overrides`
+  table + API/hooks exist; nothing in the settings UI writes to it yet — an
+  athlete can't yet set rung-2 of the expectation order from the app itself).
+- Live browser verification wasn't possible in the authoring sandbox (no
+  Supabase login available) — verified via `tsc`, `npm run build`, and all
+  6 verify scripts (324 assertions) instead. The user should exercise this
+  for real once migration 084 is applied.
 
 ---
 
