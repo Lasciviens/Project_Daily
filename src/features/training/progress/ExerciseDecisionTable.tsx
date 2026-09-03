@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useProgressData } from '../hooks/useProgressData'
 import {
   actionLabel, evidenceLabel, scopeLabel, recentTrendLabel, currentLoadProgressLabel, buildExplanationSentence,
-  progressEvidenceExplanation, recommendationEvidenceExplanation,
+  progressEvidenceExplanation, recommendationEvidenceExplanation, improvementScore,
 } from '../progress-engine/copy'
 import { RULE_CATALOG } from '../progress-engine/ruleCatalog'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CanonicalSet, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
@@ -135,7 +135,7 @@ function sortDecisions(list: ExerciseProgressResult[], sort: SortMode): Exercise
     case 'action_priority':
       return arr.sort((a, b) => ACTION_PRIORITY_RANK[a.currentAction] - ACTION_PRIORITY_RANK[b.currentAction])
     case 'largest_improvement':
-      return arr.sort((a, b) => (b.currentState.loadChangePercent ?? -Infinity) - (a.currentState.loadChangePercent ?? -Infinity))
+      return arr.sort((a, b) => improvementScore(b) - improvementScore(a))
     case 'closest_to_progression': {
       const gapToTop = (d: ExerciseProgressResult) => {
         const latestSets = d.currentState.latest?.sets.filter(s => s.kind !== 'dropset') ?? []
@@ -167,10 +167,25 @@ function EvidencePill({ level, label }: { level: EvidenceLevel; label: string })
   return <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${tone}`} title={label}>{evidenceLabel(level).replace(' evidence', '')}</span>
 }
 
-function fmtExposure(sets: readonly { reps: number | null }[] | undefined, weightKg: number | null | undefined): string {
+// Metric-aware (§4) — reps/duration/distance/assistance each read their OWN
+// natural quantity. A duration/distance session never logs `reps` at all,
+// so the old reps-only version rendered a valid session as a bare "—/—".
+function fmtExposure(sets: readonly CanonicalSet[] | undefined, metricKind: ProgressMetricKind, weightKg: number | null | undefined): string {
   if (!sets || sets.length === 0) return '—'
-  const reps = sets.map(s => s.reps ?? '—').join('/')
-  return weightKg != null ? `${weightKg} kg × ${reps}` : `${reps} reps`
+  switch (metricKind) {
+    case 'duration':
+      return sets.map(s => s.durationSeconds != null ? fmtDuration(s.durationSeconds) : '—').join('/')
+    case 'distance':
+      return sets.map(s => s.distanceMeters != null ? `${s.distanceMeters}m` : '—').join('/')
+    case 'assistedWeight': {
+      const reps = sets.map(s => s.reps ?? '—').join('/')
+      return weightKg != null ? `${weightKg} kg assist × ${reps}` : `${reps} reps`
+    }
+    default: {
+      const reps = sets.map(s => s.reps ?? '—').join('/')
+      return weightKg != null ? `${weightKg} kg × ${reps}` : `${reps} reps`
+    }
+  }
 }
 
 function ExposureLine({ result }: { result: ExerciseProgressResult }) {
@@ -184,8 +199,8 @@ function ExposureLine({ result }: { result: ExerciseProgressResult }) {
     && result.currentState.loadChangePercent != null && result.currentState.loadChangePercent !== 0
   return (
     <span className="text-xs text-ink-600 tabular-nums">
-      {fmtExposure(prevSets, result.currentState.previous?.representativeWeightKg)} <span className="text-ink-300">→</span>{' '}
-      <span className="font-semibold text-ink-800">{fmtExposure(latestSets, result.currentState.latest?.representativeWeightKg)}</span>
+      {fmtExposure(prevSets, result.metricKind, result.currentState.previous?.representativeWeightKg)} <span className="text-ink-300">→</span>{' '}
+      <span className="font-semibold text-ink-800">{fmtExposure(latestSets, result.metricKind, result.currentState.latest?.representativeWeightKg)}</span>
       {showPercent && (
         <span className={(result.currentState.loadChangePercent as number) > 0 ? 'text-green-700' : 'text-amber-700'}> ({(result.currentState.loadChangePercent as number) > 0 ? '+' : ''}{result.currentState.loadChangePercent}%)</span>
       )}

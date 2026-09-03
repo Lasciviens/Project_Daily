@@ -3,8 +3,14 @@
 // recreates decision logic. Matches this repo's English-only rule.
 
 import { RULE_CATALOG } from './ruleCatalog'
-import type { CurrentAction, EvaluationScope, EvidenceLevel, ExerciseProgressResult, RecentProgressTrendState, CurrentLoadProgressState, ProgressMetricKind } from './types'
+import type { CanonicalSet, CurrentAction, EvaluationScope, EvidenceLevel, ExerciseProgressResult, RecentProgressTrendState, CurrentLoadProgressState, ProgressMetricKind } from './types'
 import { isWeightBasedMetric } from './metricStrategy'
+
+function fmtDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const m = Math.floor(seconds / 60), s = Math.round(seconds % 60)
+  return s === 0 ? `${m}m` : `${m}m ${s}s`
+}
 
 /** The load-axis terminology a metric kind can honestly support (§5): only
  *  est1rm/addedWeight/assistedWeight represent a literal weight — "Load
@@ -69,10 +75,29 @@ export function currentLoadProgressLabel(state: CurrentLoadProgressState): strin
   }
 }
 
-function fmtExposure(sets: readonly { reps: number | null }[] | undefined, weightKg: number | null): string {
+/** Metric-aware exposure summary (§4) — reps/duration/distance/assistance
+ *  all read their OWN natural quantity, never a bare rep count that reads
+ *  as "—/—" for a session that never logged reps at all (a duration/
+ *  distance exercise). `weightKg` is the engine's own chosen representative
+ *  weight (the TOP set's weight for a top_set_and_backoff session) — never
+ *  re-derived here by scanning for "any set with a weight", which could
+ *  pick a backoff set instead. */
+function fmtExposure(sets: readonly CanonicalSet[] | undefined, metricKind: ProgressMetricKind, weightKg: number | null): string {
   if (!sets || sets.length === 0) return '—'
-  const reps = sets.map(s => s.reps ?? '—').join('/')
-  return weightKg != null ? `${reps} @ ${weightKg}kg` : reps
+  switch (metricKind) {
+    case 'duration':
+      return sets.map(s => s.durationSeconds != null ? fmtDuration(s.durationSeconds) : '—').join('/')
+    case 'distance':
+      return sets.map(s => s.distanceMeters != null ? `${s.distanceMeters}m` : '—').join('/')
+    case 'assistedWeight': {
+      const reps = sets.map(s => s.reps ?? '—').join('/')
+      return weightKg != null ? `${reps} @ ${weightKg}kg assist` : reps
+    }
+    default: {
+      const reps = sets.map(s => s.reps ?? '—').join('/')
+      return weightKg != null ? `${reps} @ ${weightKg}kg` : reps
+    }
+  }
 }
 
 /** Builds the primary, dynamic explanation sentence from the result's own
@@ -80,18 +105,31 @@ function fmtExposure(sets: readonly { reps: number | null }[] | undefined, weigh
  *  prior round, generalized to the new four-facet model. */
 export function buildExplanationSentence(result: ExerciseProgressResult): string {
   const { currentState } = result
-  const previousLabel = fmtExposure(currentState.previous?.sets.filter(s => s.kind !== 'dropset'), currentState.previous?.representativeWeightKg ?? null)
-  const latestLabel = fmtExposure(currentState.latest?.sets.filter(s => s.kind !== 'dropset'), currentState.latest?.representativeWeightKg ?? null)
+  const previousLabel = fmtExposure(currentState.previous?.sets.filter(s => s.kind !== 'dropset'), result.metricKind, currentState.previous?.representativeWeightKg ?? null)
+  const latestLabel = fmtExposure(currentState.latest?.sets.filter(s => s.kind !== 'dropset'), result.metricKind, currentState.latest?.representativeWeightKg ?? null)
 
   if (result.evaluationScope === 'NOT_EVALUATED') {
-    return `This session's sets don't share one clean load or match your prescribed count (logged as ${latestLabel}). Log a consistent structure next time to get a real read.`
+    if (result.currentState.latest?.loadStructure === 'mixed_load') {
+      return `This session's sets don't share one clean load or backoff shape (logged as ${latestLabel}). Log a consistent structure next time to get a real read.`
+    }
+    // No representative set exists for this metric at all — e.g. every set
+    // this session carries a weight this metric can't honestly account for
+    // (a duration/distance set logged alongside an added weight). Never
+    // implied as a load/count mismatch, which this isn't.
+    return `This session has no data your tracked metric can read yet — nothing usable was logged for it. Log a session with the expected data (matching this exercise's tracked metric) to get a real read.`
   }
   if (result.currentAction === 'REVIEW_LOAD_REDUCTION') {
     const phrase = axisPhrase(result.metricKind)
     return `${phrase.decreased} from ${previousLabel} to ${latestLabel}. Reason not recorded — confirm whether this was intentional before your next session.`
   }
   if (result.reasons.some(r => r.code === 'ASSISTANCE_REDUCED')) {
-    return `Assistance dropped (${previousLabel} → ${latestLabel}) — less help is the improvement here. Reps stayed at or above the minimum on ${scopeLabel(result.evaluationScope)}.`
+    // §4: "stayed at or above the minimum" is a real compliance CLAIM —
+    // never say it when rangeCompliance is NOT_EVALUATED (nothing was
+    // actually checked against the range this session).
+    const complianceClause = result.rangeCompliance === 'NOT_EVALUATED'
+      ? `though this session's compliance with your target range wasn't evaluated`
+      : `Reps stayed at or above the minimum on ${scopeLabel(result.evaluationScope)}`
+    return `Assistance dropped (${previousLabel} → ${latestLabel}) — less help is the improvement here. ${complianceClause}.`
   }
   if (result.observedTransition === 'LOAD_INCREASED' && result.rangeCompliance !== 'BELOW_MINIMUM') {
     const phrase = axisPhrase(result.metricKind)
@@ -101,6 +139,15 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
     const isWeight = isWeightBasedMetric(result.metricKind)
     const pct = isWeight ? result.currentState.loadChangePercent : null
     const changeClause = pct != null ? ` ${pct > 0 ? '+' : ''}${pct}%` : ''
+    // §4: rangeCompliance can be NOT_EVALUATED here even though
+    // observedTransition reached LOAD_INCREASED — a mixed-load session can
+    // still resolve a representative value (selectRepresentativeSet's
+    // general branch doesn't require a clean load shape), so this pairing
+    // is real and reachable, not just defensive. Never claim compliance
+    // that was never actually checked.
+    if (result.rangeCompliance === 'NOT_EVALUATED') {
+      return `${phrase.increased}${changeClause}, but this session's compliance with your target range wasn't evaluated (${result.currentState.latest?.loadStructure === 'mixed_load' ? 'mixed load' : 'no readable data'}).`
+    }
     const caveat = isWeight
       ? ' Lower reps right after a load increase are expected, not a decline.'
       : ''
@@ -135,9 +182,13 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
  *  itself is gated on (computeProgressEvidence in evaluate.ts), so the
  *  explanation can never drift from the number that produced it. */
 export function progressEvidenceExplanation(result: ExerciseProgressResult): string {
-  const { comparableSessions, weekSpan, evidence } = result
-  const sessionsWord = `${comparableSessions} session${comparableSessions === 1 ? '' : 's'}`
-  const spanWord = weekSpan === 1 ? '1 week' : `${weekSpan} weeks`
+  // §7: matches recentWindowSessions/recentWindowWeekSpan — the SAME window
+  // the trend read itself used — never the exercise's full all-time
+  // session count, which would overstate confidence in a read that only
+  // ever looked at a handful of recent sessions.
+  const { evidence, trend } = result
+  const sessionsWord = `${trend.recentWindowSessions} session${trend.recentWindowSessions === 1 ? '' : 's'}`
+  const spanWord = trend.recentWindowWeekSpan === 1 ? '1 week' : `${trend.recentWindowWeekSpan} weeks`
   if (evidence.progress === 'strong') {
     return `Strong: ${sessionsWord} logged over ${spanWord} — enough sessions across enough time to trust the recent trend read.`
   }
@@ -155,7 +206,7 @@ export function progressEvidenceExplanation(result: ExerciseProgressResult): str
 export function recommendationEvidenceExplanation(result: ExerciseProgressResult): string {
   const { evaluationScope, dataQualityFlags, evidence } = result
   if (!evidence.recommendation) {
-    return 'No recommendation evidence — this session had no comparable structure to evaluate (mixed load, or too few sets).'
+    return 'No recommendation evidence — nothing here was evaluable (mixed load, no data your tracked metric could read, or too few sets).'
   }
   const scope = scopeLabel(evaluationScope)
   if (dataQualityFlags.length > 0) {
@@ -169,4 +220,20 @@ export function recommendationEvidenceExplanation(result: ExerciseProgressResult
     return `Moderate: only the top set could be evaluated (a top-set-and-backoff session) — real, but a narrower read than a full prescribed-set evaluation.`
   }
   return `Moderate: evaluated against ${scope}, which didn't exactly match your program's prescribed set count.`
+}
+
+/** Direction-aware "largest improvement" ranking score (§6) — used by
+ *  ExerciseDecisionTable's sort control. `loadChangePercent` alone is not
+ *  comparable across exercises without correcting for direction first: for
+ *  assistedWeight, a NEGATIVE percent change (less assistance) IS the
+ *  improvement, so its sign must be flipped before ranking it against every
+ *  other metric's plain "higher percent = more improvement" reading. This
+ *  direction-corrected percentage IS the explicit normalized score used for
+ *  ranking — never a raw comparison of two unrelated metrics' percentages
+ *  as if they already meant the same thing. Exercises with no computable
+ *  percent sort last. */
+export function improvementScore(result: ExerciseProgressResult): number {
+  const pct = result.currentState.loadChangePercent
+  if (pct == null) return -Infinity
+  return result.metricKind === 'assistedWeight' ? -pct : pct
 }

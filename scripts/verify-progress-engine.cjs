@@ -43,7 +43,7 @@ const { evaluateExerciseProgress } = require('../src/features/training/progress-
 const { RULE_CATALOG } = require('../src/features/training/progress-engine/ruleCatalog')
 const {
   actionLabel, evidenceLabel, scopeLabel, buildExplanationSentence, progressEvidenceExplanation,
-  recommendationEvidenceExplanation,
+  recommendationEvidenceExplanation, improvementScore,
 } = require('../src/features/training/progress-engine/copy')
 
 let passed = 0, failed = 0
@@ -926,6 +926,182 @@ console.log('\n== 17. buildExplanationSentence never crashes on any worked examp
   const sentence = buildExplanationSentence(result)
   check('a real sentence is produced, never a template artifact', typeof sentence === 'string' && sentence.length > 10 && !sentence.includes('undefined'))
   check('never shows a bare unlabeled derived number as the headline', !/^\d+(\.\d+)?\s*(→|->)\s*\d+(\.\d+)?$/.test(sentence))
+}
+
+console.log('\n== 18. Second correction round — 7 further blocker fixes ==')
+{
+  // BLOCKER A — REP_PR_AT_LOAD must filter each INDIVIDUAL SET by
+  // set.weightKg === latest.weightKg, never pull backoff-set reps from a
+  // different load into the comparison. 60x6 (top) + 45x12 (backoff) ->
+  // 60x9 must produce a 60kg rep PR (previousBest=6, never 12 — the old
+  // bug compared against the 45kg backoff set's 12 reps, which would have
+  // suppressed this legitimate PR since 9 < 12).
+  {
+    const rows = [
+      ...uniformRows('w1', '2026-08-01', 'backoffpr', 50, [8, 8, 8]), // unambiguous baseline, different load entirely
+      [row('w2', '2026-08-08', 'backoffpr', 1, 60, 6), row('w2', '2026-08-08', 'backoffpr', 2, 45, 12)], // top_set_and_backoff: 60x6 + 45x12
+      ...uniformRows('w3', '2026-08-15', 'backoffpr', 60, [9, 9]), // fresh 60x9 (two sets for a clean top_set_and_backoff-free read)
+    ].flat()
+    const s = buildCanonicalSessions(rows, 'backoffpr')
+    const p = buildRepresentativePoints(s, 'est1rm')
+    const li = s.length - 1
+    const ev = detectProgressEvents(p, li, 'est1rm', s[li], DEFAULT_EXPECTATION(6, 12, 2), DEFAULT_POLICY)
+    check('A: REP_PR_AT_LOAD at 60kg compares against the 60kg TOP SET\'s reps (6), never the 45kg backoff set\'s reps (12)',
+      ev.some(e => e.code === 'REP_PR_AT_LOAD' && e.values.reps === 9 && e.values.loadKg === 60 && e.values.previousBest === 6))
+  }
+
+  // BLOCKER B — PROGRESSION_STREAK: isCleanProgression may only extend a
+  // streak within the SAME stable-load context. 60kg 8/8/8 -> 50kg
+  // 10/10/10 is a genuine weight DECREASE and must break the streak, even
+  // though the raw rep total rose. Constructed so that WITHOUT the
+  // same-load guard the chain w0->w1->w2->w3 reads as 3 consecutive
+  // forward-motion links (streak=3, firing PROGRESSION_STREAK at the
+  // default minLength=3); WITH the guard, the w1->w2 weight-decrease pair
+  // breaks the chain outright, capping the streak at 1.
+  {
+    const rows = [
+      ...uniformRows('w0', '2026-08-01', 'weightdropstreak', 60, [6, 6, 6]),
+      ...uniformRows('w1', '2026-08-08', 'weightdropstreak', 60, [8, 8, 8]), // same load as w0 -> a real streak link
+      ...uniformRows('w2', '2026-08-15', 'weightdropstreak', 50, [10, 10, 10]), // BLOCKER: 60kg 8/8/8 -> 50kg 10/10/10
+      ...uniformRows('w3', '2026-08-22', 'weightdropstreak', 50, [12, 12, 12]), // same load as w2 -> a real streak link
+    ]
+    const s = buildCanonicalSessions(rows, 'weightdropstreak')
+    const p = buildRepresentativePoints(s, 'est1rm')
+    const li = s.length - 1
+    const ev = detectProgressEvents(p, li, 'est1rm', s[li], DEFAULT_EXPECTATION(6, 20, 3), DEFAULT_POLICY)
+    check('B: a genuine weight DECREASE (60kg 8/8/8 -> 50kg 10/10/10) breaks the streak — PROGRESSION_STREAK does not fire (would have at streak=3 without the same-load guard)',
+      !ev.some(e => e.code === 'PROGRESSION_STREAK'))
+  }
+
+  // BLOCKER C — when no representative metric value/total is evaluable
+  // (e.g. a weight_duration composite session, which shares one clean
+  // weight shape and so is never classified mixed_load), evaluationScope
+  // and rangeCompliance must be forced to NOT_EVALUATED and recommendation
+  // evidence to null — never claim ALL_PRESCRIBED_WORKING_SETS just
+  // because the LOGGED SET COUNT happened to match the target.
+  {
+    const weightedDurationRows = (workoutId, date) => [1, 2, 3].map(i => row(workoutId, date, 'weightedplankpr', i, 20, null, 'normal', { duration_seconds: 45 }))
+    const rows = [...weightedDurationRows('w1', '2026-08-01'), ...weightedDurationRows('w2', '2026-08-08')]
+    const sessions = buildCanonicalSessions(rows, 'weightedplankpr')
+    const expectation = resolveExpectation('weightedplankpr', 'duration', 3, () => null, () => null)
+    check('C: expectation.targetSets matches the logged count (3) — a strong fixture for the ALL_PRESCRIBED_WORKING_SETS trap', expectation.targetSets === 3)
+    const pairResult = evaluatePair(sessions[0], sessions[1], expectation, 'duration', DEFAULT_POLICY)
+    check('C: evaluationScope is forced to NOT_EVALUATED despite the set count matching the target exactly', pairResult.evaluationScope === 'NOT_EVALUATED')
+    check('C: rangeCompliance is forced to NOT_EVALUATED', pairResult.rangeCompliance === 'NOT_EVALUATED')
+    check('C: evaluationScope is never ALL_PRESCRIBED_WORKING_SETS for a session with no evaluable representative value', pairResult.evaluationScope !== 'ALL_PRESCRIBED_WORKING_SETS')
+
+    const result = evaluateExerciseProgress({ exerciseTemplateId: 'weightedplankpr', metricKind: 'duration', sessions, expectation }, DEFAULT_POLICY)
+    check('C: recommendation evidence is null (never "limited"), since nothing here was evaluated at all', result.evidence.recommendation === null)
+    const sentence = buildExplanationSentence(result)
+    check('C: the explanation uses explicit unavailable-data copy, never claims a clean-load/count mismatch that isn\'t the real reason',
+      sentence.includes('no data') && !sentence.includes('above the minimum'))
+  }
+
+  // BLOCKER D — ExposureLine/fmtExposure (copy.ts) must be metric-aware:
+  // never show a bare "—/—" reps read for a valid duration session, and
+  // never say a compliance claim that wasn't evaluated.
+  {
+    const rows = [...durationRows('w1', '2026-08-01', 'durationexposure', [50, 50, 50]), ...durationRows('w2', '2026-08-08', 'durationexposure', [40, 40, 40])]
+    const sessions = buildCanonicalSessions(rows, 'durationexposure')
+    const expectation = resolveExpectation('durationexposure', 'duration', 3, () => null, () => null)
+    const result = evaluateExerciseProgress({ exerciseTemplateId: 'durationexposure', metricKind: 'duration', sessions, expectation }, DEFAULT_POLICY)
+    check('D: a genuine top-set duration DECREASE (50s -> 40s) reads REVIEW_LOAD_REDUCTION', result.currentAction === 'REVIEW_LOAD_REDUCTION')
+    const sentence = buildExplanationSentence(result)
+    check('D: the exposure never renders a bare "—/—" for a valid duration session', !sentence.includes('—/—'))
+    check('D: the exposure renders the REAL duration values (50s and 40s)', sentence.includes('50s') && sentence.includes('40s'))
+    check('D: a duration-kind exposure never renders "kg"', !sentence.includes('kg'))
+  }
+
+  // BLOCKER E — sessionRangeCompliance must require the EXACT prescribed
+  // set count before ever returning ALL_SETS_AT_TOP. Named scenario: a
+  // 2-of-3 previous session (incomplete, but its 2 logged sets are both at
+  // the top) must NOT count as a confirmation, while a 3-of-3 latest
+  // session (genuinely complete and at the top) DOES.
+  {
+    const incompleteTop = buildCanonicalSessions([row('w1', '2026-08-01', 'confirmcheck', 1, 60, 10), row('w1', '2026-08-01', 'confirmcheck', 2, 60, 10)], 'confirmcheck')[0]
+    const expectation3 = DEFAULT_EXPECTATION(6, 10, 3)
+    check('E: sessionRangeCompliance on a 2-of-3 session (both logged sets at the top) is NOT_EVALUATED, never ALL_SETS_AT_TOP',
+      sessionRangeCompliance(incompleteTop, expectation3, 'est1rm') === 'NOT_EVALUATED')
+
+    // Full confirmations count: previous = 2-of-3 (must not count), latest = 3-of-3 (must count) -> exactly 1 confirmation.
+    const rows = [
+      ...uniformRows('w1', '2026-08-01', 'confirmcheck2', 60, [10, 10]), // 2 of 3 — incomplete, must not count
+      ...uniformRows('w2', '2026-08-08', 'confirmcheck2', 60, [10, 10, 10]), // 3 of 3 — genuinely complete, must count
+    ]
+    const sessions = buildCanonicalSessions(rows, 'confirmcheck2')
+    const expectation = resolveExpectation('confirmcheck2', 'est1rm', 3, () => ({ repMin: 6, repMax: 10, targetSets: 3 }), () => null)
+    const policy2 = { ...DEFAULT_POLICY, requiredTopRangeConfirmations: 2 }
+    const result = evaluateExerciseProgress({ exerciseTemplateId: 'confirmcheck2', metricKind: 'est1rm', sessions, expectation }, policy2)
+    check('E: only 1 real confirmation counted (the 2-of-3 previous session never qualifies) — downgraded to BUILD_AT_CURRENT_LOAD under requiredTopRangeConfirmations=2',
+      result.currentAction === 'BUILD_AT_CURRENT_LOAD' && result.reasons.some(r => r.code === 'AWAITING_TOP_RANGE_CONFIRMATION' && r.values.confirmations === 1))
+  }
+
+  // BLOCKER F — largest_improvement must be direction-aware: reduced
+  // assistance ranks as a POSITIVE improvement, comparable (via the
+  // direction-corrected percentage) against a plain weight-based increase.
+  {
+    const assistedRows = [...uniformRows('w1', '2026-08-01', 'assistimprove', 20, [8, 8, 8]), ...uniformRows('w2', '2026-08-08', 'assistimprove', 15, [8, 8, 8])]
+    const assistedSessions = buildCanonicalSessions(assistedRows, 'assistimprove')
+    const assistedExpectation = resolveExpectation('assistimprove', 'assistedWeight', 3, () => null, () => null)
+    const assistedResult = evaluateExerciseProgress({ exerciseTemplateId: 'assistimprove', metricKind: 'assistedWeight', sessions: assistedSessions, expectation: assistedExpectation }, DEFAULT_POLICY)
+    check('F: a raw assistedWeight percent change is negative (20kg -> 15kg assist)', assistedResult.currentState.loadChangePercent < 0)
+    check('F: improvementScore flips the sign — a REDUCED assistance ranks as a POSITIVE improvement score', improvementScore(assistedResult) > 0)
+
+    const weightRows = [...uniformRows('w1', '2026-08-01', 'weightimprove', 100, [8, 8, 8]), ...uniformRows('w2', '2026-08-08', 'weightimprove', 102, [8, 8, 8])]
+    const weightSessions = buildCanonicalSessions(weightRows, 'weightimprove')
+    const weightExpectation = resolveExpectation('weightimprove', 'est1rm', 3, () => null, () => null)
+    const weightResult = evaluateExerciseProgress({ exerciseTemplateId: 'weightimprove', metricKind: 'est1rm', sessions: weightSessions, expectation: weightExpectation }, DEFAULT_POLICY)
+    check('F: a plain weight increase (100kg -> 102kg, +2%) keeps its positive sign unchanged', improvementScore(weightResult) > 0 && Math.abs(improvementScore(weightResult) - weightResult.currentState.loadChangePercent) < 0.001)
+    check('F: the reduced-assistance improvement (25% direction-corrected) ranks ABOVE the +2% weight increase', improvementScore(assistedResult) > improvementScore(weightResult))
+
+    // A worsening assistedWeight change (MORE assistance) must rank as negative, never positive.
+    const worseningRows = [...uniformRows('w1', '2026-08-01', 'assistworsen', 15, [8, 8, 8]), ...uniformRows('w2', '2026-08-08', 'assistworsen', 20, [8, 8, 8])]
+    const worseningSessions = buildCanonicalSessions(worseningRows, 'assistworsen')
+    const worseningExpectation = resolveExpectation('assistworsen', 'assistedWeight', 3, () => null, () => null)
+    const worseningResult = evaluateExerciseProgress({ exerciseTemplateId: 'assistworsen', metricKind: 'assistedWeight', sessions: worseningSessions, expectation: worseningExpectation }, DEFAULT_POLICY)
+    check('F: MORE assistance (a real worsening) ranks as a NEGATIVE improvement score, never positive', improvementScore(worseningResult) < 0)
+  }
+
+  // BLOCKER G — progress evidence must be computed from the ACTUAL recent
+  // window and ITS OWN date span, matching recentWindowSessions — never
+  // the exercise's full all-time session count/span. Constructed so the
+  // two reads genuinely DISAGREE: 2 old sessions from 2020, then 8 recent
+  // sessions logged on 8 consecutive days in Jan 2026. The full all-time
+  // history (10 sessions spanning ~6 years) would read as "strong" under
+  // the old (buggy) all-time computation; the actual policy window (the
+  // 8 recent, tightly-packed sessions spanning only ~1 week) must read as
+  // "limited" — the real bug this closes: years of old history silently
+  // inflating confidence in a trend read that only ever looked at the last
+  // ~1 week of data.
+  {
+    const oldRows = [
+      ...uniformRows('old1', '2020-01-01', 'evidencewindow', 60, [8, 8, 8]),
+      ...uniformRows('old2', '2020-06-01', 'evidencewindow', 60, [8, 8, 8]),
+    ]
+    const recentRows = Array.from({ length: 8 }, (_, i) => uniformRows(`r${i}`, `2026-01-${String(1 + i).padStart(2, '0')}`, 'evidencewindow', 60, [8, 8, 8])).flat()
+    const rows = [...oldRows, ...recentRows]
+    const sessions = buildCanonicalSessions(rows, 'evidencewindow')
+    check('G fixture: 10 total sessions logged', sessions.length === 10)
+    const expectation = resolveExpectation('evidencewindow', 'est1rm', 3, () => null, () => null)
+    const result = evaluateExerciseProgress({ exerciseTemplateId: 'evidencewindow', metricKind: 'est1rm', sessions, expectation }, DEFAULT_POLICY)
+    check('G: recentWindowSessions caps at the policy window (8), never the full 10-session history', result.trend.recentWindowSessions === 8)
+    // Independently recompute the windowed sessions' own date span (the
+    // LAST 8 of the 10 — the 8 tightly-packed Jan 2026 sessions) to
+    // cross-check the engine's own number.
+    const windowed = sessions.slice(-8)
+    const expectedWeekSpan = Math.round(Math.abs(new Date(windowed[windowed.length - 1].date + 'T00:00:00').getTime() - new Date(windowed[0].date + 'T00:00:00').getTime()) / 86_400_000 / 7)
+    check('G: recentWindowWeekSpan matches the WINDOWED sessions\' own ~1-week date span, computed independently', result.trend.recentWindowWeekSpan === expectedWeekSpan && expectedWeekSpan < 2)
+    const fullHistoryWeekSpan = Math.round(Math.abs(new Date(sessions[sessions.length - 1].date + 'T00:00:00').getTime() - new Date(sessions[0].date + 'T00:00:00').getTime()) / 86_400_000 / 7)
+    check('G fixture: the full-history span (~6 years) is genuinely, drastically wider than the windowed span (~1 week)', fullHistoryWeekSpan > 300 && fullHistoryWeekSpan > expectedWeekSpan)
+    // The OLD (buggy) all-time computation would read comparableSessions=10
+    // (>=6) and the full-history span (>=3 weeks) as "strong". The fix
+    // must NOT produce that — it must read the actual windowed numbers.
+    const oldBuggyReadWouldBe = (sessions.length >= 6 && fullHistoryWeekSpan >= 3) ? 'strong' : (sessions.length >= 4 && fullHistoryWeekSpan >= 2) ? 'moderate' : 'limited'
+    check('G fixture: confirms the old all-time computation WOULD have read "strong" here (a meaningful contrast, not a no-op fixture)', oldBuggyReadWouldBe === 'strong')
+    check('G: evidence.progress reads "limited" from the actual ~1-week windowed span, never "strong" from the ~6-year full history', result.evidence.progress === 'limited')
+    const progressText = progressEvidenceExplanation(result)
+    check('G: progressEvidenceExplanation cites the WINDOWED session count (8), never the full history count (10)', progressText.includes('8 session') && !progressText.includes('10 session'))
+  }
 }
 
 console.log(`\n${failed === 0 ? '✅ ALL PASS' : '❌ FAILURES'} — ${passed} passed, ${failed} failed\n`)

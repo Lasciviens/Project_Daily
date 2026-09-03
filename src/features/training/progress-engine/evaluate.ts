@@ -50,11 +50,16 @@ function buildCurrentState(previous: CanonicalExerciseSession, latest: Canonical
 }
 
 /** How much history supports the RECENT trend read — sample size and time
- *  span, over the windowed series. Gated the same way regardless of which
- *  trend axis is being displayed. */
-function computeProgressEvidence(comparableSessions: number, weekSpan: number): EvidenceLevel {
-  if (comparableSessions >= 6 && weekSpan >= 3) return 'strong'
-  if (comparableSessions >= 4 && weekSpan >= 2) return 'moderate'
+ *  span, over the WINDOWED series specifically (§7). Both inputs must come
+ *  from the same recent window `trend.recentProgressTrend` itself used
+ *  (`recentWindowSessions` sessions, that window's own date span) — never
+ *  the exercise's full all-time history, which could overstate confidence
+ *  in a trend read that only ever looked at a handful of recent sessions
+ *  (e.g. 50 sessions across 2 years reading "Strong" while the actual trend
+ *  only used the last 8, spanning 6 weeks). */
+function computeProgressEvidence(windowedSessionCount: number, windowedWeekSpan: number): EvidenceLevel {
+  if (windowedSessionCount >= 6 && windowedWeekSpan >= 3) return 'strong'
+  if (windowedSessionCount >= 4 && windowedWeekSpan >= 2) return 'moderate'
   return 'limited'
 }
 
@@ -121,7 +126,7 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
       algorithmVersion: ALGORITHM_VERSION, exerciseTemplateId, metricKind,
       observedTransition: 'NO_COMPARISON', repDelta: 'NOT_APPLICABLE', rangeCompliance: 'NOT_EVALUATED', evaluationScope: 'NOT_EVALUATED',
       dataQualityFlags: [], currentAction: 'INSUFFICIENT_DATA',
-      trend: { recentProgressTrend: 'INSUFFICIENT_HISTORY', recentWindowSessions: comparableSessions, recentPositiveSignals: 0, recentNegativeSignals: 0, currentLoadProgress: 'INSUFFICIENT_HISTORY', currentLoadCycleSessions: 0, currentLoadSlope: null, currentLoadResidualSpread: null },
+      trend: { recentProgressTrend: 'INSUFFICIENT_HISTORY', recentWindowSessions: comparableSessions, recentWindowWeekSpan: weekSpan, recentPositiveSignals: 0, recentNegativeSignals: 0, currentLoadProgress: 'INSUFFICIENT_HISTORY', currentLoadCycleSessions: 0, currentLoadSlope: null, currentLoadResidualSpread: null },
       evidence: { progress: 'limited', recommendation: null },
       reasons: [{ code: 'INSUFFICIENT_DATA', severity: 'info', values: { comparableSessions } }],
       events: [], currentState: { previous: null, latest: sessions[0] ? toExposure(sessions[0], metricKind) : null, loadChangePercent: null, estimatedStrengthChange: null },
@@ -141,6 +146,15 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
   const currentCycle = cycles[cycles.length - 1]
   const clp = computeCurrentLoadProgress(currentCycle.points, metricKind, policy)
   const recent = computeRecentProgressTrend(points, metricKind, policy)
+
+  // The SAME windowed sessions computeRecentProgressTrend actually used
+  // (recent.n, always <= policy.recentWindowSessions) — progress evidence
+  // (§7) is confidence in THIS read specifically, so its own date span,
+  // never the exercise's full all-time span, is what must back it.
+  const recentWindowSessionsSlice = sessions.slice(-recent.n)
+  const recentWindowWeekSpan = recentWindowSessionsSlice.length >= 2
+    ? Math.round(daysBetween(recentWindowSessionsSlice[0].date, recentWindowSessionsSlice[recentWindowSessionsSlice.length - 1].date) / 7)
+    : 0
 
   // Precedence: a real, fresh improvement this pair overrides a plateau/
   // regression read from the longer window — the two-point read wins only
@@ -193,21 +207,27 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     if (flag === 'MIXED_LOAD_SESSION') reasons.push({ code: 'DATA_QUALITY_MIXED_LOAD', severity: 'caution', values: {} })
   }
 
-  const recommendationEvidence: EvidenceLevel = pair.dataQualityFlags.length > 0
-    ? 'limited'
-    : (pair.evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS' ? 'strong' : 'moderate')
+  // NOT_EVALUATED means nothing was actually evaluated this session (mixed
+  // load, or no representative set for this metric at all) — recommendation
+  // evidence is null here, never a "limited" LEVEL, which would imply a
+  // real (if weak) read exists to be limited about.
+  const recommendationEvidence: EvidenceLevel | null = pair.evaluationScope === 'NOT_EVALUATED'
+    ? null
+    : (pair.dataQualityFlags.length > 0
+      ? 'limited'
+      : (pair.evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS' ? 'strong' : 'moderate'))
 
   return {
     algorithmVersion: ALGORITHM_VERSION, exerciseTemplateId, metricKind,
     observedTransition: pair.observedTransition, repDelta: pair.repDelta, rangeCompliance: pair.rangeCompliance,
     evaluationScope: pair.evaluationScope, dataQualityFlags: pair.dataQualityFlags, currentAction,
     trend: {
-      recentProgressTrend: recent.state, recentWindowSessions: recent.n,
+      recentProgressTrend: recent.state, recentWindowSessions: recent.n, recentWindowWeekSpan,
       recentPositiveSignals: recent.positive, recentNegativeSignals: recent.negative,
       currentLoadProgress: clp.state, currentLoadCycleSessions: clp.n,
       currentLoadSlope: clp.slope, currentLoadResidualSpread: clp.residualSpread,
     },
-    evidence: { progress: computeProgressEvidence(comparableSessions, weekSpan), recommendation: recommendationEvidence },
+    evidence: { progress: computeProgressEvidence(recent.n, recentWindowWeekSpan), recommendation: recommendationEvidence },
     reasons, events, currentState,
     nextTargets: buildNextTargets(latest, expectation, metricKind, currentAction, policy, explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind)),
     expectation, comparableSessions, weekSpan,

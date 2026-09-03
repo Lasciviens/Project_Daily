@@ -82,6 +82,14 @@ export interface TrendResult {
   /** Actual N used — always <= policy.recentWindowSessions. The UI must
    *  disclose this literally ("Based on the last N comparable sessions"). */
   recentWindowSessions: number
+  /** The recent window's OWN date span in weeks (first to last of the
+   *  actual `recentWindowSessions` sessions used — never the exercise's
+   *  full all-time history). §7: progress evidence is confidence in THIS
+   *  windowed trend read, so its sample-size/time-span inputs must match
+   *  the same window, not a broader all-time count that could overstate
+   *  confidence in a trend that only ever looked at a handful of recent
+   *  sessions. */
+  recentWindowWeekSpan: number
   recentPositiveSignals: number
   recentNegativeSignals: number
   currentLoadProgress: CurrentLoadProgressState

@@ -86,7 +86,19 @@ export function evaluatePair(
 
   let evaluationScope: EvaluationScope
   let rangeCompliance: RangeCompliance
-  if (latest.loadStructure === 'mixed_load') {
+  if (latest.loadStructure === 'mixed_load' || latestBest == null) {
+    // `latestBest == null` covers every other reason the metric simply
+    // isn't evaluable for this session — most notably a weight_duration-
+    // style composite session, which classifies as a perfectly ordinary
+    // uniform_working_load/top_set_and_backoff structure (its sets DO
+    // share one clean weight shape) while every set is individually
+    // ineligible for the duration/distance metric (metricStrategy.ts's
+    // composite exclusion). Without this check, a set-count match alone
+    // was enough to claim ALL_PRESCRIBED_WORKING_SETS and run
+    // complianceFromReps off `s.reps` — a field this metric never actually
+    // evaluated — which could fabricate a real compliance read (or a
+    // false NOT_EVALUATED for the wrong reason) instead of honestly
+    // reporting "nothing here was evaluable at all".
     evaluationScope = 'NOT_EVALUATED'
     rangeCompliance = 'NOT_EVALUATED'
   } else if (latest.loadStructure === 'top_set_and_backoff') {
@@ -121,10 +133,22 @@ export function sessionRangeCompliance(
   metricKind: ProgressMetricKind,
 ): RangeCompliance {
   if (session.loadStructure === 'mixed_load') return 'NOT_EVALUATED'
+  // No representative set at all for this metric (e.g. a weight_duration
+  // composite session, which shares one clean weight shape and so is
+  // never classified mixed_load, but is individually ineligible on every
+  // set) — nothing here was evaluated, never a fabricated compliance read.
+  if (bestComparableSet(session, metricKind) == null) return 'NOT_EVALUATED'
   if (session.loadStructure === 'top_set_and_backoff') {
     const top = bestComparableSet(session, metricKind)
     return complianceFromReps(top ? [top.reps] : [], expectation)
   }
+  // Requires the EXACT prescribed set count before this session can ever
+  // read ALL_SETS_AT_TOP — a session logging FEWER sets than prescribed
+  // (e.g. 2 of a 3-set target) must never count as a confirmed top-of-
+  // range session for `requiredTopRangeConfirmations` purely because the
+  // sets it did log happened to land at the top; that's an incomplete
+  // session, not a confirmation.
+  if (session.comparableWorkingSets.length !== expectation.targetSets) return 'NOT_EVALUATED'
   return complianceFromReps(session.comparableWorkingSets.map(s => s.reps), expectation)
 }
 

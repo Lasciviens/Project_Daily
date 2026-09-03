@@ -41,13 +41,23 @@ export function detectProgressEvents(
   }
 
   // REP_PR_AT_LOAD — the representative set's own reps beat every prior
-  // representative set's reps AT THE EXACT SAME LOAD (never a raw
-  // cross-load comparison, and never gated on matching set count the way
+  // INDIVIDUAL SET's reps AT THE EXACT SAME LOAD (never a raw cross-load
+  // comparison, and never gated on matching set count the way
   // TOTAL_REPS_PR_AT_LOAD is — this is about the single best set, not the
   // session total). `latestBest` is the actual BEST eligible set at that
   // exact load (highest reps among candidates), never merely the FIRST
   // matching set in set order — a session logging e.g. 60x6 then 60x9 at
   // the same load must credit the 9-rep set, not whichever came first.
+  //
+  // `sameLoadPriorReps` filters at the SET level, not the session level: a
+  // real bug here compared against a whole prior SESSION whenever that
+  // session's own representative point happened to carry the same
+  // weightKg, then pulled reps from EVERY set in that session — including a
+  // top_set_and_backoff session's backoff sets at a DIFFERENT, lower load.
+  // 60x6 (top) + 45x12 (backoff) would have poisoned the 60kg comparison
+  // with the backoff set's 12 reps, silently suppressing a legitimate PR
+  // (e.g. a fresh 60x9 reading as "not a PR" against a fabricated "12").
+  // Filtering each SET by its own `weightKg` closes that gap.
   if (latest.weightKg != null && latestSession.comparableWorkingSets.length > 0) {
     const candidatesAtLoad = latestSession.comparableWorkingSets.filter(s =>
       (weightBased ? s.weightKg === latest.weightKg : true) && metricValueOf(s, metricKind) != null && s.reps != null,
@@ -57,9 +67,7 @@ export function detectProgressEvents(
       : null
     if (latestBest?.reps != null) {
       const sameLoadPriorReps = prior
-        .filter(p => p.weightKg === latest.weightKg)
-        .map(p => p.sets.map(s => s.reps).filter((r): r is number => r != null))
-        .flat()
+        .flatMap(p => p.sets.filter(s => (weightBased ? s.weightKg === latest.weightKg : true) && s.reps != null).map(s => s.reps as number))
       const priorMaxReps = sameLoadPriorReps.length ? Math.max(...sameLoadPriorReps) : null
       if (sameLoadPriorReps.length > 0 && latestBest.reps > (priorMaxReps as number)) {
         events.push({ code: 'REP_PR_AT_LOAD', emphasis: 'primary', values: { loadKg: latest.weightKg, reps: latestBest.reps, previousBest: priorMaxReps } })
@@ -113,14 +121,25 @@ export function detectProgressEvents(
  *  a mixed session's sets don't share one clean load shape, so "reps went
  *  up" there proves nothing about real progression). A comparable-set-count
  *  mismatch is rejected too, matching the same rule used everywhere else in
- *  this engine (a missing/extra set never feeds a positive read). */
+ *  this engine (a missing/extra set never feeds a positive read).
+ *
+ *  `isCleanProgression` only ever looks at the QUANTITY axis (reps/
+ *  duration/distance) — it has no idea the LOAD changed underneath it. A
+ *  real bug: 60kg 8/8/8 -> 50kg 10/10/10 (a genuine weight DECREASE) still
+ *  scored as "clean" (30 total > 24, no position down), silently crediting
+ *  a load drop as a streak link. `sameLoadContext` gates the clean-
+ *  progression branch to pairs where the representative weight actually
+ *  held steady — a real weight change is only ever credited via the
+ *  separate `loadUp` branch (a genuine increase in the metric's own
+ *  positive direction), never via `isCleanProgression`. */
 function computeProgressionStreak(points: readonly RepresentativePoint[], latestIndex: number, metricKind: ProgressMetricKind): number {
   let streak = 0
   for (let i = latestIndex; i > 0; i--) {
     const prev = points[i - 1], curr = points[i]
     if (prev.loadStructure === 'mixed_load' || curr.loadStructure === 'mixed_load') break
     const loadUp = prev.weightKg != null && curr.weightKg != null && isPositiveLoadChange(metricKind, prev.weightKg, curr.weightKg) === true
-    const cleanProgression = prev.comparableSetCount === curr.comparableSetCount && isCleanProgression(prev.sets, curr.sets, metricKind)
+    const sameLoadContext = prev.weightKg === curr.weightKg
+    const cleanProgression = sameLoadContext && prev.comparableSetCount === curr.comparableSetCount && isCleanProgression(prev.sets, curr.sets, metricKind)
     if (loadUp || cleanProgression) streak++
     else break
   }
