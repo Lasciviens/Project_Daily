@@ -35,6 +35,7 @@ cross-AI task board → `codex-shortcuts.md`.
 |---|---|---|
 | `ai-cost-capability-analysis.md` | AI layer cost + capability reference as shipped: the prompt-caching contract, `db_aggregate`/`semantic_search`/`run_read_query` design, tool slicing, model routing, security invariants, pricing snapshot. Read before any `ai-proxy`/`aiApi.ts` cost or capability work. | 25/07/2026 |
 | `iphone-web-integration.md` | Why the iPhone integration is shaped this way: the auth model, hard iOS platform limits, and the options evaluated and rejected. | 25/07/2026 |
+| `training/progress-engine/` | The Exercise Progress Engine (`src/features/training/progress-engine/`): algorithm, decision table + evidence-tier classification, data lineage/limitations, citations, changelog. Read before touching per-exercise progress-decision logic. | 03/09/2026 |
 
 ## Raw artifacts
 

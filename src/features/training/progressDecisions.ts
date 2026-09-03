@@ -455,8 +455,18 @@ export function computeExerciseDecision(input: ExerciseDecisionInput): ExerciseD
 export type ProgressVerdict = 'progressing' | 'mixed' | 'insufficient_data'
 export type WorkloadDecision = 'continue' | 'review_workload' | 'ease_off'
 
+/** The only fields computeProgramDecision actually reads — kept minimal and
+ *  structural (rather than the full ExerciseDecision) so the progress-engine
+ *  rewrite's ExerciseProgressResult can feed this program-level tally via a
+ *  small adapter without depending on this file's retired per-exercise type. */
+export interface ProgramDecisionExerciseSummary {
+  templateId: string
+  status: ExerciseStatus
+  reasonCodes: string[]
+}
+
 export interface ProgramDecisionInput {
-  decisions: ExerciseDecision[]
+  decisions: ProgramDecisionExerciseSummary[]
   /** Whole numbers of exercises whose decline (per computeExerciseDecision's
    *  own 'watch'-from-declining path) already shows in `decisions` — the
    *  program-level check just counts how many, it doesn't re-derive it. */

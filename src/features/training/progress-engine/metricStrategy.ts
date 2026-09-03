@@ -1,0 +1,278 @@
+// Progress engine — real metric-strategy dispatch. Every consumer of "which
+// set is best" / "is this set even usable for this metric" / "what's the
+// comparable total" goes through this ONE module, so the direction-aware
+// behaviour (assisted-weight: lower is better) and the eligibility rules
+// (est1rm's <=12-rep ceiling, distance requiring a real duration to pair
+// with it) are never duplicated or drifted per call site.
+
+import { est1RM } from '../progressAggregate'
+import type { CanonicalSet, ExpectationRange, ProgressMetricKind, RangeCompliance, SessionLoadStructure } from './types'
+
+const EST_1RM_MAX_REPS = 12
+
+/** Metric kinds whose representative "load" is a literal weight — used to
+ *  decide whether direction/transition reads compare `weightKg` (this
+ *  group) or the metric's own derived value (reps/duration/distance, which
+ *  have no weight axis at all for a bodyweight/timed/distance exercise). */
+const WEIGHT_BASED: ReadonlySet<ProgressMetricKind> = new Set(['est1rm', 'addedWeight', 'assistedWeight'])
+export function isWeightBasedMetric(metricKind: ProgressMetricKind): boolean {
+  return WEIGHT_BASED.has(metricKind)
+}
+
+export interface MetricStrategy {
+  /** Whether this set carries the data the metric actually needs. A set
+   *  that fails this is simply invisible to the metric — never coerced to
+   *  a 0/zero value (§3). */
+  isEligible(set: CanonicalSet): boolean
+  /** Only ever called on a set that already passed `isEligible`. */
+  valueOf(set: CanonicalSet): number
+  /** True when a HIGHER value is the improvement. False only for
+   *  assisted-weight (less assistance = harder = better). */
+  higherIsBetter: boolean
+}
+
+const STRATEGIES: Record<ProgressMetricKind, MetricStrategy> = {
+  est1rm: {
+    isEligible: s => s.weightKg != null && s.reps != null && s.reps > 0 && s.reps <= EST_1RM_MAX_REPS,
+    valueOf: s => est1RM(s.weightKg as number, s.reps as number) as number,
+    higherIsBetter: true,
+  },
+  reps: {
+    isEligible: s => s.reps != null,
+    valueOf: s => s.reps as number,
+    higherIsBetter: true,
+  },
+  addedWeight: {
+    isEligible: s => s.weightKg != null,
+    valueOf: s => s.weightKg as number,
+    higherIsBetter: true,
+  },
+  assistedWeight: {
+    isEligible: s => s.weightKg != null,
+    valueOf: s => s.weightKg as number,
+    higherIsBetter: false,
+  },
+  // Hevy's `weight_duration` CustomExerciseType (e.g. a weighted plank or a
+  // loaded carry) maps to this SAME 'duration' ProgressMetricKind
+  // (progressAggregate.ts::metricKindForExerciseType) — but a set that also
+  // carries a weight is a genuinely composite exercise this engine has no
+  // honest way to evaluate as pure duration: doing so would silently drop
+  // the weight axis (e.g. reporting "no progress" on a set where the weight
+  // doubled and duration held steady). Rather than build a whole second
+  // composite metric kind, such a set is simply excluded here — never
+  // eligible — so the whole session becomes not-evaluable for this metric
+  // (representative value AND total both fall through to null) instead of
+  // silently mislabeling a weighted set as a plain bodyweight duration one.
+  // A genuine bodyweight-duration set (plank, dead hang) always has
+  // weightKg === null already, so this changes nothing for that case.
+  duration: {
+    isEligible: s => s.durationSeconds != null && s.weightKg == null,
+    valueOf: s => s.durationSeconds as number,
+    higherIsBetter: true,
+  },
+  // Distance is deliberately gated on BOTH fields being present — this
+  // repo's own rule (CLAUDE.md, EnTur/Kassalapp precedent) is to never
+  // compute a derived figure (pace) from one side of a pair unless both
+  // sides are actually logged together; requiring durationSeconds here
+  // even though valueOf only reads distanceMeters keeps the eligibility
+  // check honest about what a "distance session" actually needs to mean
+  // anything (a distance with no time context is not comparable). Also
+  // excludes a weighted set for the same composite-metric reason as
+  // 'duration' above (a weighted carry logged with distance+duration+weight
+  // together is not honestly a pure distance metric either).
+  distance: {
+    isEligible: s => s.distanceMeters != null && s.durationSeconds != null && s.weightKg == null,
+    valueOf: s => s.distanceMeters as number,
+    higherIsBetter: true,
+  },
+}
+
+export function isMetricEligible(set: CanonicalSet, metricKind: ProgressMetricKind): boolean {
+  return STRATEGIES[metricKind]?.isEligible(set) ?? false
+}
+
+export function higherIsBetterFor(metricKind: ProgressMetricKind): boolean {
+  return STRATEGIES[metricKind]?.higherIsBetter ?? true
+}
+
+/** The metric's own value for a set, or null when the set doesn't carry
+ *  what this metric needs — never a coerced 0. */
+export function metricValueOf(set: CanonicalSet | null | undefined, metricKind: ProgressMetricKind): number | null {
+  if (!set) return null
+  const strategy = STRATEGIES[metricKind]
+  if (!strategy || !strategy.isEligible(set)) return null
+  return strategy.valueOf(set)
+}
+
+/** Selects the session's representative set for this metric — the ONE set
+ *  that best represents "how this session went" for progression purposes.
+ *
+ *  For a `top_set_and_backoff` session, the representative set is the
+ *  ACTUAL top-set role (lowest `order`), never whichever set happens to
+ *  score highest under the metric — a backoff set winning by reps would
+ *  misrepresent a session that was genuinely built around one heavy top
+ *  set followed by lighter volume work.
+ *
+ *  For every other shape, the representative set is whichever ELIGIBLE set
+ *  scores best under the metric's own direction (`higherIsBetter`). A
+ *  session with zero eligible sets for this metric returns null — the
+ *  caller must treat that as "not evaluable", never as a comparison
+ *  against zero. */
+export function selectRepresentativeSet(
+  sets: readonly CanonicalSet[],
+  loadStructure: 'uniform_working_load' | 'top_set_and_backoff' | 'mixed_load',
+  metricKind: ProgressMetricKind,
+): CanonicalSet | null {
+  const strategy = STRATEGIES[metricKind]
+  if (!strategy || sets.length === 0) return null
+
+  if (loadStructure === 'top_set_and_backoff') {
+    const top = [...sets].sort((a, b) => a.order - b.order)[0]
+    return top && strategy.isEligible(top) ? top : null
+  }
+
+  const eligible = sets.filter(s => strategy.isEligible(s))
+  if (eligible.length === 0) return null
+  return eligible.reduce((best, s) => {
+    if (!best) return s
+    const bv = strategy.valueOf(best)
+    const sv = strategy.valueOf(s)
+    return (strategy.higherIsBetter ? sv > bv : sv < bv) ? s : best
+  }, null as CanonicalSet | null)
+}
+
+/** The metric's own natural additive quantity for one set — reps for every
+ *  rep-based metric kind, durationSeconds for duration, distanceMeters for
+ *  distance. Returns null (never 0) when the set lacks it.
+ *
+ *  duration/distance route through `isMetricEligible` (rather than reading
+ *  the raw field directly) so a `weight_duration`-style composite set — one
+ *  that also carries a weight — is excluded from the TOTAL the same way it's
+ *  excluded from the representative VALUE (see the STRATEGIES comment
+ *  above): summing plain durations while silently ignoring a real weight
+ *  change would be exactly the dishonest reading this guards against. reps
+ *  is deliberately NOT gated on est1rm/addedWeight/assistedWeight eligibility
+ *  here — a >12-rep set is ineligible for an e1RM ESTIMATE but still
+ *  genuinely happened, and still counts toward a total-reps/volume read. */
+export function quantityFor(set: CanonicalSet, metricKind: ProgressMetricKind): number | null {
+  switch (metricKind) {
+    case 'duration': return isMetricEligible(set, metricKind) ? set.durationSeconds : null
+    case 'distance': return isMetricEligible(set, metricKind) ? set.distanceMeters : null
+    default: return set.reps
+  }
+}
+
+/** Sum of `quantityFor` across a set of comparable working sets — null
+ *  (never a partial sum with implicit zeros) the moment ANY set is missing
+ *  the metric's quantity, per §3. */
+export function totalQuantity(sets: readonly CanonicalSet[], metricKind: ProgressMetricKind): number | null {
+  if (sets.length === 0) return null
+  const values = sets.map(s => quantityFor(s, metricKind))
+  if (values.some(v => v == null)) return null
+  return (values as number[]).reduce((a, b) => a + b, 0)
+}
+
+/** The shared "clean progression" contract — reused verbatim by both the
+ *  per-pair comparability read (comparability.ts) and the recent-trend
+ *  window (trend.ts), per the requirement that trend never independently
+ *  classify progression from raw totals. Requires the SAME comparable set
+ *  count (a set-count mismatch is never a clean comparison) and that NO
+ *  individual position moved backward.
+ *
+ *  Deliberately NOT direction-aware via `higherIsBetter`: `quantityFor`
+ *  always returns reps/duration/distance — axes that are universally "more
+ *  is better" regardless of metric kind, even for assistedWeight (more reps
+ *  at a FIXED assistance level is still the improvement; the assisted-weight
+ *  inversion applies only to the LOAD axis — the assistance weight itself —
+ *  which this function never touches). Applying `higherIsBetter` here was a
+ *  real bug caught by this function's own assisted-weight test: it would
+ *  have scored fewer reps at fixed assistance as "clean progression". */
+export function isCleanProgression(
+  prevSets: readonly CanonicalSet[],
+  latestSets: readonly CanonicalSet[],
+  metricKind: ProgressMetricKind,
+): boolean {
+  if (prevSets.length === 0 || prevSets.length !== latestSets.length) return false
+  const prevQ = prevSets.map(s => quantityFor(s, metricKind))
+  const latestQ = latestSets.map(s => quantityFor(s, metricKind))
+  if (prevQ.some(v => v == null) || latestQ.some(v => v == null)) return false
+  const prevTotal = (prevQ as number[]).reduce((a, b) => a + b, 0)
+  const latestTotal = (latestQ as number[]).reduce((a, b) => a + b, 0)
+  const totalImproved = latestTotal > prevTotal
+  const noneRegressed = (latestQ as number[]).every((v, i) => v >= (prevQ[i] as number))
+  return totalImproved && noneRegressed
+}
+
+/** A session-shaped OR RepresentativePoint-shaped value — both carry
+ *  `loadStructure` and their own comparable working sets (named `sets` on
+ *  a point, `comparableWorkingSets` on a session — callers pass the latter
+ *  via a small `{loadStructure, sets: session.comparableWorkingSets}`
+ *  wrapper). Lives here (not comparability.ts/trend.ts) specifically so
+ *  `isQualifiedForPositiveSignal` below has zero engine-internal
+ *  dependencies and can be imported by BOTH comparability.ts and trend.ts
+ *  without a circular import (comparability.ts already imports FROM
+ *  trend.ts for `meaningfulDeclineReps`). */
+export interface QualifiablePoint {
+  loadStructure: SessionLoadStructure
+  sets: readonly CanonicalSet[]
+}
+
+/** Range compliance from a plain reps array — shared by `sessionRangeCompliance`
+ *  (comparability.ts) and `isQualifiedForPositiveSignal` below, so there is
+ *  exactly one definition of "at the top" / "at least the minimum" /
+ *  "below the minimum" / "not evaluated". */
+export function complianceFromReps(reps: readonly (number | null)[], expectation: ExpectationRange): RangeCompliance {
+  if (reps.length === 0 || reps.some(r => r == null)) return 'NOT_EVALUATED'
+  const values = reps as number[]
+  if (expectation.repMax != null && values.every(r => r >= (expectation.repMax as number))) return 'ALL_SETS_AT_TOP'
+  if (expectation.repMin != null && values.every(r => r >= (expectation.repMin as number))) return 'ALL_SETS_AT_OR_ABOVE_MIN'
+  if (expectation.repMin == null && expectation.repMax == null) return 'NOT_EVALUATED'
+  return 'BELOW_MINIMUM'
+}
+
+/** The shared structural-evaluability gate underneath both
+ *  `sessionRangeCompliance` and `isQualifiedForPositiveSignal`: a
+ *  session/point can only ever be evaluated when it is (a) not mixed_load,
+ *  (b) has a real representative set for this metric at all, and (c) its
+ *  logged comparable set count matches the prescribed count EXACTLY —
+ *  applied identically regardless of load shape (a real bug: the exact-
+ *  count check used to run only for a plain uniform_working_load session,
+ *  so a top_set_and_backoff session missing a backoff set could still read
+ *  ALL_SETS_AT_TOP off its own top set alone). Returns the representative
+ *  set on success so callers needing it don't re-derive it. */
+export function evaluableRepresentativeSet(
+  point: QualifiablePoint,
+  expectation: ExpectationRange,
+  metricKind: ProgressMetricKind,
+): CanonicalSet | null {
+  if (point.loadStructure === 'mixed_load') return null
+  if (point.sets.length !== expectation.targetSets) return null
+  return selectRepresentativeSet(point.sets, point.loadStructure, metricKind)
+}
+
+function repsForCompliance(point: QualifiablePoint, rep: CanonicalSet): readonly (number | null)[] {
+  return point.loadStructure === 'top_set_and_backoff' ? [rep.reps] : point.sets.map(s => s.reps)
+}
+
+/** The ONE shared "does this pair's load increase actually count as a
+ *  positive progress signal" check — reused identically by pair evaluation
+ *  (evaluate.ts's freshImprovement), the recent-trend cycle-boundary tally
+ *  (trend.ts), and the progression streak's loadUp/cleanProgression links
+ *  (events.ts). A raw weight increase (or a raw clean rep/duration/
+ *  distance increase) is NEVER credited as positive when the session it's
+ *  read from is incomplete (comparable set count doesn't match the
+ *  prescribed count), mixed-load, not evaluable for this metric at all, or
+ *  below the target's rep minimum — an exercise/metric with no configured
+ *  target at all is never disqualified purely for lacking one (there is
+ *  nothing to be "below"). Takes a single point/session: the one the
+ *  improvement is being credited to (the higher/later side of the pair). */
+export function isQualifiedForPositiveSignal(
+  point: QualifiablePoint,
+  expectation: ExpectationRange,
+  metricKind: ProgressMetricKind,
+): boolean {
+  const rep = evaluableRepresentativeSet(point, expectation, metricKind)
+  if (rep == null) return false
+  if (expectation.repMin == null && expectation.repMax == null) return true
+  return complianceFromReps(repsForCompliance(point, rep), expectation) !== 'BELOW_MINIMUM'
+}

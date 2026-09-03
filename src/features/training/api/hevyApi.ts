@@ -209,7 +209,7 @@ export async function fetchTrainingHistory(fromISO: string, toISO: string): Prom
 
   const { data: workouts, error: wErr } = await supabase
     .from('hevy_workouts')
-    .select('id, start_time, hevy_created_at, routine_id')
+    .select('id, title, start_time, hevy_created_at, routine_id')
     .or(`${inRange},${nullFallback}`)
   if (wErr) throw wErr
   if (!workouts?.length) return { sets: [], templates: [] }
@@ -219,9 +219,11 @@ export async function fetchTrainingHistory(fromISO: string, toISO: string): Prom
   // lands on the same calendar day here as it does on that calendar.
   const dateByWorkout = new Map<string, string>()
   const routineByWorkout = new Map<string, string | null>()
-  for (const w of workouts as { id: string; start_time: string | null; hevy_created_at: string; routine_id: string | null }[]) {
+  const titleByWorkout = new Map<string, string>()
+  for (const w of workouts as { id: string; title: string; start_time: string | null; hevy_created_at: string; routine_id: string | null }[]) {
     dateByWorkout.set(w.id, (w.start_time ?? w.hevy_created_at).slice(0, 10))
     routineByWorkout.set(w.id, w.routine_id)
+    titleByWorkout.set(w.id, w.title)
   }
 
   const { data: exercises, error: eErr } = await supabase
@@ -239,12 +241,12 @@ export async function fetchTrainingHistory(fromISO: string, toISO: string): Prom
   for (let offset = 0; ; offset += PAGE) {
     const { data: page, error: sErr } = await supabase
       .from('hevy_sets')
-      .select('hevy_exercise_id, exercise_template_id, type, weight_kg, reps, duration_seconds, distance_meters, rpe')
+      .select('hevy_exercise_id, exercise_template_id, index, type, weight_kg, reps, duration_seconds, distance_meters, rpe')
       .in('hevy_exercise_id', exIds)
       .range(offset, offset + PAGE - 1)
     if (sErr) throw sErr
     const rows = (page ?? []) as {
-      hevy_exercise_id: string; exercise_template_id: string
+      hevy_exercise_id: string; exercise_template_id: string; index: number
       type: 'normal' | 'warmup' | 'dropset' | 'failure'
       weight_kg: number | null; reps: number | null
       duration_seconds: number | null; distance_meters: number | null
@@ -259,6 +261,7 @@ export async function fetchTrainingHistory(fromISO: string, toISO: string): Prom
         set_type: s.type, weight_kg: s.weight_kg, reps: s.reps,
         duration_seconds: s.duration_seconds, distance_meters: s.distance_meters,
         routine_id: routineByWorkout.get(workoutId) ?? null, rpe: s.rpe,
+        set_index: s.index, workout_title: titleByWorkout.get(workoutId) ?? null,
       })
     }
     if (rows.length < PAGE) break
