@@ -39,7 +39,7 @@
  */
 require('sucrase/register')
 
-const { computeExerciseProgression, computeCurrentWeekMuscleDose } = require('../src/features/training/progressAggregate')
+const { computeExerciseProgression } = require('../src/features/training/progressAggregate')
 const {
   rpeToRir, filterToCurrentProgram, computeTrendConfidence, resolveExpectation,
   computeRpeEvidence, computeActionConfidence, computeExerciseDecision, computeProgramDecision,
@@ -405,43 +405,12 @@ console.log('\n== 9. progressCopy.ts ==')
   check('no action taken (e.g. "keep") -> only the trend sentence, no second clause', trendOnly === 'Medium confidence that performance is improving.')
 }
 
-console.log('\n== 10. computeCurrentWeekMuscleDose — the mid-week muscle-dose bug fix ==')
-{
-  // The reported bug: Wednesday, 2 of 4 workouts done, judged as a -7.5 set
-  // deficit against the FULL week's plan. The fix must never produce a
-  // deficit/gap for an in-progress week — only informational numbers plus a
-  // soft on_track/behind_pace read against what SHOULD have happened by now
-  // (from the routines actually done), never against the whole week's plan.
-  const midWeek = computeCurrentWeekMuscleDose({
-    routineExpectation: 13.5, completedSets: 6, remainingPlannedSets: 7.5, workoutsCompleted: 2, workoutsPlanned: 4,
-  })
-  check('no null/undefined result mid-week when a plan exists', midWeek !== null)
-  check('completedSets is passed through untouched', midWeek.completedSets === 6)
-  check('remainingPlannedSets is passed through untouched (not derived from a proportional guess)', midWeek.remainingPlannedSets === 7.5)
-  check('workoutsCompleted/workoutsPlanned pass through for the "N of M" readout', midWeek.workoutsCompleted === 2 && midWeek.workoutsPlanned === 4)
-  // expectedFromRoutinesDoneSoFar = 13.5 - 7.5 = 6; 6 >= 6*0.85 -> on_track.
-  check('on_track when completed sets keep pace with the routines actually done so far', midWeek.status === 'on_track')
-
-  const behindMidWeek = computeCurrentWeekMuscleDose({
-    routineExpectation: 13.5, completedSets: 2, remainingPlannedSets: 7.5, workoutsCompleted: 2, workoutsPlanned: 4,
-  })
-  check('behind_pace when completed sets fall well short of the done routines\' own share', behindMidWeek.status === 'behind_pace')
-
-  const nothingDoneYet = computeCurrentWeekMuscleDose({
-    routineExpectation: 13.5, completedSets: 0, remainingPlannedSets: 13.5, workoutsCompleted: 0, workoutsPlanned: 4,
-  })
-  check('nothing trained yet this week -> status is null, never a premature "behind"', nothingDoneYet.status === null)
-
-  const noProgram = computeCurrentWeekMuscleDose({
-    routineExpectation: null, completedSets: 0, remainingPlannedSets: 0, workoutsCompleted: 0, workoutsPlanned: 0,
-  })
-  check('no plan at all -> null result, not a fabricated status', noProgram === null)
-
-  const noExpectationForThisMuscle = computeCurrentWeekMuscleDose({
-    routineExpectation: null, completedSets: 3, remainingPlannedSets: 0, workoutsCompleted: 2, workoutsPlanned: 4,
-  })
-  check('a program exists but this muscle has no routine expectation -> still null, not a fake 0-target', noExpectationForThisMuscle === null)
-}
+// == 10. computeCurrentWeekMuscleDose ==
+// REMOVED along with Weekly Muscle Dose (MuscleDoseSummary.tsx) — the
+// per-exercise progress engine (scripts/verify-progress-engine.cjs)
+// superseded this feature. computeCurrentWeekMuscleDose no longer exists
+// in progressAggregate.ts; see that file's git history for the retired
+// implementation and CLAUDE.md for why it was removed.
 
 console.log(`\n${failed === 0 ? '✅ ALL PASS' : '❌ FAILURES'} — ${passed} passed, ${failed} failed\n`)
 process.exit(failed === 0 ? 0 : 1)

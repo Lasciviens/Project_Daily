@@ -10,7 +10,6 @@ import { RecoveryLoadPanel } from './RecoveryLoadPanel'
 import { TrainingInsightsPanel } from './TrainingInsightsPanel'
 import { ProgressOverview } from '../progress/ProgressOverview'
 import { ExerciseDecisionTable } from '../progress/ExerciseDecisionTable'
-import { MuscleDoseSummary } from '../progress/MuscleDoseSummary'
 
 // New Hevy sub-tab (2026-08-28, strength-coach + sports-scientist agent
 // review): progress/history charts, distinct from Personal Records (all-time
@@ -51,19 +50,27 @@ import { MuscleDoseSummary } from '../progress/MuscleDoseSummary'
 // see docs/progress-redesign/PLAN.md, delete once this settles and
 // CLAUDE.md documents the final architecture): the actual decision engine.
 // Everything above this point was descriptive ("here's what happened");
-// ProgressOverview/ExerciseDecisionTable/MuscleDoseSummary are prescriptive
-// ("here's the decision, and why") — per the redesign's own visual
-// hierarchy, decisions go FIRST, supporting charts move into "More detail"
-// below. TrainingInsightsPanel's written analysis and every existing chart
-// are kept, not replaced — they're real evidence, just no longer the
-// headline.
+// ProgressOverview/ExerciseDecisionTable are prescriptive ("here's the
+// decision, and why") — per the redesign's own visual hierarchy, decisions
+// go FIRST, supporting charts move into "More detail" below.
+// TrainingInsightsPanel's written analysis and every existing chart are
+// kept, not replaced — they're real evidence, just no longer the headline.
+//
+// Fourth round (progress-engine rewrite, approved algorithm-review cycle):
+// Weekly Muscle Dose (MuscleDoseSummary) is REMOVED from this page —
+// superseded by the per-exercise decision engine above and never carried
+// real dose-vs-landmark evidence of its own beyond what WeeklySetsPerMuscleChart
+// (still in the collapsed "supporting charts" section below) already shows.
+// Only this card and its now-orphaned Progress-specific calculation code
+// (MuscleDoseCard, computeCurrentWeekMuscleDose) were removed — muscleMap.ts
+// and every other muscle-mapping consumer (Muscles tab, WeeklySetsPerMuscleChart,
+// TrainingInsightsPanel) are untouched.
 export function ProgressTab() {
   const [showMore, setShowMore] = useState(false)
   return (
     <div className="flex flex-col gap-3">
       <ProgressOverview />
       <ExerciseDecisionTable />
-      <MuscleDoseSummary />
 
       <button
         type="button"
