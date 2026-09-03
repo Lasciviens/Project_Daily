@@ -6,18 +6,48 @@ import { useHealthMetricSeries } from './useHealthExport'
 import { computeSleepSummary } from '../healthAggregate'
 import { computeWeeklySleepTrend } from '../recoveryAggregate'
 import {
-  computeExerciseProgression, metricKindForExerciseType, mondayOf, computeWeeklySetsPerMuscleTrend,
+  metricKindForExerciseType, mondayOf, computeWeeklySetsPerMuscleTrend,
   computeConsistencyByWeek, computeCurrentWeekMuscleDose,
   type ProgressSetRow, type CurrentWeekMuscleDose,
 } from '../progressAggregate'
 import { lastCompleteWeek } from '../trainingInsights'
+import { computeProgramDecision, type ProgramDecision } from '../progressDecisions'
 import {
-  filterToCurrentProgram, resolveExpectation, computeExerciseDecision, computeProgramDecision,
-  type ExerciseDecision, type ProgramDecision, type RoutineTargetLookup, type UserOverrideLookup,
-} from '../progressDecisions'
+  buildCanonicalSessions, evaluateExerciseProgress, resolveExpectation, DEFAULT_POLICY,
+  type ExerciseProgressResult, type RoutineTargetLookup, type UserOverrideLookup, type CanonicalExerciseSession,
+} from '../progress-engine'
 import { buildTemplateMuscleMap, contribution, labelForSlug, limitedSlugsFromLimitations, ROLE_WEIGHTS } from '../muscleMap'
 import type { Slug } from 'react-muscle-highlighter'
 import type { HevyRoutine } from '../types.hevy'
+
+/** A set counts toward decision-making when its workout belongs to the
+ *  explicit current program, OR was freeform (no routine_id at all — an
+ *  unambiguous, un-programmed but still-current session). A set tied to a
+ *  KNOWN OTHER routine (one that exists but isn't in the current-program
+ *  set) is excluded — that's "old program" history, not noise to keep.
+ *  Ported from the retired progressDecisions.ts verbatim — this scoping
+ *  rule is independent of the per-exercise algorithm rewrite. */
+function filterToCurrentProgram(sets: ProgressSetRow[], currentProgramRoutineIds: ReadonlySet<string>): ProgressSetRow[] {
+  if (currentProgramRoutineIds.size === 0) return sets
+  return sets.filter(s => s.routine_id == null || currentProgramRoutineIds.has(s.routine_id))
+}
+
+/** computeProgramDecision (the program-level "is this exercise declining"
+ *  tally, unrelated to this round's per-exercise algorithm rewrite) still
+ *  expects the old coarse {status, reasonCodes} shape. This maps the new
+ *  engine's richer result onto exactly that shape — a thin, local adapter,
+ *  never exposed outside this hook. */
+function toLegacyStatusShape(result: ExerciseProgressResult): { templateId: string; status: 'increase' | 'keep' | 'watch' | 'plateau' | 'insufficient_data'; reasonCodes: string[]; trendConfidence: 'low' | 'medium' | 'high' } {
+  const trendConfidence = result.evidence.progress === 'strong' ? 'high' : result.evidence.progress === 'moderate' ? 'medium' : 'low'
+  switch (result.currentAction) {
+    case 'READY_TO_INCREASE': return { templateId: result.exerciseTemplateId, status: 'increase', reasonCodes: [], trendConfidence }
+    case 'BUILD_AT_CURRENT_LOAD': return { templateId: result.exerciseTemplateId, status: 'keep', reasonCodes: [], trendConfidence }
+    case 'WATCH_FOR_PLATEAU': return { templateId: result.exerciseTemplateId, status: 'plateau', reasonCodes: [], trendConfidence }
+    case 'WATCH_FOR_REGRESSION': return { templateId: result.exerciseTemplateId, status: 'watch', reasonCodes: ['TREND_DOWN'], trendConfidence }
+    case 'INSUFFICIENT_DATA': return { templateId: result.exerciseTemplateId, status: 'insufficient_data', reasonCodes: [], trendConfidence }
+    default: return { templateId: result.exerciseTemplateId, status: 'watch', reasonCodes: [], trendConfidence }
+  }
+}
 
 const RECENT_DAYS = 28
 
@@ -79,17 +109,23 @@ export interface ProgressData {
    *  select their program instead. */
   needsCurrentProgram: boolean
   suggestedRoutines: HevyRoutine[]
-  decisions: ExerciseDecision[]
+  decisions: ExerciseProgressResult[]
   program: ProgramDecision | null
   summary: SummaryCards | null
   titleById: Map<string, string>
   muscles: MuscleDoseCard[]
+  /** Full comparable session history per exercise — "Show all sessions"
+   *  and the progress chart render straight from this rather than
+   *  recomputing it, since useProgressData already builds it once per
+   *  exercise to run the decision engine. */
+  sessionsByTemplateId: Map<string, CanonicalExerciseSession[]>
+  metricKindByTemplateId: Map<string, string>
 }
 
 const RECOVERY_WINDOW_DAYS = 182
 const EMPTY: ProgressData = {
   isLoading: true, needsCurrentProgram: false, suggestedRoutines: [], decisions: [], program: null,
-  summary: null, titleById: new Map(), muscles: [],
+  summary: null, titleById: new Map(), muscles: [], sessionsByTemplateId: new Map(), metricKindByTemplateId: new Map(),
 }
 
 /** Assembles everything progressDecisions.ts needs from the app's existing
@@ -134,9 +170,10 @@ export function useProgressData(): ProgressData {
       for (const r of activeRoutines) {
         for (const ex of r.exercises ?? []) {
           if (ex.exercise_template_id !== templateId) continue
-          for (const s of ex.sets ?? []) {
+          const workingSets = (ex.sets ?? []).filter(s => s.type !== 'warmup')
+          for (const s of workingSets) {
             if (s.rep_range_start != null && s.rep_range_end != null) {
-              return { repMin: s.rep_range_start, repMax: s.rep_range_end }
+              return { repMin: s.rep_range_start, repMax: s.rep_range_end, targetSets: workingSets.length }
             }
           }
         }
@@ -167,18 +204,19 @@ export function useProgressData(): ProgressData {
     const titleById = new Map(history.templates.map(t => [t.id, t.title]))
     const typeById = new Map(history.templates.map(t => [t.id, t.type]))
 
-    const decisions: ExerciseDecision[] = templateIds.map(templateId => {
+    const sessionsByTemplateId = new Map<string, ReturnType<typeof buildCanonicalSessions>>()
+    const metricKindByTemplateId = new Map<string, string>()
+    const decisions: ExerciseProgressResult[] = templateIds.map(templateId => {
       const type = typeById.get(templateId) ?? 'weight_reps'
       const metricKind = metricKindForExerciseType(type)
-      const points = computeExerciseProgression(filteredSets, templateId, metricKind)
-      const expectation = resolveExpectation(templateId, metricKind, routineTarget, userOverride)
-
-      const eligibleDates = new Set(points.filter(p => p.topValue != null).slice(-2).map(p => p.date))
-      const qualifyingSets = filteredSets.filter(s => s.exercise_template_id === templateId && eligibleDates.has(s.date))
-
-      return computeExerciseDecision({ templateId, metricKind, points, qualifyingSets, expectation })
+      const sessions = buildCanonicalSessions(filteredSets, templateId)
+      sessionsByTemplateId.set(templateId, sessions)
+      metricKindByTemplateId.set(templateId, metricKind)
+      const fallbackTargetSets = sessions[sessions.length - 1]?.comparableWorkingSets.length || 3
+      const expectation = resolveExpectation(templateId, metricKind, fallbackTargetSets, routineTarget, userOverride)
+      return evaluateExerciseProgress({ exerciseTemplateId: templateId, metricKind, sessions, expectation }, DEFAULT_POLICY)
     }).sort((a, b) => a.comparableSessions - b.comparableSessions === 0
-      ? a.templateId.localeCompare(b.templateId)
+      ? a.exerciseTemplateId.localeCompare(b.exerciseTemplateId)
       : b.comparableSessions - a.comparableSessions) // most-evidenced exercises first, insufficient_data sinks to the bottom naturally
 
     const weeklySleep = computeWeeklySleepTrend(computeSleepSummary(sleepPoints))
@@ -194,7 +232,8 @@ export function useProgressData(): ProgressData {
       }
     }
 
-    const program = computeProgramDecision({ decisions, corroboratingSignal })
+    const legacyShapes = decisions.map(toLegacyStatusShape)
+    const program = computeProgramDecision({ decisions: legacyShapes, corroboratingSignal })
 
     // ── Muscle dose — every muscle actually trained under the current
     // program, with a growth-over-time TREND (not just a latest number)
@@ -305,7 +344,7 @@ export function useProgressData(): ProgressData {
     const thisWeekSessions = consistencyWeeks[consistencyWeeks.length - 1]?.sessionCount ?? 0
     const adherence = { completedThisWeek: thisWeekSessions, target: profile?.training_days_per_week ?? null }
 
-    const analyzable = decisions.filter(d => d.status !== 'insufficient_data')
+    const analyzable = legacyShapes.filter(d => d.status !== 'insufficient_data')
     const improving = analyzable.filter(d => d.status === 'increase' || d.status === 'keep')
 
     let bodyweightDirection: SummaryCards['bodyweightDirection'] = null
@@ -317,12 +356,12 @@ export function useProgressData(): ProgressData {
       bodyweightDirection = { deltaKg: Math.round((latestBw.kg - older.kg) * 10) / 10, days }
     }
 
-    const reliable = decisions.filter(d => d.trendConfidence !== 'low' && d.status !== 'insufficient_data').length
+    const reliable = legacyShapes.filter(d => d.trendConfidence !== 'low' && d.status !== 'insufficient_data').length
     const summary: SummaryCards = {
       adherence, exerciseProgress: { improving: improving.length, analyzable: analyzable.length },
       bodyweightDirection, dataConfidence: { reliable, total: decisions.length },
     }
 
-    return { isLoading: false, needsCurrentProgram: false, suggestedRoutines: [], decisions, program, summary, titleById, muscles }
+    return { isLoading: false, needsCurrentProgram: false, suggestedRoutines: [], decisions, program, summary, titleById, muscles, sessionsByTemplateId, metricKindByTemplateId }
   }, [isLoading, history, currentProgram, routines, targetOverrides, musclePrefs, limitations, sleepPoints, profile, bodyweight, toStr])
 }
