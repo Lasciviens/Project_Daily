@@ -3,7 +3,32 @@
 // recreates decision logic. Matches this repo's English-only rule.
 
 import { RULE_CATALOG } from './ruleCatalog'
-import type { CurrentAction, EvaluationScope, EvidenceLevel, ExerciseProgressResult, RecentProgressTrendState, CurrentLoadProgressState } from './types'
+import type { CurrentAction, EvaluationScope, EvidenceLevel, ExerciseProgressResult, RecentProgressTrendState, CurrentLoadProgressState, ProgressMetricKind } from './types'
+import { isWeightBasedMetric } from './metricStrategy'
+
+/** The load-axis terminology a metric kind can honestly support (§5): only
+ *  est1rm/addedWeight/assistedWeight represent a literal weight — "Load
+ *  increased/decreased", a percentage, and "kg" all imply that axis exists.
+ *  reps/duration/distance track a different quantity entirely (top-set
+ *  reps, top-set duration, top-set distance) and must never borrow load
+ *  language or a load percentage, which would misrepresent what actually
+ *  changed. */
+function axisPhrase(metricKind: ProgressMetricKind): { increased: string; decreased: string; changedNoun: string } {
+  switch (metricKind) {
+    case 'assistedWeight':
+      return { increased: 'Assistance decreased', decreased: 'Assistance increased', changedNoun: 'assistance' }
+    case 'reps':
+      return { increased: 'Your top set improved', decreased: 'Your top set dropped', changedNoun: 'top-set reps' }
+    case 'duration':
+      return { increased: 'Your top-set duration improved', decreased: 'Your top-set duration dropped', changedNoun: 'top-set duration' }
+    case 'distance':
+      return { increased: 'Your top-set distance improved', decreased: 'Your top-set distance dropped', changedNoun: 'top-set distance' }
+    case 'est1rm':
+    case 'addedWeight':
+    default:
+      return { increased: 'Load increased', decreased: 'Load decreased', changedNoun: 'load' }
+  }
+}
 
 export function actionLabel(action: CurrentAction): string {
   return RULE_CATALOG[action]?.title ?? action
@@ -62,17 +87,28 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
     return `This session's sets don't share one clean load or match your prescribed count (logged as ${latestLabel}). Log a consistent structure next time to get a real read.`
   }
   if (result.currentAction === 'REVIEW_LOAD_REDUCTION') {
-    return `Load decreased from ${previousLabel} to ${latestLabel}. Reason not recorded — confirm whether this was intentional before your next session.`
+    const phrase = axisPhrase(result.metricKind)
+    return `${phrase.decreased} from ${previousLabel} to ${latestLabel}. Reason not recorded — confirm whether this was intentional before your next session.`
   }
   if (result.reasons.some(r => r.code === 'ASSISTANCE_REDUCED')) {
     return `Assistance dropped (${previousLabel} → ${latestLabel}) — less help is the improvement here. Reps stayed at or above the minimum on ${scopeLabel(result.evaluationScope)}.`
   }
   if (result.observedTransition === 'LOAD_INCREASED' && result.rangeCompliance !== 'BELOW_MINIMUM') {
-    const pct = result.currentState.loadChangePercent
-    return `Load increased${pct != null ? ` ${pct > 0 ? '+' : ''}${pct}%` : ''}, and ${scopeLabel(result.evaluationScope)} stayed at or above the minimum. Lower reps right after a load increase are expected, not a decline.`
+    const phrase = axisPhrase(result.metricKind)
+    // Percentages are only meaningful on a real load axis (§5) — a "top-set
+    // reps changed +12%" reading would misrepresent a rep-count change as
+    // if it were a weight change.
+    const isWeight = isWeightBasedMetric(result.metricKind)
+    const pct = isWeight ? result.currentState.loadChangePercent : null
+    const changeClause = pct != null ? ` ${pct > 0 ? '+' : ''}${pct}%` : ''
+    const caveat = isWeight
+      ? ' Lower reps right after a load increase are expected, not a decline.'
+      : ''
+    return `${phrase.increased}${changeClause}, and ${scopeLabel(result.evaluationScope)} stayed at or above the minimum.${caveat}`
   }
   if (result.rangeCompliance === 'BELOW_MINIMUM') {
-    return `The load increased, but at least one set fell below the target minimum — confirm before increasing again.`
+    const phrase = axisPhrase(result.metricKind)
+    return `${phrase.increased}, but at least one set fell below the target minimum — confirm before increasing again.`
   }
   if (result.repDelta === 'REP_INCREASE') {
     return `Same load, and total reps went up with no set going down — real progress, not noise.`

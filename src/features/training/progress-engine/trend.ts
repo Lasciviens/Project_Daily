@@ -108,13 +108,41 @@ export function linearFit(y: readonly number[]): { slope: number; residualSpread
  *  `POSSIBLE_PLATEAU`. Mixed-load / not-evaluable points (`total == null`)
  *  are excluded before regression ever runs — never a NaN in the domain
  *  model. */
+/** Among points with a real total, picks the comparable-set-count that most
+ *  of them actually share — the "current" set-count segment to regress
+ *  over. A 2-set session must never be regressed alongside a 3-set session:
+ *  their totals aren't the same unit (more sets is mechanically more total
+ *  quantity, independent of any real progress), so mixing them would read a
+ *  pure set-count change as a trend. Ties prefer the LATEST point's own set
+ *  count — the segment most relevant to "how is the CURRENT structure
+ *  going" — over an arbitrary earlier value. */
+function dominantSetCount(points: readonly RepresentativePoint[]): number {
+  const counts = new Map<number, number>()
+  for (const p of points) counts.set(p.comparableSetCount, (counts.get(p.comparableSetCount) ?? 0) + 1)
+  const latestCount = points[points.length - 1].comparableSetCount
+  let best = latestCount
+  let bestFreq = counts.get(latestCount) ?? 0
+  for (const [setCount, freq] of counts) {
+    if (freq > bestFreq) { best = setCount; bestFreq = freq }
+  }
+  return best
+}
+
 export function computeCurrentLoadProgress(
   cyclePoints: readonly RepresentativePoint[],
   metricKind: ProgressMetricKind,
   policy: ExerciseProgressionPolicy,
 ): { state: CurrentLoadProgressState; n: number; slope: number | null; residualSpread: number | null } {
   void metricKind // kept for signature stability; total's direction never inverts (see doc above)
-  const usable = cyclePoints.filter(p => p.total != null)
+  const withTotal = cyclePoints.filter(p => p.total != null)
+  if (withTotal.length < 3) return { state: 'INSUFFICIENT_HISTORY', n: withTotal.length, slope: null, residualSpread: null }
+
+  // Segment to the dominant (or latest-matching) comparable set count before
+  // regressing — a set-count-incompatible point is excluded here rather
+  // than silently blended into the same series (§3 — a 2-set session must
+  // never be regressed against a 3-set one).
+  const targetSetCount = dominantSetCount(withTotal)
+  const usable = withTotal.filter(p => p.comparableSetCount === targetSetCount)
   if (usable.length < 3) return { state: 'INSUFFICIENT_HISTORY', n: usable.length, slope: null, residualSpread: null }
 
   const series = usable.map(p => p.total as number)

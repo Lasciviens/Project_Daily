@@ -52,8 +52,21 @@ const STRATEGIES: Record<ProgressMetricKind, MetricStrategy> = {
     valueOf: s => s.weightKg as number,
     higherIsBetter: false,
   },
+  // Hevy's `weight_duration` CustomExerciseType (e.g. a weighted plank or a
+  // loaded carry) maps to this SAME 'duration' ProgressMetricKind
+  // (progressAggregate.ts::metricKindForExerciseType) — but a set that also
+  // carries a weight is a genuinely composite exercise this engine has no
+  // honest way to evaluate as pure duration: doing so would silently drop
+  // the weight axis (e.g. reporting "no progress" on a set where the weight
+  // doubled and duration held steady). Rather than build a whole second
+  // composite metric kind, such a set is simply excluded here — never
+  // eligible — so the whole session becomes not-evaluable for this metric
+  // (representative value AND total both fall through to null) instead of
+  // silently mislabeling a weighted set as a plain bodyweight duration one.
+  // A genuine bodyweight-duration set (plank, dead hang) always has
+  // weightKg === null already, so this changes nothing for that case.
   duration: {
-    isEligible: s => s.durationSeconds != null,
+    isEligible: s => s.durationSeconds != null && s.weightKg == null,
     valueOf: s => s.durationSeconds as number,
     higherIsBetter: true,
   },
@@ -63,9 +76,12 @@ const STRATEGIES: Record<ProgressMetricKind, MetricStrategy> = {
   // sides are actually logged together; requiring durationSeconds here
   // even though valueOf only reads distanceMeters keeps the eligibility
   // check honest about what a "distance session" actually needs to mean
-  // anything (a distance with no time context is not comparable).
+  // anything (a distance with no time context is not comparable). Also
+  // excludes a weighted set for the same composite-metric reason as
+  // 'duration' above (a weighted carry logged with distance+duration+weight
+  // together is not honestly a pure distance metric either).
   distance: {
-    isEligible: s => s.distanceMeters != null && s.durationSeconds != null,
+    isEligible: s => s.distanceMeters != null && s.durationSeconds != null && s.weightKg == null,
     valueOf: s => s.distanceMeters as number,
     higherIsBetter: true,
   },
@@ -127,11 +143,21 @@ export function selectRepresentativeSet(
 
 /** The metric's own natural additive quantity for one set — reps for every
  *  rep-based metric kind, durationSeconds for duration, distanceMeters for
- *  distance. Returns null (never 0) when the set lacks it. */
+ *  distance. Returns null (never 0) when the set lacks it.
+ *
+ *  duration/distance route through `isMetricEligible` (rather than reading
+ *  the raw field directly) so a `weight_duration`-style composite set — one
+ *  that also carries a weight — is excluded from the TOTAL the same way it's
+ *  excluded from the representative VALUE (see the STRATEGIES comment
+ *  above): summing plain durations while silently ignoring a real weight
+ *  change would be exactly the dishonest reading this guards against. reps
+ *  is deliberately NOT gated on est1rm/addedWeight/assistedWeight eligibility
+ *  here — a >12-rep set is ineligible for an e1RM ESTIMATE but still
+ *  genuinely happened, and still counts toward a total-reps/volume read. */
 export function quantityFor(set: CanonicalSet, metricKind: ProgressMetricKind): number | null {
   switch (metricKind) {
-    case 'duration': return set.durationSeconds
-    case 'distance': return set.distanceMeters
+    case 'duration': return isMetricEligible(set, metricKind) ? set.durationSeconds : null
+    case 'distance': return isMetricEligible(set, metricKind) ? set.distanceMeters : null
     default: return set.reps
   }
 }

@@ -8,7 +8,7 @@ import { computeWeeklySleepTrend } from '../recoveryAggregate'
 import { metricKindForExerciseType, computeConsistencyByWeek, type ProgressSetRow } from '../progressAggregate'
 import { computeProgramDecision, type ProgramDecision } from '../progressDecisions'
 import {
-  buildCanonicalSessions, evaluateExerciseProgress, resolveExpectation, DEFAULT_POLICY,
+  buildCanonicalSessions, evaluateExerciseProgress, resolveExpectation, inferEquipmentClass, DEFAULT_POLICY,
   type ExerciseProgressResult, type RoutineTargetLookup, type UserOverrideLookup, type CanonicalExerciseSession,
   type ProgressMetricKind,
 } from '../progress-engine'
@@ -186,7 +186,12 @@ export function useProgressData(): ProgressData {
       metricKindByTemplateId.set(templateId, metricKind)
       const fallbackTargetSets = sessions[sessions.length - 1]?.comparableWorkingSets.length || 3
       const expectation = resolveExpectation(templateId, metricKind, fallbackTargetSets, routineTarget, userOverride)
-      return evaluateExerciseProgress({ exerciseTemplateId: templateId, metricKind, sessions, expectation }, DEFAULT_POLICY)
+      // Real equipment class, inferred from the exercise's own title (the
+      // same token-based extraction exerciseGifResolver.ts already ships)
+      // — wires the load-increment ladder's rung 2 into production instead
+      // of always falling straight to rung 3/4.
+      const equipmentClass = inferEquipmentClass(titleById.get(templateId) ?? '')
+      return evaluateExerciseProgress({ exerciseTemplateId: templateId, metricKind, sessions, expectation, equipmentClass }, DEFAULT_POLICY)
     }).sort((a, b) => a.comparableSessions - b.comparableSessions === 0
       ? a.exerciseTemplateId.localeCompare(b.exerciseTemplateId)
       : b.comparableSessions - a.comparableSessions) // most-evidenced exercises first, insufficient_data sinks to the bottom naturally

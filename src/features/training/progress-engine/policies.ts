@@ -6,6 +6,7 @@
 import type {
   ExerciseProgressionPolicy, ExpectationRange, RoutineTargetLookup, UserOverrideLookup, ProgressMetricKind,
 } from './types'
+import { normalizeTokens } from '../exerciseGifResolver'
 
 export const ALGORITHM_VERSION = '2.0.0'
 
@@ -95,19 +96,56 @@ export function isPositiveLoadChange(metricKind: ProgressMetricKind, from: numbe
   return to > from
 }
 
-/** Next-load resolution ladder: (1) an explicit per-exercise override —
- *  not built in v1, no UI writes to it yet (see DATA_AND_LIMITATIONS.md);
- *  (2) an equipment-class default, our own product convention, explicitly
- *  labeled as such; (3) the smallest positive increment ever observed in
- *  this exercise's own history; (4) an honest "use the smallest available
- *  increment" rather than inventing a number. */
+/** Next-load resolution ladder, in the DOCUMENTED and approved priority
+ *  order — an earlier version of this function checked rung 3 (observed
+ *  history) before rung 2 (equipment default), silently inverting the
+ *  approved priority whenever an exercise had ANY prior increment logged,
+ *  however noisy or atypical. Restored order:
+ *    (1) an explicit per-exercise override — no UI writes to it yet (see
+ *        DATA_AND_LIMITATIONS.md), so this is always null/undefined in
+ *        production today; wired here so it's a real, tested rung rather
+ *        than a comment;
+ *    (2) an equipment-class default, our own product convention, explicitly
+ *        labeled as such;
+ *    (3) the smallest positive increment ever observed in this exercise's
+ *        own history (used only when neither of the above applies);
+ *    (4) an honest "no fabricated number" null. */
 export function resolveLoadIncrementKg(
+  explicitOverrideKg: number | null,
   equipmentClass: 'barbell' | 'dumbbell' | 'machine' | null,
   observedIncrements: readonly number[],
   policy: ExerciseProgressionPolicy,
 ): number | null {
+  if (explicitOverrideKg != null && explicitOverrideKg > 0) return explicitOverrideKg
+  if (equipmentClass) return policy.loadIncrementKg[equipmentClass]
   const smallestObserved = observedIncrements.filter(v => v > 0).sort((a, b) => a - b)[0]
   if (smallestObserved != null) return smallestObserved
-  if (equipmentClass) return policy.loadIncrementKg[equipmentClass]
   return null
+}
+
+/** Derives an equipment class from the exercise's OWN title — the same
+ *  token-based equipment extraction `exerciseGifResolver.ts` already uses
+ *  (and ships) for GIF matching, reused here rather than inventing a second
+ *  detector or a speculative new DB field (CLAUDE.md's own rule against
+ *  guessing at unverified external schema). Kettlebell is mapped to
+ *  'dumbbell' (a fixed-increment handheld load, the same granularity);
+ *  cable/Smith machine map to 'machine' (pin/fixed-plate loaded, same
+ *  granularity as a machine stack); band/bodyweight/unrecognized titles
+ *  return null — there is no defensible fixed kg increment for a band, and
+ *  guessing one would be exactly the fabricated number rung 4 exists to
+ *  avoid. */
+export function inferEquipmentClass(title: string): 'barbell' | 'dumbbell' | 'machine' | null {
+  const { equip } = normalizeTokens(title)
+  switch (equip) {
+    case 'barbell': return 'barbell'
+    case 'dumbbell':
+    case 'kettlebell':
+      return 'dumbbell'
+    case 'machine':
+    case 'smith':
+    case 'cable':
+      return 'machine'
+    default:
+      return null
+  }
 }

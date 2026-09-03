@@ -7,6 +7,7 @@ import {
 import { RULE_CATALOG } from '../progress-engine/ruleCatalog'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CanonicalSet, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { buildRepresentativePoints } from '../progress-engine/trend'
+import { isWeightBasedMetric } from '../progress-engine/metricStrategy'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ExerciseThumb, ExerciseGifPicker } from '../exerciseMedia'
 import { fmtTrainingDate as formatDate } from '../dateFormat'
@@ -97,6 +98,26 @@ function formatSetLine(set: CanonicalSet, metricKind: ProgressMetricKind): strin
   }
 }
 
+/** Formats a single metric-generic VALUE (the representative weight for a
+ *  weight-based metric, or the metric's own derived value otherwise) with
+ *  its own honest unit — never a hardcoded "kg" (§5). Used for event chips
+ *  (LOAD_PR etc.), which read `event.values.value`/`loadKg` generically off
+ *  the engine's structured output regardless of which metric produced it. */
+function formatPrimaryValue(value: number, metricKind: ProgressMetricKind): string {
+  switch (metricKind) {
+    case 'est1rm':
+    case 'addedWeight':
+    case 'assistedWeight':
+      return `${value} kg`
+    case 'reps':
+      return `${value} reps`
+    case 'duration':
+      return fmtDuration(value)
+    case 'distance':
+      return `${value} m`
+  }
+}
+
 function metricChartMeta(metricKind: ProgressMetricKind): { primaryLabel: string; primaryUnit: string; totalLabel: string } {
   switch (metricKind) {
     case 'est1rm':         return { primaryLabel: 'Working weight', primaryUnit: 'kg', totalLabel: 'Total reps' }
@@ -155,12 +176,18 @@ function fmtExposure(sets: readonly { reps: number | null }[] | undefined, weigh
 function ExposureLine({ result }: { result: ExerciseProgressResult }) {
   const prevSets = result.currentState.previous?.sets.filter(s => s.kind !== 'dropset')
   const latestSets = result.currentState.latest?.sets.filter(s => s.kind !== 'dropset')
+  // A percentage change is only honest on a real load axis (§5) — reps/
+  // duration/distance have no weight to compute a load % from, even though
+  // loadChangePercent is technically populated (it tracks the metric's own
+  // representative value generically, whatever that value is).
+  const showPercent = isWeightBasedMetric(result.metricKind)
+    && result.currentState.loadChangePercent != null && result.currentState.loadChangePercent !== 0
   return (
     <span className="text-xs text-ink-600 tabular-nums">
       {fmtExposure(prevSets, result.currentState.previous?.representativeWeightKg)} <span className="text-ink-300">→</span>{' '}
       <span className="font-semibold text-ink-800">{fmtExposure(latestSets, result.currentState.latest?.representativeWeightKg)}</span>
-      {result.currentState.loadChangePercent != null && result.currentState.loadChangePercent !== 0 && (
-        <span className={result.currentState.loadChangePercent > 0 ? 'text-green-700' : 'text-amber-700'}> ({result.currentState.loadChangePercent > 0 ? '+' : ''}{result.currentState.loadChangePercent}%)</span>
+      {showPercent && (
+        <span className={(result.currentState.loadChangePercent as number) > 0 ? 'text-green-700' : 'text-amber-700'}> ({(result.currentState.loadChangePercent as number) > 0 ? '+' : ''}{result.currentState.loadChangePercent}%)</span>
       )}
     </span>
   )
@@ -185,11 +212,22 @@ function SessionCard({ label, session, metricKind }: { label: string; session: C
   )
 }
 
-function EventChip({ event }: { event: ExerciseProgressResult['events'][number] }) {
+function EventChip({ event, metricKind }: { event: ExerciseProgressResult['events'][number]; metricKind: ProgressMetricKind }) {
   const info = RULE_CATALOG[event.code]
-  if (event.code === 'LOAD_PR') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 inline-flex items-center gap-1">🏆 Load PR — {event.values.value} {event.values.value != null ? 'kg' : ''}</span>
-  if (event.code === 'REP_PR_AT_LOAD') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 inline-flex items-center gap-1">🏆 Rep PR — {event.values.reps} @ {event.values.loadKg}kg</span>
-  if (event.code === 'TOTAL_REPS_PR_AT_LOAD') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 inline-flex items-center gap-1">🏆 Total-reps PR — {event.values.total} @ {event.values.loadKg}kg</span>
+  const weightBased = isWeightBasedMetric(metricKind)
+  if (event.code === 'LOAD_PR') {
+    const label = weightBased ? 'Load PR' : 'Personal best'
+    const value = event.values.value
+    return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 inline-flex items-center gap-1">🏆 {label} — {value != null ? formatPrimaryValue(value as number, metricKind) : '—'}</span>
+  }
+  if (event.code === 'REP_PR_AT_LOAD') {
+    const at = weightBased && event.values.loadKg != null ? ` @ ${formatPrimaryValue(event.values.loadKg as number, metricKind)}` : ''
+    return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 inline-flex items-center gap-1">🏆 Rep PR — {event.values.reps}{at}</span>
+  }
+  if (event.code === 'TOTAL_REPS_PR_AT_LOAD') {
+    const at = weightBased && event.values.loadKg != null ? ` @ ${formatPrimaryValue(event.values.loadKg as number, metricKind)}` : ''
+    return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 inline-flex items-center gap-1">🏆 Total-reps PR — {event.values.total}{at}</span>
+  }
   if (event.code === 'TARGET_COMPLETED') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-accent-100 text-accent-700">✓ Target completed</span>
   if (event.code === 'PROGRESSION_STREAK') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-accent-100 text-accent-700">🔥 {event.values.streakLength}-session streak</span>
   return <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-ink-100 text-ink-500" title={info?.shortDefinition}>{info?.title ?? event.code} (secondary)</span>
@@ -279,7 +317,7 @@ function DecisionDetail({ result, sessions, metricKind, title }: { result: Exerc
             {result.evidence.recommendation && (
               <span className="inline-flex items-center gap-1"><EvidencePill level={result.evidence.recommendation} label="Recommendation evidence" /><InfoBubble><b>Recommendation evidence</b>{recommendationEvidenceExplanation(result)}</InfoBubble></span>
             )}
-            {result.events.map((e, i) => <EventChip key={i} event={e} />)}
+            {result.events.map((e, i) => <EventChip key={i} event={e} metricKind={metricKind} />)}
           </div>
         </div>
       </div>

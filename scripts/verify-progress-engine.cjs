@@ -162,6 +162,63 @@ console.log('\n== 3. metricStrategy — real per-metric dispatch (§1) ==')
   }
 }
 
+console.log('\n== 3b. weight_duration composite honesty (BLOCKER #5) ==')
+{
+  // A genuine bodyweight-duration set (no weight logged) stays eligible —
+  // this must NOT regress.
+  const plainDuration = set(1, null, null, 'normal', { durationSeconds: 45 })
+  check('#5: a plain bodyweight-duration set (no weight) stays eligible for the duration metric', isMetricEligible(plainDuration, 'duration'))
+  check('#5: quantityFor still returns the real duration for a plain bodyweight-duration set', quantityFor(plainDuration, 'duration') === 45)
+
+  // A weight_duration composite set (e.g. a weighted plank/loaded carry)
+  // carries BOTH a weight and a duration — the engine has no honest way to
+  // evaluate this as pure duration (it would silently drop the weight
+  // axis), so it must be excluded entirely rather than mislabeled.
+  const weightedDuration = set(1, 20, null, 'normal', { durationSeconds: 45 })
+  check('#5: a weight_duration composite set (weight + duration together) is INELIGIBLE for the duration metric', !isMetricEligible(weightedDuration, 'duration'))
+  check('#5: quantityFor returns null (never a dishonest duration total) for a weighted-duration set', quantityFor(weightedDuration, 'duration') === null)
+  check('#5: metricValueOf returns null for a weighted-duration set under the duration metric', metricValueOf(weightedDuration, 'duration') === null)
+
+  // The same composite exclusion applies to distance (a weighted carry
+  // logged with distance+duration+weight together).
+  const weightedDistance = set(1, 20, null, 'normal', { distanceMeters: 100, durationSeconds: 60 })
+  check('#5: a weighted distance set is INELIGIBLE for the distance metric', !isMetricEligible(weightedDistance, 'distance'))
+
+  // A whole SESSION built entirely from weight_duration composite sets
+  // becomes not-evaluable end to end: no representative set, no total.
+  {
+    const rows = [row('w1', '2026-08-01', 'weightedplank', 1, 20, null, 'normal', { duration_seconds: 45 }),
+      row('w1', '2026-08-01', 'weightedplank', 2, 20, null, 'normal', { duration_seconds: 50 })]
+    const s = buildCanonicalSessions(rows, 'weightedplank')[0]
+    check('#5: a weight_duration session has no representative set for the duration metric', bestComparableSet(s, 'duration') === null)
+    check('#5: a weight_duration session has no evaluable total for the duration metric', totalForMetric(s, 'duration') === null)
+  }
+}
+
+console.log('\n== 3c. load terminology separation — never "Load"/kg/% for a metric without a real load axis (BLOCKER #5) ==')
+{
+  const { buildExplanationSentence: sentenceFn } = require('../src/features/training/progress-engine/copy')
+  // A 'reps' metric kind session with a fresh top-set-reps increase must
+  // read with metric-appropriate language, never borrow "Load increased" /
+  // a percentage / "kg" — none of which describe a real axis for this kind.
+  const rows = [
+    ...repsOnlyRows('w1', '2026-08-01', 'reptermcheck', [6, 6, 6]),
+    ...repsOnlyRows('w2', '2026-08-08', 'reptermcheck', [7, 6, 6]),
+  ]
+  const sessions = buildCanonicalSessions(rows, 'reptermcheck')
+  const expectation = resolveExpectation('reptermcheck', 'reps', 3, () => null, () => null)
+  const result = evaluateExerciseProgress({ exerciseTemplateId: 'reptermcheck', metricKind: 'reps', sessions, expectation }, DEFAULT_POLICY)
+  check('#5: ExerciseProgressResult carries its own metricKind for the copy layer to branch on', result.metricKind === 'reps')
+  if (result.observedTransition === 'LOAD_INCREASED') {
+    const sentence = sentenceFn(result)
+    check('#5: a reps-kind exercise\'s explanation never says "Load increased"', !sentence.includes('Load increased'))
+    check('#5: a reps-kind exercise\'s explanation never renders a "kg" unit', !sentence.includes('kg'))
+    check('#5: a reps-kind exercise\'s explanation never renders a load percentage', !/[+-]?\d+(\.\d+)?%/.test(sentence))
+  } else {
+    check('#5: fixture reached LOAD_INCREASED as designed (sanity check on the test itself)', false, `got observedTransition=${result.observedTransition}`)
+  }
+}
+
 console.log('\n== 4. isCleanProgression — the shared contract (§2, §5) ==')
 {
   check('equal set count, total up, no position down -> clean', isCleanProgression([set(1, 60, 7), set(2, 60, 7)], [set(1, 60, 8), set(2, 60, 7)], 'est1rm'))
@@ -304,10 +361,10 @@ console.log('\n== 6. sessionRangeCompliance / requiredTopRangeConfirmations wiri
   }
 }
 
-console.log('\n== 7. buildNextTargets — action-aware (§6) ==')
+console.log('\n== 7. buildNextTargets — action-aware (§6), null on set-count mismatch (BLOCKER #2) ==')
 {
   const latestSess = buildCanonicalSessions(uniformRows('w1', '2026-09-02', 'ex1', 10, [8, 7, 6]), 'ex1')[0]
-  const t = buildNextTargets(latestSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'BUILD_AT_CURRENT_LOAD', DEFAULT_POLICY, null, [])
+  const t = buildNextTargets(latestSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'BUILD_AT_CURRENT_LOAD', DEFAULT_POLICY, null, null, [])
   check('BUILD_AT_CURRENT_LOAD: minimumSetReps is the real per-position floor', JSON.stringify(t.nextSession.minimumSetReps) === JSON.stringify([8, 7, 6]))
   check('BUILD_AT_CURRENT_LOAD: minimumTotalReps beats the previous total by at least 1', t.nextSession.minimumTotalReps === 22)
   check('BUILD_AT_CURRENT_LOAD: load stays the same', t.nextSession.loadKg === 10)
@@ -315,46 +372,83 @@ console.log('\n== 7. buildNextTargets — action-aware (§6) ==')
   check('8/7/7 (total 22) passes — no position regressed', meetsNextTargetFloor([8, 7, 7], t.nextSession))
   check('9/7/6 (total 22) also passes — the floor allows any position to be the one that improves', meetsNextTargetFloor([9, 7, 6], t.nextSession))
 
+  // BLOCKER #2 — named regression: a MISSING set (2 logged vs a 3-set
+  // target) must return null, never a floor built from only 2 positions.
+  {
+    const missingSetSess = buildCanonicalSessions(uniformRows('w1', '2026-09-02', 'missingset', 60, [8, 7]), 'missingset')[0]
+    check('#2: logged set count (2) LESS than expectation.targetSets (3) -> buildNextTargets returns null',
+      buildNextTargets(missingSetSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'BUILD_AT_CURRENT_LOAD', DEFAULT_POLICY, null, null, []) === null)
+  }
+  // BLOCKER #2 — named regression: an EXTRA set (4 logged vs a 3-set
+  // target) must ALSO return null, never a floor built from 4 positions.
+  {
+    const extraSetSess = buildCanonicalSessions(uniformRows('w1', '2026-09-02', 'extraset', 60, [8, 8, 8, 8]), 'extraset')[0]
+    check('#2: logged set count (4) MORE than expectation.targetSets (3) -> buildNextTargets returns null',
+      buildNextTargets(extraSetSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'BUILD_AT_CURRENT_LOAD', DEFAULT_POLICY, null, null, []) === null)
+  }
+  // The exact-match case (3 logged == 3 target) must still produce a floor —
+  // confirms the new check isn't accidentally over-broad.
+  {
+    const exactSess = buildCanonicalSessions(uniformRows('w1', '2026-09-02', 'exactset', 60, [8, 8, 8]), 'exactset')[0]
+    check('#2: an EXACT set-count match still produces a real target (the check is not over-broad)',
+      buildNextTargets(exactSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'BUILD_AT_CURRENT_LOAD', DEFAULT_POLICY, null, null, []) !== null)
+  }
+
   // §14 named scenario: READY_TO_INCREASE produces a resolved next-load target.
   {
     const readySess = buildCanonicalSessions(uniformRows('w2', '2026-09-09', 'ex1', 60, [10, 10, 10]), 'ex1')[0]
-    const tReady = buildNextTargets(readySess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'READY_TO_INCREASE', DEFAULT_POLICY, 'barbell', [])
+    const tReady = buildNextTargets(readySess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'READY_TO_INCREASE', DEFAULT_POLICY, null, 'barbell', [])
     check('READY_TO_INCREASE resolves a real numeric next load via the equipment-class rung', tReady.nextSession.loadKg === 62.5)
     check('READY_TO_INCREASE next target explanation code identifies the ready-to-increase path', tReady.nextSession.explanationCode === 'READY_TO_INCREASE_NEXT_LOAD')
 
-    // Rung 3: the smallest observed increment wins over the equipment default when present.
-    const tObserved = buildNextTargets(readySess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'READY_TO_INCREASE', DEFAULT_POLICY, 'barbell', [5, 1.25])
-    check('READY_TO_INCREASE prefers the smallest OBSERVED increment (1.25) over the equipment default (2.5)', tObserved.nextSession.loadKg === 61.3) // round1'd from 61.25
+    // BLOCKER #4 — restored ladder order: the EQUIPMENT DEFAULT now wins
+    // over a smaller observed increment (the inverted, buggy order used to
+    // let ANY prior observed increment silently override the equipment
+    // default, however atypical). 2.5 (barbell default) beats 1.25 (observed).
+    const tEquipmentWins = buildNextTargets(readySess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'READY_TO_INCREASE', DEFAULT_POLICY, null, 'barbell', [5, 1.25])
+    check('#4: restored order — the equipment default (2.5) wins over a smaller OBSERVED increment (1.25)', tEquipmentWins.nextSession.loadKg === 62.5)
+
+    // Rung 3 (observed history) is used only when NO equipment class is known.
+    const tObservedOnly = buildNextTargets(readySess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'READY_TO_INCREASE', DEFAULT_POLICY, null, null, [5, 1.25])
+    check('#4: with no equipment class, rung 3 (smallest observed increment) is used', tObservedOnly.nextSession.loadKg === 61.3) // round1'd from 61.25
+
+    // BLOCKER #4 — rung 1 (explicit override) beats BOTH the equipment
+    // default and any observed history.
+    const tExplicit = buildNextTargets(readySess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'READY_TO_INCREASE', DEFAULT_POLICY, 1, 'barbell', [5, 1.25])
+    check('#4: rung 1 (explicit override, 1kg) wins over BOTH the equipment default and observed history', tExplicit.nextSession.loadKg === 61)
 
     // No equipment class, no observed history -> an honest non-numeric fallback, never a fabricated number.
-    const tUnknown = buildNextTargets(readySess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'READY_TO_INCREASE', DEFAULT_POLICY, null, [])
+    const tUnknown = buildNextTargets(readySess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'READY_TO_INCREASE', DEFAULT_POLICY, null, null, [])
     check('READY_TO_INCREASE with no increment source at all -> no fabricated load number', tUnknown.nextSession.loadKg === null)
 
     // Assisted-weight: "increase" means REDUCE assistance further.
     const assistedReady = buildCanonicalSessions(uniformRows('w3', '2026-09-09', 'assist', 15, [10, 10, 10]), 'assist')[0]
-    const tAssist = buildNextTargets(assistedReady, DEFAULT_EXPECTATION(6, 10, 3), 'assistedWeight', 'READY_TO_INCREASE', DEFAULT_POLICY, null, [5])
+    const tAssist = buildNextTargets(assistedReady, DEFAULT_EXPECTATION(6, 10, 3), 'assistedWeight', 'READY_TO_INCREASE', DEFAULT_POLICY, null, null, [5])
     check('assistedWeight READY_TO_INCREASE moves the load DOWN (less assistance), never up', tAssist.nextSession.loadKg === 10)
   }
 
   // §14: NOT_EVALUATED / mixed-load / incomplete-reps sessions issue NO numeric target.
   {
     const mixedSess = buildCanonicalSessions([row('w1', '2026-09-02', 'mix', 1, 100, 5), row('w1', '2026-09-02', 'mix', 2, 90, 6), row('w1', '2026-09-02', 'mix', 3, 95, 5)], 'mix')[0]
-    check('a mixed_load session -> buildNextTargets returns null (no numeric target)', buildNextTargets(mixedSess, DEFAULT_EXPECTATION(5, 8, 3), 'est1rm', 'HOLD_STEADY', DEFAULT_POLICY, null, []) === null)
+    check('a mixed_load session -> buildNextTargets returns null (no numeric target)', buildNextTargets(mixedSess, DEFAULT_EXPECTATION(5, 8, 3), 'est1rm', 'HOLD_STEADY', DEFAULT_POLICY, null, null, []) === null)
 
     const incompleteSess = buildCanonicalSessions([row('w1', '2026-09-02', 'incomplete', 1, 60, null)], 'incomplete')[0]
-    check('a session with a null rep count -> buildNextTargets returns null', buildNextTargets(incompleteSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'BUILD_AT_CURRENT_LOAD', DEFAULT_POLICY, null, []) === null)
+    check('a session with a null rep count -> buildNextTargets returns null', buildNextTargets(incompleteSess, DEFAULT_EXPECTATION(6, 10, 1), 'est1rm', 'BUILD_AT_CURRENT_LOAD', DEFAULT_POLICY, null, null, []) === null)
 
     const holdSess = buildCanonicalSessions(uniformRows('w1', '2026-09-02', 'hold', 60, [8, 8, 8]), 'hold')[0]
-    check('HOLD_STEADY (no forward motion, no top-range) issues no numeric target either', buildNextTargets(holdSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'HOLD_STEADY', DEFAULT_POLICY, null, []) === null)
+    check('HOLD_STEADY (no forward motion, no top-range) issues no numeric target either', buildNextTargets(holdSess, DEFAULT_EXPECTATION(6, 10, 3), 'est1rm', 'HOLD_STEADY', DEFAULT_POLICY, null, null, []) === null)
   }
 }
 
-console.log('\n== 8. resolveLoadIncrementKg — the increment ladder is wired, not dead code (§6) ==')
+console.log('\n== 8. resolveLoadIncrementKg — restored ladder order, not dead code (BLOCKER #4) ==')
 {
-  check('rung 3 wins: the smallest positive observed increment beats the equipment default', resolveLoadIncrementKg('barbell', [5, 2.5, 1.25], DEFAULT_POLICY) === 1.25)
-  check('rung 2: equipment default used when nothing was ever observed', resolveLoadIncrementKg('dumbbell', [], DEFAULT_POLICY) === DEFAULT_POLICY.loadIncrementKg.dumbbell)
-  check('rung 4: neither equipment nor history -> null, never a fabricated number', resolveLoadIncrementKg(null, [], DEFAULT_POLICY) === null)
-  check('a zero/negative observed increment is never treated as "smallest positive"', resolveLoadIncrementKg('machine', [0, -2, 5], DEFAULT_POLICY) === 5)
+  check('#4: rung 1 (explicit override) wins over EVERYTHING else', resolveLoadIncrementKg(1.5, 'barbell', [5, 2.5, 1.25], DEFAULT_POLICY) === 1.5)
+  check('#4: rung 2 (equipment default) wins over rung 3 (observed history) — the restored order', resolveLoadIncrementKg(null, 'barbell', [5, 2.5, 1.25], DEFAULT_POLICY) === DEFAULT_POLICY.loadIncrementKg.barbell)
+  check('rung 3 used only once no override and no equipment class are known', resolveLoadIncrementKg(null, null, [5, 2.5, 1.25], DEFAULT_POLICY) === 1.25)
+  check('rung 2: equipment default used when nothing was ever observed', resolveLoadIncrementKg(null, 'dumbbell', [], DEFAULT_POLICY) === DEFAULT_POLICY.loadIncrementKg.dumbbell)
+  check('rung 4: neither override, equipment, nor history -> null, never a fabricated number', resolveLoadIncrementKg(null, null, [], DEFAULT_POLICY) === null)
+  check('a zero/negative observed increment is never treated as "smallest positive"', resolveLoadIncrementKg(null, null, [0, -2, 5], DEFAULT_POLICY) === 5)
+  check('a zero/negative explicit override is not honored (falls through to the next rung)', resolveLoadIncrementKg(0, 'machine', [], DEFAULT_POLICY) === DEFAULT_POLICY.loadIncrementKg.machine)
 }
 
 console.log('\n== 9. linearFit / computeCurrentLoadProgress ==')
@@ -395,6 +489,37 @@ console.log('\n== 9. linearFit / computeCurrentLoadProgress ==')
   check('assistedWeight: MORE reps at a fixed assistance level reads ACCUMULATING, same as any other metric', computeCurrentLoadProgress(assistedRisingReps, 'assistedWeight', DEFAULT_POLICY).state === 'ACCUMULATING')
   const assistedFallingReps = [24, 22, 20, 18].map(t => ({ loadStructure: 'uniform_working_load', total: t }))
   check('assistedWeight: FEWER reps at a fixed assistance level reads DECLINING, never treated as improvement', computeCurrentLoadProgress(assistedFallingReps, 'assistedWeight', DEFAULT_POLICY).state === 'DECLINING')
+
+  // BLOCKER #3 — named regression: a 2-set session must NEVER be regressed
+  // against a 3-set session. Mixing raw totals across set counts reads a
+  // pure set-count change as if it were a real trend (24,24,24 @ 3 sets is
+  // flat; injecting one 16 @ 2 sets among them would misread as a decline
+  // purely from having done one fewer set, not from doing worse).
+  {
+    const mixedSetCounts = [
+      { loadStructure: 'uniform_working_load', total: 24, comparableSetCount: 3 },
+      { loadStructure: 'uniform_working_load', total: 24, comparableSetCount: 3 },
+      { loadStructure: 'uniform_working_load', total: 16, comparableSetCount: 2 }, // set-count-incompatible outlier
+      { loadStructure: 'uniform_working_load', total: 24, comparableSetCount: 3 },
+      { loadStructure: 'uniform_working_load', total: 24, comparableSetCount: 3 },
+    ]
+    const r = computeCurrentLoadProgress(mixedSetCounts, 'est1rm', DEFAULT_POLICY)
+    check('#3: the 2-set outlier is excluded — only the 4 dominant 3-set points are regressed', r.n === 4)
+    check('#3: with the 2-set outlier excluded, 4 flat 3-set sessions never read as DECLINING', r.state !== 'DECLINING')
+  }
+  // A genuinely mixed-set-count history (no dominant count) falls back to
+  // INSUFFICIENT_HISTORY once segmented — never silently regresses whatever
+  // is left over regardless of how few points that leaves.
+  {
+    const noMajority = [
+      { loadStructure: 'uniform_working_load', total: 24, comparableSetCount: 3 },
+      { loadStructure: 'uniform_working_load', total: 16, comparableSetCount: 2 },
+      { loadStructure: 'uniform_working_load', total: 24, comparableSetCount: 3 },
+      { loadStructure: 'uniform_working_load', total: 16, comparableSetCount: 2 },
+    ]
+    const r = computeCurrentLoadProgress(noMajority, 'est1rm', DEFAULT_POLICY)
+    check('#3: a tied/no-majority set-count history segments to the LATEST point\'s own count (2), leaving only 2 usable points -> INSUFFICIENT_HISTORY', r.state === 'INSUFFICIENT_HISTORY' && r.n === 2)
+  }
 }
 
 console.log('\n== 10. computeRecentProgressTrend — reuses isCleanProgression, never an independent raw-total read (§5) ==')
@@ -450,6 +575,35 @@ console.log('\n== 11. detectProgressEvents / detectEstimatedStrengthPr (all-hist
   const strengthPr = detectEstimatedStrengthPr(sessions, latestIndex, 'est1rm')
   check('no est1rm PR either, since 60kg never exceeds the 70kg-session e1RM', strengthPr === null)
 
+  // BLOCKER #1 — named regression: 60kg x8 (e1RM ~76.0kg) must be selected
+  // over 45kg x12 (e1RM ~63.0kg) as the session's best e1RM, even though
+  // 45x12 has MORE reps. The old buggy selector picked "most reps",
+  // silently reporting 45x12 (the WORSE lift) as the session's strength.
+  {
+    const rows6045 = [
+      ...uniformRows('w1', '2026-08-01', 'sixtyeight', 50, [8, 8, 8]), // an earlier, unambiguous baseline
+      [row('w2', '2026-08-08', 'sixtyeight', 1, 60, 8), row('w2', '2026-08-08', 'sixtyeight', 2, 45, 12)],
+    ].flat()
+    const s = buildCanonicalSessions(rows6045, 'sixtyeight')
+    const li = s.length - 1
+    const strength = detectEstimatedStrengthPr(s, li, 'est1rm')
+    // 60kg x8 Epley e1RM = 60 * (1 + 8/30) = 76.0; 45kg x12 = 45 * (1 + 12/30) = 63.0.
+    check('#1 detectEstimatedStrengthPr: 60x8 (e1RM 76.0) is selected over 45x12 (e1RM 63.0), never "most reps"', strength !== null && Math.abs(strength.values.e1rmKg - 76.0) < 0.05)
+  }
+  // BLOCKER #1 — the same fix in buildCurrentState's estimatedStrengthChange
+  // (evaluate.ts), exercised through the full pipeline.
+  {
+    const rows = [
+      ...uniformRows('w1', '2026-08-01', 'sixtyeight2', 50, [8, 8, 8]),
+      [row('w2', '2026-08-08', 'sixtyeight2', 1, 60, 8), row('w2', '2026-08-08', 'sixtyeight2', 2, 45, 12)],
+    ].flat()
+    const sessions2 = buildCanonicalSessions(rows, 'sixtyeight2')
+    const expectation2 = resolveExpectation('sixtyeight2', 'est1rm', 2, () => null, () => null)
+    const result = evaluateExerciseProgress({ exerciseTemplateId: 'sixtyeight2', metricKind: 'est1rm', sessions: sessions2, expectation: expectation2 }, DEFAULT_POLICY)
+    check('#1 buildCurrentState: estimatedStrengthChange.toKg reads 60x8\'s e1RM (76.0), never 45x12\'s (63.0)',
+      result.currentState.estimatedStrengthChange !== null && Math.abs(result.currentState.estimatedStrengthChange.toKg - 76.0) < 0.05)
+  }
+
   // REP_PR_AT_LOAD (§7/§14) — a new best single-set rep count at an
   // EXACT, previously-seen load.
   {
@@ -463,6 +617,24 @@ console.log('\n== 11. detectProgressEvents / detectEstimatedStrengthPr (all-hist
     const li = s.length - 1
     const ev = detectProgressEvents(p, li, 'est1rm', s[li], DEFAULT_EXPECTATION(6, 12, 3), DEFAULT_POLICY)
     check('REP_PR_AT_LOAD fires when the top set beats every prior top set at the same 60kg load', ev.some(e => e.code === 'REP_PR_AT_LOAD' && e.values.reps === 10 && e.values.previousBest === 8))
+  }
+
+  // BLOCKER #6 — named regression: REP_PR_AT_LOAD must pick the actual BEST
+  // eligible set at the exact load, not merely the FIRST matching set in
+  // array order. This session logs 60kg sets in the order [6, 9, 7] reps —
+  // a `.find()`-based selector would lock onto the FIRST one (6 reps) and
+  // wrongly conclude no PR (6 does not beat the prior best of 8).
+  {
+    const rows = [
+      ...uniformRows('w1', '2026-08-01', 'bestset', 60, [8, 8, 8]),
+      [row('w2', '2026-08-08', 'bestset', 1, 60, 6), row('w2', '2026-08-08', 'bestset', 2, 60, 9), row('w2', '2026-08-08', 'bestset', 3, 60, 7)],
+    ].flat()
+    const s = buildCanonicalSessions(rows, 'bestset')
+    const p = buildRepresentativePoints(s, 'est1rm')
+    const li = s.length - 1
+    const ev = detectProgressEvents(p, li, 'est1rm', s[li], DEFAULT_EXPECTATION(6, 12, 3), DEFAULT_POLICY)
+    check('#6: REP_PR_AT_LOAD selects the BEST set at the load (9 reps), not the FIRST matching set (6 reps)',
+      ev.some(e => e.code === 'REP_PR_AT_LOAD' && e.values.reps === 9 && e.values.previousBest === 8))
   }
 
   // TOTAL_REPS_PR_AT_LOAD requires the SAME set count too (§4/§14).
@@ -503,6 +675,49 @@ console.log('\n== 11. detectProgressEvents / detectEstimatedStrengthPr (all-hist
     const li2 = s2.length - 1
     const ev2 = detectProgressEvents(p2, li2, 'est1rm', s2[li2], DEFAULT_EXPECTATION(6, 12, 3), DEFAULT_POLICY)
     check('PROGRESSION_STREAK does not fire when a flat session breaks the run (streak length 1 < minLength 3)', !ev2.some(e => e.code === 'PROGRESSION_STREAK'))
+  }
+
+  // BLOCKER #7 — named regression: a mixed-load session sitting inside an
+  // otherwise-connectable run must break the streak outright, even though
+  // its raw `sets` (still present on the RepresentativePoint — only
+  // weightKg/total get nulled for a mixed session) could otherwise slip
+  // past isCleanProgression as a "clean" link. Constructed so that WITHOUT
+  // the loadStructure guard the chain w1->w2(mixed)->w3->w4 would read as 3
+  // consecutive forward-motion links (streak=3, firing PROGRESSION_STREAK
+  // at the default minLength=3) purely because isCleanProgression only
+  // looks at rep totals, never at load structure. With the guard, hitting
+  // the mixed session at i=2 breaks the walk immediately, capping the
+  // streak at 1 (just the w3->w4 loadUp).
+  {
+    const rows = [
+      ...uniformRows('w1', '2026-08-01', 'mixedstreak', 40, [6, 6, 6]),
+      // A genuinely mixed-load session (a real increase mid-session) — its
+      // own reps still climb cleanly relative to w1, which is exactly what
+      // would extend the streak through it without the explicit guard.
+      [row('w2', '2026-08-08', 'mixedstreak', 1, 50, 7), row('w2', '2026-08-08', 'mixedstreak', 2, 45, 7), row('w2', '2026-08-08', 'mixedstreak', 3, 48, 7)],
+      ...uniformRows('w3', '2026-08-15', 'mixedstreak', 55, [8, 8, 8]),
+      ...uniformRows('w4', '2026-08-22', 'mixedstreak', 60, [9, 9, 9]),
+    ].flat()
+    const s = buildCanonicalSessions(rows, 'mixedstreak')
+    const p = buildRepresentativePoints(s, 'est1rm')
+    const li = s.length - 1
+    const ev = detectProgressEvents(p, li, 'est1rm', s[li], DEFAULT_EXPECTATION(6, 12, 3), DEFAULT_POLICY)
+    check('#7: a mixed-load session inside the run breaks PROGRESSION_STREAK outright (would otherwise fire at streak=3)', !ev.some(e => e.code === 'PROGRESSION_STREAK'))
+  }
+  // BLOCKER #7 — a set-count-compromised pair (missing/extra set) must also
+  // never count as a clean-progression streak link, even when the raw
+  // total technically rose.
+  {
+    const rows = [
+      ...uniformRows('w1', '2026-08-01', 'countstreak', 40, [8, 8, 8]),
+      ...uniformRows('w2', '2026-08-08', 'countstreak', 40, [8, 8, 8]),
+      ...uniformRows('w3', '2026-08-15', 'countstreak', 40, [9, 9]), // one fewer set — a set-count-compromised pair, higher-looking per-set reps
+    ]
+    const s = buildCanonicalSessions(rows, 'countstreak')
+    const p = buildRepresentativePoints(s, 'est1rm')
+    const li = s.length - 1
+    const ev = detectProgressEvents(p, li, 'est1rm', s[li], DEFAULT_EXPECTATION(6, 12, 3), DEFAULT_POLICY)
+    check('#7: a set-count-mismatched pair never extends the streak (no PROGRESSION_STREAK at minLength 3)', !ev.some(e => e.code === 'PROGRESSION_STREAK'))
   }
 
   // TARGET_COMPLETED never fires on an incomplete session (§4/§14).

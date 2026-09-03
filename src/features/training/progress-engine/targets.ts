@@ -36,6 +36,7 @@ export function buildNextTargets(
   metricKind: ProgressMetricKind,
   currentAction: CurrentAction,
   policy: ExerciseProgressionPolicy,
+  explicitIncrementKg: number | null,
   equipmentClass: 'barbell' | 'dumbbell' | 'machine' | null,
   observedIncrements: readonly number[],
 ): NextTargetResult | null {
@@ -46,6 +47,12 @@ export function buildNextTargets(
   // doesn't support (§6). Request one clean complete session instead; the
   // copy layer (ExerciseDecisionTable/copy.ts) surfaces that explanation.
   if (latest.loadStructure === 'mixed_load') return null
+  // A logged comparable set count that doesn't match the expectation's own
+  // prescribed count — whether missing or extra sets — means there is no
+  // reliable per-position floor to build from either: a floor built from 2
+  // logged sets against a 3-set target (or vice versa) would silently
+  // misrepresent what "the program" actually calls for.
+  if (sets.length !== expectation.targetSets) return null
   const reps = sets.map(s => s.reps)
   if (reps.some(r => r == null)) return null
   const repsN = reps as number[]
@@ -54,7 +61,7 @@ export function buildNextTargets(
   const loadLabel = load != null ? `${load} kg` : 'this load'
 
   if (currentAction === 'READY_TO_INCREASE') {
-    const increment = isWeightBasedMetric(metricKind) ? resolveLoadIncrementKg(equipmentClass, observedIncrements, policy) : null
+    const increment = isWeightBasedMetric(metricKind) ? resolveLoadIncrementKg(explicitIncrementKg, equipmentClass, observedIncrements, policy) : null
     const nextLoad = load != null && increment != null
       ? round1(metricKind === 'assistedWeight' ? load - increment : load + increment)
       : null

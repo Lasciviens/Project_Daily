@@ -164,6 +164,11 @@ export interface NextTargetResult {
 export interface ExerciseProgressResult {
   algorithmVersion: string
   exerciseTemplateId: string
+  /** The exercise's own metric kind — required by the copy layer to decide
+   *  whether "Load"/"kg"/percentage language is honest (weight-based
+   *  metrics only) or must use metric-appropriate terminology instead
+   *  (reps/duration/distance have no real load axis). */
+  metricKind: ProgressMetricKind
 
   observedTransition: ObservedTransition
   repDelta: RepDelta

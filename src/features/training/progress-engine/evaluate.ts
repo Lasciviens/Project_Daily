@@ -12,7 +12,7 @@ import { buildRepresentativePoints, buildLoadCycles, computeRecentProgressTrend,
 import { evaluatePair, sessionRangeCompliance } from './comparability'
 import { detectProgressEvents, detectEstimatedStrengthPr } from './events'
 import { buildNextTargets } from './targets'
-import { est1RM } from '../progressAggregate'
+import { selectRepresentativeSet, metricValueOf } from './metricStrategy'
 
 function round1(n: number): number { return Math.round(n * 10) / 10 }
 
@@ -25,14 +25,23 @@ function toExposure(session: CanonicalExerciseSession, metricKind: ProgressMetri
   }
 }
 
+/** Selects the HIGHEST actual e1RM value logged this session — never
+ *  "whichever set has the most reps" (a real bug: 60kg x8's e1RM (~76kg) is
+ *  materially higher than 45kg x12's (~63kg), so a reps-based pick would
+ *  silently report the wrong number as "current strength"). Bypasses the
+ *  top-set-and-backoff role-lock via 'uniform_working_load' for the same
+ *  reason `detectEstimatedStrengthPr` does in events.ts — this is about the
+ *  best e1RM the session actually produced, not which set played the
+ *  "top set" role. */
+function bestE1RMForSession(s: CanonicalExerciseSession): number | null {
+  const best = selectRepresentativeSet(s.comparableWorkingSets, 'uniform_working_load', 'est1rm')
+  return metricValueOf(best, 'est1rm')
+}
+
 function buildCurrentState(previous: CanonicalExerciseSession, latest: CanonicalExerciseSession, metricKind: ProgressMetricKind, loadChangePercent: number | null): CurrentStateSummary {
   let estimatedStrengthChange: CurrentStateSummary['estimatedStrengthChange'] = null
   if (metricKind === 'est1rm') {
-    const e1rmOf = (s: CanonicalExerciseSession) => {
-      const best = s.comparableWorkingSets.reduce((b, x) => (x.reps ?? 0) > (b?.reps ?? -1) ? x : b, s.comparableWorkingSets[0] ?? null)
-      return (best?.weightKg != null && best.reps != null && best.reps <= 12) ? est1RM(best.weightKg, best.reps) : null
-    }
-    const from = e1rmOf(previous), to = e1rmOf(latest)
+    const from = bestE1RMForSession(previous), to = bestE1RMForSession(latest)
     if (from != null && to != null && from > 0) {
       estimatedStrengthChange = { fromKg: round1(from), toKg: round1(to), percent: round1((to / from - 1) * 100) }
     }
@@ -90,19 +99,26 @@ export interface EvaluateExerciseProgressInput {
   sessions: readonly CanonicalExerciseSession[] // already current-program-filtered, ascending by date
   expectation: ExpectationRange
   /** Equipment class for the load-increment ladder's rung 2 (an equipment-
-   *  class default). Not yet wired from any UI — null is a fully honest
-   *  fallback (the ladder just moves to rung 3/4 instead). */
+   *  class default) — inferred from the exercise's own title by the caller
+   *  (see useProgressData.ts's `inferEquipmentClass`); null when nothing
+   *  recognizable was found, a fully honest fallback (the ladder just moves
+   *  to rung 3/4 instead). */
   equipmentClass?: 'barbell' | 'dumbbell' | 'machine' | null
+  /** Rung 1 of the load-increment ladder — an explicit, athlete-set
+   *  per-exercise override. No UI writes this yet (see
+   *  DATA_AND_LIMITATIONS.md); left undefined/null everywhere it's not
+   *  wired, which correctly falls through to rung 2. */
+  explicitIncrementKg?: number | null
 }
 
 export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, policy: ExerciseProgressionPolicy): ExerciseProgressResult {
-  const { exerciseTemplateId, metricKind, sessions, expectation, equipmentClass = null } = input
+  const { exerciseTemplateId, metricKind, sessions, expectation, equipmentClass = null, explicitIncrementKg = null } = input
   const comparableSessions = sessions.length
   const weekSpan = comparableSessions >= 2 ? Math.round(daysBetween(sessions[0].date, sessions[sessions.length - 1].date) / 7) : 0
 
   if (comparableSessions < 2) {
     return {
-      algorithmVersion: ALGORITHM_VERSION, exerciseTemplateId,
+      algorithmVersion: ALGORITHM_VERSION, exerciseTemplateId, metricKind,
       observedTransition: 'NO_COMPARISON', repDelta: 'NOT_APPLICABLE', rangeCompliance: 'NOT_EVALUATED', evaluationScope: 'NOT_EVALUATED',
       dataQualityFlags: [], currentAction: 'INSUFFICIENT_DATA',
       trend: { recentProgressTrend: 'INSUFFICIENT_HISTORY', recentWindowSessions: comparableSessions, recentPositiveSignals: 0, recentNegativeSignals: 0, currentLoadProgress: 'INSUFFICIENT_HISTORY', currentLoadCycleSessions: 0, currentLoadSlope: null, currentLoadResidualSpread: null },
@@ -182,7 +198,7 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     : (pair.evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS' ? 'strong' : 'moderate')
 
   return {
-    algorithmVersion: ALGORITHM_VERSION, exerciseTemplateId,
+    algorithmVersion: ALGORITHM_VERSION, exerciseTemplateId, metricKind,
     observedTransition: pair.observedTransition, repDelta: pair.repDelta, rangeCompliance: pair.rangeCompliance,
     evaluationScope: pair.evaluationScope, dataQualityFlags: pair.dataQualityFlags, currentAction,
     trend: {
@@ -193,7 +209,7 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     },
     evidence: { progress: computeProgressEvidence(comparableSessions, weekSpan), recommendation: recommendationEvidence },
     reasons, events, currentState,
-    nextTargets: buildNextTargets(latest, expectation, metricKind, currentAction, policy, equipmentClass, observedLoadIncrements(cycles, metricKind)),
+    nextTargets: buildNextTargets(latest, expectation, metricKind, currentAction, policy, explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind)),
     expectation, comparableSessions, weekSpan,
   }
 }
