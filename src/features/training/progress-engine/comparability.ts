@@ -10,7 +10,10 @@ import type {
 import { bestComparableSet } from './normalize'
 import { isPositiveLoadChange } from './policies'
 import { meaningfulDeclineReps } from './trend'
-import { isWeightBasedMetric, isCleanProgression, totalQuantity, metricValueOf } from './metricStrategy'
+import {
+  isWeightBasedMetric, isCleanProgression, totalQuantity, metricValueOf,
+  complianceFromReps, evaluableRepresentativeSet,
+} from './metricStrategy'
 
 export interface ComparabilityResult {
   observedTransition: ObservedTransition
@@ -126,39 +129,25 @@ export function evaluatePair(
  *  trailing sessions independently land ALL_SETS_AT_TOP before READY_TO_
  *  INCREASE is allowed to stand, rather than firing off a single session's
  *  read. Mirrors evaluatePair's own per-session scope/compliance logic
- *  exactly, just without the pair-comparison half. */
+ *  exactly, just without the pair-comparison half.
+ *
+ *  Delegates the structural evaluability check (mixed_load / no
+ *  representative set / set-count mismatch) to `evaluableRepresentativeSet`
+ *  in metricStrategy.ts — the SAME gate `isQualifiedForPositiveSignal` uses
+ *  — applied identically regardless of load shape (§1): the exact-count
+ *  check used to run only for a plain uniform_working_load session, so a
+ *  top_set_and_backoff session missing a backoff set (e.g. 2 of a 3-set
+ *  target) could still read ALL_SETS_AT_TOP off its own top set alone. */
 export function sessionRangeCompliance(
   session: CanonicalExerciseSession,
   expectation: ExpectationRange,
   metricKind: ProgressMetricKind,
 ): RangeCompliance {
-  if (session.loadStructure === 'mixed_load') return 'NOT_EVALUATED'
-  // No representative set at all for this metric (e.g. a weight_duration
-  // composite session, which shares one clean weight shape and so is
-  // never classified mixed_load, but is individually ineligible on every
-  // set) — nothing here was evaluated, never a fabricated compliance read.
-  if (bestComparableSet(session, metricKind) == null) return 'NOT_EVALUATED'
-  if (session.loadStructure === 'top_set_and_backoff') {
-    const top = bestComparableSet(session, metricKind)
-    return complianceFromReps(top ? [top.reps] : [], expectation)
-  }
-  // Requires the EXACT prescribed set count before this session can ever
-  // read ALL_SETS_AT_TOP — a session logging FEWER sets than prescribed
-  // (e.g. 2 of a 3-set target) must never count as a confirmed top-of-
-  // range session for `requiredTopRangeConfirmations` purely because the
-  // sets it did log happened to land at the top; that's an incomplete
-  // session, not a confirmation.
-  if (session.comparableWorkingSets.length !== expectation.targetSets) return 'NOT_EVALUATED'
-  return complianceFromReps(session.comparableWorkingSets.map(s => s.reps), expectation)
-}
-
-function complianceFromReps(reps: readonly (number | null)[], expectation: ExpectationRange): RangeCompliance {
-  if (reps.length === 0 || reps.some(r => r == null)) return 'NOT_EVALUATED'
-  const values = reps as number[]
-  if (expectation.repMax != null && values.every(r => r >= (expectation.repMax as number))) return 'ALL_SETS_AT_TOP'
-  if (expectation.repMin != null && values.every(r => r >= (expectation.repMin as number))) return 'ALL_SETS_AT_OR_ABOVE_MIN'
-  if (expectation.repMin == null && expectation.repMax == null) return 'NOT_EVALUATED'
-  return 'BELOW_MINIMUM'
+  const point = { loadStructure: session.loadStructure, sets: session.comparableWorkingSets }
+  const rep = evaluableRepresentativeSet(point, expectation, metricKind)
+  if (rep == null) return 'NOT_EVALUATED'
+  const reps = session.loadStructure === 'top_set_and_backoff' ? [rep.reps] : session.comparableWorkingSets.map(s => s.reps)
+  return complianceFromReps(reps, expectation)
 }
 
 function deriveCurrentAction(input: {
@@ -175,12 +164,19 @@ function deriveCurrentAction(input: {
   // the progressDirection branch below instead.
   if (observedTransition === 'LOAD_DECREASED' && metricKind !== 'assistedWeight') return 'REVIEW_LOAD_REDUCTION'
 
+  // §2: READY_TO_INCREASE requires the FULL prescribed structure to have
+  // been evaluated — a TOP_SET_ONLY read (a top_set_and_backoff session)
+  // can independently reach ALL_SETS_AT_TOP off its own top set alone,
+  // with the backoff sets never checked at all; that's real, but never
+  // enough on its own to recommend a load increase.
+  const readyEligible = evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS' && rangeCompliance === 'ALL_SETS_AT_TOP'
+
   const isForwardMotion = progressDirection === true || (observedTransition === 'LOAD_UNCHANGED' && repDelta === 'REP_INCREASE')
   if (isForwardMotion) {
-    if (rangeCompliance === 'ALL_SETS_AT_TOP') return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'READY_TO_INCREASE'
+    if (readyEligible) return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'READY_TO_INCREASE'
     if (rangeCompliance === 'BELOW_MINIMUM') return 'CONFIRM_BEFORE_INCREASING'
     return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'BUILD_AT_CURRENT_LOAD'
   }
-  if (rangeCompliance === 'ALL_SETS_AT_TOP') return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'READY_TO_INCREASE'
+  if (readyEligible) return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'READY_TO_INCREASE'
   return 'HOLD_STEADY'
 }

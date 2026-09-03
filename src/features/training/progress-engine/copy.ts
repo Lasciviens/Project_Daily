@@ -36,6 +36,20 @@ function axisPhrase(metricKind: ProgressMetricKind): { increased: string; decrea
   }
 }
 
+/** §6: the TOTAL quantity noun for a repDelta REP_INCREASE sentence —
+ *  distinct from `axisPhrase`'s `changedNoun` (the single REPRESENTATIVE
+ *  value's own noun). `quantityFor` (metricStrategy.ts) sums reps for
+ *  every metric kind EXCEPT duration/distance, so only those two need a
+ *  different total noun; est1rm/addedWeight/assistedWeight/reps all
+ *  genuinely total reps. */
+function totalQuantityNoun(metricKind: ProgressMetricKind): string {
+  switch (metricKind) {
+    case 'duration': return 'total duration'
+    case 'distance': return 'total distance'
+    default: return 'total reps'
+  }
+}
+
 export function actionLabel(action: CurrentAction): string {
   return RULE_CATALOG[action]?.title ?? action
 }
@@ -158,7 +172,13 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
     return `${phrase.increased}, but at least one set fell below the target minimum — confirm before increasing again.`
   }
   if (result.repDelta === 'REP_INCREASE') {
-    return `Same load, and total reps went up with no set going down — real progress, not noise.`
+    // §6: metric-aware — a duration/distance exercise never had "reps" go
+    // up at all; it was total duration/distance, and "Same load" is itself
+    // only accurate for a real load axis (assisted/reps/duration/distance
+    // each use their own changedNoun via axisPhrase, matching the rest of
+    // this file's terminology-separation rule).
+    const phrase = axisPhrase(result.metricKind)
+    return `Same ${phrase.changedNoun}, and ${totalQuantityNoun(result.metricKind)} went up with no set going down — real progress, not noise.`
   }
   if (result.currentAction === 'WATCH_FOR_PLATEAU') {
     return `No real trend across ${result.trend.currentLoadCycleSessions} sessions at this load. This is a review signal, not a diagnosis.`

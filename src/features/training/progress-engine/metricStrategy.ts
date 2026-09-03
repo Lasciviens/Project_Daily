@@ -6,7 +6,7 @@
 // with it) are never duplicated or drifted per call site.
 
 import { est1RM } from '../progressAggregate'
-import type { CanonicalSet, ProgressMetricKind } from './types'
+import type { CanonicalSet, ExpectationRange, ProgressMetricKind, RangeCompliance, SessionLoadStructure } from './types'
 
 const EST_1RM_MAX_REPS = 12
 
@@ -201,4 +201,78 @@ export function isCleanProgression(
   const totalImproved = latestTotal > prevTotal
   const noneRegressed = (latestQ as number[]).every((v, i) => v >= (prevQ[i] as number))
   return totalImproved && noneRegressed
+}
+
+/** A session-shaped OR RepresentativePoint-shaped value — both carry
+ *  `loadStructure` and their own comparable working sets (named `sets` on
+ *  a point, `comparableWorkingSets` on a session — callers pass the latter
+ *  via a small `{loadStructure, sets: session.comparableWorkingSets}`
+ *  wrapper). Lives here (not comparability.ts/trend.ts) specifically so
+ *  `isQualifiedForPositiveSignal` below has zero engine-internal
+ *  dependencies and can be imported by BOTH comparability.ts and trend.ts
+ *  without a circular import (comparability.ts already imports FROM
+ *  trend.ts for `meaningfulDeclineReps`). */
+export interface QualifiablePoint {
+  loadStructure: SessionLoadStructure
+  sets: readonly CanonicalSet[]
+}
+
+/** Range compliance from a plain reps array — shared by `sessionRangeCompliance`
+ *  (comparability.ts) and `isQualifiedForPositiveSignal` below, so there is
+ *  exactly one definition of "at the top" / "at least the minimum" /
+ *  "below the minimum" / "not evaluated". */
+export function complianceFromReps(reps: readonly (number | null)[], expectation: ExpectationRange): RangeCompliance {
+  if (reps.length === 0 || reps.some(r => r == null)) return 'NOT_EVALUATED'
+  const values = reps as number[]
+  if (expectation.repMax != null && values.every(r => r >= (expectation.repMax as number))) return 'ALL_SETS_AT_TOP'
+  if (expectation.repMin != null && values.every(r => r >= (expectation.repMin as number))) return 'ALL_SETS_AT_OR_ABOVE_MIN'
+  if (expectation.repMin == null && expectation.repMax == null) return 'NOT_EVALUATED'
+  return 'BELOW_MINIMUM'
+}
+
+/** The shared structural-evaluability gate underneath both
+ *  `sessionRangeCompliance` and `isQualifiedForPositiveSignal`: a
+ *  session/point can only ever be evaluated when it is (a) not mixed_load,
+ *  (b) has a real representative set for this metric at all, and (c) its
+ *  logged comparable set count matches the prescribed count EXACTLY —
+ *  applied identically regardless of load shape (a real bug: the exact-
+ *  count check used to run only for a plain uniform_working_load session,
+ *  so a top_set_and_backoff session missing a backoff set could still read
+ *  ALL_SETS_AT_TOP off its own top set alone). Returns the representative
+ *  set on success so callers needing it don't re-derive it. */
+export function evaluableRepresentativeSet(
+  point: QualifiablePoint,
+  expectation: ExpectationRange,
+  metricKind: ProgressMetricKind,
+): CanonicalSet | null {
+  if (point.loadStructure === 'mixed_load') return null
+  if (point.sets.length !== expectation.targetSets) return null
+  return selectRepresentativeSet(point.sets, point.loadStructure, metricKind)
+}
+
+function repsForCompliance(point: QualifiablePoint, rep: CanonicalSet): readonly (number | null)[] {
+  return point.loadStructure === 'top_set_and_backoff' ? [rep.reps] : point.sets.map(s => s.reps)
+}
+
+/** The ONE shared "does this pair's load increase actually count as a
+ *  positive progress signal" check — reused identically by pair evaluation
+ *  (evaluate.ts's freshImprovement), the recent-trend cycle-boundary tally
+ *  (trend.ts), and the progression streak's loadUp/cleanProgression links
+ *  (events.ts). A raw weight increase (or a raw clean rep/duration/
+ *  distance increase) is NEVER credited as positive when the session it's
+ *  read from is incomplete (comparable set count doesn't match the
+ *  prescribed count), mixed-load, not evaluable for this metric at all, or
+ *  below the target's rep minimum — an exercise/metric with no configured
+ *  target at all is never disqualified purely for lacking one (there is
+ *  nothing to be "below"). Takes a single point/session: the one the
+ *  improvement is being credited to (the higher/later side of the pair). */
+export function isQualifiedForPositiveSignal(
+  point: QualifiablePoint,
+  expectation: ExpectationRange,
+  metricKind: ProgressMetricKind,
+): boolean {
+  const rep = evaluableRepresentativeSet(point, expectation, metricKind)
+  if (rep == null) return false
+  if (expectation.repMin == null && expectation.repMax == null) return true
+  return complianceFromReps(repsForCompliance(point, rep), expectation) !== 'BELOW_MINIMUM'
 }

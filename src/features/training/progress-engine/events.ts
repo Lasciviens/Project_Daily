@@ -6,7 +6,7 @@
 import type { CanonicalExerciseSession, ProgressEvent, ExpectationRange, ExerciseProgressionPolicy, ProgressMetricKind } from './types'
 import type { RepresentativePoint } from './trend'
 import { isPositiveLoadChange } from './policies'
-import { isWeightBasedMetric, isCleanProgression, metricValueOf, selectRepresentativeSet } from './metricStrategy'
+import { isWeightBasedMetric, isCleanProgression, metricValueOf, selectRepresentativeSet, isQualifiedForPositiveSignal } from './metricStrategy'
 
 export function detectProgressEvents(
   points: readonly RepresentativePoint[],
@@ -106,7 +106,7 @@ export function detectProgressEvents(
   // metric's own positive direction, or a clean progression per the shared
   // contract). `policy.progressionStreakMinLength` is a documented product
   // heuristic (default 3), not a scientific threshold.
-  const streak = computeProgressionStreak(points, latestIndex, metricKind)
+  const streak = computeProgressionStreak(points, latestIndex, metricKind, expectation)
   if (streak >= policy.progressionStreakMinLength) {
     events.push({ code: 'PROGRESSION_STREAK', emphasis: 'primary', values: { streakLength: streak } })
   }
@@ -131,15 +131,34 @@ export function detectProgressEvents(
  *  progression branch to pairs where the representative weight actually
  *  held steady — a real weight change is only ever credited via the
  *  separate `loadUp` branch (a genuine increase in the metric's own
- *  positive direction), never via `isCleanProgression`. */
-function computeProgressionStreak(points: readonly RepresentativePoint[], latestIndex: number, metricKind: ProgressMetricKind): number {
+ *  positive direction), never via `isCleanProgression`.
+ *
+ *  §3/§4: `isQualifiedForPositiveSignal` (the SAME shared check pair
+ *  evaluation and the recent-trend tally use) gates BOTH `loadUp` and
+ *  `cleanProgression` identically — applied once, up front, to `curr`
+ *  (the session the streak link is being credited to). A real bug: this
+ *  guard previously applied ONLY to `cleanProgression`'s comparable-set-
+ *  count check, so a genuine weight increase FROM an incomplete/mixed/
+ *  not-evaluable/below-minimum session could still extend the streak via
+ *  `loadUp` alone. An unqualified `curr` breaks the walk outright — the
+ *  same treatment `mixed_load` already gets — rather than being silently
+ *  skipped, since a broken link can't be "consecutive" with what's on
+ *  either side of it. */
+function computeProgressionStreak(
+  points: readonly RepresentativePoint[],
+  latestIndex: number,
+  metricKind: ProgressMetricKind,
+  expectation: ExpectationRange,
+): number {
   let streak = 0
   for (let i = latestIndex; i > 0; i--) {
     const prev = points[i - 1], curr = points[i]
     if (prev.loadStructure === 'mixed_load' || curr.loadStructure === 'mixed_load') break
-    const loadUp = prev.weightKg != null && curr.weightKg != null && isPositiveLoadChange(metricKind, prev.weightKg, curr.weightKg) === true
+    if (!isQualifiedForPositiveSignal(curr, expectation, metricKind)) break
+    const comparableSetCountsMatch = prev.comparableSetCount === curr.comparableSetCount
+    const loadUp = comparableSetCountsMatch && prev.weightKg != null && curr.weightKg != null && isPositiveLoadChange(metricKind, prev.weightKg, curr.weightKg) === true
     const sameLoadContext = prev.weightKg === curr.weightKg
-    const cleanProgression = sameLoadContext && prev.comparableSetCount === curr.comparableSetCount && isCleanProgression(prev.sets, curr.sets, metricKind)
+    const cleanProgression = sameLoadContext && comparableSetCountsMatch && isCleanProgression(prev.sets, curr.sets, metricKind)
     if (loadUp || cleanProgression) streak++
     else break
   }

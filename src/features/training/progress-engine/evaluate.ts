@@ -12,7 +12,7 @@ import { buildRepresentativePoints, buildLoadCycles, computeRecentProgressTrend,
 import { evaluatePair, sessionRangeCompliance } from './comparability'
 import { detectProgressEvents, detectEstimatedStrengthPr } from './events'
 import { buildNextTargets } from './targets'
-import { selectRepresentativeSet, metricValueOf } from './metricStrategy'
+import { selectRepresentativeSet, metricValueOf, isQualifiedForPositiveSignal } from './metricStrategy'
 
 function round1(n: number): number { return Math.round(n * 10) / 10 }
 
@@ -145,24 +145,26 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
   const cycles = buildLoadCycles(points)
   const currentCycle = cycles[cycles.length - 1]
   const clp = computeCurrentLoadProgress(currentCycle.points, metricKind, policy)
-  const recent = computeRecentProgressTrend(points, metricKind, policy)
-
-  // The SAME windowed sessions computeRecentProgressTrend actually used
-  // (recent.n, always <= policy.recentWindowSessions) — progress evidence
-  // (§7) is confidence in THIS read specifically, so its own date span,
-  // never the exercise's full all-time span, is what must back it.
-  const recentWindowSessionsSlice = sessions.slice(-recent.n)
-  const recentWindowWeekSpan = recentWindowSessionsSlice.length >= 2
-    ? Math.round(daysBetween(recentWindowSessionsSlice[0].date, recentWindowSessionsSlice[recentWindowSessionsSlice.length - 1].date) / 7)
-    : 0
+  // §5: computeRecentProgressTrend now derives its OWN n/weekSpan from the
+  // evaluable points it actually used — never re-sliced from `sessions`
+  // here, which used to silently disagree with the trend's own filtering
+  // (and broke outright at n=0, since `sessions.slice(-0)` returns the
+  // FULL array, not an empty one).
+  const recent = computeRecentProgressTrend(points, metricKind, policy, expectation)
 
   // Precedence: a real, fresh improvement this pair overrides a plateau/
   // regression read from the longer window — the two-point read wins only
   // when it shows genuine forward motion; the long-window read governs
-  // otherwise.
+  // otherwise. §4: uses the SAME shared qualification check as the recent-
+  // trend tally and the progression streak — a raw LOAD_INCREASED/
+  // REP_INCREASE transition into a latest session that's incomplete,
+  // mixed, not evaluable, or below the target minimum is never treated as
+  // a "fresh improvement" (this also closes the case where a mixed-load
+  // session still happened to resolve a representative value and so could
+  // reach LOAD_INCREASED despite evaluationScope being forced NOT_EVALUATED).
   let currentAction: CurrentAction = pair.currentAction
-  const freshImprovement = pair.observedTransition === 'LOAD_INCREASED' && pair.rangeCompliance !== 'BELOW_MINIMUM'
-    || pair.repDelta === 'REP_INCREASE'
+  const latestQualified = isQualifiedForPositiveSignal({ loadStructure: latest.loadStructure, sets: latest.comparableWorkingSets }, expectation, metricKind)
+  const freshImprovement = latestQualified && (pair.observedTransition === 'LOAD_INCREASED' || pair.repDelta === 'REP_INCREASE')
   if (!freshImprovement && pair.dataQualityFlags.length === 0) {
     if (clp.state === 'POSSIBLE_PLATEAU') currentAction = 'WATCH_FOR_PLATEAU'
     else if (clp.state === 'DECLINING') currentAction = 'WATCH_FOR_REGRESSION'
@@ -222,12 +224,12 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     observedTransition: pair.observedTransition, repDelta: pair.repDelta, rangeCompliance: pair.rangeCompliance,
     evaluationScope: pair.evaluationScope, dataQualityFlags: pair.dataQualityFlags, currentAction,
     trend: {
-      recentProgressTrend: recent.state, recentWindowSessions: recent.n, recentWindowWeekSpan,
+      recentProgressTrend: recent.state, recentWindowSessions: recent.n, recentWindowWeekSpan: recent.weekSpan,
       recentPositiveSignals: recent.positive, recentNegativeSignals: recent.negative,
       currentLoadProgress: clp.state, currentLoadCycleSessions: clp.n,
       currentLoadSlope: clp.slope, currentLoadResidualSpread: clp.residualSpread,
     },
-    evidence: { progress: computeProgressEvidence(recent.n, recentWindowWeekSpan), recommendation: recommendationEvidence },
+    evidence: { progress: computeProgressEvidence(recent.n, recent.weekSpan), recommendation: recommendationEvidence },
     reasons, events, currentState,
     nextTargets: buildNextTargets(latest, expectation, metricKind, currentAction, policy, explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind)),
     expectation, comparableSessions, weekSpan,

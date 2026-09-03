@@ -4,9 +4,13 @@
 // (scoped to the CURRENT stable-load segment only). All-history PR/event
 // detection lives in events.ts and is never windowed.
 
-import type { CanonicalExerciseSession, CanonicalSet, ExerciseProgressionPolicy, RecentProgressTrendState, CurrentLoadProgressState, ProgressMetricKind } from './types'
-import { selectRepresentativeSet, totalQuantity, metricValueOf, isCleanProgression } from './metricStrategy'
+import type { CanonicalExerciseSession, CanonicalSet, ExerciseProgressionPolicy, ExpectationRange, RecentProgressTrendState, CurrentLoadProgressState, ProgressMetricKind } from './types'
+import { selectRepresentativeSet, totalQuantity, metricValueOf, isCleanProgression, isWeightBasedMetric, isQualifiedForPositiveSignal } from './metricStrategy'
 import { isPositiveLoadChange } from './policies'
+
+function daysBetweenDates(a: string, b: string): number {
+  return Math.abs(new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86_400_000
+}
 
 export interface RepresentativePoint {
   date: string
@@ -170,14 +174,34 @@ export function computeCurrentLoadProgress(
  *  progression from a raw total comparison. A pair with a comparable-set-
  *  count mismatch is skipped entirely (never enters positive OR negative
  *  tallying), matching the rule that a set-count mismatch never enters
- *  trend regression. */
+ *  trend regression.
+ *
+ *  §5: `n` and the returned `weekSpan` are calculated from the EVALUABLE
+ *  points actually used — never the raw window slice's length. A point
+ *  with no representative value at all (e.g. a `weight_duration` composite
+ *  session) is excluded BEFORE the `< 3` sufficiency check, so a window
+ *  entirely made of unusable sessions correctly reads INSUFFICIENT_HISTORY
+ *  (feeding a Limited progress-evidence read) instead of silently reporting
+ *  FLAT_NORMAL_VARIATION with a raw session count that implies real data
+ *  backs it. Evaluability is metric-aware: `weightKg` for a weight-based
+ *  metric, `metricValue` otherwise — a plain reps/duration/distance point
+ *  legitimately has `weightKg: null` and must not be excluded for that.
+ *
+ *  §4: both tallies use `isQualifiedForPositiveSignal` (metricStrategy.ts)
+ *  before crediting a "positive" — the SAME shared qualification pair
+ *  evaluation and the progression streak use — so a load increase (or a
+ *  raw clean quantity increase) into an incomplete/mixed/not-evaluable/
+ *  below-minimum session is never counted as trend evidence. */
 export function computeRecentProgressTrend(
   points: readonly RepresentativePoint[],
   metricKind: ProgressMetricKind,
   policy: ExerciseProgressionPolicy,
-): { state: RecentProgressTrendState; n: number; positive: number; negative: number } {
-  const windowed = points.slice(-policy.recentWindowSessions)
-  if (windowed.length < 3) return { state: 'INSUFFICIENT_HISTORY', n: windowed.length, positive: 0, negative: 0 }
+  expectation: ExpectationRange,
+): { state: RecentProgressTrendState; n: number; weekSpan: number; positive: number; negative: number } {
+  const windowedRaw = points.slice(-policy.recentWindowSessions)
+  const windowed = windowedRaw.filter(p => isWeightBasedMetric(metricKind) ? p.weightKg != null : p.metricValue != null)
+  const weekSpan = windowed.length >= 2 ? Math.round(daysBetweenDates(windowed[0].date, windowed[windowed.length - 1].date) / 7) : 0
+  if (windowed.length < 3) return { state: 'INSUFFICIENT_HISTORY', n: windowed.length, weekSpan, positive: 0, negative: 0 }
 
   const cyclesInWindow = buildLoadCycles(windowed)
   let positive = 0, negative = 0
@@ -186,8 +210,10 @@ export function computeRecentProgressTrend(
     const prevW = cyclesInWindow[i - 1].weightKg, currW = cyclesInWindow[i].weightKg
     if (prevW == null || currW == null) continue
     const direction = isPositiveLoadChange(metricKind, prevW, currW)
-    if (direction === true) positive++
-    else if (direction === false) negative++
+    if (direction === true) {
+      const currFirstPoint = cyclesInWindow[i].points[0]
+      if (isQualifiedForPositiveSignal(currFirstPoint, expectation, metricKind)) positive++
+    } else if (direction === false) negative++
   }
 
   for (const cycle of cyclesInWindow) {
@@ -195,7 +221,7 @@ export function computeRecentProgressTrend(
       const prev = cycle.points[i - 1], curr = cycle.points[i]
       if (prev.total == null || curr.total == null) continue
       if (prev.comparableSetCount !== curr.comparableSetCount) continue // a set-count mismatch never enters trend regression
-      if (isCleanProgression(prev.sets, curr.sets, metricKind)) {
+      if (isCleanProgression(prev.sets, curr.sets, metricKind) && isQualifiedForPositiveSignal(curr, expectation, metricKind)) {
         positive++
         continue
       }
@@ -210,5 +236,5 @@ export function computeRecentProgressTrend(
   if (positive === 0 && negative === 0) state = 'FLAT_NORMAL_VARIATION'
   else if (negative > 0 && negative >= positive) state = 'REGRESSION_RISK'
   else state = 'PROGRESSING'
-  return { state, n: windowed.length, positive, negative }
+  return { state, n: windowed.length, weekSpan, positive, negative }
 }

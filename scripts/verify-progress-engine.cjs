@@ -27,7 +27,7 @@ const {
 } = require('../src/features/training/progress-engine/normalize')
 const {
   isMetricEligible, metricValueOf, selectRepresentativeSet, quantityFor, totalQuantity, isCleanProgression,
-  higherIsBetterFor, isWeightBasedMetric,
+  higherIsBetterFor, isWeightBasedMetric, isQualifiedForPositiveSignal,
 } = require('../src/features/training/progress-engine/metricStrategy')
 const {
   linearFit, computeCurrentLoadProgress, computeRecentProgressTrend, buildRepresentativePoints, buildLoadCycles,
@@ -527,7 +527,7 @@ console.log('\n== 10. computeRecentProgressTrend — reuses isCleanProgression, 
   const points = []
   for (let i = 0; i < 11; i++) points.push({ date: `d${i}`, loadStructure: 'uniform_working_load', weightKg: i === 1 ? 70 : 60, total: 24, sets: [set(1, 60, 8), set(2, 60, 8), set(3, 60, 8)], comparableSetCount: 3 })
   points.push({ date: 'latest', loadStructure: 'uniform_working_load', weightKg: 65, total: 24, sets: [set(1, 65, 8), set(2, 65, 8), set(3, 65, 8)], comparableSetCount: 3 })
-  const recent = computeRecentProgressTrend(points, 'est1rm', DEFAULT_POLICY)
+  const recent = computeRecentProgressTrend(points, 'est1rm', DEFAULT_POLICY, DEFAULT_EXPECTATION(6, 12, 3))
   check('window caps at the configured size (default 8)', recent.n <= DEFAULT_POLICY.recentWindowSessions)
 
   // §14 named scenario: 10/8/7 -> 9/9/8 must NOT read as a positive signal —
@@ -543,7 +543,7 @@ console.log('\n== 10. computeRecentProgressTrend — reuses isCleanProgression, 
       { date: 'd1', loadStructure: 'uniform_working_load', weightKg: 60, total: 25, sets: prevSets, comparableSetCount: 3 },
       { date: 'd2', loadStructure: 'uniform_working_load', weightKg: 60, total: 26, sets: currSets, comparableSetCount: 3 },
     ]
-    const r = computeRecentProgressTrend(trendPoints, 'est1rm', DEFAULT_POLICY)
+    const r = computeRecentProgressTrend(trendPoints, 'est1rm', DEFAULT_POLICY, DEFAULT_EXPECTATION(6, 12, 3))
     check('§14: the trend read never counts this pair as a positive signal', r.positive === 0)
   }
 
@@ -554,7 +554,7 @@ console.log('\n== 10. computeRecentProgressTrend — reuses isCleanProgression, 
       { date: 'd1', loadStructure: 'uniform_working_load', weightKg: 60, total: 16, sets: [set(1, 60, 8), set(2, 60, 8)], comparableSetCount: 2 },
       { date: 'd2', loadStructure: 'uniform_working_load', weightKg: 60, total: 24, sets: [set(1, 60, 8), set(2, 60, 8), set(3, 60, 8)], comparableSetCount: 3 },
     ]
-    const r = computeRecentProgressTrend(mismatchPoints, 'est1rm', DEFAULT_POLICY)
+    const r = computeRecentProgressTrend(mismatchPoints, 'est1rm', DEFAULT_POLICY, DEFAULT_EXPECTATION(6, 12, 3))
     check('a set-count mismatch pair contributes to neither positive nor negative', r.positive === 0 && r.negative === 0)
   }
 }
@@ -1101,6 +1101,221 @@ console.log('\n== 18. Second correction round — 7 further blocker fixes ==')
     check('G: evidence.progress reads "limited" from the actual ~1-week windowed span, never "strong" from the ~6-year full history', result.evidence.progress === 'limited')
     const progressText = progressEvidenceExplanation(result)
     check('G: progressEvidenceExplanation cites the WINDOWED session count (8), never the full history count (10)', progressText.includes('8 session') && !progressText.includes('10 session'))
+  }
+}
+
+console.log('\n== 19. Third correction round — 7 boundary fixes ==')
+{
+  // BLOCKER 1 — the exact prescribed-set-count guard must run BEFORE the
+  // top_set_and_backoff branch in sessionRangeCompliance: a 2-of-3 top-
+  // set/backoff session (missing its full backoff work) must never return
+  // ALL_SETS_AT_TOP just because the 2 sets it DID log both happened to be
+  // at the top of the range.
+  {
+    // 2 logged sets (60x10 top, 55x10 backoff) against a 3-set target — a
+    // genuinely missing backoff set. classifyLoadStructure treats a clean
+    // 2-set heavier-then-lighter session as top_set_and_backoff by definition.
+    const incompleteBackoff = buildCanonicalSessions(
+      [row('w1', '2026-08-01', 'backoffconfirm', 1, 60, 10), row('w1', '2026-08-01', 'backoffconfirm', 2, 55, 10)],
+      'backoffconfirm',
+    )[0]
+    check('1 fixture: the 2-set session really is classified top_set_and_backoff', incompleteBackoff.loadStructure === 'top_set_and_backoff')
+    const expectation3 = DEFAULT_EXPECTATION(6, 10, 3)
+    check('1: a 2-of-3 top_set_and_backoff session (both logged sets at the top) is NOT_EVALUATED, never ALL_SETS_AT_TOP',
+      sessionRangeCompliance(incompleteBackoff, expectation3, 'est1rm') === 'NOT_EVALUATED')
+
+    // Full confirmations integration: the LATEST session is a plain uniform
+    // session (exact count, all sets at top) so the pair itself genuinely
+    // reaches READY_TO_INCREASE; walking backward, the PREVIOUS session is
+    // an incomplete (2-of-3) top_set_and_backoff session that must NOT
+    // count as a confirmation despite its own top set sitting at the max.
+    const rows = [
+      [row('w1', '2026-08-01', 'backoffconfirm2', 1, 60, 10), row('w1', '2026-08-01', 'backoffconfirm2', 2, 55, 10)], // 2 of 3 — incomplete top_set_and_backoff
+      uniformRows('w2', '2026-08-08', 'backoffconfirm2', 60, [10, 10, 10]), // 3 of 3 — complete, all at top
+    ].flat()
+    const sessions = buildCanonicalSessions(rows, 'backoffconfirm2')
+    const expectation = resolveExpectation('backoffconfirm2', 'est1rm', 3, () => ({ repMin: 6, repMax: 10, targetSets: 3 }), () => null)
+    const policy2 = { ...DEFAULT_POLICY, requiredTopRangeConfirmations: 2 }
+    const result = evaluateExerciseProgress({ exerciseTemplateId: 'backoffconfirm2', metricKind: 'est1rm', sessions, expectation }, policy2)
+    check('1 fixture: the latest pair genuinely reaches READY_TO_INCREASE before the confirmations gate applies', result.reasons.every(r => r.code !== 'DATA_QUALITY_MISSING_SET'))
+    check('1: only 1 real confirmation counted (the incomplete 2-of-3 top_set_and_backoff session never qualifies) — downgraded to BUILD_AT_CURRENT_LOAD',
+      result.currentAction === 'BUILD_AT_CURRENT_LOAD' && result.reasons.some(r => r.code === 'AWAITING_TOP_RANGE_CONFIRMATION' && r.values.confirmations === 1))
+  }
+
+  // BLOCKER 2 — TOP_SET_ONLY must never independently produce
+  // READY_TO_INCREASE; that action requires the FULL prescribed structure
+  // (ALL_PRESCRIBED_WORKING_SETS), never a top-set-only read.
+  {
+    // A COMPLETE top_set_and_backoff session (2 of a 2-set target — the
+    // program genuinely prescribes just a top set + one backoff set), top
+    // set at the range max. evaluationScope here IS a real TOP_SET_ONLY
+    // (never NOT_EVALUATED — this is testing the READY_TO_INCREASE gate
+    // itself, not blocker 1's completeness gate).
+    const prevSession = buildCanonicalSessions([row('w1', '2026-08-01', 'topsetready', 1, 55, 8), row('w1', '2026-08-01', 'topsetready', 2, 50, 8)], 'topsetready')[0]
+    const latestSession = buildCanonicalSessions([row('w2', '2026-08-08', 'topsetready', 1, 55, 10), row('w2', '2026-08-08', 'topsetready', 2, 50, 10)], 'topsetready')[0]
+    const expectation = DEFAULT_EXPECTATION(6, 10, 2)
+    const pair = evaluatePair(prevSession, latestSession, expectation, 'est1rm', DEFAULT_POLICY)
+    check('2 fixture: evaluationScope really is TOP_SET_ONLY (a genuine top_set_and_backoff read, not blocker 1\'s NOT_EVALUATED)', pair.evaluationScope === 'TOP_SET_ONLY')
+    check('2 fixture: rangeCompliance really is ALL_SETS_AT_TOP (the top set hit the range max)', pair.rangeCompliance === 'ALL_SETS_AT_TOP')
+    check('2: TOP_SET_ONLY + ALL_SETS_AT_TOP never independently produces READY_TO_INCREASE', pair.currentAction !== 'READY_TO_INCREASE')
+
+    // Contrast: the SAME read shape via ALL_PRESCRIBED_WORKING_SETS (a
+    // plain uniform session, exact count, all sets at the top) DOES reach
+    // READY_TO_INCREASE — proving the gate is scope-specific, not a blanket
+    // suppression of the action.
+    const prevUniform = buildCanonicalSessions(uniformRows('w1', '2026-08-01', 'uniformready', 60, [8, 8]), 'uniformready')[0]
+    const latestUniform = buildCanonicalSessions(uniformRows('w2', '2026-08-08', 'uniformready', 60, [10, 10]), 'uniformready')[0]
+    const uniformPair = evaluatePair(prevUniform, latestUniform, expectation, 'est1rm', DEFAULT_POLICY)
+    check('2 contrast: ALL_PRESCRIBED_WORKING_SETS + ALL_SETS_AT_TOP DOES reach READY_TO_INCREASE (the gate is scope-specific)',
+      uniformPair.evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS' && uniformPair.currentAction === 'READY_TO_INCREASE')
+  }
+
+  // BLOCKER 3 — computeProgressionStreak's set-count/evaluability guard
+  // must apply to BOTH loadUp and cleanProgression. Uses
+  // progressionStreakMinLength: 1 so the streak threshold is actually
+  // reachable in a 2-session fixture.
+  {
+    const minLength1Policy = { ...DEFAULT_POLICY, progressionStreakMinLength: 1 }
+    const expectation3 = DEFAULT_EXPECTATION(6, 20, 3)
+
+    // A genuine weight increase (60 -> 65) but the LATEST session logs
+    // FEWER sets than the previous one (3 -> 2) — a real loadUp by the OLD
+    // (un-guarded) check, but must NOT count once the guard applies to
+    // loadUp too.
+    const mismatchRows = [...uniformRows('w1', '2026-08-01', 'streakmismatch', 60, [8, 8, 8]), ...uniformRows('w2', '2026-08-08', 'streakmismatch', 65, [8, 8])]
+    const mismatchSessions = buildCanonicalSessions(mismatchRows, 'streakmismatch')
+    const mismatchPoints = buildRepresentativePoints(mismatchSessions, 'est1rm')
+    const mismatchEv = detectProgressEvents(mismatchPoints, 1, 'est1rm', mismatchSessions[1], expectation3, minLength1Policy)
+    check('3: a genuine weight increase INTO a session with fewer sets than the target never fires PROGRESSION_STREAK, even at minLength=1',
+      !mismatchEv.some(e => e.code === 'PROGRESSION_STREAK'))
+
+    // Positive control — the SAME weight increase, but the latest session
+    // logs the correct (matching) set count: PROGRESSION_STREAK DOES fire
+    // at minLength=1, proving the guard isn't over-broad.
+    const cleanRows = [...uniformRows('w1', '2026-08-01', 'streakclean', 60, [8, 8, 8]), ...uniformRows('w2', '2026-08-08', 'streakclean', 65, [8, 8, 8])]
+    const cleanSessions = buildCanonicalSessions(cleanRows, 'streakclean')
+    const cleanPoints = buildRepresentativePoints(cleanSessions, 'est1rm')
+    const cleanEv = detectProgressEvents(cleanPoints, 1, 'est1rm', cleanSessions[1], expectation3, minLength1Policy)
+    check('3 control: the same weight increase with a MATCHING set count DOES fire PROGRESSION_STREAK at minLength=1 (the guard is not over-broad)',
+      cleanEv.some(e => e.code === 'PROGRESSION_STREAK' && e.values.streakLength === 1))
+
+    // Four sessions reaching the DEFAULT minLength=3 threshold end to end,
+    // with an incomplete session injected as the middle link — confirms
+    // the guard breaks a real, otherwise-qualifying streak.
+    const fourSessionRows = [
+      ...uniformRows('w1', '2026-08-01', 'streakfour', 60, [8, 8, 8]),
+      ...uniformRows('w2', '2026-08-08', 'streakfour', 65, [8, 8]), // incomplete — fewer sets than the 3-set target
+      ...uniformRows('w3', '2026-08-15', 'streakfour', 70, [8, 8, 8]),
+      ...uniformRows('w4', '2026-08-22', 'streakfour', 75, [8, 8, 8]),
+    ]
+    const fourSessions = buildCanonicalSessions(fourSessionRows, 'streakfour')
+    const fourPoints = buildRepresentativePoints(fourSessions, 'est1rm')
+    const fourEv = detectProgressEvents(fourPoints, 3, 'est1rm', fourSessions[3], expectation3, DEFAULT_POLICY)
+    check('3: an incomplete session as the middle link breaks a 4-session chain — PROGRESSION_STREAK does not fire at the default minLength=3',
+      !fourEv.some(e => e.code === 'PROGRESSION_STREAK'))
+  }
+
+  // BLOCKER 4 — the ONE shared qualified-pair progress signal
+  // (isQualifiedForPositiveSignal) must disqualify a load increase for
+  // EACH of: incomplete, mixed, not evaluable, below the target minimum.
+  {
+    const expectation3 = DEFAULT_EXPECTATION(8, 12, 3)
+
+    const incomplete = { loadStructure: 'uniform_working_load', sets: [set(1, 60, 10), set(2, 60, 10)] } // 2 of 3
+    check('4: incomplete (set count mismatch) disqualifies', !isQualifiedForPositiveSignal(incomplete, expectation3, 'est1rm'))
+
+    const mixed = { loadStructure: 'mixed_load', sets: [set(1, 100, 5), set(2, 90, 6), set(3, 95, 5)] }
+    check('4: mixed_load disqualifies', !isQualifiedForPositiveSignal(mixed, DEFAULT_EXPECTATION(5, 8, 3), 'est1rm'))
+
+    const notEvaluable = { loadStructure: 'uniform_working_load', sets: [set(1, 20, null, 'normal', { durationSeconds: 45 }), set(2, 20, null, 'normal', { durationSeconds: 45 }), set(3, 20, null, 'normal', { durationSeconds: 45 })] }
+    check('4: not evaluable (weight_duration composite, no representative value) disqualifies', !isQualifiedForPositiveSignal(notEvaluable, DEFAULT_EXPECTATION(null, null, 3), 'duration'))
+
+    const belowMinimum = { loadStructure: 'uniform_working_load', sets: [set(1, 60, 5), set(2, 60, 5), set(3, 60, 5)] } // repMin=8, only 5 reps
+    check('4: below the target minimum disqualifies', !isQualifiedForPositiveSignal(belowMinimum, expectation3, 'est1rm'))
+
+    const qualified = { loadStructure: 'uniform_working_load', sets: [set(1, 60, 10), set(2, 60, 10), set(3, 60, 10)] }
+    check('4: a complete, evaluable, at-or-above-minimum session qualifies', isQualifiedForPositiveSignal(qualified, expectation3, 'est1rm'))
+
+    // No configured target at all -> never disqualified purely for lacking one.
+    const noTarget = DEFAULT_EXPECTATION(null, null, 3)
+    check('4: no configured target -> not disqualified for "below minimum" (nothing to be below)', isQualifiedForPositiveSignal(qualified, noTarget, 'est1rm'))
+
+    // End-to-end integration: evaluate.ts's `freshImprovement` now calls
+    // the SAME shared `isQualifiedForPositiveSignal` directly (rather than
+    // an ad-hoc, independently-maintained equivalent), so this confirms the
+    // shared check flows cleanly through the full pipeline — a raw
+    // LOAD_INCREASED transition into an INCOMPLETE latest session (only 2
+    // of a 3-set target) is disqualified as a "fresh improvement" and the
+    // pipeline lands on CONFIRM_AT_CURRENT_LOAD (the data-quality-
+    // compromised branch of the pair's own read) — it never reaches
+    // READY_TO_INCREASE, and observedTransition still honestly reports the
+    // raw LOAD_INCREASED fact rather than hiding it.
+    {
+      const rows = [
+        ...uniformRows('w1', '2026-08-05', 'disqualifiedimprovement', 40, [10, 10, 10]),
+        ...uniformRows('w2', '2026-09-02', 'disqualifiedimprovement', 45, [10, 10]), // a load increase, but only 2 of a 3-set target
+      ]
+      const sessions = buildCanonicalSessions(rows, 'disqualifiedimprovement')
+      const expectation = resolveExpectation('disqualifiedimprovement', 'est1rm', 3, () => ({ repMin: 6, repMax: 20, targetSets: 3 }), () => null)
+      const result = evaluateExerciseProgress({ exerciseTemplateId: 'disqualifiedimprovement', metricKind: 'est1rm', sessions, expectation }, DEFAULT_POLICY)
+      check('4: observedTransition is still LOAD_INCREASED (a raw fact) even though it is disqualified as a "fresh improvement"', result.observedTransition === 'LOAD_INCREASED')
+      check('4: an incomplete latest session never reaches READY_TO_INCREASE off a disqualified load increase', result.currentAction !== 'READY_TO_INCREASE')
+      check('4: the pipeline lands on CONFIRM_AT_CURRENT_LOAD (the pair\'s own data-quality-compromised read)', result.currentAction === 'CONFIRM_AT_CURRENT_LOAD')
+    }
+  }
+
+  // BLOCKER 5 — recent trend n/weekSpan must reflect the EVALUABLE points
+  // actually used. Eight unusable weight_duration sessions -> INSUFFICIENT_HISTORY
+  // and Limited progress evidence, never Flat/Strong.
+  {
+    const weightedDurationRows = (workoutId, date) => [1, 2, 3].map(i => row(workoutId, date, 'unusabletrend', i, 20, null, 'normal', { duration_seconds: 45 }))
+    const rows = Array.from({ length: 8 }, (_, i) => weightedDurationRows(`w${i}`, `2026-01-${String(1 + i * 7).padStart(2, '0')}`)).flat()
+    const sessions = buildCanonicalSessions(rows, 'unusabletrend')
+    check('5 fixture: 8 total (unusable) sessions logged', sessions.length === 8)
+    const expectation = resolveExpectation('unusabletrend', 'duration', 3, () => null, () => null)
+    const result = evaluateExerciseProgress({ exerciseTemplateId: 'unusabletrend', metricKind: 'duration', sessions, expectation }, DEFAULT_POLICY)
+    check('5: recentWindowSessions reflects the EVALUABLE count (0), never the raw window slice length (8)', result.trend.recentWindowSessions === 0)
+    check('5: recentWindowWeekSpan is 0 when there are no evaluable points at all', result.trend.recentWindowWeekSpan === 0)
+    check('5: recentProgressTrend reads INSUFFICIENT_HISTORY, never FLAT_NORMAL_VARIATION or a fabricated PROGRESSING/REGRESSION_RISK read', result.trend.recentProgressTrend === 'INSUFFICIENT_HISTORY')
+    check('5: evidence.progress reads "limited", never "strong" off the raw 8-session count', result.evidence.progress === 'limited')
+  }
+
+  // BLOCKER 6 — the REP_INCREASE explanation must be metric-aware: total
+  // reps / total duration / total distance, never a hardcoded "total reps"
+  // for a metric with no reps axis at all.
+  {
+    // duration-kind: the TOP-SET duration stays flat (same representative
+    // value -> LOAD_UNCHANGED) while OTHER positions improve, so the total
+    // duration climbs cleanly with no position going down.
+    const prevSets = durationRows('w1', '2026-08-01', 'repincreaseduration', [50, 40, 40])
+    const currSets = durationRows('w2', '2026-08-08', 'repincreaseduration', [50, 45, 42])
+    const sessions = buildCanonicalSessions([...prevSets, ...currSets], 'repincreaseduration')
+    const expectation = resolveExpectation('repincreaseduration', 'duration', 3, () => null, () => null)
+    const result = evaluateExerciseProgress({ exerciseTemplateId: 'repincreaseduration', metricKind: 'duration', sessions, expectation }, DEFAULT_POLICY)
+    check('6 fixture: repDelta really is REP_INCREASE for this duration-kind pair', result.repDelta === 'REP_INCREASE')
+    const sentence = buildExplanationSentence(result)
+    check('6: a duration-kind REP_INCREASE explanation says "total duration", never "total reps"', sentence.includes('total duration') && !sentence.includes('total reps'))
+    check('6: a duration-kind REP_INCREASE explanation never says "Same load"', !sentence.includes('Same load'))
+
+    // distance-kind: the same shape, using distance+duration pairs.
+    const prevDist = distanceRows('w1', '2026-08-01', 'repincreasedistance', [[400, 90], [300, 70], [300, 70]])
+    const currDist = distanceRows('w2', '2026-08-08', 'repincreasedistance', [[400, 90], [320, 75], [310, 72]])
+    const distSessions = buildCanonicalSessions([...prevDist, ...currDist], 'repincreasedistance')
+    const distExpectation = resolveExpectation('repincreasedistance', 'distance', 3, () => null, () => null)
+    const distResult = evaluateExerciseProgress({ exerciseTemplateId: 'repincreasedistance', metricKind: 'distance', sessions: distSessions, expectation: distExpectation }, DEFAULT_POLICY)
+    check('6 fixture: repDelta really is REP_INCREASE for this distance-kind pair', distResult.repDelta === 'REP_INCREASE')
+    const distSentence = buildExplanationSentence(distResult)
+    check('6: a distance-kind REP_INCREASE explanation says "total distance", never "total reps"', distSentence.includes('total distance') && !distSentence.includes('total reps'))
+
+    // est1rm-kind: unchanged wording, confirming no regression for the common case.
+    const estPrev = uniformRows('w1', '2026-08-01', 'repincreaseest', 60, [7, 7, 6])
+    const estCurr = uniformRows('w2', '2026-08-08', 'repincreaseest', 60, [7, 7, 7])
+    const estSessions = buildCanonicalSessions([...estPrev, ...estCurr], 'repincreaseest')
+    const estExpectation = resolveExpectation('repincreaseest', 'est1rm', 3, () => ({ repMin: 6, repMax: 12, targetSets: 3 }), () => null)
+    const estResult = evaluateExerciseProgress({ exerciseTemplateId: 'repincreaseest', metricKind: 'est1rm', sessions: estSessions, expectation: estExpectation }, DEFAULT_POLICY)
+    check('6 fixture: repDelta really is REP_INCREASE for this est1rm-kind pair', estResult.repDelta === 'REP_INCREASE')
+    const estSentence = buildExplanationSentence(estResult)
+    check('6: an est1rm-kind REP_INCREASE explanation keeps "Same load, and total reps went up" (no regression)', estSentence.includes('Same load') && estSentence.includes('total reps'))
   }
 }
 
