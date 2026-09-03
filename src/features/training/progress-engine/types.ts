@@ -109,7 +109,7 @@ export interface DecisionReason {
   values: Record<string, string | number | null>
 }
 
-export type ProgressEventCode = 'LOAD_PR' | 'REP_PR_AT_LOAD' | 'TOTAL_REPS_PR_AT_LOAD' | 'ESTIMATED_STRENGTH_PR' | 'TARGET_COMPLETED'
+export type ProgressEventCode = 'LOAD_PR' | 'REP_PR_AT_LOAD' | 'TOTAL_REPS_PR_AT_LOAD' | 'ESTIMATED_STRENGTH_PR' | 'TARGET_COMPLETED' | 'PROGRESSION_STREAK'
 export interface ProgressEvent {
   code: ProgressEventCode
   /** ESTIMATED_STRENGTH_PR is ALWAYS 'secondary' — an estimate never
@@ -187,7 +187,12 @@ export interface ExerciseProgressResult {
 // ── Policy — the hierarchical fallback the brief specified ─────────────────
 export interface ExerciseProgressionPolicy {
   recentWindowSessions: number          // default 8
-  requiredTopRangeConfirmations: number // default 1
+  requiredTopRangeConfirmations: number // default 1 — consecutive ALL_SETS_AT_TOP reads required before READY_TO_INCREASE fires
+  /** Consecutive forward-motion pairs (load-up in the metric's own positive
+   *  direction, or a clean progression) required for PROGRESSION_STREAK to
+   *  fire. A documented product heuristic (default 3), never a scientific
+   *  threshold. */
+  progressionStreakMinLength: number
   plateau: {
     graceSessions: number      // default 3
     minSessions: number        // default 5

@@ -4,29 +4,54 @@
 // (scoped to the CURRENT stable-load segment only). All-history PR/event
 // detection lives in events.ts and is never windowed.
 
-import type { CanonicalExerciseSession, ExerciseProgressionPolicy, RecentProgressTrendState, CurrentLoadProgressState } from './types'
-import { totalComparableReps, bestComparableSet } from './normalize'
+import type { CanonicalExerciseSession, CanonicalSet, ExerciseProgressionPolicy, RecentProgressTrendState, CurrentLoadProgressState, ProgressMetricKind } from './types'
+import { selectRepresentativeSet, totalQuantity, metricValueOf, isCleanProgression } from './metricStrategy'
+import { isPositiveLoadChange } from './policies'
 
 export interface RepresentativePoint {
   date: string
   loadStructure: CanonicalExerciseSession['loadStructure']
+  /** The representative set's raw weight — the load-cycle grouping key.
+   *  Null for a metric/session with no weight axis (reps/duration/distance
+   *  types) or when no representative set could be selected at all. */
   weightKg: number | null
+  /** The representative set's own metric-specific value (e1RM/reps/
+   *  addedWeight/assistedWeight/duration/distance) — null when the metric
+   *  isn't evaluable for this session (never a coerced 0). */
+  metricValue: number | null
+  /** This session's own comparable working sets — kept so the shared
+   *  `isCleanProgression` contract can be reused verbatim here instead of
+   *  a second, independent raw-total comparison. */
+  sets: readonly CanonicalSet[]
+  comparableSetCount: number
+  /** Σ of the metric's own natural quantity across `sets` — null the
+   *  moment any set is missing it, or the session is mixed_load. */
   total: number | null
 }
 
-export function buildRepresentativePoints(sessions: readonly CanonicalExerciseSession[], metricKind: string): RepresentativePoint[] {
-  return sessions.map(s => ({
-    date: s.date,
-    loadStructure: s.loadStructure,
-    weightKg: bestComparableSet(s, metricKind)?.weightKg ?? null,
-    total: s.loadStructure === 'mixed_load' ? null : totalComparableReps(s),
-  }))
+export function buildRepresentativePoints(sessions: readonly CanonicalExerciseSession[], metricKind: ProgressMetricKind): RepresentativePoint[] {
+  return sessions.map(s => {
+    const rep = s.loadStructure === 'mixed_load' ? null : selectRepresentativeSet(s.comparableWorkingSets, s.loadStructure, metricKind)
+    return {
+      date: s.date,
+      loadStructure: s.loadStructure,
+      weightKg: rep?.weightKg ?? null,
+      metricValue: metricValueOf(rep, metricKind),
+      sets: s.comparableWorkingSets,
+      comparableSetCount: s.comparableWorkingSets.length,
+      total: s.loadStructure === 'mixed_load' ? null : totalQuantity(s.comparableWorkingSets, metricKind),
+    }
+  })
 }
 
 export interface LoadCycle { weightKg: number | null; points: RepresentativePoint[] }
 
 /** Partitions the ordered point series into maximal runs sharing one
- *  representative load. */
+ *  representative load. For metric kinds with no weight axis, every point
+ *  has `weightKg: null`, so the whole history is one cycle — correct: a
+ *  reps/duration/distance exercise has no "load" dimension to cycle on,
+ *  and its progression is driven entirely by `currentLoadProgress`'s own
+ *  totals regression instead. */
 export function buildLoadCycles(points: readonly RepresentativePoint[]): LoadCycle[] {
   const cycles: LoadCycle[] = []
   for (const p of points) {
@@ -38,8 +63,8 @@ export function buildLoadCycles(points: readonly RepresentativePoint[]): LoadCyc
 }
 
 /** Decline detection ONLY — never used to gate a positive read (a clean
- *  total-rep increase counts regardless of magnitude, per computeRepDelta
- *  in comparability.ts). A documented product heuristic, not a scientific
+ *  progression counts regardless of magnitude, per `isCleanProgression` in
+ *  `metricStrategy.ts`). A documented product heuristic, not a scientific
  *  threshold — see DECISION_RULES.md. */
 export function meaningfulDeclineReps(prevTotal: number, policy: ExerciseProgressionPolicy): number {
   return Math.max(policy.decline.absoluteFloor, Math.ceil(prevTotal * policy.decline.percentFloor))
@@ -66,21 +91,34 @@ export function linearFit(y: readonly number[]): { slope: number; residualSpread
   return { slope, residualSpread }
 }
 
-/** Scoped to the CURRENT load cycle only. Mixed-load points (total=null)
- *  are excluded before regression ever runs — never a NaN in the domain
- *  model. `ACCUMULATING` requires a REAL positive slope (not merely >0 —
+/** Scoped to the CURRENT load cycle only (a fixed representative load/
+ *  assistance level) — so what's being regressed is `total`, the metric's
+ *  own additive quantity (reps/duration/distance), which is ALWAYS "more is
+ *  better" regardless of metric kind: at a FIXED assistance level, more
+ *  reps is still the improvement for assistedWeight too (the assisted-
+ *  weight inversion applies only to the load axis itself — the assistance
+ *  weight — which is what changes BETWEEN cycles, not within one; see
+ *  `metricKind` param, kept for API stability / future per-kind display
+ *  needs, but deliberately unused for direction here). `ACCUMULATING`
+ *  requires a REAL slope in the improving direction (not merely nonzero —
  *  gated by `accumulationSlopeFloor` so pure noise can never masquerade as
- *  progress); a flat, low-noise read resolves to `TOO_EARLY_TO_JUDGE`
- *  while still inside the post-load-change grace window, `BUILDING_BASELINE`
- *  once past grace but short of the plateau floor, and only then
- *  `POSSIBLE_PLATEAU`. */
+ *  progress); a flat, low-noise read resolves to `TOO_EARLY_TO_JUDGE` while
+ *  still inside the post-load-change grace window, `BUILDING_BASELINE` once
+ *  past grace but short of the plateau floor, and only then
+ *  `POSSIBLE_PLATEAU`. Mixed-load / not-evaluable points (`total == null`)
+ *  are excluded before regression ever runs — never a NaN in the domain
+ *  model. */
 export function computeCurrentLoadProgress(
   cyclePoints: readonly RepresentativePoint[],
+  metricKind: ProgressMetricKind,
   policy: ExerciseProgressionPolicy,
 ): { state: CurrentLoadProgressState; n: number; slope: number | null; residualSpread: number | null } {
-  const usable = cyclePoints.filter(p => p.loadStructure !== 'mixed_load' && p.total != null)
+  void metricKind // kept for signature stability; total's direction never inverts (see doc above)
+  const usable = cyclePoints.filter(p => p.total != null)
   if (usable.length < 3) return { state: 'INSUFFICIENT_HISTORY', n: usable.length, slope: null, residualSpread: null }
-  const { slope, residualSpread } = linearFit(usable.map(p => p.total as number))
+
+  const series = usable.map(p => p.total as number)
+  const { slope, residualSpread } = linearFit(series)
   const { accumulationSlopeFloor, declineSlopeFloor, residualNoiseFloor, graceSessions, minSessions } = policy.plateau
 
   let state: CurrentLoadProgressState
@@ -97,12 +135,17 @@ export function computeCurrentLoadProgress(
 /** A configurable recent window (default 8), separate from all-history
  *  event detection — an earlier successful load cycle outside the window
  *  is not visible here, but it is never erased from `events.ts`'s PR
- *  detection, which always scans the full history. Counts load-cycle
- *  advances plus clean within-cycle rep increases as positive signals, and
- *  load-cycle retreats plus meaningful within-cycle declines as negative —
- *  never a single unlimited-lifetime tally. */
+ *  detection, which always scans the full history.
+ *
+ *  Reuses the SAME `isCleanProgression` contract the per-pair read uses
+ *  (`comparability.ts`) — this function never independently classifies
+ *  progression from a raw total comparison. A pair with a comparable-set-
+ *  count mismatch is skipped entirely (never enters positive OR negative
+ *  tallying), matching the rule that a set-count mismatch never enters
+ *  trend regression. */
 export function computeRecentProgressTrend(
   points: readonly RepresentativePoint[],
+  metricKind: ProgressMetricKind,
   policy: ExerciseProgressionPolicy,
 ): { state: RecentProgressTrendState; n: number; positive: number; negative: number } {
   const windowed = points.slice(-policy.recentWindowSessions)
@@ -110,19 +153,28 @@ export function computeRecentProgressTrend(
 
   const cyclesInWindow = buildLoadCycles(windowed)
   let positive = 0, negative = 0
+
   for (let i = 1; i < cyclesInWindow.length; i++) {
     const prevW = cyclesInWindow[i - 1].weightKg, currW = cyclesInWindow[i].weightKg
     if (prevW == null || currW == null) continue
-    if (currW > prevW) positive++
-    else if (currW < prevW) negative++
+    const direction = isPositiveLoadChange(metricKind, prevW, currW)
+    if (direction === true) positive++
+    else if (direction === false) negative++
   }
+
   for (const cycle of cyclesInWindow) {
-    if (cycle.points[0]?.loadStructure !== 'uniform_working_load') continue
     for (let i = 1; i < cycle.points.length; i++) {
-      const prevTotal = cycle.points[i - 1].total, currTotal = cycle.points[i].total
-      if (prevTotal == null || currTotal == null) continue
-      if (currTotal > prevTotal) positive++
-      else if (prevTotal - currTotal >= meaningfulDeclineReps(prevTotal, policy)) negative++
+      const prev = cycle.points[i - 1], curr = cycle.points[i]
+      if (prev.total == null || curr.total == null) continue
+      if (prev.comparableSetCount !== curr.comparableSetCount) continue // a set-count mismatch never enters trend regression
+      if (isCleanProgression(prev.sets, curr.sets, metricKind)) {
+        positive++
+        continue
+      }
+      // The quantity axis (reps/duration/distance) is always "more is
+      // better" — see isCleanProgression's own note; never inverted here.
+      const declinedBy = prev.total - curr.total
+      if (declinedBy >= meaningfulDeclineReps(Math.abs(prev.total), policy)) negative++
     }
   }
 

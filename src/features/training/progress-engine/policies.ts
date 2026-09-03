@@ -12,6 +12,7 @@ export const ALGORITHM_VERSION = '2.0.0'
 export const DEFAULT_POLICY: ExerciseProgressionPolicy = {
   recentWindowSessions: 8,
   requiredTopRangeConfirmations: 1,
+  progressionStreakMinLength: 3,
   plateau: {
     graceSessions: 3,
     minSessions: 5,
@@ -39,13 +40,17 @@ const GENERIC_DEFAULT_RANGE: Record<ProgressMetricKind, { repMin: number; repMax
   distance:       null,
 }
 
-/** Priority order: the routine's own recorded target > the athlete's own
- *  explicit override > a clearly-labeled generic default > "Target not
- *  configured". Historical reps are NEVER consulted here — an earlier
- *  draft used "the athlete's own observed range" as rung 2 and a review
- *  caught it as a self-reinforcing-loop risk (a chronic under-performer
- *  would have their own shortfall treated as "the range"). Historical reps
- *  drive the TREND read only, never the target. */
+/** Priority order (approved): the athlete's own explicit override > the
+ *  routine's own recorded target > a clearly-labeled generic default >
+ *  "Target not configured". Historical reps are NEVER consulted here — an
+ *  earlier draft used "the athlete's own observed range" as a rung and a
+ *  review caught it as a self-reinforcing-loop risk (a chronic
+ *  under-performer would have their own shortfall treated as "the range").
+ *  Historical reps drive the TREND read only, never the target.
+ *
+ *  When an override supplies only the rep range (no set count of its own),
+ *  the routine's own prescribed set count is preserved when one exists —
+ *  an override overrides the REP RANGE, not the program's set prescription. */
 export function resolveExpectation(
   exerciseTemplateId: string,
   metricKind: ProgressMetricKind,
@@ -54,17 +59,19 @@ export function resolveExpectation(
   userOverride: UserOverrideLookup,
 ): ExpectationRange {
   const fromRoutine = routineTarget(exerciseTemplateId)
+  const fromOverride = userOverride(exerciseTemplateId)
+
+  if (fromOverride) {
+    const targetSets = fromRoutine?.targetSets ?? fallbackTargetSets
+    return {
+      source: 'user_override', repMin: fromOverride.repMin, repMax: fromOverride.repMax, targetSets,
+      label: `Your own target: ${fromOverride.repMin}-${fromOverride.repMax} reps`,
+    }
+  }
   if (fromRoutine) {
     return {
       source: 'routine', repMin: fromRoutine.repMin, repMax: fromRoutine.repMax, targetSets: fromRoutine.targetSets,
       label: `Your program's target: ${fromRoutine.repMin}-${fromRoutine.repMax} reps`,
-    }
-  }
-  const fromOverride = userOverride(exerciseTemplateId)
-  if (fromOverride) {
-    return {
-      source: 'user_override', repMin: fromOverride.repMin, repMax: fromOverride.repMax, targetSets: fallbackTargetSets,
-      label: `Your own target: ${fromOverride.repMin}-${fromOverride.repMax} reps`,
     }
   }
   const fallback = GENERIC_DEFAULT_RANGE[metricKind]

@@ -86,5 +86,51 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
   if (result.currentAction === 'READY_TO_INCREASE') {
     return `Every evaluated set reached the top of your target range.`
   }
+  if (result.currentAction === 'BUILD_AT_CURRENT_LOAD' && result.reasons.some(r => r.code === 'AWAITING_TOP_RANGE_CONFIRMATION')) {
+    const r = result.reasons.find(r2 => r2.code === 'AWAITING_TOP_RANGE_CONFIRMATION')
+    return `This session hit the top of the range (${r?.values.confirmations ?? 1} confirmation${(r?.values.confirmations ?? 1) === 1 ? '' : 's'} so far, ${r?.values.required} needed) — one more clean session at the top before recommending an increase.`
+  }
   return `No change worth acting on at this load yet.`
+}
+
+/** Dynamic, per-instance explanation of the PROGRESS evidence pill (§12) —
+ *  never a static "Strong/Moderate/Limited" label alone. Uses this exercise's
+ *  own actual session count and time span, the same numbers the trend read
+ *  itself is gated on (computeProgressEvidence in evaluate.ts), so the
+ *  explanation can never drift from the number that produced it. */
+export function progressEvidenceExplanation(result: ExerciseProgressResult): string {
+  const { comparableSessions, weekSpan, evidence } = result
+  const sessionsWord = `${comparableSessions} session${comparableSessions === 1 ? '' : 's'}`
+  const spanWord = weekSpan === 1 ? '1 week' : `${weekSpan} weeks`
+  if (evidence.progress === 'strong') {
+    return `Strong: ${sessionsWord} logged over ${spanWord} — enough sessions across enough time to trust the recent trend read.`
+  }
+  if (evidence.progress === 'moderate') {
+    return `Moderate: ${sessionsWord} logged over ${spanWord} — some real history, but not yet enough sessions or time span for a confident trend read.`
+  }
+  return `Limited: only ${sessionsWord} logged over ${spanWord} — too little history yet for a confident trend read.`
+}
+
+/** Dynamic, per-instance explanation of the RECOMMENDATION evidence pill
+ *  (§12) — grounded in the exact evaluationScope and dataQualityFlags that
+ *  produced it (see evaluate.ts's recommendationEvidence computation), never
+ *  a generic definition repeated for every exercise. Never touched by
+ *  effort/RPE data, present or absent. */
+export function recommendationEvidenceExplanation(result: ExerciseProgressResult): string {
+  const { evaluationScope, dataQualityFlags, evidence } = result
+  if (!evidence.recommendation) {
+    return 'No recommendation evidence — this session had no comparable structure to evaluate (mixed load, or too few sets).'
+  }
+  const scope = scopeLabel(evaluationScope)
+  if (dataQualityFlags.length > 0) {
+    const flags = dataQualityFlags.map(f => f.replace(/_/g, ' ').toLowerCase()).join(', ')
+    return `Limited: evaluated against ${scope}, but flagged for ${flags} — treat the current action as something to confirm, not a confident recommendation.`
+  }
+  if (evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS') {
+    return `Strong: every one of your program's prescribed working sets was evaluated this session, with no data-quality issues.`
+  }
+  if (evaluationScope === 'TOP_SET_ONLY') {
+    return `Moderate: only the top set could be evaluated (a top-set-and-backoff session) — real, but a narrower read than a full prescribed-set evaluation.`
+  }
+  return `Moderate: evaluated against ${scope}, which didn't exactly match your program's prescribed set count.`
 }

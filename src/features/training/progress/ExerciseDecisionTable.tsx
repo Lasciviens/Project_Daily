@@ -2,13 +2,13 @@ import { useMemo, useState } from 'react'
 import { useProgressData } from '../hooks/useProgressData'
 import {
   actionLabel, evidenceLabel, scopeLabel, recentTrendLabel, currentLoadProgressLabel, buildExplanationSentence,
+  progressEvidenceExplanation, recommendationEvidenceExplanation,
 } from '../progress-engine/copy'
 import { RULE_CATALOG } from '../progress-engine/ruleCatalog'
-import type { ExerciseProgressResult, CanonicalExerciseSession, CurrentAction, EvidenceLevel } from '../progress-engine/types'
-import { bestComparableSet, totalComparableReps } from '../progress-engine/normalize'
+import type { ExerciseProgressResult, CanonicalExerciseSession, CanonicalSet, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
+import { buildRepresentativePoints } from '../progress-engine/trend'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ExerciseThumb, ExerciseGifPicker } from '../exerciseMedia'
-import { BarLineChart } from '../components/health/BarLineChart'
 import { fmtTrainingDate as formatDate } from '../dateFormat'
 
 // Desktop: a dense decision table. Mobile (<640px): the same rows stack as
@@ -16,15 +16,16 @@ import { fmtTrainingDate as formatDate } from '../dateFormat'
 // the SAME inline-expansion mechanism this repo has used here since before
 // the Phase 2/3 engine rewrite, kept unchanged per the approved contract.
 //
-// This is the Phase 3 production wiring of the corrected progress engine
+// This is the corrected production wiring of the progress engine
 // (src/features/training/progress-engine/) approved across several rounds
 // of algorithm review — see docs/training/progress-engine/ for the settled
 // rules. Every row now reads observedTransition/repDelta/rangeCompliance/
 // evaluationScope/dataQualityFlags/currentAction/trend/evidence as
 // independent facets (never one collapsed status), shows the real GIF via
 // the SAME shared resolver ExerciseTemplatesTab already uses, a per-set-
-// position Next Target floor, full session history, and a real progress
-// chart — nothing here re-derives the algorithm; it only renders it.
+// position Next Target floor, full per-set session history (never a
+// representative weight glued onto every set's reps), and a metric-aware
+// progress chart — nothing here re-derives the algorithm; it only renders it.
 
 type Tab = 'recent' | 'increase' | 'building' | 'attention' | 'all'
 const TABS: { id: Tab; label: string }[] = [
@@ -69,6 +70,42 @@ const STATUS_TONE: Record<CurrentAction, string> = {
   WATCH_FOR_PLATEAU:        'bg-amber-100 text-amber-700',
   WATCH_FOR_REGRESSION:     'bg-red-100 text-red-700',
   INSUFFICIENT_DATA:        'bg-ink-100 text-ink-500',
+}
+
+// ── Metric-aware formatting (§8) — every set renders its OWN load/reps (or
+// duration/distance/assistance), never a representative weight glued onto
+// every set's rep count. ─────────────────────────────────────────────────
+function fmtDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const m = Math.floor(seconds / 60), s = Math.round(seconds % 60)
+  return s === 0 ? `${m}m` : `${m}m ${s}s`
+}
+
+function formatSetLine(set: CanonicalSet, metricKind: ProgressMetricKind): string {
+  const tag = set.kind !== 'normal' ? ` (${set.kind})` : ''
+  switch (metricKind) {
+    case 'duration':
+      if (set.durationSeconds == null) return `—${tag}`
+      return set.reps != null ? `${fmtDuration(set.durationSeconds)} × ${set.reps}${tag}` : `${fmtDuration(set.durationSeconds)}${tag}`
+    case 'distance':
+      if (set.distanceMeters == null) return `—${tag}`
+      return set.durationSeconds != null ? `${set.distanceMeters} m in ${fmtDuration(set.durationSeconds)}${tag}` : `${set.distanceMeters} m${tag}`
+    case 'assistedWeight':
+      return set.weightKg != null ? `${set.weightKg} kg assist × ${set.reps ?? '—'}${tag}` : `${set.reps ?? '—'} reps${tag}`
+    default:
+      return set.weightKg != null ? `${set.weightKg} kg × ${set.reps ?? '—'}${tag}` : `${set.reps ?? '—'} reps${tag}`
+  }
+}
+
+function metricChartMeta(metricKind: ProgressMetricKind): { primaryLabel: string; primaryUnit: string; totalLabel: string } {
+  switch (metricKind) {
+    case 'est1rm':         return { primaryLabel: 'Working weight', primaryUnit: 'kg', totalLabel: 'Total reps' }
+    case 'addedWeight':    return { primaryLabel: 'Added weight', primaryUnit: 'kg', totalLabel: 'Total reps' }
+    case 'assistedWeight': return { primaryLabel: 'Assistance', primaryUnit: 'kg', totalLabel: 'Total reps' }
+    case 'reps':           return { primaryLabel: 'Top-set reps', primaryUnit: 'reps', totalLabel: 'Total reps' }
+    case 'duration':       return { primaryLabel: 'Top-set duration', primaryUnit: 's', totalLabel: 'Total duration' }
+    case 'distance':       return { primaryLabel: 'Top-set distance', primaryUnit: 'm', totalLabel: 'Total distance' }
+  }
 }
 
 function sortDecisions(list: ExerciseProgressResult[], sort: SortMode): ExerciseProgressResult[] {
@@ -129,58 +166,100 @@ function ExposureLine({ result }: { result: ExerciseProgressResult }) {
   )
 }
 
-function SessionCard({ label, session }: { label: string; session: CanonicalExerciseSession | undefined }) {
+// Every set renders its OWN load+reps (or duration/distance/assistance) —
+// never a single representative weight glued onto the whole set list (§8).
+function SessionCard({ label, session, metricKind }: { label: string; session: CanonicalExerciseSession | undefined; metricKind: ProgressMetricKind }) {
   if (!session) return null
-  const rep = bestComparableSet(session, 'est1rm')
   return (
     <div className="bg-cream-100 rounded-xl p-3">
       <p className="text-[10px] font-bold uppercase tracking-wide text-ink-500">{label}</p>
       <p className="text-[11px] text-ink-500">{formatDate(session.date)}{session.workoutTitle ? ` · ${session.workoutTitle}` : ''}</p>
-      <p className="text-sm font-bold text-ink-900 mt-1">{rep?.weightKg != null ? `${rep.weightKg} kg` : '—'}</p>
-      <div className="flex flex-wrap gap-1.5 mt-1.5">
+      <ul className="flex flex-col gap-0.5 mt-1.5">
         {session.allSets.map((s, i) => (
-          <span key={i} className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${s.kind === 'failure' ? 'text-red-600 border-red-300' : s.kind === 'dropset' ? 'italic text-ink-500 border-ink-200' : 'text-ink-700 border-ink-200'}`}>
-            {s.reps ?? '—'}{s.kind !== 'normal' ? ` (${s.kind})` : ''}
-          </span>
+          <li key={i} className={`text-xs font-semibold tabular-nums ${s.kind === 'failure' ? 'text-red-600' : s.kind === 'dropset' ? 'italic text-ink-500' : 'text-ink-700'}`}>
+            Set {s.order}: {formatSetLine(s, metricKind)}
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   )
 }
 
 function EventChip({ event }: { event: ExerciseProgressResult['events'][number] }) {
   const info = RULE_CATALOG[event.code]
-  if (event.code === 'LOAD_PR') return <span className="pill bg-green-100 text-green-700 text-[11px] font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1">🏆 Load PR — {event.values.loadKg} kg</span>
+  if (event.code === 'LOAD_PR') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 inline-flex items-center gap-1">🏆 Load PR — {event.values.value} {event.values.value != null ? 'kg' : ''}</span>
+  if (event.code === 'REP_PR_AT_LOAD') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 inline-flex items-center gap-1">🏆 Rep PR — {event.values.reps} @ {event.values.loadKg}kg</span>
   if (event.code === 'TOTAL_REPS_PR_AT_LOAD') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 inline-flex items-center gap-1">🏆 Total-reps PR — {event.values.total} @ {event.values.loadKg}kg</span>
   if (event.code === 'TARGET_COMPLETED') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-accent-100 text-accent-700">✓ Target completed</span>
+  if (event.code === 'PROGRESSION_STREAK') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-accent-100 text-accent-700">🔥 {event.values.streakLength}-session streak</span>
   return <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-ink-100 text-ink-500" title={info?.shortDefinition}>{info?.title ?? event.code} (secondary)</span>
 }
 
-function ExerciseChart({ sessions, metricKind }: { sessions: CanonicalExerciseSession[]; metricKind: string }) {
-  const [metric, setMetric] = useState<'weight' | 'reps'>('weight')
-  const data = sessions.map(s => {
-    const best = bestComparableSet(s, metricKind)
-    return {
-      label: formatDate(s.date),
-      weight: best?.weightKg ?? null,
-      reps: totalComparableReps(s),
-    }
-  }).filter(p => p[metric] != null)
+// Metric-aware progress chart (§9) — the PRIMARY series is always the
+// metric's own natural "how hard" value (working weight for a weight-based
+// metric, top-set reps/duration/distance otherwise), never a raw total-reps
+// line that would read as regression the moment reps normally drop right
+// after a load increase. "Total" is an explicit, separately-labeled toggle
+// with its own caveat, never the default.
+function ExerciseChart({ result, sessions, metricKind }: { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind }) {
+  const [view, setView] = useState<'primary' | 'total'>('primary')
+  const meta = metricChartMeta(metricKind)
+  const points = useMemo(() => buildRepresentativePoints(sessions, metricKind), [sessions, metricKind])
+  const isWeightBased = metricKind === 'est1rm' || metricKind === 'addedWeight' || metricKind === 'assistedWeight'
 
-  if (data.length < 2) return <p className="text-xs text-ink-400 py-3">Not enough sessions yet for a chart.</p>
+  const rows = points.map(p => ({
+    date: p.date,
+    label: formatDate(p.date),
+    primary: isWeightBased ? p.weightKg : p.metricValue,
+    total: p.total,
+  }))
+  const shown = rows.filter(r => (view === 'primary' ? r.primary != null : r.total != null))
+
+  if (shown.length < 2) return <p className="text-xs text-ink-400 py-3">Not enough sessions yet for a chart.</p>
+
+  const values = shown.map(r => (view === 'primary' ? (r.primary as number) : (r.total as number)))
+  const max = Math.max(...values), min = Math.min(0, ...values)
+  const span = Math.max(1, max - min)
+
+  // Load-change markers (§9 "annotate important load-change events") —
+  // computed straight off this same series, not a duplicate algorithm: a
+  // point whose primary value moved from the one before it.
+  const changeAt = new Set<number>()
+  for (let i = 1; i < shown.length; i++) {
+    if (shown[i].primary != null && shown[i - 1].primary != null && shown[i].primary !== shown[i - 1].primary) changeAt.add(i)
+  }
+  const latestEvents = result.events.filter(e => e.code === 'LOAD_PR' || e.code === 'REP_PR_AT_LOAD' || e.code === 'TOTAL_REPS_PR_AT_LOAD' || e.code === 'TARGET_COMPLETED')
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-1.5">
-        <button type="button" onClick={() => setMetric('weight')} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${metric === 'weight' ? 'bg-ink-900 text-white' : 'bg-cream-100 text-ink-600'}`}>Working weight</button>
-        <button type="button" onClick={() => setMetric('reps')} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${metric === 'reps' ? 'bg-ink-900 text-white' : 'bg-cream-100 text-ink-600'}`}>Total reps</button>
+        <button type="button" onClick={() => setView('primary')} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${view === 'primary' ? 'bg-ink-900 text-white' : 'bg-cream-100 text-ink-600'}`}>{meta.primaryLabel}</button>
+        <button type="button" onClick={() => setView('total')} className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${view === 'total' ? 'bg-ink-900 text-white' : 'bg-cream-100 text-ink-600'}`}>{meta.totalLabel} this session</button>
       </div>
-      <BarLineChart data={data} dataKey={metric} color="#3C7256" unit={metric === 'weight' ? 'kg' : 'reps'} tooltipLabel={metric === 'weight' ? 'Weight' : 'Total reps'} height={140} yDomain={[0, 'auto']} />
+      {view === 'total' && (
+        <p className="text-[11px] text-ink-500">A drop here right after a load increase is expected, not regression — check {meta.primaryLabel.toLowerCase()} above for the real signal.</p>
+      )}
+      <div className="flex items-end gap-1 h-32 border-b border-ink-200 pb-1">
+        {shown.map((r, i) => {
+          const v = view === 'primary' ? (r.primary as number) : (r.total as number)
+          const h = Math.max(4, Math.round(((v - min) / span) * 100))
+          const isChange = view === 'primary' && changeAt.has(i)
+          return (
+            <div key={r.date} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0" title={`${r.label}: ${v}${view === 'primary' ? ` ${meta.primaryUnit}` : ''}`}>
+              <div className={`w-full rounded-t-sm ${isChange ? 'bg-accent-500' : 'bg-ink-300'}`} style={{ height: `${h}%` }} />
+              {i === shown.length - 1 && <span className="text-[9px] text-ink-400 tabular-nums truncate w-full text-center">{r.label}</span>}
+            </div>
+          )
+        })}
+      </div>
+      {latestEvents.length > 0 && (
+        <p className="text-[11px] text-ink-500">★ Most recent session: {latestEvents.map(e => RULE_CATALOG[e.code]?.title ?? e.code).join(', ')}.</p>
+      )}
     </div>
   )
 }
 
-function DecisionDetail({ result, sessions, metricKind, title }: { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: string; title: string }) {
+function DecisionDetail({ result, sessions, metricKind, title }: { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string }) {
   const [showAllSessions, setShowAllSessions] = useState(false)
   const [showChart, setShowChart] = useState(false)
   const olderSessions = sessions.slice(0, -2).reverse()
@@ -196,9 +275,9 @@ function DecisionDetail({ result, sessions, metricKind, title }: { result: Exerc
           <p className="text-sm font-bold text-ink-900">{title} — {actionLabel(result.currentAction)}</p>
           <p className="text-xs text-ink-700">{buildExplanationSentence(result)}</p>
           <div className="flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center gap-1"><EvidencePill level={result.evidence.progress} label="Progress evidence — how much history supports the RECENT trend read." /><InfoBubble><b>Progress evidence</b>How much history supports the recent trend read — sample size and time span over the recent window shown below. Never touched by effort/RPE data.</InfoBubble></span>
+            <span className="inline-flex items-center gap-1"><EvidencePill level={result.evidence.progress} label="Progress evidence" /><InfoBubble><b>Progress evidence</b>{progressEvidenceExplanation(result)}</InfoBubble></span>
             {result.evidence.recommendation && (
-              <span className="inline-flex items-center gap-1"><EvidencePill level={result.evidence.recommendation} label="Recommendation evidence — how much the current action's own inputs hold up." /><InfoBubble><b>Recommendation evidence</b>How much the current action&apos;s own inputs hold up — data completeness and target quality. Never affected by missing effort/RPE data.</InfoBubble></span>
+              <span className="inline-flex items-center gap-1"><EvidencePill level={result.evidence.recommendation} label="Recommendation evidence" /><InfoBubble><b>Recommendation evidence</b>{recommendationEvidenceExplanation(result)}</InfoBubble></span>
             )}
             {result.events.map((e, i) => <EventChip key={i} event={e} />)}
           </div>
@@ -210,7 +289,7 @@ function DecisionDetail({ result, sessions, metricKind, title }: { result: Exerc
         {result.dataQualityFlags.map(f => <span key={f} className="text-[10.5px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">{f.replace(/_/g, ' ')}</span>)}
       </div>
 
-      {result.nextTargets && (
+      {result.nextTargets ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div className="bg-cream-50 border border-ink-200 rounded-lg p-2.5">
             <p className="text-[10px] font-bold uppercase tracking-wide text-ink-500">Next session</p>
@@ -221,11 +300,15 @@ function DecisionDetail({ result, sessions, metricKind, title }: { result: Exerc
             <p className="text-xs font-semibold text-ink-800 mt-0.5">{result.nextTargets.progressionRequirement.headline}</p>
           </div>
         </div>
+      ) : (
+        <p className="text-[11px] text-ink-500 bg-cream-50 border border-ink-200 rounded-lg p-2.5">
+          No numeric progression recommendation for this session — it didn't share one clean load/backoff shape or a complete set of reps. Log one clean, complete session to get a real target.
+        </p>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <SessionCard label="Previous" session={sessions[sessions.length - 2]} />
-        <SessionCard label="Latest" session={sessions[sessions.length - 1]} />
+        <SessionCard label="Previous" session={sessions[sessions.length - 2]} metricKind={metricKind} />
+        <SessionCard label="Latest" session={sessions[sessions.length - 1]} metricKind={metricKind} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -247,11 +330,13 @@ function DecisionDetail({ result, sessions, metricKind, title }: { result: Exerc
             {showAllSessions ? '▲ Hide' : `▼ Show all sessions (${olderSessions.length} more)`}
           </button>
           {showAllSessions && (
-            <ul className="mt-1.5 flex flex-col gap-1">
+            <ul className="mt-1.5 flex flex-col gap-1.5">
               {olderSessions.map(s => (
-                <li key={s.workoutId} className="text-xs text-ink-600 flex items-center justify-between py-1 border-b border-ink-200 last:border-0">
-                  <span>{formatDate(s.date)}{s.workoutTitle ? ` · ${s.workoutTitle}` : ''}</span>
-                  <span className="tabular-nums">{fmtExposure(s.allSets.filter(x => x.kind !== 'dropset'), bestComparableSet(s, metricKind)?.weightKg)}</span>
+                <li key={s.workoutId} className="text-xs text-ink-600 py-1 border-b border-ink-200 last:border-0">
+                  <p className="text-ink-500">{formatDate(s.date)}{s.workoutTitle ? ` · ${s.workoutTitle}` : ''}</p>
+                  <p className="tabular-nums font-medium text-ink-700">
+                    {s.allSets.map((set, i) => <span key={i}>{i > 0 ? ', ' : ''}{formatSetLine(set, metricKind)}</span>)}
+                  </p>
                 </li>
               ))}
             </ul>
@@ -263,7 +348,7 @@ function DecisionDetail({ result, sessions, metricKind, title }: { result: Exerc
         <button type="button" onClick={() => setShowChart(v => !v)} className="text-xs font-semibold text-ink-500 hover:text-ink-800 min-h-[32px]">
           {showChart ? '▲ Hide progress chart' : '▼ Show progress chart'}
         </button>
-        {showChart && <ExerciseChart sessions={sessions} metricKind={metricKind} />}
+        {showChart && <ExerciseChart result={result} sessions={sessions} metricKind={metricKind} />}
       </div>
 
       {result.currentState.estimatedStrengthChange && (
@@ -278,7 +363,7 @@ function DecisionDetail({ result, sessions, metricKind, title }: { result: Exerc
   )
 }
 
-function DecisionRow({ result, sessions, metricKind, title }: { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: string; title: string }) {
+function DecisionRow({ result, sessions, metricKind, title }: { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string }) {
   const [open, setOpen] = useState(false)
   return (
     <>
@@ -300,7 +385,7 @@ function DecisionRow({ result, sessions, metricKind, title }: { result: Exercise
   )
 }
 
-function DecisionCard({ result, sessions, metricKind, title }: { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: string; title: string }) {
+function DecisionCard({ result, sessions, metricKind, title }: { result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string }) {
   const [open, setOpen] = useState(false)
   return (
     <li className="rounded-xl border border-ink-200 p-3" onClick={() => setOpen(v => !v)}>
@@ -331,13 +416,29 @@ function filterByTab(decisions: ExerciseProgressResult[], tab: Tab): ExercisePro
 }
 
 export function ExerciseDecisionTable() {
-  const { isLoading, needsCurrentProgram, decisions, titleById, sessionsByTemplateId, metricKindByTemplateId } = useProgressData()
+  const {
+    isLoading, needsCurrentProgram, decisions, titleById, sessionsByTemplateId, metricKindByTemplateId,
+    muscleGroupByTemplateId, routineTitlesByTemplateId,
+  } = useProgressData()
   const [tab, setTab] = useState<Tab>('recent')
   const [sort, setSort] = useState<SortMode>('recent')
   const [query, setQuery] = useState('')
   const [evidenceFilter, setEvidenceFilter] = useState<'any' | EvidenceLevel>('any')
   const [dateWindow, setDateWindow] = useState<DateWindow>('all')
+  const [muscleFilter, setMuscleFilter] = useState<string>('any')
+  const [routineFilter, setRoutineFilter] = useState<string>('any')
   const [showInsufficient, setShowInsufficient] = useState(false)
+
+  const muscleOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const d of decisions) { const m = muscleGroupByTemplateId.get(d.exerciseTemplateId); if (m) set.add(m) }
+    return [...set].sort()
+  }, [decisions, muscleGroupByTemplateId])
+  const routineOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const d of decisions) { for (const r of routineTitlesByTemplateId.get(d.exerciseTemplateId) ?? []) set.add(r) }
+    return [...set].sort()
+  }, [decisions, routineTitlesByTemplateId])
 
   const filtered = useMemo(() => filterByTab(decisions, tab), [decisions, tab])
   const searched = useMemo(() => {
@@ -345,9 +446,11 @@ export function ExerciseDecisionTable() {
     let list = filtered
     if (q) list = list.filter(d => (titleById.get(d.exerciseTemplateId) ?? '').toLowerCase().includes(q))
     if (evidenceFilter !== 'any') list = list.filter(d => d.evidence.progress === evidenceFilter)
+    if (muscleFilter !== 'any') list = list.filter(d => muscleGroupByTemplateId.get(d.exerciseTemplateId) === muscleFilter)
+    if (routineFilter !== 'any') list = list.filter(d => (routineTitlesByTemplateId.get(d.exerciseTemplateId) ?? []).includes(routineFilter))
     list = list.filter(d => withinDateWindow(d, dateWindow))
     return list
-  }, [filtered, query, titleById, evidenceFilter, dateWindow])
+  }, [filtered, query, titleById, evidenceFilter, dateWindow, muscleFilter, routineFilter, muscleGroupByTemplateId, routineTitlesByTemplateId])
   const shown = useMemo(() => sortDecisions(searched, sort), [searched, sort])
   const insufficient = useMemo(() => decisions.filter(d => d.currentAction === 'INSUFFICIENT_DATA'), [decisions])
 
@@ -359,6 +462,8 @@ export function ExerciseDecisionTable() {
       </div>
     )
   }
+
+  const filtersActive = query || evidenceFilter !== 'any' || dateWindow !== 'all' || muscleFilter !== 'any' || routineFilter !== 'any'
 
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 sm:p-5">
@@ -393,14 +498,32 @@ export function ExerciseDecisionTable() {
             <option value="strong">Strong</option>
           </select>
         </label>
+        {muscleOptions.length > 0 && (
+          <label className="flex items-center gap-1.5 text-xs text-ink-500">
+            Muscle:
+            <select value={muscleFilter} onChange={e => setMuscleFilter(e.target.value)} className="min-h-[36px] px-2 rounded-lg border border-ink-200 bg-cream-100 text-xs text-ink-700">
+              <option value="any">Any</option>
+              {muscleOptions.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </label>
+        )}
+        {routineOptions.length > 0 && (
+          <label className="flex items-center gap-1.5 text-xs text-ink-500">
+            Routine:
+            <select value={routineFilter} onChange={e => setRoutineFilter(e.target.value)} className="min-h-[36px] px-2 rounded-lg border border-ink-200 bg-cream-100 text-xs text-ink-700">
+              <option value="any">Any</option>
+              {routineOptions.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </label>
+        )}
         <label className="flex items-center gap-1.5 text-xs text-ink-500">
           Window:
           <select value={dateWindow} onChange={e => setDateWindow(e.target.value as DateWindow)} className="min-h-[36px] px-2 rounded-lg border border-ink-200 bg-cream-100 text-xs text-ink-700">
             {DATE_WINDOWS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
           </select>
         </label>
-        {(query || evidenceFilter !== 'any' || dateWindow !== 'all') && (
-          <button type="button" onClick={() => { setQuery(''); setEvidenceFilter('any'); setDateWindow('all') }} className="text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[36px] px-2">
+        {filtersActive && (
+          <button type="button" onClick={() => { setQuery(''); setEvidenceFilter('any'); setDateWindow('all'); setMuscleFilter('any'); setRoutineFilter('any') }} className="text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[36px] px-2">
             Clear filters
           </button>
         )}
@@ -471,11 +594,6 @@ export function ExerciseDecisionTable() {
           )}
         </div>
       )}
-
-      {/* NOT yet built: filtering by muscle group or specific routine/workout —
-          these need per-exercise muscle/routine metadata this component
-          doesn't receive from useProgressData yet. Flagged as a real
-          fast-follow, not silently dropped (see docs/training/progress-engine/). */}
     </div>
   )
 }

@@ -4,12 +4,13 @@
 // mutually-exclusive status, per the approved contract.
 
 import type {
-  CanonicalExerciseSession, ExpectationRange, ExerciseProgressionPolicy,
+  CanonicalExerciseSession, ExpectationRange, ExerciseProgressionPolicy, ProgressMetricKind,
   ObservedTransition, RepDelta, RangeCompliance, EvaluationScope, DataQualityFlag, CurrentAction,
 } from './types'
-import { bestComparableSet, totalComparableReps } from './normalize'
+import { bestComparableSet } from './normalize'
 import { isPositiveLoadChange } from './policies'
 import { meaningfulDeclineReps } from './trend'
+import { isWeightBasedMetric, isCleanProgression, totalQuantity, metricValueOf } from './metricStrategy'
 
 export interface ComparabilityResult {
   observedTransition: ObservedTransition
@@ -22,22 +23,11 @@ export interface ComparabilityResult {
   loadChangePercent: number | null
 }
 
-/** A clean rep increase requires the SAME comparable set count (a set-count
- *  mismatch never enters a raw-total comparison, per §3) and no individual
- *  set decreasing — ANY positive total counts, no magnitude floor (a
- *  separate, configurable threshold exists ONLY for decline detection). */
-function isCleanRepIncrease(prevSets: readonly { reps: number | null }[], latestSets: readonly { reps: number | null }[]): boolean {
-  if (prevSets.length !== latestSets.length) return false
-  const totalUp = latestSets.reduce((a, s) => a + (s.reps ?? 0), 0) > prevSets.reduce((a, s) => a + (s.reps ?? 0), 0)
-  const noneDropped = latestSets.every((s, i) => (s.reps ?? 0) >= (prevSets[i].reps ?? 0))
-  return totalUp && noneDropped
-}
-
 export function evaluatePair(
   previous: CanonicalExerciseSession,
   latest: CanonicalExerciseSession,
   expectation: ExpectationRange,
-  metricKind: string,
+  metricKind: ProgressMetricKind,
   policy: ExerciseProgressionPolicy,
 ): ComparabilityResult {
   const dataQualityFlags: DataQualityFlag[] = []
@@ -53,43 +43,62 @@ export function evaluatePair(
 
   const prevBest = bestComparableSet(previous, metricKind)
   const latestBest = bestComparableSet(latest, metricKind)
-  const prevLoad = prevBest?.weightKg ?? null
-  const latestLoad = latestBest?.weightKg ?? null
+  const weightBased = isWeightBasedMetric(metricKind)
+  // The value actually compared for direction/transition: raw weight for a
+  // weight-based metric (est1rm/addedWeight/assistedWeight), the metric's
+  // own value for a kind with no weight axis (reps/duration/distance).
+  const prevPrimary = weightBased ? (prevBest?.weightKg ?? null) : metricValueOf(prevBest, metricKind)
+  const latestPrimary = weightBased ? (latestBest?.weightKg ?? null) : metricValueOf(latestBest, metricKind)
 
   let observedTransition: ObservedTransition = 'NO_COMPARISON'
-  if (prevLoad != null && latestLoad != null) {
-    observedTransition = latestLoad === prevLoad ? 'LOAD_UNCHANGED' : (latestLoad > prevLoad ? 'LOAD_INCREASED' : 'LOAD_DECREASED')
+  if (prevPrimary != null && latestPrimary != null) {
+    observedTransition = prevPrimary === latestPrimary ? 'LOAD_UNCHANGED'
+      : (isPositiveLoadChange(metricKind, prevPrimary, latestPrimary) ? 'LOAD_INCREASED' : 'LOAD_DECREASED')
   }
-  const progressDirection = isPositiveLoadChange(metricKind as never, prevLoad, latestLoad)
-  const loadChangePercent = (prevLoad != null && latestLoad != null && prevLoad !== 0)
-    ? Math.round((latestLoad / prevLoad - 1) * 1000) / 10 : null
+  const progressDirection = isPositiveLoadChange(metricKind, prevPrimary, latestPrimary)
+  const loadChangePercent = (prevPrimary != null && latestPrimary != null && prevPrimary !== 0)
+    ? Math.round((latestPrimary / prevPrimary - 1) * 1000) / 10 : null
 
   const setCountMismatch = prevWorking.length !== latestWorking.length
   let repDelta: RepDelta = 'NOT_APPLICABLE'
   if (observedTransition === 'LOAD_UNCHANGED' && !setCountMismatch && latest.loadStructure !== 'mixed_load') {
-    if (isCleanRepIncrease(prevWorking, latestWorking)) repDelta = 'REP_INCREASE'
+    if (isCleanProgression(prevWorking, latestWorking, metricKind)) repDelta = 'REP_INCREASE'
     else {
-      const prevTotal = totalComparableReps(previous) ?? 0
-      const latestTotal = totalComparableReps(latest) ?? 0
-      const drop = prevTotal - latestTotal
-      repDelta = drop >= meaningfulDeclineReps(prevTotal, policy) ? 'REP_DECLINE' : 'REP_NO_CHANGE'
+      const prevTotal = totalQuantity(prevWorking, metricKind)
+      const latestTotal = totalQuantity(latestWorking, metricKind)
+      if (prevTotal == null || latestTotal == null) {
+        repDelta = 'NOT_APPLICABLE'
+      } else {
+        // The total's quantity axis (reps/duration/distance) is always
+        // "more is better", never inverted by metric kind — see
+        // isCleanProgression's own note in metricStrategy.ts.
+        const declinedBy = prevTotal - latestTotal
+        repDelta = declinedBy >= meaningfulDeclineReps(Math.abs(prevTotal), policy) ? 'REP_DECLINE' : 'REP_NO_CHANGE'
+      }
     }
   }
+
+  // ALL_PRESCRIBED_WORKING_SETS requires the latest session's comparable
+  // set count to match the target's prescribed count EXACTLY — a mismatch
+  // (missing or extra) always narrows the scope, never claims full
+  // compliance regardless of how many sets happened to be logged.
+  const matchesPrescribedCount = latestWorking.length === expectation.targetSets
 
   let evaluationScope: EvaluationScope
   let rangeCompliance: RangeCompliance
   if (latest.loadStructure === 'mixed_load') {
     evaluationScope = 'NOT_EVALUATED'
     rangeCompliance = 'NOT_EVALUATED'
+  } else if (latest.loadStructure === 'top_set_and_backoff') {
+    evaluationScope = 'TOP_SET_ONLY'
+    const reps = latestBest ? [latestBest.reps] : []
+    rangeCompliance = complianceFromReps(reps, expectation)
+  } else if (matchesPrescribedCount) {
+    evaluationScope = 'ALL_PRESCRIBED_WORKING_SETS'
+    rangeCompliance = complianceFromReps(latestWorking.map(s => s.reps), expectation)
   } else {
-    evaluationScope = setCountMismatch ? 'LOGGED_SETS_ONLY'
-      : (latest.loadStructure === 'top_set_and_backoff' ? 'TOP_SET_ONLY' : 'ALL_PRESCRIBED_WORKING_SETS')
-    const evalSets = latest.loadStructure === 'top_set_and_backoff' && latestBest ? [latestBest] : latestWorking
-    const reps = evalSets.map(s => s.reps ?? 0)
-    if (expectation.repMax != null && reps.length > 0 && reps.every(r => r >= (expectation.repMax as number))) rangeCompliance = 'ALL_SETS_AT_TOP'
-    else if (expectation.repMin != null && reps.length > 0 && reps.every(r => r >= (expectation.repMin as number))) rangeCompliance = 'ALL_SETS_AT_OR_ABOVE_MIN'
-    else if (reps.length === 0) rangeCompliance = 'NOT_EVALUATED'
-    else rangeCompliance = 'BELOW_MINIMUM'
+    evaluationScope = 'LOGGED_SETS_ONLY'
+    rangeCompliance = complianceFromReps(latestWorking.map(s => s.reps), expectation)
   }
 
   const currentAction = deriveCurrentAction({
@@ -100,9 +109,37 @@ export function evaluatePair(
   return { observedTransition, repDelta, rangeCompliance, evaluationScope, dataQualityFlags, currentAction, progressDirection, loadChangePercent }
 }
 
+/** A single session's own range compliance (never a pair) — the building
+ *  block for `requiredTopRangeConfirmations`: counting how many CONSECUTIVE
+ *  trailing sessions independently land ALL_SETS_AT_TOP before READY_TO_
+ *  INCREASE is allowed to stand, rather than firing off a single session's
+ *  read. Mirrors evaluatePair's own per-session scope/compliance logic
+ *  exactly, just without the pair-comparison half. */
+export function sessionRangeCompliance(
+  session: CanonicalExerciseSession,
+  expectation: ExpectationRange,
+  metricKind: ProgressMetricKind,
+): RangeCompliance {
+  if (session.loadStructure === 'mixed_load') return 'NOT_EVALUATED'
+  if (session.loadStructure === 'top_set_and_backoff') {
+    const top = bestComparableSet(session, metricKind)
+    return complianceFromReps(top ? [top.reps] : [], expectation)
+  }
+  return complianceFromReps(session.comparableWorkingSets.map(s => s.reps), expectation)
+}
+
+function complianceFromReps(reps: readonly (number | null)[], expectation: ExpectationRange): RangeCompliance {
+  if (reps.length === 0 || reps.some(r => r == null)) return 'NOT_EVALUATED'
+  const values = reps as number[]
+  if (expectation.repMax != null && values.every(r => r >= (expectation.repMax as number))) return 'ALL_SETS_AT_TOP'
+  if (expectation.repMin != null && values.every(r => r >= (expectation.repMin as number))) return 'ALL_SETS_AT_OR_ABOVE_MIN'
+  if (expectation.repMin == null && expectation.repMax == null) return 'NOT_EVALUATED'
+  return 'BELOW_MINIMUM'
+}
+
 function deriveCurrentAction(input: {
   evaluationScope: EvaluationScope; rangeCompliance: RangeCompliance; observedTransition: ObservedTransition
-  repDelta: RepDelta; progressDirection: boolean | null; metricKind: string; compromised: boolean
+  repDelta: RepDelta; progressDirection: boolean | null; metricKind: ProgressMetricKind; compromised: boolean
 }): CurrentAction {
   const { evaluationScope, rangeCompliance, observedTransition, repDelta, progressDirection, metricKind, compromised } = input
 

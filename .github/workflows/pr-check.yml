@@ -41,6 +41,19 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
+      # Pure-function regression suite for the Training -> Progress exercise
+      # progress engine (src/features/training/progress-engine/) — this repo
+      # has no unit-test runner by convention (see CLAUDE.md), so these run
+      # directly via sucrase against the real, un-mocked modules. Previously
+      # only ever run locally by hand; a broken engine change could merge
+      # with a green PR-check. Add further scripts/verify-*.cjs suites here
+      # as they're written.
+      - name: Progress engine regression suite
+        run: node scripts/verify-progress-engine.cjs
+
+      - name: Progress decisions regression suite
+        run: node scripts/verify-progress-decisions.cjs
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

@@ -10,6 +10,7 @@ import { computeProgramDecision, type ProgramDecision } from '../progressDecisio
 import {
   buildCanonicalSessions, evaluateExerciseProgress, resolveExpectation, DEFAULT_POLICY,
   type ExerciseProgressResult, type RoutineTargetLookup, type UserOverrideLookup, type CanonicalExerciseSession,
+  type ProgressMetricKind,
 } from '../progress-engine'
 import type { HevyRoutine } from '../types.hevy'
 
@@ -70,13 +71,24 @@ export interface ProgressData {
    *  recomputing it, since useProgressData already builds it once per
    *  exercise to run the decision engine. */
   sessionsByTemplateId: Map<string, CanonicalExerciseSession[]>
-  metricKindByTemplateId: Map<string, string>
+  metricKindByTemplateId: Map<string, ProgressMetricKind>
+  /** Primary muscle group per exercise (from hevy_exercise_templates) — the
+   *  metadata backing the muscle-group filter (§10). Null when the template
+   *  carries no group. */
+  muscleGroupByTemplateId: Map<string, string | null>
+  /** Every CURRENT-program routine title an exercise appears in — the
+   *  metadata backing the routine filter (§10). Sourced from the same
+   *  active-routine structure `filterToCurrentProgram`/`currentExerciseIds`
+   *  already use, so it never drifts from what "current program" means
+   *  elsewhere in this hook. */
+  routineTitlesByTemplateId: Map<string, string[]>
 }
 
 const RECOVERY_WINDOW_DAYS = 182
 const EMPTY: ProgressData = {
   isLoading: true, needsCurrentProgram: false, suggestedRoutines: [], decisions: [], program: null,
   summary: null, titleById: new Map(), sessionsByTemplateId: new Map(), metricKindByTemplateId: new Map(),
+  muscleGroupByTemplateId: new Map(), routineTitlesByTemplateId: new Map(),
 }
 
 /** Assembles everything progressDecisions.ts needs from the app's existing
@@ -153,9 +165,19 @@ export function useProgressData(): ProgressData {
       .filter(id => currentExerciseIds.has(id))
     const titleById = new Map(history.templates.map(t => [t.id, t.title]))
     const typeById = new Map(history.templates.map(t => [t.id, t.type]))
+    const muscleGroupByTemplateId = new Map(history.templates.map(t => [t.id, t.primary_muscle_group]))
+
+    const routineTitlesByTemplateId = new Map<string, string[]>()
+    for (const r of activeRoutines) {
+      for (const ex of r.exercises ?? []) {
+        const bucket = routineTitlesByTemplateId.get(ex.exercise_template_id) ?? []
+        if (!bucket.includes(r.title)) bucket.push(r.title)
+        routineTitlesByTemplateId.set(ex.exercise_template_id, bucket)
+      }
+    }
 
     const sessionsByTemplateId = new Map<string, ReturnType<typeof buildCanonicalSessions>>()
-    const metricKindByTemplateId = new Map<string, string>()
+    const metricKindByTemplateId = new Map<string, ProgressMetricKind>()
     const decisions: ExerciseProgressResult[] = templateIds.map(templateId => {
       const type = typeById.get(templateId) ?? 'weight_reps'
       const metricKind = metricKindForExerciseType(type)
@@ -208,6 +230,9 @@ export function useProgressData(): ProgressData {
       bodyweightDirection, dataConfidence: { reliable, total: decisions.length },
     }
 
-    return { isLoading: false, needsCurrentProgram: false, suggestedRoutines: [], decisions, program, summary, titleById, sessionsByTemplateId, metricKindByTemplateId }
+    return {
+      isLoading: false, needsCurrentProgram: false, suggestedRoutines: [], decisions, program, summary, titleById,
+      sessionsByTemplateId, metricKindByTemplateId, muscleGroupByTemplateId, routineTitlesByTemplateId,
+    }
   }, [isLoading, history, currentProgram, routines, targetOverrides, sleepPoints, profile, bodyweight])
 }
