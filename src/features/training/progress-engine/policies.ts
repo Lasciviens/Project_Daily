@@ -1,0 +1,106 @@
+// Progress engine — configurable thresholds and the target/policy
+// resolution hierarchy. Every non-obvious number here is a documented
+// product heuristic (see docs/training/progress-engine/DECISION_RULES.md),
+// never presented as a scientific finding.
+
+import type {
+  ExerciseProgressionPolicy, ExpectationRange, RoutineTargetLookup, UserOverrideLookup, ProgressMetricKind,
+} from './types'
+
+export const ALGORITHM_VERSION = '2.0.0'
+
+export const DEFAULT_POLICY: ExerciseProgressionPolicy = {
+  recentWindowSessions: 8,
+  requiredTopRangeConfirmations: 1,
+  plateau: {
+    graceSessions: 3,
+    minSessions: 5,
+    residualNoiseFloor: 1.0,
+    accumulationSlopeFloor: 0.3,
+    declineSlopeFloor: 0.3,
+  },
+  decline: {
+    absoluteFloor: 3,
+    percentFloor: 0.08,
+  },
+  loadIncrementKg: {
+    barbell: 2.5,
+    dumbbell: 2,
+    machine: 2.25,
+  },
+}
+
+const GENERIC_DEFAULT_RANGE: Record<ProgressMetricKind, { repMin: number; repMax: number } | null> = {
+  est1rm:         { repMin: 8, repMax: 12 },
+  addedWeight:    { repMin: 8, repMax: 12 },
+  reps:           { repMin: 10, repMax: 15 },
+  assistedWeight: { repMin: 8, repMax: 12 },
+  duration:       null,
+  distance:       null,
+}
+
+/** Priority order: the routine's own recorded target > the athlete's own
+ *  explicit override > a clearly-labeled generic default > "Target not
+ *  configured". Historical reps are NEVER consulted here — an earlier
+ *  draft used "the athlete's own observed range" as rung 2 and a review
+ *  caught it as a self-reinforcing-loop risk (a chronic under-performer
+ *  would have their own shortfall treated as "the range"). Historical reps
+ *  drive the TREND read only, never the target. */
+export function resolveExpectation(
+  exerciseTemplateId: string,
+  metricKind: ProgressMetricKind,
+  fallbackTargetSets: number,
+  routineTarget: RoutineTargetLookup,
+  userOverride: UserOverrideLookup,
+): ExpectationRange {
+  const fromRoutine = routineTarget(exerciseTemplateId)
+  if (fromRoutine) {
+    return {
+      source: 'routine', repMin: fromRoutine.repMin, repMax: fromRoutine.repMax, targetSets: fromRoutine.targetSets,
+      label: `Your program's target: ${fromRoutine.repMin}-${fromRoutine.repMax} reps`,
+    }
+  }
+  const fromOverride = userOverride(exerciseTemplateId)
+  if (fromOverride) {
+    return {
+      source: 'user_override', repMin: fromOverride.repMin, repMax: fromOverride.repMax, targetSets: fallbackTargetSets,
+      label: `Your own target: ${fromOverride.repMin}-${fromOverride.repMax} reps`,
+    }
+  }
+  const fallback = GENERIC_DEFAULT_RANGE[metricKind]
+  if (fallback) {
+    return {
+      source: 'default', repMin: fallback.repMin, repMax: fallback.repMax, targetSets: fallbackTargetSets,
+      label: `Default (no target saved): ${fallback.repMin}-${fallback.repMax} reps`,
+    }
+  }
+  return { source: 'not_configured', repMin: null, repMax: null, targetSets: fallbackTargetSets, label: 'Target not configured' }
+}
+
+/** The one real metric-strategy inversion, centralized so it's never
+ *  hand-coded per branch: for an assisted-bodyweight exercise, LESS
+ *  assistance weight is the positive direction. Every other metric kind
+ *  reads a higher number as the positive direction. Returns null when
+ *  either side is unknown — callers must not treat null as "no change". */
+export function isPositiveLoadChange(metricKind: ProgressMetricKind, from: number | null, to: number | null): boolean | null {
+  if (from == null || to == null) return null
+  if (metricKind === 'assistedWeight') return to < from
+  return to > from
+}
+
+/** Next-load resolution ladder: (1) an explicit per-exercise override —
+ *  not built in v1, no UI writes to it yet (see DATA_AND_LIMITATIONS.md);
+ *  (2) an equipment-class default, our own product convention, explicitly
+ *  labeled as such; (3) the smallest positive increment ever observed in
+ *  this exercise's own history; (4) an honest "use the smallest available
+ *  increment" rather than inventing a number. */
+export function resolveLoadIncrementKg(
+  equipmentClass: 'barbell' | 'dumbbell' | 'machine' | null,
+  observedIncrements: readonly number[],
+  policy: ExerciseProgressionPolicy,
+): number | null {
+  const smallestObserved = observedIncrements.filter(v => v > 0).sort((a, b) => a - b)[0]
+  if (smallestObserved != null) return smallestObserved
+  if (equipmentClass) return policy.loadIncrementKg[equipmentClass]
+  return null
+}

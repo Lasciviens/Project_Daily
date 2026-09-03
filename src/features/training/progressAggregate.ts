@@ -27,6 +27,12 @@ export interface ProgressSetRow {
    *  supports it and progressDecisions.ts uses it as bonus evidence once
    *  the athlete starts logging it — never a required field. */
   rpe?:             number | null
+  /** hevy_sets.index — the set's own order within its exercise, e.g. for
+   *  building a real ordered set vector (progress-engine/normalize.ts).
+   *  Optional so existing callers that never fetch it keep working. */
+  set_index?:       number
+  /** hevy_workouts.title — e.g. "Pull Day". Optional for the same reason. */
+  workout_title?:   string | null
 }
 
 export interface ProgressTemplateRow {
