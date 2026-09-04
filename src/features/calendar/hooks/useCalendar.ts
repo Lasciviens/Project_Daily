@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useCalendarStore } from '../../../app/store'
 import { supabase } from '../../../integrations/supabase/client'
+import type { CalendarEvent } from '../types'
 import {
   fetchEventsForDay,
   fetchEventsForRange,
@@ -79,13 +80,35 @@ export function useAutoRefreshCalendarToken() {
   }, [accessToken, expiresAt])
 }
 
+// Sorts a merged multi-calendar event list back into one chronological
+// agenda — all-day events (date, no dateTime) sort first, then by start time.
+function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
+  return [...events].sort((a, b) => {
+    const aKey = a.start.dateTime ?? (a.start.date ? `${a.start.date}T00:00:00` : '')
+    const bKey = b.start.dateTime ?? (b.start.date ? `${b.start.date}T00:00:00` : '')
+    return aKey.localeCompare(bKey)
+  })
+}
+
+// Real bug, fixed: this used to fetch ONLY the 'primary' calendar
+// (calendarApi.ts's own default), so a user's SUBSCRIBED/secondary
+// calendars (selected via WeekWidget's "⊞ Filter calendars", persisted as
+// `selectedCalendarIds`) never appeared in the actual agenda list — only
+// in the week/month grid's dot indicators, which already looped
+// `selectedCalendarIds` via useCalendarEventDatesForRange below. Mirrors
+// that same loop-and-merge shape.
 export function useCalendarEventsForDay(dateStr: string) {
   const token = useValidToken()
-  const { setAccessToken } = useCalendarStore()
+  const { selectedCalendarIds, setAccessToken } = useCalendarStore()
+  const calIds = selectedCalendarIds ?? ['primary']
 
   return useQuery({
-    queryKey: ['calendar', 'day', dateStr],
-    queryFn:  async () => fetchEventsForDay(await ensureToken(token, setAccessToken), dateStr),
+    queryKey: ['calendar', 'day', dateStr, calIds.join(',')],
+    queryFn:  async () => {
+      const activeToken = await ensureToken(token, setAccessToken)
+      const results = await Promise.all(calIds.map(id => fetchEventsForDay(activeToken, dateStr, id)))
+      return sortEvents(results.flat())
+    },
     enabled:   !!token,
     staleTime: 5 * 60_000,
     retry:     false,
@@ -94,11 +117,16 @@ export function useCalendarEventsForDay(dateStr: string) {
 
 export function useCalendarEventsForRange(timeMin: string, timeMax: string) {
   const token = useValidToken()
-  const { setAccessToken } = useCalendarStore()
+  const { selectedCalendarIds, setAccessToken } = useCalendarStore()
+  const calIds = selectedCalendarIds ?? ['primary']
 
   return useQuery({
-    queryKey: ['calendar', 'range', timeMin, timeMax],
-    queryFn:  async () => fetchEventsForRange(await ensureToken(token, setAccessToken), timeMin, timeMax),
+    queryKey: ['calendar', 'range', timeMin, timeMax, calIds.join(',')],
+    queryFn:  async () => {
+      const activeToken = await ensureToken(token, setAccessToken)
+      const results = await Promise.all(calIds.map(id => fetchEventsForRange(activeToken, timeMin, timeMax, id)))
+      return sortEvents(results.flat())
+    },
     enabled:   !!token,
     staleTime: 5 * 60_000,
     retry:     false,
