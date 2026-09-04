@@ -90,6 +90,30 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
   })
 }
 
+// The real, still-remaining reason "reconnect + grant the new scope" alone
+// didn't bring subscribed calendars back: `selectedCalendarIds: null` means
+// two DIFFERENT things in two different places. WeekWidget's own filter UI
+// (`isCalSelected`) treats null as "every calendar is selected" — which is
+// why every checkbox shows green/checked with no explicit action taken.
+// But every fetch hook (this file) used to fall back to `selectedCalendarIds
+// ?? ['primary']` — treating the SAME null as "only primary". A user who
+// never explicitly opened "⊞ Filter calendars" and toggled anything (the
+// overwhelmingly common case — the control isn't discoverable, and
+// selecting is never required since everything already reads as selected)
+// keeps `selectedCalendarIds === null` forever, so every fetch silently
+// stayed primary-only regardless of the OAuth scope being fixed.
+// `useSelectedCalendarIds` is the ONE place this null now means "all
+// calendars this account actually has" (from the SAME `useCalendarList()`
+// query every fetch hook already needs for the picker), falling back to
+// `['primary']` only while that list hasn't loaded yet (e.g. Calendar not
+// connected, or the very first render before the query resolves).
+function useSelectedCalendarIds(): string[] {
+  const { selectedCalendarIds } = useCalendarStore()
+  const { data: calList = [] } = useCalendarList()
+  if (selectedCalendarIds) return selectedCalendarIds
+  return calList.length > 0 ? calList.map(c => c.id) : ['primary']
+}
+
 // Real bug, fixed: this used to fetch ONLY the 'primary' calendar
 // (calendarApi.ts's own default), so a user's SUBSCRIBED/secondary
 // calendars (selected via WeekWidget's "⊞ Filter calendars", persisted as
@@ -99,8 +123,8 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 // that same loop-and-merge shape.
 export function useCalendarEventsForDay(dateStr: string) {
   const token = useValidToken()
-  const { selectedCalendarIds, setAccessToken } = useCalendarStore()
-  const calIds = selectedCalendarIds ?? ['primary']
+  const { setAccessToken } = useCalendarStore()
+  const calIds = useSelectedCalendarIds()
 
   return useQuery({
     queryKey: ['calendar', 'day', dateStr, calIds.join(',')],
@@ -117,8 +141,8 @@ export function useCalendarEventsForDay(dateStr: string) {
 
 export function useCalendarEventsForRange(timeMin: string, timeMax: string) {
   const token = useValidToken()
-  const { selectedCalendarIds, setAccessToken } = useCalendarStore()
-  const calIds = selectedCalendarIds ?? ['primary']
+  const { setAccessToken } = useCalendarStore()
+  const calIds = useSelectedCalendarIds()
 
   return useQuery({
     queryKey: ['calendar', 'range', timeMin, timeMax, calIds.join(',')],
@@ -188,10 +212,10 @@ export function useCreateCalendarEvent() {
 // in the given date range, across all selected calendars.
 export function useCalendarEventDatesForRange(startDate: Date, endDate: Date) {
   const token                = useValidToken()
-  const { selectedCalendarIds, setAccessToken } = useCalendarStore()
+  const { setAccessToken }   = useCalendarStore()
   const startStr             = format(startDate, 'yyyy-MM-dd')
   const endStr               = format(endDate,   'yyyy-MM-dd')
-  const calIds               = selectedCalendarIds ?? ['primary']
+  const calIds               = useSelectedCalendarIds()
 
   return useQuery({
     queryKey: ['calendar', 'dates', startStr, endStr, calIds.join(',')],
