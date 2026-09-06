@@ -3,8 +3,9 @@ import { useState, useEffect, useCallback } from 'react'
 // ─────────────────────────────────────────────────────────────────────────────
 //  Persistent trip-planning preferences — set once in Settings, applied to
 //  every route search automatically instead of being re-entered each time.
-//  localStorage (not a DB table): single-user, per-browser is fine here (same
-//  rationale as useDayTargets) — zero migration, instant.
+//  localStorage (not a DB table): single-user, per-browser is fine here — zero
+//  migration, instant. (useDayTargets used to be the same precedent but moved
+//  to a DB row in migration 086 once cross-device sync started mattering.)
 //  Backed by real, verified `trip` query arguments (walkSpeed, maximumTransfers,
 //  wheelchairAccessible) — confirmed live against EnTur's schema before use.
 // ─────────────────────────────────────────────────────────────────────────────

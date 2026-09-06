@@ -1,51 +1,48 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { fetchDayTargets, upsertDayTargets, DAY_TARGETS_DEFAULTS } from '../api/dayTargetsApi'
+import type { DayTargets, NutritionGoal } from '../api/dayTargetsApi'
 
-// Daily nutrition goals. No DB table for this — single-user, per-browser is
-// fine (same rationale as the daily-briefing cache): zero migration, instant.
-export type NutritionGoal = 'maintain' | 'cut' | 'gain'
+export type { DayTargets, NutritionGoal }
 
-export interface DayTargets {
-  calories: number
-  protein:  number        // grams
-  water:    number        // ml/day hydration goal (default 2 L)
-  goal:     NutritionGoal // steers protein g/kg + adaptive-calorie coaching
-  /** yyyy-MM-dd of the last applied adaptive-calorie adjustment — enforces the
-      cooldown so a user can't stack nudges before the weight trend catches up. */
-  lastCalorieAdjust: string | null
-}
-
-const STORAGE_KEY = 'lasci.dayTargets'
-const DEFAULTS: DayTargets = { calories: 2200, protein: 150, water: 2000, goal: 'maintain', lastCalorieAdjust: null }
-
-const GOALS: NutritionGoal[] = ['maintain', 'cut', 'gain']
-
-function read(): DayTargets {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return DEFAULTS
-    const parsed = JSON.parse(raw) as Partial<DayTargets>
-    return {
-      calories: Number(parsed.calories) || DEFAULTS.calories,
-      protein:  Number(parsed.protein)  || DEFAULTS.protein,
-      water:    Number(parsed.water)    || DEFAULTS.water,
-      goal:     GOALS.includes(parsed.goal as NutritionGoal) ? (parsed.goal as NutritionGoal) : DEFAULTS.goal,
-      lastCalorieAdjust: typeof parsed.lastCalorieAdjust === 'string' ? parsed.lastCalorieAdjust : null,
-    }
-  } catch {
-    return DEFAULTS
-  }
-}
+// Daily nutrition goals — one DB row per user (migration 086, day_targets),
+// no longer localStorage-only. `initialData` seeds the same DEFAULTS the old
+// localStorage version shipped, so every consumer (NutritionCard,
+// FoodTodayTab, WaterTracker, useNutritionCoach) keeps rendering instantly on
+// first paint instead of waiting on the fetch.
+const QK = ['day-targets'] as const
 
 export function useDayTargets() {
-  const [targets, setTargets] = useState<DayTargets>(read)
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: QK,
+    queryFn:  fetchDayTargets,
+    staleTime: 5 * 60_000,
+    initialData: DAY_TARGETS_DEFAULTS,
+  })
+  const targets = data ?? DAY_TARGETS_DEFAULTS
 
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(targets)) } catch { /* quota */ }
-  }, [targets])
+  // Optimistic — a goal pill tap or a stepper click should feel instant, not
+  // wait on a round trip, matching the old synchronous setState feel.
+  const mutation = useMutationWithFeedback<DayTargets, DayTargets, { previous?: DayTargets }>({
+    action:     'update_day_targets',
+    mutationFn: (next: DayTargets) => upsertDayTargets(next),
+    onMutate: async (next) => {
+      await qc.cancelQueries({ queryKey: QK })
+      const previous = qc.getQueryData<DayTargets>(QK)
+      qc.setQueryData(QK, next)
+      return { previous }
+    },
+    onError: (_err, _next, ctx) => {
+      if (ctx?.previous) qc.setQueryData(QK, ctx.previous)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: QK }),
+  })
 
   const update = useCallback((patch: Partial<DayTargets>) => {
-    setTargets(t => ({ ...t, ...patch }))
-  }, [])
+    mutation.mutate({ ...targets, ...patch })
+  }, [targets, mutation])
 
   return { targets, update }
 }

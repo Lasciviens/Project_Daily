@@ -21,9 +21,15 @@ function est1RM(weightKg: number, reps: number | null): number | null {
   return Math.round(weightKg * (1 + reps / 30) * 10) / 10
 }
 
-export function HevyPRList() {
+interface HevyPRListProps {
+  // Controlled by the parent (PRsSubTab) so the "Top 5 Lifts by Weight" card
+  // recomputes against the same muscle group selected here.
+  activeGroup: string
+  onActiveGroupChange: (group: string) => void
+}
+
+export function HevyPRList({ activeGroup, onActiveGroupChange }: HevyPRListProps) {
   const { data: prs, isLoading } = useHevyPRs()
-  const [activeGroup, setActiveGroup] = useState<string>('All')
   const [query, setQuery] = useState('')
   // Which PR's peek card is open — hover on desktop, tap on mobile.
   const [peekId, setPeekId] = useState<string | null>(null)
@@ -84,7 +90,7 @@ export function HevyPRList() {
         {['All', ...muscleGroups].map(group => (
           <button
             key={group}
-            onClick={() => setActiveGroup(group)}
+            onClick={() => onActiveGroupChange(group)}
             className={`min-h-[44px] px-2.5 py-0.5 rounded-full text-xs font-medium capitalize transition-colors ${
               activeGroup === group
                 ? 'bg-accent-600 text-white'

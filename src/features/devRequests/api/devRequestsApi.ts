@@ -36,6 +36,14 @@ export async function deleteDevRequest(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Bulk-remove closed (done/dismissed) requests in one round trip — used by
+// the drawer's "Delete all closed" action instead of one confirm per row.
+export async function deleteDevRequests(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  const { error } = await supabase.from('dev_requests').delete().in('id', ids)
+  if (error) throw error
+}
+
 // Persists a new drag-and-drop order in one round trip.
 export async function reorderDevRequests(ids: string[]): Promise<void> {
   await Promise.all(ids.map((id, i) =>
