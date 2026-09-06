@@ -26,58 +26,84 @@ import type { HealthMetric } from './api/healthApi'
 // ends; expect residual inflation until the source exports pre-aggregated
 // data.
 //
-// REAL BUG (2026-09-06, live-confirmed): "stream" used to mean the raw
-// `source` STRING, but Health Auto Export's `source` is a "|"-joined list of
-// contributing devices that is NEITHER deduped NOT consistently ordered
-// between exports — the SAME hour, from the SAME device(s), showed up as
+// REAL BUG, round 1 (2026-09-06, live-confirmed): "stream" used to mean the
+// raw `source` STRING, but Health Auto Export's `source` is a "|"-joined list
+// of contributing devices that is NEITHER deduped NOR consistently ordered
+// between exports -- the SAME hour, from the SAME device(s), showed up as
 // both `"Furkan's Apple Watch"` and `"Furkan's Apple Watch|Furkan's Apple
-// Watch"` (and similarly `"Lasci 17 Pro|Watch"` vs `"Lasci 17 Pro|Watch|
-// Watch"`) after triggering Health Auto Export's 7-day/30-day reconciliation
-// automations — two textually different strings for what is the same real
-// device combination, so the OLD raw-string key treated them as different
-// streams and this backstop never saw them as duplicates, doubling/tripling
-// steps and active/basal energy. `canonicalSourceKey` normalizes a NBSP
-// Apple sometimes writes inside "Apple Watch", dedupes repeated device names,
-// and sorts them so device order can't matter either — this is the pure
-// display-side fix, safe against rows already sitting in the DB with the raw
-// (non-canonical) source string (health-export-webhook's own
-// `canonicalizeSource` is the matching ingest-side fix that stops NEW
-// duplicate rows from being written going forward — this function still
-// needs to handle historical rows written before that fix existed).
-function canonicalSourceKey(raw: string): string {
-  const parts = raw
-    .split('|')
-    .map(p => p.trim().replace(/\u00a0/g, ' '))
-    .filter(Boolean)
-  return [...new Set(parts)].sort().join('|')
+// Watch"`. The original fix canonicalized this string (dedupe + sort the
+// "|"-joined parts, fold a stray NBSP) and grouped duplicates by canonical
+// source + exact minute \u2014 round 2 below replaced that grouping key entirely
+// (source turned out not to matter at all), so no canonicalization is done
+// in THIS file any more. `health-export-webhook`'s own `canonicalizeSource`
+// still canonicalizes the `source` COLUMN at ingest time (a separate,
+// still-valid fix \u2014 it keeps future re-deliveries from bloating the table
+// with as many redundant rows), it's only this display-side grouping that
+// changed.
+//
+// REAL BUG, round 2 (2026-09-06, live-confirmed the SAME day -- round 1
+// wasn't enough): after triggering Health Auto Export's 7-day/30-day
+// reconciliation automations, basal energy showed ~5400 kcal/day average
+// (physiologically implausible -- a real BMR is ~1600-2400) and steps read
+// 2-3x too high. Live data showed why: EVERY hour carries not two but often
+// THREE rows -- two exact duplicates (round 1's bug) PLUS a THIRD at a
+// DIFFERENT minute (e.g. "06:00:00" qty=83.7 and "06:39:34" qty=64.2) whose
+// `source` is a DIFFERENT device combination (just "Watch" instead of
+// "Watch|Lasci 17 Pro") -- so round 1's per-minute-per-canonical-source key
+// treated it as a genuinely different stream and summed it on top. But the
+// VALUES across an hour's rows are all nearly identical regardless of which
+// devices are listed (confirmed live: 77.55 / 77.64 / 77.60 kcal for the
+// SAME real hour) -- these are not independent per-device contributions to
+// add together, they are Health Auto Export re-reporting the SAME real
+// hour's already-merged HealthKit total multiple times as its sync
+// automations re-fire (the regular near-real-time sync, then a
+// reconciliation pass minutes or days later) -- the `source` list just
+// reflects whichever raw samples happened to be available to HealthKit's
+// own merge at THAT sync moment, not a second real measurement. Health Auto
+// Export's "Time Grouping: Hours" setting means there is supposed to be
+// exactly ONE row per hour; every extra row for an hour already seen is a
+// re-delivery, never additional data -- so grouping must be by HOUR ONLY,
+// deliberately ignoring both the exact minute and the source string.
+// Verified against real numbers: a naive sum for one partial day totaled
+// 3309 kcal of basal energy; hour-level collapse (this function) brings the
+// SAME rows down to 1164 kcal -- a sane ~80 kcal/hour. Still display-level
+// only (the DB keeps every raw row) and still 'sum'-type metrics only --
+// average/minmaxavg/latest metrics don't distort this way.
+function hourKeyOf(p: HealthMetric): string {
+  return p.recorded_at.slice(0, 13) // "yyyy-MM-ddTHH", UTC hour bucket
 }
 
-function streamKeyOf(p: HealthMetric): string {
-  return canonicalSourceKey(p.source)
+// A row landing exactly on the hour (":00:00") is Health Auto Export's own
+// "this hour is now closed, here is its final total" delivery -- prefer it
+// over a mid-hour "since last sync, here's the partial total so far" row
+// even when the partial happens to read larger (a partial should never beat
+// a closed hour's own number). Only when NEITHER row in an hour landed
+// exactly on the boundary (both partial) does the larger of the two win, as
+// the more complete partial available.
+function isHourBoundary(p: HealthMetric): boolean {
+  return p.recorded_at.slice(14, 19) === '00:00' // minute:second
 }
 
 function collapseIntraStreamMinuteDuplicates(points: HealthMetric[]): HealthMetric[] {
-  const byKey = new Map<string, HealthMetric>()
+  const byHour = new Map<string, HealthMetric>()
   const passthrough: HealthMetric[] = []
   let dropped = 0
   for (const p of points) {
     const q = p.value?.qty
     if (typeof q !== 'number') { passthrough.push(p); continue }
-    const k = `${streamKeyOf(p)}|${p.recorded_at.slice(0, 16)}`
-    const kept = byKey.get(k)
-    if (!kept) byKey.set(k, p)
-    else {
-      dropped++
-      if (q > (kept.value?.qty as number)) byKey.set(k, p)
-    }
+    const k = hourKeyOf(p)
+    const kept = byHour.get(k)
+    if (!kept) { byHour.set(k, p); continue }
+    dropped++
+    const keptIsBoundary = isHourBoundary(kept)
+    const pIsBoundary = isHourBoundary(p)
+    if (pIsBoundary && !keptIsBoundary) byHour.set(k, p)
+    else if (pIsBoundary === keptIsBoundary && q > (kept.value?.qty as number)) byHour.set(k, p)
   }
   if (dropped === 0) return points
-  return [...byKey.values(), ...passthrough]
+  return [...byHour.values(), ...passthrough]
 }
 
-// Health Auto Export can export active/basal energy in kJ instead of kcal
-// depending on the device's locale/unit settings, even though every card in
-// the Health tab labels the value "kcal" — convert so the label is honest.
 const KJ_PER_KCAL = 4.184
 const ENERGY_METRICS = new Set(['active_energy', 'basal_energy_burned'])
 
