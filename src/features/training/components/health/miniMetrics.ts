@@ -87,21 +87,15 @@ export const SLEEP_EXTRA_METRICS: MiniMetricConfig[] = [
     description: 'Overnight skin temperature deviation — can flag illness or cycle changes.' },
 ]
 
+// Ambient Noise / Headphone Audio / Mindful Minutes / Falls Detected / Sexual
+// Activity were removed on explicit user request (2026-09-06) — not dead
+// data, just judged not worth a permanent card here; if HealthKit sends them
+// they're still in health_metrics, just not surfaced under Body any more.
 export const BODY_EXTRA_METRICS: MiniMetricConfig[] = [
-  { metric: 'environmental_audio_exposure', icon: '🔊', title: 'Ambient Noise', unit: 'dB', decimals: 0,
-    description: 'Average environmental sound level around you today.' },
-  { metric: 'headphone_audio_exposure', icon: '🎧', title: 'Headphone Audio', unit: 'dB', decimals: 0,
-    description: 'Average headphone volume today — sustained high levels risk hearing damage.' },
   { metric: 'uv_exposure', icon: '🕶️', title: 'UV Exposure', unit: 'index', decimals: 1,
     description: 'Estimated UV exposure today — higher means more sun protection needed.' },
   { metric: 'handwashing', icon: '🧼', title: 'Handwashing', unit: 'min', decimals: 0, showTodayCount: true,
     description: 'Total time spent handwashing today.' },
   { metric: 'toothbrushing', icon: '🪥', title: 'Toothbrushing', unit: 'min', decimals: 0, showTodayCount: true, showTodayTimes: true,
     description: 'Total time spent brushing teeth today.' },
-  { metric: 'mindful_minutes', icon: '🧘', title: 'Mindful Minutes', unit: 'min', decimals: 0,
-    description: 'Minutes spent in mindfulness/breathing sessions today.' },
-  { metric: 'number_of_times_fallen', icon: '⚠️', title: 'Falls Detected', unit: 'falls', decimals: 0,
-    description: 'Hard falls detected by the Watch today.' },
-  { metric: 'sexual_activity', icon: '💑', title: 'Sexual Activity', unit: 'logged', decimals: 0,
-    description: 'Logged occurrences today.' },
 ]
