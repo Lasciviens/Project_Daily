@@ -1369,39 +1369,50 @@ async function computeSleepNights(supabase: AnyRecord, userId: string, since: st
   })).sort((a, b) => a.date.localeCompare(b.date))
 }
 
-// Mirrors healthAggregate.ts's canonicalSourceKey (and health-export-
-// webhook's canonicalizeSource) — hand-synced, not imported, since this is a
-// self-contained Deno function. Health Auto Export's `source` field is a
-// "|"-joined list of contributing devices that is neither deduped nor
-// consistently ordered between exports (live-confirmed 2026-09-06: the same
-// hour arrived as both "Furkan's Apple Watch" and "Furkan's Apple
-// Watch|Furkan's Apple Watch"). getHealthStats has its OWN copy of the sum
-// aggregation (it can't reuse the client's computeDailySeries), so it needs
-// the identical fix or it silently keeps double-counting duplicate rows the
-// web app itself has already stopped double-counting.
-function canonicalizeSource(raw: string): string {
-  const parts = raw
-    .split('|')
-    .map(p => p.trim().replace(/\u00a0/g, ' '))
-    .filter(Boolean)
-  return [...new Set(parts)].sort().join('|')
+// Mirrors healthAggregate.ts's hour-level dedup (hand-synced, not imported --
+// ai-proxy is a self-contained Deno function). REAL BUG, round 1 (2026-09-06,
+// live-confirmed): Health Auto Export's `source` field is a "|"-joined list
+// of contributing devices, neither deduped nor consistently ordered between
+// exports -- the same hour arrived as both "Furkan's Apple Watch" and
+// "Furkan's Apple Watch|Furkan's Apple Watch". ROUND 2 (same day, round 1
+// wasn't enough): live data showed EVERY hour carries not two but often
+// THREE rows -- two exact duplicates (round 1) plus a THIRD at a DIFFERENT
+// minute with a DIFFERENT device combination in `source` (e.g. "06:00:00"
+// qty=83.7 "Watch|Lasci 17 Pro" and "06:39:34" qty=64.2 "Watch" alone) that a
+// per-minute-per-source key still missed and summed on top -- confirmed
+// against real numbers: naive-summing one partial day of basal energy came
+// to 3309 kcal (physiologically implausible; BMR is ~1600-2400/day),
+// hour-level collapse (below) brings the SAME rows to 1164 kcal. The values
+// across one hour's rows are nearly identical regardless of which devices
+// are listed (77.55 / 77.64 / 77.60 kcal live-confirmed for the SAME real
+// hour) -- Health Auto Export is re-reporting the same already-merged
+// HealthKit hour total each time its sync automations re-fire, not counting
+// a second real device's contribution. Health Auto Export's own "Time
+// Grouping: Hours" setting means there should be exactly one row per hour;
+// grouping must be by HOUR ONLY, ignoring both the exact minute and the
+// source string entirely.
+const SUM_METRICS_FOR_DEDUP = new Set(['step_count', 'active_energy', 'basal_energy_burned', 'apple_exercise_time'])
+
+// A row landing exactly on the hour (":00:00") is Health Auto Export's own
+// "this hour is now closed" delivery -- prefer it over a mid-hour "partial
+// total so far" row even when the partial reads larger. Only when NEITHER
+// row for an hour landed on the boundary does the larger of the two win.
+function isHourBoundary(recordedAt: string): boolean {
+  return recordedAt.slice(14, 19) === '00:00'
 }
 
-// Same backstop as healthAggregate.ts's collapseIntraStreamMinuteDuplicates:
-// within one canonical source, one MINUTE keeps only its largest point.
-// Applied only to metrics getHealthStats actually SUMS (step_count/
-// active_energy/basal_energy_burned/apple_exercise_time) — heart_rate/
-// resting_heart_rate are averaged/latest, where a duplicate doesn't inflate
-// the result the same way.
-const SUM_METRICS_FOR_DEDUP = new Set(['step_count', 'active_energy', 'basal_energy_burned', 'apple_exercise_time'])
 function collapseDuplicateSumPoints(rows: AnyRecord[]): AnyRecord[] {
   const byKey = new Map<string, AnyRecord>()
   const passthrough: AnyRecord[] = []
   for (const r of rows) {
     if (!SUM_METRICS_FOR_DEDUP.has(r.metric_name) || typeof r.value?.qty !== 'number') { passthrough.push(r); continue }
-    const key = `${r.metric_name}|${canonicalizeSource(r.source ?? '')}|${String(r.recorded_at).slice(0, 16)}`
+    const key = `${r.metric_name}|${String(r.recorded_at).slice(0, 13)}` // metric + UTC hour bucket
     const kept = byKey.get(key)
-    if (!kept || r.value.qty > kept.value.qty) byKey.set(key, r)
+    if (!kept) { byKey.set(key, r); continue }
+    const keptIsBoundary = isHourBoundary(String(kept.recorded_at))
+    const rIsBoundary = isHourBoundary(String(r.recorded_at))
+    if (rIsBoundary && !keptIsBoundary) byKey.set(key, r)
+    else if (rIsBoundary === keptIsBoundary && r.value.qty > kept.value.qty) byKey.set(key, r)
   }
   return [...byKey.values(), ...passthrough]
 }
