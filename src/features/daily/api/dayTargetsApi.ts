@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
+import { toast } from '../../../app/store'
 
 // Daily nutrition goals — a single ACTIVE DB row per user (migration 086,
 // `day_targets`), replacing the old localStorage-only version
@@ -89,8 +90,13 @@ export async function upsertDayTargets(targets: DayTargets): Promise<DayTargets>
   // Keep THIS goal's own saved profile (migration 088) in sync with every
   // write to the active row — this is what lets switching Cut → Maintain →
   // Cut recall Cut's real numbers instead of whatever Maintain left behind.
-  // Best-effort: a missing `day_target_profiles` table must not fail the
-  // active-row save that already succeeded above.
+  // A missing `day_target_profiles` table must not fail the active-row save
+  // that already succeeded above (so "Saved ✓" still shows), BUT it must
+  // NOT degrade silently either — a silent skip here is indistinguishable
+  // from "per-goal saving is broken", which is exactly what it looked like
+  // before this warning existed. A real error (not a missing table) still
+  // throws, since that's a genuine failure the mutation's own error toast
+  // should surface.
   const { error: profileErr } = await supabase
     .from('day_target_profiles')
     .upsert(
@@ -104,7 +110,10 @@ export async function upsertDayTargets(targets: DayTargets): Promise<DayTargets>
       },
       { onConflict: 'user_id,goal' },
     )
-  if (profileErr && !isMissingTable(profileErr)) throw profileErr
+  if (profileErr) {
+    if (!isMissingTable(profileErr)) throw profileErr
+    toast.warning('Saved, but per-goal memory needs migration 088 (day_target_profiles) — switching goals won’t recall this yet.')
+  }
 
   return fromRow(data)
 }
