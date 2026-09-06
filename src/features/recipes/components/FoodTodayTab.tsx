@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
-import { useDayTargets, type NutritionGoal } from '../../daily/hooks/useDayTargets'
+import { useDayTargets, useDayTargetProfiles, type NutritionGoal, type DayTargets } from '../../daily/hooks/useDayTargets'
 import { useNutritionCoach } from '../../daily/hooks/useNutritionCoach'
 import { useDeleteFoodLogEntry } from '../hooks/useFoodLog'
 import { useDeleteQuickMeal } from '../../daily/hooks/useQuickMeals'
@@ -96,7 +96,8 @@ function GoalStepper({ value, step, suffix, onChange }: { value: number; step: n
 
 export function FoodTodayTab({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
-  const { targets, update } = useDayTargets()
+  const { targets, update, isSaving } = useDayTargets()
+  const profiles = useDayTargetProfiles()
   const coach = useNutritionCoach(date, targets)
   const delLog  = useDeleteFoodLogEntry()
   const delMeal = useDeleteQuickMeal()
@@ -106,6 +107,30 @@ export function FoodTodayTab({ date }: { date: string }) {
   const [planMeal, setPlanMeal] = useState<MealPlanEntry | null>(null)
   const [goalsOpen, setGoalsOpen] = useState(false)
   const [coachOpen, setCoachOpen] = useState(false)   // mobile-only collapse
+
+  // Editing the Goals panel is a DRAFT — nothing writes until "Save" is
+  // tapped (see the identical pattern + rationale in NutritionCard.tsx).
+  const [draft, setDraft] = useState<DayTargets>(targets)
+  const [goalsWasOpen, setGoalsWasOpen] = useState(goalsOpen)
+  if (goalsOpen !== goalsWasOpen) {
+    setGoalsWasOpen(goalsOpen)
+    if (goalsOpen) setDraft(targets)
+  }
+  function selectGoal(g: NutritionGoal) {
+    const profile = profiles[g]
+    setDraft(d => (profile ? { ...d, goal: g, ...profile } : { ...d, goal: g }))
+  }
+  // Coach "Apply" buttons write immediately while the panel is closed
+  // (unchanged, one deliberate tap); while it's open they feed the draft so
+  // a pending manual edit and an unrelated coach suggestion can't clobber
+  // each other.
+  function applyProtein(g: number) {
+    if (goalsOpen) setDraft(d => ({ ...d, protein: g })); else update({ protein: g })
+  }
+  function applyCalories(kcal: number, adjustDate: string) {
+    if (goalsOpen) setDraft(d => ({ ...d, calories: kcal, lastCalorieAdjust: adjustDate }))
+    else update({ calories: kcal, lastCalorieAdjust: adjustDate })
+  }
   // Which "As meal" groups are expanded to their individual items — collapsed
   // (just the compact summary row) by default for every group.
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -289,30 +314,41 @@ export function FoodTodayTab({ date }: { date: string }) {
                 <span className="text-ink-600">Goal</span>
                 <div className="flex gap-1">
                   {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
-                    <button key={g} onClick={() => update({ goal: g })}
+                    <button key={g} onClick={() => selectGoal(g)}
                       className={`text-[11px] px-2.5 min-h-[44px] rounded-full border transition-colors ${
-                        targets.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
+                        draft.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
                       }`}>{GOAL_LABEL[g]}</button>
                   ))}
                 </div>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-ink-600">Calories</span>
-                <GoalStepper value={targets.calories} step={50} suffix="kcal" onChange={v => update({ calories: v })} />
+                <GoalStepper value={draft.calories} step={50} suffix="kcal" onChange={v => setDraft(d => ({ ...d, calories: v }))} />
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-ink-600">Protein</span>
-                <GoalStepper value={targets.protein} step={10} suffix="g" onChange={v => update({ protein: v })} />
+                <GoalStepper value={draft.protein} step={10} suffix="g" onChange={v => setDraft(d => ({ ...d, protein: v }))} />
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-ink-600">Water</span>
-                <GoalStepper value={targets.water} step={250} suffix="ml" onChange={v => update({ water: v })} />
+                <GoalStepper value={draft.water} step={250} suffix="ml" onChange={v => setDraft(d => ({ ...d, water: v }))} />
               </div>
               <p className="text-[11px] text-ink-400 leading-relaxed">
-                These are YOUR targets (saved on this device). The 🧠 Coach suggests a protein target from your bodyweight
-                ({coach.weightKg ? `~${coach.proteinForGoal}g for ${targets.goal}` : 'add a bodyweight to enable'}) and nudges
+                Each goal (Cut/Maintain/Gain) keeps its own saved numbers — switch goals above to recall them, adjust, then tap Save.
+                The 🧠 Coach suggests a protein target from your bodyweight
+                ({coach.weightKg ? `~${coach.proteinForGoal}g for ${draft.goal}` : 'add a bodyweight to enable'}) and nudges
                 calories from your 4-week weight trend — apply those from the Coach card below. Fiber goal ≈ 14g per 1000 kcal.
               </p>
+              <div className="flex items-center justify-end gap-1.5">
+                <button onClick={() => setGoalsOpen(false)}
+                  className="text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[44px] px-2 rounded transition-colors">
+                  Cancel
+                </button>
+                <button onClick={() => { update(draft); setGoalsOpen(false) }} disabled={isSaving}
+                  className="text-[11px] font-semibold text-white bg-accent-500 hover:bg-accent-600 disabled:opacity-50 min-h-[44px] px-3 rounded-lg transition-colors">
+                  {isSaving ? 'Saving…' : '💾 Save'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -335,7 +371,7 @@ export function FoodTodayTab({ date }: { date: string }) {
               <>
                 {coach.calorieAdvice ? (
                   <button
-                    onClick={() => update({ calories: Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), lastCalorieAdjust: formatLocalDate(new Date()) })}
+                    onClick={() => applyCalories(Math.max(coach.calorieFloor, (goalsOpen ? draft.calories : targets.calories) + coach.calorieAdvice!.delta), formatLocalDate(new Date()))}
                     className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
                     <span className="text-ink-600"><strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong><span className="text-ink-400"> · {coach.calorieAdvice.reason}</span></span>
                     <span className="text-accent-600 font-semibold shrink-0">Apply</span>
@@ -351,9 +387,9 @@ export function FoodTodayTab({ date }: { date: string }) {
                 ) : coach.inCooldown ? (
                   <p className="text-ink-400">Calorie adjusted recently — hold {coach.cooldownDaysLeft} more day{coach.cooldownDaysLeft === 1 ? '' : 's'} so the trend can catch up.</p>
                 ) : null}
-                {coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? (
+                {coach.proteinForGoal != null && coach.proteinForGoal !== (goalsOpen ? draft.protein : targets.protein) ? (
                   <button
-                    onClick={() => update({ protein: coach.proteinForGoal! })}
+                    onClick={() => applyProtein(coach.proteinForGoal!)}
                     className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
                     <span className="text-ink-600">Suggested <strong className="text-accent-700">{coach.proteinForGoal}g</strong> protein <span className="text-ink-400">· {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span></span>
                     <span className="text-accent-600 font-semibold shrink-0">Apply</span>

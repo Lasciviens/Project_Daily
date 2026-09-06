@@ -5,7 +5,7 @@ import { useEatPlannedEntry } from '../../../recipes/hooks/useMealPlan'
 import { Cell, CellHeader } from './cellKit'
 import { WaterTracker } from './WaterTracker'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
-import { useDayTargets, type NutritionGoal } from '../../hooks/useDayTargets'
+import { useDayTargets, useDayTargetProfiles, type NutritionGoal, type DayTargets } from '../../hooks/useDayTargets'
 import { useNutritionCoach } from '../../hooks/useNutritionCoach'
 import { useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
@@ -243,10 +243,39 @@ const GOAL_LABEL: Record<NutritionGoal, string> = { maintain: 'Maintain', cut: '
 
 export function NutritionCard({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
-  const { targets, update } = useDayTargets()
+  const { targets, update, isSaving } = useDayTargets()
+  const profiles = useDayTargetProfiles()
   const coach = useNutritionCoach(date, targets)
   const [editing, setEditing] = useState(false)
   const copyYesterday = useCopyYesterdayMeals()
+
+  // Editing the Goals panel is a DRAFT — nothing writes until "Save" is
+  // tapped. Re-seeded from the current active targets every time the panel
+  // opens (the adjust-during-render pattern FoodLogModal's own `wasOpen`
+  // already uses), so opening it always starts from what's really saved.
+  const [draft, setDraft] = useState<DayTargets>(targets)
+  const [editingWasOpen, setEditingWasOpen] = useState(editing)
+  if (editing !== editingWasOpen) {
+    setEditingWasOpen(editing)
+    if (editing) setDraft(targets)
+  }
+  // Switching goal pills recalls THAT goal's own saved numbers (migration
+  // 088) instead of carrying over whatever the previous goal had.
+  function selectGoal(g: NutritionGoal) {
+    const profile = profiles[g]
+    setDraft(d => (profile ? { ...d, goal: g, ...profile } : { ...d, goal: g }))
+  }
+  // The Coach's "Apply" buttons are already one deliberate tap — while the
+  // panel is closed they still write immediately (unchanged behaviour); while
+  // it's open they feed the draft instead, so a pending manual edit can't be
+  // silently clobbered by an unrelated coach suggestion (and vice versa).
+  function applyProtein(g: number) {
+    if (editing) setDraft(d => ({ ...d, protein: g })); else update({ protein: g })
+  }
+  function applyCalories(kcal: number, adjustDate: string) {
+    if (editing) setDraft(d => ({ ...d, calories: kcal, lastCalorieAdjust: adjustDate }))
+    else update({ calories: kcal, lastCalorieAdjust: adjustDate })
+  }
 
   const [logOpen, setLogOpen] = useState(false)
   // Empty day → compact one-liner IN PLACE (the cell never moves or grows
@@ -298,35 +327,35 @@ export function NutritionCard({ date }: { date: string }) {
             <span>Goal</span>
             <div className="flex gap-1">
               {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
-                <button key={g} onClick={() => update({ goal: g })}
+                <button key={g} onClick={() => selectGoal(g)}
                   className={`text-[11px] px-3 min-h-[44px] rounded-full border transition-colors ${
-                    targets.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
+                    draft.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
                   }`}>{GOAL_LABEL[g]}</button>
               ))}
             </div>
           </div>
           <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
             <span>Calorie goal</span>
-            <GoalStepper value={targets.calories} step={50} onChange={v => update({ calories: v })} suffix="kcal" />
+            <GoalStepper value={draft.calories} step={50} onChange={v => setDraft(d => ({ ...d, calories: v }))} suffix="kcal" />
           </div>
           {/* Safety floor — a target below RMR-protecting intake is flagged, not silently allowed */}
-          {targets.calories < coach.calorieFloor && (
+          {draft.calories < coach.calorieFloor && (
             <p className="text-[10px] text-red-500 px-0.5 -mt-1">⚠ Below a safe floor (~{coach.calorieFloor} kcal). Don't cut lower — take a diet break instead.</p>
           )}
           <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
             <span>Protein goal</span>
-            <GoalStepper value={targets.protein} step={10} onChange={v => update({ protein: v })} suffix="g" />
+            <GoalStepper value={draft.protein} step={10} onChange={v => setDraft(d => ({ ...d, protein: v }))} suffix="g" />
           </div>
           <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
             <span>Water goal</span>
-            <GoalStepper value={targets.water} step={250} onChange={v => update({ water: v })} suffix="ml" />
+            <GoalStepper value={draft.water} step={250} onChange={v => setDraft(d => ({ ...d, water: v }))} suffix="ml" />
           </div>
 
           {/* Bodyweight-based protein suggestion (real latest weight) */}
           {coach.weightKg == null ? (
             <p className="text-[10px] text-ink-500 px-0.5">Sync or add a bodyweight (Training → Body) to get protein &amp; calorie suggestions.</p>
-          ) : coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? (
-            <button onClick={() => update({ protein: coach.proteinForGoal! })}
+          ) : coach.proteinForGoal != null && coach.proteinForGoal !== draft.protein ? (
+            <button onClick={() => applyProtein(coach.proteinForGoal!)}
               className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
               <span className="text-ink-600">
                 Suggested <strong className="text-accent-700">{coach.proteinForGoal}g</strong> protein
@@ -347,7 +376,7 @@ export function NutritionCard({ date }: { date: string }) {
               quality AND a cooldown; shows an honest 'on track' / floor / gate state */}
           {coach.weightKg != null && (
             coach.calorieAdvice ? (
-              <button onClick={() => update({ calories: Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), lastCalorieAdjust: todayStr() })}
+              <button onClick={() => applyCalories(Math.max(coach.calorieFloor, draft.calories + coach.calorieAdvice!.delta), todayStr())}
                 className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
                 <span className="text-ink-600">
                   <strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong>
@@ -368,10 +397,16 @@ export function NutritionCard({ date }: { date: string }) {
             ) : null
           )}
 
-          <button onClick={() => setEditing(false)}
-            className="self-end text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[44px] px-2 rounded transition-colors">
-            Done
-          </button>
+          <div className="flex items-center justify-end gap-1.5">
+            <button onClick={() => setEditing(false)}
+              className="text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[44px] px-2 rounded transition-colors">
+              Cancel
+            </button>
+            <button onClick={() => { update(draft); setEditing(false) }} disabled={isSaving}
+              className="text-[11px] font-semibold text-white bg-accent-500 hover:bg-accent-600 disabled:opacity-50 min-h-[44px] px-3 rounded-lg transition-colors">
+              {isSaving ? 'Saving…' : '💾 Save'}
+            </button>
+          </div>
         </div>
       ) : hasMeals || expanded ? (
         <>

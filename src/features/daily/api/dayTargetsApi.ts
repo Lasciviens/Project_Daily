@@ -1,11 +1,13 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 
-// Daily nutrition goals — a single DB row per user (migration 086,
+// Daily nutrition goals — a single ACTIVE DB row per user (migration 086,
 // `day_targets`), replacing the old localStorage-only version
 // (`useDayTargets.ts` used to persist under 'lasci.dayTargets'). A single
 // browser was fine until a second device — or a cleared browser — silently
 // reset the numbers to the hardcoded defaults with no way to recover them.
+// `day_target_profiles` (migration 088) adds one row PER GOAL so Cut/
+// Maintain/Gain each keep their own saved numbers — see upsertDayTargets.
 
 export type NutritionGoal = 'maintain' | 'cut' | 'gain'
 
@@ -83,5 +85,44 @@ export async function upsertDayTargets(targets: DayTargets): Promise<DayTargets>
     .select()
     .single()
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+
+  // Keep THIS goal's own saved profile (migration 088) in sync with every
+  // write to the active row — this is what lets switching Cut → Maintain →
+  // Cut recall Cut's real numbers instead of whatever Maintain left behind.
+  // Best-effort: a missing `day_target_profiles` table must not fail the
+  // active-row save that already succeeded above.
+  const { error: profileErr } = await supabase
+    .from('day_target_profiles')
+    .upsert(
+      {
+        user_id:    user.id,
+        goal:       targets.goal,
+        calories:   targets.calories,
+        protein_g:  targets.protein,
+        water_ml:   targets.water,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,goal' },
+    )
+  if (profileErr && !isMissingTable(profileErr)) throw profileErr
+
   return fromRow(data)
+}
+
+export type DayTargetProfiles = Partial<Record<NutritionGoal, Pick<DayTargets, 'calories' | 'protein' | 'water'>>>
+
+// One saved {calories, protein, water} set per goal (migration 088) — the
+// Goals editor consults this when a goal pill is tapped, instead of just
+// carrying over whatever numbers the previously-selected goal had.
+export async function fetchDayTargetProfiles(): Promise<DayTargetProfiles> {
+  const { data, error } = await supabase.from('day_target_profiles').select('*')
+  if (error) {
+    if (isMissingTable(error)) return {}
+    throw error
+  }
+  const out: DayTargetProfiles = {}
+  for (const row of data ?? []) {
+    out[row.goal as NutritionGoal] = { calories: row.calories, protein: row.protein_g, water: row.water_ml }
+  }
+  return out
 }
