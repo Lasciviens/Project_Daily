@@ -162,12 +162,143 @@ bottle sticker → **Run Shortcut → Su İç** → turn **OFF "Ask Before Runni
 | `search_library` | `{q}` | `{ok, items[]}` (your library, per-100g) | no |
 | `sleep_stats` | `{}` | `{ok, last_night:{hours,in_bed_h,deep_h,core_h,rem_h,awake_h,start,end,sleeping_hr?,hrv_ms?,spo2_pct?,resp_rate?}, nights[]}` (overlap-merged, Oslo wake-day) | no |
 | `tasks_today` | `{}` | `{ok, date, tasks:[{title,priority,due_time}], schedule:[{time,title}]}` | no |
+| `import_body_composition` | see below | see below | no |
 | `ask` | `{q}` | `{ok, text}` | yes (→ ai-proxy, fast model) |
 | `brief` | `{}` | `{ok, text}` | yes (context pre-built, single-shot) |
 | `sleep` | `{}` | `{ok, text}` | yes |
 
 `date` defaults to the server's UTC date; pass a `yyyy-MM-dd` (Format Date in the
 shortcut) if you care about the exact local day near midnight.
+
+---
+
+## `import_body_composition` — full contract (for Codex)
+
+**What it's for:** a smart-scale "Body composition analysis report" photo is
+shared to an Apple Shortcut; the Shortcut OCRs the fixed report layout
+on-device (Apple's built-in OCR — **no AI/LLM anywhere in this path**) and
+POSTs the 14 extracted numbers here. **Do not change the OCR steps or the
+existing extraction logic** — this section only documents what to send to the
+gateway at the end of that already-working flow, plus the notification you
+show for each outcome.
+
+**Endpoint:** `POST /functions/v1/phone-gateway`
+**Headers:** `x-phone-secret: <secret>` · `Content-Type: application/json`
+(same as every other action — no new headers).
+
+### Request body
+
+```json
+{
+  "action": "import_body_composition",
+  "measured_at": "2026-09-06T08:23:00",
+  "measurement_timezone": "Europe/Oslo",
+  "weight_kg": 83.6,
+  "body_fat_percent": 24.4,
+  "body_fat_mass_kg": 20.4,
+  "lean_body_mass_kg": 63.2,
+  "body_water_percent": 55.4,
+  "protein_percent": 15.0,
+  "muscle_percent": 70.4,
+  "skeletal_muscle_percent": 42.9,
+  "skeletal_muscle_index": 8.2,
+  "bmi": 25.8,
+  "visceral_fat_index": 8,
+  "subcutaneous_fat_kg": 18.0,
+  "bmr_kcal": 1735,
+  "body_score": 79
+}
+```
+
+- `measured_at` — **local wall-clock time exactly as printed on the report**
+  (`"2026/09/06 08:23"` → format as `"2026-09-06T08:23:00"`), with **no**
+  `Z` suffix and **no** `+HH:MM`/`-HH:MM` offset. The report never prints a
+  timezone, so sending one here would be ambiguous, not helpful — the
+  gateway is what resolves it correctly (DST included).
+- `measurement_timezone` — optional IANA zone name. **Omit it and the
+  gateway defaults to `Europe/Oslo`** (today's only real device/timezone),
+  but send it explicitly if you have it — it costs nothing and removes any
+  future ambiguity if a shortcut ever runs from a different zone.
+- The 14 numeric fields — send them as JSON **numbers** (the Shortcuts
+  "Number" body-field type), not strings, matching the report exactly
+  (`visceral_fat_index`/`bmr_kcal`/`body_score` are whole numbers; the rest
+  can carry one decimal place). **Do not round, clamp, or default a missing
+  OCR read to 0** — send whatever the OCR step actually produced (including
+  nothing/blank if the OCR genuinely failed to read that field) and let the
+  gateway reject it with a named field error; a silently-substituted 0 would
+  write a wrong number that looks like a real reading.
+
+### Responses — one for every outcome, with the exact body to branch on
+
+**`created`** — new report, no earlier row for this `measured_at`.
+```json
+{ "status": "created", "id": "b1a2c3d4-…" }
+```
+HTTP 201. Show: "✓ Rapor kaydedildi" (or similar).
+
+**`already_exists`** — the SAME report (same `measured_at`, matching
+numbers) was already imported; nothing was written or changed.
+```json
+{ "status": "already_exists", "id": "b1a2c3d4-…" }
+```
+HTTP 200. Show a neutral "already saved" notification, not an error — this is
+the expected result of re-sharing the same photo twice, or the Shortcut
+retrying after a network hiccup.
+
+**`validation_error`** — a required field was missing, non-numeric, out of a
+sane range, or the two numbers didn't add up (see "Consistency checks"
+below). Never writes a row.
+```json
+{
+  "status": "validation_error",
+  "errors": {
+    "body_fat_mass_kg": "inconsistent with weight_kg × body_fat_percent (expected ≈20.40)",
+    "bmr_kcal": "required"
+  }
+}
+```
+HTTP 400. Show the field name(s) so a bad OCR crop is easy to spot and retake.
+
+**`conflict`** — a report for this EXACT `measured_at` already exists but
+with DIFFERENT numbers. Never overwrites — the existing row is left exactly
+as it was.
+```json
+{ "status": "conflict", "id": "b1a2c3d4-…", "message": "A report already exists for this measured_at with different values." }
+```
+HTTP 409. This should be rare (it means the same minute-stamp was scanned
+twice with two different readings) — show it as a real error, distinct from
+`already_exists`.
+
+**`unauthorized`** — same shape as every other action (bad/missing
+`x-phone-secret`), not specific to this one.
+```json
+{ "error": "Unauthorized" }
+```
+HTTP 401.
+
+**`server_error`** — an unexpected failure (DB unreachable, etc.).
+```json
+{ "status": "server_error", "error": "<message>" }
+```
+HTTP 500. (A genuinely unhandled exception anywhere in the gateway falls
+back to the shared `{ "ok": false, "error": "<message>" }` shape instead —
+treat that the same way as `server_error`.)
+
+### Consistency checks (why a technically-valid report can still 400)
+Two cross-checks catch a misread OCR field even when every individual number
+looks plausible on its own — tolerance accounts for the report's own 1-decimal
+rounding, not device classification:
+- `body_fat_mass_kg` ≈ `weight_kg × body_fat_percent / 100`
+- `lean_body_mass_kg` ≈ `weight_kg − body_fat_mass_kg`
+
+(tolerance: the larger of 0.15 kg or 0.5% of `weight_kg`)
+
+### Idempotency key
+`(measured_at, source)` — `source` is always `"movinglife_report"` for this
+report layout and is set server-side; you never send it. Re-running the exact
+same shortcut against the exact same photo is always safe (→ `already_exists`),
+including if it happens to fire twice at once (a concurrent duplicate resolves
+the same way, never as two rows).
 
 ## Security & rotation
 - The only thing on the phone is the **device secret** — not the service key, not
@@ -183,3 +314,4 @@ shortcut) if you care about the exact local day near midnight.
 - [ ] Ex 2: "Hey Siri, AI'a Sor" speaks a real answer.
 - [ ] Ex 3: 07:00 automation (test via "Run") shows the brief.
 - [ ] Ex 4: Scriptable widget shows today's kcal/protein and keeps updating.
+- [ ] Migration `085_body_composition_reports.sql` applied; `phone-gateway` redeployed → `import_body_composition` with a real report's numbers returns `created`; re-sending the identical body returns `already_exists`; re-sending with one number changed returns `conflict`.

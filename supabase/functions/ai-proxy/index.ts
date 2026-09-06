@@ -2158,6 +2158,17 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     purpose: 'Body measurements synced from Hevy (bodyweight, fat %, circumferences).',
     columns: 'id, date, weight_kg, lean_mass_kg, fat_percent (+ circumference columns); unique per (user_id, date)',
   },
+  // ro, not rw: rows are imported by phone-gateway's import_body_composition
+  // action from a validated, internally-consistent OCR read (see its own
+  // cross-field checks) — the AI writing here directly could insert a
+  // plausible-looking but inconsistent row with none of those guarantees.
+  // A separate source from hevy_body_measurements/health_metrics (a smart-
+  // scale report, not Hevy or Health Auto Export) — never join or conflate.
+  body_composition_reports: {
+    access: 'ro',
+    purpose: 'Smart-scale "body composition analysis report" scans, imported from the phone (one row per scan). Useful for weight/body-fat/muscle trend questions alongside hevy_body_measurements and health_metrics, but a DIFFERENT source — never merge or average across sources in one answer without saying so.',
+    columns: 'id, measured_at(timestamptz — the real reading instant, resolved server-side, DST-safe), weight_kg, body_fat_percent, body_fat_mass_kg, lean_body_mass_kg, body_water_percent, protein_percent, muscle_percent, skeletal_muscle_percent, skeletal_muscle_index, bmi, visceral_fat_index, subcutaneous_fat_kg, bmr_kcal, body_score(0-100, the report\'s own score), source(text, currently only \'movinglife_report\'), created_at',
+  },
   strava_activities: {
     access: 'ro',
     purpose: 'Cardio activities synced from Strava.',

@@ -2,6 +2,36 @@
 
 _Append-only. Newest on TOP. Claude writes; Codex reads only. Reply in `to-claude.md`._
 
+### 2026-09-06 · C6 · new
+New task: **C6** on the board. The user already has a working Shortcut that
+OCRs a smart-scale "Body composition analysis report" photo on-device (Apple's
+own OCR, no LLM) — it correctly extracts 14 numbers. Your job is ONLY to add
+the last step: POST those numbers to `phone-gateway`'s new
+`import_body_composition` action and show a notification for the result.
+**Do not touch the existing OCR/extraction steps at all.**
+
+Backend is done on my side this pass: migration `085_body_composition_reports.sql`
+(new `body_composition_reports` table, DB-level dedupe on
+`(user_id, source, measured_at)`) and the `phone-gateway` action itself
+(validates all 14 fields, resolves `measured_at` from a local time + timezone
+DST-safely, runs two consistency cross-checks, and returns one of `created` /
+`already_exists` / `validation_error` / `conflict` / `unauthorized` /
+`server_error`). None of this is deployed to production yet — it's in a draft
+PR pending the user's manual migration + redeploy step, so don't expect it to
+work live until they confirm that's done.
+
+**Full contract, with real request/response examples for every status:**
+`docs/iphone-examples.md` → new "`import_body_composition` — full contract
+(for Codex)" section (right after the gateway API reference table). Read
+that before wiring anything — it has the exact JSON shape, the
+`measured_at`/`measurement_timezone` rules (no `Z`/offset on `measured_at`,
+default timezone `Europe/Oslo` if you omit `measurement_timezone`), and why a
+missing OCR field must be sent blank/missing rather than defaulted to `0`.
+
+Board entry: `codex-shortcuts.md` → C6 (`todo`). Ping `to-claude.md` if
+anything in the contract is unclear or doesn't match what the Shortcut
+already has available at that point in its flow.
+
 ### 2026-07-25 · docs pass · re: 2026-07-24
 The `docs/` set was reorganised and refreshed. **Nothing you depend on moved:**
 - `docs/iphone-examples.md` (the gateway contract) and `docs/scriptable-food-logger.md`
