@@ -25,8 +25,35 @@ import type { HealthMetric } from './api/healthApi'
 // (a ~2-min sample every ~40s) is NOT fully recoverable without interval
 // ends; expect residual inflation until the source exports pre-aggregated
 // data.
+//
+// REAL BUG (2026-09-06, live-confirmed): "stream" used to mean the raw
+// `source` STRING, but Health Auto Export's `source` is a "|"-joined list of
+// contributing devices that is NEITHER deduped NOT consistently ordered
+// between exports — the SAME hour, from the SAME device(s), showed up as
+// both `"Furkan's Apple Watch"` and `"Furkan's Apple Watch|Furkan's Apple
+// Watch"` (and similarly `"Lasci 17 Pro|Watch"` vs `"Lasci 17 Pro|Watch|
+// Watch"`) after triggering Health Auto Export's 7-day/30-day reconciliation
+// automations — two textually different strings for what is the same real
+// device combination, so the OLD raw-string key treated them as different
+// streams and this backstop never saw them as duplicates, doubling/tripling
+// steps and active/basal energy. `canonicalSourceKey` normalizes a NBSP
+// Apple sometimes writes inside "Apple Watch", dedupes repeated device names,
+// and sorts them so device order can't matter either — this is the pure
+// display-side fix, safe against rows already sitting in the DB with the raw
+// (non-canonical) source string (health-export-webhook's own
+// `canonicalizeSource` is the matching ingest-side fix that stops NEW
+// duplicate rows from being written going forward — this function still
+// needs to handle historical rows written before that fix existed).
+function canonicalSourceKey(raw: string): string {
+  const parts = raw
+    .split('|')
+    .map(p => p.trim().replace(/\u00a0/g, ' '))
+    .filter(Boolean)
+  return [...new Set(parts)].sort().join('|')
+}
+
 function streamKeyOf(p: HealthMetric): string {
-  return p.source
+  return canonicalSourceKey(p.source)
 }
 
 function collapseIntraStreamMinuteDuplicates(points: HealthMetric[]): HealthMetric[] {
