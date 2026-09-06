@@ -39,18 +39,29 @@ export function useDayTargets() {
   // "Apply" suggestions (a single deliberate action, not a background
   // autosave) and by the Goals editor's own explicit Save button. Optimistic
   // so either still feels instant.
-  const mutation = useMutationWithFeedback<DayTargets, DayTargets, { previous?: DayTargets }>({
+  const mutation = useMutationWithFeedback<DayTargets, DayTargets, { previous?: DayTargets; previousProfiles?: DayTargetProfiles }>({
     action:         'update_day_targets',
     successMessage: 'Saved ✓',
     mutationFn:     (next: DayTargets) => upsertDayTargets(next),
     onMutate: async (next) => {
       await qc.cancelQueries({ queryKey: QK })
+      await qc.cancelQueries({ queryKey: PROFILES_QK })
       const previous = qc.getQueryData<DayTargets>(QK)
+      const previousProfiles = qc.getQueryData<DayTargetProfiles>(PROFILES_QK)
       qc.setQueryData(QK, next)
-      return { previous }
+      // Also reflect THIS goal's just-saved numbers into the profiles cache
+      // immediately — without this, switching goals right after Save (before
+      // the background refetch below completes) could still read the
+      // pre-save profile and look like the save didn't actually happen.
+      qc.setQueryData<DayTargetProfiles>(PROFILES_QK, (old) => ({
+        ...(old ?? {}),
+        [next.goal]: { calories: next.calories, protein: next.protein, water: next.water },
+      }))
+      return { previous, previousProfiles }
     },
     onError: (_err, _next, ctx) => {
       if (ctx?.previous) qc.setQueryData(QK, ctx.previous)
+      if (ctx?.previousProfiles) qc.setQueryData(PROFILES_QK, ctx.previousProfiles)
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: QK })
