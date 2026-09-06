@@ -67,7 +67,10 @@ function GoalStepper({ value, step, suffix, onChange }: { value: number; step: n
       <button type="button" onClick={() => set(value - step)} className={btn}>−</button>
       <div className="relative">
         <input type="number" value={value} min={0} step={step} onChange={e => set(Number(e.target.value) || 0)}
-          className="w-20 min-h-[44px] text-sm text-center pr-8 tabular-nums border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
+          // Hide the browser's own up/down spinner — it would sit right on
+          // top of the −/+ buttons already flanking this field, a second,
+          // redundant increment control.
+          className="w-20 min-h-[44px] text-sm text-center pr-8 tabular-nums border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-ink-400 pointer-events-none">{suffix}</span>
       </div>
       <button type="button" onClick={() => set(value + step)} className={btn}>+</button>
