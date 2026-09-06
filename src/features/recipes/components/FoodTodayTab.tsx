@@ -116,9 +116,24 @@ export function FoodTodayTab({ date }: { date: string }) {
     setGoalsWasOpen(goalsOpen)
     if (goalsOpen) setDraft(targets)
   }
+  // REAL BUG, fixed: with no saved profile for a goal yet, switching pills
+  // only changed the `goal` label — the numbers sat frozen, reading as
+  // "picking Cut/Gain does nothing." A goal with no saved profile now gets
+  // a sensible DIFFERENT starting point: protein scales with bodyweight
+  // (`coach.proteinByGoal`, already computed for every goal), calories step
+  // off Maintain's own saved number by the standard ~500 kcal deficit /
+  // ~300 kcal surplus a cut/gain implies. Saving a goal replaces this
+  // fallback with its own real profile from then on.
   function selectGoal(g: NutritionGoal) {
     const profile = profiles[g]
-    setDraft(d => (profile ? { ...d, goal: g, ...profile } : { ...d, goal: g }))
+    if (profile) { setDraft(d => ({ ...d, goal: g, ...profile })); return }
+    setDraft(d => {
+      const maintainCalories = profiles.maintain?.calories ?? d.calories
+      const calorieDelta = g === 'cut' ? -500 : g === 'gain' ? 300 : 0
+      const calories = g === 'maintain' ? maintainCalories : Math.max(coach.calorieFloor, maintainCalories + calorieDelta)
+      const protein = coach.weightKg != null ? coach.proteinByGoal[g] : d.protein
+      return { ...d, goal: g, calories, protein }
+    })
   }
   // Coach "Apply" buttons write immediately while the panel is closed
   // (unchanged, one deliberate tap); while it's open they feed the draft so

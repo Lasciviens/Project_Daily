@@ -260,10 +260,27 @@ export function NutritionCard({ date }: { date: string }) {
     if (editing) setDraft(targets)
   }
   // Switching goal pills recalls THAT goal's own saved numbers (migration
-  // 088) instead of carrying over whatever the previous goal had.
+  // 088) instead of carrying over whatever the previous goal had. REAL BUG,
+  // fixed: with no saved profile yet (first use, or a goal never tapped
+  // before), the numbers used to just sit frozen — only the `goal` label
+  // changed, reading as "picking Cut/Gain does nothing." Now a goal with no
+  // saved profile gets a sensible DIFFERENT starting point instead: protein
+  // scales with bodyweight (`coach.proteinByGoal`, already computed for
+  // every goal — cut is a higher g/kg to spare lean mass in a deficit), and
+  // calories step off Maintain's own saved number by the standard ~500 kcal
+  // deficit / ~300 kcal surplus a cut/gain implies. Once the user taps Save,
+  // that goal has its own real profile and this fallback never runs for it
+  // again.
   function selectGoal(g: NutritionGoal) {
     const profile = profiles[g]
-    setDraft(d => (profile ? { ...d, goal: g, ...profile } : { ...d, goal: g }))
+    if (profile) { setDraft(d => ({ ...d, goal: g, ...profile })); return }
+    setDraft(d => {
+      const maintainCalories = profiles.maintain?.calories ?? d.calories
+      const calorieDelta = g === 'cut' ? -500 : g === 'gain' ? 300 : 0
+      const calories = g === 'maintain' ? maintainCalories : Math.max(coach.calorieFloor, maintainCalories + calorieDelta)
+      const protein = coach.weightKg != null ? coach.proteinByGoal[g] : d.protein
+      return { ...d, goal: g, calories, protein }
+    })
   }
   // The Coach's "Apply" buttons are already one deliberate tap — while the
   // panel is closed they still write immediately (unchanged behaviour); while
