@@ -87,16 +87,13 @@ export function BodySection({ dateStr }: { dateStr: string }) {
   const { data: weightPoints = [] } = useHealthMetricSeries('weight_body_mass', from, to)
   const { data: fatPoints = [] } = useHealthMetricSeries('body_fat_percentage', from, to)
   const { data: bmiPoints = [] } = useHealthMetricSeries('body_mass_index', from, to)
-  // Real gap fixed: MovingLife (like most smart scales) writes this
-  // alongside body fat/BMI on every weigh-in, but nothing here ever fetched
-  // or displayed it — the data existed in health_metrics the whole time,
-  // invisible in the app.
-  const { data: leanPoints = [] } = useHealthMetricSeries('lean_body_mass', from, to)
+  // Lean Mass mini-chart (Apple Health's lean_body_mass) removed on explicit
+  // user request (2026-09-06) — the Smart Scale Reports panel below already
+  // covers lean mass (and everything else) for the scale actually in use.
 
   const weight = computeDailySeries('weight_body_mass', weightPoints)
   const fat = computeDailySeries('body_fat_percentage', fatPoints)
   const bmi = computeDailySeries('body_mass_index', bmiPoints)
-  const lean = computeDailySeries('lean_body_mass', leanPoints)
 
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-4">
@@ -105,7 +102,6 @@ export function BodySection({ dateStr }: { dateStr: string }) {
         <BodyMiniChart title="Weight" icon="⚖️" unit="kg" color="#7c3aed" series={weight} decimals={1} viewedDate={dateStr} />
         <BodyMiniChart title="Body Fat" icon="📏" unit="%" color="#f59e0b" series={fat} decimals={1} viewedDate={dateStr} />
         <BodyMiniChart title="BMI" icon="📐" unit="" color="#0ea5e9" series={bmi} decimals={1} viewedDate={dateStr} />
-        <BodyMiniChart title="Lean Mass" icon="💪" unit="kg" color="#16a34a" series={lean} decimals={1} viewedDate={dateStr} />
       </div>
 
       <MetricMiniGrid title="Lifestyle & Environment" metrics={BODY_EXTRA_METRICS} />
