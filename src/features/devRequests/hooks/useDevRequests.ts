@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  fetchDevRequests, createDevRequest, updateDevRequest, deleteDevRequest, reorderDevRequests,
+  fetchDevRequests, createDevRequest, updateDevRequest, deleteDevRequest, deleteDevRequests, reorderDevRequests,
 } from '../api/devRequestsApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import type { DevRequest, CreateDevRequestInput } from '../types'
@@ -36,6 +36,16 @@ export function useDeleteDevRequest() {
     action:         'delete_dev_request',
     successMessage: 'Deleted',
     mutationFn:     (id: string) => deleteDevRequest(id),
+    onSuccess:      () => qc.invalidateQueries({ queryKey: QK }),
+  })
+}
+
+export function useBulkDeleteDevRequests() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'bulk_delete_dev_requests',
+    successMessage: 'Deleted',
+    mutationFn:     (ids: string[]) => deleteDevRequests(ids),
     onSuccess:      () => qc.invalidateQueries({ queryKey: QK }),
   })
 }

@@ -31,7 +31,7 @@ const PAGE_SIZE = 20
 
 // ─── Best Lifts Card (top 5 by weight) ───────────────────────────────────────
 
-function BestLiftsCard() {
+function BestLiftsCard({ muscleFilter }: { muscleFilter: string }) {
   const { data: prs = [], isLoading } = useHevyPRs()
   // Hover/tap peek — same GIF affordance the user liked on Personal Records.
   const [peekId, setPeekId] = useState<string | null>(null)
@@ -42,14 +42,25 @@ function BestLiftsCard() {
 
   if (prs.length === 0) return null
 
-  const top5 = [...prs]
+  // Recomputed against whatever muscle group is currently selected in the
+  // Personal Records filter below — a "top 5" that ignored the filter read
+  // as broken (picking Legs still showed a bench press at #1).
+  const groupFiltered = muscleFilter === 'All'
+    ? prs
+    : prs.filter(pr => pr.primary_muscle_group === muscleFilter)
+
+  if (groupFiltered.length === 0) return null
+
+  const top5 = [...groupFiltered]
     .sort((a, b) => b.max_weight_kg - a.max_weight_kg)
     .slice(0, 5)
 
   return (
     <div className="rounded-xl border border-ink-200 bg-cream-50 mb-3 max-w-md">
       <div className="px-3 py-2 border-b border-ink-100">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Top 5 Lifts by Weight</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">
+          Top 5 Lifts by Weight{muscleFilter !== 'All' ? <span className="capitalize"> · {muscleFilter}</span> : ''}
+        </p>
       </div>
       <div className="divide-y divide-ink-50">
         {top5.map((pr, i) => {
@@ -207,10 +218,14 @@ function WorkoutsSubTab() {
 // ─── PRs sub-tab with Best Lifts card ────────────────────────────────────────
 
 function PRsSubTab() {
+  // Lifted up so BestLiftsCard's "top 5" recomputes against the SAME muscle
+  // filter HevyPRList's own pills already control — previously two
+  // independent, unconnected components.
+  const [muscleFilter, setMuscleFilter] = useState<string>('All')
   return (
     <>
-      <BestLiftsCard />
-      <HevyPRList />
+      <BestLiftsCard muscleFilter={muscleFilter} />
+      <HevyPRList activeGroup={muscleFilter} onActiveGroupChange={setMuscleFilter} />
     </>
   )
 }
