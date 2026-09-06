@@ -50,13 +50,29 @@ export function HevyPRList({ activeGroup, onActiveGroupChange }: HevyPRListProps
     )
   }
 
+  // Only exercises trained at least 3 times — a one-off heavy single isn't a
+  // real "personal record" worth tracking here, it's noise (a machine tried
+  // once, a form check, a spotter-assisted rep).
+  const eligible = prs.filter(pr => pr.times_performed >= 3)
+
+  if (eligible.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-8 text-ink-400">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-3-3v6m9-6a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p className="text-sm">No exercise trained 3+ times yet — keep logging</p>
+      </div>
+    )
+  }
+
   const muscleGroups = Array.from(
-    new Set(prs.map(pr => pr.primary_muscle_group).filter(Boolean) as string[])
+    new Set(eligible.map(pr => pr.primary_muscle_group).filter(Boolean) as string[])
   ).sort()
 
   const groupFiltered = activeGroup === 'All'
-    ? prs
-    : prs.filter(pr => pr.primary_muscle_group === activeGroup)
+    ? eligible
+    : eligible.filter(pr => pr.primary_muscle_group === activeGroup)
 
   // Live substring match, not prefix-only — searching "zzz" must still find
   // "XXX ZZZ YYY" since the matching word can be anywhere in the title.
@@ -72,7 +88,7 @@ export function HevyPRList({ activeGroup, onActiveGroupChange }: HevyPRListProps
       {/* Info banner — content-sized, not a full-monitor-width band */}
       <div className="flex items-center gap-2 px-3 py-2 bg-accent-50 border border-accent-200 rounded-xl w-fit max-w-full">
         <span className="text-sm leading-none">🏆</span>
-        <p className="text-xs text-accent-700 font-medium">All-time heaviest lift per exercise, sorted by most recent. Weights in kg.</p>
+        <p className="text-xs text-accent-700 font-medium">All-time heaviest lift per exercise trained 3+ times, sorted by most recently achieved. Weights in kg.</p>
       </div>
 
       {/* Search — a text box never needs 1900px */}

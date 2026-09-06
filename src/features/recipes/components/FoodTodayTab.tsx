@@ -12,7 +12,23 @@ import { EditFoodLogModal } from './EditFoodLogModal'
 import { AssignMealModal } from './AssignMealModal'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import type { MealSlot, MealPlanEntry } from '../types'
-import type { DayMeal } from '../../daily/api/dayNutritionApi'
+import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/dayNutritionApi'
+
+// `DayMeal.title` bakes the amount straight into the string ("Chicken ·
+// 150g") — fine for a single flowing line, but the desktop grid wants the
+// name and the amount in two SEPARATE aligned columns ("Gramaj yapışık
+// olmasın" — the amount shouldn't read glued to the name). Split on the
+// same " · " separator both `unifiedToMeal` branches already use, but only
+// treat the tail as a quantity if it looks like one (starts with a digit) —
+// a food name that legitimately contains " · " itself must not get chopped
+// into two garbled halves.
+function splitTitleQty(title: string): { name: string; qty: string | null } {
+  const idx = title.lastIndexOf(' · ')
+  if (idx === -1) return { name: title, qty: null }
+  const qty = title.slice(idx + 3)
+  if (!/^\d/.test(qty)) return { name: title, qty: null }
+  return { name: title.slice(0, idx), qty }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Food · Today — the FULL-SIZE nutrition surface. Two columns on wide screens
@@ -67,7 +83,10 @@ function GoalStepper({ value, step, suffix, onChange }: { value: number; step: n
       <button type="button" onClick={() => set(value - step)} className={btn}>−</button>
       <div className="relative">
         <input type="number" value={value} min={0} step={step} onChange={e => set(Number(e.target.value) || 0)}
-          className="w-20 min-h-[44px] text-sm text-center pr-8 tabular-nums border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
+          // Hide the browser's own up/down spinner — it would sit right on
+          // top of the −/+ buttons already flanking this field, a second,
+          // redundant increment control.
+          className="w-20 min-h-[44px] text-sm text-center pr-8 tabular-nums border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-ink-400 pointer-events-none">{suffix}</span>
       </div>
       <button type="button" onClick={() => set(value + step)} className={btn}>+</button>
@@ -87,6 +106,12 @@ export function FoodTodayTab({ date }: { date: string }) {
   const [planMeal, setPlanMeal] = useState<MealPlanEntry | null>(null)
   const [goalsOpen, setGoalsOpen] = useState(false)
   const [coachOpen, setCoachOpen] = useState(false)   // mobile-only collapse
+  // Which "As meal" groups are expanded to their individual items — collapsed
+  // (just the compact summary row) by default for every group.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  function toggleGroup(id: string) {
+    setExpandedGroups(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
 
   const consumed = nut?.calories ?? 0
   const protein  = nut?.protein_g ?? 0
@@ -104,6 +129,102 @@ export function FoodTodayTab({ date }: { date: string }) {
   const bySlot = new Map<string, DayMeal[]>()
   for (const m of nut?.meals ?? []) {
     const arr = bySlot.get(m.meal_slot) ?? []; arr.push(m); bySlot.set(m.meal_slot, arr)
+  }
+
+  // One row for a single logged/planned item — used both standalone and as
+  // an indented item inside an expanded "As meal" group. Two markups
+  // (mobile stacked vs. desktop grid) rather than one responsive grid whose
+  // column COUNT would need to change per breakpoint out from under the
+  // same fixed set of children.
+  function mealLine(meal: DayMeal, indent: boolean) {
+    const planned = meal.source === 'plan'
+    const { name, qty } = splitTitleQty(meal.title)
+    const onOpen = () => planned ? setPlanMeal(meal.planEntry ?? null) : setEditMeal(meal)
+    const onDelete = () => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)
+    const macroLine = [
+      qty,
+      meal.calories > 0 && `${meal.calories} kcal`,
+      meal.protein_g > 0 && `${meal.protein_g}p`,
+      meal.carbs_g > 0 && `${meal.carbs_g}c`,
+      meal.fat_g > 0 && `${meal.fat_g}f`,
+      meal.fiber_g > 0 && `${meal.fiber_g}fib`,
+    ].filter(Boolean).join(' · ')
+    return (
+      <li key={meal.id} className={indent ? 'bg-cream-100/40' : ''}>
+        {/* Mobile — name+kcal+actions, then a small macro line underneath */}
+        <div className="sm:hidden">
+          <div className={`flex items-center gap-1.5 min-h-[44px] py-1 text-sm ${indent ? 'pl-9 pr-4' : 'px-4'}`}>
+            <button type="button" onClick={onOpen} className="flex-1 min-w-0 text-left hover:text-accent-700 transition-colors flex items-center gap-1.5">
+              <span className={`truncate ${planned ? 'text-ink-400 italic' : 'text-ink-800'}`}>{name}</span>
+              {planned && <span className="text-[9px] uppercase tracking-wide text-ink-500 border border-ink-200 rounded px-1 shrink-0">planned</span>}
+            </button>
+            {planned && meal.planEntry && (
+              <button onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
+                aria-label={`Mark ${name} eaten`} title="I ate this — count it"
+                className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
+            )}
+            <button onClick={onDelete} aria-label={`Remove ${name}`}
+              className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 shrink-0">✕</button>
+          </div>
+          {macroLine && <p className={`text-[11px] text-ink-400 tabular-nums pb-1 -mt-1 ${indent ? 'pl-9' : 'px-4'}`}>{macroLine}</p>}
+        </div>
+
+        {/* Desktop — every macro in its own aligned column, never crammed
+            into the name (the reported "gramaj yapışık" complaint). */}
+        <div className={`hidden sm:grid grid-cols-[minmax(0,1fr)_3.5rem_3rem_2.5rem_2.5rem_2.5rem_2.5rem_auto_auto] items-center gap-x-2 min-h-[44px] py-1 text-sm ${indent ? 'pl-9 pr-4' : 'px-4'}`}>
+          <button type="button" onClick={onOpen} className="min-w-0 text-left hover:text-accent-700 transition-colors flex items-center gap-1.5">
+            <span className={`truncate ${planned ? 'text-ink-400 italic' : 'text-ink-800'}`}>{name}</span>
+            {planned && <span className="text-[9px] uppercase tracking-wide text-ink-500 border border-ink-200 rounded px-1 shrink-0">planned</span>}
+          </button>
+          <span className="text-[11px] text-ink-400 tabular-nums text-right">{qty ?? ''}</span>
+          <span className={`text-xs tabular-nums text-right ${planned ? 'text-ink-400' : 'text-ink-500'}`}>{meal.calories > 0 ? meal.calories : ''}</span>
+          <span className="text-[11px] text-ink-400 tabular-nums text-right">{meal.protein_g > 0 ? `${meal.protein_g}p` : ''}</span>
+          <span className="text-[11px] text-ink-400 tabular-nums text-right">{meal.carbs_g > 0 ? `${meal.carbs_g}c` : ''}</span>
+          <span className="text-[11px] text-ink-400 tabular-nums text-right">{meal.fat_g > 0 ? `${meal.fat_g}f` : ''}</span>
+          <span className="text-[11px] text-ink-400 tabular-nums text-right">{meal.fiber_g > 0 ? `${meal.fiber_g}fib` : ''}</span>
+          {planned && meal.planEntry ? (
+            <button onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
+              aria-label={`Mark ${name} eaten`} title="I ate this — count it"
+              className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
+          ) : <span />}
+          <button onClick={onDelete} aria-label={`Remove ${name}`}
+            className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 shrink-0">✕</button>
+        </div>
+      </li>
+    )
+  }
+
+  // A compact "As meal" group header — several individually-logged items
+  // collapsed into ONE row; tapping it expands to each item's own mealLine.
+  function groupHeaderLine(group: MealGroupRow) {
+    const expanded = expandedGroups.has(group.groupId)
+    const totals = [
+      `${group.calories} kcal`,
+      group.protein_g > 0 && `${group.protein_g}p`,
+      group.carbs_g > 0 && `${group.carbs_g}c`,
+      group.fat_g > 0 && `${group.fat_g}f`,
+      group.fiber_g > 0 && `${group.fiber_g}fib`,
+    ].filter(Boolean).join(' · ')
+    return (
+      <li key={group.groupId}>
+        <button type="button" onClick={() => toggleGroup(group.groupId)}
+          className="w-full flex items-center gap-1.5 min-h-[44px] px-4 py-1 text-sm hover:bg-cream-100/60 transition-colors text-left">
+          <span className={`inline-block shrink-0 text-ink-400 transition-transform ${expanded ? 'rotate-90' : ''}`}>›</span>
+          <span className="flex-1 min-w-0 truncate text-ink-800">{group.title}</span>
+          <span className="text-[9px] uppercase tracking-wide text-ink-400 border border-ink-200 rounded px-1 shrink-0">{group.items.length} items</span>
+          <span className="hidden sm:inline text-xs text-ink-500 tabular-nums shrink-0">{totals}</span>
+          <span className="sm:hidden text-xs text-ink-500 tabular-nums shrink-0">{group.calories} kcal</span>
+        </button>
+        {!expanded && (
+          <p className="sm:hidden text-[11px] text-ink-400 tabular-nums px-4 pl-9 pb-1 -mt-1">{totals}</p>
+        )}
+        {expanded && (
+          <ul className="divide-y divide-ink-50 border-t border-ink-50">
+            {group.items.map(m => mealLine(m, true))}
+          </ul>
+        )}
+      </li>
+    )
   }
 
   return (
@@ -265,34 +386,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                 </div>
                 {meals.length > 0 ? (
                   <ul className="divide-y divide-ink-50">
-                    {meals.map(meal => {
-                      const planned = meal.source === 'plan'
-                      return (
-                        <li key={meal.id} className="flex items-center gap-1.5 px-4 py-1 min-h-[44px] text-sm">
-                          <button
-                            type="button"
-                            onClick={() => planned ? setPlanMeal(meal.planEntry ?? null) : setEditMeal(meal)}
-                            className="flex items-center gap-2 flex-1 min-w-0 text-left min-h-[44px] hover:text-accent-700 transition-colors">
-                            <span className={`flex-1 min-w-0 truncate ${planned ? 'text-ink-400 italic' : 'text-ink-800'}`}>{meal.title}</span>
-                            {planned && <span className="text-[9px] uppercase tracking-wide text-ink-500 border border-ink-200 rounded px-1 shrink-0">planned</span>}
-                            {meal.protein_g > 0 && <span className="text-[11px] text-ink-400 tabular-nums shrink-0">{meal.protein_g}p</span>}
-                            {meal.calories > 0 && <span className={`text-xs tabular-nums shrink-0 w-14 text-right ${planned ? 'text-ink-400' : 'text-ink-500'}`}>{meal.calories}</span>}
-                          </button>
-                          {/* Planned → confirm as eaten (starts counting). */}
-                          {planned && meal.planEntry && (
-                            <button
-                              onClick={() => eatPlan.mutate(meal.planEntry!)}
-                              disabled={eatPlan.isPending}
-                              aria-label={`Mark ${meal.title} eaten`} title="I ate this — count it"
-                              className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
-                          )}
-                          <button
-                            onClick={() => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)}
-                            aria-label={`Remove ${meal.title}`}
-                            className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 shrink-0">✕</button>
-                        </li>
-                      )
-                    })}
+                    {groupDayMeals(meals).map(row => row.kind === 'group' ? groupHeaderLine(row) : mealLine(row.meal, false))}
                   </ul>
                 ) : (
                   <button onClick={() => setLogSlot(slot)}

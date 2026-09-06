@@ -398,13 +398,18 @@ export async function fetchHevyPRs(): Promise<HevyPR[]> {
 
   const { data: workouts, error: wErr } = await supabase
     .from('hevy_workouts')
-    .select('id, hevy_created_at')
+    .select('id, start_time, hevy_created_at')
     .in('id', workoutIds)
   if (wErr) throw wErr
 
-  // Build lookup maps
+  // Build lookup maps. REAL BUG (fixed): `achieved_at` used to come straight
+  // from `hevy_created_at` (the SYNC timestamp — when the row was imported),
+  // not when the workout actually happened, so "sorted by most recent" in
+  // HevyPRList was really sorting by import order. Every other query in this
+  // file (fetchHevyWorkouts, fetchWorkoutsWithTemplateIds, fetchTrainingHistory)
+  // already prefers `start_time ?? hevy_created_at` — this now matches them.
   const workoutDateById = new Map<string, string>(
-    (workouts ?? []).map((w: any) => [w.id, w.hevy_created_at as string])
+    (workouts ?? []).map((w: any) => [w.id, (w.start_time ?? w.hevy_created_at) as string])
   )
   const workoutIdByExerciseId = new Map<string, string>(
     (exercises ?? []).map((e: any) => [e.id as string, e.hevy_workout_id as string])
@@ -430,6 +435,10 @@ export async function fetchHevyPRs(): Promise<HevyPR[]> {
     hevy_exercise_id: string
   }
   const prMap = new Map<string, PRAccumulator>()
+  // Distinct workout ids seen per exercise_template_id — a session with 4
+  // sets of squats is ONE "time performed", not 4 (used for the Personal
+  // Records "at least 3 times" filter below).
+  const workoutIdsByTemplate = new Map<string, Set<string>>()
 
   for (const s of sets as any[]) {
     const current = prMap.get(s.exercise_template_id)
@@ -439,6 +448,12 @@ export async function fetchHevyPRs(): Promise<HevyPR[]> {
         reps: s.reps ?? null,
         hevy_exercise_id: s.hevy_exercise_id,
       })
+    }
+    const workoutId = workoutIdByExerciseId.get(s.hevy_exercise_id)
+    if (workoutId) {
+      let ids = workoutIdsByTemplate.get(s.exercise_template_id)
+      if (!ids) { ids = new Set(); workoutIdsByTemplate.set(s.exercise_template_id, ids) }
+      ids.add(workoutId)
     }
   }
 
@@ -455,6 +470,7 @@ export async function fetchHevyPRs(): Promise<HevyPR[]> {
       max_weight_kg: best.weight_kg,
       reps_at_max: best.reps,
       achieved_at: achievedAt,
+      times_performed: workoutIdsByTemplate.get(templateId)?.size ?? 1,
     })
   }
 

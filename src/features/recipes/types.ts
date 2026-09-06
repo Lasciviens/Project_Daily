@@ -73,6 +73,10 @@ export interface FoodLogEntry {
   fat_g:                 number | null
   fiber_g:               number | null
   sugar_g:               number | null
+  /** Ties several individually-logged rows together as one compact diary
+      line ("As meal" in FoodLogModal) — null for a normal single-item or
+      recipe log. Migration 087. */
+  meal_group_id:         string | null
   created_at:            string
 }
 
@@ -90,6 +94,7 @@ export interface FoodLogEntryInput {
   fat_g?:                 number | null
   fiber_g?:               number | null
   sugar_g?:               number | null
+  meal_group_id?:         string | null
 }
 
 export interface RecipeIngredient {

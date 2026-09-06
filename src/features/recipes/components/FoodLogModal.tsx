@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
-import { useAddFoodLogEntries, useRecentFoods } from '../hooks/useFoodLog'
+import {
+  useAddFoodLogEntries, useRecentFoods, useFoodFavorites, useAddFoodFavorite, useRemoveFoodFavorite, useHideRecentFood,
+} from '../hooks/useFoodLog'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRecipes, useCreateRecipe } from '../hooks/useRecipes'
 import { ingredientSnapshot, recipeSnapshot, type RecentFood } from '../api/foodLogApi'
@@ -10,7 +12,7 @@ import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { MealPortionPicker } from './MealPortionPicker'
-import { SlotSelect, FoodThumb } from './foodLogKit'
+import { SlotSelect, FoodThumb, FoodTile } from './foodLogKit'
 import { sanitizeDecimal } from './foodLogUtils'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
@@ -55,10 +57,14 @@ interface Props {
 export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, onEditRecipe }: Props) {
   const { data: library = [] } = useIngredientLibrary()
   const { data: recents = [] } = useRecentFoods()
+  const { data: favorites = [] } = useFoodFavorites()
   const { data: recipes = [] } = useRecipes()
   const createIngredient = useCreateIngredientLibraryItem()
   const createRecipe = useCreateRecipe()
   const addEntries = useAddFoodLogEntries()
+  const addFavorite = useAddFoodFavorite()
+  const removeFavorite = useRemoveFoodFavorite()
+  const hideRecent = useHideRecentFood()
   const qc = useQueryClient()
   const { data: nut } = useDayNutrition(date)
   const { targets } = useDayTargets()
@@ -72,6 +78,14 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
   // Library) — tick "Save to library" to make it a permanent Library recipe.
   const [saveToLibrary, setSaveToLibrary] = useState(false)
   const [portionRecipe, setPortionRecipe] = useState<RecipeWithIngredients | null>(null)
+  // "As meal" — logging several basket items together collapses them into
+  // ONE compact diary line (shared meal_group_id) instead of N separate rows;
+  // tapping that line later expands to each item's own details. Default on:
+  // the whole point is a fast multi-item lunch log that doesn't read as a
+  // wall of separate rows in the day view.
+  const [asMeal, setAsMeal] = useState(true)
+  const [favoritesOpen, setFavoritesOpen] = useState(true)
+  const [recentOpen, setRecentOpen] = useState(true)
 
   // Re-seed per open (instance is reused) — sanctioned adjust-during-render.
   const [wasOpen, setWasOpen] = useState(open)
@@ -150,13 +164,23 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
     () => (q ? library.filter(i => i.name.toLowerCase().includes(q)) : []).slice(0, 20),
     [library, q],
   )
-  // Recents enriched with their library row (photo / group / serving preset).
+  // Recents/Favourites enriched with their library row (photo / group / serving
+  // preset) — Favourites don't store an image of their own, so this is how a
+  // favourited library ingredient still gets a real photo instead of a
+  // fallback emoji.
   const recentTiles = useMemo(
     () => recents.slice(0, 12).map(r => ({
       r, lib: r.library_ingredient_id ? library.find(l => l.id === r.library_ingredient_id) ?? null : null,
     })),
     [recents, library],
   )
+  const favoriteTiles = useMemo(
+    () => favorites.map(r => ({
+      r, lib: r.library_ingredient_id ? library.find(l => l.id === r.library_ingredient_id) ?? null : null,
+    })),
+    [favorites, library],
+  )
+  const favoriteKeys = useMemo(() => new Set(favorites.map(f => f.key)), [favorites])
   const savedMeals = useMemo(
     () => recipes.filter(r => !q || r.title.toLowerCase().includes(q)).slice(0, 8),
     [recipes, q],
@@ -205,9 +229,13 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
 
   async function handleSave() {
     if (basket.length === 0) return
+    // A group of ONE has nothing to compact — only tag a shared id when
+    // there's actually more than one item to collapse together.
+    const groupId = asMeal && basket.length > 1 ? crypto.randomUUID() : null
     const entries: FoodLogEntryInput[] = basket.map(it => ({
       date, meal_slot: slot, library_ingredient_id: it.ingredient.id,
       quantity: it.grams, unit: 'g', ...ingredientSnapshot(it.ingredient, it.grams),
+      meal_group_id: groupId,
     }))
     await addEntries.mutateAsync(entries)
     setBasket([])
@@ -373,23 +401,48 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
                 </button>
               </div>
             ) : (
-              /* ── IDLE → visual recents grid + saved meals strip ── */
+              /* ── IDLE → favourites + recents grids + saved meals strip ── */
               <>
+                {/* Favourites first — a pinned shortcut list, so it always
+                    leads even though it's a separate section from Recent. */}
+                {favoriteTiles.length > 0 && (
+                  <section>
+                    <button type="button" onClick={() => setFavoritesOpen(v => !v)}
+                      className="flex items-center gap-1.5 min-h-[28px] mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400 hover:text-ink-600">
+                      <span className={`inline-block transition-transform ${favoritesOpen ? 'rotate-90' : ''}`}>›</span>
+                      ★ Favourites ({favoriteTiles.length})
+                    </button>
+                    {favoritesOpen && (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {favoriteTiles.map(({ r, lib }) => (
+                          <FoodTile key={r.key} title={r.title} group={lib?.food_group} imageUrl={lib?.image_url}
+                            calories={r.calories} sizeClass="w-9 h-9 sm:w-11 sm:h-11"
+                            isFavorite onAdd={() => addRecent(r)}
+                            onToggleFavorite={() => removeFavorite.mutate(r.key)} />
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
+
                 {recentTiles.length > 0 && (
                   <section>
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Recent</p>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {recentTiles.map(({ r, lib }) => (
-                        <button key={r.key} type="button" onClick={() => addRecent(r)}
-                          className="rounded-2xl border border-ink-100 bg-cream-100/50 hover:border-accent-300 hover:bg-cream-100 transition-colors p-2 flex flex-col items-center gap-1.5 min-h-[96px] press-feedback">
-                          <FoodThumb name={r.title} group={lib?.food_group} imageUrl={lib?.image_url} size={44} />
-                          <span className="text-[11px] font-medium text-ink-700 leading-tight text-center line-clamp-2 w-full">{r.title}</span>
-                          {r.calories != null && r.calories > 0 && (
-                            <span className="text-[10px] text-ink-400 tabular-nums">{Math.round(r.calories)} kcal</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
+                    <button type="button" onClick={() => setRecentOpen(v => !v)}
+                      className="flex items-center gap-1.5 min-h-[28px] mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400 hover:text-ink-600">
+                      <span className={`inline-block transition-transform ${recentOpen ? 'rotate-90' : ''}`}>›</span>
+                      Recent
+                    </button>
+                    {recentOpen && (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {recentTiles.map(({ r, lib }) => (
+                          <FoodTile key={r.key} title={r.title} group={lib?.food_group} imageUrl={lib?.image_url}
+                            calories={r.calories} sizeClass="w-9 h-9 sm:w-11 sm:h-11"
+                            isFavorite={favoriteKeys.has(r.key)} onAdd={() => addRecent(r)}
+                            onToggleFavorite={() => favoriteKeys.has(r.key) ? removeFavorite.mutate(r.key) : addFavorite.mutate(r)}
+                            onHide={() => hideRecent.mutate(r.key)} />
+                        ))}
+                      </div>
+                    )}
                   </section>
                 )}
 
@@ -425,7 +478,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
                   </section>
                 )}
 
-                {recentTiles.length === 0 && savedMeals.length === 0 && (
+                {favoriteTiles.length === 0 && recentTiles.length === 0 && savedMeals.length === 0 && (
                   <div className="flex-1 grid place-items-center text-center py-10">
                     <div>
                       <p className="text-3xl mb-2">🍽️</p>
@@ -442,10 +495,19 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
           {basket.length > 0 && (
             <div className="shrink-0 border-t border-ink-100 bg-cream-100/40">
               <div className="max-h-56 overflow-y-auto px-4 py-2 flex flex-col gap-0.5">
-                <div className="flex items-center justify-between min-h-[28px]">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">This meal · {basket.length}</p>
-                  <button type="button" onClick={() => setSaveMealOpen(v => !v)}
-                    className="text-[11px] text-ink-400 hover:text-accent-600 min-h-[28px] px-1">💾 Save as meal</button>
+                <div className="flex items-center justify-between min-h-[28px] gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 shrink-0">This meal · {basket.length}</p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {basket.length > 1 && (
+                      <label className="flex items-center gap-1 text-[10px] text-ink-500 cursor-pointer select-none"
+                        title="Log these items as one compact line in the day view — tap it later to see each item's own details.">
+                        <input type="checkbox" checked={asMeal} onChange={e => setAsMeal(e.target.checked)} className="accent-accent-500 w-3.5 h-3.5" />
+                        As meal
+                      </label>
+                    )}
+                    <button type="button" onClick={() => setSaveMealOpen(v => !v)}
+                      className="text-[11px] text-ink-400 hover:text-accent-600 min-h-[28px] px-1">💾 Save as meal</button>
+                  </div>
                 </div>
                 {basket.map((it, i) => {
                   const s = ingredientSnapshot(it.ingredient, it.grams)

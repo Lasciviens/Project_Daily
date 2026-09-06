@@ -226,7 +226,11 @@ function GoalStepper({ value, step, onChange, suffix }: {
         <input
           type="number" value={value} min={0} step={step}
           onChange={e => set(Number(e.target.value) || 0)}
-          className="input w-24 text-sm py-1 text-center pr-9 tabular-nums min-h-[44px]"
+          // The browser's own up/down spinner would sit right on top of the
+          // −/+ buttons already flanking this field — a second, redundant
+          // increment control. Hidden in both engines (`appearance-none` for
+          // WebKit/Blink's spin buttons, `[appearance:textfield]` for Firefox).
+          className="input w-24 text-sm py-1 text-center pr-9 tabular-nums min-h-[44px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-ink-500 pointer-events-none">{suffix}</span>
       </div>
