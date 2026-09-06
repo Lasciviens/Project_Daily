@@ -4,6 +4,7 @@ import { computeDailySeries } from '../../healthAggregate'
 import { BarLineChart } from './BarLineChart'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { BODY_EXTRA_METRICS } from './miniMetrics'
+import { BodyCompositionPanel } from './BodyCompositionPanel'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -108,6 +109,8 @@ export function BodySection({ dateStr }: { dateStr: string }) {
       </div>
 
       <MetricMiniGrid title="Lifestyle & Environment" metrics={BODY_EXTRA_METRICS} />
+
+      <BodyCompositionPanel />
     </div>
   )
 }
