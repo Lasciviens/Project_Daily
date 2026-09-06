@@ -181,6 +181,157 @@ async function computeSleepNightsGw(userId: string): Promise<AnyRecord[]> {
   }).sort((a, b) => a.date.localeCompare(b.date))
 }
 
+// ── Body composition report import (smart-scale OCR → Shortcut → gateway) ──
+// The Shortcut OCRs a fixed-layout "Body composition analysis report" image
+// on-device (Apple's own OCR, no LLM involved anywhere in this path) and
+// POSTs the 14 extracted numbers + a local measured_at + timezone here.
+// Validation is pure numeric sanity (finite, in-range, internally
+// consistent) — it never reproduces the device's own High/Normal/Low
+// classification bands, which are judgments, not measurements.
+// Contract: docs/iphone-examples.md's "import_body_composition" section —
+// keep that doc and this handler in sync.
+const BODY_COMP_SOURCE = 'movinglife_report'
+const DEFAULT_MEASUREMENT_TZ = 'Europe/Oslo'
+
+// Report values print to 1 decimal place, so a cross-field check (weight ×
+// bf% vs body_fat_mass_kg, weight − fat mass vs lean_body_mass_kg) can be off
+// by a few hundredths of a kg from rounding alone — three independent
+// 1-decimal roundings compound to ~0.15 kg worst case. Tolerance is the
+// LARGER of that flat floor or 0.5% of the person's own weight, so it scales
+// sensibly for a much heavier or lighter person than the flat floor assumes.
+const CONSISTENCY_TOL_ABS_KG = 0.15
+const CONSISTENCY_TOL_REL = 0.005
+function withinTolerance(expected: number, actual: number, weightKg: number): boolean {
+  const tol = Math.max(CONSISTENCY_TOL_ABS_KG, CONSISTENCY_TOL_REL * weightKg)
+  return Math.abs(expected - actual) <= tol
+}
+
+// Re-send comparison (already_exists vs conflict): a genuine re-delivery of
+// the SAME report should match near-exactly. Deliberately tighter than the
+// cross-field tolerance above, which exists for rounding drift BETWEEN
+// different fields, not for comparing one field to its own earlier value.
+const RESEND_TOL = 0.05
+function sameValue(a: number, b: number): boolean { return Math.abs(a - b) <= RESEND_TOL }
+
+interface BodyCompField { key: string; min: number; max: number; integer?: boolean }
+// Sanity bounds only — generous enough to admit any real human report, tight
+// enough to catch a genuinely broken OCR read (a negative weight, a 300%
+// body-fat reading). Never the device's own classification thresholds.
+const BODY_COMP_FIELDS: BodyCompField[] = [
+  { key: 'weight_kg',               min: 1,   max: 500 },
+  { key: 'body_fat_percent',        min: 0,   max: 100 },
+  { key: 'body_fat_mass_kg',        min: 0,   max: 500 },
+  { key: 'lean_body_mass_kg',       min: 0,   max: 500 },
+  { key: 'body_water_percent',      min: 0,   max: 100 },
+  { key: 'protein_percent',         min: 0,   max: 100 },
+  { key: 'muscle_percent',          min: 0,   max: 100 },
+  { key: 'skeletal_muscle_percent', min: 0,   max: 100 },
+  { key: 'skeletal_muscle_index',   min: 0,   max: 50  },
+  { key: 'bmi',                     min: 5,   max: 100 },
+  { key: 'visceral_fat_index',      min: 0,   max: 100, integer: true },
+  { key: 'subcutaneous_fat_kg',     min: 0,   max: 200 },
+  { key: 'bmr_kcal',                min: 200, max: 6000, integer: true },
+  { key: 'body_score',              min: 0,   max: 100, integer: true },
+]
+
+// Resolves a NAIVE local wall-clock time ("2026-09-06T08:23:00", no offset —
+// the report never carries one) in `timeZone` to a real UTC instant. Never a
+// hardcoded +02:00/+01:00 — DST-safe via the standard two-pass IANA-offset
+// technique: guess the instant assuming UTC, read what wall-clock time THAT
+// instant maps to in the target zone via Intl (Deno ships full tzdata), then
+// correct by the difference and repeat once more (the offset at the
+// corrected instant can differ from the offset at the guess on either side
+// of a DST transition). Two passes converge for every ordinary spring-
+// forward/fall-back case; the true edge case — a wall-clock time that falls
+// in the one-hour gap skipped forward, or repeated twice on fall-back — has
+// no single correct answer by construction, and is out of scope here.
+function zonedWallTimeToUtcMs(y: number, mo: number, d: number, h: number, mi: number, se: number, timeZone: string): number {
+  const offsetMsAt = (utcMs: number): number => {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+    const parts: AnyRecord = {}
+    for (const p of dtf.formatToParts(new Date(utcMs))) if (p.type !== 'literal') parts[p.type] = p.value
+    let hour = Number(parts.hour); if (hour === 24) hour = 0
+    const asIfUTC = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), hour, Number(parts.minute), Number(parts.second))
+    return asIfUTC - utcMs
+  }
+  const guessUtc = Date.UTC(y, mo - 1, d, h, mi, se)
+  const utc1 = guessUtc - offsetMsAt(guessUtc)
+  return guessUtc - offsetMsAt(utc1)
+}
+
+// Parses "YYYY-MM-DD[T ]HH:mm[:ss]" only — deliberately rejects a trailing Z
+// or numeric offset (the report never has one, so one arriving here would be
+// ambiguous — whose offset? — rather than helpful). Returns null on mismatch.
+function parseNaiveLocalDateTime(s: string): { y: number; mo: number; d: number; h: number; mi: number; se: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s.trim())
+  if (!m) return null
+  const [, y, mo, d, h, mi, se] = m
+  return { y: Number(y), mo: Number(mo), d: Number(d), h: Number(h), mi: Number(mi), se: Number(se ?? '0') }
+}
+
+function isValidTimeZone(tz: string): boolean {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true } catch { return false }
+}
+
+// Validates the full import_body_composition body: required/finite/in-range
+// per field, then the two cross-field consistency checks. Returns either the
+// clean numeric values + a resolved measured_at (UTC ISO string), or a
+// field-keyed error map — never a partial write either way.
+function validateBodyComposition(body: AnyRecord): { ok: true; values: AnyRecord; measuredAtIso: string } | { ok: false; errors: AnyRecord } {
+  const errors: AnyRecord = {}
+
+  let measuredAtIso: string | null = null
+  const rawMeasuredAt = body.measured_at
+  if (typeof rawMeasuredAt !== 'string' || !rawMeasuredAt.trim()) {
+    errors.measured_at = 'required — local datetime, e.g. "2026-09-06T08:23:00", no UTC offset'
+  } else {
+    const parsed = parseNaiveLocalDateTime(rawMeasuredAt)
+    if (!parsed) {
+      errors.measured_at = 'must be "YYYY-MM-DDTHH:mm" or "YYYY-MM-DDTHH:mm:ss", local time, no Z/offset'
+    } else {
+      const tz = (typeof body.measurement_timezone === 'string' && body.measurement_timezone.trim())
+        ? body.measurement_timezone.trim() : DEFAULT_MEASUREMENT_TZ
+      if (!isValidTimeZone(tz)) {
+        errors.measurement_timezone = `not a recognized IANA timezone: "${tz}"`
+      } else {
+        const utcMs = zonedWallTimeToUtcMs(parsed.y, parsed.mo, parsed.d, parsed.h, parsed.mi, parsed.se, tz)
+        if (!Number.isFinite(utcMs)) errors.measured_at = 'could not be resolved to a real instant'
+        else measuredAtIso = new Date(utcMs).toISOString()
+      }
+    }
+  }
+
+  const values: AnyRecord = {}
+  for (const f of BODY_COMP_FIELDS) {
+    const raw = body[f.key]
+    if (raw === undefined || raw === null || raw === '') { errors[f.key] = 'required'; continue }
+    const n = Number(raw)
+    if (!Number.isFinite(n)) { errors[f.key] = 'must be a finite number'; continue }
+    if (f.integer && !Number.isInteger(n)) { errors[f.key] = 'must be a whole number'; continue }
+    if (n < f.min || n > f.max) { errors[f.key] = `out of expected range [${f.min}, ${f.max}]`; continue }
+    values[f.key] = n
+  }
+  if (Object.keys(errors).length > 0) return { ok: false, errors }
+
+  // Cross-field consistency — weight_kg/body_fat_percent/body_fat_mass_kg/
+  // lean_body_mass_kg are all guaranteed present and range-valid at this point.
+  const expectedFatMass = values.weight_kg * values.body_fat_percent / 100
+  if (!withinTolerance(expectedFatMass, values.body_fat_mass_kg, values.weight_kg)) {
+    errors.body_fat_mass_kg = `inconsistent with weight_kg × body_fat_percent (expected ≈${expectedFatMass.toFixed(2)})`
+  }
+  const expectedLean = values.weight_kg - values.body_fat_mass_kg
+  if (!withinTolerance(expectedLean, values.lean_body_mass_kg, values.weight_kg)) {
+    errors.lean_body_mass_kg = `inconsistent with weight_kg − body_fat_mass_kg (expected ≈${expectedLean.toFixed(2)})`
+  }
+  if (Object.keys(errors).length > 0) return { ok: false, errors }
+
+  return { ok: true, values, measuredAtIso: measuredAtIso! }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (req.method !== 'POST') return json({ error: 'Method Not Allowed' }, 405)
@@ -368,8 +519,56 @@ Deno.serve(async (req) => {
         return json({ ok: true, date: today, tasks, schedule })
       }
 
+      // ── Deterministic: import a smart-scale body composition report,
+      //    already OCR'd on-device by the Shortcut (no AI in this path). ──
+      case 'import_body_composition': {
+        const result = validateBodyComposition(body)
+        if (!result.ok) return json({ status: 'validation_error', errors: result.errors }, 400)
+        const { values, measuredAtIso } = result
+
+        // A report re-sent verbatim is a silent no-op; re-sent with DIFFERENT
+        // numbers for the same (user, source, measured_at) is a conflict —
+        // never a silent overwrite (the DB unique index is the real
+        // enforcement; this SELECT-first is what lets us answer cleanly
+        // instead of surfacing a raw constraint-violation error).
+        const sameReport = (existing: AnyRecord): boolean =>
+          BODY_COMP_FIELDS.every(f => sameValue(Number(existing[f.key]), values[f.key]))
+        const resolveAgainstExisting = (existing: AnyRecord) => sameReport(existing)
+          ? json({ status: 'already_exists', id: existing.id }, 200)
+          : json({ status: 'conflict', id: existing.id, message: 'A report already exists for this measured_at with different values.' }, 409)
+
+        const { data: existing, error: selErr } = await supabase
+          .from('body_composition_reports').select('*')
+          .eq('user_id', userId).eq('source', BODY_COMP_SOURCE).eq('measured_at', measuredAtIso)
+          .maybeSingle()
+        if (selErr) return json({ status: 'server_error', error: selErr.message }, 500)
+        if (existing) return resolveAgainstExisting(existing)
+
+        const { data: inserted, error: insErr } = await supabase
+          .from('body_composition_reports')
+          .insert({ ...values, measured_at: measuredAtIso, source: BODY_COMP_SOURCE, user_id: userId })
+          .select('id').single()
+
+        if (insErr) {
+          // Concurrent duplicate: another request inserted the identical
+          // (user, source, measured_at) between our SELECT and this INSERT.
+          // Re-resolve exactly like the non-race path above rather than
+          // surfacing a raw DB error to the phone.
+          if (insErr.code === '23505') {
+            const { data: raced, error: raceErr } = await supabase
+              .from('body_composition_reports').select('*')
+              .eq('user_id', userId).eq('source', BODY_COMP_SOURCE).eq('measured_at', measuredAtIso)
+              .maybeSingle()
+            if (raceErr || !raced) return json({ status: 'server_error', error: raceErr?.message ?? 'concurrent write could not be resolved' }, 500)
+            return resolveAgainstExisting(raced)
+          }
+          return json({ status: 'server_error', error: insErr.message }, 500)
+        }
+        return json({ status: 'created', id: inserted!.id }, 201)
+      }
+
       default:
-        return json({ ok: false, error: `Unknown action "${action}" (use log_supplement | log_food | log_water | nutrition_today | recent_foods | search_library | sleep_stats | tasks_today | ask | brief | sleep)` }, 400)
+        return json({ ok: false, error: `Unknown action "${action}" (use log_supplement | log_food | log_water | nutrition_today | recent_foods | search_library | sleep_stats | tasks_today | import_body_composition | ask | brief | sleep)` }, 400)
     }
   } catch (e) {
     return json({ ok: false, error: (e as Error).message }, 500)

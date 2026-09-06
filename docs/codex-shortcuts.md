@@ -45,8 +45,35 @@
 > `docs/iphone-examples.md`. Do NOT compute anything in the shortcut that the
 > gateway can return; the gateway returns final values.
 
-**Board status:** C1–C5 complete; open items are two device-side confirmations
-(re-import `Su İç`, camera-run `Barkod Tara`).
+**Board status:** C1–C5 complete; C6 is new. Open items are two device-side
+confirmations (re-import `Su İç`, camera-run `Barkod Tara`) plus C6.
+
+- **C6 · Wire the existing body-composition OCR Shortcut to the gateway —
+  `todo`.** The Shortcut that OCRs a smart-scale "Body composition analysis
+  report" photo (Apple's on-device OCR, no LLM) already extracts the 14
+  report numbers — **do not touch that extraction logic**. Add ONE step at
+  the end: POST the extracted values to `phone-gateway` with
+  `action: "import_body_composition"`, then show a notification for whichever
+  status comes back. Full contract (exact JSON body, every response shape —
+  `created`/`already_exists`/`validation_error`/`conflict`/`unauthorized`/
+  `server_error` — with real examples): `docs/iphone-examples.md`, new
+  "`import_body_composition` — full contract (for Codex)" section, right
+  after the gateway API reference table. Details worth calling out:
+  - `measured_at` must be the report's own local time formatted as
+    `"YYYY-MM-DDTHH:mm:ss"` — **no `Z`, no `+HH:MM` offset**. The report
+    never prints a timezone; the gateway resolves it (defaults to
+    `Europe/Oslo` if `measurement_timezone` is omitted, DST-safe).
+    `measurement_timezone` is optional but send it if the OCR/Shortcut has it.
+  - Never substitute `0` for a field the OCR failed to read — send it blank/
+    missing and let the gateway return a named `validation_error` field
+    instead; a silent 0 would write a wrong number that looks real.
+  - `already_exists` (re-sharing the same photo twice) and `conflict`
+    (same timestamp, different numbers) are BOTH normal, non-error outcomes
+    to handle gracefully — only `validation_error`/`server_error`/
+    `unauthorized` are real failures worth a "something went wrong" tone.
+  - This is backend-only work until `PHONE_GATEWAY_SECRET`'s function
+    (`phone-gateway`) is redeployed with migration `085` applied — check with
+    Claude/the user before testing live if unsure it's deployed yet.
 
 - **C1 · Audit + fix all current shortcuts — `done`.** PR #379 audited the
   generated shortcuts and fixed the clear generator-side issues found during the
