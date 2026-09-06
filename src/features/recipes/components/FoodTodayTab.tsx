@@ -309,7 +309,8 @@ export function FoodTodayTab({ date }: { date: string }) {
                 <GoalStepper value={targets.water} step={250} suffix="ml" onChange={v => update({ water: v })} />
               </div>
               <p className="text-[11px] text-ink-400 leading-relaxed">
-                These are YOUR targets (saved on this device). The 🧠 Coach suggests a protein target from your bodyweight
+                These are YOUR targets — every tap here saves straight to your account (no separate Save button needed).
+                The 🧠 Coach suggests a protein target from your bodyweight
                 ({coach.weightKg ? `~${coach.proteinForGoal}g for ${targets.goal}` : 'add a bodyweight to enable'}) and nudges
                 calories from your 4-week weight trend — apply those from the Coach card below. Fiber goal ≈ 14g per 1000 kcal.
               </p>
