@@ -1,6 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import { fetchFoodLog, addFoodLogEntries, deleteFoodLogEntry, updateFoodLogEntry, fetchRecentFoods, fetchFoodLogRange, type LoggedFood } from '../api/foodLogApi'
+import {
+  fetchFoodLog, addFoodLogEntries, deleteFoodLogEntry, updateFoodLogEntry, fetchRecentFoods, fetchFoodLogRange,
+  fetchFoodFavorites, addFoodFavorite, removeFoodFavorite, hideRecentFood, type LoggedFood, type RecentFood,
+} from '../api/foodLogApi'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import type { FoodLogEntry, FoodLogEntryInput } from '../types'
 
@@ -80,6 +83,48 @@ export function useUpdateFoodLogEntry() {
     successMessage: 'Updated ✓',
     mutationFn:     ({ id, patch }: { id: string; patch: Parameters<typeof updateFoodLogEntry>[1] }) => updateFoodLogEntry(id, patch),
     onSuccess:      () => invalidate(),
+  })
+}
+
+// Pinned shortcuts (migration 087) — separate from "Recent" (which is only
+// ever derived from eaten history) so a food can stay reachable even if it
+// hasn't been logged in a while.
+export function useFoodFavorites() {
+  return useQuery({
+    queryKey: ['food-log', 'favorites'],
+    queryFn:  fetchFoodFavorites,
+    staleTime: 60_000,
+  })
+}
+
+export function useAddFoodFavorite() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'add_food_favorite',
+    successMessage: 'Added to favourites ✓',
+    mutationFn:     (food: RecentFood) => addFoodFavorite(food),
+    onSuccess:      () => qc.invalidateQueries({ queryKey: ['food-log', 'favorites'] }),
+  })
+}
+
+export function useRemoveFoodFavorite() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:     'remove_food_favorite',
+    mutationFn: (foodKey: string) => removeFoodFavorite(foodKey),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['food-log', 'favorites'] }),
+  })
+}
+
+// "Remove from Recent" — a standing preference (migration 087), not a
+// one-off dismissal; persists across sessions/devices.
+export function useHideRecentFood() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action:         'hide_recent_food',
+    successMessage: 'Removed from Recent',
+    mutationFn:     (foodKey: string) => hideRecentFood(foodKey),
+    onSuccess:      () => qc.invalidateQueries({ queryKey: ['food-log', 'recent-foods'] }),
   })
 }
 

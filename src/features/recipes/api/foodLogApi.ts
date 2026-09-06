@@ -15,6 +15,14 @@ function isMissingStatus(e: unknown): boolean {
   return (x?.code === '42703' || x?.code === 'PGRST204') && /status/i.test(x?.message ?? '')
 }
 
+// migration 087 (meal_group_id) may not be applied yet — same pre-migration-
+// safe convention. Retrying without it just means "As meal" degrades to
+// separate rows (today's behaviour), never a hard failure.
+function isMissingMealGroup(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_id/i.test(x?.message ?? '')
+}
+
 export async function fetchFoodLog(date: string): Promise<FoodLogEntry[]> {
   const q = () => supabase.from('food_log_entries').select('*').eq('date', date).order('created_at', { ascending: true })
   let { data, error } = await q().eq('status', 'eaten')
@@ -28,6 +36,11 @@ export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<v
   const user = await requireUser()
   const base = entries.map(e => ({ ...e, user_id: user.id }))
   let { error } = await supabase.from('food_log_entries').insert(base.map(r => ({ ...r, status: 'eaten' })))
+  if (error && isMissingMealGroup(error)) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const stripped = base.map(({ meal_group_id, ...rest }) => rest)
+    error = (await supabase.from('food_log_entries').insert(stripped.map(r => ({ ...r, status: 'eaten' })))).error
+  }
   if (error && isMissingStatus(error)) {
     error = (await supabase.from('food_log_entries').insert(base)).error   // pre-061: no status column
   }
@@ -110,12 +123,14 @@ export async function fetchRecentFoods(fromDate: string, slot?: string): Promise
   let { data, error } = await build(true)
   if (error && isMissingStatus(error)) ({ data, error } = await build(false))
   if (error) throw error
+  const hidden = await fetchHiddenRecentKeys()
   // Ordered newest-first, so the FIRST row seen per key is the most recent
   // snapshot — that's the one we keep (re-log the way you last ate it).
   const byKey = new Map<string, RecentFood>()
   for (const row of (data ?? []) as unknown as (FoodLogEntry & { ingredient: { name: string } | null; recipe: { title: string } | null })[]) {
     const title = row.ingredient?.name ?? row.recipe?.title ?? row.custom_title ?? '—'
     const key = row.library_ingredient_id ?? row.recipe_id ?? `c:${title.toLowerCase()}`
+    if (hidden.has(key)) continue
     const existing = byKey.get(key)
     if (existing) { existing.count++; continue }
     byKey.set(key, {
@@ -135,6 +150,69 @@ export async function fetchRecentFoods(fromDate: string, slot?: string): Promise
     })
   }
   return [...byKey.values()].sort((a, b) => b.count - a.count).slice(0, 8)
+}
+
+// food_favorites / food_recent_hidden (migration 087) may not be applied yet —
+// same pre-migration-safe convention as the rest of this file: a missing-
+// table READ degrades to empty (Recents/Favorites just don't have the new
+// behaviour yet), a missing-table WRITE throws a named error.
+function isMissingTable(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return x?.code === '42P01' || x?.code === 'PGRST205' || /Could not find the table/i.test(x?.message ?? '')
+}
+
+const NOT_MIGRATED_087 =
+  'Favourites / hidden-recents are not available yet — migration 087 (food_favorites / food_recent_hidden) has not been applied.'
+
+export async function fetchHiddenRecentKeys(): Promise<Set<string>> {
+  const { data, error } = await supabase.from('food_recent_hidden').select('food_key')
+  if (error) {
+    if (isMissingTable(error)) return new Set()
+    throw error
+  }
+  return new Set((data ?? []).map(r => r.food_key as string))
+}
+
+export async function hideRecentFood(foodKey: string): Promise<void> {
+  const user = await requireUser()
+  const { error } = await supabase
+    .from('food_recent_hidden')
+    .upsert({ user_id: user.id, food_key: foodKey }, { onConflict: 'user_id,food_key' })
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_087) : error
+}
+
+export async function fetchFoodFavorites(): Promise<RecentFood[]> {
+  const { data, error } = await supabase
+    .from('food_favorites')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  if (error) {
+    if (isMissingTable(error)) return []
+    throw error
+  }
+  return (data ?? []).map(r => ({
+    key: r.food_key, title: r.title,
+    library_ingredient_id: r.library_ingredient_id, recipe_id: r.recipe_id, custom_title: r.custom_title,
+    quantity: r.quantity, unit: r.unit,
+    calories: r.calories, protein_g: r.protein_g, carbs_g: r.carbs_g, fat_g: r.fat_g, fiber_g: r.fiber_g, sugar_g: r.sugar_g,
+    count: 0,
+  }))
+}
+
+export async function addFoodFavorite(food: RecentFood): Promise<void> {
+  const user = await requireUser()
+  const { error } = await supabase.from('food_favorites').upsert({
+    user_id: user.id, food_key: food.key, title: food.title,
+    library_ingredient_id: food.library_ingredient_id, recipe_id: food.recipe_id, custom_title: food.custom_title,
+    quantity: food.quantity, unit: food.unit,
+    calories: food.calories, protein_g: food.protein_g, carbs_g: food.carbs_g, fat_g: food.fat_g, fiber_g: food.fiber_g, sugar_g: food.sugar_g,
+  }, { onConflict: 'user_id,food_key' })
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_087) : error
+}
+
+export async function removeFoodFavorite(foodKey: string): Promise<void> {
+  const { error } = await supabase.from('food_favorites').delete().eq('food_key', foodKey)
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_087) : error
 }
 
 // Distinct dates (yyyy-MM-dd) with ≥1 diary row in [fromDate, toDate] — the

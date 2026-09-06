@@ -32,6 +32,55 @@ export interface DayMeal {
     quantity:              number | null
     unit:                  string | null
   }
+  /** Ties several individually-logged rows together as one compact diary
+      line ("As meal" in FoodLogModal) — null for a normal single-item or
+      recipe log, and always null for a plan row (grouping only applies to
+      what was actually eaten). Migration 087. */
+  meal_group_id?: string | null
+}
+
+// A meal-slot's rows, collapsed so several entries sharing the same
+// `meal_group_id` render as ONE compact row instead of N separate lines —
+// the display half of the "As meal" feature. Order-preserving: a group's
+// position in the output is wherever its first member first appears.
+export interface MealGroupRow {
+  kind:      'group'
+  groupId:   string
+  items:     DayMeal[]
+  title:     string
+  calories:  number
+  protein_g: number
+  carbs_g:   number
+  fat_g:     number
+  fiber_g:   number
+  sugar_g:   number
+}
+export interface SingleMealRow {
+  kind: 'single'
+  meal: DayMeal
+}
+export type MealDisplayRow = MealGroupRow | SingleMealRow
+
+export function groupDayMeals(meals: DayMeal[]): MealDisplayRow[] {
+  const rows: MealDisplayRow[] = []
+  const seenGroups = new Set<string>()
+  for (const m of meals) {
+    if (!m.meal_group_id) { rows.push({ kind: 'single', meal: m }); continue }
+    if (seenGroups.has(m.meal_group_id)) continue
+    seenGroups.add(m.meal_group_id)
+    const items = meals.filter(x => x.meal_group_id === m.meal_group_id)
+    const title = items.length > 1 ? `${items[0].title} +${items.length - 1} more` : items[0].title
+    rows.push({
+      kind: 'group', groupId: m.meal_group_id, items, title,
+      calories:  items.reduce((a, i) => a + i.calories, 0),
+      protein_g: items.reduce((a, i) => a + i.protein_g, 0),
+      carbs_g:   items.reduce((a, i) => a + i.carbs_g, 0),
+      fat_g:     items.reduce((a, i) => a + i.fat_g, 0),
+      fiber_g:   items.reduce((a, i) => a + i.fiber_g, 0),
+      sugar_g:   items.reduce((a, i) => a + i.sugar_g, 0),
+    })
+  }
+  return rows
 }
 
 export interface DayNutrition {
@@ -70,6 +119,14 @@ function isMissingStatus(e: unknown): boolean {
   return (x?.code === '42703' || x?.code === 'PGRST204') && /status/i.test(x?.message ?? '')
 }
 
+// migration 087 (meal_group_id) may not be applied yet — retry without the
+// column rather than erroring the whole nutrition card; every row then reads
+// as its own ungrouped `SingleMealRow`, exactly today's behaviour.
+function isMissingMealGroup(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_id/i.test(x?.message ?? '')
+}
+
 // A unified food_log_entries row (post-061): 'planned' (macros live) or 'eaten'
 // (macros snapshotted). recipes.fiber_g is intentionally NOT selected (needs
 // mig 060; a missing column would error the query) → planned-recipe fiber = 0.
@@ -83,14 +140,16 @@ interface UnifiedRow {
   quantity: number | null
   unit: string | null
   calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null
+  meal_group_id?: string | null
   recipe:     { title: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null } | null
   ingredient: { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null } | null
 }
 
-const UNIFIED_SELECT =
+const UNIFIED_SELECT_BASE =
   'id, meal_slot, status, recipe_id, library_ingredient_id, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, ' +
   'recipe:recipes(title, calories, protein_g, carbs_g, fat_g, sugar_g), ' +
   'ingredient:recipe_ingredient_library(name, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g)'
+const UNIFIED_SELECT = `${UNIFIED_SELECT_BASE}, meal_group_id`
 
 // Exported for unit-testability (the post-061 path can't be exercised against
 // an un-migrated DB) — a pure row→DayMeal mapper.
@@ -141,6 +200,7 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
       library_ingredient_id: row.library_ingredient_id, recipe_id: row.recipe_id,
       custom_title: row.custom_title, quantity: row.quantity, unit: row.unit,
     },
+    meal_group_id: row.meal_group_id ?? null,
   }
 }
 
@@ -164,7 +224,16 @@ interface LogRow {
 
 export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   // Post-061: ONE table, split by status. Pre-061: the old two-table union.
-  const uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date)
+  // Typed loosely (not the query builder's own literal-select-inferred type)
+  // since the two `select()` calls below use different column lists and are
+  // cast to UnifiedRow[] downstream regardless.
+  let uni: { data: unknown; error: unknown } =
+    await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date)
+  if (uni.error && isMissingMealGroup(uni.error)) {
+    // migration 087 not applied yet — retry without meal_group_id; every
+    // row then reads as ungrouped (today's behaviour), never a hard error.
+    uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT_BASE).eq('date', date)
+  }
   let allMeals: DayMeal[]
   if (!uni.error) {
     allMeals = ((uni.data ?? []) as unknown as UnifiedRow[])

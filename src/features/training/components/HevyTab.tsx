@@ -42,12 +42,17 @@ function BestLiftsCard({ muscleFilter }: { muscleFilter: string }) {
 
   if (prs.length === 0) return null
 
+  // Same "trained 3+ times" gate as the Personal Records list below — a
+  // one-off heavy single shouldn't outrank a real, repeatedly-trained lift.
+  const eligible = prs.filter(pr => pr.times_performed >= 3)
+  if (eligible.length === 0) return null
+
   // Recomputed against whatever muscle group is currently selected in the
   // Personal Records filter below — a "top 5" that ignored the filter read
   // as broken (picking Legs still showed a bench press at #1).
   const groupFiltered = muscleFilter === 'All'
-    ? prs
-    : prs.filter(pr => pr.primary_muscle_group === muscleFilter)
+    ? eligible
+    : eligible.filter(pr => pr.primary_muscle_group === muscleFilter)
 
   if (groupFiltered.length === 0) return null
 

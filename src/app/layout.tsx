@@ -319,7 +319,13 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
     <header className={`vt-pin-header glass-chrome sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] transition-[box-shadow,border-color,transform,margin] duration-300 will-change-transform ${
       scrolled ? 'border-ink-200/80 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.28)]' : 'border-ink-200/40'
     } ${collapsed ? 'max-sm:-translate-y-full max-sm:mb-[calc(-3rem_-_env(safe-area-inset-top))]' : ''}`}>
-      <div className="w-full px-4 sm:px-6 lg:px-8 h-12 sm:h-14 flex items-center justify-between gap-2">
+      {/* The Settings button sits in its own unpadded sibling below so it can
+          sit flush against the true right edge — everything else keeps the
+          row's normal side padding. No overflow risk: this is a plain flex
+          row (no overflow-x-auto), so removing the row's own right padding
+          never introduces a scrollbar. */}
+      <div className="w-full h-12 sm:h-14 flex items-center gap-1">
+      <div className="flex-1 min-w-0 pl-4 sm:pl-6 lg:pl-8 flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
           <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Lasci's Board" className="w-7 h-7" />
@@ -393,9 +399,12 @@ function Nav({ scrolled, collapsed }: { scrolled: boolean; collapsed: boolean })
             <ClipboardList size={18} className="sm:hidden" />
             <span className="hidden sm:inline">🗒️ Requests</span>
           </button>
-
-          <SettingsMenu />
         </div>
+      </div>
+      {/* Flush against the true right edge — no right padding of its own. */}
+      <div className="flex-shrink-0 pr-1">
+        <SettingsMenu />
+      </div>
       </div>
     </header>
   )
