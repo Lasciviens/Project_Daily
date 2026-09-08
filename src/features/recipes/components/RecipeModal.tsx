@@ -5,6 +5,8 @@ import { useCreateRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
 import { sumMacros } from '../api/recipesApi'
+import { MacroWarningBadge } from './MacroWarningBadge'
+import { checkMacroConsistency } from '../macroSanity'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
 
 interface Props {
@@ -371,6 +373,16 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                       </div>
                     ))}
                   </div>
+                  {(() => {
+                    const num = (s: string) => (s.trim() === '' ? null : Number(s))
+                    const check = checkMacroConsistency(num(calories), num(protein), num(carbs), num(fat))
+                    return check?.inconsistent ? (
+                      <div className="flex items-center gap-1.5 mt-2 text-[11px] text-orange-700">
+                        <MacroWarningBadge result={check} />
+                        <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
+                      </div>
+                    ) : null
+                  })()}
                   <button type="button" onClick={handleEstimateMacros} disabled={estimating}
                     className="mt-2 text-xs text-accent-600 hover:text-accent-700 min-h-[44px] disabled:opacity-50">
                     {estimating ? 'Estimating…' : '✨ Estimate with AI'}
@@ -398,6 +410,16 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
                       ? preview.skipped > 0 ? `Computed from linked ingredients — ${preview.skipped} skipped (link them + use g/ml to include).` : 'Computed live from linked ingredients.'
                       : 'Link ingredients above to a library entry (with a g/ml quantity) to compute macros automatically.'}
                   </p>
+                  {(() => {
+                    if (!preview?.contributed) return null
+                    const check = checkMacroConsistency(preview.calories, preview.protein_g, preview.carbs_g, preview.fat_g)
+                    return check?.inconsistent ? (
+                      <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-orange-700">
+                        <MacroWarningBadge result={check} />
+                        <span>These totals don't add up cleanly — {check.deltaPct}% off. Likely one linked ingredient has bad source data.</span>
+                      </div>
+                    ) : null
+                  })()}
                 </div>
               )}
             </div>
@@ -452,6 +474,11 @@ function NewIngredientInline({ defaultName, onCancel, onCreate }: {
         calories: numOrNull(calories), protein_g: numOrNull(protein),
         carbs_g: numOrNull(carbs), fat_g: numOrNull(fat), sugar_g: numOrNull(sugar),
       })
+    } catch (err) {
+      // REAL BUG, fixed: a rejected onCreate() used to leave the button
+      // simply stopping its spinner with no message at all — every sibling
+      // save path in this file catches and toasts, this one didn't.
+      toast.error((err as Error).message ?? 'Could not save the ingredient')
     } finally {
       setSaving(false)
     }
@@ -476,6 +503,16 @@ function NewIngredientInline({ defaultName, onCancel, onCreate }: {
             className="min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-1 text-[11px] text-center" />
         ))}
       </div>
+      {(() => {
+        const num = (s: string) => (s.trim() === '' ? null : Number(s))
+        const check = checkMacroConsistency(num(calories), num(protein), num(carbs), num(fat))
+        return check?.inconsistent ? (
+          <div className="flex items-center gap-1.5 text-[10px] text-orange-700">
+            <MacroWarningBadge result={check} />
+            <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off.</span>
+          </div>
+        ) : null
+      })()}
       <div className="flex gap-1.5 mt-0.5">
         <button onClick={onCancel} className="flex-1 min-h-[32px] text-[11px] text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
         <button onClick={handleCreate} disabled={saving} className="flex-1 min-h-[32px] text-[11px] bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">

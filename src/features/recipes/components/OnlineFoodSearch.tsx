@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { toast } from '../../../app/store'
 import { searchFoodsByName, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { searchBrandedFoods, isKassalappEnabled } from '../api/kassalappApi'
+import { MacroWarningBadge } from './MacroWarningBadge'
+import { checkMacroConsistency } from '../macroSanity'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Online food search — the no-barcode / desktop path ("PC'de barkod
@@ -65,18 +67,30 @@ export function OnlineFoodSearch({ initialQuery = '', onPick }: {
       )}
       {results.length > 0 && (
         <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
-          {results.map((p, i) => (
-            <button key={`${p.code}-${i}`} type="button" onClick={() => onPick(p)}
-              className="press-feedback flex items-center gap-2 text-left px-2.5 py-1.5 min-h-[44px] rounded-lg border border-ink-200 bg-cream-100 hover:border-accent-400 transition-colors">
-              {p.image_url && <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" onError={e => { e.currentTarget.style.display = 'none' }} />}
-              <span className="flex-1 min-w-0">
-                <span className="text-sm text-ink-800 truncate block">{p.name}</span>
-                <span className="text-[10px] text-ink-400">
-                  {p.brand ? `${p.brand} · ` : ''}{p.calories != null ? `${Math.round(p.calories)} kcal/100g` : 'no macros'}{p.protein_g != null ? ` · ${Math.round(p.protein_g)}g P` : ''}
+          {results.map((p, i) => {
+            const macroCheck = checkMacroConsistency(p.calories, p.protein_g, p.carbs_g, p.fat_g)
+            // A DIV wrapper, not a button — the warning badge is itself a
+            // Popover button, and a <button> can never contain another
+            // <button> (invalid HTML, silently hoisted out by the parser).
+            // Same fix pattern as FoodTile's ★/✕ corner buttons.
+            return (
+            <div key={`${p.code}-${i}`}
+              className="press-feedback flex items-center gap-2 px-2.5 py-1.5 min-h-[44px] rounded-lg border border-ink-200 bg-cream-100 hover:border-accent-400 transition-colors">
+              <button type="button" onClick={() => onPick(p)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                {p.image_url && <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" onError={e => { e.currentTarget.style.display = 'none' }} />}
+                <span className="flex-1 min-w-0">
+                  <span className="text-sm text-ink-800 truncate block">{p.name}</span>
+                  <span className="text-[10px] text-ink-400">
+                    {p.brand ? `${p.brand} · ` : ''}{p.calories != null ? `${Math.round(p.calories)} kcal/100g` : 'no macros'}{p.protein_g != null ? ` · ${Math.round(p.protein_g)}g P` : ''}
+                  </span>
                 </span>
-              </span>
-            </button>
-          ))}
+              </button>
+              {/* Flags a source-data inconsistency BEFORE it's ever saved —
+                  the whole point of catching it here, not after the fact. */}
+              <MacroWarningBadge result={macroCheck} />
+            </div>
+            )
+          })}
         </div>
       )}
       <p className="text-[10px] text-ink-300">Open Food Facts{isKassalappEnabled() ? ' + Kassalapp (Norwegian stores)' : ''} — a food with no macros is skipped. Review before saving.</p>

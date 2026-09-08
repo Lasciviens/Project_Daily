@@ -5,6 +5,8 @@ import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { ConfirmDialog } from './ConfirmDialog'
+import { MacroWarningBadge } from './MacroWarningBadge'
+import { checkMacroConsistency } from '../macroSanity'
 import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,6 +175,16 @@ export function IngredientManager() {
             <input value={f.fiber} onChange={e => set('fiber', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Fiber g" className={inputCls} />
             <input value={f.sugar} onChange={e => set('sugar', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Sugar g" className={inputCls} />
           </div>
+          {(() => {
+            const num = (s: string) => (s === '' ? null : Number(s))
+            const check = checkMacroConsistency(num(f.kcal), num(f.prot), num(f.carb), num(f.fat))
+            return check?.inconsistent ? (
+              <div className="flex items-center gap-1.5 text-[11px] text-orange-700">
+                <MacroWarningBadge result={check} />
+                <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
+              </div>
+            ) : null
+          })()}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
             <input value={f.servLabel} onChange={e => set('servLabel', e.target.value)} placeholder="Portion (1 scoop)" className={inputCls} />
             <input value={f.servGrams} onChange={e => set('servGrams', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams (30)" className={inputCls} />
@@ -215,7 +227,9 @@ export function IngredientManager() {
           <p className="text-xs text-ink-400 p-4">{q || catFilter ? 'No match.' : 'Nothing yet — add your basics above (chicken, rice, oats, whey…).'}</p>
         ) : (
           <ul className="divide-y divide-ink-50">
-            {filtered.slice(0, 300).map(ing => (
+            {filtered.slice(0, 300).map(ing => {
+              const macroCheck = checkMacroConsistency(ing.calories, ing.protein_g, ing.carbs_g, ing.fat_g)
+              return (
               <li key={ing.id} className="flex items-center gap-2 px-4 py-1.5 min-h-[44px] text-xs">
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-ink-800 truncate block">{ing.name}</span>
@@ -228,6 +242,7 @@ export function IngredientManager() {
                     </span>
                   )}
                 </div>
+                <MacroWarningBadge result={macroCheck} />
                 <span className="text-ink-500 tabular-nums shrink-0 w-14 text-right">{ing.calories ?? '—'}kcal</span>
                 <span className="text-ink-500 tabular-nums shrink-0 w-10 text-right">{ing.protein_g ?? '—'}P</span>
                 <span className="text-ink-400 tabular-nums shrink-0 w-10 text-right hidden sm:block">{ing.carbs_g ?? '—'}C</span>
@@ -237,7 +252,8 @@ export function IngredientManager() {
                 <button onClick={() => setToDelete(ing)} aria-label={`Delete ${ing.name}`}
                   className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-500 hover:text-red-500 shrink-0">×</button>
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
         {filtered.length > 300 && <p className="text-[10px] text-ink-400 px-4 py-2">Showing first 300 — search or filter to narrow.</p>}
