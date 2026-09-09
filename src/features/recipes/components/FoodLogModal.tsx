@@ -401,9 +401,15 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
                           {ing.serving_label && ` · ${ing.serving_label}`}
                         </span>
                       </span>
+                      {/* Was left outside this button in an earlier pass (only
+                          to keep the badge from nesting inside it) — a real
+                          regression, since this "+" is the row's own visual
+                          add-affordance and tapping it did nothing. It only
+                          ever needed to move out from between the button and
+                          the badge below, not out of the button entirely. */}
+                      <span className="min-w-[36px] min-h-[36px] rounded-full bg-accent-50 text-accent-600 grid place-items-center text-lg shrink-0">+</span>
                     </button>
                     <MacroWarningBadge result={macroCheck} />
-                    <span className="min-w-[36px] min-h-[36px] rounded-full bg-accent-50 text-accent-600 grid place-items-center text-lg shrink-0">+</span>
                   </div>
                   )
                 })}

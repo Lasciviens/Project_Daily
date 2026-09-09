@@ -130,7 +130,7 @@ export async function eatPlannedEntry(entry: MealPlanEntry): Promise<void> {
     // a whole egg. Every other reader of a planned row (dayNutritionApi's
     // unifiedToMeal, recipesApi's sumMacros) already zeroes the contribution
     // for a non-weight/volume unit — this is the same gate, so "still
-        // "still planned" and "just confirmed eaten" agree instead of silently
+    // planned" and "just confirmed eaten" agree instead of silently
     // diverging the instant you tap ✓.
     if (data && unitOk) { snap = ingredientSnapshot(data as IngredientLibraryItem, grams); quantity = grams; unit = entry.ingredient_unit ?? 'g' }
     else { quantity = grams; unit = entry.ingredient_unit ?? 'g' }
