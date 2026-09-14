@@ -70,6 +70,11 @@ export interface Game {
   external_source:       ExternalSource | null
   synced_at:             string | null
   needs_review:          boolean
+  // When the current/last playthrough began and ended — see migration 090.
+  // Auto-filled (once, never overwritten) by the quick status-switch action
+  // (gamesApi.ts::setPlayStatus); also directly editable.
+  started_at:            string | null
+  finished_at:           string | null
   esde_playcount:        number | null
   esde_last_played:      string | null
   esde_playtime_seconds: number | null
@@ -90,10 +95,21 @@ export interface CreateGameInput {
   publisher?:    string | null
   developer?:    string | null
   description?:  string | null
+  storyline?:    string | null
   genres?:       string[] | null
   series_name?:  string | null
   play_status?:  PlayStatus
+  tier?:         Tier | null
+  rating?:       number | null
+  is_coop?:      boolean
+  is_iconic?:    boolean
+  play_notes?:   string | null
   primary_cover_url?: string | null
+  age_rating?:   string | null
+  players?:      string | null
+  modes?:        string[] | null
+  screenshot_url?: string | null
+  fanart_url?:   string | null
   // Optional first platform, added in the same create flow so a game is
   // never left with zero variants (the Library/Queue/Tier views all assume
   // a game is actually playable somewhere).
@@ -120,6 +136,13 @@ export interface GamePatch {
   play_notes?:         string | null
   game_log?:           string | null
   primary_cover_url?:  string | null
+  age_rating?:         string | null
+  players?:            string | null
+  modes?:              string[] | null
+  screenshot_url?:     string | null
+  fanart_url?:         string | null
+  started_at?:         string | null
+  finished_at?:        string | null
   needs_review?:       boolean
 }
 

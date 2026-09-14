@@ -332,55 +332,74 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
         ))}
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <select value={tierFilter ?? ''} onChange={e => setTierFilter(e.target.value || null)}
-          className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${tierFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
-          <option value="">Tier: All</option>
-          {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
-        </select>
-        <select value={genreFilter ?? ''} onChange={e => setGenreFilter(e.target.value || null)}
-          className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${genreFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
-          <option value="">Genre: All</option>
-          {genreOptions.map(g => <option key={g} value={g}>{g}</option>)}
-        </select>
-        <select value={systemFilter ?? ''} onChange={e => setSystemFilter(e.target.value || null)}
-          className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${systemFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
-          <option value="">System: All</option>
-          {systemOptions.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
-        {seriesOptions.length > 0 && (
-          <select value={seriesFilter ?? ''} onChange={e => setSeriesFilter(e.target.value || null)}
-            className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${seriesFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
-            <option value="">Series: All</option>
-            {seriesOptions.map(s => <option key={s} value={s}>{s}</option>)}
+      {/* Desktop: one bordered toolbar, three internally-divided groups
+          (Filter / Only show / Display) so it reads as ONE control cluster
+          instead of a wall of same-looking buttons — the real complaint
+          with the old stacked-full-width-rows layout. Mobile (the Sheet)
+          keeps the original stacked-block look — nothing here is gated
+          behind sm: for it since the Sheet is only ever opened at phone
+          widths regardless of viewport breakpoint classes. */}
+      <div className="sm:flex sm:items-stretch sm:flex-wrap sm:gap-0 sm:border sm:border-ink-200 sm:rounded-xl sm:bg-cream-50/70 sm:p-2 sm:mb-2 space-y-2 sm:space-y-0">
+        <div className="flex items-center gap-2 flex-wrap sm:pr-3">
+          <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-wider text-ink-400 mr-0.5">Filter</span>
+          <select value={tierFilter ?? ''} onChange={e => setTierFilter(e.target.value || null)}
+            className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${tierFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+            <option value="">Tier: All</option>
+            {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
           </select>
-        )}
-        <button onClick={() => setCoopOnly(v => !v)}
-          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${coopOnly ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'}`}
-        >2P Co-op</button>
-        <button onClick={() => setIconicOnly(v => !v)}
-          className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${iconicOnly ? 'bg-yellow-400 text-yellow-900 border-yellow-400' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'}`}
-        >⭐ Iconic</button>
-      </div>
+          <select value={genreFilter ?? ''} onChange={e => setGenreFilter(e.target.value || null)}
+            className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${genreFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+            <option value="">Genre: All</option>
+            {genreOptions.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+          <select value={systemFilter ?? ''} onChange={e => setSystemFilter(e.target.value || null)}
+            className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${systemFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+            <option value="">System: All</option>
+            {systemOptions.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          {seriesOptions.length > 0 && (
+            <select value={seriesFilter ?? ''} onChange={e => setSeriesFilter(e.target.value || null)}
+              className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${seriesFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
+              <option value="">Series: All</option>
+              {seriesOptions.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
+        </div>
 
-      <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 scrollbar-none scroll-fade-x">
-        {view !== 'series' && (
-          <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
-            className="text-xs px-2 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] flex-shrink-0">
-            <option value="az">A → Z</option>
-            <option value="za">Z → A</option>
-            <option value="year-asc">Year ↑</option>
-            <option value="year-desc">Year ↓</option>
-            <option value="rating">My Rating</option>
-            <option value="series">By Series</option>
-          </select>
-        )}
-        <div className="flex border border-ink-200 rounded-lg overflow-hidden bg-cream-50 flex-shrink-0">
-          {LIB_VIEWS.map(({ v, icon, label }, i) => (
-            <button key={v} onClick={() => setView(v)} title={label}
-              className={`min-w-[44px] min-h-[44px] px-2.5 py-2 text-sm transition-colors ${view === v ? 'bg-accent-500 text-white' : 'text-ink-500 hover:bg-ink-50'} ${i > 0 ? 'border-l border-ink-200' : ''}`}
-            >{icon}</button>
-          ))}
+        <div className="hidden sm:block w-px bg-ink-200 mx-1 self-stretch" />
+
+        <div className="flex items-center gap-2 flex-wrap sm:px-3">
+          <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-wider text-ink-400 mr-0.5">Only show</span>
+          <button onClick={() => setCoopOnly(v => !v)}
+            className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${coopOnly ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'}`}
+          >2P Co-op</button>
+          <button onClick={() => setIconicOnly(v => !v)}
+            className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[44px] ${iconicOnly ? 'bg-yellow-400 text-yellow-900 border-yellow-400' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'}`}
+          >⭐ Iconic</button>
+        </div>
+
+        <div className="hidden sm:block w-px bg-ink-200 mx-1 self-stretch" />
+
+        <div className="flex items-center gap-2 flex-wrap sm:pl-3 sm:ml-auto overflow-x-auto sm:overflow-visible pb-1 sm:pb-0 scrollbar-none scroll-fade-x">
+          <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-wider text-ink-400 mr-0.5">Display</span>
+          {view !== 'series' && (
+            <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
+              className="text-xs px-2 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] flex-shrink-0">
+              <option value="az">A → Z</option>
+              <option value="za">Z → A</option>
+              <option value="year-asc">Year ↑</option>
+              <option value="year-desc">Year ↓</option>
+              <option value="rating">My Rating</option>
+              <option value="series">By Series</option>
+            </select>
+          )}
+          <div className="flex border border-ink-200 rounded-lg overflow-hidden bg-cream-50 flex-shrink-0">
+            {LIB_VIEWS.map(({ v, icon, label }, i) => (
+              <button key={v} onClick={() => setView(v)} title={label}
+                className={`min-w-[44px] min-h-[44px] px-2.5 py-2 text-sm transition-colors ${view === v ? 'bg-accent-500 text-white' : 'text-ink-500 hover:bg-ink-50'} ${i > 0 ? 'border-l border-ink-200' : ''}`}
+              >{icon}</button>
+            ))}
+          </div>
         </div>
       </div>
     </>
