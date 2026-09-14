@@ -31,3 +31,25 @@ export const TIER_COLOR: Record<string, string> = {
 
 export const TIERS    = ['S', 'A', 'B', 'C', 'D', 'F']
 export const STATUSES = ['playing', 'wishlist', 'backlog', 'completed', 'dropped']
+
+// Was independently forked in GameDetailModal (perfBadgeClass) and referenced
+// nowhere else consistently — one map now.
+export const PERFORMANCE_COLOR: Record<string, string> = {
+  good: 'bg-teal-100 text-teal-700 border-teal-200',
+  warn: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  bad:  'bg-red-100 text-red-600 border-red-200',
+}
+
+export const ROM_STATUS_COLOR: Record<string, string> = {
+  missing:   'bg-red-100 text-red-600',
+  found:     'bg-blue-100 text-blue-700',
+  verified:  'bg-teal-100 text-teal-700',
+  installed: 'bg-green-100 text-green-700',
+  sd_card:   'bg-purple-100 text-purple-700',
+}
+
+export const EXTERNAL_SOURCE_LABEL: Record<string, string> = {
+  screenscraper: 'ScreenScraper',
+  esde:          'EmulationStation-DE',
+  manual:        'Manually added',
+}

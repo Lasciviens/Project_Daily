@@ -20,8 +20,7 @@ necessary. Feature history belongs in `CLAUDE.md`.
 
 | Item | Value |
 |---|---|
-| Supabase project | Main instance (`VITE_SUPABASE_URL`) |
-| RP5 games | Separate Supabase instance (`VITE_RP5_SUPABASE_URL`) — read-only views |
+| Supabase project | Main instance (`VITE_SUPABASE_URL`) — Games (`games`/`game_platforms`, migration 089) lives here too now; the separate RP5 Supabase project is retired |
 | Auth | Supabase Auth — every user row references `auth.users(id)`; single-user app in practice |
 | ORM | None — raw `supabase-js` client everywhere |
 | Client env vars | See `CLAUDE.md`'s Environment Variables table. Ground truth: `grep -rhoE 'VITE_[A-Z0-9_]+' src/ index.html vite.config.ts \| sort -u` |
@@ -250,11 +249,11 @@ ascending order the cap silently drops the **newest** rows. Loop
 `.range(offset, offset + 999)` until a page comes back short (see
 `fetchHealthMetricSeries` — this was a real, invisible data-truncation bug).
 
-**RP5 Games — special rules:**
-- Read from `v_games_summary` / `v_games_full` views only.
-- Write to raw `games` table.
-- `series_name` exists only in the view — never `SELECT series_name FROM games`.
-- Uses separate client from `VITE_RP5_SUPABASE_URL`.
+**Games — migration 089.** `games`/`game_platforms` live in this app's own
+database now (moved off the separate RP5 Supabase project). Plain
+`select('*')` + client-side join in `gamesApi.ts` (`attachPlatforms`) — no
+views. `genres`/`series_name` are plain columns on `games`, not a normalized
+lookup join.
 
 ---
 
@@ -416,7 +415,6 @@ Before proposing any new table:
 
 - Does not push migrations automatically — always outputs SQL for manual review.
 - Does not modify `auth.users` schema.
-- Does not touch the RP5 Supabase schema (separate project, read-only for us).
 - Does not generate Supabase client configuration — `src/integrations/supabase/client.ts` is the source of truth.
 - Does not write raw SQL for the AI to execute beyond the read-only, guarded
   `run_read_query` path (single `SELECT`/`WITH`, `LIMIT 500`, RLS applies via a

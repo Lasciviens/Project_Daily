@@ -52,8 +52,6 @@ jobs:
           VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_STRAVA_CLIENT_ID:      ${{ secrets.VITE_STRAVA_CLIENT_ID }}
           VITE_OXR_APP_ID:            ${{ secrets.VITE_OXR_APP_ID }}
-          VITE_RP5_SUPABASE_URL:      ${{ secrets.VITE_RP5_SUPABASE_URL }}
-          VITE_RP5_SUPABASE_ANON_KEY: ${{ secrets.VITE_RP5_SUPABASE_ANON_KEY }}
           VITE_VAPID_PUBLIC_KEY:      ${{ secrets.VITE_VAPID_PUBLIC_KEY || vars.VITE_VAPID_PUBLIC_KEY }}
         run: |
           fatal=""
@@ -61,8 +59,7 @@ jobs:
             [ -n "${!v}" ] || fatal="$fatal $v"
           done
           for v in VITE_TMDB_API_KEY VITE_GOOGLE_CLIENT_ID VITE_STRAVA_CLIENT_ID \
-                   VITE_OXR_APP_ID VITE_RP5_SUPABASE_URL VITE_RP5_SUPABASE_ANON_KEY \
-                   VITE_VAPID_PUBLIC_KEY; do
+                   VITE_OXR_APP_ID VITE_VAPID_PUBLIC_KEY; do
             [ -n "${!v}" ] || echo "::warning::$v is empty — the feature that uses it will be dead in this deploy."
           done
           if [ -n "$fatal" ]; then
@@ -81,8 +78,6 @@ jobs:
           VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_STRAVA_CLIENT_ID:      ${{ secrets.VITE_STRAVA_CLIENT_ID }}
           VITE_OXR_APP_ID:            ${{ secrets.VITE_OXR_APP_ID }}
-          VITE_RP5_SUPABASE_URL:      ${{ secrets.VITE_RP5_SUPABASE_URL }}
-          VITE_RP5_SUPABASE_ANON_KEY: ${{ secrets.VITE_RP5_SUPABASE_ANON_KEY }}
           # CLAUDE.md documents this one as an Actions *Variable* while it is
           # wired here as a secret — accept either so a settings mismatch can't
           # silently ship an empty VAPID key (Web Push would then fail only when
