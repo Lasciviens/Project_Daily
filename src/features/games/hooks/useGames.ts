@@ -3,9 +3,9 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import {
   fetchGameStats, fetchAllGames, fetchGameDetail, fetchGamesNeedingReview, fetchPlayQueue,
   createGame, updateGame, deleteGame, reorderQueue, addToQueue, removeFromQueue,
-  addPlatform, updatePlatform, deletePlatform, setPrimaryVariant,
+  addPlatform, updatePlatform, deletePlatform, setPrimaryVariant, setPlayStatus,
 } from '../api/gamesApi'
-import type { Game, GamePatch, CreateGameInput, GamePlatformInput } from '../types'
+import type { Game, GamePatch, CreateGameInput, GamePlatformInput, PlayStatus } from '../types'
 
 const GAMES_QK  = ['games', 'all']
 const QUEUE_QK  = ['games', 'queue']
@@ -69,6 +69,16 @@ export function useUpdateGame() {
       if (prev) qc.setQueryData(GAMES_QK, prev)
     },
     onSettled: () => invalidateAllGames(qc),
+  })
+}
+
+export function useSetPlayStatus() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback<void, { id: string; status: PlayStatus }>({
+    action: 'set_play_status',
+    successMessage: (_d, v) => `Marked as ${v.status} ✓`,
+    mutationFn: ({ id, status }) => setPlayStatus(id, status),
+    onSuccess: () => invalidateAllGames(qc),
   })
 }
 

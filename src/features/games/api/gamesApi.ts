@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type {
-  Game, GamePlatform, GameStats, QueueGame,
+  Game, GamePlatform, GameStats, QueueGame, PlayStatus,
   CreateGameInput, GamePatch, GamePlatformInput,
 } from '../types'
 
@@ -136,10 +136,21 @@ export async function createGame(input: CreateGameInput): Promise<Game> {
       publisher:         gameFields.publisher ?? null,
       developer:         gameFields.developer ?? null,
       description:       gameFields.description ?? null,
+      storyline:         gameFields.storyline ?? null,
       genres:            gameFields.genres ?? null,
       series_name:       gameFields.series_name ?? null,
       play_status:       gameFields.play_status ?? 'backlog',
+      tier:              gameFields.tier ?? null,
+      rating:            gameFields.rating ?? null,
+      is_coop:           gameFields.is_coop ?? false,
+      is_iconic:         gameFields.is_iconic ?? false,
+      play_notes:        gameFields.play_notes ?? null,
       primary_cover_url: gameFields.primary_cover_url ?? null,
+      age_rating:        gameFields.age_rating ?? null,
+      players:           gameFields.players ?? null,
+      modes:             gameFields.modes ?? null,
+      screenshot_url:    gameFields.screenshot_url ?? null,
+      fanart_url:        gameFields.fanart_url ?? null,
       external_source:   'manual',
     })
     .select()
@@ -160,6 +171,26 @@ export async function createGame(input: CreateGameInput): Promise<Game> {
 }
 
 export async function updateGame(id: string, patch: GamePatch): Promise<void> {
+  const { error } = await supabase.from('games').update(patch).eq('id', id)
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+}
+
+// The "quick switch" action — a one-tap status change, unlike the generic
+// edit form's status dropdown (which never touches these dates itself, so a
+// deliberate bulk edit can't accidentally backdate a playthrough). Reads the
+// row's own started_at/finished_at first and only ever fills whichever one
+// is still NULL — an already-set date (auto or manual) is never overwritten,
+// matching Media's own "stamp once" convention for started_at/finished_at.
+export async function setPlayStatus(id: string, status: PlayStatus): Promise<void> {
+  const { data: current, error: readErr } = await supabase
+    .from('games').select('started_at, finished_at').eq('id', id).single()
+  if (readErr) throw isMissingTable(readErr) ? new Error(NOT_MIGRATED) : readErr
+
+  const patch: GamePatch = { play_status: status }
+  const now = new Date().toISOString()
+  if (status === 'playing' && !current?.started_at) patch.started_at = now
+  if (status === 'completed' && !current?.finished_at) patch.finished_at = now
+
   const { error } = await supabase.from('games').update(patch).eq('id', id)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
 }

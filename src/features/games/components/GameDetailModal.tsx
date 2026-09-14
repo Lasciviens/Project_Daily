@@ -2,16 +2,16 @@ import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import {
   useGameDetail, useUpdateGame, useDeleteGame, useAddToQueue, useRemoveFromQueue,
-  useAddPlatform, useUpdatePlatform, useDeletePlatform, useSetPrimaryVariant,
+  useAddPlatform, useUpdatePlatform, useDeletePlatform, useSetPrimaryVariant, useSetPlayStatus,
 } from '../hooks/useGames'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import {
-  STATUS_COLOR, STATUS_LABEL, TIER_COLOR, TIERS, STATUSES,
+  STATUS_LABEL, TIER_COLOR, TIERS, STATUSES,
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
 } from '../gamesMeta'
-import type { GamePatch, GamePlatform, GamePlatformInput } from '../types'
+import type { Game, GamePatch, GamePlatform, GamePlatformInput, PlayStatus } from '../types'
 
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -21,6 +21,41 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
         className="w-full flex items-center justify-between text-xs font-semibold text-ink-400 uppercase tracking-wide mb-1.5 hover:text-ink-600 transition-colors min-h-[32px]"
       >{title}<span className="text-ink-300">{open ? '▲' : '▼'}</span></button>
       {open && children}
+    </div>
+  )
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// A date input wants "yyyy-MM-dd"; the column stores a full timestamp — this
+// truncates for the input and expands back to midnight-UTC on save. Good
+// enough for a "which day" fact; nobody needs hour precision on a play date.
+function isoToDateInput(iso: string | null): string {
+  return iso ? iso.slice(0, 10) : ''
+}
+function dateInputToIso(v: string): string | null {
+  return v ? new Date(`${v}T00:00:00`).toISOString() : null
+}
+
+// ─── Quick status switch — a one-tap change, no "enter edit mode" detour ────
+
+function StatusQuickBar({ game }: { game: Game }) {
+  const setStatus = useSetPlayStatus()
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {STATUSES.map(s => (
+        <button key={s} onClick={() => setStatus.mutate({ id: game.id, status: s as PlayStatus })}
+          disabled={setStatus.isPending}
+          className={`text-xs font-semibold px-2.5 py-1.5 min-h-[36px] rounded-lg border transition-colors disabled:opacity-50 ${
+            game.play_status === s
+              ? 'bg-accent-500 text-white border-accent-500'
+              : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'
+          }`}
+        >{STATUS_LABEL[s] ?? s}</button>
+      ))}
     </div>
   )
 }
@@ -108,78 +143,208 @@ function AddPlatformInline({ gameId, onDone }: { gameId: string; onDone: () => v
   )
 }
 
-// ─── Edit panel ───────────────────────────────────────────────────────────────
+// ─── Edit panel — covers every field the schema has, not just the 5 that ────
+// ─── shipped with the first pass. Grouped into labeled sub-sections so a    ───
+// ─── genuinely large form still scans in seconds.                          ───
 
-function EditPanel({
-  gameId, initial, onSave, onCancel, saving,
-}: {
-  gameId: string
-  initial: { play_status: string; tier?: string | null; rating?: number | null; is_iconic: boolean; is_coop: boolean; play_notes?: string | null; needs_review: boolean }
-  onSave: (id: string, patch: GamePatch) => void
-  onCancel: () => void
-  saving: boolean
-}) {
-  const [status, setStatus]     = useState(initial.play_status)
-  const [tier, setTier]         = useState(initial.tier ?? '')
-  const [rating, setRating]     = useState(initial.rating?.toString() ?? '')
-  const [iconic, setIconic]     = useState(initial.is_iconic)
-  const [coop, setCoop]         = useState(initial.is_coop)
-  const [notes, setNotes]       = useState(initial.play_notes ?? '')
-  const [needsReview, setNeedsReview] = useState(initial.needs_review)
+const fieldCls = 'w-full min-h-[44px] text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
+const labelCls = 'text-xs text-ink-400 mb-1 block'
+
+function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id: string, patch: GamePatch) => void; onCancel: () => void; saving: boolean }) {
+  const [title, setTitle]           = useState(game.title)
+  const [releaseYear, setReleaseYear] = useState(game.release_year?.toString() ?? '')
+  const [publisher, setPublisher]   = useState(game.publisher ?? '')
+  const [developer, setDeveloper]   = useState(game.developer ?? '')
+  const [seriesName, setSeriesName] = useState(game.series_name ?? '')
+  const [description, setDescription] = useState(game.description ?? '')
+  const [storyline, setStoryline]   = useState(game.storyline ?? '')
+  const [genres, setGenres]         = useState(game.genres?.join(', ') ?? '')
+  const [ageRating, setAgeRating]   = useState(game.age_rating ?? '')
+  const [players, setPlayers]       = useState(game.players ?? '')
+  const [modes, setModes]           = useState(game.modes?.join(', ') ?? '')
+  const [coverUrl, setCoverUrl]     = useState(game.primary_cover_url ?? '')
+  const [screenshotUrl, setScreenshotUrl] = useState(game.screenshot_url ?? '')
+  const [fanartUrl, setFanartUrl]   = useState(game.fanart_url ?? '')
+
+  const [status, setStatus]     = useState(game.play_status)
+  const [tier, setTier]         = useState(game.tier ?? '')
+  const [rating, setRating]     = useState(game.rating?.toString() ?? '')
+  const [iconic, setIconic]     = useState(game.is_iconic)
+  const [coop, setCoop]         = useState(game.is_coop)
+  const [coopNotes, setCoopNotes] = useState(game.coop_notes ?? '')
+  const [startedAt, setStartedAt]   = useState(isoToDateInput(game.started_at))
+  const [finishedAt, setFinishedAt] = useState(isoToDateInput(game.finished_at))
+  const [notes, setNotes]       = useState(game.play_notes ?? '')
+  const [gameLog, setGameLog]   = useState(game.game_log ?? '')
+  const [needsReview, setNeedsReview] = useState(game.needs_review)
+
+  function splitList(s: string): string[] | null {
+    const arr = s.split(',').map(x => x.trim()).filter(Boolean)
+    return arr.length ? arr : null
+  }
 
   function save() {
     const ratingNum = rating !== '' ? Number(rating) : null
-    onSave(gameId, {
-      play_status: status as GamePatch['play_status'],
-      tier:        (tier || null) as GamePatch['tier'],
-      rating:      ratingNum != null && !isNaN(ratingNum) ? Math.min(10, Math.max(0, ratingNum)) : null,
-      is_iconic:   iconic,
-      is_coop:     coop,
-      play_notes:  notes || null,
+    onSave(game.id, {
+      title:        title.trim() || game.title,
+      release_year: releaseYear.trim() ? Number(releaseYear) : null,
+      publisher:    publisher.trim() || null,
+      developer:    developer.trim() || null,
+      series_name:  seriesName.trim() || null,
+      description:  description.trim() || null,
+      storyline:    storyline.trim() || null,
+      genres:       splitList(genres),
+      age_rating:   ageRating.trim() || null,
+      players:      players.trim() || null,
+      modes:        splitList(modes),
+      primary_cover_url: coverUrl.trim() || null,
+      screenshot_url:    screenshotUrl.trim() || null,
+      fanart_url:        fanartUrl.trim() || null,
+      play_status:  status,
+      tier:         (tier || null) as GamePatch['tier'],
+      rating:       ratingNum != null && !isNaN(ratingNum) ? Math.min(10, Math.max(0, ratingNum)) : null,
+      is_iconic:    iconic,
+      is_coop:      coop,
+      coop_notes:   coopNotes.trim() || null,
+      started_at:   dateInputToIso(startedAt),
+      finished_at:  dateInputToIso(finishedAt),
+      play_notes:   notes.trim() || null,
+      game_log:     gameLog.trim() || null,
       needs_review: needsReview,
     })
   }
 
   return (
-    <div className="p-5 border-t border-ink-100 space-y-4 bg-cream-50">
+    <div className="p-5 border-t border-ink-100 space-y-5 bg-cream-50">
       <p className="text-xs font-semibold text-ink-500 uppercase tracking-wide">Edit</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+      {/* Basics */}
+      <div className="space-y-3">
+        <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide">Basics</p>
         <div>
-          <label className="text-xs text-ink-400 mb-1 block">Status</label>
-          <select value={status} onChange={e => setStatus(e.target.value)} className="w-full min-h-[44px] text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400">
-            {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-          </select>
+          <label className={labelCls}>Title</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} className={fieldCls} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Release year</label>
+            <input value={releaseYear} onChange={e => setReleaseYear(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={fieldCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Series</label>
+            <input value={seriesName} onChange={e => setSeriesName(e.target.value)} className={fieldCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Publisher</label>
+            <input value={publisher} onChange={e => setPublisher(e.target.value)} className={fieldCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Developer</label>
+            <input value={developer} onChange={e => setDeveloper(e.target.value)} className={fieldCls} />
+          </div>
         </div>
         <div>
-          <label className="text-xs text-ink-400 mb-1 block">Tier</label>
-          <select value={tier} onChange={e => setTier(e.target.value)} className="w-full min-h-[44px] text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400">
-            <option value="">— None —</option>
-            {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
-          </select>
+          <label className={labelCls}>Description</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className={`${fieldCls} resize-none`} />
         </div>
         <div>
-          <label className="text-xs text-ink-400 mb-1 block">My Rating (0–10)</label>
-          <input type="number" min={0} max={10} step={0.5} value={rating} onChange={e => setRating(e.target.value)} placeholder="—"
-            className="w-full min-h-[44px] text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
+          <label className={labelCls}>Storyline</label>
+          <textarea value={storyline} onChange={e => setStoryline(e.target.value)} rows={2} className={`${fieldCls} resize-none`} />
         </div>
-        <div className="flex flex-col gap-2 justify-center">
-          <label className="flex items-center gap-2 cursor-pointer min-h-[32px]">
-            <input type="checkbox" checked={iconic} onChange={e => setIconic(e.target.checked)} className="rounded accent-yellow-500" />
-            <span className="text-sm text-ink-700">⭐ Iconic</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer min-h-[32px]">
-            <input type="checkbox" checked={coop} onChange={e => setCoop(e.target.checked)} className="rounded accent-cyan-500" />
-            <span className="text-sm text-ink-700">2P Co-op</span>
-          </label>
+      </div>
+
+      {/* Tags & media */}
+      <div className="space-y-3">
+        <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide">Tags &amp; media</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Genres (comma-separated)</label>
+            <input value={genres} onChange={e => setGenres(e.target.value)} placeholder="Platformer, RPG" className={fieldCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Modes (comma-separated)</label>
+            <input value={modes} onChange={e => setModes(e.target.value)} placeholder="Single-player, Co-op" className={fieldCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Players</label>
+            <input value={players} onChange={e => setPlayers(e.target.value)} placeholder="1-2" className={fieldCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Age rating</label>
+            <input value={ageRating} onChange={e => setAgeRating(e.target.value)} placeholder="PEGI 12" className={fieldCls} />
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>Cover image URL</label>
+          <input value={coverUrl} onChange={e => setCoverUrl(e.target.value)} className={fieldCls} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Screenshot URL</label>
+            <input value={screenshotUrl} onChange={e => setScreenshotUrl(e.target.value)} className={fieldCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Fanart URL</label>
+            <input value={fanartUrl} onChange={e => setFanartUrl(e.target.value)} className={fieldCls} />
+          </div>
+        </div>
+      </div>
+
+      {/* My progress */}
+      <div className="space-y-3">
+        <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide">My progress</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Status</label>
+            <select value={status} onChange={e => setStatus(e.target.value as PlayStatus)} className={fieldCls}>
+              {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Tier</label>
+            <select value={tier} onChange={e => setTier(e.target.value)} className={fieldCls}>
+              <option value="">— None —</option>
+              {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>My Rating (0–10)</label>
+            <input type="number" min={0} max={10} step={0.5} value={rating} onChange={e => setRating(e.target.value)} placeholder="—" className={fieldCls} />
+          </div>
+          <div className="flex flex-col gap-2 justify-center">
+            <label className="flex items-center gap-2 cursor-pointer min-h-[32px]">
+              <input type="checkbox" checked={iconic} onChange={e => setIconic(e.target.checked)} className="rounded accent-yellow-500" />
+              <span className="text-sm text-ink-700">⭐ Iconic</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer min-h-[32px]">
+              <input type="checkbox" checked={coop} onChange={e => setCoop(e.target.checked)} className="rounded accent-cyan-500" />
+              <span className="text-sm text-ink-700">2P Co-op</span>
+            </label>
+          </div>
+          {coop && (
+            <div className="sm:col-span-2">
+              <label className={labelCls}>Co-op notes</label>
+              <input value={coopNotes} onChange={e => setCoopNotes(e.target.value)} className={fieldCls} />
+            </div>
+          )}
+          <div>
+            <label className={labelCls}>Started</label>
+            <input type="date" value={startedAt} onChange={e => setStartedAt(e.target.value)} className={fieldCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Finished</label>
+            <input type="date" value={finishedAt} onChange={e => setFinishedAt(e.target.value)} className={fieldCls} />
+          </div>
         </div>
       </div>
 
       <div>
-        <label className="text-xs text-ink-400 mb-1 flex items-center gap-1">
-          Personal Notes
-        </label>
-        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Your thoughts…"
-          className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none" />
+        <label className={labelCls}>Personal Notes</label>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Your thoughts…" className={`${fieldCls} resize-none`} />
+      </div>
+      <div>
+        <label className={labelCls}>Play log</label>
+        <textarea value={gameLog} onChange={e => setGameLog(e.target.value)} rows={2} placeholder="A running log, if you keep one…" className={`${fieldCls} resize-none`} />
       </div>
 
       <label className="flex items-center gap-2 cursor-pointer min-h-[32px]">
@@ -266,8 +431,13 @@ export function GameDetailModal({ gameId, onClose }: Props) {
               <div className="flex-1 min-w-0 sm:pt-1">
                 <h2 className="text-lg font-bold text-ink-900 leading-snug mb-0.5 pr-0 sm:pr-8">{game.title}</h2>
                 {game.series_name && <p className="text-xs text-ink-400 mb-1.5">⛓ {game.series_name}</p>}
+
+                {/* Quick status switch — the one-tap fix for "kolayca playing/finished yapamıyorum" */}
+                <div className="mb-2">
+                  <StatusQuickBar game={game} />
+                </div>
+
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>{STATUS_LABEL[game.play_status] ?? game.play_status}</span>
                   {game.tier && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TIER_COLOR[game.tier] ?? 'bg-ink-200'}`}>Tier {game.tier}</span>}
                   {game.is_iconic && <span className="text-sm">⭐</span>}
                   {game.is_coop && <span className="text-xs font-bold bg-cyan-500 text-white px-2 py-0.5 rounded-full">2P</span>}
@@ -276,7 +446,11 @@ export function GameDetailModal({ gameId, onClose }: Props) {
                 <div className="space-y-0.5 text-xs text-ink-500">
                   {game.release_year && <p>📅 {game.release_year}</p>}
                   {game.publisher && <p>🏢 {game.publisher}</p>}
+                  {game.developer && game.developer !== game.publisher && <p>🛠 {game.developer}</p>}
                   {game.age_rating && <p>🔞 {game.age_rating}</p>}
+                  {(game.started_at || game.finished_at) && (
+                    <p>▶ Started {fmtDate(game.started_at)}{game.finished_at && <> · 🏁 Finished {fmtDate(game.finished_at)}</>}</p>
+                  )}
                   {game.external_source && (
                     <p className="flex items-center gap-1">
                       🔗 {EXTERNAL_SOURCE_LABEL[game.external_source] ?? game.external_source}
@@ -299,13 +473,7 @@ export function GameDetailModal({ gameId, onClose }: Props) {
             </div>
 
             {editing && (
-              <EditPanel
-                gameId={game.id}
-                initial={{ play_status: game.play_status, tier: game.tier, rating: game.rating, is_iconic: game.is_iconic, is_coop: game.is_coop, play_notes: game.play_notes, needs_review: game.needs_review }}
-                onSave={handleSave}
-                onCancel={() => setEditing(false)}
-                saving={update.isPending}
-              />
+              <EditPanel game={game} onSave={handleSave} onCancel={() => setEditing(false)} saving={update.isPending} />
             )}
 
             <div className="p-5 space-y-5">
@@ -352,6 +520,15 @@ export function GameDetailModal({ gameId, onClose }: Props) {
               )}
               {game.coop_notes && (
                 <Section title="Co-op Notes"><p className="text-sm text-ink-700 bg-cyan-50 rounded-lg p-3 leading-relaxed">{game.coop_notes}</p></Section>
+              )}
+              {(game.esde_playcount != null || game.esde_last_played) && (
+                <Section title="Play Stats (ES-DE)" defaultOpen={false}>
+                  <div className="flex flex-wrap gap-3 text-xs text-ink-500">
+                    {game.esde_playcount != null && <span>▶ Played {game.esde_playcount}×</span>}
+                    {game.esde_last_played && <span>🕐 Last played {fmtDate(game.esde_last_played)}</span>}
+                    {game.esde_playtime_seconds != null && <span>⏱ {Math.round(game.esde_playtime_seconds / 3600)}h total</span>}
+                  </div>
+                </Section>
               )}
             </div>
           </div>
