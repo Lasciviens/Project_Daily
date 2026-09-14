@@ -14,6 +14,8 @@ import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { MealPortionPicker } from './MealPortionPicker'
 import { SlotSelect, FoodThumb, FoodTile } from './foodLogKit'
 import { sanitizeDecimal } from './foodLogUtils'
+import { MacroWarningBadge } from './MacroWarningBadge'
+import { checkMacroConsistency } from '../macroSanity'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { toast } from '../../../app/store'
@@ -104,6 +106,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
   const [nKcal, setNKcal] = useState(''); const [nProt, setNProt] = useState('')
   const [nCarb, setNCarb] = useState(''); const [nFat, setNFat] = useState('')
   const [nFiber, setNFiber] = useState('')
+  const [nSugar, setNSugar] = useState('')
   const [nServLabel, setNServLabel] = useState(''); const [nServGrams, setNServGrams] = useState('')
 
   const [scanOpen, setScanOpen] = useState(false)
@@ -118,6 +121,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
     setNCarb(p.carbs_g != null ? String(p.carbs_g) : '')
     setNFat(p.fat_g != null ? String(p.fat_g) : '')
     setNFiber(p.fiber_g != null ? String(p.fiber_g) : '')
+    setNSugar(p.sugar_g != null ? String(p.sugar_g) : '')
     setNServLabel(p.serving_grams != null ? '1 serving' : '')
     setNServGrams(p.serving_grams != null ? String(p.serving_grams) : '')
     setScanMeta({ source: p.source ?? 'openfoodfacts', source_ref: p.code, image_url: p.image_url })
@@ -208,7 +212,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
     const num = (s: string) => (s === '' ? null : Number(s))
     const input = {
       name: nName, calories: num(nKcal), protein_g: num(nProt), carbs_g: num(nCarb),
-      fat_g: num(nFat), fiber_g: num(nFiber),
+      fat_g: num(nFat), fiber_g: num(nFiber), sugar_g: num(nSugar),
       serving_label: nServLabel || null, serving_grams: num(nServGrams),
     }
     try {
@@ -221,7 +225,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
       }
       addToBasket(created)
       setShowNew(false); setScanMeta(null)
-      setNName(''); setNKcal(''); setNProt(''); setNCarb(''); setNFat(''); setNFiber(''); setNServLabel(''); setNServGrams('')
+      setNName(''); setNKcal(''); setNProt(''); setNCarb(''); setNFat(''); setNFiber(''); setNSugar(''); setNServLabel(''); setNServGrams('')
     } catch (e) {
       toast.error((e as Error).message ?? 'Could not save the ingredient')
     }
@@ -237,9 +241,11 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
       quantity: it.grams, unit: 'g', ...ingredientSnapshot(it.ingredient, it.grams),
       meal_group_id: groupId,
     }))
-    await addEntries.mutateAsync(entries)
-    setBasket([])
-    onClose()
+    try {
+      await addEntries.mutateAsync(entries)
+      setBasket([])
+      onClose()
+    } catch { /* useMutationWithFeedback already toasts; this just avoids an unhandled rejection */ }
   }
 
   async function handleSaveMeal() {
@@ -350,7 +356,18 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
                   <input value={nCarb}  onChange={e => setNCarb(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="Carbs" className={inputCls} />
                   <input value={nFat}   onChange={e => setNFat(sanitizeDecimal(e.target.value))}   inputMode="decimal" placeholder="Fat" className={inputCls} />
                   <input value={nFiber} onChange={e => setNFiber(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Fiber" className={inputCls} />
+                  <input value={nSugar} onChange={e => setNSugar(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Sugar" className={inputCls} />
                 </div>
+                {(() => {
+                  const num = (s: string) => (s === '' ? null : Number(s))
+                  const check = checkMacroConsistency(num(nKcal), num(nProt), num(nCarb), num(nFat))
+                  return check?.inconsistent ? (
+                    <div className="flex items-center gap-1.5 text-[11px] text-orange-700">
+                      <MacroWarningBadge result={check} />
+                      <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
+                    </div>
+                  ) : null
+                })()}
                 <div className="grid grid-cols-2 gap-1.5">
                   <input value={nServLabel} onChange={e => setNServLabel(e.target.value)} placeholder="Portion label (1 scoop)" className={inputCls} />
                   <input value={nServGrams} onChange={e => setNServGrams(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams" className={inputCls} />
@@ -369,20 +386,33 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
             {q ? (
               /* ── SEARCHING → clean result rows ── */
               <div className="flex flex-col">
-                {matches.map(ing => (
-                  <button key={ing.id} type="button" onClick={() => addToBasket(ing)}
-                    className="flex items-center gap-3 min-h-[56px] px-1 rounded-xl hover:bg-cream-100 active:bg-cream-100 transition-colors text-left">
-                    <FoodThumb name={ing.name} group={ing.food_group} imageUrl={ing.image_url} size={40} />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-medium text-ink-800 truncate">{ing.name}</span>
-                      <span className="block text-[11px] text-ink-400">
-                        {ing.calories != null && `${Math.round(ing.calories)} kcal · 100g`}
-                        {ing.serving_label && ` · ${ing.serving_label}`}
+                {matches.map(ing => {
+                  const macroCheck = checkMacroConsistency(ing.calories, ing.protein_g, ing.carbs_g, ing.fat_g)
+                  // A DIV, not a button — MacroWarningBadge is itself a
+                  // Popover button, and a <button> can't nest another one.
+                  return (
+                  <div key={ing.id} className="flex items-center gap-3 min-h-[56px] px-1 rounded-xl hover:bg-cream-100 transition-colors">
+                    <button type="button" onClick={() => addToBasket(ing)} className="flex items-center gap-3 flex-1 min-w-0 text-left active:opacity-70">
+                      <FoodThumb name={ing.name} group={ing.food_group} imageUrl={ing.image_url} size={40} />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium text-ink-800 truncate">{ing.name}</span>
+                        <span className="block text-[11px] text-ink-400">
+                          {ing.calories != null && `${Math.round(ing.calories)} kcal · 100g`}
+                          {ing.serving_label && ` · ${ing.serving_label}`}
+                        </span>
                       </span>
-                    </span>
-                    <span className="min-w-[36px] min-h-[36px] rounded-full bg-accent-50 text-accent-600 grid place-items-center text-lg shrink-0">+</span>
-                  </button>
-                ))}
+                      {/* Was left outside this button in an earlier pass (only
+                          to keep the badge from nesting inside it) — a real
+                          regression, since this "+" is the row's own visual
+                          add-affordance and tapping it did nothing. It only
+                          ever needed to move out from between the button and
+                          the badge below, not out of the button entirely. */}
+                      <span className="min-w-[36px] min-h-[36px] rounded-full bg-accent-50 text-accent-600 grid place-items-center text-lg shrink-0">+</span>
+                    </button>
+                    <MacroWarningBadge result={macroCheck} />
+                  </div>
+                  )
+                })}
                 {savedMeals.length > 0 && matches.length === 0 && savedMeals.map(r => (
                   <button key={r.id} type="button" onClick={() => setPortionRecipe(r)}
                     className="flex items-center gap-3 min-h-[56px] px-1 rounded-xl hover:bg-cream-100 transition-colors text-left">

@@ -6,6 +6,8 @@ import { useUpdateFoodLogEntry, useDeleteFoodLogEntry } from '../hooks/useFoodLo
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import { useRecipes } from '../hooks/useRecipes'
 import { ingredientSnapshot, recipeSnapshot } from '../api/foodLogApi'
+import { MacroWarningBadge } from './MacroWarningBadge'
+import { checkMacroConsistency } from '../macroSanity'
 import type { MealSlot } from '../types'
 import type { DayMeal } from '../../daily/api/dayNutritionApi'
 
@@ -60,7 +62,11 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
     let patch: Parameters<typeof update.mutateAsync>[0]['patch']
     if (kind === 'library' && lib) {
       if (amt <= 0) { toast.error('Enter grams'); return }
-      patch = { meal_slot: slot, quantity: amt, unit: 'g', ...ingredientSnapshot(lib, amt) }
+      // REAL BUG, fixed: this used to hardcode unit: 'g' regardless of the
+      // library ingredient's own unit (some are 'ml') — editing such an
+      // entry silently relabelled its stored unit, even though the macro
+      // math itself (ingredientSnapshot) is unit-agnostic and unaffected.
+      patch = { meal_slot: slot, quantity: amt, unit: lib.unit || 'g', ...ingredientSnapshot(lib, amt) }
     } else if (kind === 'recipe' && recipe) {
       if (amt <= 0) { toast.error('Enter servings'); return }
       patch = { meal_slot: slot, quantity: amt, unit: 'serving', ...recipeSnapshot(recipe, amt) }
@@ -69,8 +75,10 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
       const n = (s: string) => (s.trim() === '' ? null : Number(sanitizeDecimal(s)))
       patch = { meal_slot: slot, custom_title: title.trim(), calories: n(kcal), protein_g: n(prot), carbs_g: n(carb), fat_g: n(fat), fiber_g: n(fiber), sugar_g: n(sugar) }
     }
-    await update.mutateAsync({ id: meal.id, patch })
-    onClose()
+    try {
+      await update.mutateAsync({ id: meal.id, patch })
+      onClose()
+    } catch { /* useMutationWithFeedback already toasts; this just avoids an unhandled rejection */ }
   }
 
   const inputCls = 'min-h-[44px] px-3 text-sm border border-ink-200 rounded-xl bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
@@ -98,7 +106,7 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1 block">Amount ({lib.name})</label>
                 <div className="flex items-center gap-2">
                   <input value={amount} onChange={e => setAmount(sanitizeDecimal(e.target.value))} inputMode="decimal" className={`${inputCls} w-24 text-right tabular-nums`} />
-                  <span className="text-xs text-ink-400">g</span>
+                  <span className="text-xs text-ink-400">{lib.unit || 'g'}</span>
                   {lib.serving_grams != null && lib.serving_label && <span className="text-[11px] text-ink-400">≈ {Math.round((amt / lib.serving_grams) * 10) / 10}× {lib.serving_label}</span>}
                 </div>
               </div>
@@ -127,6 +135,16 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
                       className="min-h-[44px] px-2 text-sm text-center border border-ink-200 rounded-xl bg-cream-50 tabular-nums" />
                   ))}
                 </div>
+                {(() => {
+                  const n = (s: string) => (s.trim() === '' ? null : Number(sanitizeDecimal(s)))
+                  const check = checkMacroConsistency(n(kcal), n(prot), n(carb), n(fat))
+                  return check?.inconsistent ? (
+                    <div className="flex items-center gap-1.5 text-[11px] text-orange-700">
+                      <MacroWarningBadge result={check} />
+                      <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
+                    </div>
+                  ) : null
+                })()}
               </>
             )}
 

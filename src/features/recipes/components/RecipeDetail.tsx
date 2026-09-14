@@ -91,8 +91,16 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   function handleAddMissingToShop() {
     const missing = recipe.ingredients.filter(i => !have.has(i.id))
     if (!missing.length) { toast.error('Everything is checked off — nothing to add'); return }
+    // REAL BUG, fixed: every ON-SCREEN quantity already scales by `factor`
+    // (via `scaledQty`), but this used to push the recipe's RAW base
+    // quantities to Shop unscaled — double a batch before shopping and the
+    // pushed list still showed the original (half) amounts.
+    const missingScaled = missing.map(i => ({
+      ...i,
+      quantity: i.quantity == null ? null : Math.round(i.quantity * factor * 100) / 100,
+    }))
     const tid = toast.loading('Adding to Shop…')
-    addToShop.mutate({ ingredients: missing, recipeTitle: recipe.title }, {
+    addToShop.mutate({ ingredients: missingScaled, recipeTitle: recipe.title }, {
       onSuccess: (count) => { toast.dismiss(tid); toast.success(`Added ${count} item${count !== 1 ? 's' : ''} to Shop ✓`) },
       onError:   (e)     => { toast.dismiss(tid); toast.error((e as Error).message) },
     })
@@ -205,11 +213,18 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
               </select>
             </div>
 
-            {/* What "I ate this" will log — portion as a % of the batch + kcal. */}
-            {ate > 0 && (recipe.calories != null || recipe.servings > 1) && (
+            {/* What "I ate this" will log — portion as a % of the batch + kcal.
+                REAL BUG, fixed: this used to divide by `recipe.servings` (the
+                recipe's base/original yield), never the currently-scaled
+                `servings` state — doubling the batch before logging kept
+                showing "of {original} portions" and roughly doubled the
+                reported "% of the batch" relative to what was actually
+                cooked. `recipe.calories` itself is per-serving and stays
+                correct either way — only this descriptive line was wrong. */}
+            {ate > 0 && (recipe.calories != null || servings > 1) && (
               <p className="text-[11px] text-ink-400 tabular-nums -mt-2">
-                Eating <strong className="text-ink-600">{ate}</strong> of {recipe.servings} portion{recipe.servings === 1 ? '' : 's'}
-                {recipe.servings > 0 && <span> · {Math.round((ate / recipe.servings) * 100)}% of the batch</span>}
+                Eating <strong className="text-ink-600">{ate}</strong> of {servings} portion{servings === 1 ? '' : 's'}
+                {servings > 0 && <span> · {Math.round((ate / servings) * 100)}% of the batch</span>}
                 {recipe.calories != null && <span> · logs <strong className="text-ink-600">{Math.round(recipe.calories * ate)}</strong> kcal</span>}
               </p>
             )}

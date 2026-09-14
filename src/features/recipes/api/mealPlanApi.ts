@@ -1,6 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { ingredientSnapshot, recipeSnapshot } from './foodLogApi'
+import { WEIGHT_UNITS } from './recipesApi'
 import type { MealPlanEntry, CreateMealPlanEntryInput, Recipe, IngredientLibraryItem } from '../types'
 
 // The PLAN now lives in `food_log_entries` as status='planned' rows (migration
@@ -121,7 +122,18 @@ export async function eatPlannedEntry(entry: MealPlanEntry): Promise<void> {
   } else if (entry.library_ingredient_id) {
     const { data } = await supabase.from('recipe_ingredient_library').select('*').eq('id', entry.library_ingredient_id).maybeSingle()
     const grams = entry.ingredient_quantity ?? 0
-    if (data) { snap = ingredientSnapshot(data as IngredientLibraryItem, grams); quantity = grams; unit = entry.ingredient_unit ?? 'g' }
+    const unitOk = WEIGHT_UNITS.has((entry.ingredient_unit ?? 'g').trim().toLowerCase())
+    // REAL BUG, fixed: this used to snapshot `ingredientSnapshot(data, grams)`
+    // unconditionally, treating ANY quantity as grams — a non-weight unit
+    // (e.g. "2 piece") got scaled as if it were "2 grams" the moment it was
+    // confirmed eaten, permanently logging near-zero macros for what might be
+    // a whole egg. Every other reader of a planned row (dayNutritionApi's
+    // unifiedToMeal, recipesApi's sumMacros) already zeroes the contribution
+    // for a non-weight/volume unit — this is the same gate, so "still
+    // planned" and "just confirmed eaten" agree instead of silently
+    // diverging the instant you tap ✓.
+    if (data && unitOk) { snap = ingredientSnapshot(data as IngredientLibraryItem, grams); quantity = grams; unit = entry.ingredient_unit ?? 'g' }
+    else { quantity = grams; unit = entry.ingredient_unit ?? 'g' }
   }
   // Post-061: flip this row planned → eaten with the snapshot.
   const upd = await supabase.from('food_log_entries').update({ status: 'eaten', quantity, unit, ...snap }).eq('id', entry.id)
