@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { rp5 } from '../../../integrations/rp5-library/client'
-import { useGameStats, usePlayQueue } from '../hooks/useGames'
-import type { Game } from '../api/gamesApi'
+import { useGameStats, usePlayQueue } from '../../games/hooks/useGames'
+import type { Game } from '../../games/types'
 import { haptic } from '../../../shared/utils/haptics'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -17,8 +16,8 @@ function CoverThumb({ game }: { game: Game }) {
   const [err, setErr] = useState(false)
   return (
     <div className="relative flex-shrink-0 w-14 rounded-lg overflow-hidden border border-ink-200 bg-ink-100" style={{ aspectRatio: '3/4' }}>
-      {game.cover_url && !err ? (
-        <img src={game.cover_url} alt={game.title} onError={() => setErr(true)} className="w-full h-full object-cover" />
+      {game.primary_cover_url && !err ? (
+        <img src={game.primary_cover_url} alt={game.title} onError={() => setErr(true)} className="w-full h-full object-cover" />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-base">🎮</div>
       )}
@@ -37,24 +36,6 @@ export function GamesHomeWidget() {
   const playingGames = queue.filter(g => g.play_status === 'playing')
   // Reference widget — collapsed by default on a phone (desktop always shows).
   const [collapsed, setCollapsed] = useState(true)
-
-  if (!rp5) {
-    return (
-      <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide">Games</h3>
-          <Link to="/games" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🎮</span>
-          <div>
-            <p className="text-sm font-medium text-ink-800">Not configured</p>
-            <p className="text-xs text-ink-400">Add RP5 Supabase keys to enable</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">

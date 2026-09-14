@@ -43,8 +43,6 @@ npm ci && npm run build  # Vite injects VITE_* secrets
 | `VITE_GOOGLE_CLIENT_ID` | `src/features/calendar/` |
 | `VITE_STRAVA_CLIENT_ID` | `src/features/training/api/stravaApi.ts` |
 | `VITE_OXR_APP_ID` | `src/features/home/api/currencyApi.ts` |
-| `VITE_RP5_SUPABASE_URL` | `src/integrations/rp5-library/client.ts` |
-| `VITE_RP5_SUPABASE_ANON_KEY` | `src/integrations/rp5-library/client.ts` |
 
 ### Supabase Vault only — NEVER in client code
 | Key | Used by |

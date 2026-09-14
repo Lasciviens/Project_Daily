@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Cell, CellHeader, CellLink } from './cellKit'
-import { usePlayQueue } from '../../../home/hooks/useGames'
+import { usePlayQueue } from '../../../games/hooks/useGames'
 import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
-import type { QueueGame } from '../../../home/api/gamesApi'
+import type { QueueGame } from '../../../games/types'
 
-// 🎮 What to play — the top of the RP5 Play Queue, with "plan a session for
-// this day" without leaving Daily. Queue order itself is managed on /games.
+// 🎮 What to play — the top of the Play Queue, with "plan a session for this
+// day" without leaving Daily. Queue order itself is managed on /games.
 export function GamesCard({ date }: { date: string }) {
   const { data: queue = [], isError } = usePlayQueue()
   const [planning, setPlanning] = useState<QueueGame | null>(null)
@@ -24,8 +24,8 @@ export function GamesCard({ date }: { date: string }) {
         <ul className="flex flex-col gap-1.5">
           {top.map((g, i) => (
             <li key={g.id} className="flex items-center gap-2.5">
-              {g.cover_url ? (
-                <img src={g.cover_url} alt={g.title} className="w-8 h-10 object-cover rounded shrink-0 border border-ink-100" />
+              {g.primary_cover_url ? (
+                <img src={g.primary_cover_url} alt={g.title} className="w-8 h-10 object-cover rounded shrink-0 border border-ink-100" />
               ) : (
                 <div className="w-8 h-10 rounded bg-cream-200 flex items-center justify-center text-sm shrink-0">🎮</div>
               )}

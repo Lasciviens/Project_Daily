@@ -106,7 +106,6 @@ flowchart LR
         OXR[Open Exchange Rates]
         OFF[Open Food Facts<br/>+ NIH DSLD]
         GIFS[Exercise GIF CDN<br/>jsDelivr]
-        RP5[(RP5 Supabase<br/>games library)]
         WEBPUSH[Browser push service<br/>VAPID]
     end
 
@@ -133,14 +132,13 @@ flowchart LR
     TQ -->|direct| OXR
     TQ -->|direct| OFF
     TQ -->|direct| GIFS
-    TQ -->|direct| RP5
 ```
 
 Two things the diagram is deliberate about:
 
 - **Only secrets go through Edge Functions.** TMDB, EnTur, MET Norway, Open
-  Exchange Rates, Open Food Facts, NIH DSLD, the GIF CDN and the RP5 games
-  project are called straight from the browser with client-safe keys. Google
+  Exchange Rates, Open Food Facts, NIH DSLD and the GIF CDN are called
+  straight from the browser with client-safe keys. Google
   Calendar is split: the OAuth code exchange and refresh run in
   `calendar-oauth`/`calendar-token`, while the Calendar and Tasks API calls
   themselves are direct from the client with the bearer token.
@@ -299,11 +297,11 @@ Create a `.env.local` at the project root. (`.env.example` and
 | `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID — one consent covering Calendar and Tasks | Optional; Google features are hidden without it |
 | `VITE_STRAVA_CLIENT_ID` | Strava OAuth client ID | Optional; Strava connect only |
 | `VITE_OXR_APP_ID` | Open Exchange Rates app id | Optional; the Currency widget errors without it |
-| `VITE_RP5_SUPABASE_URL` | RP5 games Supabase URL | Optional; Games is disabled without it |
-| `VITE_RP5_SUPABASE_ANON_KEY` | RP5 games Supabase anon key | Optional; same |
 | `VITE_VAPID_PUBLIC_KEY` | Web Push **public** key, safe to expose | Optional; push subscribe is unavailable without it |
 
-All nine are set as GitHub Actions secrets for the deploy build.
+All seven are set as GitHub Actions secrets for the deploy build. Games
+(`games`/`game_platforms`, migration 089) lives in the main Supabase project
+now — no separate client/keys.
 
 Server-side secrets live in **Supabase Vault / Edge Function secrets only,
 never in the client** — the Gemini API key (`GEMINI_API_KEY`), Google OAuth

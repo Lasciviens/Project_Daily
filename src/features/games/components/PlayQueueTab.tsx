@@ -7,11 +7,10 @@ import {
   SortableContext, arrayMove, verticalListSortingStrategy, useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { usePlayQueue, useUpdateGame, useReorderQueue, useRemoveFromQueue } from '../../home/hooks/useGames'
-import { toast } from '../../../app/store'
+import { usePlayQueue, useUpdateGame, useReorderQueue, useRemoveFromQueue } from '../hooks/useGames'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { STATUS_LABEL, TIER_COLOR as TIER_BADGE } from '../gamesMeta'
-import type { QueueGame } from '../../home/api/gamesApi'
+import type { QueueGame } from '../types'
 
 // Adds a border class on top of the shared STATUS_COLOR bg/text pair (used
 // for this tab's outlined chips) — not a plain duplicate of gamesMeta's map.
@@ -70,27 +69,15 @@ export function PlayQueueTab() {
   // ── Actions ───────────────────────────────────────────────────────────────
 
   function handleMarkPlaying(game: QueueGame) {
-    const id = toast.loading('Marking as playing…')
     updateGame(
       { id: game.id, patch: { play_status: 'playing' } },
-      {
-        onSuccess: () => {
-          toast.dismiss(id); toast.success('▶ Playing ✓')
-          setItems(prev => (prev ?? displayItems).map(g => g.id === game.id ? { ...g, play_status: 'playing' } : g))
-        },
-        onError: (e) => { toast.dismiss(id); toast.error((e as Error).message) },
-      }
+      { onSuccess: () => setItems(prev => (prev ?? displayItems).map(g => g.id === game.id ? { ...g, play_status: 'playing' } : g)) }
     )
   }
 
   function handleRemove(game: QueueGame) {
-    const id = toast.loading('Removing from queue…')
     removeFromQueue(game.id, {
-      onSuccess: () => {
-        toast.dismiss(id); toast.success('Removed from queue')
-        setItems(prev => (prev ?? displayItems).filter(g => g.id !== game.id))
-      },
-      onError: (e) => { toast.dismiss(id); toast.error((e as Error).message) },
+      onSuccess: () => setItems(prev => (prev ?? displayItems).filter(g => g.id !== game.id)),
     })
   }
 
@@ -102,9 +89,6 @@ export function PlayQueueTab() {
     <div className="text-center py-10 space-y-2">
       <p className="text-sm text-red-500">Could not load queue.</p>
       <p className="text-xs text-red-400">{(error as Error).message}</p>
-      <p className="text-xs text-ink-400 mt-2">
-        Make sure you've run <code className="bg-ink-100 px-1 rounded">supabase/rp5-migrations/001_play_order.sql</code> in the RP5 Supabase SQL Editor.
-      </p>
     </div>
   )
 
@@ -112,7 +96,7 @@ export function PlayQueueTab() {
     <div className="text-center py-16 text-ink-400">
       <p className="text-3xl mb-3">🎮</p>
       <p className="text-sm font-medium text-ink-700">Queue is empty</p>
-      <p className="text-xs mt-1">Open a game's detail modal and click <strong>🎮 Sıraya Ekle</strong> to add it.</p>
+      <p className="text-xs mt-1">Open a game's detail modal and click <strong>🎮 Add to Queue</strong> to add it.</p>
     </div>
   )
 
@@ -152,7 +136,7 @@ export function PlayQueueTab() {
 
         {/* Cover */}
         <div className="flex-shrink-0 rounded-lg overflow-hidden border border-ink-100 bg-ink-100" style={{ width: 40, height: 55 }}>
-          <CoverImg url={game.cover_url} title={game.title} />
+          <CoverImg url={game.primary_cover_url} title={game.title} />
         </div>
 
         {/* Info */}
@@ -165,8 +149,8 @@ export function PlayQueueTab() {
             {game.tier && (
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${TIER_BADGE[game.tier] ?? 'bg-ink-200'}`}>{game.tier}</span>
             )}
-            {game.platforms?.slice(0, 1).map((p, i) => (
-              <span key={i} className="text-[10px] bg-ink-50 text-ink-500 border border-ink-200 px-1.5 py-0.5 rounded truncate min-w-0">{p}</span>
+            {game.platforms.slice(0, 1).map(p => (
+              <span key={p.id} className="text-[10px] bg-ink-50 text-ink-500 border border-ink-200 px-1.5 py-0.5 rounded truncate min-w-0">{p.system}</span>
             ))}
           </div>
         </div>
