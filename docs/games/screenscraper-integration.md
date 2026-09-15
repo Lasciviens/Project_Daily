@@ -278,12 +278,13 @@ a compact report — tens of lines, not megabytes. It is read-only and uploads
 nothing.
 
 ```
-node scripts/inspect-esde-gamelist.mjs <path-to-gamelists-root> [--sample]
+node scripts/inspect-esde-gamelist.mjs <folder> [--sample]
 ```
 
-`<gamelists-root>` is the folder containing the per-system subfolders
-(`gamelists/megadrive/gamelist.xml`, `gamelists/snes/…`). `--sample` adds one
-full `<game>` block per system for the first three systems.
+`<folder>` is wherever the ES-DE export was copied to — the script **searches
+downwards** for every `gamelist.xml`, so the exact level does not have to be
+right, and a wrong path prints where to look instead of failing silently.
+`--sample` adds one full `<game>` block per system for the first three systems.
 
 **Workflow: run it, paste the OUTPUT, never the XML.** That output is enough to
 finalise the field mapping and the migration. The full files only ever need to
