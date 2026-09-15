@@ -1,7 +1,7 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useStravaStatus } from '../hooks/useTrainingSessions'
-import { StravaWidget } from './StravaWidget'
 import { formatDurationSeconds as formatDuration } from '../../../shared/utils/formatDuration'
 import type { StravaActivity } from '../types.hevy'
 
@@ -114,9 +114,6 @@ export function StravaTab() {
 
   return (
     <div className="space-y-3 sm:space-y-5">
-      {/* Strava connection widget */}
-      <StravaWidget />
-
       {/* Stats strip */}
       {activities.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -153,12 +150,10 @@ export function StravaTab() {
       ) : activities.length === 0 ? (
         <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
           <p className="text-ink-400 text-sm mb-1">No Strava activities yet</p>
-          {!status?.connected && (
-            <p className="text-ink-300 text-xs">Connect Strava above to sync your activities.</p>
-          )}
-          {status?.connected && (
-            <p className="text-ink-300 text-xs">Use the Sync button above to pull your activities.</p>
-          )}
+          <p className="text-ink-300 text-xs">
+            {status?.connected ? 'Sync from ' : 'Connect Strava in '}
+            <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-start">

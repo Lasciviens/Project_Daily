@@ -146,7 +146,7 @@ Everything except `/login` and `/reset-password` is protected by `SessionGuard` 
 | iPhone surface | ✅ | See iPhone section below. `phone-gateway` (12 actions) + 11 Apple Shortcuts + a Scriptable food logger + 4 widgets. |
 | Web Push | ✅ | See iPhone section below. Migration `068` + `push-send` + pg_cron morning brief + `public/push-sw.js`; toggle in Settings (⚙) → Notifications. |
 | Dev Requests | ✅ | **The live backlog.** Right-edge drawer trigger in `Nav`; jot bugs/features/improvements/integration ideas/long-term wishes about the app itself so a future session reads a structured backlog instead of chat scrollback. `dev_requests` (migration `042`, owner-only RLS, `user_id DEFAULT auth.uid()`): title, description, `page` (a dropdown of the app's own top-level routes — `PAGE_OPTIONS` in `devRequestMeta.ts` — plus "other"; was a free-text box, prone to typos/casing drift), `category` (bug/feature/improvement/integration/longterm/question/other), `priority`, `status` (open/in_progress/done/dismissed), `effort`, `sort_order`. `DevRequestsDrawer.tsx` (widened to `lg:w-[28rem]`, was `w-96` — the user's own "genişlet" ask): quick-add prefilled with the current page (via `pageOptionFor`, falling back to "other" for a route outside the fixed list), **multi-select** category filter (each pill toggles independently — was single-select; the visible set is the union of every checked category) + manual/priority sort on its own row underneath, HTML5 drag-reorder (optimistic `onMutate`), inline edit-in-place, status cycles open→in_progress→done on click. **Done items collapse into their own "Completed (N)" section at the bottom** (collapsed by default, tap to expand) instead of sitting inline dimmed among open ones — keeps a long finished history from pushing new/open requests out of view. A **"🗑 Delete all closed"** button next to that header bulk-deletes every done + dismissed row in one call (`useBulkDeleteDevRequests` → `deleteDevRequests(ids)`, `.delete().in('id', ids)`) — dismissed rows were already hidden from the list but had no other delete path and lingered in the table forever. Replaced the old global To-Do drawer (`ToDoDrawer`/`ToDoSection` deleted; `ToDoItem` + task hooks untouched). `useSyncFromGoogleTasks`/`usePushToGoogleTasks` (bulk Google Tasks import/push) had no UI trigger for a while after that removal — fixed 20/08/2026, see the Google Calendar + Tasks section below. |
-| Developer | ✅ | Standalone `/developer`, reached from Settings (⚙). Tabs: **Activity** (CRUD audit trail — `audit_logs`, written by DB triggers, migration `037`; filters by table/op/actor/days, 30-day retention swept probabilistically inside the trigger) and **Errors** (`app_error_logs`), plus a "Reindex AI search" button. Audit triggers cover user-authored tables only — bulk-synced tables (hevy_*/health_*/strava) are deliberately excluded to avoid sync-spam; `actor` distinguishes 'web' (browser session) from 'service' (AI/webhooks, service-role writes). Activity is a **4-column matrix** (`grid-cols-4` wide) rather than a vertical list: a same-transaction cascade (e.g. a `time_blocks` delete that migration 043's trigger cascades into a `tasks` delete) spans columns as one chain with "→" arrows, so "this caused that" reads visually. |
+| Developer | ✅ | Standalone `/developer`, reached from Settings (⚙). Tabs: **Connections** (see Connections below), **Activity** (CRUD audit trail — `audit_logs`, written by DB triggers, migration `037`; filters by table/op/actor/days, 30-day retention swept probabilistically inside the trigger) and **Errors** (`app_error_logs`), plus a "Reindex AI search" button. Audit triggers cover user-authored tables only — bulk-synced tables (hevy_*/health_*/strava) are deliberately excluded to avoid sync-spam; `actor` distinguishes 'web' (browser session) from 'service' (AI/webhooks, service-role writes). Activity is a **4-column matrix** (`grid-cols-4` wide) rather than a vertical list: a same-transaction cascade (e.g. a `time_blocks` delete that migration 043's trigger cascades into a `tasks` delete) spans columns as one chain with "→" arrows, so "this caused that" reads visually. |
 | Home | ✅ | See Home section below. Daily briefing, weather, transit, currency, news, media, games, training, projects, glance board. |
 | Command Bar | ✅ | `CommandBar` (⌘K) via `useUIStore.openCommandBar` |
 | Dark Mode | ✅ | Light/Dark/System in `SettingsMenu.tsx` → `useThemeStore` (Zustand + persist, key `theme-preference`). `tailwind.config.js` (`darkMode: 'selector'`) resolves `canvas`/`cream`/`ink` through `rgb(var(--x) / <alpha-value>)` (`accent` was already CSS-var-backed) — `index.css` defines light values (`:root`) and dark overrides (`:root.dark`) once, so ~120 component files using those token classes became theme-aware with **zero per-file changes**. An inline script in `index.html` (before the module script) stamps `.dark` synchronously from the persisted value (no flash-of-wrong-theme); a `matchMedia` listener keeps `'system'` live. `bg-white` (opaque surface color, ~120 files) was mechanically renamed to `bg-cream-50`; literal `text-white` / `bg-white/NN` / `bg-black` were deliberately left alone (foreground-on-accent and photo-overlay roles). Chart chrome (grid lines, axis labels) moved to `rgb(var(--ink-XXX))`; **distinct data-series colors** (sleep stages, Strava orange, task color tags, Activity Rings) stay fixed literals — identity colors, not UI chrome. |
@@ -572,6 +572,51 @@ Never stretch content edge-to-edge. Widgets are sized to their content, not the 
 **The user's explicit decision, and the reason Wishes is its own table.** No wish/period/window/`kind` predicate may be added to an existing task query — not `fetchTasksForDay`, not `fetchAllTasks`, not `fetchTasksByWeek`, not `briefingApi`/`buildBriefContext`, not `phone-gateway`'s `tasks_today`, not `push-send`'s task query. New surfaces (the Wishes page, the `DayView` resurfacing row, the morning-push segment, `TasksPanel`'s "Open now") **only ADD**. In his words: a season "is only the app's note about when to bring it up by itself; it is never a rule about when you are allowed to see it… The only thing a season changes is when the app speaks first." A row written in July stays readable, searchable and askable-about in July.
 
 The **one** sanctioned exception is the `fetchTasksForDay` `dueFilter` fix (Daily → the `section` day-leak): it removes duplicate *wrong renderings* of a row, never the row.
+
+### Connections live in ONE place — never on a feature page (MANDATORY)
+Every external integration's **connect / disconnect / connection status** lives in
+**Developer → Connections** (`ConnectionsTab.tsx`), and nowhere else. A feature page shows
+that integration's DATA; it may LINK to `/developer?tab=connections`, but it must never carry
+its own connect button, disconnect button, or status widget.
+
+Before this, the same job was scattered across three unrelated surfaces — Google in the ⚙
+Settings menu, Strava inside the Training tab, PlayStation inside the Games tab — so "is X
+connected?" had no single answer and reconnecting meant remembering which page happened to own
+it. Moved on explicit user request.
+
+Two kinds of integration sit side by side there and are labelled differently, deliberately:
+- **user-authorized** (Google, Strava, PlayStation) — a real per-user token; connect and revoke
+  from here.
+- **server-configured** (Steam, Hevy, Apple Health) — a single-user secret in Supabase Vault
+  with no browser consent step at all, so the card is a read-only status readout. **Never render
+  a Connect button that can't actually connect anything.**
+
+Load-bearing details:
+- `GOOGLE_SCOPES` (`src/features/calendar/googleScopes.ts`) is the ONE definition of the Google
+  consent list — the scope array used to live inline in `SettingsMenu.tsx`. Adding a scope =
+  append there + one re-consent; never hard-code a second copy.
+- **`useAutoRefreshCalendarToken()` deliberately stays in `SettingsMenu.tsx`** even though the
+  Google UI left it. SettingsMenu is mounted in the header on EVERY route, so it is the only
+  always-on place the Calendar access token gets refreshed; moving the hook onto the Connections
+  tab would silently reduce it to "refreshes only while that tab is open".
+- `StravaWidget` is reused WHOLE inside its card (it owns the OAuth-redirect handling, sync and
+  disconnect) rather than reimplemented — one Strava code path, just one home for it.
+- The ⚙ menu keeps **Notifications / Theme / Appearance** (device+display preferences, not
+  connections) and gains a `🔌 Connections` link. `/developer?tab=connections` is deep-linkable.
+
+### Render-time crashes: `ErrorBoundary` (MANDATORY for reverse-engineered payloads)
+`src/shared/components/ErrorBoundary.tsx` — the app previously had **no error boundary at all**,
+so ONE bad field shape turned into a TypeError during render and React unmounted the entire
+tree: a blank white page, which is exactly how the PSN game modal failed (reported as "bir oyuna
+tıklayınca boş ekran geliyor"). A `try/catch` around a fetch can never see this — the throw
+happens in render, not in the request.
+
+Wrap any surface whose data shape is not contractually guaranteed (the PSN and Steam tabs are
+wrapped in `GamesPage.tsx`) so a failure stays inside its own card, is toasted into
+`app_error_logs` via `logError`, and offers a Try-again. **Guard the fields too** — a boundary is
+the backstop, not the fix: `PsnGameModal` now treats `concept.genres` as string-or-array,
+defaults missing `earnedTrophies`/`definedTrophies`, and surfaces the trophy-bridge error
+instead of rendering the "no trophy set" message over a genuine failure.
 
 ### Other rules
 - **English-only project artifacts (MANDATORY, user rule 2026-07-21):** everything in the repo or on GitHub — code, comments, UI strings, error/toast messages, commit messages, PR titles and bodies, docs — is written in English. The ONE exception is generated **on-phone** Shortcut/widget user-facing strings (see Two-AI setup). Chat replies to the user follow the Communication Style section — that rule is about the PROJECT, not the conversation.

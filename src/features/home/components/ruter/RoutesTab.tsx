@@ -721,7 +721,7 @@ export function RoutesTab({ ws, now, pendingRouteId, onRouteConsumed }: RoutesTa
             <SaveRouteForm
               label={saveLabel} onLabelChange={setSaveLabel}
               onSave={handleSaveRoute} onCancel={() => { setShowSaveForm(false); setSaveLabel('') }}
-              saving={saving} placeholder="e.g. İşten eve" heading="Name this route"
+              saving={saving} placeholder="e.g. Work to home" heading="Name this route"
             />
           )}
           {saveMsg && !showSaveForm && (

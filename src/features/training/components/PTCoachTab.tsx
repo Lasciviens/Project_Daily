@@ -13,12 +13,17 @@ import { AthleteProfileSheet } from './AthleteProfileSheet'
 //  is browsable below. DB is the source of truth (localStorage cache retired).
 // ─────────────────────────────────────────────────────────────────────────────
 
+// The `id` values stay Turkish deliberately: they are sent verbatim into the
+// Turkish PT prompt and stored in pt_assessments.feeling, so changing them
+// would break both the prompt contract and every archived assessment.
 const FEELINGS = [
-  { id: 'az çalıştım',  label: '😴 Az çalıştım' },
+  { id: 'az çalıştım',  label: '😴 Undertrained' },
   { id: 'normal',       label: '🙂 Normal' },
-  { id: 'yorgunum',     label: '😮‍💨 Yorgunum' },
-  { id: 'çok yorgunum', label: '🥵 Çok yorgunum' },
+  { id: 'yorgunum',     label: '😮‍💨 Tired' },
+  { id: 'çok yorgunum', label: '🥵 Very tired' },
 ]
+const FEELING_LABEL: Record<string, string> =
+  Object.fromEntries(FEELINGS.map(f => [f.id, f.label.replace(/^\S+\s/, '')]))
 
 // Minimal markdown: only **bold** (matches AIPanel's renderer).
 function renderBold(text: string) {
@@ -75,9 +80,9 @@ export function PTCoachTab() {
       const res = await generatePTAssessment({ feeling, note: note.trim() || undefined })
       setLocalResult(res)
       qc.invalidateQueries({ queryKey: ['pt-assessments'] })
-      toast.dismiss(tid); toast.success('Değerlendirme hazır ✓')
+      toast.dismiss(tid); toast.success('Assessment ready ✓')
     } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Değerlendirme başarısız')
+      toast.dismiss(tid); toast.error((err as Error).message ?? 'Assessment failed')
     } finally {
       setLoading(false)
     }
@@ -102,16 +107,16 @@ export function PTCoachTab() {
 
       <div className="rounded-2xl border border-ink-200 bg-cream-50 p-5 flex flex-col gap-4">
         <div>
-          <h3 className="text-base font-bold text-ink-900">🧠 AI Koç — Günlük Değerlendirme</h3>
+          <h3 className="text-base font-bold text-ink-900">🧠 AI Coach — Daily Assessment</h3>
           <p className="text-xs text-ink-400 mt-0.5">
-            Antrenmanını, setlerini/ağırlıklarını, haftalık kas hacmini, uykunu ve aktiviteni okuyup
-            gerçek bir PT gibi değerlendirir; bir önceki değerlendirmesinin takibini de yapar.
-            Sen başlatırsın — otomatik çalışmaz. Her değerlendirme kaydedilir.
+            Reads your last workout, its sets and loads, your weekly muscle volume, sleep and
+            activity, then assesses them like a real PT — and follows up on its own previous
+            advice. You start it; it never runs on its own. Every assessment is saved.
           </p>
         </div>
 
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Bugün nasıl hissediyorsun?</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">How do you feel today?</p>
           <div className="flex flex-wrap gap-1.5">
             {FEELINGS.map(f => (
               <button
@@ -130,7 +135,7 @@ export function PTCoachTab() {
           <input
             value={note}
             onChange={e => setNote(e.target.value)}
-            placeholder="İstersen ekle: ağrı, motivasyon, hedef… (opsiyonel)"
+            placeholder="Optional: pain, motivation, a goal…"
             className="mt-2 w-full px-3 py-2 text-sm rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px]"
           />
         </div>
@@ -140,7 +145,7 @@ export function PTCoachTab() {
           disabled={loading}
           className="bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 min-h-[44px] px-4 rounded-xl text-sm font-semibold transition-colors self-start"
         >
-          {loading ? 'Değerlendiriyor…' : current ? '↻ Yeniden değerlendir' : '▶ Değerlendir'}
+          {loading ? 'Assessing…' : current ? '↻ Re-assess' : '▶ Assess'}
         </button>
 
         {current && (
@@ -151,7 +156,7 @@ export function PTCoachTab() {
             {/* Which model ACTUALLY answered — the fallback chain may have
                 landed somewhere other than the default. */}
             <p className="text-[10px] text-ink-300 mt-2">
-              {current.model ? current.model.replace('gemini-', '') : ''} · his: {current.feeling}
+              {current.model ? current.model.replace('gemini-', '') : ''} · feeling: {FEELING_LABEL[current.feeling] ?? current.feeling}
               {current.note ? ` · "${current.note}"` : ''}
             </p>
           </div>
@@ -161,7 +166,7 @@ export function PTCoachTab() {
       {/* ── Assessment log ── */}
       {past.length > 0 && (
         <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-2">📜 Geçmiş değerlendirmeler</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-2">📜 Past assessments</p>
           <ul className="flex flex-col gap-1">
             {past.map(a => (
               <li key={a.id} className="border border-ink-100 rounded-lg">

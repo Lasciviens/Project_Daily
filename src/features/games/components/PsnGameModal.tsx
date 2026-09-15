@@ -45,6 +45,17 @@ export function PsnGameModal({ game, title, purchased, onClose }: Props) {
   const bridged = usePsnTitleMap(game && !title ? game.titleId : null)
   const trophyTitle = title ?? bridged.data ?? null
 
+  // Every field below is reverse-engineered from Sony's own responses, so it
+  // is read defensively: a shape drift must degrade a line, never throw during
+  // render (which blanks the page — see ErrorBoundary).
+  const EMPTY_TROPHIES = { bronze: 0, silver: 0, gold: 0, platinum: 0 }
+  const earnedT = title?.earnedTrophies ?? EMPTY_TROPHIES
+  const definedT = title?.definedTrophies ?? EMPTY_TROPHIES
+  const rawGenres: unknown = game?.concept?.genres
+  const genres: string[] = Array.isArray(rawGenres)
+    ? rawGenres.filter((g): g is string => typeof g === 'string')
+    : typeof rawGenres === 'string' ? rawGenres.split(/\s+/).filter(Boolean) : []
+
   const name = game?.name ?? title?.trophyTitleName ?? ''
   const art = game?.imageUrl ?? title?.trophyTitleIconUrl ?? null
   const minutes = parsePlayDurationMinutes(game?.playDuration)
@@ -62,7 +73,7 @@ export function PsnGameModal({ game, title, purchased, onClose }: Props) {
               ? <img src={art} alt={name} onError={() => setImgOk(false)} className="w-full h-full object-cover" />
               : <div className="w-full h-full flex items-center justify-center text-4xl">🎮</div>}
             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
-            <button onClick={onClose} aria-label="Kapat"
+            <button onClick={onClose} aria-label="Close"
               className="absolute top-2 right-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-black/50 text-white text-xl hover:bg-black/70">×</button>
             <div className="absolute inset-x-0 bottom-0 px-4 pb-3">
               <h2 className="text-white text-lg font-bold leading-tight drop-shadow">{name}</h2>
@@ -94,9 +105,9 @@ export function PsnGameModal({ game, title, purchased, onClose }: Props) {
               </div>
             )}
 
-            {game?.concept?.genres && (
+            {genres.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap">
-                {game.concept.genres.split(/\s+/).filter(Boolean).slice(0, 5).map(g => (
+                {genres.slice(0, 5).map(g => (
                   <span key={g} className="text-[11px] bg-ink-50 text-ink-600 border border-ink-200 px-2 py-0.5 rounded-full">
                     {g.toLowerCase()}
                   </span>
@@ -106,18 +117,23 @@ export function PsnGameModal({ game, title, purchased, onClose }: Props) {
 
             {title && (
               <div className="flex items-center gap-3 flex-wrap text-sm text-ink-600">
-                <span>🏆 {title.earnedTrophies.platinum}</span>
-                <span>🥇 {title.earnedTrophies.gold}/{title.definedTrophies.gold}</span>
-                <span>🥈 {title.earnedTrophies.silver}/{title.definedTrophies.silver}</span>
-                <span>🥉 {title.earnedTrophies.bronze}/{title.definedTrophies.bronze}</span>
-                <span className="text-ink-400">· %{title.progress}</span>
+                <span>🏆 {earnedT.platinum}</span>
+                <span>🥇 {earnedT.gold}/{definedT.gold}</span>
+                <span>🥈 {earnedT.silver}/{definedT.silver}</span>
+                <span>🥉 {earnedT.bronze}/{definedT.bronze}</span>
+                {title.progress != null && <span className="text-ink-400">· {title.progress}%</span>}
               </div>
             )}
 
             <div className="pt-1 border-t border-ink-100">
               <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mt-3 mb-2">Trophies</h3>
               {bridged.isLoading && <p className="text-sm text-ink-400 py-2">Looking up the trophy set…</p>}
-              {!bridged.isLoading && !trophyTitle && (
+              {bridged.error && (
+                <p className="text-sm text-red-600 py-2">
+                  Couldn't look up the trophy set: {(bridged.error as Error).message}
+                </p>
+              )}
+              {!bridged.isLoading && !bridged.error && !trophyTitle && (
                 <p className="text-sm text-ink-400 py-2">
                   No trophy set found for this game — it may not support trophies, or none have synced to your account yet.
                 </p>

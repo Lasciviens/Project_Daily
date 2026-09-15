@@ -105,7 +105,7 @@ export function HevyWorkoutCard({ workout, onClick, matchedTask }: Props) {
       {matchedTask && (
         <div className="flex items-center gap-2 px-3 py-2 bg-accent-50 border-t border-accent-100">
           <span className="text-[11px] text-accent-700 flex-1 truncate">
-            Planlı görev: <strong>{matchedTask.title}</strong>
+            Planned task: <strong>{matchedTask.title}</strong>
           </span>
           <button
             type="button"
