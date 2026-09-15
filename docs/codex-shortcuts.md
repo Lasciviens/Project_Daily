@@ -126,10 +126,12 @@ confirmations (re-import `Su İç`, camera-run `Barkod Tara`) plus C6.
   edge function — manually triggered, never a daemon. Device-side push rather
   than a cloud-side pull because the RP6 is behind home NAT with no stable
   address, so `pg_cron` can never reach it; same shape as `phone-gateway`.
-  **Blocked on Claude for the request contract** (the gateway action does not
-  exist yet) — the read + diff half needs nothing and can start now. Background
-  + field mapping: `docs/games/screenscraper-integration.md`. Helper (Claude's,
-  read-only, do not edit): `scripts/inspect-esde-export.mjs`.
+  **UNBLOCKED 2026-09-15** — the request contract is now
+  `docs/games/screenscraper-integration.md` **§10**, written against a measured
+  real export (§9), and migration 093 creates the key it upserts against. Write
+  the script against §10; it is the contract, not a sketch. The gateway handler
+  itself is still Claude's to build, but the payload shape will not move.
+  Helper (Claude's, read-only, do not edit): `scripts/inspect-esde-export.mjs`.
 
 ## Communication (two-channel — see `coord/README.md`)
 This doc is the **stable spec only** (roles, rules, task board). The actual

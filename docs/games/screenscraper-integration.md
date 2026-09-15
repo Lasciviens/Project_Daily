@@ -300,8 +300,13 @@ Also on each system: `extensions` (`"gen,md,smd,bin,sg"`) and `romtype`.
       real premium numbers recorded in §2
 - [ ] Image strategy: mirror into Supabase Storage (recommended) vs. on-demand
       signed URL via edge function
-- [ ] Where the ScreenScraper score (`note`, /20) lives, if anywhere — must not
-      collide with the user's own `games.rating`
+- [x] ~~Where an external score lives without colliding with the user's own
+      `games.rating`~~ **DECIDED** (§10) — `games.rating` is `numeric(3,1)`
+      0-10 and is the USER's own score; nothing external ever writes it. Every
+      provider score goes to `game_platforms.rating`, which 089 already sized
+      `numeric(4,1)` 0-100 for exactly this. ES-DE's 0-1 decimal is stored
+      there ×100; ScreenScraper's /20 will be ×5. One column, one scale, and
+      the user's score is never touched
 - [ ] Whether the device script can compute CRC32 (→ much better matching)
 
 ---
@@ -472,3 +477,162 @@ node scripts/inspect-esde-export.mjs /path/to/ES-DE
 
 `--deep` also descends into media/theme folders, `--full` prints longer samples.
 READ-ONLY, uploads nothing. Paste the OUTPUT, never the files.
+
+---
+
+## 10. The gateway contract — `import_esde_games`
+
+**This section is the contract.** The device-side script (Codex, C7) and the
+edge-function handler (Claude) are written against it; neither side may assume
+anything it does not state. Everything here is derived from the measured export
+in §9, not from what ES-DE could theoretically emit.
+
+### Endpoint
+
+```
+POST https://<project>.supabase.co/functions/v1/phone-gateway
+Content-Type: application/json
+x-phone-secret: <PHONE_GATEWAY_SECRET>
+```
+
+Same entry point, same secret and same server-side single-user resolution as
+every other device action — §8's "reuse `phone-gateway`, don't invent a second
+model". The Supabase service key never reaches the device.
+
+### Request
+
+```json
+{
+  "action": "import_esde_games",
+  "timezone": "Europe/Oslo",
+  "batch": 1,
+  "batches": 8,
+  "games": [ … ]
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `action` | yes | exactly `import_esde_games` |
+| `timezone` | no | IANA zone the device's timestamps are in. Defaults to `Europe/Oslo` — the only zone in play. Resolved DST-safely server-side, same two-pass technique `import_body_composition` already uses |
+| `batch`, `batches` | no | purely informational, echoed back so a partial run is legible in the device's own log. They carry **no server state** — see "Batching" below |
+| `games` | yes | 1-150 entries |
+
+### One `games` entry — exactly the fields §9 measured
+
+```json
+{
+  "system": "genesis",
+  "path": "./Sonic the Hedgehog 3 (USA).md",
+  "name": "Sonic the Hedgehog 3",
+  "desc": "Yet again Sonic and friends find themselves…",
+  "developer": "Sonic Team",
+  "publisher": "SEGA",
+  "genre": "Platform, Action",
+  "players": "1-2",
+  "releasedate": "19940202T000000",
+  "rating": 0.9,
+  "playcount": 4,
+  "playtime": 2814,
+  "lastplayed": "20260519T210643",
+  "hidden": false,
+  "broken": false
+}
+```
+
+`system` (the folder name), `path` and `name` are **required** — they are the
+only three fields §9 measured at 100 % (`name` at 100 %, `path` at 100 %, and
+`system` is the folder the file was read from). Every other field is omitted
+when ES-DE did not write it; **do not send `null`, an empty string or a zero
+for a missing value** — absent and zero are different facts, especially for
+`playcount`/`playtime`.
+
+**Send ES-DE's values verbatim.** Do not reformat the timestamps, do not split
+`genre` on the comma, do not rescale `rating`, do not resolve `path` to an
+absolute path. Every one of those conversions is the gateway's job, and doing
+it twice is how the two sides drift apart.
+
+### What the device must NOT send
+
+All four are measured facts from §9, not defensive guesses:
+
+1. **`androidapps`, `androidgames`, `emulators`, `steam`** — launcher
+   shortcuts, not ROMs (a real entry is `./Settings.app`). 4 games total.
+2. **Any path whose basename starts with `._`** — macOS AppleDouble sidecars,
+   21 of them. Present in the Mac copy; confirm whether the device itself has
+   them rather than assuming either way.
+3. **`<folder>` elements** — directory entries that carry their own metadata
+   and are not games (switch 7, genesis 3, n3ds 3, nes/snes/wiiu 1 each).
+4. **Anything under `gamelists/CLEANUP/`** — ES-DE's own dated backups. Real
+   files, stale data.
+
+After those exclusions the real payload is **1125 games**.
+
+### Batching
+
+Batches are **independent and idempotent**. There is no run id, no server-side
+assembly, and no ordering requirement: the server upserts whatever arrives and
+answers for that request alone. A failed batch is retried by re-sending it
+unchanged; a full re-push is always safe. That is deliberate — it removes the
+entire class of "half a sync is stuck in the database" failure, and it is why
+no `esde_sync_runs` table exists (093's header note).
+
+Cap a request at **150 games**, so the full library is 8 requests.
+
+### Response
+
+```json
+{ "status": "ok", "batch": 1, "received": 150,
+  "created": 148, "updated": 2, "skipped": 0, "flagged": 1 }
+```
+
+- `skipped` — entries the server itself declined (`hidden: true`).
+- `flagged` — rows written with `needs_review = true` (`broken: true`).
+- `400 { "status": "validation_error", "errors": { "3": "path is required" } }`
+  — keyed by the entry's index in `games`. **Nothing is written**; the whole
+  batch is rejected, so a fixed-and-resent batch cannot double-apply.
+- `500 { "status": "server_error", … }`.
+
+### What the server does with each field
+
+| Incoming | Lands as |
+|---|---|
+| `system` | `game_platforms.esde_system` (the key) **and** `game_platforms.system` on create only — after that the display value is the user's to rename |
+| `path` | `game_platforms.esde_path` (the key) |
+| `name` | `games.title` |
+| `desc` | `games.description` |
+| `developer`, `publisher` | same-named `games` columns |
+| `genre` | split on `,`, trimmed → `games.genres text[]` |
+| `players` | `games.players` verbatim (it is a range string, `1-2`) |
+| `releasedate` | year → `games.release_year`; full date → `game_platforms.release_date` |
+| `rating` (0-1) | `game_platforms.rating` **×100**. Never `games.rating` — that is the user's own 0-10 score (§7) |
+| `playcount`, `playtime`, `lastplayed` | rolled up onto `games` (below) |
+| `broken: true` | `needs_review = true` on both rows |
+| `hidden: true` | entry skipped entirely |
+| — | `external_source = 'esde'`, `synced_at = now()` |
+
+**Timestamps.** `YYYYMMDDTHHMMSS` with no offset — ES-DE writes local wall-clock
+time. Resolved through the request's `timezone` using the same DST-safe
+two-pass conversion `import_body_composition` uses, never a hardcoded offset.
+
+**Play-statistic roll-up.** 089 put `esde_playcount` / `esde_playtime_seconds`
+/ `esde_last_played` on `games`, while ES-DE reports per (system, file) — i.e.
+per variant. When a game holds more than one variant the server **sums**
+playcount and playtime and takes the **max** `lastplayed` across them. For the
+1125 games here that is a no-op (one variant each); it only matters once a
+title is manually merged across systems later, and summing is the only
+answer that does not silently discard a real play session.
+
+**Matching.** The upsert target is the partial unique index migration 093
+creates: `(user_id, esde_system, esde_path)`. No row → create one `games` row
+plus one `game_platforms` row. **One ES-DE entry always becomes one game row.**
+The server never merges two entries into one game by title similarity — a
+title appearing on two systems is a real, intentional shape (089's own note),
+and deciding that two files are the same game is a curation judgement, not
+something a sync should guess at.
+
+### Still Claude's to build
+
+Migration 093 is written. The `import_esde_games` handler in `phone-gateway`
+is not yet, and neither is the RP5 → `games` backfill. Codex's C7 can be
+written against this section today; it does not depend on either.

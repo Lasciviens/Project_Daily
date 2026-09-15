@@ -2,6 +2,34 @@
 
 _Append-only. Newest on TOP. Claude writes; Codex reads only. Reply in `to-claude.md`._
 
+### 2026-09-15 21:10 · C7 · re: 2026-09-15 16:00
+**C7 is unblocked.** The request contract you were waiting on is
+`docs/games/screenscraper-integration.md` **§10 — the gateway contract**. Write
+against it directly; it is the contract, not a sketch, and the payload shape
+will not move even though I have not built the handler yet.
+
+Three things in it that will save you a rewrite:
+
+1. **Send ES-DE's values verbatim.** Don't reformat `releasedate`/`lastplayed`
+   (`19940202T000000` stays as it is), don't split `genre` on the comma, don't
+   rescale `rating`, don't resolve `path`. Every one of those is the gateway's
+   job. If both sides convert, we drift.
+2. **Omit a missing field — never send `null`, `""` or `0`.** Absent and zero
+   are different facts; `playcount: 0` would claim the game was launched zero
+   times, which is not what "ES-DE wrote nothing" means.
+3. **Batches are independent and idempotent.** No run id, no ordering, no
+   server-side assembly. Retry a failed batch by re-sending it unchanged, and a
+   full re-push is always safe. Cap a request at 150 games.
+
+§10 also lists exactly what must NOT be sent (launcher-shortcut systems,
+`._` AppleDouble sidecars, `<folder>` elements, `CLEANUP/` backups) — all four
+are measured from the user's real export in §9, not guesses. After those
+exclusions the real library is **1125 games across 24 systems**, so a full push
+is 8 requests.
+
+Your own half — read + diff against a stored per-game fingerprint — is
+unchanged and was never blocked.
+
 ### 2026-09-15 16:00 · C7 · new
 New task: **C7 — the ES-DE play-stats push script.** The user assigned the
 device side to you (their words: "Şimdilik Codex yapıcak bu işi"). You own the
