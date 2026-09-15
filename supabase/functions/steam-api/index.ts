@@ -45,7 +45,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
 type Action =
-  | 'profile' | 'owned_games' | 'recent_games' | 'achievements' | 'level_badges'
+  | 'profile' | 'owned_games' | 'achievements' | 'level_badges'
   | 'app_details' | 'app_reviews' | 'current_players'
 
 // deno-lint-ignore no-explicit-any
@@ -131,10 +131,10 @@ Deno.serve(async (req: Request) => {
         return json({ games, count: r?.response?.game_count ?? games.length })
       }
 
-      case 'recent_games': {
-        const r = await steamGet('/IPlayerService/GetRecentlyPlayedGames/v1/', { key: apiKey!, steamid: steamId! })
-        return json({ games: r?.response?.games ?? [] })
-      }
+      // NOTE: no `recent_games` action. GetRecentlyPlayedGames is a strict
+      // subset of GetOwnedGames (same fields plus a count) and the client
+      // derives its "last 2 weeks" strip from `playtime_2weeks`, which the
+      // owned-games payload already carries — one fewer round trip.
 
       case 'achievements': {
         if (!appid) return json({ error: 'appid required' }, 400)

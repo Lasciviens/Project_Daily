@@ -71,17 +71,21 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-3xl max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
 
-          {/* Hero */}
+          {/* Hero — deliberately painted from data already in hand (the CDN
+              header URL is derivable from the appid, the title comes from the
+              owned-games row), so the popup is fully legible on the very
+              first frame with zero network. Store metadata fills in around
+              it; nothing here waits on or swaps because of that. */}
           <div className="relative bg-ink-950" style={{ aspectRatio: '460/215' }}>
             {imgOk
-              ? <img src={d?.header_image ?? steamGameHeaderUrl(game.appid)} alt={game.name}
+              ? <img src={steamGameHeaderUrl(game.appid)} alt={game.name}
                      onError={() => setImgOk(false)} className="w-full h-full object-cover" />
               : <div className="w-full h-full flex items-center justify-center text-4xl">🎮</div>}
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
             <button onClick={onClose} aria-label="Kapat"
               className="absolute top-2 right-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-black/50 text-white text-xl hover:bg-black/70">×</button>
             <div className="absolute inset-x-0 bottom-0 px-4 pb-3">
-              <h2 className="text-white text-lg font-bold leading-tight drop-shadow">{d?.name ?? game.name}</h2>
+              <h2 className="text-white text-lg font-bold leading-tight drop-shadow">{game.name}</h2>
               {(d?.developers?.length || d?.release_date?.date) && (
                 <p className="text-white/70 text-xs mt-0.5">
                   {[d?.developers?.join(', '), d?.release_date?.date].filter(Boolean).join(' · ')}

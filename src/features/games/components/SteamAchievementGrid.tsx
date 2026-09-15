@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSteamAchievements } from '../hooks/useSteam'
 import type { SteamAchievement } from '../api/steamApi'
 
@@ -8,6 +8,13 @@ import type { SteamAchievement } from '../api/steamApi'
 // them so this component receives one flat list. Rarity is rendered as a
 // plain percentage rather than a "rare/common" label: Steam publishes the
 // number, not a tier, and inventing thresholds would overstate it.
+//
+// LOADS ONLY WHEN SCROLLED INTO VIEW. This is the heaviest thing in the
+// modal (three Steam round trips, none of them cacheable in the DB since
+// they carry the user's own unlock state) and it renders below the fold —
+// firing it on open would make the whole popup feel slow for data the user
+// may never scroll to. The instant part of the modal (art, title, playtime)
+// comes from props and needs no network at all.
 
 function rarityLabel(p: number | null): { text: string; cls: string } | null {
   if (p == null) return null
@@ -47,15 +54,30 @@ function AchievementRow({ a }: { a: SteamAchievement }) {
 }
 
 export function SteamAchievementGrid({ appid }: { appid: number }) {
-  const { data, isLoading, error } = useSteamAchievements(appid)
+  const [inView, setInView] = useState(false)
+  const anchor = useRef<HTMLDivElement>(null)
   const [showLocked, setShowLocked] = useState(true)
 
-  if (isLoading) return <p className="text-sm text-ink-400 py-4">Başarımlar yükleniyor…</p>
-  if (error) return <p className="text-sm text-red-600 py-4">Başarımlar alınamadı: {(error as Error).message}</p>
+  useEffect(() => {
+    const el = anchor.current
+    if (inView || !el) return
+    const io = new IntersectionObserver(
+      entries => { if (entries.some(e => e.isIntersecting)) { setInView(true); io.disconnect() } },
+      { rootMargin: '150px' },   // start just before it reaches the viewport
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [inView])
+
+  const { data, isLoading, error } = useSteamAchievements(inView ? appid : null)
+
+  if (!inView) return <div ref={anchor} className="h-16" />
+  if (isLoading) return <div ref={anchor}><p className="text-sm text-ink-400 py-4">Başarımlar yükleniyor…</p></div>
+  if (error) return <div ref={anchor}><p className="text-sm text-red-600 py-4">Başarımlar alınamadı: {(error as Error).message}</p></div>
 
   const all = data?.achievements ?? []
   if (!all.length) {
-    return <p className="text-sm text-ink-400 py-4">{data?.note ?? 'Bu oyunda başarım yok.'}</p>
+    return <div ref={anchor}><p className="text-sm text-ink-400 py-4">{data?.note ?? 'Bu oyunda başarım yok.'}</p></div>
   }
 
   const unlocked = all.filter(a => a.achieved)
@@ -67,7 +89,7 @@ export function SteamAchievementGrid({ appid }: { appid: number }) {
   const shown = showLocked ? sorted : sorted.filter(a => a.achieved)
 
   return (
-    <div>
+    <div ref={anchor}>
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         <div className="flex-1 min-w-[140px]">
           <div className="flex items-baseline gap-2">

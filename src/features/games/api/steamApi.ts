@@ -134,10 +134,11 @@ export async function fetchSteamOwnedGames(): Promise<{ games: SteamGame[]; coun
   return invoke('owned_games')
 }
 
-export async function fetchSteamRecentGames(): Promise<SteamGame[]> {
-  const r = await invoke<{ games: SteamGame[] }>('recent_games')
-  return r.games
-}
+// NOTE: there is deliberately no `fetchSteamRecentGames`. Steam's
+// GetRecentlyPlayedGames is a strict subset of GetOwnedGames (same fields
+// plus a count), and `playtime_2weeks` — the only thing the "last 2 weeks"
+// strip needs — is already in the owned-games payload. Deriving the strip
+// client-side removes a whole round trip from first paint.
 
 export async function fetchSteamAchievements(appid: number): Promise<{ achievements: SteamAchievement[]; note?: string }> {
   return invoke('achievements', { appid })

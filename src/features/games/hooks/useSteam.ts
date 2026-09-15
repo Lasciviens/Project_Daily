@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import {
-  fetchSteamProfile, fetchSteamOwnedGames, fetchSteamRecentGames, fetchSteamAchievements,
+  fetchSteamProfile, fetchSteamOwnedGames, fetchSteamAchievements,
   fetchSteamLevelBadges, fetchSteamAppDetails, fetchSteamAppReviews, fetchSteamCurrentPlayers,
 } from '../api/steamApi'
 
@@ -8,6 +8,13 @@ import {
 // the source of truth and nothing else in this app joins against it) — only
 // store metadata, which the edge function caches in `steam_apps` because
 // Steam rate-limits that endpoint hard. See CLAUDE.md's Games Feature Detail.
+//
+// LOADING PRIORITY (a deliberate order, not an accident): the tab's first
+// paint needs exactly TWO requests — the profile header and the library
+// itself. Everything else is either derived from the library payload with no
+// request at all (the "last 2 weeks" strip reads `playtime_2weeks`, which
+// GetOwnedGames already returns), queued behind it (level/badges), or keyed
+// to a game the user actually opened (store metadata, reviews, achievements).
 
 const STALE = 5 * 60_000
 const STALE_LONG = 60 * 60_000
@@ -20,12 +27,16 @@ export function useSteamOwnedGames() {
   return useQuery({ queryKey: ['steam', 'owned-games'], queryFn: fetchSteamOwnedGames, staleTime: STALE, retry: false })
 }
 
-export function useSteamRecentGames() {
-  return useQuery({ queryKey: ['steam', 'recent-games'], queryFn: fetchSteamRecentGames, staleTime: STALE, retry: false })
-}
-
-export function useSteamLevelBadges() {
-  return useQuery({ queryKey: ['steam', 'level-badges'], queryFn: fetchSteamLevelBadges, staleTime: STALE, retry: false })
+/**
+ * Level + badges costs two Steam round trips for one line of header text, so
+ * it is queued BEHIND the library rather than racing it — pass `enabled`
+ * once the main content has landed.
+ */
+export function useSteamLevelBadges(enabled = true) {
+  return useQuery({
+    queryKey: ['steam', 'level-badges'], queryFn: fetchSteamLevelBadges,
+    enabled, staleTime: STALE_LONG, retry: false,
+  })
 }
 
 export function useSteamAchievements(appid: number | null) {

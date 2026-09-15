@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useSteamProfile, useSteamOwnedGames, useSteamLevelBadges, useSteamRecentGames } from '../hooks/useSteam'
+import { useSteamProfile, useSteamOwnedGames, useSteamLevelBadges } from '../hooks/useSteam'
 import { SteamGameModal } from './SteamGameModal'
 import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
 
@@ -107,11 +107,20 @@ export function SteamTab() {
   const qc = useQueryClient()
   const profile = useSteamProfile()
   const owned = useSteamOwnedGames()
-  const recent = useSteamRecentGames()
-  const levelBadges = useSteamLevelBadges()
+  // Two Steam round trips for one line of header text — queued behind the
+  // library rather than competing with it for the first paint.
+  const levelBadges = useSteamLevelBadges(!!owned.data)
   const [sort, setSort] = useState<SortKey>('playtime')
   const [search, setSearch] = useState('')
   const [openGame, setOpenGame] = useState<SteamGame | null>(null)
+
+  // Derived, not fetched: GetOwnedGames already returns `playtime_2weeks`.
+  const recentGames = useMemo(
+    () => (owned.data?.games ?? [])
+      .filter(g => (g.playtime_2weeks ?? 0) > 0)
+      .sort((a, b) => (b.playtime_2weeks ?? 0) - (a.playtime_2weeks ?? 0))
+      .slice(0, 12),
+    [owned.data])
 
   const games = useMemo(() => {
     let gs = owned.data?.games ?? []
@@ -163,7 +172,7 @@ export function SteamTab() {
         </button>
       </div>
 
-      {(recent.data?.length ?? 0) > 0 && <RecentStrip games={recent.data!} onOpen={setOpenGame} />}
+      {recentGames.length > 0 && <RecentStrip games={recentGames} onOpen={setOpenGame} />}
 
       {owned.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Kütüphane yükleniyor…</div>}
       {owned.error && (owned.error as Error).message !== 'not_configured' && (
