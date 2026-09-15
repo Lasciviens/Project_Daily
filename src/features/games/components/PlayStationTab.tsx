@@ -241,6 +241,14 @@ function ConnectedView() {
                   {games.length} oyun · toplam {totalHours.toLocaleString('en-GB')} saat
                 </p>
               </div>
+              {/* PS Plus provenance comes from Sony's most fragile call. If
+                  it came back empty or partial, say so — otherwise a missing
+                  PS Plus badge reads as "this game isn't from PS Plus". */}
+              {(purchased.data?.note || purchased.error) && (
+                <p className="text-xs text-ink-400 mb-2">
+                  ⚠ PS Plus bilgisi {purchased.data?.note?.startsWith('partial') ? 'kısmen' : ''} alınamadı — rozetler eksik olabilir.
+                </p>
+              )}
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                 {games.map(g => (
                   <GameCard key={g.titleId} game={g} isPlus={plusByTitleId.has(g.titleId)}
