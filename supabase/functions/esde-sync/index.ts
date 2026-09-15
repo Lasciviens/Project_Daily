@@ -15,6 +15,13 @@
 // Payload contract, what the device must not send, and the per-field mapping:
 // docs/games/screenscraper-integration.md §10. Keyed by migration 093's
 // partial unique index on (user_id, esde_system, esde_path).
+//
+// ⚠ The pure field/timestamp/roll-up logic below is HAND-MIRRORED from
+// src/features/games/api/esdeImportRules.ts, which is where it is actually
+// verified (scripts/verify-esde-import-rules.cjs, 59 assertions). A Deno
+// function cannot import from src/, hence two copies — the same arrangement
+// googleTasksOutboxRules.ts already uses for the Google Tasks outbox.
+// **Change one, change the other**, and re-run the verify script.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const CORS = {

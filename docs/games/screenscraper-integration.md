@@ -641,7 +641,8 @@ something a sync should guess at.
 | Piece | Owner | State |
 |---|---|---|
 | Migration 093 (the sync key + per-variant stat columns) | Claude | written, **not applied** |
-| `supabase/functions/esde-sync/` | Claude | written, **not deployed** |
+| `supabase/functions/esde-sync/` | Claude | written, **not deployed**, not yet exercised against a live request |
+| Its pure logic — timestamps, rating rescale, roll-up | Claude | verified, 59 assertions (`scripts/verify-esde-import-rules.cjs`) |
 | `ESDE_SYNC_SECRET` in Supabase Vault | user | not set |
 | Device-side reader + pusher (C7) | Codex | not started, unblocked by this section |
 | ScreenScraper enrichment | Claude | not started — deliberately AFTER the import, see §11 |
