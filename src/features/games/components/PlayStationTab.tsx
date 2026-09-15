@@ -23,8 +23,8 @@ type View = 'library' | 'trophies'
 type SortKey = 'playtime' | 'recent' | 'name'
 
 const SORTS: { v: SortKey; label: string }[] = [
-  { v: 'playtime', label: 'Süreye göre' },
-  { v: 'recent', label: 'Son oynanan' },
+  { v: 'playtime', label: 'By playtime' },
+  { v: 'recent', label: 'Last played' },
   { v: 'name', label: 'A → Z' },
 ]
 
@@ -36,11 +36,11 @@ const fmtHours = (min: number) => {
 function relativeDay(iso?: string): string | null {
   if (!iso) return null
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
-  if (days <= 0) return 'bugün'
-  if (days === 1) return 'dün'
-  if (days < 30) return `${days} gün önce`
-  if (days < 365) return `${Math.floor(days / 30)} ay önce`
-  return `${Math.floor(days / 365)} yıl önce`
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days}d ago`
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`
+  return `${Math.floor(days / 365)}y ago`
 }
 
 function ConnectForm() {
@@ -50,22 +50,22 @@ function ConnectForm() {
     <div className="max-w-2xl mx-auto py-10 px-4">
       <div className="text-center mb-6">
         <p className="text-4xl mb-3">🎮</p>
-        <h2 className="text-base font-bold text-ink-900 mb-1">PlayStation'ı bağla</h2>
+        <h2 className="text-base font-bold text-ink-900 mb-1">Connect PlayStation</h2>
         <p className="text-sm text-ink-500">
-          Sony'nin resmî API'si yok — topluluk <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">npsso</code> akışı kullanılıyor.
-          Token süresi dolunca (birkaç ayda bir) bunu tekrarlaman gerekecek.
+          Sony has no official API — this uses the community <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">npsso</code> token flow.
+          You'll need to repeat this every couple of months, when the token expires.
         </p>
       </div>
       <ol className="text-sm text-ink-700 space-y-2 mb-5 list-decimal list-inside bg-cream-50 border border-ink-200 rounded-xl p-4">
-        <li>Bu tarayıcıda <a href="https://my.playstation.com" target="_blank" rel="noreferrer" className="text-accent-600 underline">my.playstation.com</a>'a giriş yap.</li>
-        <li>Yeni sekmede <a href="https://ca.account.sony.com/api/v1/ssocookie" target="_blank" rel="noreferrer" className="text-accent-600 underline">ssocookie adresini</a> aç — <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">{'{"npsso":"…"}'}</code> şeklinde JSON döner.</li>
-        <li>Tırnak içindeki değeri kopyalayıp aşağıya yapıştır.</li>
+        <li>Log into <a href="https://my.playstation.com" target="_blank" rel="noreferrer" className="text-accent-600 underline">my.playstation.com</a> in this browser.</li>
+        <li>Open <a href="https://ca.account.sony.com/api/v1/ssocookie" target="_blank" rel="noreferrer" className="text-accent-600 underline">the ssocookie endpoint</a> in a new tab — it returns JSON like <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">{'{"npsso":"…"}'}</code>.</li>
+        <li>Copy the value between the quotes and paste it below.</li>
       </ol>
-      <textarea value={npsso} onChange={e => setNpsso(e.target.value)} rows={3} placeholder="npsso token'ını buraya yapıştır…"
+      <textarea value={npsso} onChange={e => setNpsso(e.target.value)} rows={3} placeholder="Paste your npsso token here…"
         className="w-full px-3 py-2.5 text-xs font-mono rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none" />
       <button onClick={() => connect.mutate(npsso.trim())} disabled={!npsso.trim() || connect.isPending}
         className="mt-3 w-full min-h-[44px] px-4 text-sm font-semibold bg-accent-500 hover:bg-accent-600 text-white rounded-xl disabled:opacity-40 transition-colors">
-        {connect.isPending ? 'Bağlanıyor…' : '🔌 Bağlan'}
+        {connect.isPending ? 'Connecting…' : '🔌 Connect'}
       </button>
     </div>
   )
@@ -112,7 +112,7 @@ function TrophyCard({ title, onOpen }: { title: PsnTrophyTitle; onOpen: () => vo
       <div className="p-2 flex-1">
         <p className="text-xs font-semibold text-ink-800 leading-snug line-clamp-2">{title.trophyTitleName}</p>
         <div className="flex items-center gap-1.5 mt-1 text-[10px] text-ink-500">
-          {t.platinum > 0 && <span title="Platin">🏆{t.platinum}</span>}
+          {t.platinum > 0 && <span title="Platinum">🏆{t.platinum}</span>}
           <span>🥇{t.gold}</span><span>🥈{t.silver}</span><span>🥉{t.bronze}</span>
         </div>
         <div className="h-1.5 bg-ink-100 rounded-full overflow-hidden mt-1.5">
@@ -177,16 +177,16 @@ function ConnectedView() {
           {avatar && <img src={avatar} alt="" className="w-11 h-11 rounded-lg border border-ink-200" />}
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-sm font-bold text-ink-900">{p?.onlineId ?? (profile.isLoading ? 'Yükleniyor…' : 'PlayStation')}</p>
+              <p className="text-sm font-bold text-ink-900">{p?.onlineId ?? (profile.isLoading ? 'Loading…' : 'PlayStation')}</p>
               {p?.isPlus && (
                 <span className="text-[10px] font-bold bg-blue-500/10 text-blue-600 border border-blue-500/30 px-1.5 py-0.5 rounded dark:text-blue-400">PS Plus</span>
               )}
             </div>
             {summary && (
               <p className="text-xs text-ink-500">
-                Seviye {summary.trophyLevel} · 🏆 {summary.earnedTrophies.platinum} platin ·{' '}
+                Level {summary.trophyLevel} · 🏆 {summary.earnedTrophies.platinum} platinum ·{' '}
                 {(summary.earnedTrophies.bronze + summary.earnedTrophies.silver +
-                  summary.earnedTrophies.gold + summary.earnedTrophies.platinum).toLocaleString('en-GB')} kupa
+                  summary.earnedTrophies.gold + summary.earnedTrophies.platinum).toLocaleString('en-GB')} trophies
               </p>
             )}
             {(profile.data?.region || p?.aboutMe) && (
@@ -199,11 +199,11 @@ function ConnectedView() {
         <div className="flex items-center gap-2">
           <button onClick={() => qc.invalidateQueries({ queryKey: ['psn'] })}
             className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors">
-            🔄 Yenile
+            🔄 Refresh
           </button>
           <button onClick={() => disconnect.mutate()} disabled={disconnect.isPending}
             className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-red-300 hover:text-red-600 transition-colors disabled:opacity-40">
-            Bağlantıyı kes
+            Disconnect
           </button>
         </div>
       </div>
@@ -211,34 +211,34 @@ function ConnectedView() {
       <div className="flex items-center gap-1.5 mb-4">
         <button onClick={() => setView('library')}
           className={`min-h-[44px] px-4 text-sm font-semibold rounded-xl border transition-colors ${view === 'library' ? 'bg-ink-900 text-cream-50 border-ink-900' : 'bg-cream-50 text-ink-600 border-ink-200'}`}>
-          📚 Kütüphane
+          📚 Library
         </button>
         <button onClick={() => setView('trophies')}
           className={`min-h-[44px] px-4 text-sm font-semibold rounded-xl border transition-colors ${view === 'trophies' ? 'bg-ink-900 text-cream-50 border-ink-900' : 'bg-cream-50 text-ink-600 border-ink-200'}`}>
-          🏆 Kupalar
+          🏆 Trophies
         </button>
       </div>
 
       {view === 'library' && (
         <>
-          {played.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Kütüphane yükleniyor…</div>}
+          {played.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading library…</div>}
           {played.error && (
-            <div className="text-sm text-red-600 py-8 text-center">Oyunlar alınamadı: {(played.error as Error).message}</div>
+            <div className="text-sm text-red-600 py-8 text-center">Couldn't load games: {(played.error as Error).message}</div>
           )}
           {!played.isLoading && !played.error && games.length === 0 && (
-            <div className="text-center py-12 text-ink-400 text-sm">Oynanmış oyun bulunamadı.</div>
+            <div className="text-center py-12 text-ink-400 text-sm">No played games found.</div>
           )}
           {(played.data?.length ?? 0) > 0 && (
             <>
               <div className="flex items-center gap-2 mb-3 flex-wrap">
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Oyun ara…"
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search games…"
                   className="min-h-[44px] px-3 text-sm rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 max-w-xs flex-1" />
                 <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
                   className="min-h-[44px] px-2 text-sm rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400">
                   {SORTS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
                 </select>
                 <p className="text-xs text-ink-400 ml-auto">
-                  {games.length} oyun · toplam {totalHours.toLocaleString('en-GB')} saat
+                  {games.length} games · {totalHours.toLocaleString('en-GB')} hours total
                 </p>
               </div>
               {/* PS Plus provenance comes from Sony's most fragile call. If
@@ -246,7 +246,7 @@ function ConnectedView() {
                   PS Plus badge reads as "this game isn't from PS Plus". */}
               {(purchased.data?.note || purchased.error) && (
                 <p className="text-xs text-ink-400 mb-2">
-                  ⚠ PS Plus bilgisi {purchased.data?.note?.startsWith('partial') ? 'kısmen' : ''} alınamadı — rozetler eksik olabilir.
+                  ⚠ PS Plus data {purchased.data?.note?.startsWith('partial') ? 'loaded only partially' : 'could not be loaded'} — badges may be missing.
                 </p>
               )}
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
@@ -262,13 +262,13 @@ function ConnectedView() {
 
       {view === 'trophies' && (
         <>
-          {titles.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Kupalar yükleniyor…</div>}
+          {titles.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading trophies…</div>}
           {titles.error && (
-            <div className="text-sm text-red-600 py-8 text-center">Kupalar alınamadı: {(titles.error as Error).message}</div>
+            <div className="text-sm text-red-600 py-8 text-center">Couldn't load trophies: {(titles.error as Error).message}</div>
           )}
           {(titles.data?.length ?? 0) > 0 && (
             <>
-              <p className="text-xs text-ink-400 mb-3">{titles.data!.length} oyun</p>
+              <p className="text-xs text-ink-400 mb-3">{titles.data!.length} games</p>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                 {titles.data!.map(t => (
                   <TrophyCard key={t.npCommunicationId} title={t} onOpen={() => setOpenTitle(t)} />
@@ -291,6 +291,6 @@ function ConnectedView() {
 
 export function PlayStationTab() {
   const status = usePsnStatus()
-  if (status.isLoading) return <div className="text-sm text-ink-400 py-12 text-center">Bağlantı kontrol ediliyor…</div>
+  if (status.isLoading) return <div className="text-sm text-ink-400 py-12 text-center">Checking connection…</div>
   return status.data?.connected ? <ConnectedView /> : <ConnectForm />
 }

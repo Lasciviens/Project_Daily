@@ -11,15 +11,15 @@ import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
 // endpoint hard. See CLAUDE.md's Games Feature Detail.
 
 const PERSONA_STATE: Record<number, string> = {
-  0: 'Çevrimdışı', 1: 'Çevrimiçi', 2: 'Meşgul', 3: 'Uzakta',
-  4: 'Uyku', 5: 'Takas arıyor', 6: 'Oyun arıyor',
+  0: 'Offline', 1: 'Online', 2: 'Busy', 3: 'Away',
+  4: 'Snooze', 5: 'Looking to trade', 6: 'Looking to play',
 }
 
 type SortKey = 'playtime' | 'recent' | 'name'
 
 const SORTS: { v: SortKey; label: string }[] = [
-  { v: 'playtime', label: 'Süreye göre' },
-  { v: 'recent', label: 'Son oynanan' },
+  { v: 'playtime', label: 'By playtime' },
+  { v: 'recent', label: 'Last played' },
   { v: 'name', label: 'A → Z' },
 ]
 
@@ -31,22 +31,22 @@ function fmtHours(minutes: number): string {
 function relativeDay(unix?: number): string | null {
   if (!unix) return null
   const days = Math.floor((Date.now() - unix * 1000) / 86_400_000)
-  if (days <= 0) return 'bugün'
-  if (days === 1) return 'dün'
-  if (days < 30) return `${days} gün önce`
-  if (days < 365) return `${Math.floor(days / 30)} ay önce`
-  return `${Math.floor(days / 365)} yıl önce`
+  if (days <= 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days}d ago`
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`
+  return `${Math.floor(days / 365)}y ago`
 }
 
 function NotConfigured() {
   return (
     <div className="max-w-2xl mx-auto text-center py-12 px-4">
       <p className="text-4xl mb-3">🖥️</p>
-      <h2 className="text-base font-bold text-ink-900 mb-1">Steam — henüz yapılandırılmadı</h2>
+      <h2 className="text-base font-bold text-ink-900 mb-1">Steam — not configured yet</h2>
       <p className="text-sm text-ink-500">
-        Supabase Vault'a <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">STEAM_API_KEY</code> ve{' '}
-        <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">STEAM_ID64</code> ekleyip{' '}
-        <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">steam-api</code> fonksiyonunu deploy et.
+        Add <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">STEAM_API_KEY</code> and{' '}
+        <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">STEAM_ID64</code> to Supabase Vault, then deploy the{' '}
+        <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">steam-api</code> function.
       </p>
     </div>
   )
@@ -66,7 +66,7 @@ function GameCard({ game, onOpen }: { game: SteamGame; onOpen: () => void }) {
           : <div className="w-full h-full flex items-center justify-center text-2xl">🎮</div>}
         {deck > 0 && (
           <span className="absolute top-1.5 right-1.5 text-[10px] font-bold bg-black/70 text-white px-1.5 py-0.5 rounded"
-            title={`Steam Deck'te ${fmtHours(deck)}`}>🎮 {fmtHours(deck)}</span>
+            title={`${fmtHours(deck)} on Steam Deck`}>🎮 {fmtHours(deck)}</span>
         )}
       </div>
       <div className="p-2 flex-1">
@@ -94,7 +94,7 @@ function RecentStrip({ games, onOpen }: { games: SteamGame[]; onOpen: (g: SteamG
             </div>
             <div className="p-2">
               <p className="text-[11px] font-semibold text-ink-800 truncate">{g.name}</p>
-              <p className="text-[10px] text-accent-600 font-medium">{fmtHours(g.playtime_2weeks ?? 0)} bu dönem</p>
+              <p className="text-[10px] text-accent-600 font-medium">{fmtHours(g.playtime_2weeks ?? 0)} this period</p>
             </div>
           </button>
         ))}
@@ -146,21 +146,21 @@ export function SteamTab() {
         <div className="flex items-center gap-3">
           {player?.avatarfull && <img src={player.avatarfull} alt="" className="w-11 h-11 rounded-lg border border-ink-200" />}
           <div>
-            <p className="text-sm font-bold text-ink-900">{player?.personaname ?? (profile.isLoading ? 'Yükleniyor…' : 'Steam')}</p>
+            <p className="text-sm font-bold text-ink-900">{player?.personaname ?? (profile.isLoading ? 'Loading…' : 'Steam')}</p>
             {player && (
               <p className="text-xs text-ink-500">
-                {player.gameextrainfo ? `▶ ${player.gameextrainfo} oynuyor` : (PERSONA_STATE[player.personastate] ?? '—')}
-                {levelBadges.data?.level != null && ` · Seviye ${levelBadges.data.level}`}
+                {player.gameextrainfo ? `▶ Playing ${player.gameextrainfo}` : (PERSONA_STATE[player.personastate] ?? '—')}
+                {levelBadges.data?.level != null && ` · Level ${levelBadges.data.level}`}
               </p>
             )}
             {player && (player.loccountrycode || player.timecreated) && (
               <p className="text-[11px] text-ink-400">
                 {[
                   player.loccountrycode,
-                  player.timecreated ? `${new Date(player.timecreated * 1000).getFullYear()}'den beri` : null,
+                  player.timecreated ? `since ${new Date(player.timecreated * 1000).getFullYear()}` : null,
                 ].filter(Boolean).join(' · ')}
                 {player.profileurl && (
-                  <a href={player.profileurl} target="_blank" rel="noreferrer" className="ml-1.5 text-accent-600 hover:underline">profil ↗</a>
+                  <a href={player.profileurl} target="_blank" rel="noreferrer" className="ml-1.5 text-accent-600 hover:underline">profile ↗</a>
                 )}
               </p>
             )}
@@ -168,33 +168,33 @@ export function SteamTab() {
         </div>
         <button onClick={() => qc.invalidateQueries({ queryKey: ['steam'] })}
           className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors">
-          🔄 Yenile
+          🔄 Refresh
         </button>
       </div>
 
       {recentGames.length > 0 && <RecentStrip games={recentGames} onOpen={setOpenGame} />}
 
-      {owned.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Kütüphane yükleniyor…</div>}
+      {owned.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading library…</div>}
       {owned.error && (owned.error as Error).message !== 'not_configured' && (
-        <div className="text-sm text-red-600 py-8 text-center">Oyunlar alınamadı: {(owned.error as Error).message}</div>
+        <div className="text-sm text-red-600 py-8 text-center">Couldn't load games: {(owned.error as Error).message}</div>
       )}
       {!owned.isLoading && !owned.error && (owned.data?.games.length ?? 0) === 0 && (
         <div className="text-center py-12 text-ink-400 text-sm">
-          Hiç oyun bulunamadı — Steam profilindeki "Oyun detayları" gizli olabilir.
+          No games found — "Game details" may be private on your Steam profile.
         </div>
       )}
 
       {(owned.data?.games.length ?? 0) > 0 && (
         <>
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Oyun ara…"
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search games…"
               className="min-h-[44px] px-3 text-sm rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 max-w-xs flex-1" />
             <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
               className="min-h-[44px] px-2 text-sm rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400">
               {SORTS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
             </select>
             <p className="text-xs text-ink-400 ml-auto">
-              {games.length} oyun · toplam {totalHours.toLocaleString('en-GB')} saat
+              {games.length} games · {totalHours.toLocaleString('en-GB')} hours total
             </p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">

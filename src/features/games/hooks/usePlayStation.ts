@@ -87,7 +87,7 @@ export function useConnectPsn() {
   const qc = useQueryClient()
   return useMutationWithFeedback<{ connected: true; expiresAt: string }, string>({
     action: 'connect_psn',
-    successMessage: 'PlayStation bağlandı ✓',
+    successMessage: 'PlayStation connected ✓',
     mutationFn: connectPsn,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['psn'] }),
   })
@@ -97,7 +97,7 @@ export function useDisconnectPsn() {
   const qc = useQueryClient()
   return useMutationWithFeedback<void, void>({
     action: 'disconnect_psn',
-    successMessage: 'PlayStation bağlantısı kesildi',
+    successMessage: 'PlayStation disconnected',
     mutationFn: disconnectPsn,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['psn'] }),
   })

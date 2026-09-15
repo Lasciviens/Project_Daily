@@ -5,14 +5,14 @@ import { SteamAchievementGrid } from './SteamAchievementGrid'
 import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
 
 // Detail popup for one owned Steam game — the anchor piece of the Steam tab
-// ("tıklayınca pop up screen gelsin detayları görebileyim"). Pulls together
+// (the user asked for a popup showing a game's details). Pulls together
 // three sources: the owned-games row already in hand (playtime, per-platform
 // split, last played), the cached store metadata (`steam_apps`, migration
 // 092), and — on an explicit tap only — the live concurrent-player count.
 
 const fmtHours = (min: number) => {
   const h = min / 60
-  return h >= 10 ? `${Math.round(h)} saat` : `${h.toFixed(1)} saat`
+  return h >= 10 ? `${Math.round(h)} h` : `${h.toFixed(1)} h`
 }
 const fmtDate = (unix?: number) =>
   unix ? new Date(unix * 1000).toLocaleDateString('en-GB') : '—'
@@ -32,13 +32,13 @@ function PlatformSplit({ game }: { game: SteamGame }) {
     { label: '🍎 macOS', min: game.playtime_mac_forever ?? 0 },
     { label: '🐧 Linux', min: game.playtime_linux_forever ?? 0 },
     { label: '🎮 Steam Deck', min: game.playtime_deck_forever ?? 0 },
-    { label: '✈️ Çevrimdışı', min: game.playtime_disconnected ?? 0 },
+    { label: '✈️ Offline', min: game.playtime_disconnected ?? 0 },
   ].filter(r => r.min > 0)
   if (rows.length < 2) return null
   const total = rows.reduce((s, r) => s + r.min, 0)
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">Platform dağılımı</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5">Playtime by platform</p>
       <div className="space-y-1">
         {rows.map(r => (
           <div key={r.label} className="flex items-center gap-2">
@@ -106,22 +106,22 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
             <PlatformSplit game={game} />
 
             {/* Store metadata */}
-            {details.isLoading && <p className="text-sm text-ink-400">Mağaza bilgisi yükleniyor…</p>}
+            {details.isLoading && <p className="text-sm text-ink-400">Loading store details…</p>}
             {(details.error as Error | null)?.message === STORE_UNAVAILABLE ? (
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-sm text-ink-500">
-                  Mağaza bilgisi şu an alınamadı (Steam hız sınırı olabilir) — kendi verilerin aşağıda.
+                  Store details are unavailable right now (possibly a Steam rate limit) — your own data is below.
                 </p>
                 <button onClick={() => details.refetch()} disabled={details.isFetching}
                   className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors disabled:opacity-40">
-                  {details.isFetching ? 'Deneniyor…' : 'Tekrar dene'}
+                  {details.isFetching ? 'Retrying…' : 'Try again'}
                 </button>
               </div>
             ) : details.error ? (
-              <p className="text-sm text-red-600">Mağaza bilgisi alınamadı: {(details.error as Error).message}</p>
+              <p className="text-sm text-red-600">Couldn't load store details: {(details.error as Error).message}</p>
             ) : null}
             {details.data && !d && (
-              <p className="text-sm text-ink-400">Bu oyun Steam mağazasında artık listelenmiyor — sadece kendi verilerin gösteriliyor.</p>
+              <p className="text-sm text-ink-400">This game is no longer listed on the Steam store — only your own data is shown.</p>
             )}
             {d?.short_description && <p className="text-sm text-ink-700 leading-relaxed">{d.short_description}</p>}
 
@@ -147,16 +147,16 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
               {!wantPlayers ? (
                 <button onClick={() => setWantPlayers(true)}
                   className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors">
-                  🟢 Şu an kaç kişi oynuyor?
+                  🟢 How many are playing right now?
                 </button>
               ) : players.isLoading ? (
-                <span className="text-sm text-ink-400">Sorgulanıyor…</span>
+                <span className="text-sm text-ink-400">Checking…</span>
               ) : players.data != null ? (
                 <span className="text-sm text-ink-700">
-                  🟢 <strong>{players.data.toLocaleString('en-GB')}</strong> kişi şu an oynuyor
+                  🟢 <strong>{players.data.toLocaleString('en-GB')}</strong> playing right now
                 </span>
               ) : (
-                <span className="text-sm text-ink-400">Oyuncu sayısı alınamadı.</span>
+                <span className="text-sm text-ink-400">Couldn't load the player count.</span>
               )}
               {d?.price_overview && (
                 <span className="text-sm text-ink-500 ml-auto">
@@ -171,7 +171,7 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
             {/* Achievements */}
             {game.has_community_visible_stats !== false && (
               <div className="pt-1 border-t border-ink-100">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mt-3 mb-2">Başarımlar</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mt-3 mb-2">Achievements</h3>
                 <SteamAchievementGrid appid={game.appid} />
               </div>
             )}
@@ -179,7 +179,7 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
             {/* Screenshots */}
             {(d?.screenshots?.length ?? 0) > 0 && (
               <div className="pt-1 border-t border-ink-100">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mt-3 mb-2">Ekran görüntüleri</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mt-3 mb-2">Screenshots</h3>
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
                   {d!.screenshots!.slice(0, 8).map(s => (
                     <img key={s.id} src={s.path_thumbnail} alt="" loading="lazy"
@@ -192,12 +192,12 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
             <div className="flex gap-2 flex-wrap pt-1">
               <a href={`https://store.steampowered.com/app/${game.appid}`} target="_blank" rel="noreferrer"
                 className="min-h-[44px] px-3 inline-flex items-center text-sm rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-300 transition-colors">
-                Mağaza sayfası ↗
+                Store page ↗
               </a>
               {d?.website && (
                 <a href={d.website} target="_blank" rel="noreferrer"
                   className="min-h-[44px] px-3 inline-flex items-center text-sm rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-300 transition-colors">
-                  Resmî site ↗
+                  Official site ↗
                 </a>
               )}
             </div>

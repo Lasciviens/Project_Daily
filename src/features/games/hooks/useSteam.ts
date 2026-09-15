@@ -86,8 +86,7 @@ export function useSteamAppReviews(appid: number | null) {
 
 /**
  * Live player count — `enabled` is driven by an explicit tap in the modal,
- * never by mounting it (the user's own instruction: "isteğe bağlı olarak
- * sorgulanabilir olsun").
+ * never by mounting it — the user asked for it to be queried on demand only.
  */
 export function useSteamCurrentPlayers(appid: number | null, enabled: boolean) {
   return useQuery({

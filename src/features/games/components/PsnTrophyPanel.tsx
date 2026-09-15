@@ -17,10 +17,10 @@ const TYPE_ICON: Record<string, string> = {
 }
 // Sony's own rarity tiers (0-3), not thresholds we invented.
 const RARITY_LABEL: Record<number, { text: string; cls: string }> = {
-  0: { text: 'Ultra Nadir', cls: 'text-purple-600 dark:text-purple-400' },
-  1: { text: 'Çok Nadir', cls: 'text-blue-600 dark:text-blue-400' },
-  2: { text: 'Nadir', cls: 'text-teal-600 dark:text-teal-400' },
-  3: { text: 'Yaygın', cls: 'text-ink-400' },
+  0: { text: 'Ultra Rare', cls: 'text-purple-600 dark:text-purple-400' },
+  1: { text: 'Very Rare', cls: 'text-blue-600 dark:text-blue-400' },
+  2: { text: 'Rare', cls: 'text-teal-600 dark:text-teal-400' },
+  3: { text: 'Common', cls: 'text-ink-400' },
 }
 
 function TrophyRow({ t }: { t: PsnTrophy }) {
@@ -92,11 +92,11 @@ export function PsnTrophyPanel({ npCommunicationId, npServiceName, hasGroups }: 
   const groups = usePsnTrophyGroups(inView && hasGroups ? npCommunicationId : null, npServiceName)
 
   if (!inView) return <div ref={anchor} className="h-16" />
-  if (trophies.isLoading) return <div ref={anchor}><p className="text-sm text-ink-400 py-4">Kupalar yükleniyor…</p></div>
-  if (trophies.error) return <div ref={anchor}><p className="text-sm text-red-600 py-4">Kupalar alınamadı: {(trophies.error as Error).message}</p></div>
+  if (trophies.isLoading) return <div ref={anchor}><p className="text-sm text-ink-400 py-4">Loading trophies…</p></div>
+  if (trophies.error) return <div ref={anchor}><p className="text-sm text-red-600 py-4">Couldn't load trophies: {(trophies.error as Error).message}</p></div>
 
   const all = trophies.data?.trophies ?? []
-  if (!all.length) return <div ref={anchor}><p className="text-sm text-ink-400 py-4">Bu oyunda kupa yok.</p></div>
+  if (!all.length) return <div ref={anchor}><p className="text-sm text-ink-400 py-4">This game has no trophies.</p></div>
 
   const scoped = group === 'all' ? all : all.filter(t => t.trophyGroupId === group)
   const earned = scoped.filter(t => t.earned)
@@ -113,12 +113,12 @@ export function PsnTrophyPanel({ npCommunicationId, npServiceName, hasGroups }: 
         <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2 scrollbar-none">
           <button onClick={() => setGroup('all')}
             className={`min-h-[44px] px-3 text-xs rounded-lg border whitespace-nowrap flex-shrink-0 transition-colors ${group === 'all' ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200'}`}>
-            Tümü
+            All
           </button>
           {groupList.map(g => (
             <button key={g.trophyGroupId} onClick={() => setGroup(g.trophyGroupId)}
               className={`min-h-[44px] px-3 text-xs rounded-lg border whitespace-nowrap flex-shrink-0 transition-colors ${group === g.trophyGroupId ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200'}`}>
-              {g.trophyGroupId === 'default' ? 'Ana oyun' : g.trophyGroupName}
+              {g.trophyGroupId === 'default' ? 'Base game' : g.trophyGroupName}
               <span className="ml-1 opacity-70">%{g.progress}</span>
             </button>
           ))}
@@ -129,7 +129,7 @@ export function PsnTrophyPanel({ npCommunicationId, npServiceName, hasGroups }: 
         <div className="flex-1 min-w-[140px]">
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-bold text-ink-900">{earned.length}/{scoped.length}</span>
-            <span className="text-xs text-ink-400">%{pct} tamamlandı</span>
+            <span className="text-xs text-ink-400">{pct}% complete</span>
           </div>
           <div className="h-1.5 bg-ink-100 rounded-full overflow-hidden mt-1">
             <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
@@ -137,7 +137,7 @@ export function PsnTrophyPanel({ npCommunicationId, npServiceName, hasGroups }: 
         </div>
         <button onClick={() => setShowLocked(v => !v)}
           className="min-h-[44px] px-3 text-xs rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-300 transition-colors">
-          {showLocked ? 'Sadece alınanlar' : 'Hepsini göster'}
+          {showLocked ? 'Earned only' : 'Show all'}
         </button>
       </div>
 

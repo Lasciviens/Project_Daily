@@ -18,7 +18,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 const fmtHours = (min: number) => {
   const h = min / 60
-  return h >= 10 ? `${Math.round(h)} saat` : `${h.toFixed(1)} saat`
+  return h >= 10 ? `${Math.round(h)} h` : `${h.toFixed(1)} h`
 }
 const fmtDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-GB') : '—')
 
@@ -87,10 +87,10 @@ export function PsnGameModal({ game, title, purchased, onClose }: Props) {
           <div className="px-4 py-4 space-y-4">
             {game && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <Stat label="Toplam süre" value={minutes > 0 ? fmtHours(minutes) : '—'} />
-                <Stat label="Kaç kez açıldı" value={game.playCount != null ? String(game.playCount) : '—'} />
-                <Stat label="İlk oynama" value={fmtDate(game.firstPlayedDateTime)} />
-                <Stat label="Son oynama" value={fmtDate(game.lastPlayedDateTime)} />
+                <Stat label="Total playtime" value={minutes > 0 ? fmtHours(minutes) : '—'} />
+                <Stat label="Times launched" value={game.playCount != null ? String(game.playCount) : '—'} />
+                <Stat label="First played" value={fmtDate(game.firstPlayedDateTime)} />
+                <Stat label="Last played" value={fmtDate(game.lastPlayedDateTime)} />
               </div>
             )}
 
@@ -115,11 +115,11 @@ export function PsnGameModal({ game, title, purchased, onClose }: Props) {
             )}
 
             <div className="pt-1 border-t border-ink-100">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mt-3 mb-2">Kupalar</h3>
-              {bridged.isLoading && <p className="text-sm text-ink-400 py-2">Kupa seti aranıyor…</p>}
+              <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mt-3 mb-2">Trophies</h3>
+              {bridged.isLoading && <p className="text-sm text-ink-400 py-2">Looking up the trophy set…</p>}
               {!bridged.isLoading && !trophyTitle && (
                 <p className="text-sm text-ink-400 py-2">
-                  Bu oyun için kupa seti bulunamadı — hiç kupa desteklemiyor ya da hesabında hiç senkronize olmamış olabilir.
+                  No trophy set found for this game — it may not support trophies, or none have synced to your account yet.
                 </p>
               )}
               {trophyTitle && (
