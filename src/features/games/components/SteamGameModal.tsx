@@ -82,7 +82,7 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
                      onError={() => setImgOk(false)} className="w-full h-full object-cover" />
               : <div className="w-full h-full flex items-center justify-center text-4xl">🎮</div>}
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-            <button onClick={onClose} aria-label="Kapat"
+            <button onClick={onClose} aria-label="Close"
               className="absolute top-2 right-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-black/50 text-white text-xl hover:bg-black/70">×</button>
             <div className="absolute inset-x-0 bottom-0 px-4 pb-3">
               <h2 className="text-white text-lg font-bold leading-tight drop-shadow">{game.name}</h2>
@@ -97,9 +97,9 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
           <div className="px-4 py-4 space-y-4">
             {/* Your own numbers — always available, no extra request */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <Stat label="Toplam" value={fmtHours(game.playtime_forever)} />
+              <Stat label="Total" value={fmtHours(game.playtime_forever)} />
               <Stat label="Last 2 weeks" value={game.playtime_2weeks ? fmtHours(game.playtime_2weeks) : '—'} />
-              <Stat label="Son oynama" value={fmtDate(game.rtime_last_played)} />
+              <Stat label="Last played" value={fmtDate(game.rtime_last_played)} />
               <Stat label="Metacritic" value={details.data?.metacritic_score ? String(details.data.metacritic_score) : '—'} />
             </div>
 
@@ -161,7 +161,7 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
               {d?.price_overview && (
                 <span className="text-sm text-ink-500 ml-auto">
                   {d.price_overview.discount_percent > 0 && (
-                    <span className="text-green-600 font-semibold mr-1.5">-%{d.price_overview.discount_percent}</span>
+                    <span className="text-green-600 font-semibold mr-1.5">-{d.price_overview.discount_percent}%</span>
                   )}
                   {d.price_overview.final_formatted}
                 </span>
