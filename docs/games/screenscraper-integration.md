@@ -47,14 +47,43 @@ maxrequestspermin:  3072
 maxdownloadspeed:   128      (KB/s)
 ```
 
-**Verdict: 10 000 requests/day is comfortably enough** for a library of a few
-thousand ROMs scraped once and then only on changes, so the missing member
-password is **not a blocker**. What it costs us is `maxthreads: 1` — the scrape
-must be strictly sequential. Supplying the member password would raise the
-thread count and download speed; worth doing eventually, not worth waiting for.
+### Why a paid premium membership changes nothing *yet* — measured, not assumed
 
-**TODO (user):** supply the ScreenScraper *member account* password if you want
-premium threading. Store in Vault as `SCREENSCRAPER_SSID` / `SCREENSCRAPER_SSPASSWORD`.
+The user has a paid premium membership. It is **not being applied**, and the
+reason is mechanical rather than a quota problem:
+
+- `ssuser.id` comes back as `""` (empty) on our calls. **The API does not know
+  who is calling** beyond the dev-app identity. Membership is attached to the
+  *member account*, and we never send member credentials, so there is nothing
+  for it to apply the benefit to.
+- Sending `ssid=Lasciviens` with the **dev** password returns `403
+  Erreur de login`. That 403 is itself the proof the pair *is* validated — we
+  simply have the wrong password in that slot.
+- Forcing a level through the documented debug mode
+  (`devdebugpassword` + `forcelevel`) was tried at levels 0, 1, 20, 30 and 99.
+  **Every one returned identical limits** (`niveau=0, maxthreads=1,
+  req/day=10000`), because `forcelevel` overrides a *logged-in user's* level and
+  there is no logged-in user to override.
+
+Also worth knowing: `userlevelsListe.php` returns **contribution** ranks
+(Membre → Contributeur → … → Admin), i.e. how much you have contributed to the
+database. Those are a different axis from the paid membership and are not what
+unlocks throughput on their own.
+
+**So the fix is one missing string:** the password used to log in to
+screenscraper.fr as the member `Lasciviens`. Not the dev password, not the debug
+password — those are already in hand and are a separate pair.
+
+**Verdict: 10 000 requests/day is comfortably enough** for a library of a few
+thousand ROMs scraped once and then only on changes, so this is **not a
+blocker** for building the sync. What it costs today is `maxthreads: 1` — a
+strictly sequential scrape, and a 128 KB/s media download cap. Supplying the
+member password lifts both.
+
+**TODO (user):** supply the ScreenScraper *member account* password (your
+screenscraper.fr website login). Store in Vault as `SCREENSCRAPER_SSID` /
+`SCREENSCRAPER_SSPASSWORD`. Then re-run the measurement above to record the real
+premium numbers here, replacing the anonymous ones.
 
 ---
 
@@ -182,7 +211,9 @@ Also on each system: `extensions` (`"gen,md,smd,bin,sg"`) and `romtype`.
 
 ## 7. Open decisions
 
-- [ ] Member account password → premium threading (optional, not blocking)
+- [ ] Member account password → premium threading. **Confirmed to be the only
+      thing standing between us and the paid benefits** (see §2); the dev and
+      debug passwords are already in hand and do not carry membership
 - [ ] Image strategy: mirror into Supabase Storage (recommended) vs. on-demand
       signed URL via edge function
 - [ ] Where the ScreenScraper score (`note`, /20) lives, if anywhere — must not
@@ -224,7 +255,36 @@ after each successful push, and send only rows whose fingerprint changed. The
 server side stays a plain idempotent upsert keyed on `(system, rom filename)`,
 so a full re-push is always safe if the local state is ever lost.
 
-**Codex vs Claude for the device work:** the Termux script lives under
-`scripts/` and touches the device, not `src/` or `supabase/`. Per the two-AI
-ownership split in `CLAUDE.md`, decide the owner explicitly before starting so
-both sides do not edit it.
+**Ownership: Codex owns the device-side Termux script** (user decision,
+2026-09-15). It lives under `scripts/` and touches the device, not `src/` or
+`supabase/`, which matches Codex's existing side of the two-AI split in
+`CLAUDE.md`. Claude owns the receiving end (the edge-function action, the
+migration and the schema). Revisit later if that split stops fitting.
+
+---
+
+## 9. Reading the ES-DE export without burning tokens
+
+A full ES-DE export is megabytes of XML across dozens of system folders.
+Pasting that into a chat to "let Claude look at it" would cost an enormous
+number of tokens to learn three things:
+
+1. which `<game>` child tags ES-DE *actually* writes (vs. what the docs claim),
+2. how `<path>` values are shaped (the join-key candidate),
+3. how many games there are per system, and how many carry real play stats.
+
+`scripts/inspect-esde-gamelist.mjs` answers exactly those **locally** and prints
+a compact report — tens of lines, not megabytes. It is read-only and uploads
+nothing.
+
+```
+node scripts/inspect-esde-gamelist.mjs <path-to-gamelists-root> [--sample]
+```
+
+`<gamelists-root>` is the folder containing the per-system subfolders
+(`gamelists/megadrive/gamelist.xml`, `gamelists/snes/…`). `--sample` adds one
+full `<game>` block per system for the first three systems.
+
+**Workflow: run it, paste the OUTPUT, never the XML.** That output is enough to
+finalise the field mapping and the migration. The full files only ever need to
+be read by the sync script itself, on the device — never by a human or a model.

@@ -2,6 +2,55 @@
 
 _Append-only. Newest on TOP. Claude writes; Codex reads only. Reply in `to-claude.md`._
 
+### 2026-09-15 16:00 · C7 · new
+New task: **C7 — the ES-DE play-stats push script.** The user assigned the
+device side to you (their words: "Şimdilik Codex yapıcak bu işi"). You own the
+Termux script under `scripts/`; I own the receiving end (edge-function action,
+migration, schema). Neither of us edits the other's half.
+
+**What it does.** On the RP6, read ES-DE's per-system `gamelist.xml` files,
+work out which games changed since the last successful push, and POST only
+those to a Supabase edge function. Triggered manually/occasionally by the user
+— NOT a scheduled daemon.
+
+**Why device-side push and not a cloud pull** (settled, don't redesign it):
+Supabase `pg_cron` can only reach things already on the internet. The RP6 sits
+behind home NAT with no stable address, so a cron job can never fetch from it.
+The device has to initiate. This is the same shape `phone-gateway` already
+uses — device holds a secret, POSTs to an edge function, function acts as the
+single user server-side. Reuse that model rather than inventing a second one.
+
+**Incremental rule (the user's explicit requirement — "arada bir tıklar sadece
+güncellemeleri alırız tüm datayı değil"):** keep a local fingerprint per game
+(playcount + lastplayed is enough) after each successful push and send only
+rows whose fingerprint changed. My side stays an idempotent upsert keyed on
+`(system, rom filename)`, so a full re-push is always safe if your local state
+is lost — build for that, don't fear it.
+
+**What I have NOT built yet, so don't code against it blind:** the gateway
+action and its request contract do not exist. I'll write and document them the
+way `import_body_composition` is documented in `docs/iphone-examples.md`, and
+message you here when the contract is real. Until then you can build the
+read + diff half, which needs nothing from me.
+
+**Read first:** `docs/games/screenscraper-integration.md` — my live-verified
+research notes. §6 has the ES-DE folder → ScreenScraper system-id mapping
+(`nom_retropie` is the join key), §8 has the transport rationale, §9 covers
+reading the export without blowing up tokens.
+
+**Useful to you:** `scripts/inspect-esde-gamelist.mjs` (mine, just landed) —
+read-only, prints a compact report of which `<game>` tags ES-DE actually
+writes, the `<path>` shapes, and per-system counts. Run it against the real
+export before assuming any field exists. Don't edit it; if you need more from
+it, ask here and I'll extend it.
+
+**Open question I'd like answered in `to-claude.md`:** can the device
+realistically compute a CRC32 per ROM file? ScreenScraper's `jeuInfos` accepts
+`crc=`/`md5=`/`sha1=` and matching on those is far more reliable than matching
+on filename. If hashing a few thousand ROMs on that hardware is too slow, say
+so and we'll stay on filenames — I just don't want to assume either way.
+
+
 ### 2026-09-06 · C6 · new
 New task: **C6** on the board. The user already has a working Shortcut that
 OCRs a smart-scale "Body composition analysis report" photo on-device (Apple's
