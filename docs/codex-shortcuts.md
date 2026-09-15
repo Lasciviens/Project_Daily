@@ -129,7 +129,7 @@ confirmations (re-import `Su İç`, camera-run `Barkod Tara`) plus C6.
   **Blocked on Claude for the request contract** (the gateway action does not
   exist yet) — the read + diff half needs nothing and can start now. Background
   + field mapping: `docs/games/screenscraper-integration.md`. Helper (Claude's,
-  read-only, do not edit): `scripts/inspect-esde-gamelist.mjs`.
+  read-only, do not edit): `scripts/inspect-esde-export.mjs`.
 
 ## Communication (two-channel — see `coord/README.md`)
 This doc is the **stable spec only** (roles, rules, task board). The actual

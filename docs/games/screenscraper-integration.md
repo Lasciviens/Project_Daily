@@ -267,36 +267,43 @@ migration and the schema). Revisit later if that split stops fitting.
 ## 9. Reading the ES-DE export without burning tokens
 
 **You do not need the whole ES-DE folder.** A real install is around **15 GB**,
-but the bulk of that is `downloaded_media` (box art, screenshots, videos) and
-`themes`. The full sibling list is `collections`, `controllers`,
-`custom_systems`, `downloaded_media`, `gamelists`, `logs`, `screensavers`,
-`scripts`, `settings`, `themes` — and **only `gamelists/` matters here**, which
-is plain XML and small. Copy just that folder off the device.
+and `downloaded_media` is essentially all of it. The full sibling list is
+`collections`, `controllers`, `custom_systems`, `downloaded_media`, `gamelists`,
+`logs`, `screensavers`, `scripts`, `settings`, `themes`.
 
-Even then, that XML is megabytes across dozens of system folders.
-Pasting that into a chat to "let Claude look at it" would cost an enormous
-number of tokens to learn three things:
-
-1. which `<game>` child tags ES-DE *actually* writes (vs. what the docs claim),
-2. how `<path>` values are shaped (the join-key candidate),
-3. how many games there are per system, and how many carry real play stats.
-
-`scripts/inspect-esde-gamelist.mjs` answers exactly those **locally** and prints
-a compact report — tens of lines, not megabytes. It is read-only and uploads
-nothing.
+`scripts/inspect-esde-export.mjs` explores whatever you copied and reports what
+is really in it. It is READ-ONLY and uploads nothing.
 
 ```
-node scripts/inspect-esde-gamelist.mjs <folder> [--sample]
+node scripts/inspect-esde-export.mjs              # asks you to pick a folder
+node scripts/inspect-esde-export.mjs /path/to/ES-DE
 ```
 
-`<folder>` can be the `gamelists` folder itself or the ES-DE root — the script
-jumps straight into `gamelists/` when it sees it, and otherwise falls back to a
-shallow search that **deliberately skips `downloaded_media`, `themes`,
-`screensavers`, `roms`, `logs` and `cache`**. Walking `downloaded_media` on a
-15 GB install would take minutes and can never contain a gamelist. It reports
-how many folders it actually walked so that is visible, not assumed.
-`--sample` adds one full `<game>` block per system for the first three systems.
+With no argument it opens a **native macOS folder picker**; elsewhere it lists
+candidate folders and takes a number. Flags: `--deep` also descends into the
+media/theme folders (slow), `--full` prints longer samples.
 
-**Workflow: run it, paste the OUTPUT, never the XML.** That output is enough to
-finalise the field mapping and the migration. The full files only ever need to
-be read by the sync script itself, on the device — never by a human or a model.
+It reports, in order: the folder tree with per-folder file counts and sizes; a
+file-type breakdown; a **distinct-filename** breakdown; then a content sample of
+each distinct filename.
+
+Three design points that came out of getting this wrong first:
+
+- **Sampling is keyed on filename, not extension.** An export has dozens of
+  identical `gamelist.xml` files; keying on `.xml` let them crowd out
+  `es_settings.xml` and every other genuinely different file.
+- **XML handling covers both shapes.** Record-style XML (`<gameList><game>…`)
+  gets a field inventory with fill rates and examples plus the first record
+  verbatim. Attribute-style XML (`<string name="…" value="…"/>`, which is what
+  ES-DE's own settings use) has no repeated record at all, so those elements are
+  inventoried separately — otherwise the file reads as empty.
+- **Heavy folders are counted but not descended into** by default, so a 15 GB
+  install does not take minutes to walk for nothing.
+
+**Workflow: run it, paste the OUTPUT, never the files.** The full files only
+ever need to be read by the sync script itself, on the device.
+
+**Deliberately NOT decided yet:** which parts of the export we actually consume.
+That is the point of running this first — `gamelists/` is the obvious candidate,
+but `collections/` (custom lists) and `settings/` may turn out to matter too,
+and guessing before looking is what this whole step exists to avoid.

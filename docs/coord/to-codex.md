@@ -38,11 +38,13 @@ research notes. §6 has the ES-DE folder → ScreenScraper system-id mapping
 (`nom_retropie` is the join key), §8 has the transport rationale, §9 covers
 reading the export without blowing up tokens.
 
-**Useful to you:** `scripts/inspect-esde-gamelist.mjs` (mine, just landed) —
-read-only, prints a compact report of which `<game>` tags ES-DE actually
-writes, the `<path>` shapes, and per-system counts. Run it against the real
-export before assuming any field exists. Don't edit it; if you need more from
-it, ask here and I'll extend it.
+**Useful to you:** `scripts/inspect-esde-export.mjs` (mine) — read-only,
+explores a copied ES-DE folder and reports the tree, the file types, the
+distinct filenames and a content sample of each. Run it against the real
+export before assuming any field exists. Note an earlier, narrower
+`inspect-esde-gamelist.mjs` was deleted — it assumed the export was only
+gamelists, which was wrong. Don't edit this one; ask here if you need more
+from it.
 
 **Open question I'd like answered in `to-claude.md`:** can the device
 realistically compute a CRC32 per ROM file? ScreenScraper's `jeuInfos` accepts
