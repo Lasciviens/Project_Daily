@@ -6,6 +6,8 @@ import { TierEditorTab } from '../components/TierEditorTab'
 import { PlayQueueTab } from '../components/PlayQueueTab'
 import { NeedsReviewTab } from '../components/NeedsReviewTab'
 import { StatsPanel } from '../components/StatsPanel'
+import { PlayStationTab } from '../components/PlayStationTab'
+import { SteamTab } from '../components/SteamTab'
 import { STATUS_LABEL, STATUS_COLOR, STATUS_BORDER, TIER_COLOR, TIERS, STATUSES } from '../gamesMeta'
 import { Sheet } from '../../../shared/components/Sheet'
 import { haptic } from '../../../shared/utils/haptics'
@@ -17,6 +19,12 @@ import type { Game } from '../types'
 type SortKey = 'az' | 'za' | 'year-asc' | 'year-desc' | 'rating' | 'series'
 type LibView = 'grid' | 'compact' | 'poster' | 'list' | 'table' | 'series'
 type MainTab = 'library' | 'tiers' | 'queue' | 'review' | 'stats'
+// Platform-level split, one level above MainTab. Retro Games is the existing
+// RP5-migrated library (below); PlayStation/Steam are UI-only placeholders
+// for now (deliberate — no DB/backend yet, per the user's explicit request)
+// — see PlayStationTab.tsx/SteamTab.tsx for why each is a separate,
+// meaningfully different integration story.
+type PlatformTab = 'retro' | 'playstation' | 'steam'
 
 const LIB_VIEWS: { v: LibView; icon: string; label: string }[] = [
   { v: 'grid',    icon: '⊞', label: 'Grid'    },
@@ -512,7 +520,14 @@ const TABS: { t: MainTab; icon: string; label: string }[] = [
   { t: 'stats',   icon: '📊', label: 'Stats'   },
 ]
 
+const PLATFORM_TABS: { t: PlatformTab; icon: string; label: string }[] = [
+  { t: 'retro',       icon: '🕹️', label: 'Retro Games' },
+  { t: 'playstation', icon: '🎮', label: 'PlayStation'  },
+  { t: 'steam',       icon: '🖥️', label: 'Steam'        },
+]
+
 export function GamesPage() {
+  const [platform, setPlatform] = useState<PlatformTab>('retro')
   const [tab, setTab] = useState<MainTab>('library')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -532,37 +547,61 @@ export function GamesPage() {
     <div className="min-h-full w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
       <div className="flex items-center gap-3 mb-4 sm:mb-6 flex-wrap">
         <h1 className="text-lg font-bold text-ink-900">🎮 Games</h1>
-        <button onClick={() => setAddOpen(true)}
-          className="min-h-[44px] px-3 text-sm font-semibold bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors">
-          ＋ Add game
-        </button>
-        <button onClick={pickRandom} disabled={!allGames.length}
-          className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors disabled:opacity-40">
-          🎲 Random
-        </button>
+        {platform === 'retro' && (
+          <>
+            <button onClick={() => setAddOpen(true)}
+              className="min-h-[44px] px-3 text-sm font-semibold bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors">
+              ＋ Add game
+            </button>
+            <button onClick={pickRandom} disabled={!allGames.length}
+              className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors disabled:opacity-40">
+              🎲 Random
+            </button>
+          </>
+        )}
       </div>
 
-      <div className="flex items-center gap-1 mb-5 bg-cream-50 rounded-xl border border-ink-200 p-1 shadow-sm overflow-x-auto scrollbar-none">
-        {TABS.map(({ t, icon, label }) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 min-h-[44px] px-3 py-2.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap flex items-center justify-center gap-1 ${tab === t ? 'bg-accent-500 text-white shadow-sm' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
+      {/* Platform split — one level above the Retro Games tab bar. Own row,
+          own visual weight (bordered pills vs the library's filled tab bar
+          below) so the two tab levels don't read as one flat row. */}
+      <div className="flex items-center gap-2 mb-4 overflow-x-auto scrollbar-none">
+        {PLATFORM_TABS.map(({ t, icon, label }) => (
+          <button key={t} onClick={() => setPlatform(t)}
+            className={`min-h-[44px] px-4 text-sm font-semibold rounded-xl border transition-colors whitespace-nowrap flex items-center gap-1.5 ${platform === t ? 'bg-ink-900 text-white border-ink-900' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'}`}
           >
             <span>{icon}</span>{label}
-            {t === 'review' && needsReview.length > 0 && (
-              <span className={`text-[10px] font-bold px-1.5 rounded-full ${tab === t ? 'bg-white/30' : 'bg-orange-100 text-orange-700'}`}>{needsReview.length}</span>
-            )}
           </button>
         ))}
       </div>
 
-      {tab === 'library' && <LibraryTab onOpenDetail={setSelectedId} />}
-      {tab === 'tiers'   && <TierEditorTab />}
-      {tab === 'queue'   && <PlayQueueTab />}
-      {tab === 'review'  && <NeedsReviewTab onOpenDetail={setSelectedId} />}
-      {tab === 'stats'   && <StatsPanel />}
+      {platform === 'playstation' && <PlayStationTab />}
+      {platform === 'steam'       && <SteamTab />}
 
-      {selectedId && <GameDetailModal gameId={selectedId} onClose={() => setSelectedId(null)} />}
-      <AddGameModal open={addOpen} onClose={() => setAddOpen(false)} />
+      {platform === 'retro' && (
+        <>
+          <div className="flex items-center gap-1 mb-5 bg-cream-50 rounded-xl border border-ink-200 p-1 shadow-sm overflow-x-auto scrollbar-none">
+            {TABS.map(({ t, icon, label }) => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`flex-1 min-h-[44px] px-3 py-2.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap flex items-center justify-center gap-1 ${tab === t ? 'bg-accent-500 text-white shadow-sm' : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'}`}
+              >
+                <span>{icon}</span>{label}
+                {t === 'review' && needsReview.length > 0 && (
+                  <span className={`text-[10px] font-bold px-1.5 rounded-full ${tab === t ? 'bg-white/30' : 'bg-orange-100 text-orange-700'}`}>{needsReview.length}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'library' && <LibraryTab onOpenDetail={setSelectedId} />}
+          {tab === 'tiers'   && <TierEditorTab />}
+          {tab === 'queue'   && <PlayQueueTab />}
+          {tab === 'review'  && <NeedsReviewTab onOpenDetail={setSelectedId} />}
+          {tab === 'stats'   && <StatsPanel />}
+
+          {selectedId && <GameDetailModal gameId={selectedId} onClose={() => setSelectedId(null)} />}
+          <AddGameModal open={addOpen} onClose={() => setAddOpen(false)} />
+        </>
+      )}
     </div>
   )
 }
