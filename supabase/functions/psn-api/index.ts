@@ -70,8 +70,13 @@ type AnyRec = Record<string, any>
 // npTitleId→npCommunicationId bridge at 5 per request (a 6th 400s).
 const PLAYED_PAGE = 200
 const PLAYED_MAX_PAGES = 4
-const PURCHASED_PAGE = 200
-const PURCHASED_MAX_PAGES = 4
+// getPurchasedGames is the one call whose page size is NOT documented: the
+// library defaults to 24 and Sony publishes no maximum, so a large `size`
+// is a guess that would fail the WHOLE call (and silently cost every PS Plus
+// badge) if rejected. Stay close to the known-good default and page more
+// times instead — same ~800-title ceiling, no guessed limit.
+const PURCHASED_PAGE = 50
+const PURCHASED_MAX_PAGES = 16
 const TITLE_MAP_CHUNK = 5
 
 Deno.serve(async (req: Request) => {
@@ -198,7 +203,10 @@ Deno.serve(async (req: Request) => {
             if (batch.length < PURCHASED_PAGE) break
           }
         } catch (e) {
-          return json({ games: [], note: `unavailable: ${String((e as Error).message ?? e)}` })
+          // A later page failing shouldn't discard the pages that worked —
+          // partial PS Plus provenance beats none, as long as we say so.
+          const note = `unavailable: ${String((e as Error).message ?? e)}`
+          return json(games.length ? { games, note: `partial — ${note}` } : { games: [], note })
         }
         return json({ games })
       }
