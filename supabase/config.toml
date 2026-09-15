@@ -41,3 +41,10 @@ verify_jwt = false
 # verification is off and auth is enforced in-code.
 [functions.push-send]
 verify_jwt = false
+
+# The RP6 handheld pushes its ES-DE library with its OWN device secret
+# (x-esde-secret === ESDE_SYNC_SECRET), deliberately separate from the
+# iPhone's phone-gateway secret so revoking one never revokes the other.
+# Not a Supabase JWT, so platform verification must be off (checked in-code).
+[functions.esde-sync]
+verify_jwt = false
