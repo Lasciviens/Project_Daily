@@ -21,6 +21,14 @@ Three things in it that will save you a rewrite:
    server-side assembly. Retry a failed batch by re-sending it unchanged, and a
    full re-push is always safe. Cap a request at 150 games.
 
+**Correction to the message above, same day:** the endpoint is its OWN function
+`esde-sync` with its OWN secret header `x-esde-secret`, NOT an action on
+`phone-gateway`. I had it wrong for an hour; the user caught it. phone-gateway
+is the iPhone's door and carries the iPhone's secret — the handheld is a
+different device with a different lifecycle, and revoking one must never revoke
+the other. §10 is correct and current; take the endpoint from there, not from
+anything earlier in this log.
+
 §10 also lists exactly what must NOT be sent (launcher-shortcut systems,
 `._` AppleDouble sidecars, `<folder>` elements, `CLEANUP/` backups) — all four
 are measured from the user's real export in §9, not guesses. After those

@@ -490,14 +490,19 @@ in §9, not from what ES-DE could theoretically emit.
 ### Endpoint
 
 ```
-POST https://<project>.supabase.co/functions/v1/phone-gateway
+POST https://<project>.supabase.co/functions/v1/esde-sync
 Content-Type: application/json
-x-phone-secret: <PHONE_GATEWAY_SECRET>
+x-esde-secret: <ESDE_SYNC_SECRET>
 ```
 
-Same entry point, same secret and same server-side single-user resolution as
-every other device action — §8's "reuse `phone-gateway`, don't invent a second
-model". The Supabase service key never reaches the device.
+**Its own function and its own secret, not an action on `phone-gateway`.**
+§8 said "reuse the phone-gateway *pattern*", and that is what this does — device
+holds a static revocable secret, POSTs to an edge function, the function
+resolves the single user server-side with the service role, which never leaves
+the server. But `phone-gateway` is the *iPhone's* door and carries the iPhone's
+secret. This is a different physical device with a different lifecycle:
+revoking the handheld must never revoke the phone's Shortcuts, and vice versa.
+Same pattern, separate door.
 
 ### Request
 
@@ -631,8 +636,42 @@ title appearing on two systems is a real, intentional shape (089's own note),
 and deciding that two files are the same game is a curation judgement, not
 something a sync should guess at.
 
-### Still Claude's to build
+### Where the pieces stand
 
-Migration 093 is written. The `import_esde_games` handler in `phone-gateway`
-is not yet, and neither is the RP5 → `games` backfill. Codex's C7 can be
-written against this section today; it does not depend on either.
+| Piece | Owner | State |
+|---|---|---|
+| Migration 093 (the sync key + per-variant stat columns) | Claude | written, **not applied** |
+| `supabase/functions/esde-sync/` | Claude | written, **not deployed** |
+| `ESDE_SYNC_SECRET` in Supabase Vault | user | not set |
+| Device-side reader + pusher (C7) | Codex | not started, unblocked by this section |
+| ScreenScraper enrichment | Claude | not started — deliberately AFTER the import, see §11 |
+
+---
+
+## 11. Order of operations — import first, scrape second
+
+Worth stating plainly because the intuitive order is backwards.
+
+**Step 1 — ES-DE into the database.** Codex's script reads the gamelists on the
+device and POSTs them to `esde-sync`. No ScreenScraper involvement at all. §9
+measured the metadata at **97-98 % already filled**, because ES-DE has scraped
+this library before, so this single step lands a working library: 1125 games
+with titles, descriptions, developers, publishers, genres, release years,
+players and ratings, plus the play statistics nothing else in this app has.
+
+There is no intermediate hop — no MacBook, no file transfer. The one-time full
+import and the later incremental pushes are the same code path with a different
+number of rows, which is also why the first run needs no separate script.
+
+**Step 2 — ScreenScraper fills what is left.** Two real gaps: the ~2 % of games
+ES-DE never matched, and artwork (the device's `downloaded_media` folder is
+15 GB and was deliberately not copied). That is a much smaller, much cheaper job
+than scraping 1125 games from nothing — and at the premium limits measured in
+§2 it is minutes, not an overnight run.
+
+**Why not scrape first:** a scraper has to be told what to look for. Before
+step 1 the database is empty, so there is nothing to enrich and no way to tell
+a match from a miss. After step 1 every row carries a real title, system and
+filename — which is exactly what ScreenScraper matches on. Doing it in the
+other order means scraping blind and then trying to reconcile two independently
+built libraries.

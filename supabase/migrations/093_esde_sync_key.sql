@@ -25,9 +25,23 @@
 -- Why on game_platforms and not games: an ES-DE entry is a (system, file)
 -- fact, which is precisely what a platform VARIANT is. 089 already records
 -- that a single game legitimately holds more than one variant (the same
--- title on GameCube and PSP). The play-statistic columns 089 put on `games`
--- stay there — the importer rolls a game's variants up into them, see §10 of
--- the doc for the exact rule.
+-- title on GameCube and PSP).
+--
+-- The three play-statistic columns come along for the same reason, and they
+-- are NOT a duplicate of 089's `games.esde_*` trio. ES-DE reports play stats
+-- per (system, file) — per variant — so that is the only level at which the
+-- incoming number is a fact. 089's columns on `games` are the ROLL-UP across
+-- a game's variants (sum playcount, sum playtime, max last_played), and the
+-- importer recomputes them from these after every write.
+--
+-- Storing only the roll-up was the first design and it does not work: a push
+-- carries one variant, the other variants' contributions are nowhere on
+-- record, and there is nothing to sum. The choice is per-variant storage or
+-- a roll-up rule that cannot be computed — not a simpler schema. For the
+-- 1125 single-variant games measured in §9 the two are numerically identical
+-- today; the difference only appears once a title is merged across systems,
+-- which is exactly when silently discarding a variant's play history would
+-- be worst.
 --
 -- Deliberately NOT added here, per this repo's no-speculative-schema rule:
 --   · columns for ES-DE's <hidden>/<broken>/<nogamecount>/<nomultiscrape>/
@@ -43,13 +57,18 @@
 --     run history is ever wanted it is its own, later decision.
 
 ALTER TABLE public.game_platforms
-  ADD COLUMN IF NOT EXISTS esde_system text,
-  ADD COLUMN IF NOT EXISTS esde_path   text;
+  ADD COLUMN IF NOT EXISTS esde_system           text,
+  ADD COLUMN IF NOT EXISTS esde_path             text,
+  ADD COLUMN IF NOT EXISTS esde_playcount        integer,
+  ADD COLUMN IF NOT EXISTS esde_playtime_seconds integer,
+  ADD COLUMN IF NOT EXISTS esde_last_played      timestamptz;
 
 COMMENT ON COLUMN public.game_platforms.esde_system IS
   'ES-DE system FOLDER name (genesis, snes, …), not the display value in `system`. Half of the ES-DE sync key.';
 COMMENT ON COLUMN public.game_platforms.esde_path IS
   'The <path> verbatim from that system''s gamelist.xml, e.g. ./Sonic 3.md. Half of the ES-DE sync key.';
+COMMENT ON COLUMN public.game_platforms.esde_playcount IS
+  'Per-variant play stat as ES-DE reports it. games.esde_playcount is the roll-up across a game''s variants.';
 
 -- The real enforcement. Partial, because every row that has never been
 -- through an ES-DE sync (a manually added game, an RP5 import) legitimately
