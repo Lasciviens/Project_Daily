@@ -167,7 +167,7 @@ export function IngredientManager() {
         )}
         <div className={`${formOpen ? 'flex' : 'hidden'} sm:flex flex-col gap-2`}>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-            <input value={f.name} onChange={e => set('name', e.target.value)} placeholder="Name (Tavuk göğsü)" className={`${inputCls} col-span-2 sm:col-span-1`} />
+            <input value={f.name} onChange={e => set('name', e.target.value)} placeholder="Name (e.g. chicken breast)" className={`${inputCls} col-span-2 sm:col-span-1`} />
             <input value={f.kcal} onChange={e => set('kcal', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Calories" className={inputCls} />
             <input value={f.prot} onChange={e => set('prot', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Protein g" className={inputCls} />
             <input value={f.carb} onChange={e => set('carb', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Carbs g" className={inputCls} />

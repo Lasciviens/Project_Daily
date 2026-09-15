@@ -1,20 +1,27 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ErrorLogTab } from '../components/ErrorLogTab'
 import { ActivityLogTab } from '../components/ActivityLogTab'
 import { MemoryTab } from '../components/MemoryTab'
+import { ConnectionsTab } from '../components/ConnectionsTab'
 import { reindexAiSearch } from '../../ai/api/aiApi'
 import { toast } from '../../../app/store'
 
-type Tab = 'activity' | 'errors' | 'memory'
+type Tab = 'connections' | 'activity' | 'errors' | 'memory'
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'connections', label: 'Connections' },
   { id: 'activity', label: 'Activity' },
   { id: 'errors',   label: 'Errors'   },
   { id: 'memory',   label: 'Memory'   },
 ]
 
 export function DeveloperPage() {
-  const [tab, setTab] = useState<Tab>('activity')
+  // ?tab=connections so the ⚙ menu (and any future link) can deep-link
+  // straight to a specific tab instead of always landing on Activity.
+  const [params] = useSearchParams()
+  const initial = TABS.some(t => t.id === params.get('tab')) ? params.get('tab') as Tab : 'activity'
+  const [tab, setTab] = useState<Tab>(initial)
   const [reindexing, setReindexing] = useState(false)
 
   async function handleReindex() {
@@ -61,6 +68,7 @@ export function DeveloperPage() {
         </button>
       </div>
 
+      {tab === 'connections' && <ConnectionsTab />}
       {tab === 'activity' && <ActivityLogTab />}
       {tab === 'errors'   && <ErrorLogTab />}
       {tab === 'memory'   && <MemoryTab />}

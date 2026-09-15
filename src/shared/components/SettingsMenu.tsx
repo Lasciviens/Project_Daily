@@ -1,24 +1,21 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
-import { useGoogleLogin } from '@react-oauth/google'
-import { useCalendarStore, useThemeStore, type ThemePreference } from '../../app/store'
-import { supabase } from '../../integrations/supabase/client'
-import { exchangeCalendarCode, disconnectCalendar } from '../../features/calendar/api/calendarApi'
+import { useThemeStore, type ThemePreference } from '../../app/store'
 import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCalendar'
 import { applyTheme, THEMES } from './ThemeSwitcher'
 import { signOut } from '../../security/supabaseClient'
-import { GoogleTasksSyncButtons } from '../../features/todo/components/GoogleTasksSyncButtons'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 
 export function SettingsMenu() {
-  const [calLoading, setCalLoading] = useState(false)
-  const [calError,   setCalError]   = useState<string | null>(null)
   const [theme,      setTheme]      = useState(() => localStorage.getItem('accent-theme') ?? 'orange')
 
-  const { accessToken, expiresAt, setAccessToken } = useCalendarStore()
   const { theme: appearance, setTheme: setAppearance } = useThemeStore()
   const push = usePushNotifications()
+  // Connect/disconnect moved to Developer → Connections, but this hook must
+  // stay HERE: SettingsMenu is mounted in the header on every route, so it is
+  // the only always-on place the Calendar access token gets refreshed. On the
+  // Connections tab it would only run while that tab happened to be open.
   useAutoRefreshCalendarToken()
 
   const APPEARANCE_OPTIONS: { value: ThemePreference; label: string; icon: string }[] = [
@@ -26,55 +23,6 @@ export function SettingsMenu() {
     { value: 'dark',   label: 'Dark',   icon: '🌙' },
     { value: 'system', label: 'System', icon: '💻' },
   ]
-
-  const isCalConnected = !!accessToken && (!expiresAt || Date.now() < expiresAt - 60_000)
-
-  // ONE "Connect Google" = one consent covering every Google service the app
-  // pulls (user decision 2026-07-21, supersedes the earlier per-service-client
-  // plan): Calendar + Tasks. The single refresh token stored by
-  // calendar-oauth then serves both. Adding a future scope (Gmail briefing,
-  // contacts birthdays, …) = append here + one re-consent.
-  //
-  // `calendar.calendarlist.readonly` (added — real bug, fixed): without it,
-  // `GET /users/me/calendarList` (calendarApi.ts's fetchCalendarList, used
-  // by useCalendarList) 403s, so a user's SUBSCRIBED/secondary calendars
-  // never populated the calendar picker (WeekWidget's "⊞ Filter calendars")
-  // at all — `calendar.events` only grants read/write on EVENTS, never on
-  // calendar list/metadata. This is the narrowest scope that covers it
-  // (never the broader `calendar`/`calendar.readonly`, which would also
-  // grant read access to every OTHER calendar's full settings). Existing
-  // connected users must reconnect once to pick up the new scope — the app
-  // has no way to silently widen an already-granted consent.
-  const login = useGoogleLogin({
-    flow:    'auth-code',
-    scope:   [
-      'https://www.googleapis.com/auth/calendar.events',
-      'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
-      'https://www.googleapis.com/auth/tasks',
-    ].join(' '),
-    ux_mode: 'popup',
-    onSuccess: async ({ code }) => {
-      setCalLoading(true)
-      setCalError(null)
-      try {
-        const { access_token, expires_in } = await exchangeCalendarCode(supabase, code)
-        setAccessToken(access_token, expires_in)
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Connection failed'
-        setCalError(msg === 'no_refresh_token' ? 'Please reconnect and allow access again.' : msg)
-      } finally {
-        setCalLoading(false)
-      }
-    },
-    onError: () => setCalError('Sign-in was cancelled or failed'),
-  })
-
-  async function handleDisconnect() {
-    setCalLoading(true)
-    setAccessToken(null)  // clear immediately so UI reacts at once
-    try { await disconnectCalendar(supabase) } catch { /* server cleanup best-effort */ }
-    setCalLoading(false)
-  }
 
   function selectTheme(name: string) {
     applyTheme(name)
@@ -97,45 +45,6 @@ export function SettingsMenu() {
         transition
         className="z-50 bg-cream-50 border border-ink-200 rounded-xl shadow-card-hover w-60 overflow-hidden [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0 data-[closed]:scale-95"
       >
-        {/* Google — one connection for Calendar + Tasks */}
-        <div className="px-4 py-3 border-b border-ink-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1">Google</p>
-          <p className="text-[10px] text-ink-400 mb-2.5 leading-snug">Calendar · Tasks</p>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isCalConnected ? 'bg-green-400' : 'bg-ink-300'}`} />
-              <span className="text-xs text-ink-600">{isCalConnected ? 'Connected' : 'Not connected'}</span>
-            </div>
-            {isCalConnected ? (
-              <MenuItem>
-                <button
-                  onClick={handleDisconnect}
-                  disabled={calLoading}
-                  className="text-[11px] text-red-400 hover:text-red-600 font-medium transition-colors duration-150 disabled:opacity-50"
-                >
-                  {calLoading ? 'Disconnecting…' : 'Disconnect'}
-                </button>
-              </MenuItem>
-            ) : (
-              <MenuItem>
-                <button
-                  onClick={() => { setCalError(null); login() }}
-                  disabled={calLoading}
-                  className="text-[11px] text-accent-600 hover:text-accent-700 font-medium transition-colors duration-150 disabled:opacity-50"
-                >
-                  {calLoading ? 'Connecting…' : 'Connect'}
-                </button>
-              </MenuItem>
-            )}
-          </div>
-          {calError && <p className="text-[10px] text-red-400 mt-1.5 leading-snug">{calError}</p>}
-          {isCalConnected && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <GoogleTasksSyncButtons />
-            </div>
-          )}
-        </div>
-
         {/* Notifications (Web Push) */}
         <div className="px-4 py-3 border-b border-ink-100">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Notifications</p>
@@ -201,6 +110,16 @@ export function SettingsMenu() {
             className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 hover:bg-cream-50 transition-colors duration-150 data-[focus]:bg-cream-50 border-b border-ink-100"
           >
             👨‍💻 Developer
+          </Link>
+        </MenuItem>
+
+        {/* Where Google/Strava/PlayStation connect + disconnect now live. */}
+        <MenuItem>
+          <Link
+            to="/developer?tab=connections"
+            className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 hover:bg-cream-50 transition-colors duration-150 data-[focus]:bg-cream-50 border-b border-ink-100"
+          >
+            🔌 Connections
           </Link>
         </MenuItem>
 

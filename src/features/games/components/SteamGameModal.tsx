@@ -98,7 +98,7 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
             {/* Your own numbers — always available, no extra request */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <Stat label="Toplam" value={fmtHours(game.playtime_forever)} />
-              <Stat label="Son 2 hafta" value={game.playtime_2weeks ? fmtHours(game.playtime_2weeks) : '—'} />
+              <Stat label="Last 2 weeks" value={game.playtime_2weeks ? fmtHours(game.playtime_2weeks) : '—'} />
               <Stat label="Son oynama" value={fmtDate(game.rtime_last_played)} />
               <Stat label="Metacritic" value={details.data?.metacritic_score ? String(details.data.metacritic_score) : '—'} />
             </div>

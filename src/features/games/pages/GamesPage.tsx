@@ -8,6 +8,7 @@ import { NeedsReviewTab } from '../components/NeedsReviewTab'
 import { StatsPanel } from '../components/StatsPanel'
 import { PlayStationTab } from '../components/PlayStationTab'
 import { SteamTab } from '../components/SteamTab'
+import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { STATUS_LABEL, STATUS_COLOR, STATUS_BORDER, TIER_COLOR, TIERS, STATUSES } from '../gamesMeta'
 import { Sheet } from '../../../shared/components/Sheet'
 import { haptic } from '../../../shared/utils/haptics'
@@ -574,8 +575,20 @@ export function GamesPage() {
         ))}
       </div>
 
-      {platform === 'playstation' && <PlayStationTab />}
-      {platform === 'steam'       && <SteamTab />}
+      {/* Both of these render reverse-engineered payloads (Sony has no
+          official API at all), so a field whose real shape differs from the
+          declared type would otherwise throw DURING render and blank the
+          whole page. The boundary keeps the failure inside the tab. */}
+      {platform === 'playstation' && (
+        <ErrorBoundary label="PlayStation" action="psn_tab_render">
+          <PlayStationTab />
+        </ErrorBoundary>
+      )}
+      {platform === 'steam' && (
+        <ErrorBoundary label="Steam" action="steam_tab_render">
+          <SteamTab />
+        </ErrorBoundary>
+      )}
 
       {platform === 'retro' && (
         <>

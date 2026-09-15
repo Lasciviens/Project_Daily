@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSteamProfile, useSteamOwnedGames, useSteamLevelBadges } from '../hooks/useSteam'
 import { SteamGameModal } from './SteamGameModal'
@@ -44,9 +45,7 @@ function NotConfigured() {
       <p className="text-4xl mb-3">🖥️</p>
       <h2 className="text-base font-bold text-ink-900 mb-1">Steam — not configured yet</h2>
       <p className="text-sm text-ink-500">
-        Add <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">STEAM_API_KEY</code> and{' '}
-        <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">STEAM_ID64</code> to Supabase Vault, then deploy the{' '}
-        <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">steam-api</code> function.
+        Steam is configured server-side. See <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link> for its status and setup steps.
       </p>
     </div>
   )
@@ -84,7 +83,7 @@ function RecentStrip({ games, onOpen }: { games: SteamGame[]; onOpen: (g: SteamG
   if (!games.length) return null
   return (
     <div className="mb-5">
-      <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mb-2">Son 2 hafta</h3>
+      <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mb-2">Last 2 weeks</h3>
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none scroll-fade-x">
         {games.map(g => (
           <button key={g.appid} onClick={() => onOpen(g)}

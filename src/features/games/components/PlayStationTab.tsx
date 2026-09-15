@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   usePsnStatus, usePsnProfile, usePsnPlayedGames, usePsnPurchasedGames, usePsnTitles,
-  useConnectPsn, useDisconnectPsn,
 } from '../hooks/usePlayStation'
 import { PsnGameModal } from './PsnGameModal'
 import { parsePlayDurationMinutes, type PsnPlayedGame, type PsnTrophyTitle } from '../api/psnApi'
@@ -41,34 +41,6 @@ function relativeDay(iso?: string): string | null {
   if (days < 30) return `${days}d ago`
   if (days < 365) return `${Math.floor(days / 30)}mo ago`
   return `${Math.floor(days / 365)}y ago`
-}
-
-function ConnectForm() {
-  const [npsso, setNpsso] = useState('')
-  const connect = useConnectPsn()
-  return (
-    <div className="max-w-2xl mx-auto py-10 px-4">
-      <div className="text-center mb-6">
-        <p className="text-4xl mb-3">🎮</p>
-        <h2 className="text-base font-bold text-ink-900 mb-1">Connect PlayStation</h2>
-        <p className="text-sm text-ink-500">
-          Sony has no official API — this uses the community <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">npsso</code> token flow.
-          You'll need to repeat this every couple of months, when the token expires.
-        </p>
-      </div>
-      <ol className="text-sm text-ink-700 space-y-2 mb-5 list-decimal list-inside bg-cream-50 border border-ink-200 rounded-xl p-4">
-        <li>Log into <a href="https://my.playstation.com" target="_blank" rel="noreferrer" className="text-accent-600 underline">my.playstation.com</a> in this browser.</li>
-        <li>Open <a href="https://ca.account.sony.com/api/v1/ssocookie" target="_blank" rel="noreferrer" className="text-accent-600 underline">the ssocookie endpoint</a> in a new tab — it returns JSON like <code className="text-xs bg-ink-100 px-1 py-0.5 rounded">{'{"npsso":"…"}'}</code>.</li>
-        <li>Copy the value between the quotes and paste it below.</li>
-      </ol>
-      <textarea value={npsso} onChange={e => setNpsso(e.target.value)} rows={3} placeholder="Paste your npsso token here…"
-        className="w-full px-3 py-2.5 text-xs font-mono rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none" />
-      <button onClick={() => connect.mutate(npsso.trim())} disabled={!npsso.trim() || connect.isPending}
-        className="mt-3 w-full min-h-[44px] px-4 text-sm font-semibold bg-accent-500 hover:bg-accent-600 text-white rounded-xl disabled:opacity-40 transition-colors">
-        {connect.isPending ? 'Connecting…' : '🔌 Connect'}
-      </button>
-    </div>
-  )
 }
 
 function GameCard({ game, isPlus, onOpen }: { game: PsnPlayedGame; isPlus: boolean; onOpen: () => void }) {
@@ -134,7 +106,6 @@ function ConnectedView() {
   // The trophy-set list is a separate Sony dataset — only fetched if the
   // user actually switches to that view.
   const titles = usePsnTitles(view === 'trophies')
-  const disconnect = useDisconnectPsn()
 
   const [sort, setSort] = useState<SortKey>('playtime')
   const [search, setSearch] = useState('')
@@ -200,10 +171,6 @@ function ConnectedView() {
           <button onClick={() => qc.invalidateQueries({ queryKey: ['psn'] })}
             className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors">
             🔄 Refresh
-          </button>
-          <button onClick={() => disconnect.mutate()} disabled={disconnect.isPending}
-            className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-red-300 hover:text-red-600 transition-colors disabled:opacity-40">
-            Disconnect
           </button>
         </div>
       </div>
@@ -292,5 +259,16 @@ function ConnectedView() {
 export function PlayStationTab() {
   const status = usePsnStatus()
   if (status.isLoading) return <div className="text-sm text-ink-400 py-12 text-center">Checking connection…</div>
-  return status.data?.connected ? <ConnectedView /> : <ConnectForm />
+  if (status.data?.connected) return <ConnectedView />
+  return (
+    <div className="max-w-xl mx-auto text-center py-12 px-4">
+      <p className="text-4xl mb-3">🎮</p>
+      <h2 className="text-base font-bold text-ink-900 mb-1">PlayStation is not connected</h2>
+      <p className="text-sm text-ink-500">
+        Connect it in{' '}
+        <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>,
+        where every integration is managed.
+      </p>
+    </div>
+  )
 }

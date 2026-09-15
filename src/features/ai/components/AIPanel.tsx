@@ -56,10 +56,10 @@ const SUGGESTIONS = [
 ]
 
 const COACH_SUGGESTIONS = [
-  'Son 30 günümü değerlendir — nerede iyiyim, nerede kötüyüm?',
-  'Programımı incele: hangi kaslar eksik kalıyor?',
-  'Bu haftaki beslenmem ve kilom hedefe uygun mu?',
-  'Back Day rutinimde ne değiştirirdin?',
+  'Assess my last 30 days — where am I doing well, where badly?',
+  'Review my program: which muscles are under-trained?',
+  'Are this week\'s nutrition and bodyweight on track for my goal?',
+  'What would you change in my Back Day routine?',
 ]
 
 // One-tap "remember this" affordance for save_memory (aiApi.ts): a normal

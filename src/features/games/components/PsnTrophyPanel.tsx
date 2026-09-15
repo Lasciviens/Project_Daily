@@ -38,12 +38,12 @@ function TrophyRow({ t }: { t: PsnTrophy }) {
         {t.trophyDetail
           ? <p className="text-[11px] text-ink-400 leading-snug line-clamp-2">{t.trophyDetail}</p>
           : t.trophyHidden && !t.earned
-            ? <p className="text-[11px] text-ink-300 italic">Gizli kupa</p>
+            ? <p className="text-[11px] text-ink-300 italic">Hidden trophy</p>
             : null}
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {rarity && (
             <span className={`text-[10px] font-medium ${rarity.cls}`}>
-              {rarity.text}{t.earnedRate != null ? ` · %${t.earnedRate.toFixed(1)}` : ''}
+              {rarity.text}{t.earnedRate != null ? ` · ${t.earnedRate.toFixed(1)}%` : ''}
             </span>
           )}
           {t.earned && t.earnedDateTime && (
@@ -54,7 +54,7 @@ function TrophyRow({ t }: { t: PsnTrophy }) {
           {/* PS5 progress trophies report partial completion — real in the
               response, absent from psn-api's own types. */}
           {!t.earned && t.progressRate != null && (
-            <span className="text-[10px] text-accent-600">%{t.progressRate} ilerleme</span>
+            <span className="text-[10px] text-accent-600">{t.progressRate}% progress</span>
           )}
           {t.trophyRewardName && (
             <span className="text-[10px] text-ink-400">🎁 {t.trophyRewardName}</span>
@@ -119,7 +119,7 @@ export function PsnTrophyPanel({ npCommunicationId, npServiceName, hasGroups }: 
             <button key={g.trophyGroupId} onClick={() => setGroup(g.trophyGroupId)}
               className={`min-h-[44px] px-3 text-xs rounded-lg border whitespace-nowrap flex-shrink-0 transition-colors ${group === g.trophyGroupId ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200'}`}>
               {g.trophyGroupId === 'default' ? 'Base game' : g.trophyGroupName}
-              <span className="ml-1 opacity-70">%{g.progress}</span>
+              <span className="ml-1 opacity-70">{g.progress}%</span>
             </button>
           ))}
         </div>
