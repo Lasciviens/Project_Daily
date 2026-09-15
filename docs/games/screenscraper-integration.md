@@ -350,23 +350,25 @@ migration and the schema). Revisit later if that split stops fitting.
 ## 9. The real ES-DE export — measured, 2026-09-15
 
 Run against the user's actual export (`ES-DE Copy`, ES-DE **3.4.1-58 (r51)**,
-Android app on an Adreno 740 device).
+Android app on an Adreno 740 device). **Self-check passed** — `<path>` count
+equals `<game>` count in every file, so every number below is measured, not
+estimated.
 
 **1.3 MB total.** 33 files; 26 `gamelist.xml` (24 live + 2 stale CLEANUP
 snapshots) totalling 1.2 MB. `downloaded_media` was not copied and is not
 needed. Only `gamelists/` plus two config files are in scope.
 
-### 1167 games across 24 systems
+### 1150 games across 24 systems
 
 | system | games | | system | games |
 |---|---|---|---|---|
-| nes | 278 | | fbneo | 12 |
-| snes | 241 | | n3ds | 9 |
-| genesis | 185 | | saturn | 6 |
-| switch | 132 | | dreamcast | 3 |
-| n64 | 91 | | wiiu | 3 |
-| psp | 57 | | segacd | 2 |
-| gc | 47 | | steam | 2 |
+| nes | 277 | | fbneo | 12 |
+| snes | 239 | | n3ds | 6 |
+| genesis | 182 | | saturn | 6 |
+| switch | 125 | | dreamcast | 3 |
+| n64 | 91 | | segacd | 2 |
+| psp | 57 | | steam | 2 |
+| gc | 47 | | wiiu | 2 |
 | ps2 | 39 | | xbox360 | 2 |
 | gba | 22 | | androidapps | 1 |
 | nds | 18 | | emulators | 1 |
@@ -379,59 +381,60 @@ needed. Only `gamelists/` plus two config files are in scope.
 `steam` are launcher shortcuts. They will never match on ScreenScraper and must
 be excluded up front so they do not burn the separate KO quota (§2b).
 
-### ⚠️ The aggregate field percentages from the first full run are NOT trustworthy
+**Real scrape budget: 1125 games.** 1150 minus 4 launcher-shortcut entries minus
+21 AppleDouble sidecars (below). At the measured premium ceiling that is a
+single-digit-minute full pass, and incremental runs are far smaller.
 
-The first aggregate run reported `path` present in only **27 %** of games, which
-is impossible — `<path>` is mandatory in every ES-DE `<game>`. Root cause was in
-the inspector, not the data: it *guessed* the repeated record element by
-frequency ranking, and in a gamelist `<game>`, `<path>` and `<name>` all appear
-exactly N times. Ties make that guess arbitrary, and four of the largest files
-(nes, snes, genesis, switch — 836 of the 1167 games) contributed **zero** fields
-to the aggregate while still contributing their record counts, so the
-denominator was right and the numerators were not.
+`<folder>` elements also exist alongside `<game>` in some lists (switch 7,
+genesis 3, n3ds 3, nes/snes/wiiu 1 each). They are directory entries carrying
+their own metadata, **not games** — counted separately above and ignored by the
+importer.
 
-Fixed two ways, both verified:
-- `gamelist.xml` no longer guesses — the record element is passed in explicitly
-  as `game`.
-- A **self-check** now compares the parsed `<path>` count against the `<game>`
-  count per file and prints a loud `⛔ PARSE MISMATCH` naming each offending
-  file. Verified it actually fires (a fixture with one path-less `<game>`
-  produced `3 <game> records but <path> parsed 2×`). A clean run prints
-  `✓ parse self-check passed`.
+### `<game>` fields ES-DE actually writes — measured fill rates over all 1150
 
-**Re-run needed** for real fill rates. The numbers below are shapes confirmed
-from individual records and are reliable; the *percentages* are not, until a run
-reports the self-check as passed.
+| Field | Fill | Notes |
+|---|---|---|
+| `path` | **100 %** | **The join key.** Relative, `./`-prefixed, e.g. `./Burnout 3 - Takedown .chd` |
+| `name` | **100 %** | Display name, already cleaned by the scraper |
+| `desc` | 98 % | Long synopsis |
+| `developer` | 98 % | plain string |
+| `publisher` | 98 % | plain string |
+| `players` | 98 % | range string: `1`, `1-2`, `1-4` |
+| `releasedate` | 98 % | `YYYYMMDDTHHMMSS`, e.g. `19991014T000000` — **no timezone** |
+| `genre` | 98 % | **comma-separated inside ONE string**, e.g. `Racing, Driving` |
+| `rating` | 97 % | **0–1 decimal** (`0.9`, `1`) — not 0–5, not 0–10 |
+| `playcount` | 8 % (94) | integer — times launched |
+| `lastplayed` | 8 % (88) | `YYYYMMDDTHHMMSS`, e.g. `20260519T210643` |
+| `playtime` | 7 % (85) | **integer SECONDS** (`17`, `29`, `2814`) |
+| `favorite` | 1 % (12) | `true` |
+| `hidden` | 5 | `true` — ES-DE curation flag |
+| `broken` | 3 | `true` |
+| `nogamecount` | 3 | `true` |
+| `nomultiscrape` | 3 | `true` |
+| `hidemetadata` | 2 | `true` |
 
-### `<game>` fields ES-DE actually writes
+The 97–98 % band is one consistent set: those are the games ES-DE has already
+scraped. The ~2 % gap is the same unscraped games in every column, not a
+per-field quality issue — which is exactly the set ScreenScraper should fill.
 
-| Field | Notes |
-|---|---|
-| `path` | **The join key.** Relative, `./`-prefixed, e.g. `./Burnout 3 - Takedown .chd` |
-| `name` | Display name, already cleaned by the scraper |
-| `desc` | Long synopsis |
-| `rating` | **0–1 decimal** (`0.9`, `1`) — not 0–5, not 0–10 |
-| `releasedate` | `YYYYMMDDTHHMMSS`, e.g. `19981211T000000` |
-| `developer`, `publisher` | plain strings |
-| `genre` | **comma-separated inside ONE string**, e.g. `Racing, Driving` |
-| `players` | range string: `1`, `1-2`, `1-4` |
-| **`playcount`** | integer — times launched |
-| **`playtime`** | **integer SECONDS** (`17`, `29`, `2814`, `5400`) |
-| **`lastplayed`** | `YYYYMMDDTHHMMSS`, e.g. `20260519T210643` |
-| `altemulator` | per-game emulator override, e.g. `AetherSX2 (Standalone)` |
-| `favorite` | `true` (~10 games) |
-| `hidden`, `broken`, `nogamecount`, `nomultiscrape`, `hidemetadata` | `true`, a handful each — ES-DE curation flags |
+**`altemulator` does NOT appear in this export.** An earlier draft of this
+section listed it from a mis-parsed sample; the verified run shows 18 distinct
+`<game>` child elements and `altemulator` is not among them. Do not write an
+importer branch for it.
 
 **`playtime` is the find.** `games` already has empty `esde_playcount` /
 `esde_last_played` / `esde_playtime_seconds` columns; all three map directly and
 `playtime` is already in seconds.
 
 Play stats are sparse by nature — only games actually launched carry them
-(roughly 4–5 % here). Absence means "never played", not a sync failure.
+(7–8 % here). Absence means "never played", not a sync failure. **No play-stat
+column may be `NOT NULL`;** the metadata columns are 98 %-filled but the 2 % gap
+is real, so those cannot be `NOT NULL` either. `path` and `name` are the only
+two fields the data supports making required.
 
 ### Two traps in real `path` values
 
-1. **macOS AppleDouble sidecars — 16 found.** Entries like
+1. **macOS AppleDouble sidecars — 21 found.** Entries like
    `./._Legend of Zelda, The - Ocarina of Time (USA).z64`. The `._` prefix is a
    macOS resource-fork sidecar created when the folder was copied to the Mac,
    **not a real ROM**. Filter them out or they get scraped, fail, and burn KO
@@ -449,10 +452,10 @@ the count separately — an early run sampled one by accident and reported a
 
 ### Other files
 
-- **`custom_systems/es_systems.xml`** (42 KB, 25 `<system>`) — `name`,
-  `fullname`, `path`, `extension`, `platform`, `theme` per system. `platform`
-  is the natural bridge to ScreenScraper's system ids (§6); `extension` says
-  which files are even candidate ROMs.
+- **`custom_systems/es_systems.xml`** (42 KB, 25 `<system>`, every field 100 %
+  filled) — `name`, `fullname`, `path`, `extension`, `platform`, `theme` per
+  system. `platform` is the natural bridge to ScreenScraper's system ids (§6);
+  `extension` says which files are even candidate ROMs.
 - **`custom_systems/es_find_rules.xml`** (55 entries) — emulator discovery. Not
   useful to us.
 - **`settings/es_settings.xml`** (9 KB) — 103 `<bool>`, 53 `<string>`, 17
