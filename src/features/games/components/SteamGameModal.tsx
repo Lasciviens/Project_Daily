@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
-import { useSteamAppDetails, useSteamAppReviews, useSteamCurrentPlayers } from '../hooks/useSteam'
+import { useSteamAppDetails, useSteamAppReviews, useSteamCurrentPlayers, STORE_UNAVAILABLE } from '../hooks/useSteam'
 import { SteamAchievementGrid } from './SteamAchievementGrid'
 import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
 
@@ -107,6 +107,19 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
 
             {/* Store metadata */}
             {details.isLoading && <p className="text-sm text-ink-400">Mağaza bilgisi yükleniyor…</p>}
+            {(details.error as Error | null)?.message === STORE_UNAVAILABLE ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm text-ink-500">
+                  Mağaza bilgisi şu an alınamadı (Steam hız sınırı olabilir) — kendi verilerin aşağıda.
+                </p>
+                <button onClick={() => details.refetch()} disabled={details.isFetching}
+                  className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors disabled:opacity-40">
+                  {details.isFetching ? 'Deneniyor…' : 'Tekrar dene'}
+                </button>
+              </div>
+            ) : details.error ? (
+              <p className="text-sm text-red-600">Mağaza bilgisi alınamadı: {(details.error as Error).message}</p>
+            ) : null}
             {details.data && !d && (
               <p className="text-sm text-ink-400">Bu oyun Steam mağazasında artık listelenmiyor — sadece kendi verilerin gösteriliyor.</p>
             )}
