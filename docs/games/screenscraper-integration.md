@@ -20,7 +20,7 @@ repo's "never add a speculative external-API field" rule.
 
 | Endpoint | Result | Notes |
 |---|---|---|
-| `ssuserInfos.php` | **403** | Fails with dev credentials alone — needs the *member* account password too (see §2) |
+| `ssuserInfos.php` | **403** → **200** | 403 with dev credentials alone; 200 once the member `ssid`/`sspassword` are sent (see §2) |
 | `jeuRecherche.php` | **200**, ~2.3 MB | Fuzzy search by name. Returned 30 candidate games for one query |
 | `jeuInfos.php` (match) | **200**, ~208 KB | Exact lookup by ROM filename. This is the endpoint the sync will use |
 | `jeuInfos.php` (no match) | **404** | ⚠️ **plain text, NOT JSON** — see §4 |
@@ -34,56 +34,57 @@ ScreenScraper wants **two** pairs, and they are not interchangeable:
 
 - `devid` + `devpassword` — the *application* identity. **We have this and it
   works.**
-- `ssid` + `sspassword` — the *user account*. **We do NOT have the password.**
-  The "Password" column on the dev page is the devpassword, not this one.
+- `ssid` + `sspassword` — the *user account*, and what carries the **paid
+  membership**. This is the screenscraper.fr website login, NOT the "Password"
+  column on the dev page (that one is the devpassword). Now in hand and
+  verified working.
 
 Consequence, measured from the live `ssuser` block on an anonymous call:
 
 ```
-niveau:             0        ← anonymous, premium NOT recognised
-maxthreads:         1        ← one request at a time
+niveau:             0        ← anonymous: no member credentials sent
+maxthreads:         1
 maxrequestsperday:  10000
 maxrequestspermin:  3072
 maxdownloadspeed:   128      (KB/s)
 ```
 
-### Why a paid premium membership changes nothing *yet* — measured, not assumed
+### Premium IS recognised once the member credentials are sent — measured
 
-The user has a paid premium membership. It is **not being applied**, and the
-reason is mechanical rather than a quota problem:
+The paid membership hangs off the **member account**, not the dev app. Sending
+`ssid` + `sspassword` (the screenscraper.fr website login) alongside the dev
+pair switches it on. Measured on a real `ssuserInfos.php` call and confirmed
+again on a real `jeuInfos.php` call:
 
-- `ssuser.id` comes back as `""` (empty) on our calls. **The API does not know
-  who is calling** beyond the dev-app identity. Membership is attached to the
-  *member account*, and we never send member credentials, so there is nothing
-  for it to apply the benefit to.
-- Sending `ssid=Lasciviens` with the **dev** password returns `403
-  Erreur de login`. That 403 is itself the proof the pair *is* validated — we
-  simply have the wrong password in that slot.
-- Forcing a level through the documented debug mode
-  (`devdebugpassword` + `forcelevel`) was tried at levels 0, 1, 20, 30 and 99.
-  **Every one returned identical limits** (`niveau=0, maxthreads=1,
-  req/day=10000`), because `forcelevel` overrides a *logged-in user's* level and
-  there is no logged-in user to override.
+| | anonymous (dev only) | **premium (member sent)** | change |
+|---|---|---|---|
+| `niveau` | 0 | **1** | identified |
+| `maxthreads` | 1 | **6** | 6× parallelism |
+| `maxrequestsperday` | 10 000 | **100 000** | 10× |
+| `maxrequestspermin` | 3 072 | **7 168** | 2.3× |
+| `maxdownloadspeed` | 128 KB/s | **2 176 KB/s** | **17×** |
+| `maxrequestskoperday` | 1 000 | 10 000 | 10× |
 
-Also worth knowing: `userlevelsListe.php` returns **contribution** ranks
-(Membre → Contributeur → … → Admin), i.e. how much you have contributed to the
-database. Those are a different axis from the paid membership and are not what
-unlocks throughput on their own.
+The 17× media download speed is the one that matters most for a first full
+scrape, since cover art is the bulk of the bytes. Six threads also means the
+scrape no longer has to be strictly sequential.
 
-**So the fix is one missing string:** the password used to log in to
-screenscraper.fr as the member `Lasciviens`. Not the dev password, not the debug
-password — those are already in hand and are a separate pair.
+**Watch the shared daily counter.** That same call reported
+`requeststoday: 24160` — the quota is per *account*, so scraping done on the
+device itself (ES-DE's own scraper) spends from the same 100 000. Read
+`requeststoday` at the start of a run and back off rather than assuming a fresh
+budget.
 
-**Verdict: 10 000 requests/day is comfortably enough** for a library of a few
-thousand ROMs scraped once and then only on changes, so this is **not a
-blocker** for building the sync. What it costs today is `maxthreads: 1` — a
-strictly sequential scrape, and a 128 KB/s media download cap. Supplying the
-member password lifts both.
+Earlier dead ends, recorded so nobody retries them: forcing a level via the
+documented debug mode (`devdebugpassword` + `forcelevel`) at 0/1/20/30/99
+returned identical anonymous limits every time, because `forcelevel` overrides a
+*logged-in* user's level and there was no logged-in user. And
+`userlevelsListe.php` returns **contribution** ranks (Membre → Contributeur →
+Admin), a different axis from the paid membership.
 
-**TODO (user):** supply the ScreenScraper *member account* password (your
-screenscraper.fr website login). Store in Vault as `SCREENSCRAPER_SSID` /
-`SCREENSCRAPER_SSPASSWORD`. Then re-run the measurement above to record the real
-premium numbers here, replacing the anonymous ones.
+**Store as** `SCREENSCRAPER_DEVID` / `SCREENSCRAPER_DEVPASSWORD` /
+`SCREENSCRAPER_SSID` / `SCREENSCRAPER_SSPASSWORD` in Supabase Vault. All four
+are needed; the pairs are not interchangeable.
 
 ---
 
@@ -91,13 +92,14 @@ premium numbers here, replacing the anonymous ones.
 
 This is the single most important finding here.
 
-Every media entry the API returns carries a ready-made URL that has **our
-devid and devpassword inline**:
+Every media entry the API returns carries a ready-made URL with credentials
+inline — and once the member pair is sent (which we now do, for premium), the
+URL carries **the account password too**, not just the dev one:
 
 ```
 https://neoclone.screenscraper.fr/api2/mediaJeu.php
   ?devid=<DEVID>&devpassword=<DEVPASSWORD>&softname=...
-  &ssid=&sspassword=&systemeid=1&jeuid=3&media=sstitle(wor)
+  &ssid=<SSID>&sspassword=<ACCOUNT PASSWORD>&systemeid=1&jeuid=3&media=sstitle(wor)
 ```
 
 The same is true of `systemesListe`'s `medias[].url`.
@@ -211,9 +213,8 @@ Also on each system: `extensions` (`"gen,md,smd,bin,sg"`) and `romtype`.
 
 ## 7. Open decisions
 
-- [ ] Member account password → premium threading. **Confirmed to be the only
-      thing standing between us and the paid benefits** (see §2); the dev and
-      debug passwords are already in hand and do not carry membership
+- [x] ~~Member account password → premium~~ **DONE** — supplied and verified;
+      real premium numbers recorded in §2
 - [ ] Image strategy: mirror into Supabase Storage (recommended) vs. on-demand
       signed URL via edge function
 - [ ] Where the ScreenScraper score (`note`, /20) lives, if anywhere — must not
@@ -265,7 +266,14 @@ migration and the schema). Revisit later if that split stops fitting.
 
 ## 9. Reading the ES-DE export without burning tokens
 
-A full ES-DE export is megabytes of XML across dozens of system folders.
+**You do not need the whole ES-DE folder.** A real install is around **15 GB**,
+but the bulk of that is `downloaded_media` (box art, screenshots, videos) and
+`themes`. The full sibling list is `collections`, `controllers`,
+`custom_systems`, `downloaded_media`, `gamelists`, `logs`, `screensavers`,
+`scripts`, `settings`, `themes` — and **only `gamelists/` matters here**, which
+is plain XML and small. Copy just that folder off the device.
+
+Even then, that XML is megabytes across dozens of system folders.
 Pasting that into a chat to "let Claude look at it" would cost an enormous
 number of tokens to learn three things:
 
@@ -281,9 +289,12 @@ nothing.
 node scripts/inspect-esde-gamelist.mjs <folder> [--sample]
 ```
 
-`<folder>` is wherever the ES-DE export was copied to — the script **searches
-downwards** for every `gamelist.xml`, so the exact level does not have to be
-right, and a wrong path prints where to look instead of failing silently.
+`<folder>` can be the `gamelists` folder itself or the ES-DE root — the script
+jumps straight into `gamelists/` when it sees it, and otherwise falls back to a
+shallow search that **deliberately skips `downloaded_media`, `themes`,
+`screensavers`, `roms`, `logs` and `cache`**. Walking `downloaded_media` on a
+15 GB install would take minutes and can never contain a gamelist. It reports
+how many folders it actually walked so that is visible, not assumed.
 `--sample` adds one full `<game>` block per system for the first three systems.
 
 **Workflow: run it, paste the OUTPUT, never the XML.** That output is enough to

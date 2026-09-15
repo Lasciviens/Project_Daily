@@ -10,14 +10,22 @@
 //
 // It is READ-ONLY. It never writes, moves or uploads anything.
 //
-// Usage (on the machine that has the files — e.g. the MacBook after you copy
-// the ES-DE folder off the device):
+// YOU DO NOT NEED THE WHOLE ES-DE FOLDER. A real ES-DE install is ~15 GB, but
+// almost all of that is `downloaded_media` (box art, screenshots, videos) and
+// `themes`. The only thing this needs — and the only thing the eventual sync
+// needs — is the `gamelists/` subfolder, which is plain XML and tiny.
 //
-//   node scripts/inspect-esde-gamelist.mjs <any-folder-containing-the-export>
+// So the cheap path is: copy just `ES-DE/gamelists/` off the device, and point
+// this at that.
 //
-// You do NOT need to find the exact `gamelists` folder yourself — point it at
-// the copied ES-DE folder (or even its parent) and it searches downwards for
-// every `gamelist.xml` it can find, then reports what it found and where.
+// Usage:
+//
+//   node scripts/inspect-esde-gamelist.mjs <folder> [--sample]
+//
+// <folder> can be the `gamelists` folder itself, or the ES-DE root (it will
+// jump straight into `gamelists/` when it sees it). If it has to fall back to
+// searching, it deliberately SKIPS the known-huge folders — walking
+// `downloaded_media` on a 15 GB install would take minutes for nothing.
 //
 // Add --sample to also print ONE full <game> block per system (these are
 // public ROM metadata, but glance at the output before pasting anywhere).
@@ -56,37 +64,54 @@ function textOf(block, tag) {
   return m ? m[1].trim() : null
 }
 
+// Real ES-DE folders contain these siblings, and two of them hold essentially
+// all of the ~15 GB. Never walk into them: no gamelist.xml lives there, and
+// `downloaded_media` alone can be hundreds of thousands of image files.
+const SKIP_DIRS = new Set([
+  'downloaded_media', 'themes', 'screensavers', 'roms', 'logs', 'cache',
+])
+
 /**
- * Find every gamelist.xml under `dir`, at any depth. ES-DE's own layout puts
- * them at <root>/gamelists/<system>/gamelist.xml, but people copy the folder
- * off a device at all sorts of levels, so searching is friendlier than
- * demanding one exact path.
+ * Find every gamelist.xml under `dir`. ES-DE's own layout is
+ * <root>/gamelists/<system>/gamelist.xml, so if a `gamelists` folder is right
+ * there we go straight into it and skip searching entirely. Otherwise we walk,
+ * but shallowly and past the heavy folders.
  */
-function findGamelists(dir, depth = 0, found = []) {
-  if (depth > 6) return found                      // don't walk a whole disk
+function findGamelists(dir, depth = 0, found = [], stats = { dirs: 0 }) {
+  if (depth > 5) return found
+  stats.dirs++
   let entries
   try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return found }
   for (const e of entries) {
     if (e.name.startsWith('.')) continue
+    if (e.isDirectory() && SKIP_DIRS.has(e.name.toLowerCase())) continue
     const full = join(dir, e.name)
-    if (e.isDirectory()) findGamelists(full, depth + 1, found)
+    if (e.isDirectory()) findGamelists(full, depth + 1, found, stats)
     else if (e.name === 'gamelist.xml') found.push(full)
   }
   return found
 }
 
-const gamelistFiles = findGamelists(root)
+const scanStats = { dirs: 0 }
+// Fast path: the caller pointed at an ES-DE root that has `gamelists/`.
+const directGamelists = join(root, 'gamelists')
+const searchRoot = existsSync(directGamelists) ? directGamelists : root
+const gamelistFiles = findGamelists(searchRoot, 0, [], scanStats)
 
 if (gamelistFiles.length === 0) {
   console.error(`No gamelist.xml found anywhere under: ${root}`)
   console.error('')
-  console.error('Point this at the ES-DE folder you copied off the device.')
-  console.error('On the device it usually lives somewhere like:')
+  console.error('This wants the ES-DE `gamelists` folder (plain XML, small).')
+  console.error('You do NOT need the whole ~15 GB ES-DE folder — downloaded_media')
+  console.error('and themes are the bulk of it and are irrelevant here.')
+  console.error('')
+  console.error('On the device it usually lives at something like:')
   console.error('  /storage/emulated/0/ES-DE/gamelists/')
-  console.error('  ~/ES-DE/gamelists/')
   console.error('')
   console.error('To hunt for it on this machine:')
   console.error('  find ~ -name gamelist.xml 2>/dev/null | head')
+  console.error('')
+  console.error(`(searched ${scanStats.dirs} folders under ${searchRoot}, skipping downloaded_media/themes/roms)`)
   process.exit(1)
 }
 
@@ -134,7 +159,8 @@ const kb = n => `${(n / 1024).toFixed(0)} KB`
 console.log('='.repeat(70))
 console.log('ES-DE gamelist inspection')
 console.log('='.repeat(70))
-console.log(`searched:      ${root}`)
+console.log(`searched:      ${searchRoot}${searchRoot !== root ? '  (jumped into gamelists/)' : ''}`)
+console.log(`folders walked:${String(scanStats.dirs).padStart(7)}`)
 console.log(`systems found: ${perSystem.length}`)
 console.log(`games total:   ${totalGames}`)
 console.log(`XML total:     ${kb(perSystem.reduce((s, x) => s + x.bytes, 0))}`)
