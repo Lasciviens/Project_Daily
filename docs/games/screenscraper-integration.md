@@ -88,6 +88,89 @@ are needed; the pairs are not interchangeable.
 
 ---
 
+## 2b. How to scrape correctly — limits, counters and back-off
+
+Researched against the official API behaviour plus two battle-tested open-source
+implementations (Skyscraper, which has shipped for years, and an open RomM issue
+covering exactly this). Every number below was either measured live on this
+account or cited from those sources.
+
+### Tier ladder (community-documented)
+
+| Tier | Threads | Speed |
+|---|---|---|
+| Free / unregistered | 1 | 128 Kb/s |
+| **Donor (€10 one-time)** | **+5 for life** | — |
+| Contributor | 8 | 40 Mb/s |
+
+This account reads **6 threads** = 1 base + 5 donor, matching its panel
+(`Member donor (1) / Developer`). Contributor tier is earned by contributing
+data, not bought.
+
+### ⚠️ `requeststoday` is NOT the panel's "Scrapes Today", and NOT a clean counter
+
+The user's panel showed `Scrapes Today: 30 / 100000` while the API's
+`ssuser.requeststoday` read **24 320** at the same moment. Measured directly:
+
+- calling `ssuserInfos.php` repeatedly did **not** move the counter (5 reads,
+  4 s apart, all `24330`) — so status reads are free;
+- **3 real `jeuInfos` calls moved it by 10**, not by 3.
+
+So `requeststoday` counts something coarser and/or wider than "scrapes this
+tool made" — it does not increment 1:1 with our requests, and it does not agree
+with the figure the website shows. **Do not build pacing on the assumption that
+it is our own request count.** Read it as a rough ceiling indicator only; do the
+real pacing client-side, from requests we actually issued.
+
+### Pacing rule to implement
+
+- **Sleep ~1.2 s between requests.** Skyscraper hard-codes
+  `limitTimer.setInterval(1200)` with the comment that it is "set a bit above
+  1.0 as requested by the good folks at ScreenScraper". That is a politeness
+  contract with the service, not just a technical limit — honour it even though
+  our measured `maxrequestspermin` is far higher.
+- **Never exceed `maxthreads`** (6 here). RomM's issue documents the formula
+  `maxrequestspermin = threads × 50`; note our account reports **7168**, which
+  does not fit that formula, so prefer the reported field over the formula and
+  prefer the 1.2 s floor over both.
+- **Track KO (not-found) separately.** `maxrequestskoperday` is 10 000 here and
+  is its own budget. A library full of unmatched files burns it fast — which is
+  exactly why the `._` AppleDouble sidecars and the `androidapps`/`steam`
+  pseudo-systems (§9) must be filtered out *before* scraping, not discovered as
+  failures.
+
+### Failure signals to branch on
+
+Confirmed live: the API signals via **HTTP status**, and the body of a failure is
+**plain text, not JSON** (§4). Verified headers carry no rate-limit metadata —
+no `Retry-After`, no `X-RateLimit-*`; the response headers are plain nginx +
+CORS only. So status code is the only structured signal.
+
+Skyscraper additionally matches these strings, which are worth recognising
+because they mean *stop*, not *retry*:
+
+| String | Meaning |
+|---|---|
+| `Votre quota de scrape est …` | daily quota exhausted |
+| `API totalement fermé` | API fully closed |
+| `API fermé pour les non membres` / `API closed for non-registered members` | closed to non-members |
+| `Le logiciel de scrape utilisé a été blacklisté` | this software is blacklisted |
+| `non trouvée` | game not found (normal) |
+
+Skyscraper retries up to **4 times** on ordinary failures but **never** on
+blacklist / quota / API-closed / invalid-JSON — those abort the run. Mirror
+that: retrying a quota error just deepens the hole.
+
+### Practical budget for our case
+
+The whole library is well under 10 000 games (§9). At 1.2 s/request sequentially
+that is a few hours for a first full pass, and essentially nothing on the
+incremental runs afterwards. **The quota is not the binding constraint; the
+politeness interval is.** There is no reason to push threads to 6 for a one-off
+backfill that can simply run in the background.
+
+---
+
 ## 3. ⚠️ Security finding: media URLs embed the credentials in plaintext
 
 This is the single most important finding here.
@@ -264,46 +347,95 @@ migration and the schema). Revisit later if that split stops fitting.
 
 ---
 
-## 9. Reading the ES-DE export without burning tokens
+## 9. The real ES-DE export — measured, 2026-09-15
 
-**You do not need the whole ES-DE folder.** A real install is around **15 GB**,
-and `downloaded_media` is essentially all of it. The full sibling list is
-`collections`, `controllers`, `custom_systems`, `downloaded_media`, `gamelists`,
-`logs`, `screensavers`, `scripts`, `settings`, `themes`.
+Run against the user's actual export (`ES-DE Copy`, ES-DE **3.4.1-58 (r51)**,
+running as a regular Android app on an Adreno 740 device).
 
-`scripts/inspect-esde-export.mjs` explores whatever you copied and reports what
-is really in it. It is READ-ONLY and uploads nothing.
+**The whole thing that matters is 1.3 MB.** 33 files, 26 `gamelist.xml` files
+totalling 1.2 MB. `downloaded_media` was not even copied and is not needed.
+Confirmed: only `gamelists/` (plus two config files, below) is in scope.
+
+### Systems present (24 live)
+
+`androidapps`, `androidgames`, `dreamcast`, `emulators`, `fbneo`, `gba`, `gc`,
+`genesis`, `n3ds`, `n64`, `nds`, `nes`, `ps2`, `psp`, `psx`, `saturn`,
+`segacd`, `snes`, `snesna`, `steam`, `switch`, `wii`, `wiiu`, `xbox360`
+
+Biggest by XML size: `nes` (301 KB), `snes` (256 KB), `genesis` (197 KB),
+`switch` (165 KB), `n64` (81 KB).
+
+Note `androidapps` / `androidgames` / `emulators` / `steam` — these are **not
+emulated ROMs**. They will not match anything on ScreenScraper and must be
+excluded from scraping rather than counted as failures.
+
+### `<game>` fields ES-DE actually writes
+
+Sampled from real records (a full aggregate across all 26 files comes from
+re-running the inspector — see below):
+
+| Field | Notes |
+|---|---|
+| `path` | **The join key.** Relative, `./`-prefixed, e.g. `./Burnout 3 - Takedown .chd` |
+| `name` | Display name, already cleaned up by the scraper |
+| `desc` | Long synopsis |
+| `rating` | **0–1 decimal** (`0.9`, `1`), NOT 0–5 and NOT 0–10 |
+| `releasedate` | `YYYYMMDDTHHMMSS`, e.g. `19981211T000000` |
+| `developer`, `publisher` | plain strings |
+| `genre` | **comma-separated in ONE string**, e.g. `Racing, Driving` |
+| `players` | range string, e.g. `1`, `1-2`, `1-4` |
+| **`playcount`** | integer — how many times launched |
+| **`playtime`** | **integer SECONDS** (`17`, `2814`, `5400`) |
+| **`lastplayed`** | `YYYYMMDDTHHMMSS`, e.g. `20260522T222128` |
+| `altemulator` | per-game emulator override, e.g. `AetherSX2 (Standalone)` |
+
+**`playtime` is the find here.** Our `games` table already has
+`esde_playcount` / `esde_last_played` / `esde_playtime_seconds` sitting empty;
+all three map directly, and `playtime` is already in seconds so no conversion.
+
+Fill rates are partial and that is normal: in one real system only 18 % of games
+had `playcount`/`playtime`/`lastplayed` (you only accumulate those by actually
+playing). Treat absence as "never played", not as a sync failure.
+
+### Two traps in the real `path` values
+
+1. **macOS AppleDouble sidecars.** Real entries appear as
+   `./._Legend of Zelda, The - Ocarina of Time (USA).z64` — the `._` prefix is a
+   macOS resource-fork sidecar created when the folder was copied to the Mac,
+   **not a real ROM**. They must be filtered out or they will be scraped,
+   fail, and pollute the not-found counters.
+2. **Extension-less paths** exist (folder-based games). Any matching logic that
+   assumes a file extension will mishandle them.
+
+### Backup copies that must not be mistaken for live data
+
+ES-DE keeps dated snapshots under `gamelists/CLEANUP/<timestamp>/<system>/`.
+These are real `gamelist.xml` files but **stale**. The inspector now excludes
+them from the aggregate and reports them separately — an early version sampled
+one by accident and reported a 5-game system that really had far more.
+
+### Other files worth knowing about
+
+- **`custom_systems/es_systems.xml`** (42 KB, 25 `<system>` records) — carries
+  `name`, `fullname`, `path`, `extension`, `platform`, `theme` per system. The
+  `platform` field is the natural bridge to ScreenScraper's own system ids
+  (§6), and `extension` tells us which files are even candidate ROMs.
+- **`custom_systems/es_find_rules.xml`** (55 entries) — emulator discovery
+  rules. Not useful to us.
+- **`settings/es_settings.xml`** (9 KB) — 103 `<bool>`, 53 `<string>`, 17
+  `<int>` attribute-style entries. App preferences; nothing we need.
+- **`collections/custom-mario.cfg`, `custom-pokemon.cfg`** — both **empty** in
+  this export, so the custom-collection idea has no data behind it today.
+
+### Re-run for the full aggregate
+
+The inspector now aggregates **all** live gamelists into one field inventory
+with real fill rates, lists games per system, and flags path oddities:
 
 ```
-node scripts/inspect-esde-export.mjs              # asks you to pick a folder
+node scripts/inspect-esde-export.mjs        # native folder picker on macOS
 node scripts/inspect-esde-export.mjs /path/to/ES-DE
 ```
 
-With no argument it opens a **native macOS folder picker**; elsewhere it lists
-candidate folders and takes a number. Flags: `--deep` also descends into the
-media/theme folders (slow), `--full` prints longer samples.
-
-It reports, in order: the folder tree with per-folder file counts and sizes; a
-file-type breakdown; a **distinct-filename** breakdown; then a content sample of
-each distinct filename.
-
-Three design points that came out of getting this wrong first:
-
-- **Sampling is keyed on filename, not extension.** An export has dozens of
-  identical `gamelist.xml` files; keying on `.xml` let them crowd out
-  `es_settings.xml` and every other genuinely different file.
-- **XML handling covers both shapes.** Record-style XML (`<gameList><game>…`)
-  gets a field inventory with fill rates and examples plus the first record
-  verbatim. Attribute-style XML (`<string name="…" value="…"/>`, which is what
-  ES-DE's own settings use) has no repeated record at all, so those elements are
-  inventoried separately — otherwise the file reads as empty.
-- **Heavy folders are counted but not descended into** by default, so a 15 GB
-  install does not take minutes to walk for nothing.
-
-**Workflow: run it, paste the OUTPUT, never the files.** The full files only
-ever need to be read by the sync script itself, on the device.
-
-**Deliberately NOT decided yet:** which parts of the export we actually consume.
-That is the point of running this first — `gamelists/` is the obvious candidate,
-but `collections/` (custom lists) and `settings/` may turn out to matter too,
-and guessing before looking is what this whole step exists to avoid.
+Flags: `--deep` also descends into media/theme folders, `--full` prints longer
+samples. It is READ-ONLY and uploads nothing. Paste the OUTPUT, never the files.

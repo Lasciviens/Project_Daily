@@ -42,6 +42,11 @@ const pathArg = args.find(a => !a.startsWith('--'))
 // They are still REPORTED as present, just not descended into.
 const HEAVY = new Set(['downloaded_media', 'themes', 'screensavers', 'roms', 'cache'])
 
+// ES-DE writes dated backup copies of gamelists under a CLEANUP folder. They
+// are real gamelist.xml files but they are SNAPSHOTS, not the live data —
+// sampling one by accident gives a stale and possibly much smaller picture.
+const isBackupPath = p => /(^|\/)(CLEANUP|backup|backups)(\/|$)/i.test(p)
+
 const MAX_SAMPLE_BYTES = FULL ? 4000 : 1200
 const MAX_FILES_SAMPLED_PER_TYPE = FULL ? 3 : 2
 
@@ -129,8 +134,9 @@ function walk(dir, root, depth = 0) {
     filesByExt.set(ext, er)
 
     const nm = e.name.toLowerCase()
-    const nr = filesByName.get(nm) ?? { count: 0, bytes: 0, samples: [] }
+    const nr = filesByName.get(nm) ?? { count: 0, bytes: 0, samples: [], allPaths: [] }
     nr.count++; nr.bytes += sz
+    nr.allPaths.push(full)
     if (nr.samples.length < MAX_FILES_SAMPLED_PER_TYPE) nr.samples.push(full)
     filesByName.set(nm, nr)
   }
@@ -162,7 +168,9 @@ function describeXml(file) {
   let xml
   try { xml = readFileSync(file, 'utf8') } catch { return null }
 
-  const rootM = xml.match(/<([a-zA-Z][\w:-]*)[\s>]/)
+  // Skip the <?xml …?> declaration and any comments before the real root.
+  const cleaned = xml.replace(/<\?[\s\S]*?\?>/g, '').replace(/<!--[\s\S]*?-->/g, '')
+  const rootM = cleaned.match(/<([a-zA-Z][\w:-]*)[\s>/]/)
   const root = rootM ? rootM[1] : '(unknown)'
 
   // Find the repeated record element: the tag that appears most as <tag>…</tag>
@@ -173,7 +181,7 @@ function describeXml(file) {
   const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1])
   const record = ranked.find(([t]) => t !== root)?.[0] ?? null
 
-  const out = { root, record, recordCount: 0, fields: new Map(), sample: null, attrElements: new Map() }
+  const out = { root, record, recordCount: 0, fields: new Map(), sample: null, attrElements: new Map(), paths: [] }
 
   // Plenty of ES-DE config XML is attribute-based and self-closing, e.g.
   //   <string name="ROMDirectory" value="/storage/…" />
@@ -207,6 +215,7 @@ function describeXml(file) {
       const [, tag, val] = m
       if (tag === record || seen.has(tag)) continue
       seen.add(tag)
+      if (tag === 'path') out.paths.push(val.trim())
       const f = out.fields.get(tag) ?? { n: 0, example: null }
       f.n++
       if (!f.example && val.trim()) {
@@ -293,12 +302,80 @@ console.log('\n' + '─'.repeat(72))
 console.log('WHAT IS ACTUALLY INSIDE (sampled)')
 console.log('─'.repeat(72))
 
+// ── gamelists get special treatment: aggregate ALL of them ──────────────────
+// There are typically dozens, one per system. Sampling two tells us very
+// little; what we actually need is the union of every field across the whole
+// library, with real fill rates. Backups are reported separately so a stale
+// snapshot never dilutes the live numbers.
+{
+  const allGamelists = []
+  for (const [nm, r] of filesByName.entries()) {
+    if (nm !== 'gamelist.xml') continue
+    for (const f of r.allPaths ?? []) allGamelists.push(f)
+  }
+  const live = allGamelists.filter(f => !isBackupPath(relative(root, f)))
+  const backups = allGamelists.filter(f => isBackupPath(relative(root, f)))
+
+  if (live.length) {
+    console.log('\n' + '─'.repeat(72))
+    console.log(`GAMELISTS — aggregated across all ${live.length} live files`)
+    if (backups.length) console.log(`(${backups.length} more found under CLEANUP/backup folders — excluded here)`)
+    console.log('─'.repeat(72))
+
+    const fieldTotals = new Map()
+    let grandTotal = 0
+    const perSystem = []
+    const pathOddities = new Map()
+
+    for (const f of live) {
+      const d = describeXml(f)
+      if (!d) continue
+      const sys = relative(root, f).split('/').slice(-2)[0]
+      perSystem.push({ sys, games: d.recordCount })
+      grandTotal += d.recordCount
+      for (const [tag, info] of d.fields.entries()) {
+        const t = fieldTotals.get(tag) ?? { n: 0, example: null }
+        t.n += info.n
+        if (!t.example) t.example = info.example
+        fieldTotals.set(tag, t)
+      }
+      // Flag path shapes that will matter when matching ROMs later.
+      for (const pth of d.paths ?? []) {
+        const base = pth.split('/').pop() ?? ''
+        let kind = null
+        if (base.startsWith('._')) kind = 'macOS AppleDouble sidecar (._x) — NOT a real ROM'
+        else if (!base.includes('.')) kind = 'no file extension (folder-based game?)'
+        if (kind) pathOddities.set(kind, (pathOddities.get(kind) ?? 0) + 1)
+      }
+    }
+
+    console.log(`\ngames across all systems: ${grandTotal}\n`)
+    console.log('system'.padEnd(20), 'games'.padStart(7))
+    for (const s2 of perSystem.sort((a, b) => b.games - a.games)) {
+      console.log(s2.sys.padEnd(20), String(s2.games).padStart(7))
+    }
+
+    console.log(`\nfields across all ${grandTotal} games:`)
+    for (const [tag, t] of [...fieldTotals.entries()].sort((a, b) => b[1].n - a[1].n)) {
+      const pct = grandTotal ? ((t.n / grandTotal) * 100).toFixed(0) : '0'
+      console.log(`  ${tag.padEnd(16)} ${String(t.n).padStart(6)}  ${pct.padStart(3)}%   e.g. ${t.example ?? ''}`)
+    }
+
+    if (pathOddities.size) {
+      console.log('\n  ⚠ path oddities worth knowing before matching ROMs:')
+      for (const [k, n] of pathOddities) console.log(`     ${String(n).padStart(5)} × ${k}`)
+    }
+  }
+}
+
 // One sample per DISTINCT FILENAME, so every different kind of file gets seen.
 for (const [nm, r] of [...filesByName.entries()].sort((a, b) => b[1].count - a[1].count)) {
   const ext = (extname(nm) || '(no ext)').toLowerCase()
   if (!TEXTUAL.has(ext)) continue
 
-  for (const file of r.samples) {
+  const preferred = (r.allPaths ?? r.samples).filter(f => !isBackupPath(relative(root, f)))
+  const toSample = (preferred.length ? preferred : r.samples).slice(0, MAX_FILES_SAMPLED_PER_TYPE)
+  for (const file of toSample) {
     const dup = r.count > 1 ? `   [1 of ${r.count} files named ${nm}]` : ''
     console.log(`\n### ${relative(root, file)}   (${mb(statSync(file).size)})${dup}`)
 
