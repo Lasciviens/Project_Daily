@@ -18,9 +18,9 @@ import type { SteamAchievement } from '../api/steamApi'
 
 function rarityLabel(p: number | null): { text: string; cls: string } | null {
   if (p == null) return null
-  if (p < 5)  return { text: `%${p.toFixed(1)} · çok nadir`, cls: 'text-purple-600 dark:text-purple-400' }
-  if (p < 20) return { text: `%${p.toFixed(1)} · nadir`,      cls: 'text-blue-600 dark:text-blue-400' }
-  return { text: `%${p.toFixed(0)}`, cls: 'text-ink-400' }
+  if (p < 5)  return { text: `${p.toFixed(1)}% · ultra rare`, cls: 'text-purple-600 dark:text-purple-400' }
+  if (p < 20) return { text: `${p.toFixed(1)}% · rare`,       cls: 'text-blue-600 dark:text-blue-400' }
+  return { text: `${p.toFixed(0)}%`, cls: 'text-ink-400' }
 }
 
 function AchievementRow({ a }: { a: SteamAchievement }) {
@@ -38,7 +38,7 @@ function AchievementRow({ a }: { a: SteamAchievement }) {
         {a.description
           ? <p className="text-[11px] text-ink-400 leading-snug line-clamp-2">{a.description}</p>
           : a.hidden && !a.achieved
-            ? <p className="text-[11px] text-ink-300 italic">Gizli başarım</p>
+            ? <p className="text-[11px] text-ink-300 italic">Hidden achievement</p>
             : null}
         <div className="flex items-center gap-2 mt-0.5">
           {rarity && <span className={`text-[10px] font-medium ${rarity.cls}`}>{rarity.text}</span>}
@@ -72,12 +72,12 @@ export function SteamAchievementGrid({ appid }: { appid: number }) {
   const { data, isLoading, error } = useSteamAchievements(inView ? appid : null)
 
   if (!inView) return <div ref={anchor} className="h-16" />
-  if (isLoading) return <div ref={anchor}><p className="text-sm text-ink-400 py-4">Başarımlar yükleniyor…</p></div>
-  if (error) return <div ref={anchor}><p className="text-sm text-red-600 py-4">Başarımlar alınamadı: {(error as Error).message}</p></div>
+  if (isLoading) return <div ref={anchor}><p className="text-sm text-ink-400 py-4">Loading achievements…</p></div>
+  if (error) return <div ref={anchor}><p className="text-sm text-red-600 py-4">Couldn't load achievements: {(error as Error).message}</p></div>
 
   const all = data?.achievements ?? []
   if (!all.length) {
-    return <div ref={anchor}><p className="text-sm text-ink-400 py-4">{data?.note ?? 'Bu oyunda başarım yok.'}</p></div>
+    return <div ref={anchor}><p className="text-sm text-ink-400 py-4">{data?.note ?? 'This game has no achievements.'}</p></div>
   }
 
   const unlocked = all.filter(a => a.achieved)
@@ -94,7 +94,7 @@ export function SteamAchievementGrid({ appid }: { appid: number }) {
         <div className="flex-1 min-w-[140px]">
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-bold text-ink-900">{unlocked.length}/{all.length}</span>
-            <span className="text-xs text-ink-400">%{pct} tamamlandı</span>
+            <span className="text-xs text-ink-400">{pct}% complete</span>
           </div>
           <div className="h-1.5 bg-ink-100 rounded-full overflow-hidden mt-1">
             <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
@@ -102,7 +102,7 @@ export function SteamAchievementGrid({ appid }: { appid: number }) {
         </div>
         <button onClick={() => setShowLocked(v => !v)}
           className="min-h-[44px] px-3 text-xs rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-300 transition-colors">
-          {showLocked ? 'Sadece alınanlar' : 'Hepsini göster'}
+          {showLocked ? 'Unlocked only' : 'Show all'}
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[360px] overflow-y-auto pr-1">

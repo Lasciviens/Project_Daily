@@ -222,6 +222,12 @@ Deno.serve(async (req: Request) => {
         })
 
         const toFetch = stale.slice(0, MAX_STORE_FETCHES_PER_CALL)
+        // Ids we could not resolve this call. `missing` MUST carry both the
+        // over-the-cap remainder AND anything whose live fetch failed — an
+        // appid that is silently absent from both `apps` and `missing` is
+        // indistinguishable from a delisted game on the client, which would
+        // report a transient rate limit as a permanent store removal.
+        const failed: number[] = []
         for (const id of toFetch) {
           try {
             const data = await fetchAppDetails(id, cc)
@@ -229,14 +235,17 @@ Deno.serve(async (req: Request) => {
             byId.set(id, { ...(byId.get(id) ?? {}), ...row })
             if (cacheOk) await supabase.from('steam_apps').upsert(row, { onConflict: 'appid' })
           } catch {
-            // Rate limit or a transient store error — leave the appid in
+            // Rate limit or a transient store error — report the appid in
             // `missing` so the client can retry rather than caching a lie.
+            // A stale cached row is still better than nothing, so only count
+            // it as missing when we have no row for it at all.
+            if (!byId.has(id)) failed.push(id)
           }
         }
 
         return json({
           apps: ids.map(id => byId.get(id)).filter(Boolean),
-          missing: stale.slice(MAX_STORE_FETCHES_PER_CALL),
+          missing: [...stale.slice(MAX_STORE_FETCHES_PER_CALL), ...failed],
           cached: cacheOk,
         })
       }

@@ -47,14 +47,34 @@ export function useSteamAchievements(appid: number | null) {
   })
 }
 
-/** Store metadata for one app — what the detail modal opens with. */
+/**
+ * Store metadata for one app — what the detail modal opens with.
+ *
+ * A row that comes back in `missing` was NOT resolvable this call (Steam's
+ * ~200-req/5-min rate limit, or a transient store error). That is a
+ * different fact from a row whose `details` is null, which is a cached
+ * tombstone meaning the app really is delisted — so this throws rather than
+ * returning null, and the modal offers a retry instead of claiming the game
+ * was removed from the store.
+ */
 export function useSteamAppDetails(appid: number | null) {
   return useQuery({
     queryKey: ['steam', 'app-details', appid],
-    queryFn: async () => (await fetchSteamAppDetails([appid!])).apps[0] ?? null,
+    queryFn: async () => {
+      const r = await fetchSteamAppDetails([appid!])
+      const app = r.apps[0]
+      if (!app) {
+        if (r.missing.includes(appid!)) throw new Error(STORE_UNAVAILABLE)
+        return null
+      }
+      return app
+    },
     enabled: appid != null, staleTime: STALE_LONG, retry: false,
   })
 }
+
+/** Thrown by `useSteamAppDetails` when Steam's store could not be reached. */
+export const STORE_UNAVAILABLE = 'store_unavailable'
 
 export function useSteamAppReviews(appid: number | null) {
   return useQuery({
@@ -66,8 +86,7 @@ export function useSteamAppReviews(appid: number | null) {
 
 /**
  * Live player count — `enabled` is driven by an explicit tap in the modal,
- * never by mounting it (the user's own instruction: "isteğe bağlı olarak
- * sorgulanabilir olsun").
+ * never by mounting it — the user asked for it to be queried on demand only.
  */
 export function useSteamCurrentPlayers(appid: number | null, enabled: boolean) {
   return useQuery({
