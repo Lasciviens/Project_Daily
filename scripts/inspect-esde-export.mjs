@@ -164,7 +164,7 @@ function readHead(file, bytes = MAX_SAMPLE_BYTES) {
 }
 
 /** For XML: report the root element and the child-tag inventory of the repeated record. */
-function describeXml(file) {
+function describeXml(file, recordHint = null) {
   let xml
   try { xml = readFileSync(file, 'utf8') } catch { return null }
 
@@ -179,7 +179,11 @@ function describeXml(file) {
     counts.set(m[1], (counts.get(m[1]) ?? 0) + 1)
   }
   const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1])
-  const record = ranked.find(([t]) => t !== root)?.[0] ?? null
+  // Frequency-ranking is a guess and ties are common (every <game> has a
+  // <name>, so both appear exactly N times). Where the record element is
+  // actually known — gamelist.xml is always <game> — pass it in rather than
+  // letting a tie decide.
+  const record = recordHint ?? ranked.find(([t]) => t !== root)?.[0] ?? null
 
   const out = { root, record, recordCount: 0, fields: new Map(), sample: null, attrElements: new Map(), paths: [] }
 
@@ -327,11 +331,21 @@ console.log('─'.repeat(72))
     const perSystem = []
     const pathOddities = new Map()
 
+    const mismatches = []
     for (const f of live) {
-      const d = describeXml(f)
+      const d = describeXml(f, 'game')
       if (!d) continue
+      // Self-check: <path> is mandatory in every ES-DE <game>. If the parsed
+      // count does not equal the record count, this file was mis-parsed and
+      // its fields are silently missing from the aggregate. Say so loudly —
+      // an earlier version under-reported by ~70% without a word.
+      const pathN = d.fields.get('path')?.n ?? 0
+      if (d.recordCount > 0 && pathN !== d.recordCount) {
+        mismatches.push(`${relative(root, f)}: ${d.recordCount} <game> records but <path> parsed ${pathN}×`)
+      }
       const sys = relative(root, f).split('/').slice(-2)[0]
-      perSystem.push({ sys, games: d.recordCount })
+      const folderCount = (readFileSync(f, 'utf8').match(/<folder\b/g) ?? []).length
+      perSystem.push({ sys, games: d.recordCount, folders: folderCount })
       grandTotal += d.recordCount
       for (const [tag, info] of d.fields.entries()) {
         const t = fieldTotals.get(tag) ?? { n: 0, example: null }
@@ -350,9 +364,9 @@ console.log('─'.repeat(72))
     }
 
     console.log(`\ngames across all systems: ${grandTotal}\n`)
-    console.log('system'.padEnd(20), 'games'.padStart(7))
+    console.log('system'.padEnd(20), 'games'.padStart(7), 'folders'.padStart(9))
     for (const s2 of perSystem.sort((a, b) => b.games - a.games)) {
-      console.log(s2.sys.padEnd(20), String(s2.games).padStart(7))
+      console.log(s2.sys.padEnd(20), String(s2.games).padStart(7), String(s2.folders || '').padStart(9))
     }
 
     console.log(`\nfields across all ${grandTotal} games:`)
@@ -364,6 +378,14 @@ console.log('─'.repeat(72))
     if (pathOddities.size) {
       console.log('\n  ⚠ path oddities worth knowing before matching ROMs:')
       for (const [k, n] of pathOddities) console.log(`     ${String(n).padStart(5)} × ${k}`)
+    }
+
+    if (mismatches.length) {
+      console.log('\n  ⛔ PARSE MISMATCH — these files were not fully read, so the')
+      console.log('     percentages above understate reality. Report these:')
+      for (const m of mismatches) console.log(`     ${m}`)
+    } else {
+      console.log('\n  ✓ parse self-check passed: <path> count equals <game> count in every file')
     }
   }
 }
