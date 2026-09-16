@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { CoverImg } from '../gameCardKit'
 import { systemMeta } from '../../systemMeta'
 import { matchConfidence, FIELD_LABEL, type StudioGame, type FillableField } from '../../screenscraperStudio'
@@ -38,8 +37,6 @@ export function ScrapeResultCard({ game, result, accepted, focused, onToggleFiel
   onRejectAll: () => void
   onSearchManually: () => void
 }) {
-  // Open by default: the comparison IS the card, not a detail behind a link.
-  const [expanded, setExpanded] = useState(true)
   const matched = result.outcome === 'matched'
   const offered = (result.would_fill ?? []).filter((f): f is FillableField => f in FIELD_LABEL)
   const conf = matched ? matchConfidence(game?.title ?? result.title ?? '', result.matched_title) : null
@@ -118,25 +115,21 @@ export function ScrapeResultCard({ game, result, accepted, focused, onToggleFiel
 
       </div>
 
-      {/* Mine against theirs, line by line. The old version listed the field
-          NAMES, then a later one listed their values alone — neither answers
-          "is this the same game as mine?", which two columns and a mark per
-          row answer at a glance. */}
+      {/* The split screen. Not behind a toggle: it IS the card. */}
       <div className="mt-2">
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <p className="text-[10px] text-ink-400">
-            {offered.length
-              ? `${accepted?.length ?? 0} of ${offered.length} gap${offered.length === 1 ? '' : 's'} ticked to fill`
-              : 'No gaps this match can fill'}
-          </p>
-          <button type="button" onClick={() => setExpanded(v => !v)}
-            className="min-h-[32px] px-2 text-[11px] text-accent-600 hover:underline">
-            {expanded ? 'Hide comparison' : 'Compare fields'}
-          </button>
-        </div>
-        {expanded && (
-          <FieldCompare game={game} candidate={result.proposed ?? {}} accepted={accepted} onToggleField={onToggleField} />
-        )}
+        <FieldCompare
+          game={game}
+          candidate={result.proposed ?? {}}
+          candidateTitle={result.matched_title}
+          candidateSystem={result.system ? systemMeta(result.system).label : null}
+          accepted={accepted}
+          onToggleField={onToggleField}
+        />
+        <p className="text-[10px] text-ink-400 mt-1">
+          {offered.length
+            ? `${accepted?.length ?? 0} of ${offered.length} gap${offered.length === 1 ? '' : 's'} ticked to fill · a field you already have is never overwritten`
+            : 'Nothing to fill — every gap this game has is empty on their side too'}
+        </p>
       </div>
 
       {/* Approve · Skip · Search — the three things there are to do with a

@@ -139,7 +139,11 @@ export function ScrapeLookupPanel({ games, target: aim, onApplied }: {
       (target ?? {}) as Partial<Record<FillableField, unknown>>,
       c as unknown as Partial<Record<FillableField, unknown>>,
     )
-    setAccepted(rows.filter(r => r.verdict === 'only_theirs').map(r => r.field))
+    // `field` is null on the identity rows (title, platform) — comparable,
+    // never writable — so they are filtered out rather than cast away.
+    setAccepted(rows
+      .filter(r => r.verdict === 'only_theirs' && r.field !== null)
+      .map(r => r.field as FillableField))
   }
 
   async function apply() {
@@ -326,7 +330,11 @@ export function ScrapeLookupPanel({ games, target: aim, onApplied }: {
                     Use this
                   </button>
                 </div>
-                {target && <FieldCompare game={target as unknown as StudioGame} candidate={r as unknown as Partial<Record<FillableField, unknown>>} />}
+                {target && (
+                  <FieldCompare game={target as unknown as StudioGame}
+                    candidate={r as unknown as Partial<Record<FillableField, unknown>>}
+                    candidateTitle={r.title} candidateSystem={r.system} />
+                )}
               </li>
             )
           })}

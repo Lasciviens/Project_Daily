@@ -45,6 +45,15 @@ ok(S.selectCandidates(lib, { ...S.EMPTY_FILTERS, missing: ['description'] }).map
   'missing-field filter')
 ok(S.selectCandidates(lib, { ...S.EMPTY_FILTERS, hideHandled: true }, new Set(['a'])).map(g => g.id).sort(), ['b', 'c'],
   'handled rows can be hidden')
+// Asking again about a game already looked up buys nothing.
+const withScraped = [
+  ...lib,
+  game({ id: 'd', title: 'Done', external_source: 'screenscraper', synced_at: '2026-09-16T00:00:00Z' }),
+]
+ok(S.selectCandidates(withScraped, { ...S.EMPTY_FILTERS, hideScraped: true }).map(g => g.id).includes('d'), false,
+  'an already-scraped row can be hidden')
+ok(S.selectCandidates(withScraped, { ...S.EMPTY_FILTERS }).map(g => g.id).includes('d'), true,
+  'and is kept when the toggle is off')
 ok(S.selectCandidates(lib, { ...S.EMPTY_FILTERS, hideHandled: false }, new Set(['a'])).length, 3,
   'and are kept when the toggle is off')
 // Emptiest first: b has two fields filled, so it sorts after a and c.
@@ -176,5 +185,31 @@ ok(S.displayValue(['a', 'b']), 'a, b', 'a list reads as a sentence')
 ok(S.displayValue([]), '—', 'an empty list is an absence, not "[]"')
 ok(S.displayValue(null), '—', 'so is null')
 ok(S.displayValue(0), '0', 'but zero is a value')
+
+// ── compareIdentity ─────────────────────────────────────────────────────────
+// Title and platform are the first two things a person checks, and a first
+// version left them out of the comparison entirely.
+const ident = S.compareIdentity({ title: 'Contra (USA)', system: 'nes' }, { title: 'Contra', system: 'NES' })
+ok(ident.map(r => r.label), ['Title', 'Platform'], 'both identity rows, in that order')
+ok(ident[0].verdict, 'differs', 'a region tag in the title is a real difference here — this is not the fuzzy matcher')
+ok(ident[1].verdict, 'match', 'the platform agrees regardless of case')
+ok(ident.every(r => r.field === null), true, 'identity rows are never writable')
+ok(S.compareIdentity({ title: 'Contra' }, { title: 'Contra' })[1].verdict, 'both_empty', 'no platform on either side')
+ok(S.compareIdentity({}, { title: 'Contra' })[0].verdict, 'only_theirs', 'they have a title and we do not')
+
+// ── isScraped / completenessLabel ───────────────────────────────────────────
+// The queue said "5 missing" forever, even for a game already looked up whose
+// gaps are simply empty on their side too.
+const scraped = { external_source: 'screenscraper', synced_at: '2026-09-16T00:00:00Z' }
+ok(S.isScraped(scraped), true, 'looked up and stamped')
+ok(S.isScraped({ external_source: 'screenscraper', synced_at: null }), false, 'a source with no sync time is not scraped')
+ok(S.isScraped({ external_source: 'esde', synced_at: '2026-09-16T00:00:00Z' }), false, 'an ES-DE import is not a scrape')
+
+const bare = game()
+ok(S.completenessLabel(bare).tone, 'gaps', 'never scraped, with gaps')
+ok(S.completenessLabel({ ...bare, ...scraped }).tone, 'scraped', 'scraped, and what is left is unknown to them')
+ok(S.completenessLabel({ ...bare, ...scraped }).text.startsWith('scraped'), true, 'and says so rather than "12 missing"')
+const complete = game(Object.fromEntries(S.FILLABLE_FIELDS.map(f => [f, f === 'genres' || f === 'modes' ? ['x'] : 'x'])))
+ok(S.completenessLabel(complete).tone, 'done', 'nothing missing at all')
 
 console.log(`✅ ${n} assertions passed`)
