@@ -53,6 +53,7 @@ Deno.serve(async req => {
   try {
     const binary = new URL(req.url).searchParams.get('action') === 'asset'
     let body
+    if (binary) return reply({ error: 'Original image uploads disabled to protect the Storage quota. Use optimized cover sync.' }, 409)
     if (binary) {
       const header = req.headers.get('x-esde-asset') ?? ''
       requireValue(header.length > 0 && header.length < 16000, 'Invalid asset header')

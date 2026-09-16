@@ -1,0 +1,473 @@
+[
+  {
+    "platform": "gba",
+    "path": "./Advance Wars 2 - Black Hole Rising (USA).zip",
+    "name": "Advance Wars 2 : Black Hole Rising",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 12,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players",
+      "playcount",
+      "playtime",
+      "lastplayed"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": "1",
+      "playtime": "969",
+      "lastplayed": "20260901T201816"
+    },
+    "db_stats": {
+      "esde_playcount": 1,
+      "esde_playtime_seconds": 969,
+      "esde_last_played": "2026-09-01 18:18:16+00"
+    }
+  },
+  {
+    "platform": "gba",
+    "path": "./Metroid Fusion (USA).zip",
+    "name": "Metroid Fusion",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "gba",
+    "path": "./Super Mario Advance 4 - Super Mario Bros. 3 (USA, Australia) (Rev 1).zip",
+    "name": "Super Mario Advance 4: Super Mario Bros. 3",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "gc",
+    "path": "./Beyond Good & Evil (USA) (En,Es).rvz",
+    "name": "Beyond Good & Evil",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "gc",
+    "path": "./Prince of Persia - The Two Thrones (USA) (En,Fr,Es).rvz",
+    "name": "Prince of Persia : The Two Thrones",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "gc",
+    "path": "./Tom Clancy's Rainbow Six 3 (USA).rvz",
+    "name": "Tom Clancy's Rainbow Six 3",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "nes",
+    "path": "./Nintendo - NES/8 Eyes (USA).zip",
+    "name": "8 Eye's",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 12,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players",
+      "playcount",
+      "playtime",
+      "lastplayed"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": "1",
+      "playtime": "12",
+      "lastplayed": "20260531T215406"
+    },
+    "db_stats": {
+      "esde_playcount": 1,
+      "esde_playtime_seconds": 12,
+      "esde_last_played": "2026-05-31 19:54:06+00"
+    }
+  },
+  {
+    "platform": "nes",
+    "path": "./Nintendo - NES/Krion Conquest, The (USA).zip",
+    "name": "The Krion Conquest",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "nes",
+    "path": "./Nintendo - NES/Zombie Nation (USA).zip",
+    "name": "Zombie Nation",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "ps2",
+    "path": "./Burnout 3 - Takedown .chd",
+    "name": "Burnout 3 : Takedown",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 13,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players",
+      "favorite",
+      "playcount",
+      "playtime",
+      "lastplayed"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": "19",
+      "playtime": "7342",
+      "lastplayed": "20260915T204431"
+    },
+    "db_stats": {
+      "esde_playcount": 19,
+      "esde_playtime_seconds": 7342,
+      "esde_last_played": "2026-09-15 18:44:31+00"
+    }
+  },
+  {
+    "platform": "ps2",
+    "path": "./Metal Gear Solid 3 - Subsistence (Disc 2 - Persistence Disc).chd",
+    "name": "Metal Gear Solid 3 : Subsistence",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "ps2",
+    "path": "./Street Fighter Anniversary Collection.chd",
+    "name": "Street Fighter Anniversary Collection",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "snes",
+    "path": "./ActRaiser (USA).sfc",
+    "name": "ActRaiser",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 12,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players",
+      "playcount",
+      "playtime",
+      "lastplayed"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": "1",
+      "playtime": "2",
+      "lastplayed": "20260522T225610"
+    },
+    "db_stats": {
+      "esde_playcount": 1,
+      "esde_playtime_seconds": 2,
+      "esde_last_played": "2026-05-22 20:56:10+00"
+    }
+  },
+  {
+    "platform": "snes",
+    "path": "./Monopoly (USA) (Rev 1).sfc",
+    "name": "Monopoly",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 9,
+    "xml_field_names": [
+      "path",
+      "name",
+      "desc",
+      "rating",
+      "releasedate",
+      "developer",
+      "publisher",
+      "genre",
+      "players"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  },
+  {
+    "platform": "snes",
+    "path": "./Zoop (USA).sfc",
+    "name": "Zoop (USA)",
+    "source_snapshot_equal": true,
+    "source_hash_equal": true,
+    "xml_fields_equal": true,
+    "xml_field_count": 2,
+    "xml_field_names": [
+      "path",
+      "name"
+    ],
+    "app_differences": [],
+    "local_stats": {
+      "playcount": null,
+      "playtime": null,
+      "lastplayed": null
+    },
+    "db_stats": {
+      "esde_playcount": null,
+      "esde_playtime_seconds": null,
+      "esde_last_played": null
+    }
+  }
+]

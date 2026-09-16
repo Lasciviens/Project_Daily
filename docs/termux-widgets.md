@@ -1,3 +1,5 @@
+> **Quota protection — 2026-09-16:** Original-image uploads are disabled server-side after exceeding the Free plan Storage quota. Non-cover originals were removed; covers and source metadata remain. Use **Metadatayi-Senkronize-Et** for new games/statistics/source snapshots and **Kapaklari-Guncelle** for optimized covers. The old full/all-image widgets will stop with HTTP 409 at the original-image step. [Cleanup and 15-game audit](games/esde-quota-cleanup-2026-09-16.md).
+
 # RP6 Termux widgets: setup, maintenance and extension guide
 
 This is the permanent entry point for the RP6 Android widgets. Start here when
