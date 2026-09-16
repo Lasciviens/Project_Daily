@@ -250,18 +250,19 @@ Deno.serve(async (req) => {
       return json({ status: 'ok', batch: esdeInt(body.batch), received: entries.length, created: 0, updated: 0, skipped, flagged: 0 })
     }
 
-    // One read for the whole batch, narrowed by path (the selective half of
-    // the key) and matched on the exact pair in memory — an `in` on BOTH
-    // columns would match the cross-product, not the pairs.
-    const { data: existingRows, error: selErr } = await supabase
-      .from('game_platforms')
-      .select('id, game_id, esde_system, esde_path')
-      .eq('user_id', userId)
-      .in('esde_path', kept.map(e => e.path))
-    if (selErr) return json({ status: 'server_error', error: selErr.message }, 500)
-
+    // Bound lookup URLs: 150 long Switch paths can exceed the REST API's
+    // 16 KB URL limit. Finish every lookup before starting any writes.
     const byKey = new Map<string, AnyRecord>()
-    for (const r of existingRows ?? []) byKey.set(keyOf(r.esde_system, r.esde_path), r)
+    for (let offset = 0; offset < kept.length; offset += 20) {
+      const chunk = kept.slice(offset, offset + 20)
+      const { data: existingRows, error: selErr } = await supabase
+        .from('game_platforms')
+        .select('id, game_id, esde_system, esde_path')
+        .eq('user_id', userId)
+        .in('esde_path', chunk.map(e => e.path))
+      if (selErr) return json({ status: 'server_error', error: `existing variants lookup: ${selErr.message}` }, 500)
+      for (const r of existingRows ?? []) byKey.set(keyOf(r.esde_system, r.esde_path), r)
+    }
 
     const newOnes = kept.filter(e => !byKey.has(keyOf(e.system, e.path)))
     const updates = kept.filter(e => byKey.has(keyOf(e.system, e.path)))
