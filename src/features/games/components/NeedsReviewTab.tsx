@@ -1,5 +1,6 @@
 import { useGamesNeedingReview } from '../hooks/useGames'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
+import { ScrapeGameButton } from './ScrapeGameButton'
 import type { Game } from '../types'
 
 // New feature — replaces RP5's 18-rule, 5-view audit-scoring system with the
@@ -41,11 +42,16 @@ export function NeedsReviewTab({ onOpenDetail }: { onOpenDetail: (id: string) =>
           A game shows up here if it's missing a cover, genres, a release year, a platform, or a chosen primary platform — or if a future sync explicitly flagged it as an uncertain match. Nothing here is auto-fixed; it's just a pointer to what's incomplete.
         </InfoBubble>
       </div>
+      {/* Each row's open-detail button and its scrape button are SIBLINGS
+          inside the <li>, never nested: a <button> inside a <button> is
+          invalid HTML and the parser silently hoists the inner one out — the
+          same trap FoodTile's corner buttons already documented. */}
       <ul className="flex flex-col gap-2">
         {games.map(g => (
-          <li key={g.id}>
+          <li key={g.id}
+            className="flex items-center gap-2 p-3 bg-cream-50 rounded-xl border border-orange-200 hover:border-orange-400 transition-colors">
             <button onClick={() => onOpenDetail(g.id)}
-              className="w-full flex items-center gap-3 p-3 bg-cream-50 rounded-xl border border-orange-200 hover:border-orange-400 transition-colors text-left">
+              className="flex-1 min-w-0 flex items-center gap-3 text-left">
               <div className="flex-shrink-0 w-10 rounded-lg overflow-hidden border border-ink-100 bg-ink-100" style={{ aspectRatio: '3/4' }}>
                 {g.primary_cover_url
                   ? <img src={g.primary_cover_url} alt={g.title} className="w-full h-full object-cover" />
@@ -60,6 +66,7 @@ export function NeedsReviewTab({ onOpenDetail }: { onOpenDetail: (id: string) =>
                 </div>
               </div>
             </button>
+            <ScrapeGameButton gameId={g.id} title={g.title} />
           </li>
         ))}
       </ul>
