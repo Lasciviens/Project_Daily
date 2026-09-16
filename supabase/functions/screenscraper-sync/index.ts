@@ -52,6 +52,9 @@ const json = (body: unknown, status = 200) =>
 type AnyRecord = Record<string, any>
 
 const API = 'https://api.screenscraper.fr/api2'
+// How many search candidates reach the picker. Their search answered with 30
+// for one query (doc §1); a dozen is already more than anyone reads.
+const SEARCH_LIMIT = 12
 const SOFTNAME = 'lascisboard'
 const BUCKET = 'game-media'
 // Premium reports maxthreads 6. Never above what the account actually grants.
@@ -332,6 +335,39 @@ async function readQuota(): Promise<{ used: number; max: number; threads: number
   }
 }
 
+/**
+ * ES-DE folder name → ScreenScraper numeric system id.
+ *
+ * One entry per alias, so an ES-DE "megadrive" folder resolves just as an
+ * ES-DE "genesis" one does. LOWEST id wins when several systems claim one
+ * alias. Measured collisions: snes → 4 Super Nintendo | 202 "Snes - Super
+ * Mario World Hacks"; genesis → 1 Megadrive | 203 "Sonic The Hedgehog 2
+ * Hacks"; nes → 3 NES | 278 "Super Mario Bros. Hacks". A last-write-wins map
+ * sent 604 of 1002 games to a ROM-HACK database, which is why Sonic 1 came
+ * back as "Amy Rose In Sonic The Hedgehog". ScreenScraper numbered the real
+ * consoles first and every variant/hack collection later, so the smallest id
+ * is the actual console across every real collision.
+ *
+ * Mirrored from screenscraperRules.ts::buildSystemIdMap.
+ */
+async function loadSystemIdMap(): Promise<{ map: Map<string, { id: number; name: string }> } | { error: string }> {
+  const { data, error } = await admin
+    .from('screenscraper_systems').select('id, name, retropie_names').not('retropie_names', 'is', null)
+  if (error) return { error: error.message }
+  const map = new Map<string, { id: number; name: string }>()
+  for (const s of data ?? []) {
+    const id = Number(s.id)
+    if (!Number.isFinite(id)) continue
+    for (const alias of (s.retropie_names ?? []) as string[]) {
+      const key = String(alias ?? '').trim().toLowerCase()
+      if (!key) continue
+      const cur = map.get(key)
+      if (!cur || id < cur.id) map.set(key, { id, name: s.name ?? String(id) })
+    }
+  }
+  return { map }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (req.method !== 'POST') return fail('Method Not Allowed', 405)
@@ -399,6 +435,130 @@ Deno.serve(async (req) => {
         return json({ status: 'ok', systems: rows.length, with_retropie_name: rows.filter((r: AnyRecord) => r.retropie_names).length })
       }
 
+      // ── Search by name, so a wrong or missing automatic match can be
+      //    corrected by hand. Verified live (doc §1): jeuRecherche.php
+      //    answered 200 with 30 candidates for one query.
+      //
+      //    NO IMAGE URL IS EVER RETURNED. Every ScreenScraper media URL
+      //    carries devid/devpassword in its query string, so a candidate's
+      //    artwork cannot travel to the browser — it is only ever downloaded
+      //    server-side and re-hosted, which apply_match does for the one
+      //    candidate actually chosen. ──
+      case 'search': {
+        const query = String(body.query ?? '').trim()
+        if (!query) return json({ status: 'ok', results: [], message: 'Type something to search for.' })
+
+        const params: AnyRecord = { recherche: query }
+        // Narrowing by system is optional but strongly advised: unscoped, a
+        // search competes with every hack collection in their database.
+        if (body.system) {
+          const sysMap = await loadSystemIdMap()
+          if ('error' in sysMap) return fail(`systems read: ${sysMap.error}`, 500)
+          const sys = sysMap.map.get(String(body.system).trim().toLowerCase())
+          if (!sys) return json({ status: 'ok', results: [], message: `No ScreenScraper id known for system "${body.system}".` })
+          params.systemeid = sys.id
+        }
+
+        const r = await callApi('jeuRecherche.php', params)
+        if (!r.ok && r.notFound) return json({ status: 'ok', results: [], message: 'No games matched that name.' })
+        if (!r.ok) return fail(`jeuRecherche: ${r.message}`, 502)
+
+        const jeux = r.data?.response?.jeux
+        if (!Array.isArray(jeux)) return json({ status: 'ok', results: [], message: 'The search returned no game list.' })
+
+        const results = jeux.slice(0, SEARCH_LIMIT).map((jeu: AnyRecord) => {
+          const mapped = mapJeuToGame(jeu)
+          return {
+            jeu_id: mapped.external_ref,
+            title: mapped.title,
+            system: (jeu.systeme as AnyRecord | undefined)?.text ?? null,
+            release_year: mapped.release_year,
+            publisher: mapped.publisher,
+            developer: mapped.developer,
+            genres: mapped.genres,
+            players: mapped.players,
+            // Purely so the picker can say "this one has a cover" without ever
+            // handing over the credential-bearing URL itself.
+            has_cover: !!pickMedia(jeu.medias, 'cover'),
+            description: mapped.description ? String(mapped.description).slice(0, 300) : null,
+          }
+        })
+        return json({ status: 'ok', query, results })
+      }
+
+      // ── Apply ONE hand-picked search result to ONE game.
+      //
+      //    It re-runs the same search server-side and takes the candidate with
+      //    the chosen id, rather than fetching it by id directly: jeuInfos.php
+      //    has a documented `gameid` parameter but this session could not call
+      //    the API to confirm it, and this repo does not ship an unverified
+      //    external field (CLAUDE.md). jeuRecherche IS verified, and it returns
+      //    complete game entries — that is why 30 of them weigh 2.3 MB — so the
+      //    chosen entry carries everything a match needs. Cost: one extra
+      //    search call per apply. ──
+      case 'apply_match': {
+        const gameId = String(body.game_id ?? '')
+        const jeuId = String(body.jeu_id ?? '')
+        const query = String(body.query ?? '').trim()
+        const dryRun = body.dry_run === true
+        const wantMedia = body.media !== false
+        if (!gameId || !jeuId || !query) return fail('apply_match needs game_id, jeu_id and the query they came from', 400)
+
+        const { data: game, error: gErr } = await admin
+          .from('games').select('*').eq('user_id', userId).eq('id', gameId).single()
+        if (gErr) return fail(`game read: ${gErr.message}`, 500)
+
+        const params: AnyRecord = { recherche: query }
+        if (body.system) {
+          const sysMap = await loadSystemIdMap()
+          if ('error' in sysMap) return fail(`systems read: ${sysMap.error}`, 500)
+          const sys = sysMap.map.get(String(body.system).trim().toLowerCase())
+          if (sys) params.systemeid = sys.id
+        }
+        const r = await callApi('jeuRecherche.php', params)
+        if (!r.ok) return fail(`jeuRecherche: ${r.notFound ? 'no results' : r.message}`, 502)
+        const jeux = r.data?.response?.jeux
+        const jeu = Array.isArray(jeux) ? jeux.find((j: AnyRecord) => String(j.id) === jeuId) : null
+        if (!jeu) return json({ status: 'ok', outcome: 'no_match', message: 'That result is no longer in the search response — search again and re-pick.' })
+
+        const mapped = mapJeuToGame(jeu)
+        const patch = fillOnlyMissing(game, mapped)
+        if (dryRun) {
+          return json({ status: 'ok', outcome: 'matched', dry_run: true,
+                        matched_title: mapped.title, would_fill: Object.keys(patch) })
+        }
+
+        const media: AnyRecord = {}
+        if (wantMedia) {
+          for (const role of ['cover', 'screenshot', 'fanart'] as MediaRole[]) {
+            const column = role === 'cover' ? 'primary_cover_url' : role === 'screenshot' ? 'screenshot_url' : 'fanart_url'
+            if (game[column]) continue
+            const pick = pickMedia(jeu.medias, role)
+            if (!pick) continue
+            const storedUrl = await mirrorMedia(game.id, role, pick)
+            // Only a Storage URL is ever assigned here — never pick.url.
+            if (storedUrl) media[column] = storedUrl
+          }
+        }
+
+        // A hand-picked match is also an answer to "is this row still
+        // uncertain?", so it clears the review flag the automatic pass set.
+        const full = { ...patch, ...media, external_source: 'screenscraper', synced_at: new Date().toISOString(), needs_review: false }
+        const { error: uErr } = await admin.from('games').update(full).eq('id', gameId).eq('user_id', userId)
+        if (uErr) return fail(`game update: ${scrub(uErr.message)}`, 500)
+
+        const rating100 = scoreToRating100(jeu.note)
+        const { data: plat } = await admin.from('game_platforms').select('id, rating').eq('user_id', userId).eq('game_id', gameId).limit(1)
+        const first = plat?.[0]
+        if (first && rating100 != null && first.rating == null) {
+          await admin.from('game_platforms')
+            .update({ rating: rating100, external_ref: mapped.external_ref, external_source: 'screenscraper' })
+            .eq('id', first.id).eq('user_id', userId)
+        }
+        return json({ status: 'ok', outcome: 'matched', matched_title: mapped.title,
+                      filled: Object.keys(patch), media: Object.keys(media) })
+      }
+
       // ── The real work, one small batch per invocation. ──
       case 'scrape': {
         const limit = Math.min(MAX_BATCH, Math.max(1, Number(body.limit ?? 5)))
@@ -416,14 +576,49 @@ Deno.serve(async (req) => {
           }, 200)
         }
 
-        // Candidates: explicit ids, else games still missing what we can fill.
-        let q = admin.from('games').select('*').eq('user_id', userId).limit(limit)
-        if (Array.isArray(body.game_ids) && body.game_ids.length > 0) {
-          q = q.in('id', body.game_ids.slice(0, MAX_BATCH).map(String))
-        } else {
-          q = q.is('description', null)
+        // Candidates: explicit ids, else games still missing what we can fill,
+        // optionally narrowed to a set of systems. Scoping by system is what
+        // makes a 1000-game library workable: one console at a time, and the
+        // results are all checkable against the same expectation.
+        let scopedIds: string[] | null = null
+        if (Array.isArray(body.systems) && body.systems.length > 0) {
+          const wanted = body.systems.map((x: unknown) => String(x))
+          const { data: scoped, error: scopeErr } = await admin
+            .from('game_platforms').select('game_id').eq('user_id', userId).in('esde_system', wanted)
+          if (scopeErr) return fail(`system scope read: ${scopeErr.message}`, 500)
+          scopedIds = [...new Set((scoped ?? []).map((r: AnyRecord) => String(r.game_id)))]
+          if (scopedIds.length === 0) {
+            return json({ status: 'ok', done: true, processed: 0, message: 'No games on the selected systems.' })
+          }
         }
-        const { data: games, error: gErr } = await q
+
+        let games: AnyRecord[] | null = null
+        let gErr: { message: string } | null = null
+
+        if (Array.isArray(body.game_ids) && body.game_ids.length > 0) {
+          const r = await admin.from('games').select('*').eq('user_id', userId)
+            .in('id', body.game_ids.slice(0, MAX_BATCH).map(String)).limit(limit)
+          games = r.data; gErr = r.error
+        } else if (scopedIds) {
+          // PostgREST's .in() list is URL-length bound (200 ids ≈ 7.4 KB is
+          // safe; 1000 is a measured 400), so the scope is walked in slices
+          // until `limit` unscraped games are found. Slicing to the FIRST 200
+          // and stopping would report "nothing left" while later slices still
+          // held work.
+          const found: AnyRecord[] = []
+          for (let i = 0; i < scopedIds.length && found.length < limit; i += 200) {
+            const r = await admin.from('games').select('*').eq('user_id', userId)
+              .in('id', scopedIds.slice(i, i + 200)).is('description', null)
+              .limit(limit - found.length)
+            if (r.error) { gErr = r.error; break }
+            found.push(...(r.data ?? []))
+          }
+          games = found
+        } else {
+          const r = await admin.from('games').select('*').eq('user_id', userId)
+            .is('description', null).limit(limit)
+          games = r.data; gErr = r.error
+        }
         if (gErr) return fail(`games read: ${gErr.message}`, 500)
         if (!games || games.length === 0) return json({ status: 'ok', done: true, processed: 0, message: 'Nothing left to scrape.' })
 
@@ -432,31 +627,9 @@ Deno.serve(async (req) => {
           .in('game_id', games.map(g => g.id))
         if (pErr) return fail(`platforms read: ${pErr.message}`, 500)
 
-        const { data: systems, error: sErr } = await admin
-          .from('screenscraper_systems').select('id, name, retropie_names').not('retropie_names', 'is', null)
-        if (sErr) return fail(`systems read: ${sErr.message}`, 500)
-        // One entry per alias, so an ES-DE "megadrive" folder resolves just as
-        // an ES-DE "genesis" one does.
-        // LOWEST id wins when several systems claim one alias. Measured
-        // collisions: snes → 4 Super Nintendo | 202 "Snes - Super Mario World
-        // Hacks"; genesis → 1 Megadrive | 203 "Sonic The Hedgehog 2 Hacks";
-        // nes → 3 NES | 278 "Super Mario Bros. Hacks". A last-write-wins map
-        // sent 604 of 1002 games to a ROM-HACK database, which is why Sonic 1
-        // came back as "Amy Rose In Sonic The Hedgehog". ScreenScraper numbered
-        // the real consoles first and every variant/hack collection later, so
-        // the smallest id is the actual console across every real collision.
-        // Mirrored from screenscraperRules.ts::buildSystemIdMap.
-        const systemId = new Map<string, { id: number; name: string }>()
-        for (const s of systems ?? []) {
-          const id = Number(s.id)
-          if (!Number.isFinite(id)) continue
-          for (const alias of (s.retropie_names ?? []) as string[]) {
-            const key = String(alias ?? '').trim().toLowerCase()
-            if (!key) continue
-            const cur = systemId.get(key)
-            if (!cur || id < cur.id) systemId.set(key, { id, name: s.name ?? String(id) })
-          }
-        }
+        const sysMap = await loadSystemIdMap()
+        if ('error' in sysMap) return fail(`systems read: ${sysMap.error}`, 500)
+        const systemId = sysMap.map
         if (systemId.size === 0) {
           return json({ status: 'needs_systems', message: 'Run action "refresh_systems" first — no ScreenScraper system ids are known yet.' }, 200)
         }

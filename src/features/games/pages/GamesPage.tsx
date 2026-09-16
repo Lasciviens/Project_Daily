@@ -6,6 +6,8 @@ import { TierEditorTab } from '../components/TierEditorTab'
 import { PlayQueueTab } from '../components/PlayQueueTab'
 import { NeedsReviewTab } from '../components/NeedsReviewTab'
 import { ScreenScraperPanel } from '../components/ScreenScraperPanel'
+import { ScrapeBatchReview } from '../components/ScrapeBatchReview'
+import { ScrapeSearchPanel } from '../components/ScrapeSearchPanel'
 import { StatsPanel } from '../components/StatsPanel'
 import { PlayStationTab } from '../components/PlayStationTab'
 import { SteamTab } from '../components/SteamTab'
@@ -27,7 +29,7 @@ type FilterKey = 'tier' | 'genre' | 'system' | 'series'
 
 type SortKey = 'az' | 'za' | 'year-asc' | 'year-desc' | 'rating' | 'series' | 'playtime' | 'recent'
 type LibView = 'grid' | 'compact' | 'poster' | 'list' | 'table' | 'series'
-type MainTab = 'library' | 'tiers' | 'queue' | 'review' | 'stats'
+type MainTab = 'library' | 'tiers' | 'queue' | 'review' | 'scraper' | 'stats'
 // Platform-level split, one level above MainTab. Retro Games is the existing
 // RP5-migrated library (below); PlayStation/Steam are UI-only placeholders
 // for now (deliberate — no DB/backend yet, per the user's explicit request)
@@ -639,6 +641,7 @@ const TABS: { t: MainTab; icon: string; label: string }[] = [
   { t: 'tiers',   icon: '🏆', label: 'Tiers'   },
   { t: 'queue',   icon: '▶',  label: 'Queue'   },
   { t: 'review',  icon: '🔎', label: 'Review'  },
+  { t: 'scraper', icon: '🎲', label: 'ScreenScraper' },
   { t: 'stats',   icon: '📊', label: 'Stats'   },
 ]
 
@@ -734,15 +737,18 @@ export function GamesPage() {
           {tab === 'library' && <LibraryTab onOpenDetail={setSelectedId} onFilteredChange={setVisibleGames} />}
           {tab === 'tiers'   && <TierEditorTab />}
           {tab === 'queue'   && <PlayQueueTab />}
-          {/* The scraper sits with Review because they are the same job seen
-              from two ends: Review lists what is missing, this fills it. */}
-          {tab === 'review'  && (
-            <div className="space-y-4">
-              <ErrorBoundary label="ScreenScraper" action="screenscraper_panel">
+          {tab === 'review'  && <NeedsReviewTab onOpenDetail={setSelectedId} />}
+          {/* Its own tab rather than a band on top of Review: Review answers
+              "what is missing", this is where you sit and fix it, and the two
+              are not read in one glance. */}
+          {tab === 'scraper' && (
+            <ErrorBoundary label="ScreenScraper" action="screenscraper_tab">
+              <div className="space-y-4">
                 <ScreenScraperPanel />
-              </ErrorBoundary>
-              <NeedsReviewTab onOpenDetail={setSelectedId} />
-            </div>
+                <ScrapeBatchReview games={allGames} />
+                <ScrapeSearchPanel games={allGames} />
+              </div>
+            </ErrorBoundary>
           )}
           {tab === 'stats'   && <StatsPanel />}
 

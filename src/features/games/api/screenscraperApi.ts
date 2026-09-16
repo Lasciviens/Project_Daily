@@ -69,6 +69,9 @@ export const refreshScreenScraperSystems = () =>
 export function scrapeBatch(opts: {
   limit: number
   gameIds?: string[]
+  /** ES-DE system folder names to scope the automatic candidate pick to.
+   *  Ignored when `gameIds` is given — that is already an exact list. */
+  systems?: string[]
   dryRun?: boolean
   media?: boolean
 }): Promise<ScrapeBatch> {
@@ -76,7 +79,68 @@ export function scrapeBatch(opts: {
     action: 'scrape',
     limit: opts.limit,
     ...(opts.gameIds?.length ? { game_ids: opts.gameIds } : {}),
+    ...(opts.systems?.length ? { systems: opts.systems } : {}),
     dry_run: opts.dryRun === true,
     media: opts.media !== false,
+  })
+}
+
+// ─── Search + hand-picked match ──────────────────────────────────────────────
+// No image URL ever crosses this boundary: every ScreenScraper media URL
+// carries the developer credentials in its query string, so a candidate can
+// only report WHETHER it has a cover. The chosen one's artwork is downloaded
+// server-side and re-hosted in Supabase Storage by `applyMatch`.
+
+export type SearchCandidate = {
+  jeu_id: string | null
+  title: string | null
+  system: string | null
+  release_year: number | null
+  publisher: string | null
+  developer: string | null
+  genres: string[] | null
+  players: string | null
+  has_cover: boolean
+  description: string | null
+}
+
+export type SearchResponse = {
+  status: 'ok' | 'not_configured'
+  query?: string
+  results?: SearchCandidate[]
+  message?: string
+}
+
+export type ApplyMatchResponse = {
+  status: 'ok' | 'not_configured'
+  outcome?: 'matched' | 'no_match'
+  dry_run?: boolean
+  matched_title?: string | null
+  would_fill?: string[]
+  filled?: string[]
+  media?: string[]
+  message?: string
+}
+
+export function searchScreenScraper(query: string, system?: string | null): Promise<SearchResponse> {
+  return invoke<SearchResponse>({ action: 'search', query, ...(system ? { system } : {}) })
+}
+
+export function applyMatch(opts: {
+  gameId: string
+  jeuId: string
+  /** The query the candidate came from — the match is re-fetched from that
+   *  same search rather than by id (see the edge function's own note). */
+  query: string
+  system?: string | null
+  dryRun?: boolean
+}): Promise<ApplyMatchResponse> {
+  return invoke<ApplyMatchResponse>({
+    action: 'apply_match',
+    game_id: opts.gameId,
+    jeu_id: opts.jeuId,
+    query: opts.query,
+    ...(opts.system ? { system: opts.system } : {}),
+    dry_run: opts.dryRun === true,
   })
 }
