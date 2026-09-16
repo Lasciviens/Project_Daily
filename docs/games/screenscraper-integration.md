@@ -697,3 +697,53 @@ a match from a miss. After step 1 every row carries a real title, system and
 filename — which is exactly what ScreenScraper matches on. Doing it in the
 other order means scraping blind and then trying to reconcile two independently
 built libraries.
+
+
+---
+
+## 12. Search + hand-picked match (added 2026-09-16)
+
+The automatic pass matches on a ROM **filename**, which is all `jeuInfos.php`
+is given. "Contra (USA).zip" landing on Contra III is therefore a normal
+outcome, not a bug with a one-time fix — the library needs a way to correct a
+match by hand, and a way to approve matches before they are written.
+
+### `search`
+
+`{ action: 'search', query, system? }` → `jeuRecherche.php` (verified live,
+§1: 200, 30 candidates for one query), optionally scoped by ES-DE system name
+through the same lowest-id-wins alias map the scrape path uses. Returns up to
+12 candidates.
+
+**No image URL crosses the boundary.** Every ScreenScraper media URL carries
+`devid`/`devpassword` in its query string, so a candidate can only report
+`has_cover: true|false`. Artwork is fetched server-side and re-hosted for the
+one candidate actually chosen.
+
+### `apply_match`
+
+`{ action: 'apply_match', game_id, jeu_id, query, system?, dry_run? }`.
+
+It **re-runs the same search** and takes the entry with the chosen id, rather
+than fetching that id directly. `jeuInfos.php` has a documented `gameid`
+parameter, but this session had no way to call the API (the credentials live in
+Vault, reachable only from the deployed function), and this repo does not ship
+an external field it has not confirmed live. `jeuRecherche` IS confirmed, and
+it returns complete game entries — that is why 30 of them weigh 2.3 MB — so the
+chosen entry already carries everything a match needs. Cost: one extra search
+call per apply. **If a later session can verify `gameid` against the live API,
+switching to it removes that call.**
+
+Writes follow the automatic path exactly: `fillOnlyMissing` (nothing the user
+entered is overwritten), artwork mirrored into the `game-media` bucket, the
+provider score onto `game_platforms.rating` (never `games.rating`). One
+difference: a hand-picked match also clears `needs_review`, since choosing it
+IS the review.
+
+### `scrape` gained a `systems` scope
+
+`{ action: 'scrape', systems: ['snes','n64'] }` narrows the automatic candidate
+pick to those ES-DE systems. The scope is walked in slices of 200 ids
+(PostgREST's `.in()` is URL-length bound — 200 ≈ 7.4 KB is safe, 1000 is a
+measured 400) until enough unscraped games are found, rather than truncating at
+the first slice and reporting "nothing left" while later slices still held work.
