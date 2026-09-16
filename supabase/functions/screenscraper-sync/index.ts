@@ -37,7 +37,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  // supabase-js sends `apikey` and `x-client-info` on every invoke, so a
+  // preflight that does not allow them is rejected by the browser before the
+  // request is ever sent — which surfaces as "Failed to send a request to the
+  // Edge Function" rather than as any status this function could return.
+  // Same list as steam-api / psn-api / food-search.
+  'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-client-info',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 const json = (body: unknown, status = 200) =>
