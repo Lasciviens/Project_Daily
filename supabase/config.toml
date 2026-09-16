@@ -48,3 +48,7 @@ verify_jwt = false
 # Not a Supabase JWT, so platform verification must be off (checked in-code).
 [functions.esde-sync]
 verify_jwt = false
+
+# Separate handheld covers/reconciliation endpoint; validates x-esde-secret.
+[functions.esde-media-sync]
+verify_jwt = false

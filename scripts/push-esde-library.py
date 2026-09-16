@@ -321,8 +321,10 @@ def sync(args, root, endpoint, secret, state_path):
             raise ValueError("Pending batch contains now-excluded games; reconcile state before resuming")
         print("Resending saved pending batch unchanged after checking current ROM eligibility.")
         deliver()
+    remote_keys = getattr(args, "remote_keys", None)
     changed = [(g, fp) for g, fp in rows
-               if args.full or state["fingerprints"].get(key(g)) != fp]
+               if args.full or state["fingerprints"].get(key(g)) != fp
+               or (remote_keys is not None and not g.get("hidden") and key(g) not in remote_keys)]
     batches = math.ceil(len(changed) / 150)
     print(f"Selected: {len(changed)} games in {batches} requests (max 150 each).")
     if args.dry_run:
