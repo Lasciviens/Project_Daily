@@ -298,8 +298,18 @@ Also on each system: `extensions` (`"gen,md,smd,bin,sg"`) and `romtype`.
 
 - [x] ~~Member account password → premium~~ **DONE** — supplied and verified;
       real premium numbers recorded in §2
-- [ ] Image strategy: mirror into Supabase Storage (recommended) vs. on-demand
-      signed URL via edge function
+- [x] ~~Image strategy~~ **DECIDED — mirror into Supabase Storage.** A URL the
+      browser must fetch cannot be hidden from it: whatever goes in `<img src>`
+      is visible in devtools and stored in every backup of that row, so the only
+      real fix is that the browser never receives a ScreenScraper URL at all.
+      The alternative (keep the reference, proxy each view through an edge
+      function) removes the storage cost and replaces it with a far worse one —
+      every thumbnail view becomes one function invocation plus one
+      ScreenScraper download, spending the premium 2176 KB/s and the shared
+      100k/day counter on page views rather than on scraping. Mirroring is
+      one-time and, at premium speed, cheap: ~150-250 MB for 1210 covers.
+      **Hard rule: `primary_cover_url` / `screenshot_url` / `box_url` hold a
+      Storage URL only — never a ScreenScraper one.**
 - [x] ~~Where an external score lives without colliding with the user's own
       `games.rating`~~ **DECIDED** (§10) — `games.rating` is `numeric(3,1)`
       0-10 and is the USER's own score; nothing external ever writes it. Every
@@ -307,7 +317,18 @@ Also on each system: `extensions` (`"gen,md,smd,bin,sg"`) and `romtype`.
       `numeric(4,1)` 0-100 for exactly this. ES-DE's 0-1 decimal is stored
       there ×100; ScreenScraper's /20 will be ×5. One column, one scale, and
       the user's score is never touched
-- [ ] Whether the device script can compute CRC32 (→ much better matching)
+- [x] ~~Whether the device script can compute CRC32~~ **DECIDED — not a
+      blocker, revisit as a cheap win.** Matching proceeds on `romnom` +
+      `systemeid`, which is the path §1's own successful `jeuInfos` 200 used.
+      It is sufficient where it actually matters right now: all 96 games
+      missing metadata are `.sfc` with No-Intro names
+      (`Super Mario RPG - Legend of the Seven Stars (USA).sfc`), the best case
+      for filename matching. Worth picking up later because it is nearly free
+      for part of the library: 495 of 1210 entries are `.zip`, whose inner
+      CRC32 is readable straight from the archive's central directory with no
+      decompression, and file size is a `stat()`. Skip it for the 148 disc
+      images (`.chd`/`.iso`/`.rvz`) — hashing those means reading tens of GB on
+      a handheld.
 
 ---
 
