@@ -20,7 +20,23 @@ import type { Game } from '../types'
 // browser at all — a candidate can only report that it HAS a cover. The chosen
 // one's images are downloaded server-side and re-hosted when it is applied.
 
-export function ScrapeSearchPanel({ games }: { games: Game[] }) {
+/** The ROM filename, stripped of its folders — the real match key. */
+function romName(g: Game | null): string | null {
+  const p = g?.platforms.find(x => x.is_primary_variant) ?? g?.platforms[0]
+  const raw = p?.esde_path
+  if (!raw) return null
+  const base = raw.replace(/\\/g, '/').split('/').filter(seg => seg && seg !== '.' && seg !== '..').pop()
+  return base?.trim() || null
+}
+
+export function ScrapeSearchPanel({ games, target: aim, onApplied }: {
+  games: Game[]
+  /** Open pre-aimed at one game — how a failed automatic match hands over.
+   *  The nonce is what lets the SAME game be re-aimed: an id compared against
+   *  itself never changes, so the second click did nothing. */
+  target?: { id: string; nonce: number } | null
+  onApplied?: () => void
+}) {
   const qc = useQueryClient()
   const [target, setTarget] = useState<Game | null>(null)
   const [gameQuery, setGameQuery] = useState('')
@@ -30,6 +46,16 @@ export function ScrapeSearchPanel({ games }: { games: Game[] }) {
   const [note, setNote] = useState<string | null>(null)
   const [picked, setPicked] = useState<SearchCandidate | null>(null)
   const [busy, setBusy] = useState(false)
+  const [aimedAt, setAimedAt] = useState<number | null>(null)
+
+  // Adjust-during-render (the FoodLogModal `wasOpen` precedent) rather than an
+  // effect: the caller hands over a game and this picks it up exactly once, so
+  // a later manual change is never clobbered by a re-render.
+  if (aim && aim.nonce !== aimedAt) {
+    setAimedAt(aim.nonce)
+    const g = games.find(x => x.id === aim.id)
+    if (g) chooseTarget(g)
+  }
 
   const gameMatches = useMemo(() => {
     const q = gameQuery.trim().toLowerCase()
@@ -83,6 +109,7 @@ export function ScrapeSearchPanel({ games }: { games: Game[] }) {
       ].filter(Boolean)
       toast.success(bits.length ? `${target.title}: ${bits.join(' + ')} ✓` : `${target.title}: nothing was missing`)
       qc.invalidateQueries({ queryKey: ['games'] })
+      onApplied?.()
       setPicked(null)
     } catch (e) {
       toast.dismiss(tid)
@@ -138,11 +165,27 @@ export function ScrapeSearchPanel({ games }: { games: Game[] }) {
         </div>
       </div>
 
-      {system && (
-        <button type="button" onClick={() => setSystem(null)} className="text-xs text-ink-500 underline">
-          Search every system instead
-        </button>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {system && (
+          <button type="button" onClick={() => setSystem(null)} className="min-h-[36px] text-xs text-ink-500 underline">
+            Search every system instead
+          </button>
+        )}
+        {/* The ROM filename is the string that ACTUALLY failed to match — the
+            title is ES-DE's already-cleaned display name. Both are one tap. */}
+        {romName(target) && (
+          <button type="button" onClick={() => setQuery(romName(target)!)}
+            className="min-h-[36px] px-2 text-xs rounded-lg border border-ink-200 text-ink-500 hover:border-accent-300">
+            Use the ROM filename
+          </button>
+        )}
+        {target && query !== target.title && (
+          <button type="button" onClick={() => setQuery(target.title)}
+            className="min-h-[36px] px-2 text-xs rounded-lg border border-ink-200 text-ink-500 hover:border-accent-300">
+            Use the title
+          </button>
+        )}
+      </div>
 
       {note && <p className="text-xs text-ink-500">{note}</p>}
 

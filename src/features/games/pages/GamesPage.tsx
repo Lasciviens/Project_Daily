@@ -5,9 +5,7 @@ import { AddGameModal } from '../components/AddGameModal'
 import { TierEditorTab } from '../components/TierEditorTab'
 import { PlayQueueTab } from '../components/PlayQueueTab'
 import { NeedsReviewTab } from '../components/NeedsReviewTab'
-import { ScreenScraperPanel } from '../components/ScreenScraperPanel'
-import { ScrapeBatchReview } from '../components/ScrapeBatchReview'
-import { ScrapeSearchPanel } from '../components/ScrapeSearchPanel'
+import { ScreenScraperStudio } from '../components/studio/ScreenScraperStudio'
 import { StatsPanel } from '../components/StatsPanel'
 import { PlayStationTab } from '../components/PlayStationTab'
 import { SteamTab } from '../components/SteamTab'
@@ -743,11 +741,7 @@ export function GamesPage() {
               are not read in one glance. */}
           {tab === 'scraper' && (
             <ErrorBoundary label="ScreenScraper" action="screenscraper_tab">
-              <div className="space-y-4">
-                <ScreenScraperPanel />
-                <ScrapeBatchReview games={allGames} />
-                <ScrapeSearchPanel games={allGames} />
-              </div>
+              <ScreenScraperStudio />
             </ErrorBoundary>
           )}
           {tab === 'stats'   && <StatsPanel />}
