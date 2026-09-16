@@ -40,26 +40,76 @@ function attachPlatforms(games: Omit<Game, 'platforms'>[], platforms: GamePlatfo
   }))
 }
 
-async function fetchAllPlatformsFor(gameIds: string[]): Promise<GamePlatform[]> {
-  if (gameIds.length === 0) return []
-  const { data, error } = await supabase.from('game_platforms').select('*').in('game_id', gameIds)
-  if (error) { if (isMissingTable(error)) return []; throw error }
-  return data ?? []
+// PostgREST caps a single response at 1000 rows and answers a request whose URL
+// is too long with a plain 400. Both limits were invisible while this library
+// was RP5-sized (~321 games) and both broke the moment the real ES-DE import
+// landed 1225 — see the two helpers below. Neither is a Supabase quirk to work
+// around cleverly; they are ordinary limits any client this size has to respect.
+const PAGE_SIZE = 1000
+// 200 uuids ≈ 7.4 KB of query string, comfortably inside every gateway limit;
+// 1000 ≈ 37 KB, which is a measured 400 Bad Request.
+const IN_CHUNK = 200
+
+/**
+ * Reads every row of a query, a page at a time, instead of silently keeping
+ * whichever 1000 rows came back first.
+ *
+ * `hardCap` only exists so a server that never reports a short page cannot spin
+ * forever; it is far above any real library size and hitting it is a bug, not a
+ * limit to raise casually.
+ */
+async function fetchAllPages<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  hardCap = 50_000,
+): Promise<T[]> {
+  const out: T[] = []
+  for (let from = 0; from < hardCap; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1)
+    if (error) { if (isMissingTable(error)) return out; throw error }
+    const rows = data ?? []
+    out.push(...rows)
+    if (rows.length < PAGE_SIZE) break
+  }
+  return out
 }
 
-const EMPTY_STATS: GameStats = {
-  total: 0, playing: 0, completed: 0, wishlist: 0, backlog: 0, dropped: 0,
-  iconic: 0, coop: 0, needsReview: 0, avgRating: null, bySystem: [],
+/** Every platform row this user owns — RLS already scopes it, so no filter. */
+async function fetchAllPlatformRows(): Promise<GamePlatform[]> {
+  return fetchAllPages<GamePlatform>((from, to) =>
+    supabase.from('game_platforms').select('*').range(from, to))
 }
+
+/**
+ * Platform rows for a SUBSET of games. Chunked: a single `.in()` carrying every
+ * id is what made the whole Library page render as "your library is empty" —
+ * the request 400s, the error is not a missing-table error so it propagates,
+ * and the page had no error state to show it in.
+ */
+async function fetchAllPlatformsFor(gameIds: string[]): Promise<GamePlatform[]> {
+  if (gameIds.length === 0) return []
+  const chunks: string[][] = []
+  for (let i = 0; i < gameIds.length; i += IN_CHUNK) chunks.push(gameIds.slice(i, i + IN_CHUNK))
+  const results = await Promise.all(chunks.map(async chunk => {
+    const { data, error } = await supabase.from('game_platforms').select('*').in('game_id', chunk)
+    if (error) { if (isMissingTable(error)) return []; throw error }
+    return data ?? []
+  }))
+  return results.flat()
+}
+
+// (An explicit EMPTY_STATS constant used to live here for the pre-migration
+// case. fetchAllPages already degrades a missing table to no rows, and the
+// stats computed from no rows are that same all-zero result, so the constant
+// was a second copy of one answer rather than a second behaviour.)
 
 // ─── Reads ───────────────────────────────────────────────────────────────────
 
 export async function fetchAllGames(): Promise<Game[]> {
-  const { data: games, error } = await supabase.from('games').select('*').order('title', { ascending: true })
-  if (error) { if (isMissingTable(error)) return []; throw error }
-  const rows = games ?? []
-  const platforms = await fetchAllPlatformsFor(rows.map(g => g.id))
-  return attachPlatforms(rows, platforms)
+  const rows = await fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
+    supabase.from('games').select('*').order('title', { ascending: true }).range(from, to))
+  // Every game is wanted here, so read the platform table whole rather than
+  // asking for 1225 ids by name.
+  return attachPlatforms(rows, await fetchAllPlatformRows())
 }
 
 export async function fetchGameDetail(id: string): Promise<Game> {
@@ -71,13 +121,15 @@ export async function fetchGameDetail(id: string): Promise<Game> {
 }
 
 export async function fetchGameStats(): Promise<GameStats> {
-  const [{ data: games, error }, { data: platforms, error: pErr }] = await Promise.all([
-    supabase.from('games').select('play_status, is_iconic, is_coop, needs_review, rating'),
-    supabase.from('game_platforms').select('system'),
+  // Paginated for the same reason as fetchAllGames: capped at one page, every
+  // total on the Stats panel would silently stop counting at 1000.
+  type StatRow = Pick<Game, 'play_status' | 'is_iconic' | 'is_coop' | 'needs_review' | 'rating'>
+  const [rows, platforms] = await Promise.all([
+    fetchAllPages<StatRow>((from, to) =>
+      supabase.from('games').select('play_status, is_iconic, is_coop, needs_review, rating').range(from, to)),
+    fetchAllPages<{ system: string }>((from, to) =>
+      supabase.from('game_platforms').select('system').range(from, to)),
   ])
-  if (error) { if (isMissingTable(error)) return EMPTY_STATS; throw error }
-  if (pErr && !isMissingTable(pErr)) throw pErr
-  const rows = games ?? []
   const rated = rows.filter(r => r.rating != null)
   const bySystemMap = new Map<string, number>()
   for (const p of platforms ?? []) bySystemMap.set(p.system, (bySystemMap.get(p.system) ?? 0) + 1)
