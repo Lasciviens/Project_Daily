@@ -1,5 +1,24 @@
 # RP6 ES-DE library push (C7)
 
+## Current default: original images + full source metadata
+
+See the prominent [RP6 widget guide](../docs/termux-widgets.md) for installation,
+updates and reusable widget examples. The installer now requires **four** files:
+`push-esde-library.py`, `sync-esde.py`, `sync-esde-content.py`, and
+`setup-esde-widgets.sh` together in the card's `Download` folder.
+
+`Oyunlari-Senkronize-Et` runs `sync-esde-content.py`: legacy game/stat/cover sync,
+then complete parsed source XML/context and original images. Added modes:
+`Gorselleri-Senkronize-Et` (`--media-only`) and `Metadatayi-Senkronize-Et`
+(`--metadata-only`). **PDF manuals and video are excluded.** Original image bytes
+live in Storage; `game_platforms.esde_source`, `esde_source_hash`, and `esde_assets`
+preserve metadata and the exact source-path/hash/category/URL manifest.
+
+Requires migration **100** and **esde-content-sync**, with the same custom device
+authentication. Deploy the updated `esde-media-sync` too so deleted variants'
+original-image objects are cleaned. Existing cover-only modes below remain
+available. The first full original-image upload has not been run on RP6 yet.
+
 ## One-touch sync with covers (2026-09-16)
 
 Use **`sync-esde.py`** for the complete flow: new games + metadata, changed play
@@ -8,8 +27,7 @@ The older `push-esde-library.py` command described below remains import-only.
 
 ### RP6: one-time widget setup
 
-The SD card's `Download` directory needs these three files together:
-`push-esde-library.py`, `sync-esde.py`, `setup-esde-widgets.sh`.
+The SD card's `Download` directory needs all four files listed above together.
 With the card back in the RP6, run once:
 
 ```sh

@@ -49,7 +49,8 @@ async function removeDeletedCovers(userId: string, ids: string[]) {
       const { data, error } = await db.storage.from(bucket).list(prefix, { limit: 100, offset, sortBy: { column: 'name', order: 'asc' } })
       if (error) throw error
       for (const file of data ?? []) {
-        if (/^[a-f0-9]{64}\.webp$/.test(file.name)) objects.push(`${prefix}/${file.name}`)
+        // Content sync keeps original images in this same per-variant namespace.
+        if (/^[a-f0-9]{64}\.(webp|png|jpg|gif|bmp)$/.test(file.name)) objects.push(`${prefix}/${file.name}`)
       }
       if (!data || data.length < 100) break
     }

@@ -127,6 +127,10 @@ def read_library(root, roms=None, audit=None):
             where = f"{source}, game index {index}"
             raw = {}
             for child in element:
+                # Unknown/repeated extension tags are preserved by content sync;
+                # only the scalar import contract needs duplicate rejection here.
+                if child.tag not in set(TEXT_FIELDS) | {"playcount", "playtime", "rating", "hidden", "broken"}:
+                    continue
                 if child.tag in raw:
                     raise ValueError(f"{where}: duplicate <{child.tag}>")
                 if child.text is not None and child.text.strip():

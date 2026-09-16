@@ -52,3 +52,7 @@ verify_jwt = false
 # Separate handheld covers/reconciliation endpoint; validates x-esde-secret.
 [functions.esde-media-sync]
 verify_jwt = false
+
+# Original images and source metadata; authenticates x-esde-secret itself.
+[functions.esde-content-sync]
+verify_jwt = false

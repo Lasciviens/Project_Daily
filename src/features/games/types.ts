@@ -15,6 +15,10 @@ export type Performance = 'good' | 'warn' | 'bad'
 export type RomStatus = 'missing' | 'found' | 'verified' | 'installed' | 'sd_card'
 
 export interface GamePlatform {
+  /** Original ES-DE source, separate from curated fields (migration 100). */
+  esde_source?: { game: string; context: Record<string, unknown> } | null
+  esde_source_hash?: string | null
+  esde_assets?: Record<string, { category: string; sha256: string; size: number; mime: string; url: string }>
   id:                string
   game_id:           string
   system:            string
