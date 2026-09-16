@@ -80,3 +80,30 @@ export function computePlaytimeStats(rows: PlayStatRow[], topN = 5): PlaytimeSta
 
   return { totalSeconds, playedCount, neverPlayedCount: rows.length - playedCount, lastPlayed, topPlayed }
 }
+
+/**
+ * A game only counts as "recently played" once it has at least this much
+ * recorded time. ES-DE records a total and a launch count, never per-session
+ * durations, so "was the LAST session at least 5 minutes" is not answerable
+ * from this data — this is the honest approximation of it: a title opened for
+ * a few seconds to check it boots never outranks one actually played.
+ */
+export const MIN_REAL_PLAY_SECONDS = 300
+
+export function isRealPlay(seconds: number | null | undefined): boolean {
+  return (seconds ?? 0) >= MIN_REAL_PLAY_SECONDS
+}
+
+/**
+ * Most recently played first, among games with real recorded play. Everything
+ * else keeps its own relative order BELOW that block rather than being
+ * filtered out — a sort must never remove rows (CLAUDE.md's NEVER_HIDES).
+ */
+export function sortByRecentlyPlayed<T extends { esde_last_played: string | null; esde_playtime_seconds: number | null }>(
+  games: T[],
+): T[] {
+  const real = games.filter(g => isRealPlay(g.esde_playtime_seconds) && g.esde_last_played)
+  const rest = games.filter(g => !(isRealPlay(g.esde_playtime_seconds) && g.esde_last_played))
+  real.sort((a, b) => (b.esde_last_played ?? '').localeCompare(a.esde_last_played ?? ''))
+  return [...real, ...rest]
+}
