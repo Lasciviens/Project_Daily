@@ -1,0 +1,593 @@
+{
+  "samples": [
+    {
+      "system": "dreamcast",
+      "name": "Sonic Adventure",
+      "path": "./Sonic Adventure - Limited Edition (USA).chd",
+      "source_nonvideo_nonempty": 10,
+      "empty_nonvideo": 0,
+      "db_cover": true,
+      "missing_categories": [
+        "3dboxes",
+        "backcovers",
+        "fanart",
+        "manuals",
+        "marquees",
+        "miximages",
+        "physicalmedia",
+        "screenshots",
+        "titlescreens"
+      ],
+      "xml_fields_checked": [
+        "name",
+        "desc",
+        "developer",
+        "publisher",
+        "players",
+        "rating",
+        "releasedate",
+        "genre"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {},
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": null,
+          "db": null,
+          "matches": true
+        },
+        "playtime": {
+          "source": null,
+          "db": null,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": null,
+          "db": null,
+          "matches": true
+        }
+      }
+    },
+    {
+      "system": "gba",
+      "name": "Pokémon Unbound",
+      "path": "./Pokémon Unbound (v2.1.1.1).gba",
+      "source_nonvideo_nonempty": 8,
+      "empty_nonvideo": 0,
+      "db_cover": true,
+      "missing_categories": [
+        "3dboxes",
+        "fanart",
+        "marquees",
+        "miximages",
+        "physicalmedia",
+        "screenshots",
+        "titlescreens"
+      ],
+      "xml_fields_checked": [
+        "name",
+        "desc",
+        "developer",
+        "players",
+        "rating",
+        "releasedate",
+        "genre"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {
+        "favorite": "true"
+      },
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": "4",
+          "db": 4,
+          "matches": true
+        },
+        "playtime": {
+          "source": "10346",
+          "db": 10346,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": "20260724T170817",
+          "db": "2026-07-24T15:08:17+00:00",
+          "matches": true
+        }
+      }
+    },
+    {
+      "system": "gc",
+      "name": "Beyond Good & Evil",
+      "path": "./Beyond Good & Evil (USA) (En,Es).rvz",
+      "source_nonvideo_nonempty": 10,
+      "empty_nonvideo": 0,
+      "db_cover": true,
+      "missing_categories": [
+        "3dboxes",
+        "backcovers",
+        "fanart",
+        "manuals",
+        "marquees",
+        "miximages",
+        "physicalmedia",
+        "screenshots",
+        "titlescreens"
+      ],
+      "xml_fields_checked": [
+        "name",
+        "desc",
+        "developer",
+        "publisher",
+        "players",
+        "rating",
+        "releasedate",
+        "genre"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {},
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": null,
+          "db": null,
+          "matches": true
+        },
+        "playtime": {
+          "source": null,
+          "db": null,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": null,
+          "db": null,
+          "matches": true
+        }
+      }
+    },
+    {
+      "system": "genesis",
+      "name": "Sonic The Hedgehog (USA, Europe)",
+      "path": "./Sonic The Hedgehog (USA, Europe).md",
+      "source_nonvideo_nonempty": 10,
+      "empty_nonvideo": 0,
+      "db_cover": true,
+      "missing_categories": [
+        "3dboxes",
+        "backcovers",
+        "fanart",
+        "manuals",
+        "marquees",
+        "miximages",
+        "physicalmedia",
+        "screenshots",
+        "titlescreens"
+      ],
+      "xml_fields_checked": [
+        "name"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {
+        "favorite": "true"
+      },
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": "1",
+          "db": 1,
+          "matches": true
+        },
+        "playtime": {
+          "source": "492",
+          "db": 492,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": "20260523T124023",
+          "db": "2026-05-23T10:40:23+00:00",
+          "matches": true
+        }
+      }
+    },
+    {
+      "system": "n64",
+      "name": "The Legend of Zelda : Ocarina of Time",
+      "path": "./Legend of Zelda, The - Ocarina of Time (USA) (Rev 2).z64",
+      "source_nonvideo_nonempty": 10,
+      "empty_nonvideo": 0,
+      "db_cover": true,
+      "missing_categories": [
+        "3dboxes",
+        "backcovers",
+        "fanart",
+        "manuals",
+        "marquees",
+        "miximages",
+        "physicalmedia",
+        "screenshots",
+        "titlescreens"
+      ],
+      "xml_fields_checked": [
+        "name",
+        "desc",
+        "developer",
+        "publisher",
+        "players",
+        "rating",
+        "releasedate",
+        "genre"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {
+        "favorite": "true"
+      },
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": "3",
+          "db": 3,
+          "matches": true
+        },
+        "playtime": {
+          "source": "8596",
+          "db": 8596,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": "20260706T152237",
+          "db": "2026-07-06T13:22:37+00:00",
+          "matches": true
+        }
+      }
+    },
+    {
+      "system": "nes",
+      "name": "8 Eye's",
+      "path": "./Nintendo - NES/8 Eyes (USA).zip",
+      "source_nonvideo_nonempty": 10,
+      "empty_nonvideo": 0,
+      "db_cover": true,
+      "missing_categories": [
+        "3dboxes",
+        "backcovers",
+        "fanart",
+        "manuals",
+        "marquees",
+        "miximages",
+        "physicalmedia",
+        "screenshots",
+        "titlescreens"
+      ],
+      "xml_fields_checked": [
+        "name",
+        "desc",
+        "developer",
+        "publisher",
+        "players",
+        "rating",
+        "releasedate",
+        "genre"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {},
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": "1",
+          "db": 1,
+          "matches": true
+        },
+        "playtime": {
+          "source": "12",
+          "db": 12,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": "20260531T215406",
+          "db": "2026-05-31T19:54:06+00:00",
+          "matches": true
+        }
+      }
+    },
+    {
+      "system": "ps2",
+      "name": "Burnout 3 : Takedown",
+      "path": "./Burnout 3 - Takedown .chd",
+      "source_nonvideo_nonempty": 10,
+      "empty_nonvideo": 0,
+      "db_cover": true,
+      "missing_categories": [
+        "3dboxes",
+        "backcovers",
+        "fanart",
+        "manuals",
+        "marquees",
+        "miximages",
+        "physicalmedia",
+        "screenshots",
+        "titlescreens"
+      ],
+      "xml_fields_checked": [
+        "name",
+        "desc",
+        "developer",
+        "publisher",
+        "players",
+        "rating",
+        "releasedate",
+        "genre"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {
+        "favorite": "true"
+      },
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": "19",
+          "db": 19,
+          "matches": true
+        },
+        "playtime": {
+          "source": "7342",
+          "db": 7342,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": "20260915T204431",
+          "db": "2026-09-15T18:44:31+00:00",
+          "matches": true
+        }
+      }
+    },
+    {
+      "system": "psp",
+      "name": "God of War : Chains of Olympus",
+      "path": "./God of War - Chains of Olympus.iso",
+      "source_nonvideo_nonempty": 10,
+      "empty_nonvideo": 0,
+      "db_cover": true,
+      "missing_categories": [
+        "3dboxes",
+        "backcovers",
+        "fanart",
+        "manuals",
+        "marquees",
+        "miximages",
+        "physicalmedia",
+        "screenshots",
+        "titlescreens"
+      ],
+      "xml_fields_checked": [
+        "name",
+        "desc",
+        "developer",
+        "publisher",
+        "players",
+        "rating",
+        "releasedate",
+        "genre"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {
+        "favorite": "true"
+      },
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": "1",
+          "db": 1,
+          "matches": true
+        },
+        "playtime": {
+          "source": "26",
+          "db": 26,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": "20260901T201913",
+          "db": "2026-09-01T18:19:13+00:00",
+          "matches": true
+        }
+      }
+    },
+    {
+      "system": "snes",
+      "name": "NHL Hockey '94",
+      "path": "./NHL '94 (USA).sfc",
+      "source_nonvideo_nonempty": 0,
+      "empty_nonvideo": 10,
+      "db_cover": false,
+      "missing_categories": [],
+      "xml_fields_checked": [
+        "name",
+        "desc",
+        "developer",
+        "publisher",
+        "players",
+        "rating",
+        "releasedate",
+        "genre"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {},
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": null,
+          "db": null,
+          "matches": true
+        },
+        "playtime": {
+          "source": null,
+          "db": null,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": null,
+          "db": null,
+          "matches": true
+        }
+      }
+    },
+    {
+      "system": "switch",
+      "name": "Mario Kart 8 Deluxe",
+      "path": "./Mario Kart 8 Deluxe [NSP]/Mario Kart 8 Deluxe [0100152000022000][v0] (6.77 GB).nsp",
+      "source_nonvideo_nonempty": 9,
+      "empty_nonvideo": 0,
+      "db_cover": true,
+      "missing_categories": [
+        "3dboxes",
+        "backcovers",
+        "fanart",
+        "marquees",
+        "miximages",
+        "physicalmedia",
+        "screenshots",
+        "titlescreens"
+      ],
+      "xml_fields_checked": [
+        "name",
+        "desc",
+        "developer",
+        "publisher",
+        "players",
+        "rating",
+        "releasedate",
+        "genre"
+      ],
+      "mapped_metadata_differences": [],
+      "unpreserved_xml_fields": {},
+      "media_json_empty": true,
+      "provider_data_empty": true,
+      "stats_compared": {
+        "playcount": {
+          "source": null,
+          "db": null,
+          "matches": true
+        },
+        "playtime": {
+          "source": null,
+          "db": null,
+          "matches": true
+        },
+        "lastplayed": {
+          "source": null,
+          "db": null,
+          "matches": true
+        }
+      }
+    }
+  ],
+  "verified_sample_asset_categories": {
+    "3dboxes": 9,
+    "backcovers": 8,
+    "covers": 9,
+    "fanart": 9,
+    "manuals": 7,
+    "marquees": 9,
+    "miximages": 9,
+    "physicalmedia": 9,
+    "screenshots": 9,
+    "titlescreens": 9
+  },
+  "asset_validation_errors": [],
+  "nonvideo_all_files": 11283,
+  "nonvideo_all_bytes": 5796594970,
+  "nonvideo_empty_files": 1603,
+  "media_totals_all_files": {
+    "miximages": {
+      "files": 1186,
+      "bytes": 765132212,
+      "empty": 162
+    },
+    "3dboxes": {
+      "files": 1165,
+      "bytes": 302454546,
+      "empty": 161
+    },
+    "backcovers": {
+      "files": 1017,
+      "bytes": 559628882,
+      "empty": 156
+    },
+    "covers": {
+      "files": 1165,
+      "bytes": 616688321,
+      "empty": 161
+    },
+    "fanart": {
+      "files": 1138,
+      "bytes": 371913306,
+      "empty": 159
+    },
+    "manuals": {
+      "files": 959,
+      "bytes": 2542853775,
+      "empty": 161
+    },
+    "marquees": {
+      "files": 1165,
+      "bytes": 107307007,
+      "empty": 161
+    },
+    "physicalmedia": {
+      "files": 1158,
+      "bytes": 343218312,
+      "empty": 160
+    },
+    "screenshots": {
+      "files": 1165,
+      "bytes": 115818626,
+      "empty": 161
+    },
+    "titlescreens": {
+      "files": 1165,
+      "bytes": 71579983,
+      "empty": 161
+    },
+    "videos": {
+      "files": 1165,
+      "bytes": 7775166771,
+      "empty": 162
+    }
+  },
+  "xml_tag_counts_all_game_entries": {
+    "path": 1145,
+    "name": 1145,
+    "desc": 1053,
+    "rating": 1037,
+    "releasedate": 1049,
+    "developer": 1053,
+    "publisher": 1051,
+    "genre": 1047,
+    "players": 1050,
+    "playcount": 63,
+    "playtime": 57,
+    "lastplayed": 59,
+    "favorite": 11,
+    "hidden": 4,
+    "broken": 2,
+    "nogamecount": 2,
+    "nomultiscrape": 2,
+    "hidemetadata": 2
+  },
+  "xml_top_level_tags": {
+    "gameList": 20,
+    "alternativeEmulator": 9
+  },
+  "observed_date": "2026-09-16",
+  "source_root": "ES-DE on RP6 SD card",
+  "selection": "One per listed system, prefer favorite and rich media; SNES includes an empty cover"
+}

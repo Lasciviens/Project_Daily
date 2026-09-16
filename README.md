@@ -15,6 +15,11 @@ Siri, Scriptable widgets) and lock-screen push notifications.
 
 ## Documentation
 
+**RP6 / Android: [Termux widget guide — setup, editing, new widgets and completed work](docs/termux-widgets.md).**
+
+ES-DE coverage: [10-game media and metadata audit](docs/games/esde-completeness-audit.md)
+— current sync is cover-only; the audit records the full non-video requirement.
+
 | Read this | For |
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | The agent bible — current feature + architecture state, coding rules, edge-function inventory, key patterns. Updated every session; it wins on any disagreement. |

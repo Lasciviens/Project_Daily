@@ -14,6 +14,8 @@ cross-AI task board → `codex-shortcuts.md`.
 
 | File | Purpose | Last verified |
 |---|---|---|
+| [termux-widgets.md](termux-widgets.md) | RP6 Termux widget setup/update, extension examples, installed-file map, ES-DE sync coverage, troubleshooting and dated delivery/device evidence. | 16/09/2026 |
+| [games/esde-completeness-audit.md](games/esde-completeness-audit.md) | Measured ten-game SD-to-DB comparison, whole-card media inventory, missing XML/media fields and the required non-video coverage contract. | 16/09/2026 |
 | `iphone-examples.md` | `phone-gateway` one-time server steps, the `x-phone-secret` pattern, and the full 11-action API table — deterministic `log_supplement`/`log_food`/`log_water`/`nutrition_today`/`recent_foods`/`search_library`/`sleep_stats`/`tasks_today` plus AI `ask`/`brief`/`sleep`. This table is the contract Shortcuts and widgets must match. | 24/07/2026 |
 | `web-push-setup.md` | Lock-screen morning push: VAPID key generation, the four Vault secrets, the `VITE_VAPID_PUBLIC_KEY` build variable, migration `068`, deploying `push-send` with JWT verification OFF, then subscribing from the installed PWA. | 25/07/2026 |
 | `scriptable-food-logger.md` | Setup + full source of the `Yemek Logla` Scriptable mini app: log food from recents, your own ingredient library, Open Food Facts search, or a scanned barcode. | 25/07/2026 |
