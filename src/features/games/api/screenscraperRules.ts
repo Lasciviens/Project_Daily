@@ -247,3 +247,57 @@ export function fillOnlyMissing<T extends Record<string, unknown>>(existing: T, 
   }
   return patch as Partial<T>
 }
+
+// ─── System resolution ───────────────────────────────────────────────────────
+
+export type SystemRow = { id: number; name?: string | null; retropie_names?: string[] | null }
+
+/**
+ * Builds the ES-DE folder name → ScreenScraper `systemeid` map.
+ *
+ * **Several ScreenScraper systems legitimately claim the same RetroPie alias**,
+ * and picking the wrong one is not a near miss — it searches a different
+ * database. Real, measured collisions:
+ *
+ *   snes    → 4 Super Nintendo | 107 Satellaview | 108 Sufami Turbo
+ *                              | 202 Snes - Super Mario World Hacks
+ *   nes     → 3 NES            | 278 Nes - Super Mario Bros. Hacks
+ *   genesis → 1 Megadrive      | 203 Megadrive - Sonic The Hedgehog 2 Hacks
+ *   n64     → 14 Nintendo 64   | 122 Nintendo 64DD
+ *   psp     → 61 PSP           | 172 Playstation minis
+ *
+ * A first version let the last row win and so scraped 604 of 1002 games against
+ * a ROM-hack database — which is why `Sonic The Hedgehog (USA, Europe)` came
+ * back as `Amy Rose In Sonic The Hedgehog` and three Contra files all came back
+ * as `Contra 3`.
+ *
+ * The LOWEST id wins. ScreenScraper numbered the real consoles first (1
+ * Megadrive, 3 NES, 4 Super Nintendo, 12 GBA, 14 N64, 57 PSX, 61 PSP) and every
+ * variant, add-on and hack collection later (107, 108, 122, 172, 202, 203,
+ * 278) — so "smallest id" is "the actual console" across every collision the
+ * real library produces. It is a heuristic about their numbering, not a
+ * guarantee, which is why `resolveSystemId` also reports WHICH system it chose
+ * so a wrong pick is visible in the result rather than silent.
+ */
+export function buildSystemIdMap(rows: SystemRow[]): Map<string, { id: number; name: string }> {
+  const map = new Map<string, { id: number; name: string }>()
+  for (const row of rows) {
+    const id = Number(row.id)
+    if (!Number.isFinite(id)) continue
+    for (const raw of row.retropie_names ?? []) {
+      const alias = String(raw ?? '').trim().toLowerCase()
+      if (!alias) continue
+      const current = map.get(alias)
+      if (!current || id < current.id) map.set(alias, { id, name: row.name ?? String(id) })
+    }
+  }
+  return map
+}
+
+export function resolveSystemId(
+  map: Map<string, { id: number; name: string }>,
+  esdeSystem: string | null | undefined,
+): { id: number; name: string } | null {
+  if (!esdeSystem) return null
+  return map.get(String(esdeSystem).trim().toLowerCase()) ?? null
+}

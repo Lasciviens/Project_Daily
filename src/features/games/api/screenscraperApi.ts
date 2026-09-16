@@ -19,6 +19,9 @@ export type ScrapeResult = {
   media?: string[]
   would_fill?: string[]
   matched_title?: string | null
+  /** Which ScreenScraper system was searched — surfaced so a wrong alias
+   *  resolution is visible in the result rather than silently wrong. */
+  system?: string
   dry_run?: boolean
 }
 

@@ -156,6 +156,32 @@ eq(R.fillOnlyMissing({ title: null }, { title: null }), {},
 eq(R.fillOnlyMissing({ release_year: 0 }, { release_year: 1994 }), {},
   'a real 0 is a value, not a gap')
 
+// ── buildSystemIdMap — the collision rule ───────────────────────────────────
+// Real rows, as cached from systemesListe: several systems claim one alias.
+const SYSTEMS = [
+  { id: 4,   name: 'Super Nintendo',                        retropie_names: ['snes'] },
+  { id: 202, name: 'Snes - Super Mario World Hacks',        retropie_names: ['snes'] },
+  { id: 107, name: 'Satellaview',                           retropie_names: ['snes'] },
+  { id: 1,   name: 'Megadrive',                             retropie_names: ['genesis', 'megadrive'] },
+  { id: 203, name: 'Megadrive - Sonic The Hedgehog 2 Hacks', retropie_names: ['genesis'] },
+  { id: 23,  name: 'Dreamcast',                             retropie_names: ['dreamcast'] },
+]
+const MAP = R.buildSystemIdMap(SYSTEMS)
+eq(R.resolveSystemId(MAP, 'snes')?.id, 4,
+  'the real console wins over a hack collection claiming the same alias')
+eq(R.resolveSystemId(MAP, 'genesis')?.id, 1,
+  'Megadrive wins over the Sonic-hacks system — the bug that returned "Amy Rose In Sonic The Hedgehog"')
+eq(R.resolveSystemId(MAP, 'megadrive')?.id, 1, 'a second alias of the same system resolves too')
+eq(R.resolveSystemId(MAP, 'SNES')?.id, 4, 'the lookup is case-insensitive')
+eq(R.resolveSystemId(MAP, ' snes ')?.id, 4, 'surrounding whitespace does not break the lookup')
+eq(R.resolveSystemId(MAP, 'switch'), null, 'an unmapped system resolves to null rather than to something wrong')
+eq(R.resolveSystemId(MAP, null), null, 'no system yields null')
+eq(R.resolveSystemId(MAP, 'snes')?.name, 'Super Nintendo',
+  'the chosen system is named so a wrong pick is visible in the result')
+eq(R.buildSystemIdMap([{ id: NaN, retropie_names: ['x'] }]).size, 0, 'a non-numeric id is skipped')
+eq(R.buildSystemIdMap([{ id: 5, retropie_names: null }]).size, 0, 'a system with no aliases contributes nothing')
+eq(R.buildSystemIdMap([{ id: 5, retropie_names: ['', '  '] }]).size, 0, 'blank aliases are ignored')
+
 // ── report ──────────────────────────────────────────────────────────────────
 if (failures.length > 0) {
   console.error(`\n${failures.length} FAILED of ${passed + failures.length}:\n`)
