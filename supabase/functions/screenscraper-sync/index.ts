@@ -202,7 +202,32 @@ function scoreToRating100(note: unknown): number | null {
   return Math.round(n * 5 * 10) / 10
 }
 
+// The three that have real columns on `games`.
 const MEDIA_ROLE = { cover: 'box-2D', screenshot: 'ss', fanart: 'fanart' } as const
+
+/**
+ * Every media type ScreenScraper answers with, except video.
+ *
+ * Twenty-six types come back and three were being kept. The rest — box backs
+ * and sides, 3D boxes, cartridge art, marquees, title screens, mixed-render
+ * composites, Steam grids, manuals, bezels, three wheel styles — had nowhere
+ * to go, so they were dropped on the floor. Migration 099's `games.media`
+ * jsonb is where they live now, keyed by type.
+ *
+ * Video is excluded deliberately, not forgotten: it is tens of megabytes per
+ * game against a bucket sized for box art, and nothing in this app plays one.
+ */
+const ALL_MEDIA_TYPES = [
+  'box-2D', 'box-2D-back', 'box-2D-side', 'box-3D', 'box-texture',
+  'support-2D', 'support-texture',
+  'ss', 'sstitle', 'fanart', 'steamgrid',
+  'wheel', 'wheel-hd', 'wheel-carbon', 'wheel-steel',
+  'screenmarquee', 'screenmarqueesmall', 'marquee',
+  'mixrbv1', 'mixrbv2', 'themehs', 'bezel-16-9',
+  'manuel', 'pictocouleur', 'pictoliste', 'pictomonochrome',
+] as const
+
+const SKIPPED_MEDIA = ['video', 'video-normalized']
 type MediaRole = keyof typeof MEDIA_ROLE
 type Media = { type?: string; url?: string; region?: string; format?: string }
 
@@ -277,6 +302,50 @@ function candidateOf(jeu: AnyRecord): AnyRecord {
     description: mapped.description ? String(mapped.description).slice(0, 600) : null,
     has_cover: !!pickMedia(jeu.medias, 'cover'),
     flags: matchFlags(jeu),
+  }
+}
+
+/**
+ * Everything in the response that is NOT a game column and NOT a media URL.
+ *
+ * Kept verbatim-ish in `provider_data` (099) so nothing they send is lost:
+ * their own /20 score, the ROM block's hashes and beta/demo/proto/hack flags,
+ * regions and languages, screen rotation, clone-of, and the full media
+ * inventory — including the types that were not mirrored, so "what else is
+ * available" can be answered without asking them again.
+ *
+ * No URL is ever copied in here. Their media URLs carry devid/devpassword.
+ */
+function providerDataOf(jeu: AnyRecord): AnyRecord {
+  const rom = (jeu.rom ?? {}) as AnyRecord
+  const medias = Array.isArray(jeu.medias) ? (jeu.medias as AnyRecord[]) : []
+  return {
+    jeu_id: jeu.id != null ? String(jeu.id) : null,
+    rom_id: jeu.romid != null ? String(jeu.romid) : null,
+    clone_of: jeu.cloneof ?? null,
+    not_a_game: jeu.notgame ?? null,
+    rotation: jeu.rotation ?? null,
+    top_staff: jeu.topstaff ?? null,
+    // Their community score, out of TWENTY. Kept raw and labelled rather than
+    // rescaled into something that looks like the user's own 1-10 rating.
+    note_out_of_20: (jeu.note as AnyRecord)?.text ?? null,
+    system: (jeu.systeme as AnyRecord)?.text ?? null,
+    // Every regional title and release date, not just the one picked.
+    names: Array.isArray(jeu.noms) ? jeu.noms : [],
+    dates: Array.isArray(jeu.dates) ? jeu.dates : [],
+    classifications: Array.isArray(jeu.classifications) ? jeu.classifications : [],
+    rom: {
+      filename: rom.romfilename ?? null,
+      crc: rom.romcrc ?? null, md5: rom.rommd5 ?? null, sha1: rom.romsha1 ?? null,
+      size: rom.romsize ?? null, regions: rom.romregions ?? null, languages: rom.romlangues ?? null,
+      flags: ['beta', 'demo', 'proto', 'trad', 'hack', 'unl', 'alt', 'best']
+        .filter(f => { const v = String(rom[`rom${f}`] ?? '').toLowerCase(); return v === '1' || v === 'true' }),
+    },
+    // What exists, whether or not it was mirrored. No URLs.
+    media_inventory: medias.map(m => ({
+      type: m.type ?? null, region: m.region ?? null, format: m.format ?? null, size: m.size ?? null,
+    })),
+    fetched_at: new Date().toISOString(),
   }
 }
 
@@ -388,6 +457,39 @@ async function promotePending(gameId: string, jeuId: string, ext: string): Promi
   const { error } = await admin.storage.from(BUCKET).copy(from, to)
   if (error) return null
   return admin.storage.from(BUCKET).getPublicUrl(to).data.publicUrl
+}
+
+/**
+ * Mirrors every non-video media type into the bucket.
+ *
+ * Returns `{type: storageUrl}` for migration 099's `games.media`. The three
+ * types that have real columns are written there too by the caller; this is
+ * what keeps the other twenty-three instead of discarding them.
+ *
+ * Each image is one download, so this is gated on the caller's `all_media`
+ * flag — the daily allowance is shared with the handheld and twenty images a
+ * game across a thousand games is not something to do by accident.
+ */
+async function mirrorAllMedia(gameId: string, medias: unknown): Promise<{ urls: AnyRecord; paths: string[] }> {
+  const urls: AnyRecord = {}
+  const paths: string[] = []
+  if (!Array.isArray(medias)) return { urls, paths }
+  for (const type of ALL_MEDIA_TYPES) {
+    if (SKIPPED_MEDIA.includes(type)) continue
+    const pick = (medias as Media[]).find(m => m?.type === type && typeof m.url === 'string' && m.url)
+    if (!pick) continue
+    const got = await downloadMedia(pick.url!)
+    if (!got.ok) continue
+    const path = `${gameId}/${type}.${mediaExtension(pick)}`
+    const { error } = await admin.storage.from(BUCKET).upload(path, got.bytes, {
+      contentType: got.contentType, upsert: true,
+    })
+    if (error) continue
+    // Only a Storage URL is ever recorded — never pick.url.
+    urls[type] = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+    paths.push(path)
+  }
+  return { urls, paths }
 }
 
 /** Mirrors one role into the bucket and returns the PUBLIC STORAGE url. */
@@ -532,6 +634,12 @@ async function recordDecision(userId: string, row: AnyRecord): Promise<void> {
   // and without it a genuine constraint failure is indistinguishable from the
   // missing table this is allowed to tolerate.
   if (error) console.log(`scrape_decisions insert skipped (${(error as AnyRecord).code ?? 'unknown'})`)
+}
+
+/** 42703 / PGRST204 — "column does not exist" (the recipes.fiber_g precedent). */
+function isMissingColumn(e: unknown): boolean {
+  const x = e as { code?: string; message?: string } | null
+  return x?.code === '42703' || x?.code === 'PGRST204' || /column .* does not exist/i.test(x?.message ?? '')
 }
 
 function narrowToFields(patch: AnyRecord, fields: unknown): AnyRecord {
@@ -742,6 +850,11 @@ Deno.serve(async (req) => {
         } else if (mode === 'rom') {
           const romnom = String(body.romnom ?? '').trim()
           if (!romnom) return fail('lookup mode "rom" needs a filename', 400)
+          // Their own rule: "Champ systemeid obligatoire si aucun CRC".
+          if (sysId == null) {
+            return json({ status: 'ok', mode, results: [], message:
+              'A filename lookup needs a system, and this one is not in the cached system list. Search by name instead, or use a hash — a hash needs no system.' })
+          }
           params.romnom = romnom
           params.romtype = 'rom'
           // File size sharpens a filename match; Skyscraper always sends it
@@ -996,23 +1109,42 @@ Deno.serve(async (req) => {
             if (storedUrl) { media[column] = storedUrl; storagePaths.push(storagePath(gameId, role, ext)) }
           }
 
+          // Everything else they sent. `all_media` defaults ON — the user's
+          // instruction was to take whatever they give except video — but it
+          // is a flag so a quota-tight run can turn it off.
+          const extras: AnyRecord = {}
+          if (body.all_media !== false && roles.length > 0) {
+            const mirrored = await mirrorAllMedia(gameId, jeu.medias)
+            if (Object.keys(mirrored.urls).length) {
+              extras.media = { ...(game.media ?? {}), ...mirrored.urls }
+              storagePaths.push(...mirrored.paths)
+            }
+          }
+          extras.provider_data = providerDataOf(jeu)
+
           const full = { ...patch, ...media }
-          if (Object.keys(full).length > 0) {
+          if (Object.keys(full).length > 0 || Object.keys(extras).length > 0) {
             // `external_ref` is bookkeeping, NOT a user choice, so it is set
             // here rather than passing through narrowToFields — which is why
             // an earlier version dropped it entirely and left applied rows
             // with a source and no id, permanently reading as "never scraped".
             // `needs_review` clears for the same reason: a human just reviewed
             // this and approved it, which is what the flag is asking for.
-            const { error } = await admin.from('games')
-              .update({
-                ...full,
-                external_ref: mapped.external_ref,
-                external_source: 'screenscraper',
-                synced_at: new Date().toISOString(),
-                needs_review: false,
-              })
-              .eq('id', gameId).eq('user_id', userId)
+            const payload: AnyRecord = {
+              ...full, ...extras,
+              external_ref: mapped.external_ref,
+              external_source: 'screenscraper',
+              synced_at: new Date().toISOString(),
+              needs_review: false,
+            }
+            let { error } = await admin.from('games').update(payload).eq('id', gameId).eq('user_id', userId)
+            if (error && isMissingColumn(error)) {
+              // Pre-099: the two jsonb columns do not exist yet. Everything
+              // else still writes, so a missing migration costs the extra
+              // media and nothing more.
+              delete payload.media; delete payload.provider_data
+              ;({ error } = await admin.from('games').update(payload).eq('id', gameId).eq('user_id', userId))
+            }
             if (error) return { id: gameId, title: game.title, outcome: 'error', reason: scrub(error.message) }
           }
 
@@ -1241,17 +1373,24 @@ Deno.serve(async (req) => {
           const plat = platformFor.get(game.id)
           const romnom = romNameFromPath(plat?.esde_path)
           const sys = plat?.esde_system ? systemId.get(String(plat.esde_system).trim().toLowerCase()) : undefined
-          // Only a MISSING FILENAME makes a game unmatchable. `systemeid` is
-          // optional on jeuInfos, so an unmapped system just means the search
-          // is not narrowed — an earlier version refused outright and wrote
-          // off five whole systems that way.
-          if (!romnom) {
-            return { id: game.id, title: game.title, outcome: 'unmatchable', reason: 'no ROM filename recorded for this game' }
+          // `systemeid` is MANDATORY for a filename lookup — their own error
+          // says it outright: "Champ systemeid obligatoire si aucun CRC". A
+          // previous change assumed it was optional and turned a clean refusal
+          // into their 400, which is worse.
+          //
+          // But an unmapped system is still no reason to give up, because
+          // jeuRecherche takes only a NAME. So: filename+system when we can,
+          // the game's own title when we cannot, marked as such so the review
+          // knows a name search is a weaker claim than a filename match.
+          if (!romnom && !sys) {
+            return { id: game.id, title: game.title, outcome: 'unmatchable',
+                     reason: 'no ROM filename and no known system — nothing to ask with' }
           }
 
-          const r = await callApi('jeuInfos.php', {
-            ...(sys ? { systemeid: sys.id } : {}), romtype: 'rom', romnom,
-          })
+          const viaName = !sys || !romnom
+          const r = viaName
+            ? await callApi('jeuRecherche.php', { recherche: String(game.title ?? '') })
+            : await callApi('jeuInfos.php', { systemeid: sys!.id, romtype: 'rom', romnom })
           // A 404 is a normal answer: this ROM is not in their database.
           if (!r.ok && r.notFound) {
             if (!dryRun) await admin.from('games').update({ needs_review: true }).eq('id', game.id).eq('user_id', userId)
@@ -1263,8 +1402,18 @@ Deno.serve(async (req) => {
           }
           if (!r.ok) return { id: game.id, title: game.title, outcome: 'error', reason: r.message }
 
-          const jeu = r.data?.response?.jeu
-          if (!jeu) return { id: game.id, title: game.title, outcome: 'error', reason: 'response carried no jeu' }
+          // jeuRecherche answers with a LIST; the best candidate is the first,
+          // which is their own relevance order. It is a proposal either way —
+          // nothing is written without approval.
+          const jeu = viaName
+            ? (Array.isArray(r.data?.response?.jeux) ? r.data.response.jeux[0] : null)
+            : r.data?.response?.jeu
+          if (!jeu) {
+            return viaName
+              ? { id: game.id, title: game.title, outcome: 'no_match',
+                  reason: `searched by name — "${plat?.esde_system ?? 'this system'}" is not in the cached system list` }
+              : { id: game.id, title: game.title, outcome: 'error', reason: 'response carried no jeu' }
+          }
 
           const mapped = mapJeuToGame(jeu)
           // `fields_by_game` lets one batch accept different fields per row —
@@ -1294,11 +1443,17 @@ Deno.serve(async (req) => {
             // what the reviewer chooses from, so it must show everything on the
             // table rather than the result of a previous choice.
             const offer = fillOnlyMissing(game, mapped)
-            // VALUES, not just names. "Would fill: description, genres" cannot
-            // be approved by anyone — approving means reading the description
-            // and seeing whether it is this game's or the sequel's.
+            // EVERYTHING they sent, not just the gaps.
+            //
+            // An earlier version built this from `fillOnlyMissing`, so any
+            // field the user ALREADY had was absent from the payload and the
+            // comparison rendered it as "—" on their side — making a complete
+            // response look like a nearly empty one, and making the whole
+            // side-by-side view useless exactly where it mattered. `would_fill`
+            // is what is writable; `proposed` is what they actually answered.
             const proposed: AnyRecord = {}
-            for (const [k, v] of Object.entries(offer)) {
+            for (const [k, v] of Object.entries(mapped)) {
+              if (v === null || v === undefined) continue
               proposed[k] = typeof v === 'string' && v.length > 600 ? `${v.slice(0, 600)}…` : v
             }
             // Cover art mirrored into a quarantine prefix so the review can be
@@ -1312,6 +1467,7 @@ Deno.serve(async (req) => {
             }
             return {
               id: game.id, title: game.title, outcome: 'matched', dry_run: true, system: sys?.name ?? null,
+              via: viaName ? 'name' : 'filename',
               jeu_id: mapped.external_ref, matched_title: mapped.title, rating100,
               would_fill: Object.keys(offer), proposed,
               rom_name: romnom, flags: matchFlags(jeu),
