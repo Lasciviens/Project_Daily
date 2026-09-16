@@ -105,3 +105,13 @@ export function PlaytimeBadge({ game, size = 'md' }: { game: Game; size?: 'sm' |
     }`} title={`Played ${t} in total across ${play.count ?? 0} launches`}>⏱{t}</span>
   )
 }
+
+/** Release year, on the cover — the fastest way to tell two versions apart. */
+export function YearBadge({ year, size = 'md' }: { year: number | null; size?: 'sm' | 'md' }) {
+  if (year == null) return null
+  return (
+    <span className={`font-bold rounded-md bg-black/70 text-white/90 backdrop-blur-sm shadow-sm leading-none ${
+      size === 'sm' ? 'text-[9px] px-1 py-0.5' : 'text-[10px] px-1.5 py-1'
+    }`}>{year}</span>
+  )
+}

@@ -15,13 +15,15 @@ import { Sheet } from '../../../shared/components/Sheet'
 import { haptic } from '../../../shared/utils/haptics'
 import { useGamesNeedingReview } from '../hooks/useGames'
 import { FilterGroupButton, CheckboxFilterPanel } from '../components/CheckboxFilterGroup'
-import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip, FlagBadges, PlaytimeBadge } from '../components/gameCardKit'
+import {
+  CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip, FlagBadges, PlaytimeBadge, YearBadge,
+} from '../components/gameCardKit'
 import { systemMeta } from '../systemMeta'
 import { formatPlaytime, sortByRecentlyPlayed, playStatsOf, MIN_REAL_PLAY_SECONDS } from '../gameStats'
 import type { Game } from '../types'
 
 // Which filter group is expanded, if any.
-type FilterKey = 'tier' | 'genre' | 'system' | 'series'
+type FilterKey = 'tier' | 'genre' | 'system' | 'series' | 'developer'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -79,7 +81,9 @@ function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
         <CoverImg url={game.primary_cover_url} title={game.title} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/20" />
 
-        <span className="absolute top-1.5 left-1.5"><TierBadge tier={game.tier} /></span>
+        <span className="absolute top-1.5 left-1.5 flex items-center gap-1">
+          <TierBadge tier={game.tier} /><YearBadge year={game.release_year} />
+        </span>
         <span className="absolute top-1.5 right-1.5"><RatingBadge rating={game.rating} /></span>
 
         <div className="absolute inset-x-1.5 bottom-1.5 flex items-end justify-between gap-1">
@@ -116,7 +120,9 @@ function CompactCard({ game, onClick }: { game: Game; onClick: () => void }) {
       <CoverImg url={game.primary_cover_url} title={game.title} />
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
 
-      <span className="absolute top-1 left-1"><TierBadge tier={game.tier} size="sm" /></span>
+      <span className="absolute top-1 left-1 flex items-center gap-0.5">
+        <TierBadge tier={game.tier} size="sm" /><YearBadge year={game.release_year} size="sm" />
+      </span>
       <span className="absolute top-1 right-1"><RatingBadge rating={game.rating} size="sm" /></span>
 
       <div className="absolute inset-x-1 bottom-1 flex items-end justify-between gap-1">
@@ -135,7 +141,9 @@ function PosterCard({ game, onClick }: { game: Game; onClick: () => void }) {
     >
       <CoverImg url={game.primary_cover_url} title={game.title} className="absolute inset-0" />
 
-      <span className="absolute top-2 left-2 z-10"><TierBadge tier={game.tier} /></span>
+      <span className="absolute top-2 left-2 z-10 flex items-center gap-1">
+        <TierBadge tier={game.tier} /><YearBadge year={game.release_year} />
+      </span>
       <span className="absolute top-2 right-2 z-10"><RatingBadge rating={game.rating} /></span>
 
       {/* Resting state: just enough to identify the game. */}
@@ -284,7 +292,7 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
                         right — with the series position sharing the left corner. */}
                     <span className="absolute top-1 left-1 flex items-center gap-0.5">
                       {!isStandalone && <span className="text-[9px] font-bold bg-black/70 text-white px-1 py-0.5 rounded-md leading-none">#{idx + 1}</span>}
-                      <TierBadge tier={g.tier} size="sm" />
+                      <TierBadge tier={g.tier} size="sm" /><YearBadge year={g.release_year} size="sm" />
                     </span>
                     <span className="absolute top-1 right-1"><RatingBadge rating={g.rating} size="sm" /></span>
                     <span className="absolute inset-x-1 bottom-1 flex items-end justify-between gap-1 z-10">
@@ -334,6 +342,7 @@ function LibraryTab({ onOpenDetail, onFilteredChange }: {
   const [systemFilter,   setSystemFilter]   = useState<string[]>([])
   const [systemDefaultApplied, setSystemDefaultApplied] = useState(false)
   const [seriesFilter,   setSeriesFilter]   = useState<string[]>([])
+  const [devFilter,      setDevFilter]      = useState<string[]>([])
   const [openFilter,     setOpenFilter]     = useState<FilterKey | null>(null)
   const [coopOnly,       setCoopOnly]       = useState(false)
   const [iconicOnly,     setIconicOnly]     = useState(false)
@@ -346,6 +355,7 @@ function LibraryTab({ onOpenDetail, onFilteredChange }: {
   const genreOptions  = useMemo(() => [...new Set(allGames.flatMap(g => g.genres ?? []))].sort(), [allGames])
   const systemOptions = useMemo(() => [...new Set(allGames.flatMap(g => g.platforms.map(p => p.system)))].sort(), [allGames])
   const seriesOptions = useMemo(() => [...new Set(allGames.map(g => g.series_name).filter(Boolean) as string[])].sort(), [allGames])
+  const devOptions    = useMemo(() => [...new Set(allGames.map(g => g.developer).filter(Boolean) as string[])].sort(), [allGames])
 
   // Applied once, the moment the library's own system list is known — a
   // useState initialiser cannot do it, since the options only exist after the
@@ -370,6 +380,7 @@ function LibraryTab({ onOpenDetail, onFilteredChange }: {
     const genreCounts  = countBy(g => g.genres ?? [])
     const systemCounts = countBy(g => [...new Set(g.platforms.map(p => p.system))])
     const seriesCounts = countBy(g => (g.series_name ? [g.series_name] : []))
+    const devCounts    = countBy(g => (g.developer ? [g.developer] : []))
     const opts = (values: string[], counts: Map<string, number>, label?: (v: string) => string) =>
       values.map(v => ({ value: v, label: label ? label(v) : v, count: counts.get(v) ?? 0 }))
 
@@ -380,8 +391,14 @@ function LibraryTab({ onOpenDetail, onFilteredChange }: {
       ...(seriesOptions.length > 0
         ? [{ key: 'series' as const, label: 'Series', selected: seriesFilter, onChange: setSeriesFilter, options: opts(seriesOptions, seriesCounts) }]
         : []),
+      // Only offered once the library actually knows some developers — an
+      // empty group is a button that does nothing.
+      ...(devOptions.length > 0
+        ? [{ key: 'developer' as const, label: 'Developer', selected: devFilter, onChange: setDevFilter, options: opts(devOptions, devCounts) }]
+        : []),
     ]
-  }, [allGames, genreOptions, systemOptions, seriesOptions, tierFilter, genreFilter, systemFilter, seriesFilter])
+  }, [allGames, genreOptions, systemOptions, seriesOptions, devOptions,
+      tierFilter, genreFilter, systemFilter, seriesFilter, devFilter])
 
   const openGroup = filterGroups.find(g => g.key === openFilter) ?? null
 
@@ -399,20 +416,21 @@ function LibraryTab({ onOpenDetail, onFilteredChange }: {
     // from the library it has not been catalogued in yet.
     if (systemFilter.length) gs = gs.filter(g => !g.platforms.length || g.platforms.some(p => systemFilter.includes(p.system)))
     if (seriesFilter.length) gs = gs.filter(g => !!g.series_name && seriesFilter.includes(g.series_name))
+    if (devFilter.length)    gs = gs.filter(g => !!g.developer && devFilter.includes(g.developer))
     if (coopOnly)       gs = gs.filter(g => g.is_coop)
     if (iconicOnly)     gs = gs.filter(g => g.is_iconic)
     if (view === 'series') return gs
     return sortGames(gs, sort)
-  }, [allGames, search, statusFilter, tierFilter, genreFilter, systemFilter, seriesFilter, coopOnly, iconicOnly, sort, view])
+  }, [allGames, search, statusFilter, tierFilter, genreFilter, systemFilter, seriesFilter, devFilter, coopOnly, iconicOnly, sort, view])
 
   useEffect(() => { onFilteredChange?.(filtered) }, [filtered, onFilteredChange])
 
-  const pickedCount = tierFilter.length + genreFilter.length + systemFilter.length + seriesFilter.length
+  const pickedCount = tierFilter.length + genreFilter.length + systemFilter.length + seriesFilter.length + devFilter.length
   const hasFilters = !!(search || statusFilter || coopOnly || iconicOnly) || pickedCount > 0
 
   const clearFilters = useCallback(() => {
     setSearch(''); setStatusFilter(null); setTierFilter([])
-    setGenreFilter([]); setSystemFilter([]); setSeriesFilter([])
+    setGenreFilter([]); setSystemFilter([]); setSeriesFilter([]); setDevFilter([])
     setCoopOnly(false); setIconicOnly(false)
   }, [])
 
