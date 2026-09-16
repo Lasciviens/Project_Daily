@@ -1,10 +1,10 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { computePlaytimeStats } from '../gameStats'
 import type {
-  Game, GamePlatform, GameStats, QueueGame, PlayStatus,
-  CreateGameInput, GamePatch, GamePlatformInput,
+  Game, GamePlatform, QueueGame, PlayStatus,
+  CreateGameInput, GamePatch, GamePlatformInput, GameLibrary,
 } from '../types'
+import type { StatsRow } from '../gameStats'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,13 @@ import type {
 // so until migration 089 is applied AND the RP5 data is imported, every one
 // of these reads would otherwise 42P01 the entire page.
 const NOT_MIGRATED = 'Games database not set up yet (migration 089 not applied)'
+// 42703 / PGRST204 — "column does not exist", the shape every pre-migration
+// retry in this repo keys on (recipes.fiber_g's precedent).
+function isMissingColumn(e: unknown): boolean {
+  const x = e as { code?: string; message?: string } | null
+  return x?.code === '42703' || x?.code === 'PGRST204' || /column .* does not exist/i.test(x?.message ?? '')
+}
+
 function isMissingTable(e: unknown): boolean {
   const x = e as { code?: string; message?: string } | null
   return x?.code === '42P01' || x?.code === 'PGRST205' || /Could not find the table/i.test(x?.message ?? '')
@@ -105,9 +112,25 @@ async function fetchAllPlatformsFor(gameIds: string[]): Promise<GamePlatform[]> 
 
 // ─── Reads ───────────────────────────────────────────────────────────────────
 
+/**
+ * The RETRO library only (migration 096's `library` discriminator). Steam and
+ * PlayStation rows live in the same table — they share every personal column
+ * that matters — but the Retro Games tab is a view of one console library, not
+ * of everything.
+ *
+ * Pre-096 the column does not exist, so the filter would 42703 the whole page.
+ * It retries unscoped in that case: every row IS retro before the migration.
+ */
 export async function fetchAllGames(): Promise<Game[]> {
-  const rows = await fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
-    supabase.from('games').select('*').order('title', { ascending: true }).range(from, to))
+  let rows: Omit<Game, 'platforms'>[]
+  try {
+    rows = await fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
+      supabase.from('games').select('*').eq('library', 'retro').order('title', { ascending: true }).range(from, to))
+  } catch (e) {
+    if (!isMissingColumn(e)) throw e
+    rows = await fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
+      supabase.from('games').select('*').order('title', { ascending: true }).range(from, to))
+  }
   // Every game is wanted here, so read the platform table whole rather than
   // asking for 1225 ids by name.
   return attachPlatforms(rows, await fetchAllPlatformRows())
@@ -121,37 +144,31 @@ export async function fetchGameDetail(id: string): Promise<Game> {
   return attachPlatforms([game], platforms ?? [])[0]
 }
 
-export async function fetchGameStats(): Promise<GameStats> {
+/**
+ * Raw rows for the Stats panel, across EVERY library — retro, Steam and
+ * PlayStation together (migration 096). The panel filters by window and by
+ * library and totals the result itself (`gameStats.ts::computeGameStats`), so
+ * this deliberately aggregates nothing: the numbers depend on what the user
+ * picked, not on what the query returned.
+ */
+export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: { game_id: string; system: string }[] }> {
   // Paginated for the same reason as fetchAllGames: capped at one page, every
   // total on the Stats panel would silently stop counting at 1000.
-  type StatRow = Pick<Game,
-    'id' | 'title' | 'play_status' | 'is_iconic' | 'is_coop' | 'needs_review' | 'rating'
-    | 'esde_playcount' | 'esde_playtime_seconds' | 'esde_last_played'>
-  const [rows, platforms] = await Promise.all([
-    fetchAllPages<StatRow>((from, to) =>
-      supabase.from('games')
-        .select('id, title, play_status, is_iconic, is_coop, needs_review, rating, esde_playcount, esde_playtime_seconds, esde_last_played')
-        .range(from, to)),
-    fetchAllPages<{ system: string }>((from, to) =>
-      supabase.from('game_platforms').select('system').range(from, to)),
-  ])
-  const rated = rows.filter(r => r.rating != null)
-  const bySystemMap = new Map<string, number>()
-  for (const p of platforms ?? []) bySystemMap.set(p.system, (bySystemMap.get(p.system) ?? 0) + 1)
-  return {
-    total:       rows.length,
-    playing:     rows.filter(r => r.play_status === 'playing').length,
-    completed:   rows.filter(r => r.play_status === 'completed').length,
-    wishlist:    rows.filter(r => r.play_status === 'wishlist').length,
-    backlog:     rows.filter(r => r.play_status === 'backlog').length,
-    dropped:     rows.filter(r => r.play_status === 'dropped').length,
-    iconic:      rows.filter(r => r.is_iconic).length,
-    coop:        rows.filter(r => r.is_coop).length,
-    needsReview: rows.filter(r => r.needs_review).length,
-    avgRating:   rated.length ? Math.round((rated.reduce((s, r) => s + Number(r.rating), 0) / rated.length) * 10) / 10 : null,
-    bySystem:    [...bySystemMap.entries()].map(([system, count]) => ({ system, count })).sort((a, b) => b.count - a.count),
-    playtime:    computePlaytimeStats(rows),
+  const COLUMNS = 'id, title, play_status, is_iconic, is_coop, needs_review, rating, esde_playcount, esde_playtime_seconds, esde_last_played'
+  const WITH_096 = `${COLUMNS}, library, play_seconds, play_count, last_played_at`
+
+  let rows: StatsRow[]
+  try {
+    rows = await fetchAllPages<StatsRow>((from, to) => supabase.from('games').select(WITH_096).range(from, to))
+  } catch (e) {
+    // Pre-096 the three neutral columns and `library` do not exist yet; the
+    // ES-DE figures are then the only ones there are, and every row is retro.
+    if (!isMissingColumn(e)) throw e
+    rows = await fetchAllPages<StatsRow>((from, to) => supabase.from('games').select(COLUMNS).range(from, to))
   }
+  const platforms = await fetchAllPages<{ game_id: string; system: string }>((from, to) =>
+    supabase.from('game_platforms').select('game_id, system').range(from, to))
+  return { rows, platforms }
 }
 
 // Games flagged needs_review OR missing metadata a real library entry should
@@ -311,4 +328,85 @@ export async function setPrimaryVariant(gameId: string, platformId: string): Pro
   if (clearErr) throw isMissingTable(clearErr) ? new Error(NOT_MIGRATED) : clearErr
   const { error } = await supabase.from('game_platforms').update({ is_primary_variant: true }).eq('id', platformId)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+}
+
+// ─── Provider import (migration 096) ─────────────────────────────────────────
+
+/** One provider game, already normalised to this table's own shape. */
+export type ProviderGameInput = {
+  external_ref: string
+  title: string
+  play_seconds?: number | null
+  play_count?: number | null
+  last_played_at?: string | null
+  primary_cover_url?: string | null
+  release_year?: number | null
+  genres?: string[] | null
+}
+
+/**
+ * Bring a provider's owned/played list into `games` so those titles can be
+ * tiered, rated, completed and counted like any other.
+ *
+ * Re-running is safe and is the normal case: the unique index
+ * `(user_id, library, external_ref)` turns a second import into an update.
+ * Only the PROVIDER's own facts are written on conflict — play statistics and
+ * the cover — never `play_status`, `tier`, `rating` or notes, which are the
+ * user's and which a re-import must never reset. (The same rule `esde-sync`
+ * follows for the same reason.)
+ */
+export async function importProviderGames(
+  library: Exclude<GameLibrary, 'retro'>,
+  source: 'steam' | 'psn',
+  games: ProviderGameInput[],
+): Promise<{ imported: number }> {
+  if (!games.length) return { imported: 0 }
+  const user = await requireUser()
+  const now = new Date().toISOString()
+
+  // Chunked for the same URL-length reason the reads are: a 400-game Steam
+  // library is one request otherwise.
+  let imported = 0
+  for (let i = 0; i < games.length; i += 200) {
+    const rows = games.slice(i, i + 200).map(g => ({
+      user_id: user.id,
+      library,
+      external_source: source,
+      external_ref: g.external_ref,
+      title: g.title,
+      play_seconds: g.play_seconds ?? null,
+      play_count: g.play_count ?? null,
+      last_played_at: g.last_played_at ?? null,
+      primary_cover_url: g.primary_cover_url ?? null,
+      release_year: g.release_year ?? null,
+      genres: g.genres ?? null,
+      synced_at: now,
+    }))
+    const { error } = await supabase.from('games').upsert(rows, {
+      onConflict: 'user_id,library,external_ref',
+      // The user's own columns are simply not in the payload, so an update
+      // touches only what the provider owns.
+      ignoreDuplicates: false,
+    })
+    if (error) {
+      throw isMissingTable(error) || isMissingColumn(error)
+        ? new Error('Importing Steam/PlayStation games needs migration 096 — apply it first.')
+        : error
+    }
+    imported += rows.length
+  }
+  return { imported }
+}
+
+/** Every game in one provider library, newest-played first. */
+export async function fetchLibraryGames(library: GameLibrary): Promise<Game[]> {
+  try {
+    const rows = await fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
+      supabase.from('games').select('*').eq('library', library)
+        .order('last_played_at', { ascending: false, nullsFirst: false }).range(from, to))
+    return attachPlatforms(rows, [])
+  } catch (e) {
+    if (isMissingColumn(e)) return []
+    throw e
+  }
 }

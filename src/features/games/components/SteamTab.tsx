@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useSteamProfile, useSteamOwnedGames, useSteamLevelBadges } from '../hooks/useSteam'
 import { SteamGameModal } from './SteamGameModal'
 import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
+import { ImportProviderButton } from './ImportProviderButton'
+import type { ProviderGameInput } from '../api/gamesApi'
 
 // Steam integration — read-only proxy through the `steam-api` edge function
 // (personal Web API key + SteamID64 in Vault). Everything about the user is a
@@ -139,6 +141,18 @@ export function SteamTab() {
   const player = profile.data
   const totalHours = Math.round((owned.data?.games ?? []).reduce((s, g) => s + g.playtime_forever, 0) / 60)
 
+  // Steam reports playtime in MINUTES and last-played as a unix timestamp;
+  // both are converted here so `games.play_seconds` has one unit whatever the
+  // provider. The header image is a public CDN URL with no credentials in it,
+  // unlike ScreenScraper's, so it can be stored as-is.
+  const importRows: ProviderGameInput[] = (owned.data?.games ?? []).map(g => ({
+    external_ref: String(g.appid),
+    title: g.name,
+    play_seconds: g.playtime_forever * 60,
+    last_played_at: g.rtime_last_played ? new Date(g.rtime_last_played * 1000).toISOString() : null,
+    primary_cover_url: steamGameHeaderUrl(g.appid),
+  }))
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -165,10 +179,14 @@ export function SteamTab() {
             )}
           </div>
         </div>
-        <button onClick={() => qc.invalidateQueries({ queryKey: ['steam'] })}
-          className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors">
-          🔄 Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <ImportProviderButton library="steam" source="steam" games={importRows}
+            label={`＋ Add ${importRows.length} to library`} />
+          <button onClick={() => qc.invalidateQueries({ queryKey: ['steam'] })}
+            className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors">
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
       {recentGames.length > 0 && <RecentStrip games={recentGames} onOpen={setOpenGame} />}

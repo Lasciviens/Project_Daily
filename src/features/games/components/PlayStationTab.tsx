@@ -6,6 +6,8 @@ import {
 } from '../hooks/usePlayStation'
 import { PsnGameModal } from './PsnGameModal'
 import { parsePlayDurationMinutes, type PsnPlayedGame, type PsnTrophyTitle } from '../api/psnApi'
+import { ImportProviderButton } from './ImportProviderButton'
+import type { ProviderGameInput } from '../api/gamesApi'
 
 // PlayStation integration — the community npsso-cookie flow (Sony has no
 // official API; see CLAUDE.md's Games Feature Detail research note).
@@ -141,6 +143,20 @@ function ConnectedView() {
   const totalHours = Math.round(
     (played.data ?? []).reduce((s, g) => s + parsePlayDurationMinutes(g.playDuration), 0) / 60)
 
+  // PSN reports playtime as an ISO-8601 duration and keys games by store SKU
+  // (npTitleId). Converted to seconds here so `games.play_seconds` has one
+  // unit whatever the provider. `imageUrl` is a public Sony CDN URL with no
+  // credentials in it, unlike ScreenScraper's, so it can be stored as-is.
+  const importRows: ProviderGameInput[] = (played.data ?? []).map(g => ({
+    external_ref: g.titleId,
+    title: g.localizedName || g.name,
+    play_seconds: parsePlayDurationMinutes(g.playDuration) * 60,
+    play_count: g.playCount ?? null,
+    last_played_at: g.lastPlayedDateTime ?? null,
+    primary_cover_url: g.imageUrl ?? null,
+    genres: g.concept?.genres ? String(g.concept.genres).split(',').map(x => x.trim()).filter(Boolean) : null,
+  }))
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -168,6 +184,8 @@ function ConnectedView() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <ImportProviderButton library="playstation" source="psn" games={importRows}
+            label={`＋ Add ${importRows.length} to library`} />
           <button onClick={() => qc.invalidateQueries({ queryKey: ['psn'] })}
             className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors">
             🔄 Refresh

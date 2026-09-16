@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useGameStats, usePlayQueue } from '../../games/hooks/useGames'
+import { computeGameStats } from '../../games/gameStats'
 import type { Game } from '../../games/types'
 import { haptic } from '../../../shared/utils/haptics'
 
@@ -31,7 +32,13 @@ function CoverThumb({ game }: { game: Game }) {
 }
 
 export function GamesHomeWidget() {
-  const { data: stats, isLoading: statsLoading, error: statsError } = useGameStats()
+  const { data: statsData, isLoading: statsLoading, error: statsError } = useGameStats()
+  // The query returns raw rows now (the Games Stats panel scopes them by
+  // period and platform); this widget wants the plain all-time totals.
+  const stats = useMemo(
+    () => (statsData ? computeGameStats(statsData.rows, statsData.platforms) : null),
+    [statsData],
+  )
   const { data: queue  = [] } = usePlayQueue()
   const playingGames = queue.filter(g => g.play_status === 'playing')
   // Reference widget — collapsed by default on a phone (desktop always shows).

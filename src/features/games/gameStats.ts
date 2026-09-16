@@ -9,12 +9,35 @@
 // Import-free on purpose (the `progressAggregate.ts` convention) so
 // `scripts/verify-game-stats.cjs` can require it through sucrase.
 
+/**
+ * Play statistics as any provider reports them.
+ *
+ * Migration 096 added the source-neutral trio (`play_seconds`/`play_count`/
+ * `last_played_at`) so a library mixing ES-DE, Steam and PlayStation totals
+ * without every row needing a different column read. The `esde_*` fields are kept
+ * as the fallback: until 096 is applied they are the only figures there are,
+ * and after it they still hold ES-DE's own copy.
+ */
 export type PlayStatRow = {
   id: string
   title: string
-  esde_playcount: number | null
-  esde_playtime_seconds: number | null
-  esde_last_played: string | null
+  play_seconds?: number | null
+  play_count?: number | null
+  last_played_at?: string | null
+  esde_playcount?: number | null
+  esde_playtime_seconds?: number | null
+  esde_last_played?: string | null
+}
+
+export type ResolvedPlay = { seconds: number | null; count: number | null; last: string | null }
+
+/** The neutral columns win; ES-DE's are the pre-migration-096 fallback. */
+export function playStatsOf(g: PlayStatRow): ResolvedPlay {
+  return {
+    seconds: g.play_seconds ?? g.esde_playtime_seconds ?? null,
+    count:   g.play_count ?? g.esde_playcount ?? null,
+    last:    g.last_played_at ?? g.esde_last_played ?? null,
+  }
 }
 
 /** "2h 14m" · "45m" · "3m" · null when there is genuinely nothing to show. */
@@ -40,10 +63,9 @@ export function formatPlaytimeShort(seconds: number | null | undefined): string 
   return `${Math.floor(minutes / 60)}h`
 }
 
-export function hasPlayData(g: Pick<PlayStatRow, 'esde_playcount' | 'esde_playtime_seconds' | 'esde_last_played'>): boolean {
-  return (g.esde_playcount ?? 0) > 0
-    || (g.esde_playtime_seconds ?? 0) > 0
-    || !!g.esde_last_played
+export function hasPlayData(g: PlayStatRow): boolean {
+  const p = playStatsOf(g)
+  return (p.count ?? 0) > 0 || (p.seconds ?? 0) > 0 || !!p.last
 }
 
 export type PlaytimeStats = {
@@ -66,17 +88,19 @@ export function computePlaytimeStats(rows: PlayStatRow[], topN = 5): PlaytimeSta
   let lastPlayed: string | null = null
 
   for (const r of rows) {
-    const secs = r.esde_playtime_seconds ?? 0
+    const p = playStatsOf(r)
+    const secs = p.seconds ?? 0
     if (Number.isFinite(secs) && secs > 0) totalSeconds += secs
     if (hasPlayData(r)) playedCount++
-    if (r.esde_last_played && (!lastPlayed || r.esde_last_played > lastPlayed)) lastPlayed = r.esde_last_played
+    if (p.last && (!lastPlayed || p.last > lastPlayed)) lastPlayed = p.last
   }
 
   const topPlayed = rows
-    .filter(r => (r.esde_playtime_seconds ?? 0) > 0)
-    .sort((a, b) => (b.esde_playtime_seconds ?? 0) - (a.esde_playtime_seconds ?? 0))
+    .map(r => ({ row: r, p: playStatsOf(r) }))
+    .filter(x => (x.p.seconds ?? 0) > 0)
+    .sort((a, b) => (b.p.seconds ?? 0) - (a.p.seconds ?? 0))
     .slice(0, topN)
-    .map(r => ({ id: r.id, title: r.title, seconds: r.esde_playtime_seconds ?? 0, playcount: r.esde_playcount }))
+    .map(x => ({ id: x.row.id, title: x.row.title, seconds: x.p.seconds ?? 0, playcount: x.p.count }))
 
   return { totalSeconds, playedCount, neverPlayedCount: rows.length - playedCount, lastPlayed, topPlayed }
 }
@@ -99,11 +123,109 @@ export function isRealPlay(seconds: number | null | undefined): boolean {
  * else keeps its own relative order BELOW that block rather than being
  * filtered out — a sort must never remove rows (CLAUDE.md's NEVER_HIDES).
  */
-export function sortByRecentlyPlayed<T extends { esde_last_played: string | null; esde_playtime_seconds: number | null }>(
-  games: T[],
-): T[] {
-  const real = games.filter(g => isRealPlay(g.esde_playtime_seconds) && g.esde_last_played)
-  const rest = games.filter(g => !(isRealPlay(g.esde_playtime_seconds) && g.esde_last_played))
-  real.sort((a, b) => (b.esde_last_played ?? '').localeCompare(a.esde_last_played ?? ''))
+export function sortByRecentlyPlayed<T extends PlayStatRow>(games: T[]): T[] {
+  const ranked = (g: T) => { const p = playStatsOf(g); return isRealPlay(p.seconds) && p.last ? p.last : null }
+  const real = games.filter(g => ranked(g) !== null)
+  const rest = games.filter(g => ranked(g) === null)
+  real.sort((a, b) => (ranked(b) ?? '').localeCompare(ranked(a) ?? ''))
   return [...real, ...rest]
+}
+
+// ─── Stats scoping (migration 096) ──────────────────────────────────────────
+
+export type StatsWindow = '7d' | '30d' | '90d' | '365d' | 'all'
+
+export const STATS_WINDOWS: { key: StatsWindow; label: string; days: number | null }[] = [
+  { key: '7d',   label: 'Last week',    days: 7 },
+  { key: '30d',  label: 'Last 30 days', days: 30 },
+  { key: '90d',  label: 'Last 3 months', days: 90 },
+  { key: '365d', label: 'Last year',    days: 365 },
+  { key: 'all',  label: 'All time',     days: null },
+]
+
+/**
+ * Games PLAYED inside the window.
+ *
+ * Be clear about what this can and cannot mean: every provider here reports a
+ * LIFETIME total and the date of the last session — never per-session records.
+ * So a window selects the games touched in it and shows their lifetime figures;
+ * it cannot say how many hours fell inside the window itself. The Stats panel
+ * says so on screen rather than implying a precision the data has not got.
+ *
+ * A game with no last-played date is out of every window except "all time" —
+ * there is no date on which to include it.
+ */
+export function withinWindow<T extends PlayStatRow>(games: T[], window: StatsWindow, now = new Date()): T[] {
+  const spec = STATS_WINDOWS.find(w => w.key === window)
+  if (!spec || spec.days == null) return games
+  const cutoff = new Date(now.getTime() - spec.days * 86400_000).toISOString()
+  return games.filter(g => {
+    const last = playStatsOf(g).last
+    return !!last && last >= cutoff
+  })
+}
+
+// ─── Library-wide aggregation ───────────────────────────────────────────────
+// Lives here rather than in the API layer because the Stats panel now filters
+// by window and by library before totalling — the numbers depend on what the
+// user picked, not on what the query returned.
+
+export type StatsRow = PlayStatRow & {
+  play_status: string
+  is_iconic: boolean
+  is_coop: boolean
+  needs_review: boolean
+  rating: number | null
+  library?: string | null
+}
+
+export type GameStatsShape = {
+  total: number
+  playing: number
+  completed: number
+  wishlist: number
+  backlog: number
+  dropped: number
+  iconic: number
+  coop: number
+  needsReview: number
+  avgRating: number | null
+  bySystem: { system: string; count: number }[]
+  playtime: PlaytimeStats
+}
+
+export function computeGameStats(
+  rows: StatsRow[],
+  platforms: { game_id?: string; system: string }[] = [],
+): GameStatsShape {
+  const rated = rows.filter(r => r.rating != null)
+  const ids = new Set(rows.map(r => r.id))
+  const bySystemMap = new Map<string, number>()
+  for (const p of platforms) {
+    // A platform row only counts when its game is in the current scope —
+    // otherwise a library filter would change every total EXCEPT this one.
+    if (p.game_id && !ids.has(p.game_id)) continue
+    bySystemMap.set(p.system, (bySystemMap.get(p.system) ?? 0) + 1)
+  }
+  const count = (s: string) => rows.filter(r => r.play_status === s).length
+  return {
+    total: rows.length,
+    playing: count('playing'),
+    completed: count('completed'),
+    wishlist: count('wishlist'),
+    backlog: count('backlog'),
+    dropped: count('dropped'),
+    iconic: rows.filter(r => r.is_iconic).length,
+    coop: rows.filter(r => r.is_coop).length,
+    needsReview: rows.filter(r => r.needs_review).length,
+    avgRating: rated.length
+      ? Math.round((rated.reduce((s, r) => s + Number(r.rating), 0) / rated.length) * 10) / 10
+      : null,
+    bySystem: [...bySystemMap.entries()].map(([system, count]) => ({ system, count })).sort((a, b) => b.count - a.count),
+    playtime: computePlaytimeStats(rows),
+  }
+}
+
+export const LIBRARY_LABEL: Record<string, string> = {
+  retro: 'Retro', steam: 'Steam', playstation: 'PlayStation',
 }
