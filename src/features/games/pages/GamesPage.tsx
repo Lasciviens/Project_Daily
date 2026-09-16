@@ -5,6 +5,7 @@ import { AddGameModal } from '../components/AddGameModal'
 import { TierEditorTab } from '../components/TierEditorTab'
 import { PlayQueueTab } from '../components/PlayQueueTab'
 import { NeedsReviewTab } from '../components/NeedsReviewTab'
+import { ScreenScraperPanel } from '../components/ScreenScraperPanel'
 import { StatsPanel } from '../components/StatsPanel'
 import { PlayStationTab } from '../components/PlayStationTab'
 import { SteamTab } from '../components/SteamTab'
@@ -667,7 +668,16 @@ export function GamesPage() {
           {tab === 'library' && <LibraryTab onOpenDetail={setSelectedId} />}
           {tab === 'tiers'   && <TierEditorTab />}
           {tab === 'queue'   && <PlayQueueTab />}
-          {tab === 'review'  && <NeedsReviewTab onOpenDetail={setSelectedId} />}
+          {/* The scraper sits with Review because they are the same job seen
+              from two ends: Review lists what is missing, this fills it. */}
+          {tab === 'review'  && (
+            <div className="space-y-4">
+              <ErrorBoundary label="ScreenScraper" action="screenscraper_panel">
+                <ScreenScraperPanel />
+              </ErrorBoundary>
+              <NeedsReviewTab onOpenDetail={setSelectedId} />
+            </div>
+          )}
           {tab === 'stats'   && <StatsPanel />}
 
           {selectedId && <GameDetailModal gameId={selectedId} onClose={() => setSelectedId(null)} />}
