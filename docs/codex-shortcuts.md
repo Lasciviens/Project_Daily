@@ -118,7 +118,7 @@ confirmations (re-import `Su İç`, camera-run `Barkod Tara`) plus C6.
   gateway change, no OFF logic in the Shortcut itself. **Remaining:** one
   on-iPhone camera run to confirm end-to-end.
 
-- **C7 · ES-DE play-stats push script — `todo`.** Codex owns the device-side
+- **C7 · ES-DE play-stats push script — `done` (2026-09-16, PR #440).** Codex owns the device-side
   Termux script under `scripts/` (user decision 2026-09-15); Claude owns the
   receiving edge-function action, migration and schema. Reads ES-DE's per-system
   `gamelist.xml` on the RP6, diffs against a locally stored per-game fingerprint
