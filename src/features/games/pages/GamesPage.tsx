@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useAllGames } from '../hooks/useGames'
 import { GameDetailModal } from '../components/GameDetailModal'
 import { AddGameModal } from '../components/AddGameModal'
@@ -17,7 +17,7 @@ import { useGamesNeedingReview } from '../hooks/useGames'
 import { FilterGroupButton, CheckboxFilterPanel } from '../components/CheckboxFilterGroup'
 import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip, FlagBadges, PlaytimeBadge } from '../components/gameCardKit'
 import { systemMeta } from '../systemMeta'
-import { formatPlaytime } from '../gameStats'
+import { formatPlaytime, sortByRecentlyPlayed, MIN_REAL_PLAY_SECONDS } from '../gameStats'
 import type { Game } from '../types'
 
 // Which filter group is expanded, if any.
@@ -34,6 +34,12 @@ type MainTab = 'library' | 'tiers' | 'queue' | 'review' | 'stats'
 // — see PlayStationTab.tsx/SteamTab.tsx for why each is a separate,
 // meaningfully different integration story.
 type PlatformTab = 'retro' | 'playstation' | 'steam'
+
+// Excluded from the library's DEFAULT system selection: these four are ~710 of
+// the ~1150 imported rows, so leaving them on means the other twenty systems
+// are never actually seen. They are not hidden — each is one tap away in the
+// System filter group, and Reset re-selects everything.
+const BULK_SYSTEMS = new Set(['nes', 'snes', 'snesna', 'genesis', 'fbneo'])
 
 const LIB_VIEWS: { v: LibView; icon: string; label: string }[] = [
   { v: 'grid',    icon: '⊞', label: 'Grid'    },
@@ -53,9 +59,7 @@ function sortGames(gs: Game[], sort: SortKey): Game[] {
     case 'year-desc': return [...gs].sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0))
     case 'rating':    return [...gs].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
     case 'playtime':  return [...gs].sort((a, b) => (b.esde_playtime_seconds ?? 0) - (a.esde_playtime_seconds ?? 0))
-    // An unplayed game sorts last rather than first — '' is below every real
-    // ISO timestamp, and the list is "most recently played", not "least".
-    case 'recent':    return [...gs].sort((a, b) => (b.esde_last_played ?? '').localeCompare(a.esde_last_played ?? ''))
+    case 'recent':    return sortByRecentlyPlayed(gs)
     case 'series':    return [...gs].sort((a, b) => (a.series_name ?? 'zzz').localeCompare(b.series_name ?? 'zzz') || a.title.localeCompare(b.title))
     default:          return [...gs].sort((a, b) => a.title.localeCompare(b.title))
   }
@@ -188,7 +192,7 @@ function GameListItem({ game, onClick }: { game: Game; onClick: () => void }) {
         {game.rating != null && <p className="text-xs text-accent-600 font-semibold">★{game.rating}</p>}
         <div className="flex justify-end"><SystemChip game={game} size="sm" /></div>
         {formatPlaytime(game.esde_playtime_seconds) && (
-          <p className="text-[10px] text-ink-400">⏱ {formatPlaytime(game.esde_playtime_seconds)}</p>
+          <p className="text-[10px] text-ink-400">⏱ Played {formatPlaytime(game.esde_playtime_seconds)}</p>
         )}
       </div>
     </button>
@@ -309,19 +313,31 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
 
 // ─── Library tab ──────────────────────────────────────────────────────────────
 
-function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
+function LibraryTab({ onOpenDetail, onFilteredChange }: {
+  onOpenDetail: (id: string) => void
+  /** Reports the currently VISIBLE games up, so the page's 🎲 Random button
+   *  picks from what the user is actually looking at rather than the whole
+   *  library. The filter state lives here; lifting all of it into the page
+   *  just to share one list would be the bigger change. */
+  onFilteredChange?: (games: Game[]) => void
+}) {
   const [search,         setSearch]         = useState('')
   const [statusFilter,   setStatusFilter]   = useState<string | null>(null)
   // Multi-select: each of these holds every checked value, and a group with
   // nothing checked means "don't narrow by this at all" (not "match nothing").
   const [tierFilter,     setTierFilter]     = useState<string[]>([])
   const [genreFilter,    setGenreFilter]    = useState<string[]>([])
+  // Default view excludes the four systems whose sheer size drowns everything
+  // else out (they are 710 of ~1150 rows). Nothing is removed from the library
+  // — every one of them is one tap away in the System group, and Reset brings
+  // them back.
   const [systemFilter,   setSystemFilter]   = useState<string[]>([])
+  const [systemDefaultApplied, setSystemDefaultApplied] = useState(false)
   const [seriesFilter,   setSeriesFilter]   = useState<string[]>([])
   const [openFilter,     setOpenFilter]     = useState<FilterKey | null>(null)
   const [coopOnly,       setCoopOnly]       = useState(false)
   const [iconicOnly,     setIconicOnly]     = useState(false)
-  const [sort,           setSort]           = useState<SortKey>('az')
+  const [sort,           setSort]           = useState<SortKey>('recent')
   const [view,           setView]           = useState<LibView>('grid')
   const [filtersOpen,    setFiltersOpen]    = useState(false)
 
@@ -330,6 +346,15 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
   const genreOptions  = useMemo(() => [...new Set(allGames.flatMap(g => g.genres ?? []))].sort(), [allGames])
   const systemOptions = useMemo(() => [...new Set(allGames.flatMap(g => g.platforms.map(p => p.system)))].sort(), [allGames])
   const seriesOptions = useMemo(() => [...new Set(allGames.map(g => g.series_name).filter(Boolean) as string[])].sort(), [allGames])
+
+  // Applied once, the moment the library's own system list is known — a
+  // useState initialiser cannot do it, since the options only exist after the
+  // fetch. Re-selecting by hand (including clearing the group) sticks: the
+  // flag is never reset.
+  if (!systemDefaultApplied && systemOptions.length > 0) {
+    setSystemDefaultApplied(true)
+    setSystemFilter(systemOptions.filter(v => !BULK_SYSTEMS.has(v.toLowerCase())))
+  }
 
   // One description of each group, used by both the buttons and the panel so
   // the two can never disagree about what a group contains. Counts come from
@@ -369,13 +394,18 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
     // SNES, and only tier S".
     if (tierFilter.length)   gs = gs.filter(g => !!g.tier && tierFilter.includes(g.tier))
     if (genreFilter.length)  gs = gs.filter(g => g.genres?.some(x => genreFilter.includes(x)) ?? false)
-    if (systemFilter.length) gs = gs.filter(g => g.platforms.some(p => systemFilter.includes(p.system)))
+    // A game with NO platform row can match no system, and the default
+    // selection below is non-empty — without this it would silently vanish
+    // from the library it has not been catalogued in yet.
+    if (systemFilter.length) gs = gs.filter(g => !g.platforms.length || g.platforms.some(p => systemFilter.includes(p.system)))
     if (seriesFilter.length) gs = gs.filter(g => !!g.series_name && seriesFilter.includes(g.series_name))
     if (coopOnly)       gs = gs.filter(g => g.is_coop)
     if (iconicOnly)     gs = gs.filter(g => g.is_iconic)
     if (view === 'series') return gs
     return sortGames(gs, sort)
   }, [allGames, search, statusFilter, tierFilter, genreFilter, systemFilter, seriesFilter, coopOnly, iconicOnly, sort, view])
+
+  useEffect(() => { onFilteredChange?.(filtered) }, [filtered, onFilteredChange])
 
   const pickedCount = tierFilter.length + genreFilter.length + systemFilter.length + seriesFilter.length
   const hasFilters = !!(search || statusFilter || coopOnly || iconicOnly) || pickedCount > 0
@@ -459,7 +489,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
               <option value="year-desc">Year ↓</option>
               <option value="rating">My Rating</option>
               <option value="playtime">Most Played</option>
-              <option value="recent">Recently Played</option>
+              <option value="recent">Recently Played ({Math.round(MIN_REAL_PLAY_SECONDS / 60)}min+)</option>
               <option value="series">By Series</option>
             </select>
           )}
@@ -625,10 +655,14 @@ export function GamesPage() {
   const [addOpen, setAddOpen] = useState(false)
   const { data: allGames = [] } = useAllGames()
   const { data: needsReview = [] } = useGamesNeedingReview()
+  // What the Library tab is currently showing. Falls back to the whole library
+  // only before that tab has ever reported (e.g. Random pressed on first paint).
+  const [visibleGames, setVisibleGames] = useState<Game[] | null>(null)
+  const pool = visibleGames ?? allGames
 
   function pickRandom() {
-    if (!allGames.length) return
-    setSelectedId(allGames[Math.floor(Math.random() * allGames.length)].id)
+    if (!pool.length) return
+    setSelectedId(pool[Math.floor(Math.random() * pool.length)].id)
   }
 
   return (
@@ -645,9 +679,10 @@ export function GamesPage() {
               className="min-h-[44px] px-3 text-sm font-semibold bg-accent-500 hover:bg-accent-600 text-white rounded-lg transition-colors">
               ＋ Add game
             </button>
-            <button onClick={pickRandom} disabled={!allGames.length}
+            <button onClick={pickRandom} disabled={!pool.length}
+              title={`Picks from the ${pool.length} game${pool.length === 1 ? '' : 's'} your current filters show`}
               className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors disabled:opacity-40">
-              🎲 Random
+              🎲 Random{visibleGames && visibleGames.length !== allGames.length ? ` (${visibleGames.length})` : ''}
             </button>
           </>
         )}
@@ -696,7 +731,7 @@ export function GamesPage() {
             ))}
           </div>
 
-          {tab === 'library' && <LibraryTab onOpenDetail={setSelectedId} />}
+          {tab === 'library' && <LibraryTab onOpenDetail={setSelectedId} onFilteredChange={setVisibleGames} />}
           {tab === 'tiers'   && <TierEditorTab />}
           {tab === 'queue'   && <PlayQueueTab />}
           {/* The scraper sits with Review because they are the same job seen

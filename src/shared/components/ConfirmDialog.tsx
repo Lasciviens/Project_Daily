@@ -32,7 +32,9 @@ export function ConfirmDialog({
         <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-xs bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
           <div className="px-5 pt-5 pb-4">
             <h2 className="text-base font-bold text-ink-900">{title}</h2>
-            {message && <p className="text-sm text-ink-500 mt-1.5">{message}</p>}
+            {/* pre-line so a caller can lay a longer message out in paragraphs;
+                a single-line message is unaffected. */}
+            {message && <p className="text-sm text-ink-500 mt-1.5 whitespace-pre-line">{message}</p>}
           </div>
           <div className="px-5 py-4 border-t border-ink-100 flex gap-3">
             <button onClick={onClose} className="flex-1 min-h-[44px] text-sm font-medium text-ink-600 border border-ink-200 rounded-xl hover:bg-cream-100">

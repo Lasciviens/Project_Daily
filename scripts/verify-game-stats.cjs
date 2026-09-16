@@ -5,6 +5,7 @@ require('sucrase/register')
 const assert = require('assert')
 const {
   formatPlaytime, formatPlaytimeShort, hasPlayData, computePlaytimeStats,
+  isRealPlay, sortByRecentlyPlayed, MIN_REAL_PLAY_SECONDS,
 } = require('../src/features/games/gameStats.ts')
 
 let n = 0
@@ -53,5 +54,25 @@ ok(s.topPlayed[0].playcount, 4, 'top list carries the play count')
 ok(computePlaytimeStats([]).lastPlayed, null, 'empty library has no last-played')
 ok(computePlaytimeStats([]).neverPlayedCount, 0, 'empty library has nothing unplayed')
 ok(computePlaytimeStats(rows, 1).topPlayed.length, 1, 'topN is honoured')
+
+// ── isRealPlay / sortByRecentlyPlayed ───────────────────────────────────────
+ok(MIN_REAL_PLAY_SECONDS, 300, 'the real-play floor is five minutes')
+ok(isRealPlay(300), true, 'exactly five minutes counts')
+ok(isRealPlay(299), false, 'just under does not')
+ok(isRealPlay(null), false, 'no recorded time is not real play')
+
+const recent = sortByRecentlyPlayed([
+  { id: 'old-real',  esde_last_played: '2026-01-01T00:00:00Z', esde_playtime_seconds: 9000 },
+  { id: 'brief',     esde_last_played: '2026-09-01T00:00:00Z', esde_playtime_seconds: 60 },
+  { id: 'new-real',  esde_last_played: '2026-05-01T00:00:00Z', esde_playtime_seconds: 600 },
+  { id: 'unplayed',  esde_last_played: null,                   esde_playtime_seconds: null },
+])
+ok(recent.map(g => g.id), ['new-real', 'old-real', 'brief', 'unplayed'],
+  'real play sorts by recency first; a 1-minute peek never outranks it')
+ok(sortByRecentlyPlayed([]).length, 0, 'empty input')
+// NEVER_HIDES: a sort reorders, it never drops a row.
+ok(sortByRecentlyPlayed([
+  { id: 'x', esde_last_played: null, esde_playtime_seconds: null },
+]).length, 1, 'an unplayed game is still in the list')
 
 console.log(`✅ ${n} assertions passed`)

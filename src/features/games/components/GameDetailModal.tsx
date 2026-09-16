@@ -74,17 +74,22 @@ function StatusQuickBar({ game }: { game: Game }) {
 function PlatformDetails({ platform }: { platform: GamePlatform }) {
   const playtime = formatPlaytime(platform.esde_playtime_seconds)
   const bits: React.ReactNode[] = []
-  if (platform.esde_playcount != null && platform.esde_playcount > 0) bits.push(<span key="pc">▶ {platform.esde_playcount}×</span>)
-  if (playtime) bits.push(<span key="pt">⏱ {playtime}</span>)
-  if (platform.esde_last_played) bits.push(<span key="lp">🕐 {fmtDate(platform.esde_last_played)}</span>)
-  if (platform.release_date) bits.push(<span key="rd">📅 {fmtDate(platform.release_date)}</span>)
+  // Every figure is labelled. An emoji alone does not say what the number is.
+  if (platform.esde_playcount != null && platform.esde_playcount > 0) bits.push(<span key="pc">▶ Launched {platform.esde_playcount}×</span>)
+  if (playtime) bits.push(<span key="pt">⏱ Played {playtime}</span>)
+  if (platform.esde_last_played) bits.push(<span key="lp">🕐 Last played {fmtDate(platform.esde_last_played)}</span>)
+  if (platform.release_date) bits.push(<span key="rd">📅 Released {fmtDate(platform.release_date)}</span>)
 
   if (!bits.length && !platform.performance_notes && !platform.esde_path) return null
   return (
     <div className="text-[11px] text-ink-500 space-y-0.5">
       {bits.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-0.5">{bits}</div>}
       {platform.performance_notes && <p className="italic">{platform.performance_notes}</p>}
-      {platform.esde_path && <p className="font-mono text-[10px] text-ink-400 truncate" title={platform.esde_path}>{platform.esde_path}</p>}
+      {platform.esde_path && (
+        <p className="text-[10px] text-ink-400 truncate" title={platform.esde_path}>
+          ROM file: <span className="font-mono">{platform.esde_path}</span>
+        </p>
+      )}
     </div>
   )
 }
@@ -572,10 +577,10 @@ export function GameDetailModal({ gameId, onClose }: Props) {
               {(game.esde_playcount != null || game.esde_last_played) && (
                 <Section title="Play Stats (ES-DE)">
                   <div className="flex flex-wrap gap-3 text-xs text-ink-600">
-                    {game.esde_playcount != null && <span className="font-semibold">▶ Played {game.esde_playcount}×</span>}
+                    {game.esde_playcount != null && <span className="font-semibold">▶ Launched {game.esde_playcount}×</span>}
                     {/* formatPlaytime, not seconds/3600 — a 40-minute session used
                         to print "0h", which reads as "never played". */}
-                    {formatPlaytime(game.esde_playtime_seconds) && <span className="font-semibold">⏱ {formatPlaytime(game.esde_playtime_seconds)} total</span>}
+                    {formatPlaytime(game.esde_playtime_seconds) && <span className="font-semibold">⏱ Played {formatPlaytime(game.esde_playtime_seconds)} in total</span>}
                     {game.esde_last_played && <span>🕐 Last played {fmtDate(game.esde_last_played)}</span>}
                     {game.platforms.length > 1 && (
                       <InfoBubble label="Across variants?">Summed across every variant of this game. Each platform row below carries its own figures.</InfoBubble>

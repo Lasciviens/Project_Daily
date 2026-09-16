@@ -292,6 +292,13 @@ Deno.serve(async (req) => {
           // The display value starts as the device's folder name and is the
           // user's to rename from then on; esde_system is what the key uses.
           system: e.system, esde_system: e.system, esde_path: e.path,
+          // A brand-new game has exactly one variant, so that variant IS the
+          // primary one. Leaving this false (the column default) is what left
+          // the whole imported library with no primary variant, which the UI
+          // reads as "which system is this game on?" having no answer and
+          // Needs Review flags on its own. Only ever true on the create path:
+          // an existing game's chosen primary is never touched by a re-push.
+          is_primary_variant: true,
           rating: esdeRating(e.raw.rating),
           release_date: esdeDate(e.raw.releasedate),
           external_source: SOURCE,
