@@ -10,19 +10,61 @@ import { supabase } from '../../../integrations/supabase/client'
 
 export type ScrapeOutcome = 'matched' | 'no_match' | 'unmatchable' | 'error'
 
+export type ScrapeOutcomeExt = ScrapeOutcome | 'stale_proposal'
+
 export type ScrapeResult = {
   id: string
   title: string | null
-  outcome: ScrapeOutcome
+  outcome: ScrapeOutcomeExt
   reason?: string
   filled?: string[]
   media?: string[]
   would_fill?: string[]
+  /** The actual VALUES a match offers, not just their names. Approving
+   *  "description" means nothing until you can read the description. */
+  proposed?: Record<string, unknown>
   matched_title?: string | null
+  /** The entry's id, carried back on apply so the write is provably the one
+   *  that was reviewed rather than a second, independent lookup. */
+  jeu_id?: string | null
+  /** The ROM filename the match was made on — the actual match key, and the
+   *  string a wrong match is usually explained by. */
+  rom_name?: string | null
+  /** The entry's own markers: hack, beta, proto, "not a game", its region. */
+  flags?: string[]
+  /** A candidate cover mirrored into a quarantine prefix for review. Always a
+   *  Supabase Storage URL — a ScreenScraper media URL can never reach the
+   *  browser, since they carry the developer credentials. */
+  pending_cover_url?: string | null
   /** Which ScreenScraper system was searched — surfaced so a wrong alias
    *  resolution is visible in the result rather than silently wrong. */
   system?: string
   dry_run?: boolean
+}
+
+export type ReviewedItem = {
+  game_id: string
+  /** The entry that was reviewed. A mismatch on apply is refused, not written. */
+  jeu_id?: string | null
+  /** Columns approved for writing. */
+  fields: string[]
+  /** Image columns approved: primary_cover_url / screenshot_url / fanart_url. */
+  media_roles: string[]
+}
+
+export type ApplyReviewedResponse = {
+  status: 'ok' | 'not_configured'
+  run_id?: string
+  applied?: number
+  results?: ScrapeResult[]
+  message?: string
+}
+
+export type UndoRunResponse = {
+  status: 'ok' | 'no_journal'
+  reverted?: number
+  skipped?: { game_id: string; reason: string }[]
+  message?: string
 }
 
 export type ScrapeBatch = {
@@ -72,6 +114,10 @@ export function scrapeBatch(opts: {
   /** ES-DE system folder names to scope the automatic candidate pick to.
    *  Ignored when `gameIds` is given — that is already an exact list. */
   systems?: string[]
+  /** Per-game field acceptance: `{ [gameId]: ['description', 'genres'] }`.
+   *  A game absent from the map gets everything the match offered; a game
+   *  mapped to [] gets nothing written, which is a real answer. */
+  fieldsByGame?: Record<string, string[]>
   dryRun?: boolean
   media?: boolean
 }): Promise<ScrapeBatch> {
@@ -80,6 +126,7 @@ export function scrapeBatch(opts: {
     limit: opts.limit,
     ...(opts.gameIds?.length ? { game_ids: opts.gameIds } : {}),
     ...(opts.systems?.length ? { systems: opts.systems } : {}),
+    ...(opts.fieldsByGame ? { fields_by_game: opts.fieldsByGame } : {}),
     dry_run: opts.dryRun === true,
     media: opts.media !== false,
   })
@@ -133,6 +180,8 @@ export function applyMatch(opts: {
    *  same search rather than by id (see the edge function's own note). */
   query: string
   system?: string | null
+  /** Restrict the write to these columns; omitted means everything found. */
+  fields?: string[]
   dryRun?: boolean
 }): Promise<ApplyMatchResponse> {
   return invoke<ApplyMatchResponse>({
@@ -141,6 +190,62 @@ export function applyMatch(opts: {
     jeu_id: opts.jeuId,
     query: opts.query,
     ...(opts.system ? { system: opts.system } : {}),
+    ...(opts.fields ? { fields: opts.fields } : {}),
     dry_run: opts.dryRun === true,
   })
+}
+
+/** Write exactly what was reviewed — see the edge function's own note on why
+ *  this exists instead of a second `scrape` pass. */
+export function applyReviewed(items: ReviewedItem[], runId?: string): Promise<ApplyReviewedResponse> {
+  return invoke<ApplyReviewedResponse>({ action: 'apply_reviewed', items, ...(runId ? { run_id: runId } : {}) })
+}
+
+/** Take a whole run back. Costs nothing against the quota — a local revert. */
+export function undoRun(runId: string): Promise<UndoRunResponse> {
+  return invoke<UndoRunResponse>({ action: 'undo_run', run_id: runId })
+}
+
+/** Delete candidate covers nobody approved. */
+export function sweepPendingArt(): Promise<{ status: string; removed?: number }> {
+  return invoke({ action: 'sweep_pending' })
+}
+
+// ─── The decision journal (migration 097) ────────────────────────────────────
+// Read directly under RLS rather than through the function: it is the user's
+// own rows and no provider call is involved.
+
+export type ScrapeDecision = {
+  id: string
+  game_id: string
+  run_id: string
+  decision: 'applied' | 'rejected' | 'no_match' | 'unmatchable' | 'undone'
+  jeu_id: string | null
+  matched_title: string | null
+  system_used: string | null
+  fields_written: string[]
+  created_at: string
+}
+
+/** Pre-migration-safe: no journal degrades to no history, never a crash. */
+export async function fetchScrapeDecisions(limit = 400): Promise<ScrapeDecision[]> {
+  const { data, error } = await supabase
+    .from('scrape_decisions').select('*')
+    .order('created_at', { ascending: false }).limit(limit)
+  if (error) return []
+  return (data ?? []) as ScrapeDecision[]
+}
+
+/** A rejection is a real decision and worth remembering — it is what stops a
+ *  game being offered again in three weeks. Best-effort for the same reason
+ *  the server's own writer is. */
+export async function recordRejections(
+  runId: string,
+  rows: { gameId: string; decision: ScrapeDecision['decision']; jeuId?: string | null; matchedTitle?: string | null; systemUsed?: string | null }[],
+): Promise<void> {
+  if (!rows.length) return
+  await supabase.from('scrape_decisions').insert(rows.map(r => ({
+    game_id: r.gameId, run_id: runId, decision: r.decision,
+    jeu_id: r.jeuId ?? null, matched_title: r.matchedTitle ?? null, system_used: r.systemUsed ?? null,
+  })))
 }

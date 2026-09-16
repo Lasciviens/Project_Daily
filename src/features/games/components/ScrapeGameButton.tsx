@@ -24,6 +24,9 @@ const OUTCOME_TEXT: Record<ScrapeResult['outcome'], string> = {
   matched: 'Updated ✓',
   no_match: 'No match on ScreenScraper',
   unmatchable: 'Cannot be matched',
+  // Only reachable from the batch path, where the reviewed entry and the one
+  // the apply fetched turned out to differ. Listed so the map stays total.
+  stale_proposal: 'Their entry changed — look it up again',
   error: 'Failed',
 }
 

@@ -747,3 +747,55 @@ pick to those ES-DE systems. The scope is walked in slices of 200 ids
 (PostgREST's `.in()` is URL-length bound — 200 ≈ 7.4 KB is safe, 1000 is a
 measured 400) until enough unscraped games are found, rather than truncating at
 the first slice and reporting "nothing left" while later slices still held work.
+
+---
+
+## 13. The workbench (2026-09-16)
+
+The first review UI was one button reading "look up next 6". It chose the six
+itself, so the only thing worth knowing — WHICH six — became visible after the
+answers came back, when it was too late not to ask. Two deeper problems were
+found reviewing it, and both were real:
+
+**Approval was not bound to what was reviewed.** The dry run and the apply were
+two independent `jeuInfos.php` calls. The user approved the result of lookup A
+and the app wrote whatever lookup B returned. Usually identical; nothing
+guaranteed it, nothing checked it, and it spent two requests per approved game
+against an account-wide counter.
+
+**The dry run returned field NAMES, never values.** "Would fill: description,
+genres" cannot be approved by anyone — approving means reading the description
+and seeing whose game it describes.
+
+### What replaced it
+
+| Piece | What it is |
+|---|---|
+| `screenscraperStudio.ts` | Pure logic: what a game is missing, candidate selection, request-cost projection, quota verdict, title-confidence, undo derivation. 36 assertions in `scripts/verify-screenscraper-studio.cjs`. |
+| `apply_reviewed` | Writes EXACTLY the reviewed entry. Carries the `jeu_id` that was shown; if the fetch answers with a different entry it returns `stale_proposal` and writes nothing. `fillOnlyMissing` still runs against the live row, so the client can only ever narrow a write, never widen it. |
+| `proposed` on a dry run | The actual values, truncated at 600 chars, so a field can be read before it is accepted. Per-field checkboxes, defaulted on. |
+| Quarantined candidate art | The cover is mirrored to `game-media/pending/<game_id>/<jeu_id>/cover.<ext>` at REVIEW time and promoted by a Storage **copy** on approval — no second download, no second request. The browser still never receives a ScreenScraper URL. `sweep_pending` clears what nobody approved. |
+| `scrape_decisions` (097) | Every decision, durably. Progress across sessions, and the substrate for undo. |
+| `undo_run` | Reverts a whole run. Costs nothing against the quota. Safe because a scrape is strictly gap-filling: the inverse of the write is "set these fields back to NULL", so no prior values need storing and nothing hand-entered can be destroyed. It skips a field changed since, and restores `needs_review` to what the journal recorded. |
+| Pacing | §2b's ~1.2 s interval between waves, which the code promised in writing and had never implemented. |
+| Match signals | The ROM filename the match was made on, the system actually searched, and the entry's own `notgame`/hack/beta/proto/region flags — all present in every response and previously discarded. |
+
+### Deliberately NOT built
+
+- **A confidence percentage, and anything auto-approved by one.** There is no
+  ground truth to calibrate a threshold against, this repo has a standing rule
+  against synthetic composite metrics (Health's "no derived sleep metrics",
+  `RecoveryLoadPanel`'s refusal of a readiness score), and a number invites the
+  auto-approve button that defeats the reason a review step exists. The signals
+  are named observations instead.
+- **An "overwrite existing fields" mode.** `fillOnlyMissing` is load-bearing
+  three times over: it protects the user's own curation, it protects ES-DE's
+  98%-filled metadata, and it is the ONLY reason undo can be derived without
+  storing row snapshots. Removing it silently removes undo.
+- **Candidate artwork straight from `search` results.** A media URL carries the
+  credentials, full stop. Art reaches the browser only through the quarantine
+  mirror, and only for a proposed match — not for twelve search hits of which
+  eleven are discarded.
+- **An ETA or a per-request budget from `requeststoday`.** §2b measured it
+  non-1:1 and disagreeing with their own panel by three orders of magnitude.
+  It is shown as a ceiling, labelled as approximate, and never counted down.

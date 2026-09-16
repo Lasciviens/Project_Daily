@@ -231,6 +231,27 @@ function romNameFromPath(esdePath: string | null | undefined): string | null {
   return trimmed ? trimmed : null
 }
 
+/**
+ * The flags a ScreenScraper entry carries about ITSELF.
+ *
+ * `notgame` and the rom block's beta/demo/proto/hack/unl markers are the
+ * highest-signal single fact available for this library's actual failure mode
+ * — a filename matching into a ROM-hack collection. They are in every response
+ * and were being discarded.
+ */
+function matchFlags(jeu: AnyRecord): string[] {
+  const flags: string[] = []
+  if (String(jeu.notgame ?? '').toLowerCase() === 'true' || jeu.notgame === true) flags.push('not a game')
+  const rom = (jeu.rom ?? {}) as AnyRecord
+  for (const key of ['rombeta', 'romdemo', 'romproto', 'romtrad', 'romhack', 'romunl', 'romalt']) {
+    const v = String(rom[key] ?? '').toLowerCase()
+    if (v === '1' || v === 'true') flags.push(key.replace(/^rom/, ''))
+  }
+  const region = typeof rom.romregions === 'string' ? rom.romregions : null
+  if (region) flags.push(`region ${region}`)
+  return flags
+}
+
 function mapJeuToGame(jeu: AnyRecord): AnyRecord {
   const textOf = (v: unknown): string | null => {
     const t = (v as AnyRecord)?.text
@@ -296,6 +317,44 @@ async function downloadMedia(url: string): Promise<{ ok: true; bytes: Uint8Array
   }
 }
 
+const PENDING_PREFIX = 'pending'
+const pendingPath = (gameId: string, jeuId: string, ext: string) => `${PENDING_PREFIX}/${gameId}/${jeuId}/cover.${ext}`
+
+/**
+ * Mirrors a CANDIDATE's cover into a quarantine prefix, for review only.
+ *
+ * Why this exists: the only signal that reliably exposes a wrong match is the
+ * artwork — a Mega Drive box on a SNES game, a Japanese cover for a USA ROM, a
+ * hack collection's fan art. Titles are similar by construction, since that
+ * similarity is why the match happened. And the games most in need of scraping
+ * are exactly the ones with no cover yet, so the review card has nothing else
+ * to show.
+ *
+ * It does not weaken the no-credentialed-URL rule at all: the function
+ * downloads the image itself and hands back a Supabase Storage URL, which is
+ * what the canonical path already does. Approval promotes the object by a
+ * Storage copy — no second download, no second request against ScreenScraper.
+ */
+async function mirrorPending(gameId: string, jeuId: string, media: Media): Promise<string | null> {
+  const got = await downloadMedia(media.url!)
+  if (!got.ok) return null
+  const path = pendingPath(gameId, jeuId, mediaExtension(media))
+  const { error } = await admin.storage.from(BUCKET).upload(path, got.bytes, {
+    contentType: got.contentType, upsert: true,
+  })
+  if (error) return null
+  return admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+}
+
+/** Promotes a reviewed candidate cover to its canonical path, by copy. */
+async function promotePending(gameId: string, jeuId: string, ext: string): Promise<string | null> {
+  const from = pendingPath(gameId, jeuId, ext)
+  const to = storagePath(gameId, 'cover', ext)
+  const { error } = await admin.storage.from(BUCKET).copy(from, to)
+  if (error) return null
+  return admin.storage.from(BUCKET).getPublicUrl(to).data.publicUrl
+}
+
 /** Mirrors one role into the bucket and returns the PUBLIC STORAGE url. */
 async function mirrorMedia(gameId: string, role: MediaRole, media: Media): Promise<string | null> {
   const got = await downloadMedia(media.url!)
@@ -308,10 +367,22 @@ async function mirrorMedia(gameId: string, role: MediaRole, media: Media): Promi
   return admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
 }
 
-/** Runs tasks at the account's real thread limit, never above it. */
+/**
+ * Runs tasks at the account's real thread limit, never above it, and never
+ * faster than the interval doc §2b committed to.
+ *
+ * That interval is described there as "a politeness contract with the service,
+ * not just a technical limit" — and being blacklisted ends this feature
+ * outright, so it is worth more than the seconds it costs. Six wide with a
+ * wave interval keeps both promises: the concurrency the account actually
+ * grants, spaced.
+ */
+const WAVE_INTERVAL_MS = 1200
+
 async function inThreads<T, R>(items: T[], fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = []
   for (let i = 0; i < items.length; i += THREADS) {
+    if (i > 0) await new Promise(r => setTimeout(r, WAVE_INTERVAL_MS))
     out.push(...await Promise.all(items.slice(i, i + THREADS).map(fn)))
   }
   return out
@@ -366,6 +437,36 @@ async function loadSystemIdMap(): Promise<{ map: Map<string, { id: number; name:
     }
   }
   return { map }
+}
+
+/**
+ * Restrict a patch to the fields the caller approved.
+ *
+ * Field-level acceptance exists because a match is rarely all-or-nothing: the
+ * cover is right and the description belongs to the sequel, or the other way
+ * round. An ABSENT `fields` means "everything you found" — the common case and
+ * the old behaviour; an empty ARRAY means the caller approved nothing, which is
+ * a real answer and must not be read as "everything".
+ */
+/**
+ * Writes one decision to the journal (migration 097).
+ *
+ * Best-effort ON PURPOSE: a missing journal must never fail a write that
+ * already landed, and a pre-097 deployment has to keep working. The client
+ * falls back to session-only memory when the table is absent, which is exactly
+ * the behaviour that existed before this table did.
+ */
+async function recordDecision(userId: string, row: AnyRecord): Promise<void> {
+  const { error } = await admin.from('scrape_decisions').insert({ user_id: userId, ...row })
+  if (error) console.log('scrape_decisions insert skipped')
+}
+
+function narrowToFields(patch: AnyRecord, fields: unknown): AnyRecord {
+  if (!Array.isArray(fields)) return patch
+  const allowed = new Set(fields.map(String))
+  const out: AnyRecord = {}
+  for (const [k, v] of Object.entries(patch)) if (allowed.has(k)) out[k] = v
+  return out
 }
 
 Deno.serve(async (req) => {
@@ -522,17 +623,18 @@ Deno.serve(async (req) => {
         if (!jeu) return json({ status: 'ok', outcome: 'no_match', message: 'That result is no longer in the search response — search again and re-pick.' })
 
         const mapped = mapJeuToGame(jeu)
-        const patch = fillOnlyMissing(game, mapped)
+        const patch = narrowToFields(fillOnlyMissing(game, mapped), body.fields)
         if (dryRun) {
           return json({ status: 'ok', outcome: 'matched', dry_run: true,
                         matched_title: mapped.title, would_fill: Object.keys(patch) })
         }
 
         const media: AnyRecord = {}
+        const mediaAllowed = (c: string) => !Array.isArray(body.fields) || body.fields.map(String).includes(c)
         if (wantMedia) {
           for (const role of ['cover', 'screenshot', 'fanart'] as MediaRole[]) {
             const column = role === 'cover' ? 'primary_cover_url' : role === 'screenshot' ? 'screenshot_url' : 'fanart_url'
-            if (game[column]) continue
+            if (game[column] || !mediaAllowed(column)) continue
             const pick = pickMedia(jeu.medias, role)
             if (!pick) continue
             const storedUrl = await mirrorMedia(game.id, role, pick)
@@ -557,6 +659,179 @@ Deno.serve(async (req) => {
         }
         return json({ status: 'ok', outcome: 'matched', matched_title: mapped.title,
                       filled: Object.keys(patch), media: Object.keys(media) })
+      }
+
+      // ── Write EXACTLY what was reviewed. ──
+      //
+      //    The bug this replaces: the dry run and the apply were two separate
+      //    jeuInfos calls, so the user approved the result of lookup A and the
+      //    app wrote whatever lookup B returned. Usually identical; nothing
+      //    guaranteed it, nothing checked it, and it spent two requests per
+      //    approved game against an account-wide quota.
+      //
+      //    Here the apply carries the `jeu_id` that was reviewed. It fetches
+      //    once, and if the entry that comes back is a different one it
+      //    REFUSES and says so (`stale_proposal`) rather than writing something
+      //    nobody saw. `fillOnlyMissing` still runs against the live row, so a
+      //    field edited in another tab between review and save is still never
+      //    overwritten, and the client can only ever NARROW the write.
+      case 'apply_reviewed': {
+        const items = Array.isArray(body.items) ? body.items.slice(0, MAX_BATCH) : []
+        if (!items.length) return fail('apply_reviewed needs a non-empty items array', 400)
+        const runId = typeof body.run_id === 'string' && body.run_id ? body.run_id : crypto.randomUUID()
+
+        const gameIds = items.map((i: AnyRecord) => String(i.game_id))
+        const { data: games, error: gErr } = await admin
+          .from('games').select('*').eq('user_id', userId).in('id', gameIds)
+        if (gErr) return fail(`games read: ${gErr.message}`, 500)
+        const gameById = new Map((games ?? []).map((g: AnyRecord) => [String(g.id), g]))
+
+        const { data: platforms } = await admin
+          .from('game_platforms').select('*').eq('user_id', userId).in('game_id', gameIds)
+        const platformFor = new Map<string, AnyRecord>()
+        for (const p of platforms ?? []) if (!platformFor.has(p.game_id)) platformFor.set(p.game_id, p)
+
+        const sysMap = await loadSystemIdMap()
+        if ('error' in sysMap) return fail(`systems read: ${sysMap.error}`, 500)
+
+        const results = await inThreads(items, async (item: AnyRecord) => {
+          const gameId = String(item.game_id)
+          const game = gameById.get(gameId)
+          if (!game) return { id: gameId, outcome: 'error', reason: 'game not found' }
+
+          const plat = platformFor.get(gameId)
+          const romnom = romNameFromPath(plat?.esde_path)
+          const sys = plat?.esde_system ? sysMap.map.get(String(plat.esde_system).trim().toLowerCase()) : undefined
+          if (!romnom || !sys) return { id: gameId, title: game.title, outcome: 'unmatchable' }
+
+          const r = await callApi('jeuInfos.php', { systemeid: sys.id, romtype: 'rom', romnom })
+          if (!r.ok && r.notFound) return { id: gameId, title: game.title, outcome: 'no_match' }
+          if (!r.ok) return { id: gameId, title: game.title, outcome: 'error', reason: r.message }
+
+          const jeu = r.data?.response?.jeu
+          if (!jeu) return { id: gameId, title: game.title, outcome: 'error', reason: 'response carried no jeu' }
+
+          // The identity check that makes approval mean anything.
+          if (item.jeu_id && String(jeu.id) !== String(item.jeu_id)) {
+            return { id: gameId, title: game.title, outcome: 'stale_proposal',
+                     reason: 'their database answered with a different entry than the one you reviewed — look it up again' }
+          }
+
+          const mapped = mapJeuToGame(jeu)
+          const patch = narrowToFields(fillOnlyMissing(game, mapped), item.fields)
+
+          const media: AnyRecord = {}
+          const storagePaths: string[] = []
+          const roles = Array.isArray(item.media_roles) ? item.media_roles.map(String) : []
+          for (const role of ['cover', 'screenshot', 'fanart'] as MediaRole[]) {
+            const column = role === 'cover' ? 'primary_cover_url' : role === 'screenshot' ? 'screenshot_url' : 'fanart_url'
+            if (game[column] || !roles.includes(column)) continue
+            const pick = pickMedia(jeu.medias, role)
+            if (!pick) continue
+            const ext = mediaExtension(pick)
+            // A cover already mirrored for the review is PROMOTED by a Storage
+            // copy — no second download, no second request against them.
+            const promoted = role === 'cover' ? await promotePending(gameId, String(jeu.id), ext) : null
+            const storedUrl = promoted ?? await mirrorMedia(gameId, role, pick)
+            // Only a Storage URL is ever assigned here — never pick.url.
+            if (storedUrl) { media[column] = storedUrl; storagePaths.push(storagePath(gameId, role, ext)) }
+          }
+
+          const full = { ...patch, ...media }
+          if (Object.keys(full).length > 0) {
+            const { error } = await admin.from('games')
+              .update({ ...full, external_source: 'screenscraper', synced_at: new Date().toISOString() })
+              .eq('id', gameId).eq('user_id', userId)
+            if (error) return { id: gameId, title: game.title, outcome: 'error', reason: scrub(error.message) }
+          }
+
+          const rating100 = scoreToRating100(jeu.note)
+          if (plat && rating100 != null && plat.rating == null) {
+            await admin.from('game_platforms')
+              .update({ rating: rating100, external_ref: mapped.external_ref, external_source: 'screenscraper' })
+              .eq('id', plat.id).eq('user_id', userId)
+          }
+
+          await recordDecision(userId, {
+            game_id: gameId, run_id: runId, decision: 'applied',
+            jeu_id: String(jeu.id), matched_title: mapped.title, system_used: sys.name,
+            fields_written: Object.keys(full), storage_paths: storagePaths,
+            prior_needs_review: game.needs_review === true,
+          })
+
+          return { id: gameId, title: game.title, outcome: 'matched', matched_title: mapped.title,
+                   filled: Object.keys(patch), media: Object.keys(media) }
+        })
+
+        return json({ status: 'ok', run_id: runId, results,
+                      applied: results.filter((r: AnyRecord) => r.outcome === 'matched').length })
+      }
+
+      // ── Take a whole run back. ──
+      //    Costs nothing against the quota: it is a local revert, not a lookup.
+      case 'undo_run': {
+        const runId = String(body.run_id ?? '')
+        if (!runId) return fail('undo_run needs a run_id', 400)
+
+        const { data: rows, error } = await admin.from('scrape_decisions')
+          .select('*').eq('user_id', userId).eq('run_id', runId).eq('decision', 'applied')
+        if (error) return json({ status: 'no_journal', message: 'Migration 097 is not applied, so there is no record of what to undo.' }, 200)
+        if (!rows?.length) return json({ status: 'ok', reverted: 0, message: 'Nothing from that run is still applied.' })
+
+        let reverted = 0
+        const skipped: AnyRecord[] = []
+        for (const row of rows) {
+          const fields = (row.fields_written ?? []) as string[]
+          if (!fields.length) continue
+          // Setting a field back to NULL is the exact inverse of the write,
+          // and it is safe ONLY because the write was gap-filling: whatever is
+          // there now either came from this run, or was typed afterwards — and
+          // the second case is checked for below rather than assumed away.
+          const { data: live } = await admin.from('games')
+            .select('*').eq('id', row.game_id).eq('user_id', userId).single()
+          if (!live) { skipped.push({ game_id: row.game_id, reason: 'game no longer exists' }); continue }
+
+          const patch: AnyRecord = {}
+          const kept: string[] = []
+          for (const f of fields) {
+            // A value the user changed AFTER the scrape is theirs now.
+            if (live[f] === null || live[f] === undefined) continue
+            patch[f] = null
+            kept.push(f)
+          }
+          patch.needs_review = row.prior_needs_review ?? false
+          const { error: uErr } = await admin.from('games').update(patch).eq('id', row.game_id).eq('user_id', userId)
+          if (uErr) { skipped.push({ game_id: row.game_id, reason: scrub(uErr.message) }); continue }
+
+          // The mirrored files go too — an orphaned object is cheap, a wrong
+          // cover still sitting in the bucket is confusing.
+          const paths = (row.storage_paths ?? []) as string[]
+          if (paths.length) await admin.storage.from(BUCKET).remove(paths)
+
+          await recordDecision(userId, {
+            game_id: row.game_id, run_id: runId, decision: 'undone',
+            jeu_id: row.jeu_id, matched_title: row.matched_title, system_used: row.system_used,
+            fields_written: kept, storage_paths: [], prior_needs_review: row.prior_needs_review,
+          })
+          reverted++
+        }
+        return json({ status: 'ok', reverted, skipped })
+      }
+
+      // ── Clean up candidate covers nobody approved. ──
+      case 'sweep_pending': {
+        const { data: dirs, error } = await admin.storage.from(BUCKET).list(PENDING_PREFIX, { limit: 1000 })
+        if (error) return fail(`sweep list: ${scrub(error.message)}`, 500)
+        let removed = 0
+        for (const dir of dirs ?? []) {
+          const { data: inner } = await admin.storage.from(BUCKET).list(`${PENDING_PREFIX}/${dir.name}`, { limit: 100 })
+          for (const sub of inner ?? []) {
+            const { data: files } = await admin.storage.from(BUCKET).list(`${PENDING_PREFIX}/${dir.name}/${sub.name}`, { limit: 100 })
+            const paths = (files ?? []).map(f => `${PENDING_PREFIX}/${dir.name}/${sub.name}/${f.name}`)
+            if (paths.length) { await admin.storage.from(BUCKET).remove(paths); removed += paths.length }
+          }
+        }
+        return json({ status: 'ok', removed })
       }
 
       // ── The real work, one small batch per invocation. ──
@@ -657,14 +932,20 @@ Deno.serve(async (req) => {
           if (!jeu) return { id: game.id, title: game.title, outcome: 'error', reason: 'response carried no jeu' }
 
           const mapped = mapJeuToGame(jeu)
-          const patch = fillOnlyMissing(game, mapped)
+          // `fields_by_game` lets one batch accept different fields per row —
+          // the whole point of reviewing six matches side by side. A plain
+          // `fields` applies to every row, and neither present means "all".
+          const perGame = (body.fields_by_game as AnyRecord | undefined)?.[game.id as string]
+          const allowed = Array.isArray(perGame) ? perGame : body.fields
+          const patch = narrowToFields(fillOnlyMissing(game, mapped), allowed)
           const rating100 = scoreToRating100(jeu.note)
 
           const media: AnyRecord = {}
+          const mediaAllowed = (c: string) => !Array.isArray(allowed) || allowed.map(String).includes(c)
           if (wantMedia && !dryRun) {
             for (const role of ['cover', 'screenshot', 'fanart'] as MediaRole[]) {
               const column = role === 'cover' ? 'primary_cover_url' : role === 'screenshot' ? 'screenshot_url' : 'fanart_url'
-              if (game[column]) continue
+              if (game[column] || !mediaAllowed(column)) continue
               const pick = pickMedia(jeu.medias, role)
               if (!pick) continue
               const storedUrl = await mirrorMedia(game.id, role, pick)
@@ -674,8 +955,33 @@ Deno.serve(async (req) => {
           }
 
           if (dryRun) {
-            return { id: game.id, title: game.title, outcome: 'matched', dry_run: true, system: sys.name,
-                     would_fill: Object.keys(patch), matched_title: mapped.title, rating100 }
+            // The FULL offer, deliberately not the narrowed patch: a dry run is
+            // what the reviewer chooses from, so it must show everything on the
+            // table rather than the result of a previous choice.
+            const offer = fillOnlyMissing(game, mapped)
+            // VALUES, not just names. "Would fill: description, genres" cannot
+            // be approved by anyone — approving means reading the description
+            // and seeing whether it is this game's or the sequel's.
+            const proposed: AnyRecord = {}
+            for (const [k, v] of Object.entries(offer)) {
+              proposed[k] = typeof v === 'string' && v.length > 600 ? `${v.slice(0, 600)}…` : v
+            }
+            // Cover art mirrored into a quarantine prefix so the review can be
+            // visual without a credentialed URL ever reaching the browser —
+            // the same download-and-re-host rule the canonical path follows.
+            // Promoted by a Storage copy on approval, swept if not.
+            let pendingCover: string | null = null
+            if (wantMedia && !game.primary_cover_url && body.provisional_art !== false) {
+              const art = pickMedia(jeu.medias, 'cover')
+              if (art) pendingCover = await mirrorPending(game.id as string, String(jeu.id ?? 'x'), art)
+            }
+            return {
+              id: game.id, title: game.title, outcome: 'matched', dry_run: true, system: sys.name,
+              jeu_id: mapped.external_ref, matched_title: mapped.title, rating100,
+              would_fill: Object.keys(offer), proposed,
+              rom_name: romnom, flags: matchFlags(jeu),
+              pending_cover_url: pendingCover,
+            }
           }
 
           const full = { ...patch, ...media, external_source: 'screenscraper', synced_at: new Date().toISOString() }
