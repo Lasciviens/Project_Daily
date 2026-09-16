@@ -44,25 +44,40 @@ export function ScrapeResultCard({ game, result, accepted, focused, onToggleFiel
   const ring = focused ? 'ring-2 ring-accent-400 ring-offset-1' : ''
 
   if (!matched) {
-    const why = result.outcome === 'no_match' ? 'No entry in their database for this ROM filename'
-      : result.outcome === 'unmatchable' ? 'Nothing to match on — no ROM filename, or no id for this system'
-      : result.outcome === 'stale_proposal' ? 'Their database answered with a different entry than the one you reviewed'
-      : 'Lookup failed'
+    const why = result.outcome === 'no_match' ? 'Nothing in their database matched this'
+      : result.outcome === 'unmatchable' ? 'Nothing to match on'
+        : result.outcome === 'stale_proposal' ? 'Their database answered with a different entry than the one you reviewed'
+          : 'The lookup failed'
     return (
-      <div className={`rounded-xl border border-amber-300 bg-amber-50/40 p-3 flex items-start gap-3 ${ring}`}>
-        <div className="w-12 flex-shrink-0 rounded-lg overflow-hidden border border-ink-200 bg-ink-100" style={{ aspectRatio: '3/4' }}>
-          <CoverImg url={game?.primary_cover_url} title={result.title ?? ''} />
+      <div className={`rounded-xl border border-amber-300 bg-amber-50/40 p-3 space-y-2 ${ring}`}>
+        <div className="flex items-start gap-3">
+          <div className="w-12 flex-shrink-0 rounded-lg overflow-hidden border border-ink-200 bg-ink-100" style={{ aspectRatio: '3/4' }}>
+            <CoverImg url={game?.primary_cover_url} title={result.title ?? ''} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-ink-800 truncate">{result.title}</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400">{why}{result.reason ? ` — ${result.reason}` : ''}</p>
+            {result.rom_name && <p className="text-[11px] text-ink-400 font-mono truncate">{result.rom_name}</p>}
+            {result.system && <p className="text-[11px] text-ink-400">searched as {result.system}</p>}
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-ink-800 truncate">{result.title}</p>
-          <p className="text-xs text-amber-700 dark:text-amber-400">{why}{result.reason ? ` — ${result.reason}` : ''}</p>
-          {result.rom_name && <p className="text-[11px] text-ink-400 font-mono truncate">{result.rom_name}</p>}
-          {result.system && <p className="text-[11px] text-ink-400">searched as {result.system}</p>}
+
+        {/* Your side, even with nothing to compare it against. A miss used to
+            be one line and a button — so the moment the automatic pass failed,
+            the whole side-by-side view disappeared and there was nothing on
+            screen saying what this game actually has. */}
+        <FieldCompare game={game} candidate={{}} candidateTitle={null} candidateSystem={null} />
+
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={onSearchManually}
+            className="min-h-[36px] px-3 text-xs font-semibold rounded-lg border border-accent-400 text-accent-700 hover:bg-accent-50">
+            🔍 Search by hand
+          </button>
+          <button type="button" onClick={onRejectAll}
+            className="min-h-[36px] px-3 text-xs font-semibold rounded-lg border border-ink-200 text-ink-500 hover:border-ink-300">
+            ⤼ Skip
+          </button>
         </div>
-        <button type="button" onClick={onSearchManually}
-          className="min-h-[36px] px-2.5 text-xs font-semibold rounded-lg border border-ink-200 text-ink-600 hover:border-accent-400 flex-shrink-0">
-          🔍 Search by hand
-        </button>
       </div>
     )
   }
