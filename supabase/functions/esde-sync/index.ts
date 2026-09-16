@@ -114,6 +114,10 @@ const esdeText = (v: unknown): string | null => {
 }
 const isTrue = (v: unknown): boolean => v === true || v === 'true'
 
+/** Mirrors gameStats.ts::AUTO_PLAYING_SECONDS — a Deno function cannot import
+ *  from src/, so this is a hand-kept copy. Change both. */
+const AUTO_PLAYING_SECONDS = 30 * 60
+
 // ES-DE's <rating> is a 0-1 decimal; game_platforms.rating is 0-100 and CHECKed
 // to that range, so a malformed value is dropped rather than clamped into a
 // number nobody measured.
@@ -343,14 +347,30 @@ Deno.serve(async (req) => {
         .in('game_id', updatedGameIds)
       if (vErr) return json({ status: 'server_error', error: `roll-up read: ${vErr.message}` }, 500)
 
+      // Current statuses, so a game with real hours behind it can stop being a
+      // backlog entry — and so nothing else is ever touched (see below).
+      const { data: statusRows } = await supabase
+        .from('games').select('id, play_status').eq('user_id', userId).in('id', updatedGameIds)
+      const statusById = new Map((statusRows ?? []).map((r: AnyRecord) => [String(r.id), String(r.play_status)]))
+
       const grouped = new Map<string, AnyRecord[]>()
       for (const v of variants ?? []) {
         const arr = grouped.get(v.game_id) ?? []
         arr.push(v); grouped.set(v.game_id, arr)
       }
       await inChunks([...grouped.entries()], 10, async ([gameId, rows]) => {
+        const stats = rollUp(rows)
+        // Half an hour of recorded play means it is not sitting in a backlog,
+        // whatever nobody got round to setting. ONLY from 'backlog', which is
+        // the default nothing chose: 'completed', 'dropped' and 'wishlist' are
+        // statements the user made, and a sync must never argue with one — in
+        // particular this can never un-complete a game someone replays.
+        // Thirty minutes, not the first launch, because booting a ROM to check
+        // it runs is the most common thing that happens in a retro library.
+        const promote = statusById.get(gameId) === 'backlog'
+          && (stats.esde_playtime_seconds ?? 0) >= AUTO_PLAYING_SECONDS
         const { error } = await supabase.from('games')
-          .update({ ...rollUp(rows), synced_at: now })
+          .update({ ...stats, synced_at: now, ...(promote ? { play_status: 'playing' } : {}) })
           .eq('id', gameId).eq('user_id', userId)
         if (error && !failure) failure = `games roll-up: ${error.message}`
       })

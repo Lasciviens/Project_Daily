@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
+import { shouldAutoMarkPlaying } from '../gameStats'
 import type {
   Game, GamePlatform, QueueGame, PlayStatus,
   CreateGameInput, GamePatch, GamePlatformInput, GameLibrary,
@@ -359,8 +360,8 @@ export async function importProviderGames(
   library: Exclude<GameLibrary, 'retro'>,
   source: 'steam' | 'psn',
   games: ProviderGameInput[],
-): Promise<{ imported: number; updated: number }> {
-  if (!games.length) return { imported: 0, updated: 0 }
+): Promise<{ imported: number; updated: number; promoted: number }> {
+  if (!games.length) return { imported: 0, updated: 0, promoted: 0 }
   const user = await requireUser()
   const now = new Date().toISOString()
 
@@ -375,16 +376,16 @@ export async function importProviderGames(
   // specification". Making the index total instead would be worse: a retro
   // row's `external_ref` is a ScreenScraper id that two different games can
   // legitimately share, so a scrape write would start failing.
-  let existing: { id: string; external_ref: string | null }[]
+  let existing: { id: string; external_ref: string | null; play_status: string }[]
   try {
-    existing = await fetchAllPages<{ id: string; external_ref: string | null }>((from, to) =>
-      supabase.from('games').select('id, external_ref').eq('library', library).range(from, to))
+    existing = await fetchAllPages<{ id: string; external_ref: string | null; play_status: string }>((from, to) =>
+      supabase.from('games').select('id, external_ref, play_status').eq('library', library).range(from, to))
   } catch (e) {
     throw isMissingTable(e) || isMissingColumn(e)
       ? new Error('Importing Steam/PlayStation games needs migration 096 — apply it first.')
       : e
   }
-  const idByRef = new Map(existing.filter(r => r.external_ref).map(r => [r.external_ref as string, r.id]))
+  const byRefExisting = new Map(existing.filter(r => r.external_ref).map(r => [r.external_ref as string, r]))
 
   // Only the PROVIDER's own facts. play_status, tier, rating and notes are the
   // user's and are never in this payload, so a re-import cannot reset them.
@@ -406,9 +407,23 @@ export async function importProviderGames(
   // A provider can list the same id twice (PSN has been seen to, across
   // regional SKUs); the last one wins rather than the insert failing.
   const byRef = new Map(games.map(g => [g.external_ref, g]))
-  const toInsert = [...byRef.values()].filter(g => !idByRef.has(g.external_ref)).map(payload)
-  const toUpdate = [...byRef.values()].filter(g => idByRef.has(g.external_ref))
-    .map(g => ({ id: idByRef.get(g.external_ref)!, ...payload(g) }))
+  const incoming = [...byRef.values()]
+
+  const toInsert = incoming.filter(g => !byRefExisting.has(g.external_ref)).map(g => ({
+    ...payload(g),
+    // A game arriving with real hours behind it was never a backlog entry.
+    ...(shouldAutoMarkPlaying('backlog', g.play_seconds) ? { play_status: 'playing' } : {}),
+  }))
+
+  let promoted = 0
+  const toUpdate = incoming.filter(g => byRefExisting.has(g.external_ref)).map(g => {
+    const row = byRefExisting.get(g.external_ref)!
+    // Promote a backlog row that has since crossed the threshold — and ONLY a
+    // backlog row. Every other status is something the user said.
+    const promote = shouldAutoMarkPlaying(row.play_status, g.play_seconds)
+    if (promote) promoted++
+    return { id: row.id, ...payload(g), ...(promote ? { play_status: 'playing' } : {}) }
+  })
 
   const fail = (e: unknown) => {
     throw isMissingTable(e) || isMissingColumn(e)
@@ -428,7 +443,25 @@ export async function importProviderGames(
     if (error) fail(error)
   }
 
-  return { imported: toInsert.length, updated: toUpdate.length }
+  return { imported: toInsert.length, updated: toUpdate.length, promoted }
+}
+
+/**
+ * Which provider ids this library already holds.
+ *
+ * The import button used to offer "add all 320" every time, whether or not
+ * they were already in — so the one thing it should say (what is NEW) was the
+ * one thing it did not.
+ */
+export async function fetchProviderRefs(library: GameLibrary): Promise<Set<string>> {
+  try {
+    const rows = await fetchAllPages<{ external_ref: string | null }>((from, to) =>
+      supabase.from('games').select('external_ref').eq('library', library).range(from, to))
+    return new Set(rows.map(r => r.external_ref).filter(Boolean) as string[])
+  } catch (e) {
+    if (isMissingColumn(e) || isMissingTable(e)) return new Set()
+    throw e
+  }
 }
 
 /** Every game in one provider library, newest-played first. */

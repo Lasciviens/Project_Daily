@@ -3,6 +3,8 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { usePsnTitleMap } from '../hooks/usePlayStation'
 import { PsnTrophyPanel } from './PsnTrophyPanel'
 import { parsePlayDurationMinutes, type PsnPlayedGame, type PsnPurchasedGame, type PsnTrophyTitle } from '../api/psnApi'
+import { LibraryControls } from './LibraryControls'
+import { useLibraryEntry } from '../hooks/useGames'
 
 // Detail popup for one PSN game. Opens from either view:
 //   - the playtime library (a store SKU) → the trophy set has to be bridged
@@ -40,6 +42,9 @@ interface Props {
 
 export function PsnGameModal({ game, title, purchased, onClose }: Props) {
   const [imgOk, setImgOk] = useState(true)
+  // Keyed by the store SKU, which is what the import writes as external_ref.
+  // A trophy-only entry has no npTitleId, so it simply has no library row.
+  const { entry } = useLibraryEntry('playstation', game?.titleId)
 
   // Bridge only when we came from the playtime library.
   const bridged = usePsnTitleMap(game && !title ? game.titleId : null)
@@ -96,6 +101,14 @@ export function PsnGameModal({ game, title, purchased, onClose }: Props) {
           </div>
 
           <div className="px-4 py-4 space-y-4">
+            {/* The personal side: the same status/tier/rating controls the
+                retro library has, now that migration 096 gives a PlayStation
+                game a real row to write them to. */}
+            {game && (
+              <LibraryControls entry={entry}
+                notImportedHint="This game is not in your library yet. Use “Add … to library” on the PlayStation tab, then status, tier and rating appear here." />
+            )}
+
             {game && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <Stat label="Total playtime" value={minutes > 0 ? fmtHours(minutes) : '—'} />

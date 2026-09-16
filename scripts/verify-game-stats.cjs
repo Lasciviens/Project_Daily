@@ -6,7 +6,7 @@ const assert = require('assert')
 const {
   formatPlaytime, formatPlaytimeShort, hasPlayData, computePlaytimeStats,
   isRealPlay, sortByRecentlyPlayed, MIN_REAL_PLAY_SECONDS, playStatsOf,
-  withinWindow, STATS_WINDOWS,
+  withinWindow, STATS_WINDOWS, shouldAutoMarkPlaying, AUTO_PLAYING_SECONDS,
 } = require('../src/features/games/gameStats.ts')
 
 let n = 0
@@ -105,5 +105,16 @@ ok(withinWindow(windowRows, 'all', NOW).length, 4, 'all time keeps the never-pla
 ok(withinWindow(windowRows, '30d', NOW).some(g => g.id === 'never'), false,
   'a game with no last-played date is in no dated window')
 ok(STATS_WINDOWS.map(w => w.key), ['7d', '30d', '90d', '365d', 'all'], 'the five offered windows')
+
+// ── shouldAutoMarkPlaying ───────────────────────────────────────────────────
+ok(AUTO_PLAYING_SECONDS, 1800, 'thirty minutes')
+ok(shouldAutoMarkPlaying('backlog', 1800), true, 'exactly thirty minutes promotes a backlog game')
+ok(shouldAutoMarkPlaying('backlog', 1799), false, 'just under does not')
+ok(shouldAutoMarkPlaying('backlog', null), false, 'no recorded time does not')
+// Every other status is something the user said, and a sync never argues.
+ok(shouldAutoMarkPlaying('completed', 999999), false, 'replaying a finished game does not un-complete it')
+ok(shouldAutoMarkPlaying('dropped', 999999), false, 'nor does it undrop one')
+ok(shouldAutoMarkPlaying('wishlist', 999999), false, 'nor promote a wishlist entry')
+ok(shouldAutoMarkPlaying('playing', 999999), false, 'and a game already playing needs no change')
 
 console.log(`✅ ${n} assertions passed`)

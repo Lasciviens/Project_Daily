@@ -180,8 +180,7 @@ export function SteamTab() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <ImportProviderButton library="steam" source="steam" games={importRows}
-            label={`＋ Add ${importRows.length} to library`} />
+          <ImportProviderButton library="steam" source="steam" games={importRows} />
           <button onClick={() => qc.invalidateQueries({ queryKey: ['steam'] })}
             className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors">
             🔄 Refresh
