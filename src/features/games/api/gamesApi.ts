@@ -359,43 +359,76 @@ export async function importProviderGames(
   library: Exclude<GameLibrary, 'retro'>,
   source: 'steam' | 'psn',
   games: ProviderGameInput[],
-): Promise<{ imported: number }> {
-  if (!games.length) return { imported: 0 }
+): Promise<{ imported: number; updated: number }> {
+  if (!games.length) return { imported: 0, updated: 0 }
   const user = await requireUser()
   const now = new Date().toISOString()
 
-  // Chunked for the same URL-length reason the reads are: a 400-game Steam
-  // library is one request otherwise.
-  let imported = 0
-  for (let i = 0; i < games.length; i += 200) {
-    const rows = games.slice(i, i + 200).map(g => ({
-      user_id: user.id,
-      library,
-      external_source: source,
-      external_ref: g.external_ref,
-      title: g.title,
-      play_seconds: g.play_seconds ?? null,
-      play_count: g.play_count ?? null,
-      last_played_at: g.last_played_at ?? null,
-      primary_cover_url: g.primary_cover_url ?? null,
-      release_year: g.release_year ?? null,
-      genres: g.genres ?? null,
-      synced_at: now,
-    }))
-    const { error } = await supabase.from('games').upsert(rows, {
-      onConflict: 'user_id,library,external_ref',
-      // The user's own columns are simply not in the payload, so an update
-      // touches only what the provider owns.
-      ignoreDuplicates: false,
-    })
-    if (error) {
-      throw isMissingTable(error) || isMissingColumn(error)
-        ? new Error('Importing Steam/PlayStation games needs migration 096 — apply it first.')
-        : error
-    }
-    imported += rows.length
+  // Read what is already here FIRST, then split into inserts and updates.
+  //
+  // Not an `upsert(..., { onConflict: 'user_id,library,external_ref' })`: that
+  // index is PARTIAL (`WHERE external_ref IS NOT NULL AND library <> 'retro'`,
+  // migration 096) and Postgres cannot infer a partial index from a column
+  // list alone — it needs the index predicate repeated in the ON CONFLICT
+  // clause, which PostgREST has no way to express. The result is a flat
+  // "there is no unique or exclusion constraint matching the ON CONFLICT
+  // specification". Making the index total instead would be worse: a retro
+  // row's `external_ref` is a ScreenScraper id that two different games can
+  // legitimately share, so a scrape write would start failing.
+  let existing: { id: string; external_ref: string | null }[]
+  try {
+    existing = await fetchAllPages<{ id: string; external_ref: string | null }>((from, to) =>
+      supabase.from('games').select('id, external_ref').eq('library', library).range(from, to))
+  } catch (e) {
+    throw isMissingTable(e) || isMissingColumn(e)
+      ? new Error('Importing Steam/PlayStation games needs migration 096 — apply it first.')
+      : e
   }
-  return { imported }
+  const idByRef = new Map(existing.filter(r => r.external_ref).map(r => [r.external_ref as string, r.id]))
+
+  // Only the PROVIDER's own facts. play_status, tier, rating and notes are the
+  // user's and are never in this payload, so a re-import cannot reset them.
+  const payload = (g: ProviderGameInput) => ({
+    user_id: user.id,
+    library,
+    external_source: source,
+    external_ref: g.external_ref,
+    title: g.title,
+    play_seconds: g.play_seconds ?? null,
+    play_count: g.play_count ?? null,
+    last_played_at: g.last_played_at ?? null,
+    primary_cover_url: g.primary_cover_url ?? null,
+    release_year: g.release_year ?? null,
+    genres: g.genres ?? null,
+    synced_at: now,
+  })
+
+  // A provider can list the same id twice (PSN has been seen to, across
+  // regional SKUs); the last one wins rather than the insert failing.
+  const byRef = new Map(games.map(g => [g.external_ref, g]))
+  const toInsert = [...byRef.values()].filter(g => !idByRef.has(g.external_ref)).map(payload)
+  const toUpdate = [...byRef.values()].filter(g => idByRef.has(g.external_ref))
+    .map(g => ({ id: idByRef.get(g.external_ref)!, ...payload(g) }))
+
+  const fail = (e: unknown) => {
+    throw isMissingTable(e) || isMissingColumn(e)
+      ? new Error('Importing Steam/PlayStation games needs migration 096 — apply it first.')
+      : e
+  }
+
+  // Chunked for the same URL/payload-size reason the reads are.
+  for (let i = 0; i < toInsert.length; i += 200) {
+    const { error } = await supabase.from('games').insert(toInsert.slice(i, i + 200))
+    if (error) fail(error)
+  }
+  for (let i = 0; i < toUpdate.length; i += 200) {
+    // Conflict on the PRIMARY KEY, which is always inferable — these rows
+    // carry the id read above, so this is an update in upsert's clothing.
+    const { error } = await supabase.from('games').upsert(toUpdate.slice(i, i + 200))
+    if (error) fail(error)
+  }
+
+  return { imported: toInsert.length, updated: toUpdate.length }
 }
 
 /** Every game in one provider library, newest-played first. */
