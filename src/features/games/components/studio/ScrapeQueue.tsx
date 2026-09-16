@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { CoverImg } from '../gameCardKit'
 import { systemMeta } from '../../systemMeta'
 import {
-  missingFields, systemOf, FILLABLE_FIELDS, FIELD_LABEL,
+  missingFields, systemOf, completenessLabel, isScraped, FILLABLE_FIELDS, FIELD_LABEL,
   type StudioGame, type StudioFilters, type FillableField,
 } from '../../screenscraperStudio'
 
@@ -71,6 +71,8 @@ export function ScrapeFilters({ filters, onChange, systems, total, shown }: {
           className={pill(filters.needsReviewOnly)}>🔎 Flagged for review</button>
         <button type="button" onClick={() => set('neverScrapedOnly', !filters.neverScrapedOnly)}
           className={pill(filters.neverScrapedOnly)}>Never scraped</button>
+        <button type="button" onClick={() => set('hideScraped', !filters.hideScraped)}
+          className={pill(filters.hideScraped)}>Hide already scraped</button>
         <button type="button" onClick={() => set('hideHandled', !filters.hideHandled)}
           className={pill(filters.hideHandled)}>Hide done this session</button>
       </div>
@@ -92,6 +94,7 @@ export function QueueCard({ game, selected, onToggle, handled }: {
   handled?: 'saved' | 'skipped' | 'no_match'
 }) {
   const missing = useMemo(() => missingFields(game), [game])
+  const completeness = useMemo(() => completenessLabel(game), [game])
   const sys = systemOf(game)
 
   return (
@@ -122,12 +125,21 @@ export function QueueCard({ game, selected, onToggle, handled }: {
         {game.needs_review && !handled && (
           <span className="absolute bottom-1.5 left-1.5 text-[10px] leading-none drop-shadow" title="Flagged for review">🔎</span>
         )}
+        {!handled && !game.needs_review && isScraped(game) && (
+          <span className="absolute bottom-1.5 left-1.5 text-[9px] font-bold px-1 py-0.5 rounded-md bg-green-600/85 text-white"
+            title="Already looked up on ScreenScraper">✓ scraped</span>
+        )}
       </div>
       <div className="p-1.5">
         <p className="text-[11px] font-semibold text-ink-800 leading-tight line-clamp-2">{game.title}</p>
-        <p className={`text-[10px] mt-0.5 ${missing.length ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400'}`}>
-          {missing.length ? `${missing.length} missing` : 'complete'}
-        </p>
+        {/* "5 missing" forever was wrong for a game already looked up: what it
+            still lacks is unknown to ScreenScraper, not waiting to be
+            fetched. A scraped row says so. */}
+        <p className={`text-[10px] mt-0.5 ${
+          completeness.tone === 'gaps' ? 'text-amber-700 dark:text-amber-400'
+            : completeness.tone === 'scraped' ? 'text-ink-400'
+              : 'text-green-700 dark:text-green-400'
+        }`}>{completeness.text}</p>
       </div>
     </button>
   )

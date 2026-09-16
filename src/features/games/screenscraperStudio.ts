@@ -71,6 +71,18 @@ export function hasGaps(g: StudioGame): boolean {
   return missingFields(g).length > 0
 }
 
+/**
+ * Has this game been through ScreenScraper at all?
+ *
+ * The queue used to say "5 missing" forever, even for a game already looked
+ * up whose gaps are simply empty on their side too — so the library never
+ * stopped looking like unfinished work. A scraped row is DONE; what it still
+ * lacks is unknown to the provider, not waiting to be fetched.
+ */
+export function isScraped(g: Pick<StudioGame, 'external_source' | 'synced_at'>): boolean {
+  return g.external_source === 'screenscraper' && !!g.synced_at
+}
+
 // ─── Selecting what to work on ───────────────────────────────────────────────
 
 export type StudioFilters = {
@@ -83,13 +95,16 @@ export type StudioFilters = {
   needsReviewOnly: boolean
   /** Restrict to rows never scraped (no provider id recorded). */
   neverScrapedOnly: boolean
+  /** Drop rows already looked up — what they still lack is unknown to
+   *  ScreenScraper, so asking again buys nothing. */
+  hideScraped: boolean
   /** Hide rows already dealt with in this session. */
   hideHandled: boolean
 }
 
 export const EMPTY_FILTERS: StudioFilters = {
   search: '', systems: [], missing: [], needsReviewOnly: false,
-  neverScrapedOnly: false, hideHandled: false,
+  neverScrapedOnly: false, hideScraped: false, hideHandled: false,
 }
 
 export function systemOf(g: StudioGame): string | null {
@@ -115,6 +130,7 @@ export function selectCandidates(games: StudioGame[], f: StudioFilters, handled:
       }
       if (f.needsReviewOnly && !g.needs_review) return false
       if (f.neverScrapedOnly && g.external_ref) return false
+      if (f.hideScraped && isScraped(g)) return false
       if (f.missing.length) {
         const miss = new Set(missingFields(g))
         if (!f.missing.every(m => miss.has(m))) return false
@@ -309,12 +325,44 @@ export function reduceHandled(rows: DecisionRow[]): Record<string, HandledState>
 
 export type FieldVerdict = 'match' | 'differs' | 'only_theirs' | 'only_mine' | 'both_empty'
 
+const isBlank = (v: unknown) =>
+  v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
+  || (typeof v === 'string' && v.trim() === '')
+
 export type FieldComparison = {
-  field: FillableField
+  /** `null` for an identity row (title, platform) — comparable, never written. */
+  field: FillableField | null
   label: string
   mine: unknown
   theirs: unknown
   verdict: FieldVerdict
+}
+
+/**
+ * Title and platform, compared but never written.
+ *
+ * They are the two things a person checks FIRST — "is this my game, on my
+ * system?" — and neither is writable: the title is the user's own (ES-DE's
+ * cleaned name, which they may have edited) and the platform comes from the
+ * ROM's own folder. Leaving them out of the comparison entirely, as a first
+ * version did, meant the one question the card exists to answer was the one
+ * thing it did not show side by side.
+ */
+export function compareIdentity(
+  mine: { title?: string | null; system?: string | null },
+  theirs: { title?: string | null; system?: string | null },
+): FieldComparison[] {
+  const row = (label: string, a: unknown, b: unknown): FieldComparison => ({
+    field: null, label, mine: a, theirs: b,
+    verdict: isBlank(a) && isBlank(b) ? 'both_empty'
+      : isBlank(a) ? 'only_theirs'
+        : isBlank(b) ? 'only_mine'
+          : valuesAgree(a, b) ? 'match' : 'differs',
+  })
+  return [
+    row('Title', mine.title, theirs.title),
+    row('Platform', mine.system, theirs.system),
+  ]
 }
 
 /** Display form for a value of any of the fillable shapes. */
@@ -342,10 +390,6 @@ export function valuesAgree(a: unknown, b: unknown): boolean {
   if (typeof a === 'number' || typeof b === 'number') return Number(a) === Number(b)
   return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase()
 }
-
-const isBlank = (v: unknown) =>
-  v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
-  || (typeof v === 'string' && v.trim() === '')
 
 /**
  * One row per fillable field, in the order the UI lists them.
@@ -377,4 +421,15 @@ export function compareFields(mine: Partial<Record<FillableField, unknown>>, the
 export function comparableAgreement(rows: FieldComparison[]): { agree: number; comparable: number } {
   const comparable = rows.filter(r => r.verdict === 'match' || r.verdict === 'differs')
   return { agree: comparable.filter(r => r.verdict === 'match').length, comparable: comparable.length }
+}
+
+
+// ─── Scraped, not merely incomplete ──────────────────────────────────────────
+
+/** What a queue card should say about a game's completeness. */
+export function completenessLabel(g: StudioGame): { text: string; tone: 'done' | 'gaps' | 'scraped' } {
+  const missing = missingFields(g).length
+  if (missing === 0) return { text: 'complete', tone: 'done' }
+  if (isScraped(g)) return { text: `scraped · ${missing} unknown`, tone: 'scraped' }
+  return { text: `${missing} missing`, tone: 'gaps' }
 }
