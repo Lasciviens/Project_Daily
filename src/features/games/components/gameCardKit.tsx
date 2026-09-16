@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { TIER_COLOR } from '../gamesMeta'
 import { systemMeta } from '../systemMeta'
-import { formatPlaytimeShort } from '../gameStats'
+import { formatPlaytimeShort, playStatsOf } from '../gameStats'
 import type { Game } from '../types'
 
 // Shared anatomy for every cover-led game card (Grid, Compact, Poster).
@@ -96,11 +96,12 @@ export function FlagBadges({ game, size = 'md' }: { game: Game; size?: 'sm' | 'm
  * "0h" chips claiming otherwise.
  */
 export function PlaytimeBadge({ game, size = 'md' }: { game: Game; size?: 'sm' | 'md' }) {
-  const t = formatPlaytimeShort(game.esde_playtime_seconds)
+  const play = playStatsOf(game)
+  const t = formatPlaytimeShort(play.seconds)
   if (!t) return null
   return (
     <span className={`font-bold rounded-md bg-black/70 text-white/90 backdrop-blur-sm shadow-sm leading-none ${
       size === 'sm' ? 'text-[9px] px-1 py-0.5' : 'text-[10px] px-1.5 py-1'
-    }`} title={`Played ${t} in total across ${game.esde_playcount ?? 0} launches, as recorded by ES-DE`}>⏱{t}</span>
+    }`} title={`Played ${t} in total across ${play.count ?? 0} launches`}>⏱{t}</span>
   )
 }

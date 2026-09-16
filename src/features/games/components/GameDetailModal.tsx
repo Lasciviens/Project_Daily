@@ -10,7 +10,7 @@ import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ScrapeGameButton } from './ScrapeGameButton'
 import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip } from './gameCardKit'
 import { systemMeta } from '../systemMeta'
-import { formatPlaytime } from '../gameStats'
+import { formatPlaytime, playStatsOf } from '../gameStats'
 import {
   STATUS_LABEL, TIER_COLOR, TIERS, STATUSES,
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
@@ -29,7 +29,7 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
   )
 }
 
-function fmtDate(iso: string | null): string {
+function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
@@ -574,14 +574,14 @@ export function GameDetailModal({ gameId, onClose }: Props) {
               {game.coop_notes && (
                 <Section title="Co-op Notes"><p className="text-sm text-ink-700 bg-cyan-50 rounded-lg p-3 leading-relaxed">{game.coop_notes}</p></Section>
               )}
-              {(game.esde_playcount != null || game.esde_last_played) && (
-                <Section title="Play Stats (ES-DE)">
+              {(playStatsOf(game).count != null || playStatsOf(game).last || playStatsOf(game).seconds != null) && (
+                <Section title={`Play Stats (${game.library === 'steam' ? 'Steam' : game.library === 'playstation' ? 'PlayStation' : 'ES-DE'})`}>
                   <div className="flex flex-wrap gap-3 text-xs text-ink-600">
-                    {game.esde_playcount != null && <span className="font-semibold">▶ Launched {game.esde_playcount}×</span>}
+                    {playStatsOf(game).count != null && <span className="font-semibold">▶ Launched {playStatsOf(game).count}×</span>}
                     {/* formatPlaytime, not seconds/3600 — a 40-minute session used
                         to print "0h", which reads as "never played". */}
-                    {formatPlaytime(game.esde_playtime_seconds) && <span className="font-semibold">⏱ Played {formatPlaytime(game.esde_playtime_seconds)} in total</span>}
-                    {game.esde_last_played && <span>🕐 Last played {fmtDate(game.esde_last_played)}</span>}
+                    {formatPlaytime(playStatsOf(game).seconds) && <span className="font-semibold">⏱ Played {formatPlaytime(playStatsOf(game).seconds)} in total</span>}
+                    {playStatsOf(game).last && <span>🕐 Last played {fmtDate(playStatsOf(game).last)}</span>}
                     {game.platforms.length > 1 && (
                       <InfoBubble label="Across variants?">Summed across every variant of this game. Each platform row below carries its own figures.</InfoBubble>
                     )}

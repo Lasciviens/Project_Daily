@@ -6,7 +6,10 @@
 
 export type PlayStatus = 'playing' | 'completed' | 'wishlist' | 'backlog' | 'dropped'
 export type Tier = 'S' | 'A' | 'B' | 'C' | 'D' | 'F'
-export type ExternalSource = 'screenscraper' | 'esde' | 'manual'
+export type ExternalSource = 'screenscraper' | 'esde' | 'manual' | 'steam' | 'psn'
+/** Which library a row belongs to (migration 096). The Retro Games tab shows
+ *  only 'retro'; Stats can scope to any of them. */
+export type GameLibrary = 'retro' | 'steam' | 'playstation'
 export type EmulatorType = 'standalone' | 'retroarch_core'
 export type Performance = 'good' | 'warn' | 'bad'
 export type RomStatus = 'missing' | 'found' | 'verified' | 'installed' | 'sd_card'
@@ -77,6 +80,13 @@ export interface Game {
   external_source:       ExternalSource | null
   synced_at:             string | null
   needs_review:          boolean
+  library:               GameLibrary
+  // Source-neutral play statistics (migration 096): seconds, launches and the
+  // last session, whichever provider reported them. The esde_* trio below is
+  // ES-DE's own copy and stays for continuity; read THESE.
+  play_seconds:          number | null
+  play_count:            number | null
+  last_played_at:        string | null
   // When the current/last playthrough began and ended — see migration 090.
   // Auto-filled (once, never overwritten) by the quick status-switch action
   // (gamesApi.ts::setPlayStatus); also directly editable.
@@ -167,19 +177,6 @@ export interface GamePlatformInput {
   version_title?:     string | null
 }
 
-export interface GameStats {
-  total:        number
-  playing:      number
-  completed:    number
-  wishlist:     number
-  backlog:      number
-  dropped:      number
-  iconic:       number
-  coop:         number
-  needsReview:  number
-  avgRating:    number | null
-  bySystem:     { system: string; count: number }[]
-  // Real play data, from ES-DE (migration 089's roll-up columns). Every figure
-  // here is "recorded by ES-DE", never a claim about play outside the handheld.
-  playtime:     import('./gameStats').PlaytimeStats
-}
+// The Stats panel's computed shape lives in gameStats.ts (GameStatsShape) —
+// it is derived from raw rows under the user's chosen window/library filters,
+// not a fetch result, so it belongs with the computation.

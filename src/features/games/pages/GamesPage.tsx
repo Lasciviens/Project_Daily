@@ -19,7 +19,7 @@ import { useGamesNeedingReview } from '../hooks/useGames'
 import { FilterGroupButton, CheckboxFilterPanel } from '../components/CheckboxFilterGroup'
 import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip, FlagBadges, PlaytimeBadge } from '../components/gameCardKit'
 import { systemMeta } from '../systemMeta'
-import { formatPlaytime, sortByRecentlyPlayed, MIN_REAL_PLAY_SECONDS } from '../gameStats'
+import { formatPlaytime, sortByRecentlyPlayed, playStatsOf, MIN_REAL_PLAY_SECONDS } from '../gameStats'
 import type { Game } from '../types'
 
 // Which filter group is expanded, if any.
@@ -60,7 +60,7 @@ function sortGames(gs: Game[], sort: SortKey): Game[] {
     case 'year-asc':  return [...gs].sort((a, b) => (a.release_year ?? 9999) - (b.release_year ?? 9999))
     case 'year-desc': return [...gs].sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0))
     case 'rating':    return [...gs].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
-    case 'playtime':  return [...gs].sort((a, b) => (b.esde_playtime_seconds ?? 0) - (a.esde_playtime_seconds ?? 0))
+    case 'playtime':  return [...gs].sort((a, b) => (playStatsOf(b).seconds ?? 0) - (playStatsOf(a).seconds ?? 0))
     case 'recent':    return sortByRecentlyPlayed(gs)
     case 'series':    return [...gs].sort((a, b) => (a.series_name ?? 'zzz').localeCompare(b.series_name ?? 'zzz') || a.title.localeCompare(b.title))
     default:          return [...gs].sort((a, b) => a.title.localeCompare(b.title))
@@ -193,8 +193,8 @@ function GameListItem({ game, onClick }: { game: Game; onClick: () => void }) {
       <div className="flex-shrink-0 text-right space-y-0.5">
         {game.rating != null && <p className="text-xs text-accent-600 font-semibold">★{game.rating}</p>}
         <div className="flex justify-end"><SystemChip game={game} size="sm" /></div>
-        {formatPlaytime(game.esde_playtime_seconds) && (
-          <p className="text-[10px] text-ink-400">⏱ Played {formatPlaytime(game.esde_playtime_seconds)}</p>
+        {formatPlaytime(playStatsOf(game).seconds) && (
+          <p className="text-[10px] text-ink-400">⏱ Played {formatPlaytime(playStatsOf(game).seconds)}</p>
         )}
       </div>
     </button>
