@@ -5,6 +5,38 @@ It reads `gamelists/<system>/gamelist.xml` and sends game records directly to
 `esde-sync` using the literal [§10 contract](../docs/games/screenscraper-integration.md#10-the-gateway-contract--import_esde_games).
 No ROM, artwork, XML file, ScreenScraper credential, or checksum is uploaded.
 
+## Live-file filtering (2026-09-16)
+
+The script now requires readable ROM storage before any request, including a
+pending retry. By default `ES-DE/gamelists` uses the sibling `ROMs` directory
+on the same volume. Use `--roms /actual/ROMs` for a different layout.
+
+- XML entries whose ROM path no longer exists are excluded as `missing_roms`.
+  Existing directory-based games are retained. Path traversal outside the
+  system directory is rejected. Permission/I/O errors stop the run.
+- Explicit Switch DLC/update/upgrade package markers or dedicated add-on
+  folders are excluded as `addons`. A single bracketed Switch application ID
+  ending in `800` also identifies an update in `.nsp`/`.nsz` filenames (see
+  [DBI's title-ID documentation](https://github.com/rashevskyv/dbi/blob/main/README.md)).
+  Classification uses the ROM path, never
+  the display title. `DLC Quest`, `Upgrade`, and `[Base+Update]` bundles are
+  retained. Unlabelled packages cannot be reliably classified from XML alone.
+- NES and SNES remain included. Nothing is deleted from the card or database.
+- Add `--report /path/exclusions.json` to write an audit of excluded identities
+  and reasons. This explicit report also writes during `--dry-run`; no network
+  requests or sync-state writes are made by dry-run.
+- Filter version and ROM root are part of local sync context. The first run
+  after upgrading performs a full filtered push when there is no pending
+  request. A pending request from a different context requires reconciliation;
+  it is neither silently discarded nor replayed without filtering.
+- Current XML/ROM eligibility is checked before replay. If a pending request
+  contains a now-excluded game, the script stops and preserves that request.
+
+For a deliberate server-side library reset, first back up and delete only the
+authorized ES-DE rows, then run the new script with `--full`. This sends all
+eligible rows regardless of the existing fingerprint checkpoint. Future
+device deletions are not automatically propagated to the database.
+
 ## One-time setup
 
 1. Server prerequisites (Claude/user's side): apply migration **093**, deploy
@@ -102,7 +134,7 @@ is preserved by the handler); it does not force an overwrite of user edits.
   errors, 408, 429 and 5xx retry unchanged (3 attempts by default, bounded
   backoff). `--attempts 1` disables automatic retries; `--timeout 30` sets the
   per-request timeout. The next manual run replays any pending body unchanged
-  before reading current files. If play stats changed during the interruption,
+    after validating current files and ROM eligibility. If play stats changed during the interruption,
   those new values are then sent separately.
 - HTTP 400 logs the server's zero-based entry indexes, advances no fingerprints,
   and drops the rejected pending body because the server guarantees no writes.

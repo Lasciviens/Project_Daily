@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import urllib.error
+import xml.etree.ElementTree as ET
 
 spec = importlib.util.spec_from_file_location("push", Path(__file__).with_name("push-esde-library.py"))
 push = importlib.util.module_from_spec(spec)
@@ -22,9 +23,11 @@ class PushTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "gamelists"
         self.root.mkdir()
+        self.roms = Path(self.temp.name) / "ROMs"
+        self.roms.mkdir()
         self.state = Path(self.temp.name) / "state.json"
         self.args = argparse.Namespace(timezone="Europe/Oslo", full=False, dry_run=False,
-                                       attempts=1, timeout=2)
+                                       attempts=1, timeout=2, roms=self.roms)
         self.output = io.StringIO()
         self.capture = redirect_stdout(self.output)
         self.capture.__enter__()
@@ -34,6 +37,10 @@ class PushTests(unittest.TestCase):
         target = self.root / system / "gamelist.xml"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('<?xml version="1.0"?>' + prefix + '<gameList>' + text + '</gameList>')
+        for g in ET.fromstring('<gameList>' + text + '</gameList>').findall('game'):
+            rom = self.roms / system / g.findtext('path')
+            rom.parent.mkdir(parents=True, exist_ok=True)
+            rom.touch()
         return target
 
     def game(self, i=0, extra=""):
@@ -55,7 +62,7 @@ class PushTests(unittest.TestCase):
         for system in push.EXCLUDED:
             self.xml(self.game(), system)
         self.xml(self.game(), "CLEANUP/dated/nes")
-        rows = push.read_library(self.root)
+        rows = push.read_library(self.root, self.roms)
         self.assertEqual(len(rows), 2)
         g = rows[0][0]
         self.assertEqual(g["path"], "./folder/0.zip")
@@ -154,7 +161,7 @@ class PushTests(unittest.TestCase):
         for text in ('<game><path>./x</path></game>', self.game() + self.game()):
             self.xml(text)
             with self.assertRaises(ValueError):
-                push.read_library(self.root)
+                    push.read_library(self.root, self.roms)
         self.xml(self.game())
         for invalid in ('{', 'null', '{"version":1,"fingerprints":[]}'):
             self.state.write_text(invalid)
@@ -192,6 +199,71 @@ class PushTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Another push"):
                 with push.state_lock(self.state):
                     self.fail("second lock acquired")
+
+    def test_missing_roms_and_explicit_switch_addons(self):
+        paths = ["./Base Game.nsp", "./Game [DLC-01] [123].nsp",
+                 "./Game [Update].nsp", "./Sonic Mania Encore DLC.nsp",
+                 "./Sonic Mania Update 131072.nsp", "./99 DLCs/extra.nsp",
+                 "./DLC Quest.nsp", "./Upgrade.nsp", "./Game [Base+Update].nsp",
+                 "./Missing.nsp", "./Game [UPD].nsz"]
+        text = ''.join(f'<game><path>{p}</path><name>Same display title</name></game>' for p in paths)
+        self.xml(text, 'switch')
+        (self.roms / 'switch/Missing.nsp').unlink()
+        audit = []
+        rows = push.read_library(self.root, self.roms, audit)
+        self.assertEqual([g['path'] for g, _ in rows],
+                         [paths[i] for i in [0, 6, 7, 8]])
+        self.assertEqual(sum(x['reason'] == 'missing_rom' for x in audit), 1)
+        self.assertEqual(len(audit), 7)
+        self.assertIsNone(push.addon_reason('nes', './Game [DLC].zip'))
+        self.assertEqual(push.addon_reason('switch', './Game [0100C1F0051B6800][v131072].nsp'), 'update_title_id')
+        self.assertIsNone(push.addon_reason('switch', './Game [0100C1F0051B6000][v0].nsp'))
+        self.assertIsNone(push.addon_reason('switch', './Game [Base+Update] [0100C1F0051B6800].nsp'))
+        self.assertIsNone(push.addon_reason('switch', './Game [0100C1F0051B6000] [0100C1F0051B6800].nsp'))
+
+    def test_missing_card_stops_before_pending_replay(self):
+        self.xml(self.game())
+        with patch.object(push, 'post_batch', side_effect=ValueError('offline')):
+            with self.assertRaises(ValueError):
+                self.run_sync()
+        saved = self.state.read_bytes()
+        self.roms.rename(self.roms.with_name('disconnected'))
+        with patch.object(push, 'post_batch') as post:
+            with self.assertRaisesRegex(ValueError, 'ROM directory missing'):
+                self.run_sync()
+            post.assert_not_called()
+        self.assertEqual(saved, self.state.read_bytes())
+
+    def test_filtered_pending_is_never_replayed(self):
+        self.xml(self.game())
+        with patch.object(push, 'post_batch', side_effect=ValueError('offline')):
+            with self.assertRaises(ValueError):
+                self.run_sync()
+        (self.roms / 'nes/folder/0.zip').unlink()
+        saved = self.state.read_bytes()
+        with patch.object(push, 'post_batch') as post:
+            with self.assertRaisesRegex(ValueError, 'now-excluded games'):
+                self.run_sync()
+            post.assert_not_called()
+        self.assertEqual(saved, self.state.read_bytes())
+
+    def test_old_filter_pending_is_not_silently_discarded(self):
+        self.xml(self.game())
+        with patch.object(push, 'post_batch', side_effect=ValueError('offline')):
+            with self.assertRaises(ValueError):
+                self.run_sync()
+        state = json.loads(self.state.read_text())
+        del state['context']['filter_version']
+        self.state.write_text(json.dumps(state))
+        with patch.object(push, 'post_batch') as post:
+            with self.assertRaisesRegex(ValueError, 'filter changed'):
+                self.run_sync()
+            post.assert_not_called()
+
+    def test_traversal_rejected_and_directory_games_kept(self):
+        self.xml(self.game())
+        self.assertRaises(ValueError, push.rom_exists, self.roms, 'nes', '../outside.zip')
+        self.assertTrue(push.rom_exists(self.roms, 'nes', './folder'))
 
 
 if __name__ == "__main__":

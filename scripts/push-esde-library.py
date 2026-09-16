@@ -26,6 +26,56 @@ EXCLUDED = {"androidapps", "androidgames", "emulators", "steam", "CLEANUP"}
 TEXT_FIELDS = ("path", "name", "desc", "developer", "publisher", "genre",
                "players", "releasedate", "lastplayed")
 STATS = ("playcount", "playtime", "lastplayed")
+FILTER_VERSION = 2
+
+
+class PendingStateError(ValueError):
+    pass
+
+
+def addon_reason(system, path):
+    """Only explicit Switch package labels; never guess from a game's title."""
+    if system != "switch":
+        return None
+    stem = Path(path).stem
+    # A combined package is still a playable game, not a standalone update.
+    if re.search(r"\[BASE\s*\+", stem, re.I):
+        return None
+    title_ids = set(re.findall(r"\[(0100[0-9a-f]{12})\]", stem, re.I))
+    if len(title_ids) == 1 and Path(path).suffix.lower() in {".nsp", ".nsz"}:
+        title_id = next(iter(title_ids))
+        # Switch update ProgramIds have 0x800 set; base applications end in 000.
+        if title_id.lower().endswith("800"):
+            return "update_title_id"
+    parts = Path(path).parts
+    if any(re.fullmatch(r"(?:\d+\s+)?(?:dlcs?|updates?|upgrades?)", p, re.I)
+           for p in parts[:-1]):
+        return "addon_folder"
+    if re.search(r"\[(?:DLC|UPD|UPDATE|UPGRADE)(?:\b|[-_])[^\]]*\]", stem, re.I):
+        return "addon_package"
+    if re.search(r"\sDLC$|\s(?:Update|Upgrade)\s+(?:v?\d[\w.-]*)$", stem, re.I):
+        return "addon_package"
+    return None
+
+
+def rom_location(root, roms=None):
+    result = (roms if roms is not None else root.parent.parent / "ROMs").expanduser().resolve()
+    # Actually enumerate: an unreadable/unmounted card must not look like an empty library.
+    if not result.is_dir() or not list(result.iterdir()):
+        raise ValueError(f"ROM directory missing or empty: {result}; mount the card or use --roms")
+    return result
+
+
+def rom_exists(roms, system, path):
+    base = (roms / system).resolve()
+    target = (base / path).resolve()
+    if not target.is_relative_to(base):
+        raise ValueError(f"ROM path is outside its system directory: {system} {path}")
+    try:
+        target.stat()  # Permission and I/O failures must propagate, not count as deleted ROMs.
+    except FileNotFoundError:
+        return False
+    return True
 
 
 def encode(value):
@@ -41,11 +91,12 @@ def fingerprint(raw):
     return hashlib.sha256(encode({k: raw[k] for k in STATS if k in raw}).encode()).hexdigest()
 
 
-def read_library(root):
+def read_library(root, roms=None, audit=None):
     if root.name != "gamelists" or "CLEANUP" in root.parts:
         raise ValueError("--gamelists must point to the live gamelists directory")
+    roms = rom_location(root, roms)
     rows, seen = [], set()
-    counts = dict(systems=0, excluded_systems=0, folders=0, sidecars=0)
+    counts = dict(systems=0, excluded_systems=0, folders=0, sidecars=0, missing_roms=0, addons=0)
     files = 0
     # Deliberately one level only: never descend into dated CLEANUP snapshots.
     for directory in sorted(root.iterdir()):
@@ -86,6 +137,17 @@ def read_library(root):
             for required in ("path", "name"):
                 if required not in raw:
                     raise ValueError(f"{where}: {required} is required; nothing sent")
+            reason = addon_reason(directory.name, raw["path"])
+            if reason:
+                counts["addons"] += 1
+            elif not rom_exists(roms, directory.name, raw["path"]):
+                reason = "missing_rom"
+                counts["missing_roms"] += 1
+            if reason:
+                if audit is not None:
+                    audit.append({"system": directory.name, "path": raw["path"],
+                                  "name": raw["name"], "reason": reason})
+                continue
             game = {"system": directory.name}
             game.update({field: raw[field] for field in TEXT_FIELDS if field in raw})
             # Only XML -> JSON scalar typing; never units, dates or path conversion.
@@ -143,6 +205,8 @@ def load_state(path, context):
 
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(state, dict) and state.get("context") != context and state.get("pending"):
+            raise PendingStateError("Configuration/filter changed with a pending batch; reconcile the old state before sending")
         require(state["version"] == 1 and state["context"] == context)
         require(valid_fingerprints(state["fingerprints"]))
         pending = state["pending"]
@@ -154,6 +218,8 @@ def load_state(path, context):
             require(valid_fingerprints(pending["fingerprints"]))
             require(set(pending["fingerprints"]) == {key(g) for g in body["games"]})
         return state
+    except PendingStateError:
+        raise
     except FileNotFoundError:
         print("No local state: full push on this run.")
     except (ValueError, KeyError, TypeError):
@@ -226,8 +292,15 @@ def post_batch(endpoint, secret, body, attempts, timeout):
 
 
 def sync(args, root, endpoint, secret, state_path):
-    context = {"gamelists": str(root), "endpoint": endpoint, "timezone": args.timezone}
+    roms = rom_location(root, getattr(args, "roms", None))
+    context = {"gamelists": str(root), "endpoint": endpoint, "timezone": args.timezone,
+               "roms": str(roms), "filter_version": FILTER_VERSION}
     state = load_state(state_path, context)
+    audit = []
+    rows = read_library(root, roms, audit)
+    report = getattr(args, "report", None)
+    if report:
+        report.expanduser().write_text(encode({"eligible": len(rows), "excluded": audit}) + "\n", encoding="utf-8")
 
     def deliver():
         pending = state["pending"]
@@ -243,9 +316,11 @@ def sync(args, root, endpoint, secret, state_path):
         save_state(state_path, state)
 
     if state["pending"] and not args.dry_run:
-        print("Resending saved pending batch unchanged before reading current XML.")
+        eligible = {key(g) for g, _ in rows}
+        if not set(state["pending"]["fingerprints"]).issubset(eligible):
+            raise ValueError("Pending batch contains now-excluded games; reconcile state before resuming")
+        print("Resending saved pending batch unchanged after checking current ROM eligibility.")
         deliver()
-    rows = read_library(root)
     changed = [(g, fp) for g, fp in rows
                if args.full or state["fingerprints"].get(key(g)) != fp]
     batches = math.ceil(len(changed) / 150)
@@ -271,6 +346,8 @@ def sync(args, root, endpoint, secret, state_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gamelists", required=True, type=Path, help="Live ES-DE/gamelists directory")
+    parser.add_argument("--roms", type=Path, help="ROM root; defaults to the ROMs sibling of ES-DE")
+    parser.add_argument("--report", type=Path, help="Write an exclusion audit JSON (also during dry-run)")
     parser.add_argument("--state", type=Path, default=Path.home() / ".local/state/esde-sync/state.json")
     parser.add_argument("--timezone", default="Europe/Oslo")
     parser.add_argument("--dry-run", action="store_true", help="Read/diff only; no credentials required")
