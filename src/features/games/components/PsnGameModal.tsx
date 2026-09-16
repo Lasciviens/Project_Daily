@@ -3,6 +3,7 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { usePsnTitleMap } from '../hooks/usePlayStation'
 import { PsnTrophyPanel } from './PsnTrophyPanel'
 import { parsePlayDurationMinutes, type PsnPlayedGame, type PsnPurchasedGame, type PsnTrophyTitle } from '../api/psnApi'
+import { OWNERSHIP_LABEL, type Ownership } from '../providerEntries'
 import { LibraryControls } from './LibraryControls'
 import { useLibraryEntry } from '../hooks/useGames'
 
@@ -37,10 +38,13 @@ interface Props {
   game?: PsnPlayedGame
   title?: PsnTrophyTitle
   purchased?: PsnPurchasedGame
+  /** Merged across every row Sony returned for this title — a game can be
+   *  bought AND in the catalogue, and showing one of those hides the other. */
+  ownership?: Ownership
   onClose: () => void
 }
 
-export function PsnGameModal({ game, title, purchased, onClose }: Props) {
+export function PsnGameModal({ game, title, purchased, ownership, onClose }: Props) {
   const [imgOk, setImgOk] = useState(true)
   // Keyed by the store SKU, which is what the import writes as external_ref.
   // A trophy-only entry has no npTitleId, so it simply has no library row.
@@ -64,7 +68,10 @@ export function PsnGameModal({ game, title, purchased, onClose }: Props) {
   const name = game?.name ?? title?.trophyTitleName ?? ''
   const art = game?.imageUrl ?? title?.trophyTitleIconUrl ?? null
   const minutes = parsePlayDurationMinutes(game?.playDuration)
-  const isPlus = purchased?.membership === 'PS_PLUS' || game?.service === 'ps_plus'
+  // The merged state wins; the single purchased row and Sony's own `service`
+  // field are the fallbacks for a title the purchased call never returned.
+  const owned: Ownership | null = ownership
+    ?? (purchased?.membership === 'PS_PLUS' || game?.service === 'ps_plus' ? 'plus' : null)
 
   return (
     <Dialog open onClose={onClose} className="relative z-[60]">
@@ -93,8 +100,10 @@ export function PsnGameModal({ game, title, purchased, onClose }: Props) {
                     {title.trophyTitlePlatform}
                   </span>
                 )}
-                {isPlus && (
-                  <span className="text-[10px] font-semibold bg-blue-500/90 text-white px-1.5 py-0.5 rounded">PS Plus</span>
+                {owned && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded text-white ${
+                    owned === 'both' ? 'bg-violet-600/90' : owned === 'plus' ? 'bg-blue-500/90' : 'bg-white/25'
+                  }`}>{OWNERSHIP_LABEL[owned]}</span>
                 )}
               </div>
             </div>

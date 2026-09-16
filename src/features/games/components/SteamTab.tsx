@@ -1,9 +1,11 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useSteamProfile, useSteamOwnedGames, useSteamLevelBadges } from '../hooks/useSteam'
 import { SteamGameModal } from './SteamGameModal'
-import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
+import { steamGameHeaderUrl, fetchSteamAppTypes, type SteamGame } from '../api/steamApi'
+import { steamKind, hideNonGames, countNonGames } from '../providerEntries'
+import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ImportProviderButton } from './ImportProviderButton'
 import type { ProviderGameInput } from '../api/gamesApi'
 
@@ -113,6 +115,7 @@ export function SteamTab() {
   const levelBadges = useSteamLevelBadges(!!owned.data)
   const [sort, setSort] = useState<SortKey>('playtime')
   const [search, setSearch] = useState('')
+  const [gamesOnly, setGamesOnly] = useState(false)
   const [openGame, setOpenGame] = useState<SteamGame | null>(null)
 
   // Derived, not fetched: GetOwnedGames already returns `playtime_2weeks`.
@@ -123,8 +126,27 @@ export function SteamTab() {
       .slice(0, 12),
     [owned.data])
 
+  // Store types for what is already cached. Enabled only once the library has
+  // landed — it is a read of our OWN table, but there is nothing to ask about
+  // before then, and the tab's whole design is one thing at a time.
+  const appTypes = useQuery({
+    queryKey: ['steam', 'app-types', owned.data?.games.length ?? 0],
+    queryFn: () => fetchSteamAppTypes((owned.data?.games ?? []).map(g => g.appid)),
+    enabled: (owned.data?.games.length ?? 0) > 0,
+    staleTime: 10 * 60_000,
+  })
+  const kindOfApp = useCallback(
+    (g: SteamGame) => steamKind(appTypes.data?.get(g.appid)),
+    [appTypes.data],
+  )
+  const nonGameCount = useMemo(
+    () => countNonGames(owned.data?.games ?? [], kindOfApp),
+    [owned.data, kindOfApp],
+  )
+
   const games = useMemo(() => {
     let gs = owned.data?.games ?? []
+    if (gamesOnly) gs = hideNonGames(gs, kindOfApp)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       gs = gs.filter(g => g.name?.toLowerCase().includes(q))
@@ -134,7 +156,7 @@ export function SteamTab() {
       if (sort === 'recent') return (b.rtime_last_played ?? 0) - (a.rtime_last_played ?? 0)
       return b.playtime_forever - a.playtime_forever
     })
-  }, [owned.data, sort, search])
+  }, [owned.data, sort, search, gamesOnly, kindOfApp])
 
   if ((profile.error as Error)?.message === 'not_configured') return <NotConfigured />
 
@@ -209,6 +231,21 @@ export function SteamTab() {
               className="min-h-[44px] px-2 text-sm rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400">
               {SORTS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
             </select>
+            {/* Only offered once something is actually known not to be a
+                game: a toggle that would change nothing is noise. */}
+            {nonGameCount > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-ink-600 min-h-[44px] cursor-pointer">
+                <input type="checkbox" checked={gamesOnly} onChange={e => setGamesOnly(e.target.checked)}
+                  className="w-4 h-4 accent-current text-accent-500" />
+                Games only
+                <InfoBubble label="What gets hidden?">
+                  The {nonGameCount} entries whose Steam store page says they are DLC, a demo, a
+                  soundtrack, a video or a tool. Most of a large library has never had its store
+                  page fetched — Steam rate-limits that hard — and anything unclassified stays
+                  visible, because hiding it would look like the app losing your library.
+                </InfoBubble>
+              </label>
+            )}
             <p className="text-xs text-ink-400 ml-auto">
               {games.length} games · {totalHours.toLocaleString('en-GB')} hours total
             </p>

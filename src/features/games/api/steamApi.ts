@@ -176,3 +176,34 @@ export async function fetchSteamCurrentPlayers(appid: number): Promise<number | 
   const r = await invoke<{ playerCount: number | null }>('current_players', { appid })
   return r.playerCount
 }
+
+// ─── Cached store types, for the "games only" filter ─────────────────────────
+
+/**
+ * `steam_apps.type` for the appids we already know about (migration 092).
+ *
+ * Read straight from the table rather than through the edge function: it is a
+ * shared catalogue with `SELECT` for `authenticated`, no Steam call is
+ * involved, and the store endpoint it was filled from is rate-limited to ~200
+ * requests per 5 minutes — fetching a type per app on demand is exactly what
+ * that table exists to avoid.
+ *
+ * Coverage is therefore partial by design: only apps whose store page has been
+ * opened (or batch-fetched) have a type at all. Everything else comes back
+ * absent, which the filter treats as "unclassified", never as "not a game".
+ */
+export async function fetchSteamAppTypes(appids: number[]): Promise<Map<number, string | null>> {
+  const out = new Map<number, string | null>()
+  if (!appids.length) return out
+  // Chunked for the same measured URL-length reason gamesApi.ts uses 200.
+  for (let i = 0; i < appids.length; i += 200) {
+    const { data, error } = await supabase
+      .from('steam_apps').select('appid, type').in('appid', appids.slice(i, i + 200))
+    // A missing table (092 not applied) is not an error worth surfacing here:
+    // no types simply means nothing is classified, and the filter hides
+    // nothing. Same degradation as every other pre-migration read.
+    if (error) return out
+    for (const row of data ?? []) out.set(Number(row.appid), row.type ?? null)
+  }
+  return out
+}

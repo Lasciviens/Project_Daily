@@ -5,7 +5,11 @@ import {
   usePsnStatus, usePsnProfile, usePsnPlayedGames, usePsnPurchasedGames, usePsnTitles,
 } from '../hooks/usePlayStation'
 import { PsnGameModal } from './PsnGameModal'
+import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { parsePlayDurationMinutes, type PsnPlayedGame, type PsnTrophyTitle } from '../api/psnApi'
+import {
+  mergeOwnership, psnKind, hideNonGames, countNonGames, OWNERSHIP_LABEL, type Ownership,
+} from '../providerEntries'
 import { ImportProviderButton } from './ImportProviderButton'
 import type { ProviderGameInput } from '../api/gamesApi'
 
@@ -45,7 +49,11 @@ function relativeDay(iso?: string): string | null {
   return `${Math.floor(days / 365)}y ago`
 }
 
-function GameCard({ game, isPlus, onOpen }: { game: PsnPlayedGame; isPlus: boolean; onOpen: () => void }) {
+function GameCard({ game, ownership, onOpen }: {
+  game: PsnPlayedGame
+  ownership: Ownership | undefined
+  onOpen: () => void
+}) {
   const [imgOk, setImgOk] = useState(true)
   const minutes = parsePlayDurationMinutes(game.playDuration)
   const last = relativeDay(game.lastPlayedDateTime)
@@ -57,8 +65,13 @@ function GameCard({ game, isPlus, onOpen }: { game: PsnPlayedGame; isPlus: boole
           ? <img src={game.imageUrl} alt={game.name} loading="lazy" onError={() => setImgOk(false)}
                  className="w-full h-full object-cover" />
           : <div className="w-full h-full flex items-center justify-center text-2xl">🎮</div>}
-        {isPlus && (
-          <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-blue-500/90 text-white px-1.5 py-0.5 rounded">PS+</span>
+        {/* "PS+ & Own" is a real state and Sony reports it as two separate
+            rows for one title — showing only one of them makes a game you
+            paid for read as a rental. */}
+        {ownership && (
+          <span className={`absolute top-1.5 right-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded text-white ${
+            ownership === 'both' ? 'bg-violet-600/90' : ownership === 'plus' ? 'bg-blue-500/90' : 'bg-ink-600/90'
+          }`}>{OWNERSHIP_LABEL[ownership]}</span>
         )}
       </div>
       <div className="p-2 flex-1">
@@ -111,19 +124,25 @@ function ConnectedView() {
 
   const [sort, setSort] = useState<SortKey>('playtime')
   const [search, setSearch] = useState('')
+  const [gamesOnly, setGamesOnly] = useState(false)
   const [openGame, setOpenGame] = useState<PsnPlayedGame | null>(null)
   const [openTitle, setOpenTitle] = useState<PsnTrophyTitle | null>(null)
 
-  const plusByTitleId = useMemo(() => {
-    const m = new Map<string, true>()
-    for (const p of purchased.data?.games ?? []) {
-      if (p.membership === 'PS_PLUS' && p.titleId) m.set(p.titleId, true)
-    }
-    return m
-  }, [purchased.data])
+  // Bought, in the catalogue, or BOTH. An earlier version kept only the
+  // PS_PLUS rows, which is exactly the half that makes a purchase invisible.
+  const ownershipByTitleId = useMemo(
+    () => mergeOwnership(purchased.data?.games ?? []),
+    [purchased.data],
+  )
+
+  const nonGameCount = useMemo(
+    () => countNonGames(played.data ?? [], g => psnKind(g.category)),
+    [played.data],
+  )
 
   const games = useMemo(() => {
     let gs = played.data ?? []
+    if (gamesOnly) gs = hideNonGames(gs, g => psnKind(g.category))
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       gs = gs.filter(g => g.name?.toLowerCase().includes(q))
@@ -135,7 +154,7 @@ function ConnectedView() {
       }
       return parsePlayDurationMinutes(b.playDuration) - parsePlayDurationMinutes(a.playDuration)
     })
-  }, [played.data, sort, search])
+  }, [played.data, sort, search, gamesOnly])
 
   const p = profile.data?.profile
   const summary = profile.data?.summary
@@ -221,6 +240,20 @@ function ConnectedView() {
                   className="min-h-[44px] px-2 text-sm rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400">
                   {SORTS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
                 </select>
+                {/* Only offered when Sony actually flagged something as not a
+                    game — a toggle that would change nothing is noise. */}
+                {nonGameCount > 0 && (
+                  <label className="flex items-center gap-1.5 text-xs text-ink-600 min-h-[44px] cursor-pointer">
+                    <input type="checkbox" checked={gamesOnly} onChange={e => setGamesOnly(e.target.checked)}
+                      className="w-4 h-4 accent-current text-accent-500" />
+                    Games only
+                    <InfoBubble label="What gets hidden?">
+                      The {nonGameCount} entries Sony's own category says are apps or media players,
+                      not games. Anything it does not classify stays visible — hiding what is merely
+                      unclassified would look like the app losing your library.
+                    </InfoBubble>
+                  </label>
+                )}
                 <p className="text-xs text-ink-400 ml-auto">
                   {games.length} games · {totalHours.toLocaleString('en-GB')} hours total
                 </p>
@@ -235,7 +268,7 @@ function ConnectedView() {
               )}
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                 {games.map(g => (
-                  <GameCard key={g.titleId} game={g} isPlus={plusByTitleId.has(g.titleId)}
+                  <GameCard key={g.titleId} game={g} ownership={ownershipByTitleId.get(g.titleId)}
                     onOpen={() => setOpenGame(g)} />
                 ))}
               </div>
@@ -266,6 +299,7 @@ function ConnectedView() {
       {openGame && (
         <PsnGameModal game={openGame}
           purchased={(purchased.data?.games ?? []).find(x => x.titleId === openGame.titleId)}
+          ownership={ownershipByTitleId.get(openGame.titleId)}
           onClose={() => setOpenGame(null)} />
       )}
       {openTitle && <PsnGameModal title={openTitle} onClose={() => setOpenTitle(null)} />}
