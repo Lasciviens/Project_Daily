@@ -8,6 +8,7 @@ import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ScrapeGameButton } from './ScrapeGameButton'
+import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip } from './gameCardKit'
 import {
   STATUS_LABEL, TIER_COLOR, TIERS, STATUSES,
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
@@ -423,13 +424,18 @@ export function GameDetailModal({ gameId, onClose }: Props) {
 
         {game && (
           <div>
-            <div className="flex flex-col sm:flex-row gap-4 p-5 pb-4 border-b border-ink-100 pt-14 sm:pt-5">
-              <div className="flex-shrink-0 w-24 sm:w-28 rounded-xl overflow-hidden border border-ink-200 bg-ink-100 self-start" style={{ aspectRatio: '3/4' }}>
-                {game.primary_cover_url
-                  ? <img src={game.primary_cover_url} alt={game.title} className="w-full h-full object-cover" />
-                  : <div className="w-full h-full flex items-center justify-center text-3xl bg-ink-100">🎮</div>}
+            <div className="relative flex flex-col sm:flex-row gap-4 p-5 pb-4 border-b border-ink-100 pt-14 sm:pt-5 overflow-hidden">
+              {/* The artwork's own colours behind the header, same device the
+                  library cards use — a modal that opens on flat cream loses the
+                  game's identity the moment it is enlarged. */}
+              <CoverBackdrop url={game.primary_cover_url} />
+              <div className="relative flex-shrink-0 w-24 sm:w-28 rounded-xl overflow-hidden border border-ink-200 bg-ink-100 self-start shadow-md" style={{ aspectRatio: '3/4' }}>
+                <CoverImg url={game.primary_cover_url} title={game.title} />
+                <span className="absolute top-1 left-1"><TierBadge tier={game.tier} size="sm" /></span>
+                <span className="absolute top-1 right-1"><RatingBadge rating={game.rating} size="sm" /></span>
+                <span className="absolute inset-x-1 bottom-1 flex"><SystemChip game={game} size="sm" /></span>
               </div>
-              <div className="flex-1 min-w-0 sm:pt-1">
+              <div className="relative flex-1 min-w-0 sm:pt-1">
                 <h2 className="text-lg font-bold text-ink-900 leading-snug mb-0.5 pr-0 sm:pr-8">{game.title}</h2>
                 {game.series_name && <p className="text-xs text-ink-400 mb-1.5">⛓ {game.series_name}</p>}
 

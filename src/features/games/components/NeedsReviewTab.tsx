@@ -1,5 +1,6 @@
 import { useGamesNeedingReview } from '../hooks/useGames'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
+import { CoverImg, SystemChip } from './gameCardKit'
 import type { Game } from '../types'
 
 // New feature — replaces RP5's 18-rule, 5-view audit-scoring system with the
@@ -52,13 +53,12 @@ export function NeedsReviewTab({ onOpenDetail }: { onOpenDetail: (id: string) =>
             <button onClick={() => onOpenDetail(g.id)}
               className="flex-1 min-w-0 flex items-center gap-3 text-left">
               <div className="flex-shrink-0 w-10 rounded-lg overflow-hidden border border-ink-100 bg-ink-100" style={{ aspectRatio: '3/4' }}>
-                {g.primary_cover_url
-                  ? <img src={g.primary_cover_url} alt={g.title} className="w-full h-full object-cover" />
-                  : <div className="w-full h-full flex items-center justify-center text-base">🎮</div>}
+                <CoverImg url={g.primary_cover_url} title={g.title} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-ink-800 truncate">{g.title}</p>
-                <div className="flex flex-wrap gap-1 mt-1">
+                <div className="flex flex-wrap items-center gap-1 mt-1">
+                  <SystemChip game={g} size="sm" />
                   {reasonsFor(g).map(r => (
                     <span key={r} className="text-[10px] font-medium bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">{r}</span>
                   ))}

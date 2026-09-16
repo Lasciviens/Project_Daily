@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useAllGames, useUpdateGame } from '../hooks/useGames'
 import { TIER_COLOR as TIER_BADGE } from '../gamesMeta'
+import { CoverImg, RatingBadge, SystemChip } from './gameCardKit'
 import type { Game, Tier } from '../types'
 
 const TIER_ROWS: { tier: string | null; label: string; bg: string; text: string; bar: string }[] = [
@@ -16,7 +17,6 @@ const TIER_ROWS: { tier: string | null; label: string; bg: string; text: string;
 
 // Small game cover with click-to-edit
 function TierCard({ game, onPickTier }: { game: Game; onPickTier: (game: Game) => void }) {
-  const [err, setErr] = useState(false)
   return (
     <button
       onClick={() => onPickTier(game)}
@@ -24,16 +24,15 @@ function TierCard({ game, onPickTier }: { game: Game; onPickTier: (game: Game) =
       className="relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-all duration-150 bg-ink-100 shadow-sm group flex-shrink-0"
       style={{ width: 64, aspectRatio: '3/4' }}
     >
-      {game.primary_cover_url && !err
-        ? <img src={game.primary_cover_url} alt={game.title} onError={() => setErr(true)} className="w-full h-full object-cover" />
-        : <div className="w-full h-full flex items-center justify-center text-base bg-ink-100">🎮</div>
-      }
-      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+      <CoverImg url={game.primary_cover_url} title={game.title} />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
+      <span className="absolute top-0.5 left-0.5"><RatingBadge rating={game.rating} size="sm" /></span>
+      <span className="absolute inset-x-0.5 bottom-0.5 flex"><SystemChip game={game} size="sm" /></span>
       {/* Hover edit hint */}
       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
         <span className="text-white text-lg">✏️</span>
       </div>
-      {game.is_iconic && <span className="absolute top-0.5 right-0.5 text-[10px]">⭐</span>}
+      {game.is_iconic && <span className="absolute top-0.5 right-0.5 text-[10px] drop-shadow">⭐</span>}
     </button>
   )
 }
