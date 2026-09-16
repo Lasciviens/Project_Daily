@@ -56,15 +56,28 @@ export function CheckboxFilterPanel({ label, options, selected, onChange }: {
         <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-400">
           {label} — {options.length} option{options.length === 1 ? '' : 's'}
         </span>
-        {selected.length > 0 && (
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Select all is the useful direction for a narrow facet (six tiers,
+              nineteen systems); Reset is what you reach for after it. Both stay
+              visible rather than appearing only once something is checked, so
+              the pair does not move around under the cursor. */}
+          <button
+            type="button"
+            onClick={() => onChange(options.map(o => o.value))}
+            disabled={options.length === 0 || selected.length === options.length}
+            className="text-[11px] min-h-[44px] px-2 rounded-md border border-ink-200 text-ink-600 hover:border-accent-400 hover:text-accent-700 transition-colors disabled:opacity-40 disabled:hover:border-ink-200 disabled:hover:text-ink-600"
+          >
+            Select all
+          </button>
           <button
             type="button"
             onClick={() => onChange([])}
-            className="text-xs text-accent-600 hover:text-accent-800 transition-colors min-h-[44px] px-1"
+            disabled={selected.length === 0}
+            className="text-[11px] min-h-[44px] px-2 rounded-md border border-ink-200 text-ink-600 hover:border-accent-400 hover:text-accent-700 transition-colors disabled:opacity-40 disabled:hover:border-ink-200 disabled:hover:text-ink-600"
           >
-            Clear {label.toLowerCase()}
+            Reset
           </button>
-        )}
+        </div>
       </div>
 
       {options.length === 0 ? (
