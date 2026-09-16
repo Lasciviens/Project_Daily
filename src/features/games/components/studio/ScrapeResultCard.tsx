@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CoverImg } from '../gameCardKit'
 import { systemMeta } from '../../systemMeta'
 import { matchConfidence, FIELD_LABEL, type StudioGame, type FillableField } from '../../screenscraperStudio'
+import { FieldCompare } from './FieldCompare'
 import type { ScrapeResult } from '../../api/screenscraperApi'
 
 // One proposed match, laid out so a WRONG one is obvious before it is saved.
@@ -26,14 +27,6 @@ const CONFIDENCE_META = {
   loose: { label: 'Different title — probably wrong', cls: 'bg-red-100 text-red-600 border-red-200' },
 } as const
 
-const MEDIA_COLUMNS: FillableField[] = ['primary_cover_url', 'screenshot_url', 'fanart_url']
-
-function renderValue(v: unknown): string {
-  if (v === null || v === undefined) return '—'
-  if (Array.isArray(v)) return v.join(', ')
-  return String(v)
-}
-
 export function ScrapeResultCard({ game, result, accepted, focused, onToggleField, onAcceptAll, onRejectAll, onSearchManually }: {
   game: StudioGame | undefined
   result: ScrapeResult
@@ -45,11 +38,11 @@ export function ScrapeResultCard({ game, result, accepted, focused, onToggleFiel
   onRejectAll: () => void
   onSearchManually: () => void
 }) {
-  const [expanded, setExpanded] = useState(false)
+  // Open by default: the comparison IS the card, not a detail behind a link.
+  const [expanded, setExpanded] = useState(true)
   const matched = result.outcome === 'matched'
   const offered = (result.would_fill ?? []).filter((f): f is FillableField => f in FIELD_LABEL)
   const conf = matched ? matchConfidence(game?.title ?? result.title ?? '', result.matched_title) : null
-  const on = (f: FillableField) => accepted?.includes(f) ?? false
   const live = accepted !== null && accepted.length > 0
   const ring = focused ? 'ring-2 ring-accent-400 ring-offset-1' : ''
 
@@ -123,64 +116,45 @@ export function ScrapeResultCard({ game, result, accepted, focused, onToggleFiel
           </div>
         </div>
 
-        <div className="flex flex-col gap-1 flex-shrink-0">
-          <button type="button" onClick={live ? onRejectAll : onAcceptAll}
-            className={`min-h-[36px] px-2.5 text-xs font-semibold rounded-lg border transition-colors ${
-              live ? 'border-ink-200 text-ink-500 hover:border-red-300 hover:text-red-600' : 'border-accent-400 text-accent-700 hover:bg-accent-50'
-            }`}>
-            {live ? '✕ Reject' : '✓ Accept'}
-          </button>
-          <button type="button" onClick={onSearchManually}
-            className="min-h-[36px] px-2.5 text-xs rounded-lg border border-ink-200 text-ink-500 hover:border-accent-400">
-            🔍 Other
-          </button>
-        </div>
       </div>
 
-      {offered.length > 0 ? (
-        <div className="mt-2 pt-2 border-t border-ink-100">
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <p className="text-[10px] text-ink-400">Fields to write ({accepted?.length ?? 0} of {offered.length})</p>
-            <button type="button" onClick={() => setExpanded(v => !v)}
-              className="min-h-[32px] px-2 text-[11px] text-accent-600 hover:underline">
-              {expanded ? 'Hide values' : 'Show values'}
-            </button>
-          </div>
-
-          {expanded ? (
-            // The VALUES. Approving "description" means nothing until you can
-            // read the description and see whose game it describes.
-            <div className="space-y-1">
-              {offered.map(f => (
-                <label key={f} className="flex items-start gap-2 rounded-lg border border-ink-100 p-1.5 cursor-pointer">
-                  <input type="checkbox" checked={on(f)} onChange={() => onToggleField(f)}
-                    className="mt-0.5 w-4 h-4 accent-current text-accent-500 flex-shrink-0" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[10px] font-semibold text-ink-400 uppercase tracking-wide">{FIELD_LABEL[f]}</span>
-                    <span className={`block text-xs ${on(f) ? 'text-ink-700' : 'text-ink-400 line-through'} break-words`}>
-                      {MEDIA_COLUMNS.includes(f) ? 'image (downloaded and re-hosted on save)' : renderValue(result.proposed?.[f])}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-1">
-              {offered.map(f => (
-                <button key={f} type="button" onClick={() => onToggleField(f)}
-                  title={MEDIA_COLUMNS.includes(f) ? undefined : renderValue(result.proposed?.[f]).slice(0, 200)}
-                  className={`min-h-[32px] px-2 text-[11px] font-medium rounded-md border transition-colors ${
-                    on(f) ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-500 border-ink-200 line-through decoration-ink-300'
-                  }`}>{FIELD_LABEL[f]}</button>
-              ))}
-            </div>
-          )}
+      {/* Mine against theirs, line by line. The old version listed the field
+          NAMES, then a later one listed their values alone — neither answers
+          "is this the same game as mine?", which two columns and a mark per
+          row answer at a glance. */}
+      <div className="mt-2">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <p className="text-[10px] text-ink-400">
+            {offered.length
+              ? `${accepted?.length ?? 0} of ${offered.length} gap${offered.length === 1 ? '' : 's'} ticked to fill`
+              : 'No gaps this match can fill'}
+          </p>
+          <button type="button" onClick={() => setExpanded(v => !v)}
+            className="min-h-[32px] px-2 text-[11px] text-accent-600 hover:underline">
+            {expanded ? 'Hide comparison' : 'Compare fields'}
+          </button>
         </div>
-      ) : (
-        <p className="mt-2 pt-2 border-t border-ink-100 text-[11px] text-ink-400">
-          Nothing to write — everything this game is missing is empty on their side too.
-        </p>
-      )}
+        {expanded && (
+          <FieldCompare game={game} candidate={result.proposed ?? {}} accepted={accepted} onToggleField={onToggleField} />
+        )}
+      </div>
+
+      {/* Approve · Skip · Search — the three things there are to do with a
+          proposed match, on one row rather than split across the card. */}
+      <div className="mt-2 pt-2 border-t border-ink-100 flex flex-wrap gap-1.5">
+        <button type="button" onClick={onAcceptAll} disabled={!offered.length}
+          className={`min-h-[36px] px-3 text-xs font-semibold rounded-lg border transition-colors disabled:opacity-40 ${
+            live ? 'bg-green-600 text-white border-green-600' : 'border-green-400 text-green-700 hover:bg-green-50'
+          }`}>✓ Approve</button>
+        <button type="button" onClick={onRejectAll}
+          className={`min-h-[36px] px-3 text-xs font-semibold rounded-lg border transition-colors ${
+            accepted === null ? 'bg-ink-200 text-ink-700 border-ink-300' : 'border-ink-200 text-ink-500 hover:border-ink-300'
+          }`}>⤼ Skip</button>
+        <button type="button" onClick={onSearchManually}
+          className="min-h-[36px] px-3 text-xs font-semibold rounded-lg border border-ink-200 text-ink-600 hover:border-accent-400 hover:text-accent-700">
+          🔍 Search
+        </button>
+      </div>
     </div>
   )
 }

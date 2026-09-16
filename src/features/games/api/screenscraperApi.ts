@@ -146,13 +146,48 @@ export type SearchCandidate = {
   publisher: string | null
   developer: string | null
   genres: string[] | null
+  modes: string[] | null
   players: string | null
+  age_rating: string | null
+  series_name: string | null
   has_cover: boolean
   description: string | null
+  /** The entry's own markers: hack, beta, proto, "not a game", its region. */
+  flags?: string[]
+}
+
+/**
+ * How to ask for a game.
+ *
+ * `name` is the weakest of these and was the only one offered. ScreenScraper's
+ * jeuInfos.php documents `crc`, `md5`, `sha1`, `romnom`, `romtaille`,
+ * `serialnum` and `gameid` as well — a hash is an exact identity, a filename
+ * is a guess, and a name is a guess with competition. jeuRecherche really does
+ * take only `recherche` + `systemeid`, so the other modes go through jeuInfos
+ * and answer with ONE definite game instead of a list.
+ */
+export type LookupMode = 'name' | 'gameid' | 'rom' | 'hash' | 'serial'
+
+export type LookupInput = {
+  mode: LookupMode
+  system?: string | null
+  /** mode 'name' */
+  query?: string
+  /** mode 'gameid' — the numeric id from a screenscraper.fr game page. */
+  gameRef?: string
+  /** mode 'rom' */
+  romnom?: string
+  romtaille?: number | null
+  /** mode 'hash' */
+  hashKind?: 'crc' | 'md5' | 'sha1'
+  hash?: string
+  /** mode 'serial' — the disc serial, e.g. SLUS-00001. */
+  serial?: string
 }
 
 export type SearchResponse = {
   status: 'ok' | 'not_configured'
+  mode?: LookupMode
   query?: string
   results?: SearchCandidate[]
   message?: string
@@ -169,16 +204,28 @@ export type ApplyMatchResponse = {
   message?: string
 }
 
-export function searchScreenScraper(query: string, system?: string | null): Promise<SearchResponse> {
-  return invoke<SearchResponse>({ action: 'search', query, ...(system ? { system } : {}) })
+export function lookupScreenScraper(input: LookupInput): Promise<SearchResponse> {
+  return invoke<SearchResponse>({
+    action: 'lookup',
+    mode: input.mode,
+    ...(input.system ? { system: input.system } : {}),
+    ...(input.query ? { query: input.query } : {}),
+    ...(input.gameRef ? { game_ref: input.gameRef } : {}),
+    ...(input.romnom ? { romnom: input.romnom } : {}),
+    ...(input.romtaille ? { romtaille: input.romtaille } : {}),
+    ...(input.hashKind ? { hash_kind: input.hashKind } : {}),
+    ...(input.hash ? { hash: input.hash } : {}),
+    ...(input.serial ? { serial: input.serial } : {}),
+  })
 }
 
 export function applyMatch(opts: {
   gameId: string
   jeuId: string
-  /** The query the candidate came from — the match is re-fetched from that
-   *  same search rather than by id (see the edge function's own note). */
-  query: string
+  /** Only needed as a FALLBACK: the entry is fetched by its id first, and the
+   *  search is re-run only if that comes back empty. A candidate from a hash,
+   *  serial or id lookup has no query at all. */
+  query?: string
   system?: string | null
   /** Restrict the write to these columns; omitted means everything found. */
   fields?: string[]
@@ -188,7 +235,7 @@ export function applyMatch(opts: {
     action: 'apply_match',
     game_id: opts.gameId,
     jeu_id: opts.jeuId,
-    query: opts.query,
+    ...(opts.query ? { query: opts.query } : {}),
     ...(opts.system ? { system: opts.system } : {}),
     ...(opts.fields ? { fields: opts.fields } : {}),
     dry_run: opts.dryRun === true,

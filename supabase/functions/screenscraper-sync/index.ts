@@ -253,6 +253,33 @@ function matchFlags(jeu: AnyRecord): string[] {
   return flags
 }
 
+/**
+ * A search/lookup candidate as the browser sees it.
+ *
+ * Carries the VALUES so the picker can show them beside the user's own row —
+ * and never a media URL, which would carry the developer credentials. Whether
+ * artwork exists is a boolean.
+ */
+function candidateOf(jeu: AnyRecord): AnyRecord {
+  const mapped = mapJeuToGame(jeu)
+  return {
+    jeu_id: mapped.external_ref,
+    title: mapped.title,
+    system: (jeu.systeme as AnyRecord | undefined)?.text ?? null,
+    release_year: mapped.release_year,
+    publisher: mapped.publisher,
+    developer: mapped.developer,
+    genres: mapped.genres,
+    modes: mapped.modes,
+    players: mapped.players,
+    age_rating: mapped.age_rating,
+    series_name: mapped.series_name,
+    description: mapped.description ? String(mapped.description).slice(0, 600) : null,
+    has_cover: !!pickMedia(jeu.medias, 'cover'),
+    flags: matchFlags(jeu),
+  }
+}
+
 function mapJeuToGame(jeu: AnyRecord): AnyRecord {
   const textOf = (v: unknown): string | null => {
     const t = (v as AnyRecord)?.text
@@ -638,6 +665,89 @@ Deno.serve(async (req) => {
         return json({ status: 'ok', query, results })
       }
 
+      // ── Look a game up by whatever you actually know about it. ──
+      //
+      //    Name search is the WEAKEST way to find a game and it was the only
+      //    one offered. ScreenScraper's own documentation for jeuInfos.php
+      //    lists `crc`, `md5`, `sha1`, `romnom`, `romtaille`, `serialnum`,
+      //    `systemeid`, `romtype` and `gameid`; Skyscraper (the reference
+      //    client) sends crc+md5+sha1+romnom+romtaille together, because a
+      //    hash is an exact identity and a filename is a guess.
+      //
+      //    So: `name` still goes through jeuRecherche (which really does take
+      //    only `recherche` + `systemeid`), and everything else goes through
+      //    jeuInfos, which answers with ONE definite game rather than a list.
+      case 'lookup': {
+        const mode = String(body.mode ?? 'name')
+        const params: AnyRecord = {}
+
+        let sysId: number | null = null
+        if (body.system) {
+          const sysMap = await loadSystemIdMap()
+          if ('error' in sysMap) return fail(`systems read: ${sysMap.error}`, 500)
+          const sys = sysMap.map.get(String(body.system).trim().toLowerCase())
+          if (sys) sysId = sys.id
+          else if (mode === 'name') {
+            return json({ status: 'ok', results: [], message: `No ScreenScraper id known for system "${body.system}".` })
+          }
+        }
+        if (sysId != null) params.systemeid = sysId
+
+        if (mode === 'name') {
+          const query = String(body.query ?? '').trim()
+          if (!query) return json({ status: 'ok', results: [], message: 'Type something to search for.' })
+          params.recherche = query
+          const r = await callApi('jeuRecherche.php', params)
+          if (!r.ok && r.notFound) return json({ status: 'ok', results: [], message: 'No games matched that name.' })
+          if (!r.ok) return fail(`jeuRecherche: ${r.message}`, 502)
+          const jeux = r.data?.response?.jeux
+          if (!Array.isArray(jeux)) return json({ status: 'ok', results: [], message: 'The search returned no game list.' })
+          return json({ status: 'ok', mode, query, results: jeux.slice(0, SEARCH_LIMIT).map(candidateOf) })
+        }
+
+        // Every other mode is an EXACT lookup, so it answers with one game.
+        if (mode === 'gameid') {
+          const id = String(body.game_ref ?? '').trim()
+          if (!/^\d+$/.test(id)) return fail('A ScreenScraper game id is digits only', 400)
+          params.gameid = id
+        } else if (mode === 'rom') {
+          const romnom = String(body.romnom ?? '').trim()
+          if (!romnom) return fail('lookup mode "rom" needs a filename', 400)
+          params.romnom = romnom
+          params.romtype = 'rom'
+          // File size sharpens a filename match; Skyscraper always sends it
+          // when it has one. Optional here because nothing in this app knows
+          // the size of a ROM sitting on the handheld.
+          const size = Number(body.romtaille)
+          if (Number.isFinite(size) && size > 0) params.romtaille = String(Math.round(size))
+        } else if (mode === 'hash') {
+          const kind = String(body.hash_kind ?? '').toLowerCase()
+          const value = String(body.hash ?? '').trim()
+          const shapes: Record<string, RegExp> = {
+            crc: /^[0-9a-f]{8}$/i, md5: /^[0-9a-f]{32}$/i, sha1: /^[0-9a-f]{40}$/i,
+          }
+          if (!shapes[kind]) return fail('hash_kind must be crc, md5 or sha1', 400)
+          // Shape-checked before it is sent: a mistyped hash otherwise spends
+          // a request to be told nothing, and their 404s are plain text.
+          if (!shapes[kind].test(value)) return fail(`That does not look like a ${kind} (${kind === 'crc' ? 8 : kind === 'md5' ? 32 : 40} hex characters)`, 400)
+          params[kind] = value
+          params.romtype = 'rom'
+        } else if (mode === 'serial') {
+          const serial = String(body.serial ?? '').trim()
+          if (!serial) return fail('lookup mode "serial" needs a serial number', 400)
+          params.serialnum = serial
+        } else {
+          return fail(`Unknown lookup mode "${mode}" (name | gameid | rom | hash | serial)`, 400)
+        }
+
+        const r = await callApi('jeuInfos.php', params)
+        if (!r.ok && r.notFound) return json({ status: 'ok', mode, results: [], message: 'Nothing in their database matches that.' })
+        if (!r.ok) return fail(`jeuInfos: ${r.message}`, 502)
+        const jeu = r.data?.response?.jeu
+        if (!jeu) return json({ status: 'ok', mode, results: [], message: 'Their response carried no game.' })
+        return json({ status: 'ok', mode, results: [candidateOf(jeu)] })
+      }
+
       // ── Apply ONE hand-picked search result to ONE game.
       //
       //    It re-runs the same search server-side and takes the candidate with
@@ -654,7 +764,9 @@ Deno.serve(async (req) => {
         const query = String(body.query ?? '').trim()
         const dryRun = body.dry_run === true
         const wantMedia = body.media !== false
-        if (!gameId || !jeuId || !query) return fail('apply_match needs game_id, jeu_id and the query they came from', 400)
+        // `query` is now optional: a candidate from a hash/serial/id lookup
+        // has no search behind it, and the id is enough to fetch it.
+        if (!gameId || !jeuId) return fail('apply_match needs game_id and jeu_id', 400)
 
         // The same floor `scrape` keeps. An earlier version guarded only the
         // LOOKUP, so the studio's own copy ("refuses to eat into the last
@@ -674,18 +786,36 @@ Deno.serve(async (req) => {
           .from('games').select('*').eq('user_id', userId).eq('id', gameId).single()
         if (gErr) return fail(`game read: ${gErr.message}`, 500)
 
-        const params: AnyRecord = { recherche: query }
-        if (body.system) {
-          const sysMap = await loadSystemIdMap()
-          if ('error' in sysMap) return fail(`systems read: ${sysMap.error}`, 500)
-          const sys = sysMap.map.get(String(body.system).trim().toLowerCase())
-          if (sys) params.systemeid = sys.id
+        // Fetch the chosen entry BY ID. `gameid` is a documented jeuInfos
+        // parameter (their own API page lists it alongside crc/md5/sha1/
+        // romnom/serialnum), and using it costs one small request instead of
+        // re-running a 2.3 MB search — and it is the only way to apply a
+        // candidate that came from a hash, serial or id lookup, which have no
+        // search query behind them at all.
+        //
+        // Documented is not the same as verified against the live API, which
+        // this repo does not confuse, so the old re-run-the-search path stays
+        // as the fallback: if `gameid` answers with nothing AND a query is
+        // available, the entry is found the way it used to be.
+        let jeu: AnyRecord | null = null
+        const sysMap = await loadSystemIdMap()
+        const sysId = body.system && !('error' in sysMap)
+          ? sysMap.map.get(String(body.system).trim().toLowerCase())?.id ?? null
+          : null
+
+        const byId = await callApi('jeuInfos.php', { gameid: jeuId, ...(sysId ? { systemeid: sysId } : {}) })
+        if (byId.ok) {
+          const candidate = byId.data?.response?.jeu
+          if (candidate && String(candidate.id) === jeuId) jeu = candidate
         }
-        const r = await callApi('jeuRecherche.php', params)
-        if (!r.ok) return fail(`jeuRecherche: ${r.notFound ? 'no results' : r.message}`, 502)
-        const jeux = r.data?.response?.jeux
-        const jeu = Array.isArray(jeux) ? jeux.find((j: AnyRecord) => String(j.id) === jeuId) : null
-        if (!jeu) return json({ status: 'ok', outcome: 'no_match', message: 'That result is no longer in the search response — search again and re-pick.' })
+
+        if (!jeu && query) {
+          const r = await callApi('jeuRecherche.php', { recherche: query, ...(sysId ? { systemeid: sysId } : {}) })
+          if (!r.ok) return fail(`jeuRecherche: ${r.notFound ? 'no results' : r.message}`, 502)
+          const jeux = r.data?.response?.jeux
+          jeu = Array.isArray(jeux) ? jeux.find((j: AnyRecord) => String(j.id) === jeuId) ?? null : null
+        }
+        if (!jeu) return json({ status: 'ok', outcome: 'no_match', message: 'That entry could not be fetched again — look it up once more and re-pick.' })
 
         const mapped = mapJeuToGame(jeu)
         const patch = narrowToFields(fillOnlyMissing(game, mapped), body.fields)

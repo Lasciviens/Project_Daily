@@ -298,3 +298,83 @@ export function reduceHandled(rows: DecisionRow[]): Record<string, HandledState>
 // client-side `undoPatch`/`AppliedRecord` pair in this file; it had no callers,
 // and its tests read as coverage of an undo path that was actually untested.
 // Deleted rather than left to mislead.
+
+// ─── Side-by-side comparison ─────────────────────────────────────────────────
+//
+// The review card used to print "Would fill: description, genres" and, later,
+// the incoming values on their own. Neither answers the question a person
+// actually asks, which is "is this the same game as mine?" — and that is
+// answered by putting what I have next to what they sent and marking each
+// line agree or disagree.
+
+export type FieldVerdict = 'match' | 'differs' | 'only_theirs' | 'only_mine' | 'both_empty'
+
+export type FieldComparison = {
+  field: FillableField
+  label: string
+  mine: unknown
+  theirs: unknown
+  verdict: FieldVerdict
+}
+
+/** Display form for a value of any of the fillable shapes. */
+export function displayValue(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—'
+  if (Array.isArray(v)) return v.length ? v.join(', ') : '—'
+  return String(v)
+}
+
+/**
+ * Loose equality for "do these say the same thing".
+ *
+ * Case- and order-insensitive for lists, whitespace-insensitive for text: a
+ * genre list that reads `Action, Platform` against `platform, action` is a
+ * MATCH, and calling it a difference would train the eye to ignore the marks.
+ * Numbers compare numerically so `1994` and `"1994"` agree.
+ */
+export function valuesAgree(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    const norm = (v: unknown) => (Array.isArray(v) ? v : v == null ? [] : [v])
+      .map(x => String(x).trim().toLowerCase()).filter(Boolean).sort()
+    const x = norm(a), y = norm(b)
+    return x.length === y.length && x.every((v, i) => v === y[i])
+  }
+  if (typeof a === 'number' || typeof b === 'number') return Number(a) === Number(b)
+  return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase()
+}
+
+const isBlank = (v: unknown) =>
+  v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
+  || (typeof v === 'string' && v.trim() === '')
+
+/**
+ * One row per fillable field, in the order the UI lists them.
+ *
+ * Every field appears, including ones neither side has: an empty row is how
+ * you see that a gap is still a gap after the match, rather than wondering
+ * whether it was simply not shown.
+ */
+export function compareFields(mine: Partial<Record<FillableField, unknown>>, theirs: Partial<Record<FillableField, unknown>>): FieldComparison[] {
+  return FILLABLE_FIELDS.map(field => {
+    const a = mine[field]
+    const b = theirs[field]
+    const verdict: FieldVerdict =
+      isBlank(a) && isBlank(b) ? 'both_empty'
+        : isBlank(a) ? 'only_theirs'
+          : isBlank(b) ? 'only_mine'
+            : valuesAgree(a, b) ? 'match' : 'differs'
+    return { field, label: FIELD_LABEL[field], mine: a, theirs: b, verdict }
+  })
+}
+
+/**
+ * The headline: of the fields BOTH sides filled, how many agree.
+ *
+ * Deliberately ignores the fields only one side has — a game of mine with
+ * nothing but a title would otherwise score a perfect zero-of-zero against
+ * every candidate, including the wrong ones.
+ */
+export function comparableAgreement(rows: FieldComparison[]): { agree: number; comparable: number } {
+  const comparable = rows.filter(r => r.verdict === 'match' || r.verdict === 'differs')
+  return { agree: comparable.filter(r => r.verdict === 'match').length, comparable: comparable.length }
+}
