@@ -13,7 +13,11 @@ import { STATUS_LABEL, STATUS_COLOR, STATUS_BORDER, TIER_COLOR, TIERS, STATUSES 
 import { Sheet } from '../../../shared/components/Sheet'
 import { haptic } from '../../../shared/utils/haptics'
 import { useGamesNeedingReview } from '../hooks/useGames'
+import { FilterGroupButton, CheckboxFilterPanel } from '../components/CheckboxFilterGroup'
 import type { Game } from '../types'
+
+// Which filter group is expanded, if any.
+type FilterKey = 'tier' | 'genre' | 'system' | 'series'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -278,10 +282,13 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
 function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
   const [search,         setSearch]         = useState('')
   const [statusFilter,   setStatusFilter]   = useState<string | null>(null)
-  const [tierFilter,     setTierFilter]     = useState<string | null>(null)
-  const [genreFilter,    setGenreFilter]    = useState<string | null>(null)
-  const [systemFilter,   setSystemFilter]   = useState<string | null>(null)
-  const [seriesFilter,   setSeriesFilter]   = useState<string | null>(null)
+  // Multi-select: each of these holds every checked value, and a group with
+  // nothing checked means "don't narrow by this at all" (not "match nothing").
+  const [tierFilter,     setTierFilter]     = useState<string[]>([])
+  const [genreFilter,    setGenreFilter]    = useState<string[]>([])
+  const [systemFilter,   setSystemFilter]   = useState<string[]>([])
+  const [seriesFilter,   setSeriesFilter]   = useState<string[]>([])
+  const [openFilter,     setOpenFilter]     = useState<FilterKey | null>(null)
   const [coopOnly,       setCoopOnly]       = useState(false)
   const [iconicOnly,     setIconicOnly]     = useState(false)
   const [sort,           setSort]           = useState<SortKey>('az')
@@ -294,29 +301,64 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
   const systemOptions = useMemo(() => [...new Set(allGames.flatMap(g => g.platforms.map(p => p.system)))].sort(), [allGames])
   const seriesOptions = useMemo(() => [...new Set(allGames.map(g => g.series_name).filter(Boolean) as string[])].sort(), [allGames])
 
+  // One description of each group, used by both the buttons and the panel so
+  // the two can never disagree about what a group contains. Counts come from
+  // the unfiltered library: a facet that reads 0 tells you it is empty, not
+  // that your other choices excluded it.
+  const filterGroups = useMemo(() => {
+    const countBy = (pick: (g: Game) => string[]) => {
+      const m = new Map<string, number>()
+      for (const g of allGames) for (const v of pick(g)) m.set(v, (m.get(v) ?? 0) + 1)
+      return m
+    }
+    const tierCounts   = countBy(g => (g.tier ? [g.tier] : []))
+    const genreCounts  = countBy(g => g.genres ?? [])
+    const systemCounts = countBy(g => [...new Set(g.platforms.map(p => p.system))])
+    const seriesCounts = countBy(g => (g.series_name ? [g.series_name] : []))
+    const opts = (values: string[], counts: Map<string, number>, label?: (v: string) => string) =>
+      values.map(v => ({ value: v, label: label ? label(v) : v, count: counts.get(v) ?? 0 }))
+
+    return [
+      { key: 'tier'   as const, label: 'Tier',   selected: tierFilter,   onChange: setTierFilter,   options: opts([...TIERS], tierCounts, t => `Tier ${t}`) },
+      { key: 'genre'  as const, label: 'Genre',  selected: genreFilter,  onChange: setGenreFilter,  options: opts(genreOptions, genreCounts) },
+      { key: 'system' as const, label: 'System', selected: systemFilter, onChange: setSystemFilter, options: opts(systemOptions, systemCounts) },
+      ...(seriesOptions.length > 0
+        ? [{ key: 'series' as const, label: 'Series', selected: seriesFilter, onChange: setSeriesFilter, options: opts(seriesOptions, seriesCounts) }]
+        : []),
+    ]
+  }, [allGames, genreOptions, systemOptions, seriesOptions, tierFilter, genreFilter, systemFilter, seriesFilter])
+
+  const openGroup = filterGroups.find(g => g.key === openFilter) ?? null
+
   const filtered = useMemo(() => {
     let gs = allGames
     if (search.trim()) { const q = search.trim().toLowerCase(); gs = gs.filter(g => g.title.toLowerCase().includes(q) || (g.series_name?.toLowerCase().includes(q) ?? false)) }
     if (statusFilter)   gs = gs.filter(g => g.play_status === statusFilter)
-    if (tierFilter)     gs = gs.filter(g => g.tier === tierFilter)
-    if (genreFilter)    gs = gs.filter(g => g.genres?.includes(genreFilter) ?? false)
-    if (systemFilter)   gs = gs.filter(g => g.platforms.some(p => p.system === systemFilter))
-    if (seriesFilter)   gs = gs.filter(g => g.series_name === seriesFilter)
+    // Within a group the checked values are alternatives (OR); across groups
+    // they narrow (AND) — the ordinary faceted-filter reading of "Genesis or
+    // SNES, and only tier S".
+    if (tierFilter.length)   gs = gs.filter(g => !!g.tier && tierFilter.includes(g.tier))
+    if (genreFilter.length)  gs = gs.filter(g => g.genres?.some(x => genreFilter.includes(x)) ?? false)
+    if (systemFilter.length) gs = gs.filter(g => g.platforms.some(p => systemFilter.includes(p.system)))
+    if (seriesFilter.length) gs = gs.filter(g => !!g.series_name && seriesFilter.includes(g.series_name))
     if (coopOnly)       gs = gs.filter(g => g.is_coop)
     if (iconicOnly)     gs = gs.filter(g => g.is_iconic)
     if (view === 'series') return gs
     return sortGames(gs, sort)
   }, [allGames, search, statusFilter, tierFilter, genreFilter, systemFilter, seriesFilter, coopOnly, iconicOnly, sort, view])
 
-  const hasFilters = !!(search || statusFilter || tierFilter || genreFilter || systemFilter || seriesFilter || coopOnly || iconicOnly)
+  const pickedCount = tierFilter.length + genreFilter.length + systemFilter.length + seriesFilter.length
+  const hasFilters = !!(search || statusFilter || coopOnly || iconicOnly) || pickedCount > 0
 
   const clearFilters = useCallback(() => {
-    setSearch(''); setStatusFilter(null); setTierFilter(null)
-    setGenreFilter(null); setSystemFilter(null); setSeriesFilter(null)
+    setSearch(''); setStatusFilter(null); setTierFilter([])
+    setGenreFilter([]); setSystemFilter([]); setSeriesFilter([])
     setCoopOnly(false); setIconicOnly(false)
   }, [])
 
-  const activeFilterCount = [search.trim(), statusFilter, tierFilter, genreFilter, systemFilter, seriesFilter, coopOnly, iconicOnly].filter(Boolean).length
+  // Every checked box counts, so the badge reflects how much is actually
+  // narrowing the list rather than how many groups are in use.
+  const activeFilterCount = [search.trim(), statusFilter, coopOnly, iconicOnly].filter(Boolean).length + pickedCount
 
   const filterControls = (
     <>
@@ -351,28 +393,15 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       <div className="sm:flex sm:items-stretch sm:flex-wrap sm:gap-0 sm:border sm:border-ink-200 sm:rounded-xl sm:bg-cream-50/70 sm:p-2 sm:mb-2 space-y-2 sm:space-y-0">
         <div className="flex items-center gap-2 flex-wrap sm:pr-3">
           <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-wider text-ink-400 mr-0.5">Filter</span>
-          <select value={tierFilter ?? ''} onChange={e => setTierFilter(e.target.value || null)}
-            className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${tierFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
-            <option value="">Tier: All</option>
-            {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
-          </select>
-          <select value={genreFilter ?? ''} onChange={e => setGenreFilter(e.target.value || null)}
-            className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${genreFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
-            <option value="">Genre: All</option>
-            {genreOptions.map(g => <option key={g} value={g}>{g}</option>)}
-          </select>
-          <select value={systemFilter ?? ''} onChange={e => setSystemFilter(e.target.value || null)}
-            className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${systemFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
-            <option value="">System: All</option>
-            {systemOptions.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-          {seriesOptions.length > 0 && (
-            <select value={seriesFilter ?? ''} onChange={e => setSeriesFilter(e.target.value || null)}
-              className={`text-xs px-2 py-2 rounded-lg border bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px] ${seriesFilter ? 'border-accent-400 text-accent-700 font-semibold' : 'border-ink-200 text-ink-600'}`}>
-              <option value="">Series: All</option>
-              {seriesOptions.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          )}
+          {filterGroups.map(g => (
+            <FilterGroupButton
+              key={g.key}
+              label={g.label}
+              selected={g.selected}
+              open={openFilter === g.key}
+              onToggle={() => setOpenFilter(openFilter === g.key ? null : g.key)}
+            />
+          ))}
         </div>
 
         <div className="hidden sm:block w-px bg-ink-200 mx-1 self-stretch" />
@@ -411,6 +440,18 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
           </div>
         </div>
       </div>
+
+      {/* The open group's checkboxes, across the full row UNDER the toolbar —
+          not a dropdown over the grid. Only one group is open at a time, so
+          the content below shifts once instead of jumping per group. */}
+      {openGroup && (
+        <CheckboxFilterPanel
+          label={openGroup.label}
+          options={openGroup.options}
+          selected={openGroup.selected}
+          onChange={openGroup.onChange}
+        />
+      )}
     </>
   )
 
