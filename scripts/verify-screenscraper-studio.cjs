@@ -142,4 +142,39 @@ ok(S.defaultAcceptedFields({ gameId: 'a', matchedTitle: 'x', system: null, would
 ok(S.defaultAcceptedFields({ gameId: 'a', matchedTitle: 'x', system: null, wouldFill: ['description', 'external_ref', 'synced_at'] }),
   ['description'], 'bookkeeping columns the server also writes are not offered as choices')
 
+// ── valuesAgree ─────────────────────────────────────────────────────────────
+ok(S.valuesAgree('Contra', 'contra'), true, 'text compares case-insensitively')
+ok(S.valuesAgree(' Contra ', 'Contra'), true, 'and ignores surrounding whitespace')
+ok(S.valuesAgree(1994, '1994'), true, 'a year as a string agrees with the number')
+ok(S.valuesAgree(['Action', 'Platform'], ['platform', 'action']), true,
+  'a genre list agrees regardless of order or case — marking that a difference would train the eye to ignore the marks')
+ok(S.valuesAgree(['Action'], ['Action', 'Platform']), false, 'but a genuinely different list does not')
+ok(S.valuesAgree('Konami', 'Capcom'), false, 'different publishers differ')
+ok(S.valuesAgree(null, ''), true, 'two absences agree')
+
+// ── compareFields ───────────────────────────────────────────────────────────
+const cmp = S.compareFields(
+  { description: 'Mine', genres: ['Action'], publisher: 'Konami', release_year: 1988 },
+  { description: 'Theirs', genres: ['action'], publisher: null, players: '1-2' },
+)
+const verdictOf = (f) => cmp.find(r => r.field === f).verdict
+ok(cmp.length, S.FILLABLE_FIELDS.length, 'every fillable field gets a row, including the empty ones')
+ok(verdictOf('description'), 'differs', 'two different descriptions')
+ok(verdictOf('genres'), 'match', 'the same genres in another order')
+ok(verdictOf('publisher'), 'only_mine', 'I have it and they do not')
+ok(verdictOf('players'), 'only_theirs', 'they have it and I do not')
+ok(verdictOf('release_year'), 'only_mine', 'a year only I have')
+ok(verdictOf('age_rating'), 'both_empty', 'a gap that stays a gap is still shown')
+
+// ── comparableAgreement ─────────────────────────────────────────────────────
+ok(S.comparableAgreement(cmp), { agree: 1, comparable: 2 },
+  'only fields BOTH sides filled are scored — otherwise a bare row scores zero of zero against every candidate, right or wrong')
+ok(S.comparableAgreement(S.compareFields({}, {})), { agree: 0, comparable: 0 }, 'nothing to compare')
+
+// ── displayValue ────────────────────────────────────────────────────────────
+ok(S.displayValue(['a', 'b']), 'a, b', 'a list reads as a sentence')
+ok(S.displayValue([]), '—', 'an empty list is an absence, not "[]"')
+ok(S.displayValue(null), '—', 'so is null')
+ok(S.displayValue(0), '0', 'but zero is a value')
+
 console.log(`✅ ${n} assertions passed`)

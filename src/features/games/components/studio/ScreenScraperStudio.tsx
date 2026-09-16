@@ -9,7 +9,7 @@ import {
 } from '../../api/screenscraperApi'
 import { ScrapeFilters, QueueCard } from './ScrapeQueue'
 import { ScrapeResultCard } from './ScrapeResultCard'
-import { ScrapeSearchPanel } from '../ScrapeSearchPanel'
+import { ScrapeLookupPanel } from './ScrapeLookupPanel'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { toast } from '../../../../app/store'
 import { logError } from '../../../../shared/utils/logError'
@@ -561,7 +561,7 @@ export function ScreenScraperStudio() {
 
       {/* ── Search by hand, for whatever the automatic pass got wrong ─────── */}
       <div ref={searchRef}>
-        <ScrapeSearchPanel games={allGames} target={searchFor}
+        <ScrapeLookupPanel games={allGames} target={searchFor}
           onApplied={() => { qc.invalidateQueries({ queryKey: ['games'] }); refreshJournal(); status.refetch() }} />
       </div>
     </div>

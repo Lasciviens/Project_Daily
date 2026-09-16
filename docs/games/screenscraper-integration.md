@@ -805,3 +805,54 @@ and seeing whose game it describes.
 - **An ETA or a per-request budget from `requeststoday`.** §2b measured it
   non-1:1 and disagreeing with their own panel by three orders of magnitude.
   It is shown as a ceiling, labelled as approximate, and never counted down.
+
+
+---
+
+## 14. Looking a game up by what you actually know (2026-09-16)
+
+Name search is the WEAKEST identity a game has, and it was the only one the
+workbench offered. On this library it is a guess competing with every romhack
+that shares the title — which is how 604 games ended up matched against hack
+collections in the first place.
+
+**Researched against two sources before building anything**: ScreenScraper's
+own API page (`api.screenscraper.fr/webapi2.php`) and Skyscraper's
+`screenscraper.cpp`, the reference client.
+
+| Parameter | Endpoint | What it is |
+|---|---|---|
+| `crc` / `md5` / `sha1` | `jeuInfos.php` | An **exact** identity. Skyscraper sends all three together with the filename, because a hash cannot be wrong and a filename is a guess. |
+| `romnom` + `romtaille` | `jeuInfos.php` | The filename, sharpened by the file size. `romtaille` is what Skyscraper adds whenever it has it. |
+| `serialnum` | `jeuInfos.php` | The disc serial (`SLUS-00001`), for CD/DVD systems. |
+| `gameid` | `jeuInfos.php` | Their own game id, straight off a screenscraper.fr page. |
+| `systemeid` | both | Scopes the lookup. |
+| `romtype` | `jeuInfos.php` | `rom` for everything here. |
+| `recherche` | `jeuRecherche.php` | The name. **This endpoint really does take only `recherche` + `systemeid`** — the richness is all on `jeuInfos`. |
+
+So the panel is a query builder with five modes, and only `name` goes through
+`jeuRecherche`; the rest go through `jeuInfos` and answer with ONE definite
+game rather than a list. A hash is shape-checked client-side and again in the
+function before it is sent — a mistyped hash otherwise spends a request to be
+told nothing, and their 404s are plain text, not JSON.
+
+**`gameid` also removes the extra search call `apply_match` used to make.**
+§12 flagged it as documented-but-unverified and re-ran the whole search to find
+the chosen entry again. It is now fetched by id, **with the search re-run kept
+as the fallback** — documented is not the same as verified against the live
+API, and this repo does not confuse the two. It is also the only way to apply a
+candidate from a hash, serial or id lookup, which have no search behind them.
+
+### Side by side, not a list of field names
+
+The review card printed field NAMES, then a later version printed the incoming
+values on their own. Neither answers the question a person actually asks —
+*"is this the same game as mine?"* — which two columns and a mark per row
+answer at a glance: **yours on the left, theirs on the right, ✓ where they
+agree and ✕ where they do not**, with the gaps they can fill tickable.
+
+`comparableAgreement` scores only the fields BOTH sides filled. Scoring the
+others would give a bare row a perfect zero-of-zero against every candidate,
+right and wrong alike. `valuesAgree` is deliberately loose — case-insensitive,
+order-insensitive for lists — because marking `Action, Platform` against
+`platform, action` as a difference trains the eye to ignore the marks.
