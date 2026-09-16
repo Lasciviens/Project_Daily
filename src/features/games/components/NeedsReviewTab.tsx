@@ -1,6 +1,5 @@
 import { useGamesNeedingReview } from '../hooks/useGames'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { ScrapeGameButton } from './ScrapeGameButton'
 import type { Game } from '../types'
 
 // New feature — replaces RP5's 18-rule, 5-view audit-scoring system with the
@@ -66,7 +65,6 @@ export function NeedsReviewTab({ onOpenDetail }: { onOpenDetail: (id: string) =>
                 </div>
               </div>
             </button>
-            <ScrapeGameButton gameId={g.id} title={g.title} />
           </li>
         ))}
       </ul>
