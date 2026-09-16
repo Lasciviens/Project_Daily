@@ -1,5 +1,7 @@
 import { useGameStats } from '../hooks/useGames'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
+import { formatPlaytime } from '../gameStats'
+import { systemMeta } from '../systemMeta'
 
 // New feature — a small stats/dashboard view over the library (total, by
 // status, average personal rating, and a per-system breakdown). Computed
@@ -23,6 +25,9 @@ export function StatsPanel() {
   ]
 
   const maxSystemCount = Math.max(1, ...stats.bySystem.map(s => s.count))
+  const { playtime } = stats
+  const maxPlayed = Math.max(1, ...playtime.topPlayed.map(t => t.seconds))
+  const fmtDay = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
   return (
     <div className="space-y-6">
@@ -33,6 +38,59 @@ export function StatsPanel() {
             <div className="text-[10px] text-ink-400">{t.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* Play time — the one part of this library that is measured rather than
+          entered by hand, and until now it only ever appeared inside a single
+          game's detail modal. */}
+      <div className="bg-cream-50 rounded-xl border border-ink-200 p-4">
+        <div className="flex items-center gap-1.5 mb-3">
+          <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wide">Play time</h3>
+          <InfoBubble label="Where from?">
+            Recorded by EmulationStation-DE on the handheld and synced here. It only
+            covers sessions launched through ES-DE — a game played elsewhere shows
+            as unplayed, which is why this says "no recorded play" rather than "never played".
+          </InfoBubble>
+        </div>
+        {playtime.totalSeconds === 0 && playtime.playedCount === 0 ? (
+          <p className="text-xs text-ink-400">No play data has been synced yet.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+              <div className="text-center">
+                <div className="text-lg font-bold text-accent-600">{formatPlaytime(playtime.totalSeconds) ?? '—'}</div>
+                <div className="text-[10px] text-ink-400">Total logged</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-ink-900">{playtime.playedCount}</div>
+                <div className="text-[10px] text-ink-400">Played at least once</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-ink-500">{playtime.neverPlayedCount}</div>
+                <div className="text-[10px] text-ink-400">No recorded play</div>
+              </div>
+              <div className="text-center">
+                <div className="text-sm font-bold text-ink-900 pt-1">{playtime.lastPlayed ? fmtDay(playtime.lastPlayed) : '—'}</div>
+                <div className="text-[10px] text-ink-400">Last played</div>
+              </div>
+            </div>
+            {playtime.topPlayed.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide">Most played</p>
+                {playtime.topPlayed.map(t => (
+                  <div key={t.id} className="flex items-center gap-2">
+                    <span className="text-xs text-ink-700 w-36 sm:w-48 truncate flex-shrink-0" title={t.title}>{t.title}</span>
+                    <div className="flex-1 h-2 bg-ink-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-accent-400 rounded-full" style={{ width: `${(t.seconds / maxPlayed) * 100}%` }} />
+                    </div>
+                    <span className="text-xs text-ink-500 w-16 text-right flex-shrink-0">{formatPlaytime(t.seconds)}</span>
+                    {t.playcount != null && <span className="text-[10px] text-ink-400 w-8 text-right flex-shrink-0">{t.playcount}×</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -49,7 +107,7 @@ export function StatsPanel() {
             <div className="space-y-1.5">
               {stats.bySystem.map(s => (
                 <div key={s.system} className="flex items-center gap-2">
-                  <span className="text-xs text-ink-600 w-20 truncate flex-shrink-0">{s.system}</span>
+                  <span className="text-xs text-ink-600 w-20 truncate flex-shrink-0">{systemMeta(s.system).label}</span>
                   <div className="flex-1 h-2 bg-ink-100 rounded-full overflow-hidden">
                     <div className="h-full bg-accent-400 rounded-full" style={{ width: `${(s.count / maxSystemCount) * 100}%` }} />
                   </div>

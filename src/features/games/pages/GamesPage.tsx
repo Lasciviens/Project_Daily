@@ -15,8 +15,9 @@ import { Sheet } from '../../../shared/components/Sheet'
 import { haptic } from '../../../shared/utils/haptics'
 import { useGamesNeedingReview } from '../hooks/useGames'
 import { FilterGroupButton, CheckboxFilterPanel } from '../components/CheckboxFilterGroup'
-import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip, FlagBadges } from '../components/gameCardKit'
+import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip, FlagBadges, PlaytimeBadge } from '../components/gameCardKit'
 import { systemMeta } from '../systemMeta'
+import { formatPlaytime } from '../gameStats'
 import type { Game } from '../types'
 
 // Which filter group is expanded, if any.
@@ -24,7 +25,7 @@ type FilterKey = 'tier' | 'genre' | 'system' | 'series'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-type SortKey = 'az' | 'za' | 'year-asc' | 'year-desc' | 'rating' | 'series'
+type SortKey = 'az' | 'za' | 'year-asc' | 'year-desc' | 'rating' | 'series' | 'playtime' | 'recent'
 type LibView = 'grid' | 'compact' | 'poster' | 'list' | 'table' | 'series'
 type MainTab = 'library' | 'tiers' | 'queue' | 'review' | 'stats'
 // Platform-level split, one level above MainTab. Retro Games is the existing
@@ -51,6 +52,10 @@ function sortGames(gs: Game[], sort: SortKey): Game[] {
     case 'year-asc':  return [...gs].sort((a, b) => (a.release_year ?? 9999) - (b.release_year ?? 9999))
     case 'year-desc': return [...gs].sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0))
     case 'rating':    return [...gs].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    case 'playtime':  return [...gs].sort((a, b) => (b.esde_playtime_seconds ?? 0) - (a.esde_playtime_seconds ?? 0))
+    // An unplayed game sorts last rather than first — '' is below every real
+    // ISO timestamp, and the list is "most recently played", not "least".
+    case 'recent':    return [...gs].sort((a, b) => (b.esde_last_played ?? '').localeCompare(a.esde_last_played ?? ''))
     case 'series':    return [...gs].sort((a, b) => (a.series_name ?? 'zzz').localeCompare(b.series_name ?? 'zzz') || a.title.localeCompare(b.title))
     default:          return [...gs].sort((a, b) => a.title.localeCompare(b.title))
   }
@@ -74,8 +79,8 @@ function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
         <span className="absolute top-1.5 right-1.5"><RatingBadge rating={game.rating} /></span>
 
         <div className="absolute inset-x-1.5 bottom-1.5 flex items-end justify-between gap-1">
-          <SystemChip game={game} />
-          <div className="flex items-center gap-1"><FlagBadges game={game} /></div>
+          <span className="flex items-center gap-1 min-w-0"><SystemChip game={game} /><PlaytimeBadge game={game} /></span>
+          <div className="flex items-center gap-1 flex-shrink-0"><FlagBadges game={game} /></div>
         </div>
       </div>
 
@@ -111,7 +116,7 @@ function CompactCard({ game, onClick }: { game: Game; onClick: () => void }) {
       <span className="absolute top-1 right-1"><RatingBadge rating={game.rating} size="sm" /></span>
 
       <div className="absolute inset-x-1 bottom-1 flex items-end justify-between gap-1">
-        <SystemChip game={game} size="sm" />
+        <span className="flex items-center gap-0.5 min-w-0"><SystemChip game={game} size="sm" /><PlaytimeBadge game={game} size="sm" /></span>
         <span className={`w-2 h-2 rounded-full border border-white/60 flex-shrink-0 mb-0.5 ${dotColor}`} title={STATUS_LABEL[game.play_status] ?? game.play_status} />
       </div>
     </button>
@@ -131,13 +136,13 @@ function PosterCard({ game, onClick }: { game: Game; onClick: () => void }) {
 
       {/* Resting state: just enough to identify the game. */}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-8 group-hover:opacity-0 transition-opacity duration-150">
-        <div className="flex items-center gap-1 mb-1"><SystemChip game={game} size="sm" /><FlagBadges game={game} size="sm" /></div>
+        <div className="flex items-center gap-1 mb-1"><SystemChip game={game} size="sm" /><PlaytimeBadge game={game} size="sm" /><FlagBadges game={game} size="sm" /></div>
         <p className="text-white text-[11px] font-semibold leading-snug line-clamp-1">{game.title}</p>
       </div>
 
       {/* Hover: the full record. */}
       <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/95 via-black/80 to-transparent px-3 pt-10 pb-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200">
-        <div className="flex items-center gap-1 mb-1.5 flex-wrap"><SystemChip game={game} size="sm" /><FlagBadges game={game} size="sm" /></div>
+        <div className="flex items-center gap-1 mb-1.5 flex-wrap"><SystemChip game={game} size="sm" /><PlaytimeBadge game={game} size="sm" /><FlagBadges game={game} size="sm" /></div>
         <p className="text-white text-xs font-bold leading-snug line-clamp-2 mb-1">{game.title}</p>
         {game.series_name && <p className="text-white/60 text-[10px] mb-1 truncate">{game.series_name}</p>}
         {(game.genres?.length ?? 0) > 0 && (
@@ -182,6 +187,9 @@ function GameListItem({ game, onClick }: { game: Game; onClick: () => void }) {
       <div className="flex-shrink-0 text-right space-y-0.5">
         {game.rating != null && <p className="text-xs text-accent-600 font-semibold">★{game.rating}</p>}
         <div className="flex justify-end"><SystemChip game={game} size="sm" /></div>
+        {formatPlaytime(game.esde_playtime_seconds) && (
+          <p className="text-[10px] text-ink-400">⏱ {formatPlaytime(game.esde_playtime_seconds)}</p>
+        )}
       </div>
     </button>
   )
@@ -276,7 +284,7 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
                     </span>
                     <span className="absolute top-1 right-1"><RatingBadge rating={g.rating} size="sm" /></span>
                     <span className="absolute inset-x-1 bottom-1 flex items-end justify-between gap-1 z-10">
-                      <SystemChip game={g} size="sm" />
+                      <span className="flex items-center gap-0.5 min-w-0"><SystemChip game={g} size="sm" /><PlaytimeBadge game={g} size="sm" /></span>
                       <span className="flex items-center gap-0.5">
                         {g.is_iconic && <span className="text-[10px] leading-none drop-shadow">⭐</span>}
                         <span className={`w-2 h-2 rounded-full border border-white/60 mb-0.5 ${dotColor}`} />
@@ -450,6 +458,8 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
               <option value="year-asc">Year ↑</option>
               <option value="year-desc">Year ↓</option>
               <option value="rating">My Rating</option>
+              <option value="playtime">Most Played</option>
+              <option value="recent">Recently Played</option>
               <option value="series">By Series</option>
             </select>
           )}
