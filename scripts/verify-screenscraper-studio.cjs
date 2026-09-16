@@ -50,12 +50,16 @@ ok(S.selectCandidates(lib, { ...S.EMPTY_FILTERS, hideHandled: false }, new Set([
 // Emptiest first: b has two fields filled, so it sorts after a and c.
 ok(S.selectCandidates(lib, { ...S.EMPTY_FILTERS }).at(-1).id, 'b', 'the least empty row sorts last')
 
-// ── estimateRequests / checkQuota ───────────────────────────────────────────
+// ── estimateRequests / estimateSaveRequests / checkQuota ────────────────────
 ok(S.estimateRequests([game(), game()], false), 2, 'metadata only: one request per game')
-ok(S.estimateRequests([game()], true), 4, 'with media: one metadata call plus three missing images')
-ok(S.estimateRequests([game({ primary_cover_url: 'u', screenshot_url: 'u', fanart_url: 'u' })], true), 1,
-  'images already present cost nothing')
+ok(S.estimateRequests([game()], true), 2, 'a lookup fetches one candidate cover, not all three images')
+ok(S.estimateRequests([game({ primary_cover_url: 'u' })], true), 1, 'a game that already has a cover costs one')
 ok(S.estimateRequests([], true), 0, 'nothing selected costs nothing')
+// Saving is the OTHER half — the apply re-fetches to prove the entry is the
+// one that was reviewed, and that verification is a real second request.
+ok(S.estimateSaveRequests([game()], true), 3, 'save: one metadata call plus the two images the review did not fetch')
+ok(S.estimateSaveRequests([game({ screenshot_url: 'u', fanart_url: 'u' })], true), 1, 'images already present cost nothing')
+ok(S.estimateSaveRequests([game()], false), 1, 'without artwork, saving is one call per game')
 ok(S.checkQuota(10, 5000).ok, true, 'a small run against a healthy budget')
 ok(S.checkQuota(10, 400).ok, false, 'below the reserve floor nothing runs')
 ok(S.checkQuota(600, 1000).ok, false, 'a run that would eat into the floor is refused')
@@ -64,19 +68,73 @@ ok(S.checkQuota(10, null).ok, true, 'an unknown budget does not block the run')
 
 // ── matchConfidence ─────────────────────────────────────────────────────────
 ok(S.matchConfidence('Contra (USA)', 'Contra'), 'exact', 'region tags are ignored')
-ok(S.matchConfidence('Super Mario World', 'Super Mario World 2: Yoshi\'s Island'), 'close', 'a prefix is close')
-ok(S.matchConfidence('Sonic The Hedgehog', 'Amy Rose In Sonic The Hedgehog'), 'close',
-  'a hack sharing most words reads as close, not exact — it must never claim certainty')
-ok(S.matchConfidence('Contra', 'Contra III: The Alien Wars'), 'close', 'a sequel is close')
+// A sequel is a DIFFERENT GAME, and "Contra" landing on "Contra III" is the
+// exact wrong match this library actually suffered — so it must not read as
+// close. An earlier prefix-based version said it did.
+ok(S.matchConfidence('Super Mario World', "Super Mario World 2: Yoshi's Island"), 'loose', 'a sequel is not close')
+ok(S.matchConfidence('Contra', 'Contra III: The Alien Wars'), 'loose', 'nor is this one')
+ok(S.matchConfidence('Sonic The Hedgehog', 'Amy Rose In Sonic The Hedgehog'), 'loose',
+  'a romhack carrying the whole title is still a different game')
 ok(S.matchConfidence('Contra', 'Gradius'), 'loose', 'an unrelated title is loose')
+// The reason this function was rewritten: a one-word library title used to
+// make every candidate "close", so the red badge was unreachable on a retro
+// library where most titles are one or two words.
+ok(S.matchConfidence('Contra', 'Super Contra Hack Collection'), 'loose', 'a hack collection is not close')
+ok(S.matchConfidence('Tetris', 'Tetris 2000 Hack Pack'), 'loose', 'nor is a hack pack, prefix or not')
+ok(S.matchConfidence('Sonic', 'Amy Rose In Sonic The Hedgehog'), 'loose', 'nor is a romhack of it')
+ok(S.matchConfidence('Contra', 'Contra II'), 'close', 'but one extra word still is')
+ok(S.matchConfidence('Super Mario Kart', 'Super Mario Kart Deluxe'), 'close', 'one added word is close')
+ok(S.matchConfidence('Final Fantasy', 'Final Fantasy VI Hack Edition Plus'), 'loose',
+  'two shared words drowned out by four of theirs is not close')
+ok(S.matchConfidence('Zelda [!]', 'Zelda'), 'exact', 'ROM bracket tags are stripped like parentheses')
 ok(S.matchConfidence('Contra', null), 'loose', 'no title at all is loose')
 ok(S.matchConfidence('!!!', 'Contra'), 'loose', 'a title that normalises to nothing is loose')
 
-// ── undo ────────────────────────────────────────────────────────────────────
-ok(S.undoPatch({ gameId: 'a', title: 'x', fields: ['description', 'genres'], at: 'now' }),
-  { description: null, genres: null },
-  'undo clears exactly the fields that were written')
-ok(S.undoPatch({ gameId: 'a', title: 'x', fields: [], at: 'now' }), {}, 'an empty write undoes to nothing')
+// ── splitAcceptedFields — the review → apply contract ───────────────────────
+ok(S.splitAcceptedFields(['description', 'genres', 'primary_cover_url']),
+  { fields: ['description', 'genres'], mediaRoles: ['primary_cover_url'] },
+  'text fields and image columns go to different server arguments')
+ok(S.splitAcceptedFields(['primary_cover_url', 'fanart_url']),
+  { fields: [], mediaRoles: ['primary_cover_url', 'fanart_url'] },
+  'an art-only approval sends an EMPTY fields array, which means "write no text"')
+ok(S.splitAcceptedFields([]), { fields: [], mediaRoles: [] }, 'nothing approved')
+ok(S.splitAcceptedFields(null), { fields: [], mediaRoles: [] }, 'a rejected result')
+// The provider id is bookkeeping the server always writes — never a user choice.
+ok(S.splitAcceptedFields(['description']).fields.includes('external_ref'), false,
+  'external_ref is never smuggled through the approved-field list')
+
+// ── reduceHandled — progress across sessions ────────────────────────────────
+// Rows arrive newest-first, as the query orders them.
+ok(S.reduceHandled([
+  { game_id: 'a', decision: 'applied' },
+  { game_id: 'b', decision: 'rejected' },
+  { game_id: 'c', decision: 'no_match' },
+  { game_id: 'd', decision: 'unmatchable' },
+]), { a: 'saved', b: 'skipped', c: 'no_match', d: 'no_match' }, 'each decision maps to its state')
+ok(S.reduceHandled([
+  { game_id: 'a', decision: 'undone' },
+  { game_id: 'a', decision: 'applied' },
+]), {}, 'an undo puts the game back in the queue rather than marking it')
+ok(S.reduceHandled([
+  { game_id: 'a', decision: 'applied' },
+  { game_id: 'a', decision: 'undone' },
+  { game_id: 'a', decision: 'applied' },
+]), { a: 'saved' }, 'and a fresh apply after an undo wins again')
+ok(S.reduceHandled([
+  { game_id: 'a', decision: 'rejected' },
+  { game_id: 'a', decision: 'no_match' },
+]), { a: 'skipped' }, 'the newest decision wins, not the first seen')
+ok(S.reduceHandled([]), {}, 'no history')
+
+// ── systemOf ────────────────────────────────────────────────────────────────
+ok(S.systemOf(game({ platforms: [
+  { system: 'nes', esde_system: 'nes' },
+  { system: 'snes', esde_system: 'snes', is_primary_variant: true },
+] })), 'snes', 'the primary variant wins over row order')
+ok(S.systemOf(game({ platforms: [{ system: 'Genesis', esde_system: 'genesis' }] })), 'genesis',
+  'the ES-DE folder name wins over the display name — it is the match key')
+ok(S.systemOf(game({ platforms: [{ system: 'nes' }] })), 'nes', 'falling back to the display name')
+ok(S.systemOf(game({ platforms: [] })), null, 'a game with no platform row has no system')
 
 // ── defaultAcceptedFields ───────────────────────────────────────────────────
 ok(S.defaultAcceptedFields({ gameId: 'a', matchedTitle: 'x', system: null, wouldFill: ['description', 'genres'] }),

@@ -127,19 +127,33 @@ export function selectCandidates(games: StudioGame[], f: StudioFilters, handled:
 // ─── Quota budgeting ─────────────────────────────────────────────────────────
 
 /**
- * What a run will cost, BEFORE it starts.
+ * What a LOOKUP will cost, BEFORE it starts.
  *
  * ScreenScraper's daily counter is account-wide and shared with the handheld's
  * own scraping, so a run that would overshoot has to be visible as a number
- * rather than discovered halfway through. One metadata call per game; media
- * downloads are separate requests, up to three per game (cover, screenshot,
- * fanart) and only for the ones actually missing.
+ * rather than discovered halfway through.
+ *
+ * This covers the LOOKUP only: one metadata call per game, plus one candidate
+ * cover download per game missing one when artwork is on. Saving costs a
+ * second metadata call per approved game — the apply re-fetches and checks that
+ * the entry is still the one that was reviewed, which is the whole guarantee —
+ * plus a download per approved image that was not already mirrored for the
+ * review. `estimateSaveRequests` is that half; the UI shows both rather than
+ * quoting one and spending the other.
  */
 export function estimateRequests(games: StudioGame[], withMedia: boolean): number {
+  // One metadata call each, plus the single candidate cover the review mirrors.
+  if (!withMedia) return games.length
+  return games.reduce((sum, g) => sum + 1 + (isEmpty(g.primary_cover_url) ? 1 : 0), 0)
+}
+
+/** The other half: what approving `n` of them will cost on save. */
+export function estimateSaveRequests(games: StudioGame[], withMedia: boolean): number {
   if (!withMedia) return games.length
   return games.reduce((sum, g) => {
-    const media = (['primary_cover_url', 'screenshot_url', 'fanart_url'] as const)
-      .filter(f => isEmpty(g[f])).length
+    // The cover was already fetched for the review and is promoted by a
+    // Storage copy, so only the other two are new downloads.
+    const media = (['screenshot_url', 'fanart_url'] as const).filter(f => isEmpty(g[f])).length
     return sum + 1 + media
   }, 0)
 }
@@ -198,36 +212,89 @@ export function matchConfidence(mine: string, theirs: string | null | undefined)
   const b = normaliseTitle(theirs)
   if (!a || !b) return 'loose'
   if (a === b) return 'exact'
-  if (a.startsWith(b) || b.startsWith(a)) return 'close'
-  // Word overlap: "Super Mario World" vs "Super Mario World 2" is close;
-  // "Contra" vs "Amy Rose In Sonic The Hedgehog" is not.
-  const aw = new Set(a.split(' '))
+
+  // Word overlap, weighed against what the CANDIDATE adds.
+  //
+  // Two earlier versions were far too generous and the badge carried almost no
+  // information as a result:
+  //   · a plain `startsWith` made "Contra" vs "Contra III: The Alien Wars"
+  //     close — which is the exact wrong match this library actually suffered;
+  //   · a `min(words) - 1` threshold degenerated to 1 for a one-word title, so
+  //     "Sonic" vs "Amy Rose In Sonic The Hedgehog" was close too.
+  // A retro library is mostly one- and two-word titles, so between them the
+  // red "titles differ" state was effectively unreachable.
+  //
+  // Note this deliberately does NOT try to spot a hack or a compilation from
+  // words like "Hack" or "Collection". The entry's own `hack`/`notgame` flags
+  // say that outright and are shown next to this badge; guessing it from the
+  // title would be a second, worse signal disagreeing with the first.
+  const aw = a.split(' ')
   const bw = b.split(' ')
-  const shared = bw.filter(w => aw.has(w)).length
-  return shared >= Math.max(1, Math.min(aw.size, bw.length) - 1) ? 'close' : 'loose'
+  const awSet = new Set(aw)
+  const shared = bw.filter(w => awSet.has(w)).length
+  const extra = bw.length - shared
+  if (shared === 0) return 'loose'
+  // Every word of mine is in theirs and they add at most one — a numeral or a
+  // single subtitle word.
+  if (shared === aw.length && extra <= 1) return 'close'
+  // Otherwise real mutual overlap: at least two shared words, and STRICTLY
+  // outweighing what they carry that I do not. "Sonic The Hedgehog" inside
+  // "Amy Rose In Sonic The Hedgehog" shares three and adds three — a romhack
+  // that contains the whole title is still a different game, and the badge
+  // must not soften that into "similar".
+  return shared >= 2 && extra < shared ? 'close' : 'loose'
+}
+
+// ─── The review → apply contract ─────────────────────────────────────────────
+
+export const MEDIA_COLUMNS: FillableField[] = ['primary_cover_url', 'screenshot_url', 'fanart_url']
+
+/**
+ * Splits an approved field list into the two things the server takes.
+ *
+ * Extracted from the component because it IS the contract between what was
+ * reviewed and what gets written, and inline in a click handler it was the one
+ * load-bearing piece of this feature nothing could test.
+ *
+ * `external_ref` deliberately never appears here: the provider's own id is
+ * bookkeeping the server always writes, not a field the user chooses.
+ */
+export function splitAcceptedFields(accepted: FillableField[] | null | undefined): { fields: FillableField[]; mediaRoles: FillableField[] } {
+  const list = accepted ?? []
+  return {
+    fields: list.filter(f => !MEDIA_COLUMNS.includes(f)),
+    mediaRoles: list.filter(f => MEDIA_COLUMNS.includes(f)),
+  }
+}
+
+// ─── Progress across sessions ────────────────────────────────────────────────
+
+export type HandledState = 'saved' | 'skipped' | 'no_match'
+export type DecisionRow = { game_id: string; decision: string; created_at?: string }
+
+/**
+ * What the journal says about each game, newest decision winning.
+ *
+ * `rows` arrive newest-first (the query orders by `created_at DESC`), so they
+ * are walked in reverse and a later decision overwrites an earlier one. An
+ * `undone` row REMOVES the game's state entirely rather than marking it — a
+ * reverted game is genuinely unhandled again and belongs back in the queue.
+ */
+export function reduceHandled(rows: DecisionRow[]): Record<string, HandledState> {
+  const map: Record<string, HandledState> = {}
+  for (const d of [...rows].reverse()) {
+    if (d.decision === 'applied') map[d.game_id] = 'saved'
+    else if (d.decision === 'rejected') map[d.game_id] = 'skipped'
+    else if (d.decision === 'no_match' || d.decision === 'unmatchable') map[d.game_id] = 'no_match'
+    else if (d.decision === 'undone') delete map[d.game_id]
+  }
+  return map
 }
 
 // ─── Undo ────────────────────────────────────────────────────────────────────
-
-/**
- * What a scrape wrote, recorded so it can be taken back.
- *
- * This is possible at all ONLY because a scrape never overwrites: it fills
- * fields that were empty. So undoing is setting exactly those fields back to
- * NULL — no prior values have to be stored, and nothing the user typed can be
- * destroyed by an undo. (A mirrored image file stays in Storage; only the
- * column pointing at it is cleared. Orphaned bytes are cheap; a wrong cover on
- * a card is not.)
- */
-export type AppliedRecord = {
-  gameId: string
-  title: string
-  fields: FillableField[]
-  at: string
-}
-
-export function undoPatch(rec: AppliedRecord): Record<string, null> {
-  const patch: Record<string, null> = {}
-  for (const f of rec.fields) patch[f] = null
-  return patch
-}
+//
+// Undo is NOT implemented here. It is `undo_run` in the edge function, which
+// needs the service role and the decision journal. An earlier draft kept a
+// client-side `undoPatch`/`AppliedRecord` pair in this file; it had no callers,
+// and its tests read as coverage of an undo path that was actually untested.
+// Deleted rather than left to mislead.

@@ -12,13 +12,18 @@
 -- 2. THERE WAS NO UNDO. A batch that went wrong had no route back. The first
 --    real run wrote four wrong rows and the only recovery was hand-written SQL.
 --
--- Undo is unusually cheap here and this table is why. A scrape write is
--- STRICTLY gap-filling — `fillOnlyMissing` only ever writes into a field that
--- was null/''/[] — so the exact inverse of an apply is "set these fields back
--- to NULL". No prior values need storing, and nothing the user typed can be
--- destroyed by an undo, because a scrape could never have touched it. What has
--- to be recorded is only WHICH fields were written, and which Storage objects
--- were created.
+-- Undo is cheap here because a scrape write is STRICTLY gap-filling —
+-- `fillOnlyMissing` only ever writes into a field that was null/''/[] — so the
+-- inverse of an apply is "set these fields back to NULL" and no PRIOR values
+-- need storing.
+--
+-- The written values still do, and this is worth being exact about, because a
+-- first draft of this table argued they did not and was wrong. Between the
+-- apply and the undo the user can edit the field by hand. Without a record of
+-- what the scrape actually wrote, an undo cannot tell "still the scraped
+-- value" from "the sentence I rewrote myself", and nulling it destroys their
+-- work. `written_values` is that record: undo skips any field whose live value
+-- no longer matches what was written.
 --
 -- Not `audit_logs` (migration 037): it is swept probabilistically at 30 days,
 -- it cannot tell a scrape write from a hand edit without parsing, and it has
@@ -47,6 +52,9 @@ CREATE TABLE IF NOT EXISTS public.scrape_decisions (
 
   -- What an undo has to clear. Empty for every non-applied decision.
   fields_written text[] NOT NULL DEFAULT '{}',
+  -- What was actually written, per field. An undo compares against the live
+  -- row and leaves alone anything the user has changed since.
+  written_values jsonb NOT NULL DEFAULT '{}'::jsonb,
   storage_paths  text[] NOT NULL DEFAULT '{}',
   -- `needs_review` is restored, not guessed: apply_match sets it false, so an
   -- undo of a hand-picked match must not leave the row looking reviewed.
@@ -73,4 +81,4 @@ CREATE TRIGGER trg_audit
   FOR EACH ROW EXECUTE FUNCTION public.log_audit();
 
 COMMENT ON TABLE public.scrape_decisions IS
-  'One row per scrape decision. Undo works off fields_written because a scrape only ever fills empty fields, so reverting is setting exactly those back to NULL.';
+  'One row per scrape decision. Undo nulls the fields in fields_written, but only where the live value still equals written_values — a field the user edited afterwards is theirs and is left alone.';

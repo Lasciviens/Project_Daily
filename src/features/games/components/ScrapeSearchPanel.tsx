@@ -29,10 +29,12 @@ function romName(g: Game | null): string | null {
   return base?.trim() || null
 }
 
-export function ScrapeSearchPanel({ games, initialTarget, onApplied }: {
+export function ScrapeSearchPanel({ games, target: aim, onApplied }: {
   games: Game[]
-  /** Open pre-aimed at one game — how a failed automatic match hands over. */
-  initialTarget?: string | null
+  /** Open pre-aimed at one game — how a failed automatic match hands over.
+   *  The nonce is what lets the SAME game be re-aimed: an id compared against
+   *  itself never changes, so the second click did nothing. */
+  target?: { id: string; nonce: number } | null
   onApplied?: () => void
 }) {
   const qc = useQueryClient()
@@ -44,14 +46,14 @@ export function ScrapeSearchPanel({ games, initialTarget, onApplied }: {
   const [note, setNote] = useState<string | null>(null)
   const [picked, setPicked] = useState<SearchCandidate | null>(null)
   const [busy, setBusy] = useState(false)
-  const [aimedAt, setAimedAt] = useState<string | null>(null)
+  const [aimedAt, setAimedAt] = useState<number | null>(null)
 
   // Adjust-during-render (the FoodLogModal `wasOpen` precedent) rather than an
-  // effect: the caller hands over a game id and this picks it up exactly once,
-  // so a later manual change is never clobbered by a re-render.
-  if (initialTarget && initialTarget !== aimedAt) {
-    setAimedAt(initialTarget)
-    const g = games.find(x => x.id === initialTarget)
+  // effect: the caller hands over a game and this picks it up exactly once, so
+  // a later manual change is never clobbered by a re-render.
+  if (aim && aim.nonce !== aimedAt) {
+    setAimedAt(aim.nonce)
+    const g = games.find(x => x.id === aim.id)
     if (g) chooseTarget(g)
   }
 

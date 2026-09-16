@@ -760,8 +760,14 @@ found reviewing it, and both were real:
 **Approval was not bound to what was reviewed.** The dry run and the apply were
 two independent `jeuInfos.php` calls. The user approved the result of lookup A
 and the app wrote whatever lookup B returned. Usually identical; nothing
-guaranteed it, nothing checked it, and it spent two requests per approved game
-against an account-wide counter.
+guaranteed it, and nothing checked it.
+
+The apply still re-fetches — that is how the check is made — so the flow does
+cost two metadata calls per approved game. **That is the price of the
+guarantee, not a defect, and the UI quotes both halves** ("≈ 6 to look up,
+6 more to save") rather than showing one and spending the other. Dropping the
+second call would mean trusting a payload the client sends back, which is the
+weaker design.
 
 **The dry run returned field NAMES, never values.** "Would fill: description,
 genres" cannot be approved by anyone — approving means reading the description
@@ -774,9 +780,9 @@ and seeing whose game it describes.
 | `screenscraperStudio.ts` | Pure logic: what a game is missing, candidate selection, request-cost projection, quota verdict, title-confidence, undo derivation. 36 assertions in `scripts/verify-screenscraper-studio.cjs`. |
 | `apply_reviewed` | Writes EXACTLY the reviewed entry. Carries the `jeu_id` that was shown; if the fetch answers with a different entry it returns `stale_proposal` and writes nothing. `fillOnlyMissing` still runs against the live row, so the client can only ever narrow a write, never widen it. |
 | `proposed` on a dry run | The actual values, truncated at 600 chars, so a field can be read before it is accepted. Per-field checkboxes, defaulted on. |
-| Quarantined candidate art | The cover is mirrored to `game-media/pending/<game_id>/<jeu_id>/cover.<ext>` at REVIEW time and promoted by a Storage **copy** on approval — no second download, no second request. The browser still never receives a ScreenScraper URL. `sweep_pending` clears what nobody approved. |
+| Candidate art | The cover is mirrored to `game-media/pending/<game_id>/<jeu_id>/cover.<ext>` at REVIEW time and promoted by a Storage **copy** on approval — no second image download. The browser still never receives a ScreenScraper URL. Note the bucket is world-readable by policy (094), so this prefix is separated from the database and the canonical paths, **not** from the internet. `sweep_pending` clears what nobody approved, and a "Clear unused art" button calls it. |
 | `scrape_decisions` (097) | Every decision, durably. Progress across sessions, and the substrate for undo. |
-| `undo_run` | Reverts a whole run. Costs nothing against the quota. Safe because a scrape is strictly gap-filling: the inverse of the write is "set these fields back to NULL", so no prior values need storing and nothing hand-entered can be destroyed. It skips a field changed since, and restores `needs_review` to what the journal recorded. |
+| `undo_run` | Reverts a whole run. Costs nothing against the quota. It nulls the fields the run wrote, but **only where the live value still equals `written_values`** — a field edited since belongs to the user and is reported back rather than cleared. A first draft compared against `null` instead, which detects nothing and would have destroyed a hand-rewritten description while claiming it could not. Storage objects are removed only for columns actually cleared, and `needs_review` is restored only if it is still what the apply left. |
 | Pacing | §2b's ~1.2 s interval between waves, which the code promised in writing and had never implemented. |
 | Match signals | The ROM filename the match was made on, the system actually searched, and the entry's own `notgame`/hack/beta/proto/region flags — all present in every response and previously discarded. |
 

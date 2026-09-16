@@ -1,9 +1,10 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useAllGames } from '../../hooks/useGames'
 import {
   scrapeBatch, applyReviewed, undoRun, fetchScreenScraperStatus,
-  refreshScreenScraperSystems, fetchScrapeDecisions, recordRejections,
+  refreshScreenScraperSystems, fetchDecisionStates, fetchRecentDecisions,
+  recordRejections, sweepPendingArt,
   type ScrapeResult,
 } from '../../api/screenscraperApi'
 import { ScrapeFilters, QueueCard } from './ScrapeQueue'
@@ -13,8 +14,8 @@ import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { toast } from '../../../../app/store'
 import { logError } from '../../../../shared/utils/logError'
 import {
-  selectCandidates, systemOf, estimateRequests, checkQuota, defaultAcceptedFields,
-  missingFields, EMPTY_FILTERS,
+  selectCandidates, systemOf, estimateRequests, estimateSaveRequests, checkQuota,
+  defaultAcceptedFields, splitAcceptedFields, reduceHandled, missingFields, EMPTY_FILTERS,
   type StudioGame, type StudioFilters, type FillableField,
 } from '../../screenscraperStudio'
 
@@ -31,10 +32,6 @@ import {
 // a batch that went wrong, and how to remember any of it after a reload.
 
 const MAX_BATCH = 6
-const MEDIA_COLUMNS: FillableField[] = ['primary_cover_url', 'screenshot_url', 'fanart_url']
-
-type Handled = 'saved' | 'skipped' | 'no_match'
-
 export function ScreenScraperStudio() {
   const qc = useQueryClient()
   const { data: allGames = [], isLoading } = useAllGames()
@@ -42,10 +39,18 @@ export function ScreenScraperStudio() {
     queryKey: ['screenscraper', 'status'], queryFn: fetchScreenScraperStatus,
     staleTime: 60_000, retry: false,
   })
-  const journal = useQuery({
-    queryKey: ['screenscraper', 'decisions'], queryFn: () => fetchScrapeDecisions(),
+  // Two queries, because they want different things: "is this game handled"
+  // needs EVERY row in two columns, while the runs panel needs a few rows in
+  // full. One page serving both is how progress silently starts forgetting.
+  const states = useQuery({
+    queryKey: ['screenscraper', 'decision-states'], queryFn: fetchDecisionStates,
     staleTime: 30_000, retry: false,
   })
+  const journal = useQuery({
+    queryKey: ['screenscraper', 'decisions'], queryFn: () => fetchRecentDecisions(),
+    staleTime: 30_000, retry: false,
+  })
+  const refreshJournal = useCallback(() => { states.refetch(); journal.refetch() }, [states, journal])
 
   const [filters, setFilters] = useState<StudioFilters>(EMPTY_FILTERS)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -53,7 +58,10 @@ export function ScreenScraperStudio() {
   const [results, setResults] = useState<ScrapeResult[] | null>(null)
   const [accepted, setAccepted] = useState<Record<string, FillableField[] | null>>({})
   const [focusIdx, setFocusIdx] = useState(0)
-  const [searchFor, setSearchFor] = useState<string | null>(null)
+  // A nonce, not just an id: clicking 🔍 on the same row twice has to re-aim
+  // the panel, and an id compared against itself never changes.
+  const [searchFor, setSearchFor] = useState<{ id: string; nonce: number } | null>(null)
+  const searchRef = useRef<HTMLDivElement | null>(null)
   const [busy, setBusy] = useState(false)
 
   const games = allGames as unknown as StudioGame[]
@@ -68,17 +76,7 @@ export function ScreenScraperStudio() {
   // Its own useMemo so the two below get a stable dependency — a fresh []
   // every render would recompute the whole history on every keystroke.
   const decisions = useMemo(() => journal.data ?? [], [journal.data])
-  const handled = useMemo(() => {
-    const map: Record<string, Handled> = {}
-    // Oldest first, so a later decision (an undo, a re-review) wins.
-    for (const d of [...decisions].reverse()) {
-      if (d.decision === 'applied') map[d.game_id] = 'saved'
-      else if (d.decision === 'rejected') map[d.game_id] = 'skipped'
-      else if (d.decision === 'no_match' || d.decision === 'unmatchable') map[d.game_id] = 'no_match'
-      else if (d.decision === 'undone') delete map[d.game_id]
-    }
-    return map
-  }, [decisions])
+  const handled = useMemo(() => reduceHandled(states.data ?? []), [states.data])
   const handledIds = useMemo(() => new Set(Object.keys(handled)), [handled])
 
   const candidates = useMemo(() => selectCandidates(games, filters, handledIds), [games, filters, handledIds])
@@ -89,17 +87,22 @@ export function ScreenScraperStudio() {
   )
 
   const cost = estimateRequests(selectedGames, withMedia)
-  const quota = checkQuota(cost, status.data?.remaining_today)
+  const saveCost = estimateSaveRequests(selectedGames, withMedia)
+  const quota = checkQuota(cost + saveCost, status.data?.remaining_today)
 
+  // The cap is checked OUTSIDE the updater: a setState updater has to be pure,
+  // and StrictMode double-invokes it, so a toast in there fires twice.
   const toggle = useCallback((id: string) => {
+    if (!selected.has(id) && selected.size >= MAX_BATCH) {
+      toast.warning(`${MAX_BATCH} at a time — review these first.`)
+      return
+    }
     setSelected(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else if (next.size < MAX_BATCH) next.add(id)
-      else toast.warning(`${MAX_BATCH} at a time — review these first.`)
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
-  }, [])
+  }, [selected])
 
   function selectFirstFree() {
     const next = new Set<string>()
@@ -131,16 +134,24 @@ export function ScreenScraperStudio() {
           ? defaultAcceptedFields({ gameId: r.id, matchedTitle: r.matched_title ?? null, system: r.system ?? null, wouldFill: r.would_fill ?? [] })
           : null,
       ])))
-      // A miss is already decided — there is nothing to approve — so it is
-      // journalled now rather than waiting for a Save that will never include it.
-      const misses = rows.filter(r => r.outcome !== 'matched')
+      // A real miss is already decided — there is nothing to approve — so it
+      // is journalled now rather than waiting for a Save that will never
+      // include it. An `error` outcome is NOT journalled: a 502, a network
+      // blip or a malformed response is transient, and recording it as
+      // "their database has no entry for this ROM" would permanently retire a
+      // game over a bad minute.
+      const misses = rows.filter(r => r.outcome === 'no_match' || r.outcome === 'unmatchable')
       if (misses.length) {
         await recordRejections(crypto.randomUUID(), misses.map(r => ({
           gameId: r.id,
           decision: r.outcome === 'unmatchable' ? 'unmatchable' : 'no_match',
           systemUsed: r.system ?? null,
         })))
-        journal.refetch()
+        refreshJournal()
+      }
+      const errored = rows.filter(r => r.outcome === 'error')
+      if (errored.length) {
+        toast.warning(`${errored.length} lookup${errored.length === 1 ? '' : 's'} failed — those stay in the queue.`)
       }
       status.refetch()
     } catch (e) {
@@ -156,14 +167,14 @@ export function ScreenScraperStudio() {
     const items = (results ?? [])
       .filter(r => r.outcome === 'matched' && (accepted[r.id]?.length ?? 0) > 0)
       .map(r => {
-        const fields = accepted[r.id] ?? []
+        const { fields, mediaRoles } = splitAcceptedFields(accepted[r.id])
         return {
           game_id: r.id,
           // Carried so the server can prove it is writing the entry that was
           // reviewed, not whatever a second lookup happens to return.
           jeu_id: r.jeu_id ?? null,
-          fields: fields.filter(f => !MEDIA_COLUMNS.includes(f)),
-          media_roles: fields.filter(f => MEDIA_COLUMNS.includes(f)),
+          fields,
+          media_roles: mediaRoles,
         }
       })
     if (!items.length) return
@@ -176,11 +187,16 @@ export function ScreenScraperStudio() {
       const rows = res.results ?? []
       const saved = rows.filter(r => r.outcome === 'matched')
       const stale = rows.filter(r => r.outcome === 'stale_proposal')
+      const failed = rows.filter(r => r.outcome === 'error')
 
-      // Everything offered and not saved is a rejection, and rejections are
-      // worth remembering: they are what stops a game being offered forever.
-      const rejected = (results ?? [])
-        .filter(r => r.outcome === 'matched' && !saved.some(s => s.id === r.id) && !stale.some(s => s.id === r.id))
+      // Everything offered, approved, and neither saved, stale nor FAILED is a
+      // real rejection. A server-side error is not the user's choice and must
+      // never be journalled as one.
+      const undecided = new Set([...stale, ...failed].map(r => r.id))
+      const rejected = (results ?? []).filter(r =>
+        r.outcome === 'matched'
+        && (accepted[r.id]?.length ?? 0) === 0
+        && !undecided.has(r.id))
       if (rejected.length) {
         await recordRejections(res.run_id ?? crypto.randomUUID(), rejected.map(r => ({
           gameId: r.id, decision: 'rejected', jeuId: r.jeu_id ?? null,
@@ -188,13 +204,27 @@ export function ScreenScraperStudio() {
         })))
       }
 
+      if (saved.length) toast.success(`${saved.length} game${saved.length === 1 ? '' : 's'} updated ✓`)
+      if (failed.length) toast.error(`${failed.length} save${failed.length === 1 ? '' : 's'} failed — see the error log.`)
       if (stale.length) {
         toast.warning(`${stale.length} match${stale.length === 1 ? '' : 'es'} changed since you reviewed them — look those up again.`)
       }
-      toast.success(`${saved.length} game${saved.length === 1 ? '' : 's'} updated ✓`)
+      if (!saved.length && !failed.length && !stale.length) toast.warning('Nothing was written.')
+
       qc.invalidateQueries({ queryKey: ['games'] })
-      journal.refetch(); status.refetch()
-      setResults(null); setAccepted({}); setSelected(new Set())
+      refreshJournal(); status.refetch()
+
+      // Anything unresolved STAYS on screen. Telling someone to look a match
+      // up again after clearing the list it was in is not an instruction they
+      // can follow.
+      const unresolved = (results ?? []).filter(r => undecided.has(r.id))
+      if (unresolved.length) {
+        setResults(unresolved)
+        setFocusIdx(0)
+        setSelected(new Set(unresolved.map(r => r.id)))
+      } else {
+        setResults(null); setAccepted({}); setSelected(new Set())
+      }
     } catch (e) {
       toast.dismiss(tid)
       const msg = (e as Error).message
@@ -210,7 +240,7 @@ export function ScreenScraperStudio() {
       recordRejections(crypto.randomUUID(), offered.map(r => ({
         gameId: r.id, decision: 'rejected', jeuId: r.jeu_id ?? null,
         matchedTitle: r.matched_title ?? null, systemUsed: r.system ?? null,
-      }))).then(() => journal.refetch())
+      }))).then(refreshJournal)
     }
     setResults(null); setAccepted({}); setSelected(new Set())
   }
@@ -224,14 +254,29 @@ export function ScreenScraperStudio() {
       toast.dismiss(tid)
       if (res.status === 'no_journal') { toast.warning(res.message ?? 'No record of that run'); return }
       toast.success(`${res.reverted ?? 0} game${res.reverted === 1 ? '' : 's'} reverted ✓`)
-      if (res.skipped?.length) toast.warning(`${res.skipped.length} could not be reverted — see the error log.`)
+      // The server reports per-game reasons, including "kept your own edits
+      // to X" — which is not a failure and is the point of the check.
+      for (const sk of res.skipped ?? []) toast.warning(sk.reason)
       qc.invalidateQueries({ queryKey: ['games'] })
-      journal.refetch()
+      refreshJournal()
     } catch (e) {
       toast.dismiss(tid)
       const msg = (e as Error).message
       logError(`screenscraper_studio_undo: ${msg}`)
       toast.error(msg)
+    } finally { setBusy(false) }
+  }
+
+  async function sweep() {
+    setBusy(true)
+    const tid = toast.loading('Clearing unapproved candidate art…')
+    try {
+      const r = await sweepPendingArt()
+      toast.dismiss(tid)
+      toast.success(`${r.removed ?? 0} file${r.removed === 1 ? '' : 's'} removed ✓`)
+    } catch (e) {
+      toast.dismiss(tid)
+      toast.error((e as Error).message)
     } finally { setBusy(false) }
   }
 
@@ -257,6 +302,10 @@ export function ScreenScraperStudio() {
   useEffect(() => {
     if (!results?.length) return
     function onKey(e: KeyboardEvent) {
+      // Never touch a browser or app shortcut. Without this, ⌘R/Ctrl+R
+      // preventDefaulted the reload and REJECTED the focused match instead,
+      // ⌘A did the same with accept, and ⌘K fought the app's CommandBar.
+      if (e.metaKey || e.ctrlKey || e.altKey) return
       const el = document.activeElement as HTMLElement | null
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
       const rows = results ?? []
@@ -334,8 +383,10 @@ export function ScreenScraperStudio() {
             )}
             {journal.data && journal.data.length === 0 && (
               <p className="text-[11px] text-ink-400 mt-1">
-                No decision history yet. (If it never appears, migration 097 is not applied — the
-                workbench still works, it just forgets between reloads.)
+                No decision history yet. If it never appears, migration 097 is not applied — the
+                workbench still looks up and saves, but it forgets what it has done between
+                reloads AND there is no undo at all, since there is nothing recording what to
+                revert.
               </p>
             )}
           </div>
@@ -344,7 +395,12 @@ export function ScreenScraperStudio() {
               className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-300 disabled:opacity-40">
               Fetch system ids
             </button>
-            <button type="button" onClick={() => { status.refetch(); journal.refetch() }} disabled={busy}
+            <button type="button" onClick={sweep} disabled={busy}
+              title="Covers fetched for a review and never approved sit in a pending folder. This deletes them."
+              className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-300 disabled:opacity-40">
+              Clear unused art
+            </button>
+            <button type="button" onClick={() => { status.refetch(); refreshJournal() }} disabled={busy}
               className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 disabled:opacity-40">
               🔄
             </button>
@@ -405,13 +461,22 @@ export function ScreenScraperStudio() {
         )}
 
         <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-ink-100">
-          <button type="button" onClick={lookUp} disabled={busy || !selected.size || !quota.ok}
+          {/* Counts what will ACTUALLY be sent: a selected id whose game has
+              gone from the library after a refetch is not one of them. */}
+          <button type="button" onClick={lookUp} disabled={busy || !selectedGames.length || !quota.ok}
             className="min-h-[44px] px-4 text-sm font-semibold bg-accent-500 hover:bg-accent-600 text-white rounded-lg disabled:opacity-40 transition-colors">
-            {busy ? 'Working…' : `Look up ${selected.size || ''} selected`}
+            {busy ? 'Working…' : `Look up ${selectedGames.length || ''} selected`}
           </button>
-          {selected.size > 0 && (
+          {selectedGames.length > 0 && (
             <span className={`text-xs ${quota.ok ? 'text-ink-500' : 'text-red-600'}`}>
-              ≈ {cost} request{cost === 1 ? '' : 's'}{quota.reason ? ` · ${quota.reason}` : ''}
+              ≈ {cost} to look up, {saveCost} more to save
+              <InfoBubble label="Why twice?">
+                Saving re-fetches the entry and checks it is still the one you reviewed — that
+                verification is what makes approving mean anything, and it costs a second metadata
+                call per approved game. Both halves are quoted here rather than showing one and
+                spending the other.
+              </InfoBubble>
+              {quota.reason ? ` · ${quota.reason}` : ''}
             </span>
           )}
         </div>
@@ -442,7 +507,12 @@ export function ScreenScraperStudio() {
                 [r.id]: defaultAcceptedFields({ gameId: r.id, matchedTitle: r.matched_title ?? null, system: r.system ?? null, wouldFill: r.would_fill ?? [] }),
               }))}
               onRejectAll={() => setAccepted(prev => ({ ...prev, [r.id]: null }))}
-              onSearchManually={() => setSearchFor(r.id)}
+              onSearchManually={() => {
+                setSearchFor({ id: r.id, nonce: Date.now() })
+                // The panel sits below a long page; without this the click
+                // looks like nothing happened.
+                requestAnimationFrame(() => searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+              }}
             />
           ))}
           <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -464,9 +534,9 @@ export function ScreenScraperStudio() {
           <div>
             <h3 className="text-sm font-bold text-ink-900">Recent runs</h3>
             <p className="text-xs text-ink-500">
-              Undo clears exactly the fields a run filled. It can never touch anything you entered
-              yourself — a scrape only ever writes into empty fields — and it skips any field you
-              have changed since.
+              Undo clears the fields a run filled, and only where they still hold what the scrape
+              wrote — anything you have edited since is left alone and reported back. It will say
+              so per game rather than quietly skipping.
             </p>
           </div>
           {runs.map(run => (
@@ -490,8 +560,10 @@ export function ScreenScraperStudio() {
       )}
 
       {/* ── Search by hand, for whatever the automatic pass got wrong ─────── */}
-      <ScrapeSearchPanel games={allGames} initialTarget={searchFor}
-        onApplied={() => { qc.invalidateQueries({ queryKey: ['games'] }); journal.refetch(); status.refetch() }} />
+      <div ref={searchRef}>
+        <ScrapeSearchPanel games={allGames} target={searchFor}
+          onApplied={() => { qc.invalidateQueries({ queryKey: ['games'] }); refreshJournal(); status.refetch() }} />
+      </div>
     </div>
   )
 }

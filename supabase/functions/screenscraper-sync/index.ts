@@ -119,6 +119,7 @@ type ApiResult =
  * information, not a broken run.
  */
 async function callApi(endpoint: string, params: AnyRecord): Promise<ApiResult> {
+  countRequest()
   let res: Response
   try {
     res = await fetch(apiUrl(endpoint, params), { headers: { 'User-Agent': SOFTNAME } })
@@ -296,6 +297,7 @@ function fillOnlyMissing(existing: AnyRecord, incoming: AnyRecord): AnyRecord {
  * or returned on any path through this function.
  */
 async function downloadMedia(url: string): Promise<{ ok: true; bytes: Uint8Array; contentType: string } | { ok: false; reason: string }> {
+  countRequest()
   try {
     let res = await fetch(url, { redirect: 'manual', headers: { 'User-Agent': SOFTNAME } })
     if (res.status >= 300 && res.status < 400) {
@@ -321,7 +323,13 @@ const PENDING_PREFIX = 'pending'
 const pendingPath = (gameId: string, jeuId: string, ext: string) => `${PENDING_PREFIX}/${gameId}/${jeuId}/cover.${ext}`
 
 /**
- * Mirrors a CANDIDATE's cover into a quarantine prefix, for review only.
+ * Mirrors a CANDIDATE's cover into a separate prefix, for review only.
+ *
+ * "Separate", not "private": the `game-media` bucket is world-readable by
+ * policy (094), so this prefix is isolated from the database and from the
+ * canonical paths, NOT from the internet. That is fine for box art and it is
+ * worth saying plainly rather than implying a confidentiality this does not
+ * have.
  *
  * Why this exists: the only signal that reliably exposes a wrong match is the
  * artwork — a Mega Drive box on a SNES game, a Japanese cover for a USA ROM, a
@@ -378,6 +386,21 @@ async function mirrorMedia(gameId: string, role: MediaRole, media: Media): Promi
  * grants, spaced.
  */
 const WAVE_INTERVAL_MS = 1200
+
+/**
+ * Requests this invocation actually issued.
+ *
+ * `remaining_today` used to be reported as `remaining - results.length` — one
+ * per game — while the real spend is that plus every image downloaded. On a
+ * counter the UI already admits is coarse, reporting it systematically
+ * optimistic is the wrong direction to be wrong in.
+ */
+// Module scope, so it MUST be reset per invocation: an edge isolate is reused
+// across requests and a counter that only ever grows would report a remainder
+// that falls off a cliff for no reason.
+let issuedRequests = 0
+const countRequest = () => { issuedRequests += 1 }
+const resetRequestCount = () => { issuedRequests = 0 }
 
 async function inThreads<T, R>(items: T[], fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = []
@@ -456,9 +479,32 @@ async function loadSystemIdMap(): Promise<{ map: Map<string, { id: number; name:
  * falls back to session-only memory when the table is absent, which is exactly
  * the behaviour that existed before this table did.
  */
+/** Which storage object a media COLUMN corresponds to, for a targeted delete. */
+const MEDIA_PATH_FOR: Record<string, string> = {
+  primary_cover_url: '/cover.', screenshot_url: '/screenshot.', fanart_url: '/fanart.',
+}
+
+/**
+ * "Is this still the value the scrape wrote?"
+ *
+ * Deliberately shallow-but-ordered for arrays (`genres`, `modes`): a reordered
+ * list is an edit, and treating it as unchanged would let an undo wipe a list
+ * the user curated.
+ */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((x, i) => x === b[i])
+  }
+  return false
+}
+
 async function recordDecision(userId: string, row: AnyRecord): Promise<void> {
   const { error } = await admin.from('scrape_decisions').insert({ user_id: userId, ...row })
-  if (error) console.log('scrape_decisions insert skipped')
+  // The CODE, not the message: it is a Postgres error code, never a credential,
+  // and without it a genuine constraint failure is indistinguishable from the
+  // missing table this is allowed to tolerate.
+  if (error) console.log(`scrape_decisions insert skipped (${(error as AnyRecord).code ?? 'unknown'})`)
 }
 
 function narrowToFields(patch: AnyRecord, fields: unknown): AnyRecord {
@@ -484,6 +530,8 @@ Deno.serve(async (req) => {
   if (userErr || !userData?.user) return fail('Unauthorized', 401)
   const userId = userData.user.id
 
+  resetRequestCount()
+
   const body = await req.json().catch(() => ({})) as AnyRecord
   const action = String(body.action ?? 'status')
 
@@ -494,8 +542,11 @@ Deno.serve(async (req) => {
         const quota = await readQuota()
         if ('error' in quota) return fail(`ssuserInfos: ${quota.error}`, 502)
         const [{ count: missingMeta }, { count: missingCover }, { count: systems }] = await Promise.all([
-          admin.from('games').select('id', { count: 'exact', head: true }).eq('user_id', userId).is('description', null),
-          admin.from('games').select('id', { count: 'exact', head: true }).eq('user_id', userId).is('primary_cover_url', null),
+          // Scoped to the retro library: Steam and PlayStation rows (migration
+          // 096) have no ROM path, can never be matched here, and were
+          // inflating both numbers.
+          admin.from('games').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('library', 'retro').is('description', null),
+          admin.from('games').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('library', 'retro').is('primary_cover_url', null),
           admin.from('screenscraper_systems').select('id', { count: 'exact', head: true }),
         ])
         return json({
@@ -605,6 +656,20 @@ Deno.serve(async (req) => {
         const wantMedia = body.media !== false
         if (!gameId || !jeuId || !query) return fail('apply_match needs game_id, jeu_id and the query they came from', 400)
 
+        // The same floor `scrape` keeps. An earlier version guarded only the
+        // LOOKUP, so the studio's own copy ("refuses to eat into the last
+        // 500") was true for step 2 and false for step 3 — which is the more
+        // expensive step, since it downloads artwork.
+        const quota = await readQuota()
+        if ('error' in quota) return fail(`ssuserInfos: ${quota.error}`, 502)
+        if (quota.max - quota.used < QUOTA_FLOOR) {
+          return json({
+            status: 'quota_exhausted',
+            remaining_today: Math.max(0, quota.max - quota.used),
+            message: `Only ${quota.max - quota.used} requests left of today's shared allowance; refusing to start (floor ${QUOTA_FLOOR}).`,
+          }, 200)
+        }
+
         const { data: game, error: gErr } = await admin
           .from('games').select('*').eq('user_id', userId).eq('id', gameId).single()
         if (gErr) return fail(`game read: ${gErr.message}`, 500)
@@ -630,6 +695,7 @@ Deno.serve(async (req) => {
         }
 
         const media: AnyRecord = {}
+        const mediaPaths: string[] = []
         const mediaAllowed = (c: string) => !Array.isArray(body.fields) || body.fields.map(String).includes(c)
         if (wantMedia) {
           for (const role of ['cover', 'screenshot', 'fanart'] as MediaRole[]) {
@@ -639,15 +705,27 @@ Deno.serve(async (req) => {
             if (!pick) continue
             const storedUrl = await mirrorMedia(game.id, role, pick)
             // Only a Storage URL is ever assigned here — never pick.url.
-            if (storedUrl) media[column] = storedUrl
+            if (storedUrl) { media[column] = storedUrl; mediaPaths.push(storagePath(game.id, role, mediaExtension(pick))) }
           }
         }
 
         // A hand-picked match is also an answer to "is this row still
         // uncertain?", so it clears the review flag the automatic pass set.
-        const full = { ...patch, ...media, external_source: 'screenscraper', synced_at: new Date().toISOString(), needs_review: false }
+        const written = { ...patch, ...media }
+        const full = { ...written, external_ref: mapped.external_ref, external_source: 'screenscraper', synced_at: new Date().toISOString(), needs_review: false }
         const { error: uErr } = await admin.from('games').update(full).eq('id', gameId).eq('user_id', userId)
         if (uErr) return fail(`game update: ${scrub(uErr.message)}`, 500)
+
+        // Journalled like any other write. Without this a hand-picked match
+        // was the one write path with no undo at all, and the game kept
+        // reappearing in the queue as unhandled.
+        const runId = typeof body.run_id === 'string' && body.run_id ? body.run_id : crypto.randomUUID()
+        await recordDecision(userId, {
+          game_id: gameId, run_id: runId, decision: 'applied',
+          jeu_id: String(jeu.id), matched_title: mapped.title, system_used: body.system ? String(body.system) : null,
+          fields_written: Object.keys(written), written_values: written, storage_paths: mediaPaths,
+          prior_needs_review: game.needs_review === true,
+        })
 
         const rating100 = scoreToRating100(jeu.note)
         const { data: plat } = await admin.from('game_platforms').select('id, rating').eq('user_id', userId).eq('game_id', gameId).limit(1)
@@ -680,6 +758,20 @@ Deno.serve(async (req) => {
         if (!items.length) return fail('apply_reviewed needs a non-empty items array', 400)
         const runId = typeof body.run_id === 'string' && body.run_id ? body.run_id : crypto.randomUUID()
 
+        // The same floor `scrape` keeps. An earlier version guarded only the
+        // LOOKUP, so the studio's own copy ("refuses to eat into the last
+        // 500") was true for step 2 and false for step 3 — which is the more
+        // expensive step, since it downloads artwork.
+        const quota = await readQuota()
+        if ('error' in quota) return fail(`ssuserInfos: ${quota.error}`, 502)
+        if (quota.max - quota.used < QUOTA_FLOOR) {
+          return json({
+            status: 'quota_exhausted',
+            remaining_today: Math.max(0, quota.max - quota.used),
+            message: `Only ${quota.max - quota.used} requests left of today's shared allowance; refusing to start (floor ${QUOTA_FLOOR}).`,
+          }, 200)
+        }
+
         const gameIds = items.map((i: AnyRecord) => String(i.game_id))
         const { data: games, error: gErr } = await admin
           .from('games').select('*').eq('user_id', userId).in('id', gameIds)
@@ -711,8 +803,16 @@ Deno.serve(async (req) => {
           const jeu = r.data?.response?.jeu
           if (!jeu) return { id: gameId, title: game.title, outcome: 'error', reason: 'response carried no jeu' }
 
-          // The identity check that makes approval mean anything.
-          if (item.jeu_id && String(jeu.id) !== String(item.jeu_id)) {
+          // The identity check that makes approval mean anything. It REFUSES
+          // when the reviewed entry carried no id at all: a missing id is
+          // exactly when identity is least certain, and an earlier version
+          // wrote anyway in that case (`if (item.jeu_id && …)`), which
+          // reintroduced through a null the very bug this action exists for.
+          if (!item.jeu_id) {
+            return { id: gameId, title: game.title, outcome: 'stale_proposal',
+                     reason: 'the entry you reviewed carried no id, so this write cannot be proved to be the same one — look it up again' }
+          }
+          if (String(jeu.id) !== String(item.jeu_id)) {
             return { id: gameId, title: game.title, outcome: 'stale_proposal',
                      reason: 'their database answered with a different entry than the one you reviewed — look it up again' }
           }
@@ -739,8 +839,20 @@ Deno.serve(async (req) => {
 
           const full = { ...patch, ...media }
           if (Object.keys(full).length > 0) {
+            // `external_ref` is bookkeeping, NOT a user choice, so it is set
+            // here rather than passing through narrowToFields — which is why
+            // an earlier version dropped it entirely and left applied rows
+            // with a source and no id, permanently reading as "never scraped".
+            // `needs_review` clears for the same reason: a human just reviewed
+            // this and approved it, which is what the flag is asking for.
             const { error } = await admin.from('games')
-              .update({ ...full, external_source: 'screenscraper', synced_at: new Date().toISOString() })
+              .update({
+                ...full,
+                external_ref: mapped.external_ref,
+                external_source: 'screenscraper',
+                synced_at: new Date().toISOString(),
+                needs_review: false,
+              })
               .eq('id', gameId).eq('user_id', userId)
             if (error) return { id: gameId, title: game.title, outcome: 'error', reason: scrub(error.message) }
           }
@@ -755,7 +867,7 @@ Deno.serve(async (req) => {
           await recordDecision(userId, {
             game_id: gameId, run_id: runId, decision: 'applied',
             jeu_id: String(jeu.id), matched_title: mapped.title, system_used: sys.name,
-            fields_written: Object.keys(full), storage_paths: storagePaths,
+            fields_written: Object.keys(full), written_values: full, storage_paths: storagePaths,
             prior_needs_review: game.needs_review === true,
           })
 
@@ -775,63 +887,114 @@ Deno.serve(async (req) => {
 
         const { data: rows, error } = await admin.from('scrape_decisions')
           .select('*').eq('user_id', userId).eq('run_id', runId).eq('decision', 'applied')
-        if (error) return json({ status: 'no_journal', message: 'Migration 097 is not applied, so there is no record of what to undo.' }, 200)
+        if (error) {
+          // Only a MISSING TABLE means "migration 097 is not applied". A
+          // network blip, an RLS problem or a timeout are different failures
+          // and an earlier version reported all of them as the migration,
+          // which is a confidently wrong diagnosis.
+          const code = (error as AnyRecord).code
+          if (code === '42P01' || code === 'PGRST205') {
+            return json({ status: 'no_journal', message: 'Migration 097 is not applied, so there is no record of what to undo.' }, 200)
+          }
+          return fail(`journal read: ${scrub(error.message)}`, 500)
+        }
         if (!rows?.length) return json({ status: 'ok', reverted: 0, message: 'Nothing from that run is still applied.' })
+
+        // Games already reverted are skipped, so a repeat call (or a retry
+        // after a partial failure) cannot null a field twice or delete a
+        // Storage object that has since been legitimately replaced.
+        const { data: undoneRows } = await admin.from('scrape_decisions')
+          .select('game_id').eq('user_id', userId).eq('run_id', runId).eq('decision', 'undone')
+        const alreadyUndone = new Set((undoneRows ?? []).map((r: AnyRecord) => String(r.game_id)))
 
         let reverted = 0
         const skipped: AnyRecord[] = []
         for (const row of rows) {
+          if (alreadyUndone.has(String(row.game_id))) continue
           const fields = (row.fields_written ?? []) as string[]
           if (!fields.length) continue
-          // Setting a field back to NULL is the exact inverse of the write,
-          // and it is safe ONLY because the write was gap-filling: whatever is
-          // there now either came from this run, or was typed afterwards — and
-          // the second case is checked for below rather than assumed away.
+
           const { data: live } = await admin.from('games')
             .select('*').eq('id', row.game_id).eq('user_id', userId).single()
           if (!live) { skipped.push({ game_id: row.game_id, reason: 'game no longer exists' }); continue }
 
+          // Setting a field back to NULL is the inverse of the write, and it
+          // is safe ONLY where the field still holds what the scrape put
+          // there. An earlier version checked `live[f] === null` instead —
+          // which skips fields that are ALREADY EMPTY and does not detect an
+          // edit at all, so a description the user had rewritten by hand was
+          // destroyed by the undo that claimed it never could be.
+          const written = (row.written_values ?? {}) as AnyRecord
           const patch: AnyRecord = {}
-          const kept: string[] = []
+          const cleared: string[] = []
+          const keptByUser: string[] = []
           for (const f of fields) {
-            // A value the user changed AFTER the scrape is theirs now.
-            if (live[f] === null || live[f] === undefined) continue
+            const now = live[f]
+            if (now === null || now === undefined) continue      // nothing to clear
+            if (!sameValue(now, written[f])) { keptByUser.push(f); continue }
             patch[f] = null
-            kept.push(f)
+            cleared.push(f)
           }
-          patch.needs_review = row.prior_needs_review ?? false
+
+          // Same rule for the flag: only put it back if it is still what the
+          // apply left it as. A flag the user raised afterwards is theirs.
+          if (live.needs_review === false && row.prior_needs_review === true) patch.needs_review = true
+
+          if (Object.keys(patch).length === 0) {
+            skipped.push({ game_id: row.game_id, reason: 'every field has been edited since — nothing to revert' })
+            continue
+          }
+
           const { error: uErr } = await admin.from('games').update(patch).eq('id', row.game_id).eq('user_id', userId)
           if (uErr) { skipped.push({ game_id: row.game_id, reason: scrub(uErr.message) }); continue }
 
-          // The mirrored files go too — an orphaned object is cheap, a wrong
-          // cover still sitting in the bucket is confusing.
+          // Only remove an image whose column was actually cleared — an object
+          // still pointed at by a cover the user replaced by hand stays.
           const paths = (row.storage_paths ?? []) as string[]
-          if (paths.length) await admin.storage.from(BUCKET).remove(paths)
+          const removable = paths.filter(pth => cleared.some(f => pth.includes(MEDIA_PATH_FOR[f] ?? '\u0000')))
+          if (removable.length) await admin.storage.from(BUCKET).remove(removable)
 
           await recordDecision(userId, {
             game_id: row.game_id, run_id: runId, decision: 'undone',
             jeu_id: row.jeu_id, matched_title: row.matched_title, system_used: row.system_used,
-            fields_written: kept, storage_paths: [], prior_needs_review: row.prior_needs_review,
+            fields_written: cleared, written_values: {}, storage_paths: [],
+            prior_needs_review: row.prior_needs_review,
           })
           reverted++
+          if (keptByUser.length) skipped.push({ game_id: row.game_id, reason: `kept your own edits to ${keptByUser.join(', ')}` })
         }
         return json({ status: 'ok', reverted, skipped })
       }
 
       // ── Clean up candidate covers nobody approved. ──
       case 'sweep_pending': {
-        const { data: dirs, error } = await admin.storage.from(BUCKET).list(PENDING_PREFIX, { limit: 1000 })
-        if (error) return fail(`sweep list: ${scrub(error.message)}`, 500)
-        let removed = 0
-        for (const dir of dirs ?? []) {
-          const { data: inner } = await admin.storage.from(BUCKET).list(`${PENDING_PREFIX}/${dir.name}`, { limit: 100 })
-          for (const sub of inner ?? []) {
-            const { data: files } = await admin.storage.from(BUCKET).list(`${PENDING_PREFIX}/${dir.name}/${sub.name}`, { limit: 100 })
-            const paths = (files ?? []).map(f => `${PENDING_PREFIX}/${dir.name}/${sub.name}/${f.name}`)
-            if (paths.length) { await admin.storage.from(BUCKET).remove(paths); removed += paths.length }
+        // Paginated at every level. An earlier version listed one page of
+        // 1000 and reported a partial `removed` as a clean success, which is
+        // how a cleanup quietly stops cleaning.
+        async function listAll(prefix: string): Promise<string[]> {
+          const names: string[] = []
+          for (let offset = 0; ; offset += 100) {
+            const { data, error } = await admin.storage.from(BUCKET).list(prefix, { limit: 100, offset })
+            if (error) throw new Error(scrub(error.message))
+            names.push(...(data ?? []).map(d => d.name))
+            if (!data || data.length < 100) break
           }
+          return names
         }
-        return json({ status: 'ok', removed })
+
+        try {
+          let removed = 0
+          for (const gameDir of await listAll(PENDING_PREFIX)) {
+            for (const jeuDir of await listAll(`${PENDING_PREFIX}/${gameDir}`)) {
+              const base = `${PENDING_PREFIX}/${gameDir}/${jeuDir}`
+              const paths = (await listAll(base)).map(n => `${base}/${n}`)
+              if (paths.length) { await admin.storage.from(BUCKET).remove(paths); removed += paths.length }
+            }
+          }
+          return json({ status: 'ok', removed })
+        } catch (e) {
+          return fail(`sweep: ${scrub((e as Error).message)}`, 500)
+        }
       }
 
       // ── The real work, one small batch per invocation. ──
@@ -891,7 +1054,7 @@ Deno.serve(async (req) => {
           games = found
         } else {
           const r = await admin.from('games').select('*').eq('user_id', userId)
-            .is('description', null).limit(limit)
+            .eq('library', 'retro').is('description', null).limit(limit)
           games = r.data; gErr = r.error
         }
         if (gErr) return fail(`games read: ${gErr.message}`, 500)
@@ -1008,13 +1171,14 @@ Deno.serve(async (req) => {
           no_match: by('no_match'),
           unmatchable: by('unmatchable'),
           errors: by('error'),
-          remaining_today: Math.max(0, remaining - results.length),
+          requests_issued: issuedRequests,
+          remaining_today: Math.max(0, remaining - issuedRequests),
           results,
         })
       }
 
       default:
-        return fail(`Unknown action "${action}" (use status | refresh_systems | scrape)`, 400)
+        return fail(`Unknown action "${action}" (use status | refresh_systems | search | apply_match | apply_reviewed | undo_run | sweep_pending | scrape)`, 400)
     }
   } catch (e) {
     return fail((e as Error).message, 500)

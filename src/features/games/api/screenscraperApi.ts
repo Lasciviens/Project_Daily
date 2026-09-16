@@ -227,8 +227,33 @@ export type ScrapeDecision = {
   created_at: string
 }
 
-/** Pre-migration-safe: no journal degrades to no history, never a crash. */
-export async function fetchScrapeDecisions(limit = 400): Promise<ScrapeDecision[]> {
+/**
+ * Every decision, in the two narrow columns the "already handled" map needs.
+ *
+ * Deliberately NOT the same query as the run list. An earlier version read one
+ * 400-row page of `select('*')` and built both from it — so once roughly a
+ * third of a 1150-game library had been decided, the oldest rows fell off the
+ * page and those games silently re-entered the queue as unhandled. Which is
+ * precisely the bug this table was added to fix, just deferred.
+ *
+ * Pre-migration-safe: no journal degrades to no history, never a crash.
+ */
+export async function fetchDecisionStates(): Promise<{ game_id: string; decision: string }[]> {
+  const page = 1000
+  const out: { game_id: string; decision: string }[] = []
+  for (let from = 0; ; from += page) {
+    const { data, error } = await supabase
+      .from('scrape_decisions').select('game_id, decision')
+      .order('created_at', { ascending: false }).range(from, from + page - 1)
+    if (error) return from === 0 ? [] : out
+    out.push(...(data ?? []))
+    if (!data || data.length < page) break
+  }
+  return out
+}
+
+/** The recent-runs panel only ever shows a handful. */
+export async function fetchRecentDecisions(limit = 200): Promise<ScrapeDecision[]> {
   const { data, error } = await supabase
     .from('scrape_decisions').select('*')
     .order('created_at', { ascending: false }).limit(limit)
