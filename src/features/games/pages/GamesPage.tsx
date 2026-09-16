@@ -288,7 +288,7 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
   const [view,           setView]           = useState<LibView>('grid')
   const [filtersOpen,    setFiltersOpen]    = useState(false)
 
-  const { data: allGames = [], isLoading } = useAllGames()
+  const { data: allGames = [], isLoading, isError, error, refetch } = useAllGames()
 
   const genreOptions  = useMemo(() => [...new Set(allGames.flatMap(g => g.genres ?? []))].sort(), [allGames])
   const systemOptions = useMemo(() => [...new Set(allGames.flatMap(g => g.platforms.map(p => p.system)))].sort(), [allGames])
@@ -454,7 +454,25 @@ function LibraryTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
 
       {isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading games…</div>}
 
-      {!isLoading && allGames.length === 0 && (
+      {/* A failed load must never render as "your library is empty" — that told
+          the user their data was gone when the real cause was a request this
+          page could not make. Both states now say what actually happened. */}
+      {!isLoading && isError && (
+        <div className="max-w-xl rounded-xl border border-red-200 bg-red-50 p-4 dark:bg-red-500/10 dark:border-red-500/30">
+          <p className="text-sm font-semibold text-red-700 dark:text-red-400">Could not load your library</p>
+          <p className="text-xs text-red-600/90 dark:text-red-400/80 mt-1 break-words">
+            {(error as Error | null)?.message ?? 'Unknown error'}
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="mt-3 min-h-[44px] px-3 text-sm rounded-lg border border-red-300 bg-cream-50 text-red-700 hover:border-red-400 transition-colors dark:bg-transparent dark:text-red-400"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !isError && allGames.length === 0 && (
         <div className="text-center py-16 text-ink-400">
           <p className="text-3xl mb-3">🎮</p>
           <p className="text-sm font-medium text-ink-700">Your library is empty</p>
