@@ -8,9 +8,9 @@ import { logError } from '../../../shared/utils/logError'
 // reaching-for-it is different: the panel is "go fill everything", this is
 // "this one row is wrong, fix it now".
 //
-// Its own component rather than JSX inside the Review row, because the detail
-// modal is the obvious next home for it — the Review tab is just where it is
-// needed first.
+// It lives in the detail modal, which is the ONE surface both the library grid
+// and the Needs-Review list open — so a row anywhere in the app is one tap away
+// from it, and there is no second copy of this behaviour to keep in sync.
 
 const OUTCOME_TEXT: Record<ScrapeResult['outcome'], string> = {
   matched: 'Updated ✓',

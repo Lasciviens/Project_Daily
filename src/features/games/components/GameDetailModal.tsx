@@ -7,6 +7,7 @@ import {
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
+import { ScrapeGameButton } from './ScrapeGameButton'
 import {
   STATUS_LABEL, TIER_COLOR, TIERS, STATUSES,
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
@@ -467,6 +468,7 @@ export function GameDetailModal({ gameId, onClose }: Props) {
                     {game.play_order != null ? `✕ Remove from Queue (#${game.play_order})` : '🎮 Add to Queue'}
                   </button>
                   <button onClick={() => setPlanOpen(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
+                  <ScrapeGameButton gameId={game.id} title={game.title} className="font-semibold" />
                   <button onClick={() => setConfirmDelete(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-red-100 text-ink-500 hover:text-red-600 transition-colors">🗑 Delete</button>
                 </div>
               </div>
