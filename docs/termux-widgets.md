@@ -7,6 +7,12 @@ the RP6 contains an installed copy, not an automatically updating checkout.
 **Last device verification:** 2026-09-16, user's successful RP6 widget output.
 **Device:** RP6 · **Termux distribution:** Google Play · **SD ID:** `6A0A-D741`.
 
+**Content-sync update:** the new installer adds complete source metadata and
+original images, explicitly excluding **PDF manuals and video**. Migration 100
+and `esde-content-sync` are deployed; the new widget revision still needs to be
+installed/run on RP6. The successful device output below describes the earlier
+cover-only revision, not a completed original-image upload.
+
 ## Quick navigation
 
 - [Existing widgets](#existing-widgets)
@@ -22,7 +28,9 @@ the RP6 contains an installed copy, not an automatically updating checkout.
 
 | Widget filename / displayed name | Command option | Behavior |
 |---|---|---|
-| `Oyunlari-Senkronize-Et` | none | Import new games with supported metadata, update play statistics, sync covers, reconcile deleted ES-DE variants. |
+| `Oyunlari-Senkronize-Et` | none | Full workflow: import games/statistics, preview covers, raw source metadata, original images, guarded deletions. |
+| `Gorselleri-Senkronize-Et` | `--media-only` | Original images in every supported category plus cover previews, for existing DB variants. PDF/video excluded; no game creation/deletion. |
+| `Metadatayi-Senkronize-Et` | `--metadata-only` | Import games/statistics and preserve complete parsed XML/context; no image upload or game deletion. |
 | `Kapaklari-Guncelle` | `--covers-only` | Sync covers for games already in the DB; no game import or deletion. |
 | `Kutuphane-Kontrol` | `--dry-run` | Parse local XML, check ROM access and find cover paths; no network, writes or deletions. It does not decode every image or compare against DB contents. |
 
@@ -38,10 +46,11 @@ see the [maintained Play Store fork](https://github.com/termux-play-store).
 Do not mix APK/plugin signing sources or reinstall a working Termux just to
 follow an older separate-plugin tutorial.
 
-1. Put these three files from the **same reviewed revision** into the SD card's
+1. Put these four files from the **same reviewed revision** into the SD card's
    `Download` directory:
    - [`push-esde-library.py`](../scripts/push-esde-library.py)
    - [`sync-esde.py`](../scripts/sync-esde.py)
+   - [`sync-esde-content.py`](../scripts/sync-esde-content.py)
    - [`setup-esde-widgets.sh`](../scripts/setup-esde-widgets.sh)
 2. On RP6, run once in Termux:
 
@@ -55,9 +64,9 @@ follow an older separate-plugin tutorial.
 4. Long-press the Android home screen → Widgets → Termux → add the widget and
    choose one of the names above. Refresh/re-add the widget if its list is stale.
 
-**To update:** copy the new three-file set, rerun the same setup command, then
+**To update:** copy the new four-file set, rerun the same setup command, then
 run `Kutuphane-Kontrol`. Copying files to SD or merging a PR alone does **not**
-update the installed scripts in Termux. Setup overwrites the three generated
+update the installed scripts in Termux. Setup overwrites the five generated
 launchers and resets configuration to its packaged defaults; record any custom
 paths in the installer before rerunning it. Extra custom launchers are retained.
 
@@ -76,6 +85,7 @@ adapt that check when reusing this installer for a different library.
 | Import checkpoints and lock | `~/.local/state/esde-sync/state.json` and `.lock` |
 | Pending deletion batch | `~/.local/state/esde-sync/pending-deletions.json` |
 | Optimized cover cache | `~/.local/state/esde-sync/covers/` |
+| Full-content results and invalid-image list | `~/.local/state/esde-sync/content-report.json` |
 | Live XML | `/storage/6A0A-D741/ES-DE/gamelists/<system>/gamelist.xml` |
 | ROMs | `/storage/6A0A-D741/ROMs/<system>/` |
 | Downloaded media | `/storage/6A0A-D741/ES-DE/downloaded_media/<system>/` |
@@ -96,9 +106,12 @@ Termux file; rerunning setup preserves the existing file and does not rotate it.
 |---|---|
 | Label, launch options, terminal message, wake lock | [`setup-esde-widgets.sh`](../scripts/setup-esde-widgets.sh), `create_widget` |
 | Workflow, media matching, deletion guards, new CLI option | [`sync-esde.py`](../scripts/sync-esde.py) |
+| Full XML capture, original image categories, PDF/video exclusions | [`sync-esde-content.py`](../scripts/sync-esde-content.py) |
 | XML allowlist, ROM/add-on filters, import batches/checkpoints | [`push-esde-library.py`](../scripts/push-esde-library.py) |
 | Server game import/mapping | [`esde-sync/index.ts`](../supabase/functions/esde-sync/index.ts) |
 | Server inventory, cover upload, explicit deletion | [`esde-media-sync/index.ts`](../supabase/functions/esde-media-sync/index.ts) |
+| Original image bytes and raw metadata endpoint | [`esde-content-sync/index.ts`](../supabase/functions/esde-content-sync/index.ts) |
+| Source/manifest storage and atomic writes | [Migration 100](../supabase/migrations/100_esde_source_and_assets.sql) |
 | Atomic cover link/deletion database contract | [Migration 094](../supabase/migrations/094_esde_media_and_reconcile.sql); use a **new** migration for future changes |
 
 1. Branch from current `main`; inspect the current source and this guide. Do not
@@ -117,7 +130,7 @@ Termux file; rerunning setup preserves the existing file and does not rotate it.
 
 Keep the launcher small: it should call a maintained script and show the outcome.
 Put parsing, authentication, retries, locking and synchronization in that script.
-For another ES-DE mode, first add and document a CLI option in `sync-esde.py`,
+For another ES-DE mode, first add and document a CLI option in `sync-esde-content.py`,
 then add a `create_widget` call in the installer. Do not pass an unsupported option.
 
 Minimal foreground launcher pattern for another task (example, not installed):
@@ -144,26 +157,48 @@ SD card is an error, never proof that the user deleted their entire library.
 
 ## What ES-DE sync actually transfers
 
-**Current implementation is not a complete ES-DE backup.** The user now requires
-all game-related data and media except video; this is the target scope, not a
-claim that the current cover-only uploader already fulfills it.
+**The new content widget captures game metadata and original images, excluding
+PDF manuals and video.** The initial cover-only audit remains a historical record.
+Original images go to Storage; metadata, file hashes and references go to the DB.
 
 | Data | Current behavior |
 |---|---|
 | System + exact ROM path | Identity on `game_platforms`; ROM contents are not uploaded. |
 | Name, description, developer, publisher, genre, players, release date, rating | Selected metadata imported on game creation; existing curated metadata is preserved. |
 | Play count, play time, last played | Updated incrementally; raw missing/zero values remain distinct in checkpoints. |
-| Hidden / broken | Used as import/filter/review signals, not a lossless raw metadata archive. |
-| Other XML tags/attributes, folder/system metadata | Not comprehensively preserved by the current allowlist. |
-| Covers | Exact path match, optimized WebP ≤640 px, quality 82; original bytes/metadata are not archived. |
-| Fan art, screenshots, title screens, 3D boxes, logos/wheels, miximages, manuals and other non-video assets | Not transferred by the current cover-only uploader. Actual source categories require an on-card inventory. |
-| Video | Excluded; must remain excluded from the requested expansion. |
+| Hidden / broken | Existing inclusion/review rules remain. Active games' original fields are also preserved in their XML source record. Hidden/excluded games are not revived. |
+| Other XML tags/attributes, repeated/unknown tags, favorite, folder/system metadata | Parsed XML game element plus context saved in `game_platforms.esde_source`; independent hash detects metadata-only edits. This is semantic XML preservation, not a byte-identical archive of the entire original file. |
+| Covers | Existing optimized WebP preview plus an original image asset. |
+| Fan art, screenshots, title screens, 3D boxes, back covers, logos/marquees, miximages, physical media | Original bytes uploaded, linked under exact relative path in `game_platforms.esde_assets`. Category names are discovered, not limited to this list. |
+| PDF manuals and video | Excluded by the latest user instruction, on both client and server. |
 
 Only play-stat changes automatically select an existing game for the old import
 endpoint. `--full` resends metadata but does not make that endpoint overwrite
-existing metadata. Preserving all source metadata will require a separate source
-representation alongside user-edited presentation fields; silently overwriting
-curated fields is not an acceptable substitute.
+existing metadata. The new source representation captures changes separately
+without overwriting curated fields or ScreenScraper's `games.provider_data`.
+Extra images are accessible in `game_platforms.esde_assets`; this change does not
+add a frontend gallery or overwrite provider-specific `games.media`.
+
+The content uploader accepts PNG, JPEG, WebP, GIF and BMP originals, up to 20 MB
+each. The measured card's non-PDF/non-video assets are PNG/JPEG, and its largest
+matched image is 6,406,115 bytes. Unsupported formats, empty/corrupt images and
+unmatched assets are reported, not declared uploaded. Shared exact stems with
+different ROM extensions keep ES-DE's association with both variants.
+
+The first complete upload includes up to **9,163 image associations, 2,553.7 MiB**
+in this card snapshot; 1,442 associations are zero bytes and will be reported.
+All **7,721 nonempty associations** passed local Pillow validation (original
+bytes total 2,677,793,723). These are source-validation counts, not completed-upload counts. Three games sync
+concurrently, with bounded retries. Interrupted runs resume using server hashes;
+unchanged source documents and images are not written again. Source images are
+read/hashed during comparison, so an unchanged run still reads the SD card.
+
+Missing image references are pruned only after a stable, readable rescan;
+missing category folders and large-removal guards stop pruning. Old/replaced
+object versions remain in the variant's Storage namespace until that variant is
+deleted, avoiding unsafe file removal during concurrent linking. Deleting a game
+variant also cleans its managed original-image extensions. ROMs/artwork on SD
+are never deleted by these widgets.
 
 See the [media and metadata completeness audit](games/esde-completeness-audit.md)
 for measured DB coverage, the requested ten-game comparison and the expansion
@@ -174,7 +209,7 @@ actually available; do not infer media existence from a gamelist alone.
 
 | Output / symptom | Meaning and next action |
 |---|---|
-| `Sync complete` | Run finished, including deletion reconciliation. `Push complete` alone refers only to the game-import stage. |
+| `Content sync complete` | New full-content stage finished. Earlier `Sync complete` / `Push complete` messages refer to the legacy stages, not the whole new widget. Check invalid/missing counts in the final report. |
 | `created:0, updated:26` | Existing records updated; no new records created. It does not prove 26 new play sessions; local checkpoints also affect selection. |
 | `uploaded:0, unchanged:866` | Existing matching covers were retained without upload. |
 | `Unreadable cover` / `corrupt` | Source image cannot be decoded. The known 161 SNES files were measured as zero bytes. Re-download them in ES-DE; rerun afterwards. Games stay imported. |
@@ -226,7 +261,9 @@ Counts are dated observations, not constants to enforce in future runs.
 ```sh
 python3 -B scripts/verify-esde-push.py
 python3 -B scripts/verify-esde-media.py  # Pillow required
+python3 -B scripts/verify-esde-content.py # Pillow required
 node scripts/verify-esde-media-edge.cjs # Node 24
+node scripts/verify-esde-content-edge.cjs # Node 24
 bash -n scripts/setup-esde-widgets.sh
 git diff --check
 ```
@@ -236,8 +273,19 @@ checks, and rollback-only SQL RPC checks passed. The SQL test is
 [`verify-esde-media.sql`](../scripts/verify-esde-media.sql); run only against an
 authorized database. It inserts synthetic fixtures and rolls them back.
 
-Server prerequisites: migrations 093/094, both Edge Functions deployed, matching
+Server prerequisites: migrations 093/094/100, `esde-sync`, `esde-media-sync` and
+`esde-content-sync` deployed, matching
 `ESDE_SYNC_SECRET`, and server `HEVY_USER_ID`. Current handlers read those from
 **Edge Function environment secrets**; older Vault-only notes are not sufficient.
 No frontend build is required for a documentation-only edit. Code/feature changes
 must run their applicable checks and record any outstanding deployment/device step.
+
+### Original-image/source expansion, 2026-09-16
+
+The user narrowed the earlier audit target to exclude **both PDF manuals and
+video**. Added migration 100, source/asset RPC, the binary content endpoint,
+incremental original-image/source coordinator, and two additional widget modes.
+The installer updates the existing full-sync widget to use the new coordinator.
+Server and local source-scan verification are complete; the initial full upload
+is intentionally left for the user to run from Termux. Do not report it as done
+until an on-device `Content sync complete` report has been checked.

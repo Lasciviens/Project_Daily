@@ -1,5 +1,11 @@
 # ES-DE completeness audit — 2026-09-16
 
+> Historical pre-expansion findings. After reviewing this report, the user
+> requested the new widgets to exclude **PDF manuals as well as video**.
+> The [current widget guide](../termux-widgets.md) describes migration 100 and
+> the new source/original-image uploader. An initial full Termux upload is still
+> required; the historical counts below are not claims about its completion.
+
 **Result: the current device sync does not transfer all non-video data.**
 Ten games were matched by exact `(esde_system, esde_path)` between the mounted
 RP6 SD card and live Supabase. Their source has **87 nonempty non-video assets**;

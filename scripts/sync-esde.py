@@ -191,7 +191,6 @@ def synchronize(args, root, roms, media, base, secret):
         try:
             content, digest = optimized_cover(source, cache)
         except BadCover as error:
-            print(str(error), flush=True)
             return "corrupt", 0
         if url == managed_prefix + variant["id"] + "/" + digest + ".webp":
             return "unchanged", 0
