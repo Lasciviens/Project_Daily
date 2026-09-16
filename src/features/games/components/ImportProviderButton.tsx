@@ -30,9 +30,13 @@ export function ImportProviderButton({ library, source, games, label }: {
     setBusy(true)
     const tid = toast.loading(`Importing ${games.length} games…`)
     try {
-      const { imported } = await importProviderGames(library, source, games)
+      const { imported, updated } = await importProviderGames(library, source, games)
       toast.dismiss(tid)
-      toast.success(`${imported} game${imported === 1 ? '' : 's'} in your library ✓`)
+      const bits = [
+        imported ? `${imported} added` : null,
+        updated ? `${updated} updated` : null,
+      ].filter(Boolean)
+      toast.success(bits.length ? `${bits.join(' · ')} ✓` : 'Already up to date ✓')
       qc.invalidateQueries({ queryKey: ['games'] })
     } catch (e) {
       toast.dismiss(tid)
