@@ -599,8 +599,24 @@ Deno.serve(async (req) => {
         const rows = list.map((s: AnyRecord) => {
           const noms = (s.noms ?? {}) as AnyRecord
           // `nom_retropie` is comma-separated aliases ("genesis,megadrive").
-          const aliases = String(noms.nom_retropie ?? '')
-            .split(',').map(a => a.trim().toLowerCase()).filter(Boolean)
+          //
+          // It is also OPTIONAL, and building the whole lookup on it alone is
+          // what wrote off five systems (3DS, Switch, Wii U, Xbox 360, FBNeo):
+          // ES-DE's folder is `n3ds`, their `nom_retropie` does not say so, and
+          // the app then claimed there was "no ScreenScraper id for n3ds" —
+          // which read as "they do not have 3DS". They do. We could not spell
+          // its name. So every other name the system carries is an alias too,
+          // normalised, which costs nothing and catches the near-misses.
+          const extra = [noms.nom_eu, noms.nom_us, noms.nom_jp, noms.noms_commun]
+            .flatMap(v => String(v ?? '').split(','))
+            .map(a => a.trim().toLowerCase())
+            .filter(Boolean)
+          const aliases = [
+            ...String(noms.nom_retropie ?? '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean),
+            ...extra,
+            // "Nintendo 3DS" also answers to "nintendo3ds".
+            ...extra.map(a => a.replace(/[^a-z0-9]/g, '')).filter(Boolean),
+          ]
           return {
             id: Number(s.id),
             name: noms.nom_eu ?? noms.nom_us ?? noms.noms_commun ?? null,
@@ -633,9 +649,10 @@ Deno.serve(async (req) => {
         if (body.system) {
           const sysMap = await loadSystemIdMap()
           if ('error' in sysMap) return fail(`systems read: ${sysMap.error}`, 500)
+          // Same rule as `lookup`: an unmapped system drops the narrowing,
+          // it does not cancel the search. `systemeid` is optional.
           const sys = sysMap.map.get(String(body.system).trim().toLowerCase())
-          if (!sys) return json({ status: 'ok', results: [], message: `No ScreenScraper id known for system "${body.system}".` })
-          params.systemeid = sys.id
+          if (sys) params.systemeid = sys.id
         }
 
         const r = await callApi('jeuRecherche.php', params)
@@ -681,28 +698,40 @@ Deno.serve(async (req) => {
         const mode = String(body.mode ?? 'name')
         const params: AnyRecord = {}
 
+        // `systemeid` is OPTIONAL on both endpoints. A system this app cannot
+        // map to their numeric id is therefore a narrowing we skip — never a
+        // reason to refuse the lookup. An earlier version returned an empty
+        // result with "No ScreenScraper id known for system X", which is
+        // nonsense from the user's side: searching "3ds mario" and picking
+        // from five results needs no id at all.
         let sysId: number | null = null
+        let unscopedBecauseUnmapped = false
         if (body.system) {
           const sysMap = await loadSystemIdMap()
           if ('error' in sysMap) return fail(`systems read: ${sysMap.error}`, 500)
           const sys = sysMap.map.get(String(body.system).trim().toLowerCase())
           if (sys) sysId = sys.id
-          else if (mode === 'name') {
-            return json({ status: 'ok', results: [], message: `No ScreenScraper id known for system "${body.system}".` })
-          }
+          else unscopedBecauseUnmapped = true
         }
         if (sysId != null) params.systemeid = sysId
+        const scopeNote = unscopedBecauseUnmapped
+          ? ` (searched across every system — "${body.system}" is not in the cached system list, so it could not be narrowed)`
+          : ''
 
         if (mode === 'name') {
           const query = String(body.query ?? '').trim()
           if (!query) return json({ status: 'ok', results: [], message: 'Type something to search for.' })
           params.recherche = query
           const r = await callApi('jeuRecherche.php', params)
-          if (!r.ok && r.notFound) return json({ status: 'ok', results: [], message: 'No games matched that name.' })
+          if (!r.ok && r.notFound) return json({ status: 'ok', results: [], message: `No games matched that name${scopeNote}.` })
           if (!r.ok) return fail(`jeuRecherche: ${r.message}`, 502)
           const jeux = r.data?.response?.jeux
           if (!Array.isArray(jeux)) return json({ status: 'ok', results: [], message: 'The search returned no game list.' })
-          return json({ status: 'ok', mode, query, results: jeux.slice(0, SEARCH_LIMIT).map(candidateOf) })
+          return json({
+            status: 'ok', mode, query,
+            results: jeux.slice(0, SEARCH_LIMIT).map(candidateOf),
+            ...(scopeNote ? { message: `Searched across every system — "${body.system}" is not in the cached system list.` } : {}),
+          })
         }
 
         // Every other mode is an EXACT lookup, so it answers with one game.
@@ -741,7 +770,7 @@ Deno.serve(async (req) => {
         }
 
         const r = await callApi('jeuInfos.php', params)
-        if (!r.ok && r.notFound) return json({ status: 'ok', mode, results: [], message: 'Nothing in their database matches that.' })
+        if (!r.ok && r.notFound) return json({ status: 'ok', mode, results: [], message: `Nothing in their database matches that${scopeNote}.` })
         if (!r.ok) return fail(`jeuInfos: ${r.message}`, 502)
         const jeu = r.data?.response?.jeu
         if (!jeu) return json({ status: 'ok', mode, results: [], message: 'Their response carried no game.' })
@@ -1198,9 +1227,12 @@ Deno.serve(async (req) => {
         const sysMap = await loadSystemIdMap()
         if ('error' in sysMap) return fail(`systems read: ${sysMap.error}`, 500)
         const systemId = sysMap.map
-        if (systemId.size === 0) {
-          return json({ status: 'needs_systems', message: 'Run action "refresh_systems" first — no ScreenScraper system ids are known yet.' }, 200)
-        }
+        // Not a refusal: a filename alone is a valid jeuInfos lookup, so an
+        // empty map only means nothing can be narrowed. Said once, in the
+        // response, rather than stopping the run.
+        const systemsNote = systemId.size === 0
+          ? 'No ScreenScraper system ids are cached — every lookup searched across all systems. Press "Fetch system ids" to narrow them.'
+          : undefined
 
         const platformFor = new Map<string, AnyRecord>()
         for (const p of platforms ?? []) if (!platformFor.has(p.game_id)) platformFor.set(p.game_id, p)
@@ -1209,15 +1241,25 @@ Deno.serve(async (req) => {
           const plat = platformFor.get(game.id)
           const romnom = romNameFromPath(plat?.esde_path)
           const sys = plat?.esde_system ? systemId.get(String(plat.esde_system).trim().toLowerCase()) : undefined
-          if (!romnom || !sys) {
-            return { id: game.id, title: game.title, outcome: 'unmatchable', reason: !romnom ? 'no rom filename' : `no ScreenScraper id for system "${plat?.esde_system}"` }
+          // Only a MISSING FILENAME makes a game unmatchable. `systemeid` is
+          // optional on jeuInfos, so an unmapped system just means the search
+          // is not narrowed — an earlier version refused outright and wrote
+          // off five whole systems that way.
+          if (!romnom) {
+            return { id: game.id, title: game.title, outcome: 'unmatchable', reason: 'no ROM filename recorded for this game' }
           }
 
-          const r = await callApi('jeuInfos.php', { systemeid: sys.id, romtype: 'rom', romnom })
+          const r = await callApi('jeuInfos.php', {
+            ...(sys ? { systemeid: sys.id } : {}), romtype: 'rom', romnom,
+          })
           // A 404 is a normal answer: this ROM is not in their database.
           if (!r.ok && r.notFound) {
             if (!dryRun) await admin.from('games').update({ needs_review: true }).eq('id', game.id).eq('user_id', userId)
-            return { id: game.id, title: game.title, outcome: 'no_match', system: sys.name }
+            return {
+              id: game.id, title: game.title, outcome: 'no_match',
+              system: sys?.name ?? null,
+              reason: sys ? undefined : `searched across every system — "${plat?.esde_system}" is not in the cached system list`,
+            }
           }
           if (!r.ok) return { id: game.id, title: game.title, outcome: 'error', reason: r.message }
 
@@ -1269,7 +1311,7 @@ Deno.serve(async (req) => {
               if (art) pendingCover = await mirrorPending(game.id as string, String(jeu.id ?? 'x'), art)
             }
             return {
-              id: game.id, title: game.title, outcome: 'matched', dry_run: true, system: sys.name,
+              id: game.id, title: game.title, outcome: 'matched', dry_run: true, system: sys?.name ?? null,
               jeu_id: mapped.external_ref, matched_title: mapped.title, rating100,
               would_fill: Object.keys(offer), proposed,
               rom_name: romnom, flags: matchFlags(jeu),
@@ -1288,7 +1330,7 @@ Deno.serve(async (req) => {
             await admin.from('game_platforms').update({ rating: rating100, external_ref: mapped.external_ref, external_source: 'screenscraper' })
               .eq('id', plat.id).eq('user_id', userId)
           }
-          return { id: game.id, title: game.title, outcome: 'matched', system: sys.name,
+          return { id: game.id, title: game.title, outcome: 'matched', system: sys?.name ?? null,
                    filled: Object.keys(patch), media: Object.keys(media), matched_title: mapped.title }
         })
 
@@ -1296,6 +1338,7 @@ Deno.serve(async (req) => {
         return json({
           status: 'ok',
           dry_run: dryRun,
+          ...(systemsNote ? { message: systemsNote } : {}),
           processed: results.length,
           matched: by('matched'),
           no_match: by('no_match'),
