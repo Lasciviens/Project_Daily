@@ -9,6 +9,8 @@ import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ScrapeGameButton } from './ScrapeGameButton'
 import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip } from './gameCardKit'
+import { systemMeta } from '../systemMeta'
+import { formatPlaytime } from '../gameStats'
 import {
   STATUS_LABEL, TIER_COLOR, TIERS, STATUSES,
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
@@ -64,6 +66,29 @@ function StatusQuickBar({ game }: { game: Game }) {
 
 // ─── Platforms — add/edit/delete/set-primary, replaces the old read-only table ───
 
+// Everything a platform row stores and used to show none of: this variant's own
+// ES-DE play stats (093 — `games.esde_*` is the roll-up across variants, these
+// are one variant's), its own release date, performance notes, and the ROM path
+// ES-DE syncs against, which is the only way to tell two same-system variants
+// apart when their titles match.
+function PlatformDetails({ platform }: { platform: GamePlatform }) {
+  const playtime = formatPlaytime(platform.esde_playtime_seconds)
+  const bits: React.ReactNode[] = []
+  if (platform.esde_playcount != null && platform.esde_playcount > 0) bits.push(<span key="pc">▶ {platform.esde_playcount}×</span>)
+  if (playtime) bits.push(<span key="pt">⏱ {playtime}</span>)
+  if (platform.esde_last_played) bits.push(<span key="lp">🕐 {fmtDate(platform.esde_last_played)}</span>)
+  if (platform.release_date) bits.push(<span key="rd">📅 {fmtDate(platform.release_date)}</span>)
+
+  if (!bits.length && !platform.performance_notes && !platform.esde_path) return null
+  return (
+    <div className="text-[11px] text-ink-500 space-y-0.5">
+      {bits.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-0.5">{bits}</div>}
+      {platform.performance_notes && <p className="italic">{platform.performance_notes}</p>}
+      {platform.esde_path && <p className="font-mono text-[10px] text-ink-400 truncate" title={platform.esde_path}>{platform.esde_path}</p>}
+    </div>
+  )
+}
+
 function PlatformRow({ platform, gameId }: { platform: GamePlatform; gameId: string }) {
   const [editing, setEditing] = useState(false)
   const update = useUpdatePlatform()
@@ -97,8 +122,10 @@ function PlatformRow({ platform, gameId }: { platform: GamePlatform; gameId: str
         </div>
       ) : (
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-ink-800">{platform.system}</span>
-          {platform.emulator && <span className="text-xs text-ink-500">· {platform.emulator}</span>}
+          <span className="text-sm font-medium text-ink-800">{systemMeta(platform.system).label}</span>
+          {platform.version_title && <span className="text-xs text-ink-500">· {platform.version_title}</span>}
+          {platform.emulator && <span className="text-xs text-ink-500">· {platform.emulator}{platform.emulator_type === 'retroarch_core' ? ' (core)' : ''}</span>}
+          {platform.region && <span className="text-[10px] font-medium bg-ink-100 text-ink-600 px-1.5 py-0.5 rounded-full">{platform.region}</span>}
           {platform.is_primary_variant && <span className="text-[10px] font-bold bg-accent-500 text-white px-1.5 py-0.5 rounded-full">Primary</span>}
           {platform.performance && (
             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${PERFORMANCE_COLOR[platform.performance] ?? ''}`}>{platform.performance}</span>
@@ -116,6 +143,7 @@ function PlatformRow({ platform, gameId }: { platform: GamePlatform; gameId: str
           </div>
         </div>
       )}
+      {!editing && <PlatformDetails platform={platform} />}
       <ConfirmDialog open={confirmDelete} title="Remove this platform?" message={`Removes ${platform.system} from this game — the game itself stays.`}
         onConfirm={() => del.mutate(platform.id)} onClose={() => setConfirmDelete(false)} />
     </div>
@@ -388,7 +416,13 @@ export function GameDetailModal({ gameId, onClose }: Props) {
     else removeFromQueue.mutate(game.id)
   }
 
-  const screenshots = [game?.screenshot_url, game?.fanart_url].filter((u): u is string => !!u)
+  // Every image the schema actually holds, deduped — the per-variant box/wheel/
+  // cover art on game_platforms was stored by the scraper and rendered nowhere.
+  const screenshots = [...new Set([
+    game?.screenshot_url,
+    game?.fanart_url,
+    ...(game?.platforms ?? []).flatMap(p => [p.box_url, p.wheel_url, p.cover_url]),
+  ].filter((u): u is string => !!u))]
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
   function prevScreenshot() { if (lightboxIdx !== null) setLightboxIdx((lightboxIdx - 1 + screenshots.length) % screenshots.length) }
   function nextScreenshot() { if (lightboxIdx !== null) setLightboxIdx((lightboxIdx + 1) % screenshots.length) }
@@ -459,11 +493,17 @@ export function GameDetailModal({ gameId, onClose }: Props) {
                     <p>▶ Started {fmtDate(game.started_at)}{game.finished_at && <> · 🏁 Finished {fmtDate(game.finished_at)}</>}</p>
                   )}
                   {game.external_source && (
-                    <p className="flex items-center gap-1">
+                    <p className="flex items-center gap-1 flex-wrap">
                       🔗 {EXTERNAL_SOURCE_LABEL[game.external_source] ?? game.external_source}
-                      <InfoBubble label="What is this?">Where this game's metadata came from.</InfoBubble>
+                      {game.external_ref && <span className="font-mono text-[10px] text-ink-400">#{game.external_ref}</span>}
+                      {game.synced_at && <span className="text-ink-400">· synced {fmtDate(game.synced_at)}</span>}
+                      <InfoBubble label="What is this?">
+                        Where this game's metadata came from, the id it was matched to on that
+                        provider, and when it last came in. A wrong id here is what a re-scrape fixes.
+                      </InfoBubble>
                     </p>
                   )}
+                  <p className="text-ink-400">➕ Added {fmtDate(game.created_at)}</p>
                 </div>
                 {game.rating != null && (
                   <p className="text-base font-bold text-accent-600 mt-2">★ {game.rating} <span className="text-[10px] text-ink-400 font-normal">my rating</span></p>
@@ -530,11 +570,16 @@ export function GameDetailModal({ gameId, onClose }: Props) {
                 <Section title="Co-op Notes"><p className="text-sm text-ink-700 bg-cyan-50 rounded-lg p-3 leading-relaxed">{game.coop_notes}</p></Section>
               )}
               {(game.esde_playcount != null || game.esde_last_played) && (
-                <Section title="Play Stats (ES-DE)" defaultOpen={false}>
-                  <div className="flex flex-wrap gap-3 text-xs text-ink-500">
-                    {game.esde_playcount != null && <span>▶ Played {game.esde_playcount}×</span>}
+                <Section title="Play Stats (ES-DE)">
+                  <div className="flex flex-wrap gap-3 text-xs text-ink-600">
+                    {game.esde_playcount != null && <span className="font-semibold">▶ Played {game.esde_playcount}×</span>}
+                    {/* formatPlaytime, not seconds/3600 — a 40-minute session used
+                        to print "0h", which reads as "never played". */}
+                    {formatPlaytime(game.esde_playtime_seconds) && <span className="font-semibold">⏱ {formatPlaytime(game.esde_playtime_seconds)} total</span>}
                     {game.esde_last_played && <span>🕐 Last played {fmtDate(game.esde_last_played)}</span>}
-                    {game.esde_playtime_seconds != null && <span>⏱ {Math.round(game.esde_playtime_seconds / 3600)}h total</span>}
+                    {game.platforms.length > 1 && (
+                      <InfoBubble label="Across variants?">Summed across every variant of this game. Each platform row below carries its own figures.</InfoBubble>
+                    )}
                   </div>
                 </Section>
               )}

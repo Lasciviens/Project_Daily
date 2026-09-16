@@ -34,6 +34,13 @@ export interface GamePlatform {
   external_source:   ExternalSource | null
   synced_at:         string | null
   needs_review:      boolean
+  // Per-variant ES-DE identity + play stats (migration 093). `games.esde_*`
+  // is the roll-up ACROSS a game's variants; these are one variant's own.
+  esde_system:           string | null
+  esde_path:             string | null
+  esde_playcount:        number | null
+  esde_playtime_seconds: number | null
+  esde_last_played:      string | null
   created_at:        string
   updated_at:        string
 }
@@ -172,4 +179,7 @@ export interface GameStats {
   needsReview:  number
   avgRating:    number | null
   bySystem:     { system: string; count: number }[]
+  // Real play data, from ES-DE (migration 089's roll-up columns). Every figure
+  // here is "recorded by ES-DE", never a claim about play outside the handheld.
+  playtime:     import('./gameStats').PlaytimeStats
 }

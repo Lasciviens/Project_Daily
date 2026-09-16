@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { TIER_COLOR } from '../gamesMeta'
 import { systemMeta } from '../systemMeta'
+import { formatPlaytimeShort } from '../gameStats'
 import type { Game } from '../types'
 
 // Shared anatomy for every cover-led game card (Grid, Compact, Poster).
@@ -86,5 +87,20 @@ export function FlagBadges({ game, size = 'md' }: { game: Game; size?: 'sm' | 'm
       {game.is_coop && <span className={`font-bold bg-cyan-500 text-white rounded-md leading-none ${sm ? 'text-[9px] px-1 py-0.5' : 'text-[10px] px-1.5 py-1'}`} title="Co-op">2P</span>}
       {game.needs_review && <span className={sm ? 'text-[10px] leading-none drop-shadow' : 'text-xs leading-none drop-shadow'} title="Needs review">🔎</span>}
     </>
+  )
+}
+
+/**
+ * Recorded play time, from ES-DE. Renders nothing at all when there is none —
+ * a library where most rows have never been launched should not be covered in
+ * "0h" chips claiming otherwise.
+ */
+export function PlaytimeBadge({ game, size = 'md' }: { game: Game; size?: 'sm' | 'md' }) {
+  const t = formatPlaytimeShort(game.esde_playtime_seconds)
+  if (!t) return null
+  return (
+    <span className={`font-bold rounded-md bg-black/70 text-white/90 backdrop-blur-sm shadow-sm leading-none ${
+      size === 'sm' ? 'text-[9px] px-1 py-0.5' : 'text-[10px] px-1.5 py-1'
+    }`} title={`${game.esde_playcount ?? 0} sessions recorded by ES-DE`}>⏱{t}</span>
   )
 }

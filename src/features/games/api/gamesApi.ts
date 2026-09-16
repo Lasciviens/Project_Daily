@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
+import { computePlaytimeStats } from '../gameStats'
 import type {
   Game, GamePlatform, GameStats, QueueGame, PlayStatus,
   CreateGameInput, GamePatch, GamePlatformInput,
@@ -123,10 +124,14 @@ export async function fetchGameDetail(id: string): Promise<Game> {
 export async function fetchGameStats(): Promise<GameStats> {
   // Paginated for the same reason as fetchAllGames: capped at one page, every
   // total on the Stats panel would silently stop counting at 1000.
-  type StatRow = Pick<Game, 'play_status' | 'is_iconic' | 'is_coop' | 'needs_review' | 'rating'>
+  type StatRow = Pick<Game,
+    'id' | 'title' | 'play_status' | 'is_iconic' | 'is_coop' | 'needs_review' | 'rating'
+    | 'esde_playcount' | 'esde_playtime_seconds' | 'esde_last_played'>
   const [rows, platforms] = await Promise.all([
     fetchAllPages<StatRow>((from, to) =>
-      supabase.from('games').select('play_status, is_iconic, is_coop, needs_review, rating').range(from, to)),
+      supabase.from('games')
+        .select('id, title, play_status, is_iconic, is_coop, needs_review, rating, esde_playcount, esde_playtime_seconds, esde_last_played')
+        .range(from, to)),
     fetchAllPages<{ system: string }>((from, to) =>
       supabase.from('game_platforms').select('system').range(from, to)),
   ])
@@ -145,6 +150,7 @@ export async function fetchGameStats(): Promise<GameStats> {
     needsReview: rows.filter(r => r.needs_review).length,
     avgRating:   rated.length ? Math.round((rated.reduce((s, r) => s + Number(r.rating), 0) / rated.length) * 10) / 10 : null,
     bySystem:    [...bySystemMap.entries()].map(([system, count]) => ({ system, count })).sort((a, b) => b.count - a.count),
+    playtime:    computePlaytimeStats(rows),
   }
 }
 
