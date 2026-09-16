@@ -433,14 +433,28 @@ Deno.serve(async (req) => {
         if (pErr) return fail(`platforms read: ${pErr.message}`, 500)
 
         const { data: systems, error: sErr } = await admin
-          .from('screenscraper_systems').select('id, retropie_names').not('retropie_names', 'is', null)
+          .from('screenscraper_systems').select('id, name, retropie_names').not('retropie_names', 'is', null)
         if (sErr) return fail(`systems read: ${sErr.message}`, 500)
         // One entry per alias, so an ES-DE "megadrive" folder resolves just as
         // an ES-DE "genesis" one does.
-        const systemId = new Map<string, number>()
+        // LOWEST id wins when several systems claim one alias. Measured
+        // collisions: snes → 4 Super Nintendo | 202 "Snes - Super Mario World
+        // Hacks"; genesis → 1 Megadrive | 203 "Sonic The Hedgehog 2 Hacks";
+        // nes → 3 NES | 278 "Super Mario Bros. Hacks". A last-write-wins map
+        // sent 604 of 1002 games to a ROM-HACK database, which is why Sonic 1
+        // came back as "Amy Rose In Sonic The Hedgehog". ScreenScraper numbered
+        // the real consoles first and every variant/hack collection later, so
+        // the smallest id is the actual console across every real collision.
+        // Mirrored from screenscraperRules.ts::buildSystemIdMap.
+        const systemId = new Map<string, { id: number; name: string }>()
         for (const s of systems ?? []) {
+          const id = Number(s.id)
+          if (!Number.isFinite(id)) continue
           for (const alias of (s.retropie_names ?? []) as string[]) {
-            systemId.set(String(alias).toLowerCase(), Number(s.id))
+            const key = String(alias ?? '').trim().toLowerCase()
+            if (!key) continue
+            const cur = systemId.get(key)
+            if (!cur || id < cur.id) systemId.set(key, { id, name: s.name ?? String(id) })
           }
         }
         if (systemId.size === 0) {
@@ -453,16 +467,16 @@ Deno.serve(async (req) => {
         const results = await inThreads(games, async (game: AnyRecord) => {
           const plat = platformFor.get(game.id)
           const romnom = romNameFromPath(plat?.esde_path)
-          const sysId = plat?.esde_system ? systemId.get(String(plat.esde_system).toLowerCase()) : undefined
-          if (!romnom || !sysId) {
+          const sys = plat?.esde_system ? systemId.get(String(plat.esde_system).trim().toLowerCase()) : undefined
+          if (!romnom || !sys) {
             return { id: game.id, title: game.title, outcome: 'unmatchable', reason: !romnom ? 'no rom filename' : `no ScreenScraper id for system "${plat?.esde_system}"` }
           }
 
-          const r = await callApi('jeuInfos.php', { systemeid: sysId, romtype: 'rom', romnom })
+          const r = await callApi('jeuInfos.php', { systemeid: sys.id, romtype: 'rom', romnom })
           // A 404 is a normal answer: this ROM is not in their database.
           if (!r.ok && r.notFound) {
             if (!dryRun) await admin.from('games').update({ needs_review: true }).eq('id', game.id).eq('user_id', userId)
-            return { id: game.id, title: game.title, outcome: 'no_match' }
+            return { id: game.id, title: game.title, outcome: 'no_match', system: sys.name }
           }
           if (!r.ok) return { id: game.id, title: game.title, outcome: 'error', reason: r.message }
 
@@ -487,7 +501,7 @@ Deno.serve(async (req) => {
           }
 
           if (dryRun) {
-            return { id: game.id, title: game.title, outcome: 'matched', dry_run: true,
+            return { id: game.id, title: game.title, outcome: 'matched', dry_run: true, system: sys.name,
                      would_fill: Object.keys(patch), matched_title: mapped.title, rating100 }
           }
 
@@ -502,7 +516,7 @@ Deno.serve(async (req) => {
             await admin.from('game_platforms').update({ rating: rating100, external_ref: mapped.external_ref, external_source: 'screenscraper' })
               .eq('id', plat.id).eq('user_id', userId)
           }
-          return { id: game.id, title: game.title, outcome: 'matched',
+          return { id: game.id, title: game.title, outcome: 'matched', system: sys.name,
                    filled: Object.keys(patch), media: Object.keys(media), matched_title: mapped.title }
         })
 

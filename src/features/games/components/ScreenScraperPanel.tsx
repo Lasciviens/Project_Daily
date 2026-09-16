@@ -321,6 +321,7 @@ export function ScreenScraperPanel() {
                     <span className="text-ink-400"> · {(r.would_fill ?? r.filled)!.join(', ')}</span>
                   ) : null}
                   {r.media?.length ? <span className="text-green-700 dark:text-green-400"> · {r.media.length} image{r.media.length === 1 ? '' : 's'}</span> : null}
+                  {r.system && <span className="text-ink-400"> · via {r.system}</span>}
                   {r.reason && <span className="text-ink-400"> · {r.reason}</span>}
                 </span>
               </div>
