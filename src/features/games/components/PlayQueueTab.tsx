@@ -10,6 +10,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { usePlayQueue, useUpdateGame, useReorderQueue, useRemoveFromQueue } from '../hooks/useGames'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { STATUS_LABEL, TIER_COLOR as TIER_BADGE } from '../gamesMeta'
+import { CoverImg, SystemChip } from './gameCardKit'
 import type { QueueGame } from '../types'
 
 // Adds a border class on top of the shared STATUS_COLOR bg/text pair (used
@@ -20,14 +21,6 @@ const STATUS_COLOR: Record<string, string> = {
   wishlist:  'bg-purple-100 text-purple-700 border-purple-200',
   backlog:   'bg-ink-100 text-ink-500 border-ink-200',
   dropped:   'bg-red-100 text-red-600 border-red-200',
-}
-
-function CoverImg({ url, title }: { url?: string | null; title: string }) {
-  const [err, setErr] = useState(false)
-  if (url && !err) return (
-    <img src={url} alt={title} onError={() => setErr(true)} className="w-full h-full object-cover" />
-  )
-  return <div className="w-full h-full flex items-center justify-center bg-ink-100 text-lg">🎮</div>
 }
 
 export function PlayQueueTab() {
@@ -149,9 +142,7 @@ export function PlayQueueTab() {
             {game.tier && (
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${TIER_BADGE[game.tier] ?? 'bg-ink-200'}`}>{game.tier}</span>
             )}
-            {game.platforms.slice(0, 1).map(p => (
-              <span key={p.id} className="text-[10px] bg-ink-50 text-ink-500 border border-ink-200 px-1.5 py-0.5 rounded truncate min-w-0">{p.system}</span>
-            ))}
+            <SystemChip game={game} size="sm" />
           </div>
         </div>
 

@@ -15,6 +15,8 @@ import { Sheet } from '../../../shared/components/Sheet'
 import { haptic } from '../../../shared/utils/haptics'
 import { useGamesNeedingReview } from '../hooks/useGames'
 import { FilterGroupButton, CheckboxFilterPanel } from '../components/CheckboxFilterGroup'
+import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip, FlagBadges } from '../components/gameCardKit'
+import { systemMeta } from '../systemMeta'
 import type { Game } from '../types'
 
 // Which filter group is expanded, if any.
@@ -43,12 +45,6 @@ const LIB_VIEWS: { v: LibView; icon: string; label: string }[] = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function CoverImg({ url, title, className = '' }: { url?: string | null; title: string; className?: string }) {
-  const [err, setErr] = useState(false)
-  if (url && !err) return <img src={url} alt={title} onError={() => setErr(true)} className={`w-full h-full object-cover ${className}`} />
-  return <div className={`w-full h-full flex items-center justify-center bg-ink-100 text-2xl ${className}`}>🎮</div>
-}
-
 function sortGames(gs: Game[], sort: SortKey): Game[] {
   switch (sort) {
     case 'za':        return [...gs].sort((a, b) => b.title.localeCompare(a.title))
@@ -63,32 +59,38 @@ function sortGames(gs: Game[], sort: SortKey): Game[] {
 // ─── Card components ──────────────────────────────────────────────────────────
 
 function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
-  const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
   return (
     <button onClick={onClick}
-      className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-md hover:scale-[1.02] transition-all duration-150 press-feedback group"
+      className="relative bg-cream-50 rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-lg hover:scale-[1.02] transition-all duration-150 press-feedback group"
     >
+      {/* The cover's own colours, blurred, as this card's ground. */}
+      <CoverBackdrop url={game.primary_cover_url} />
+
       <div className="relative bg-ink-100 flex-shrink-0" style={{ aspectRatio: '3/4' }}>
         <CoverImg url={game.primary_cover_url} title={game.title} />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-        {tierClass && <span className={`absolute top-1.5 left-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${tierClass}`}>{game.tier}</span>}
-        <div className="absolute top-1.5 right-1.5 flex flex-col gap-1 items-end">
-          {game.is_iconic && <span className="text-xs leading-none drop-shadow">⭐</span>}
-          {game.is_coop   && <span className="text-[9px] font-bold bg-cyan-500 text-white px-1 rounded">2P</span>}
-          {game.needs_review && <span className="text-xs leading-none drop-shadow" title="Needs review">🔎</span>}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/20" />
+
+        <span className="absolute top-1.5 left-1.5"><TierBadge tier={game.tier} /></span>
+        <span className="absolute top-1.5 right-1.5"><RatingBadge rating={game.rating} /></span>
+
+        <div className="absolute inset-x-1.5 bottom-1.5 flex items-end justify-between gap-1">
+          <SystemChip game={game} />
+          <div className="flex items-center gap-1"><FlagBadges game={game} /></div>
         </div>
-        {game.rating != null && (
-          <span className="absolute bottom-1.5 left-1.5 bg-accent-500/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">★{game.rating}</span>
-        )}
       </div>
-      <div className="p-2 flex flex-col gap-1 flex-1">
+
+      <div className="relative p-2 flex flex-col gap-1 flex-1 bg-cream-50/85 backdrop-blur-sm">
         <p className="text-xs font-semibold text-ink-800 leading-snug line-clamp-2 flex-1">{game.title}</p>
         {game.series_name && <p className="text-[10px] text-ink-400 truncate">{game.series_name}</p>}
+        {(game.genres?.length ?? 0) > 0 && (
+          <p className="text-[10px] text-ink-400 truncate">{game.genres!.slice(0, 2).join(' · ')}</p>
+        )}
         <div className="flex items-center gap-1 flex-wrap">
           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>
             {STATUS_LABEL[game.play_status] ?? game.play_status}
           </span>
           {game.release_year && <span className="text-[10px] text-ink-400">{game.release_year}</span>}
+          {game.players && <span className="text-[10px] text-ink-400">👤{game.players}</span>}
         </div>
       </div>
     </button>
@@ -96,7 +98,6 @@ function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
 }
 
 function CompactCard({ game, onClick }: { game: Game; onClick: () => void }) {
-  const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
   const dotColor  = ({ playing: 'bg-orange-400', completed: 'bg-green-500', wishlist: 'bg-purple-500', backlog: 'bg-ink-300', dropped: 'bg-red-400' } as Record<string, string>)[game.play_status] ?? 'bg-ink-300'
   return (
     <button onClick={onClick} title={game.title}
@@ -104,38 +105,49 @@ function CompactCard({ game, onClick }: { game: Game; onClick: () => void }) {
       style={{ aspectRatio: '3/4' }}
     >
       <CoverImg url={game.primary_cover_url} title={game.title} />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
-      {tierClass && <span className={`absolute top-1 left-1 text-[9px] font-bold px-1 py-0.5 rounded leading-none ${tierClass}`}>{game.tier}</span>}
-      <span className={`absolute bottom-1 right-1 w-2 h-2 rounded-full border border-white/60 ${dotColor}`} />
-      {game.is_iconic && <span className="absolute top-1 right-1 text-[10px] leading-none drop-shadow">⭐</span>}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
+
+      <span className="absolute top-1 left-1"><TierBadge tier={game.tier} size="sm" /></span>
+      <span className="absolute top-1 right-1"><RatingBadge rating={game.rating} size="sm" /></span>
+
+      <div className="absolute inset-x-1 bottom-1 flex items-end justify-between gap-1">
+        <SystemChip game={game} size="sm" />
+        <span className={`w-2 h-2 rounded-full border border-white/60 flex-shrink-0 mb-0.5 ${dotColor}`} title={STATUS_LABEL[game.play_status] ?? game.play_status} />
+      </div>
     </button>
   )
 }
 
 function PosterCard({ game, onClick }: { game: Game; onClick: () => void }) {
-  const tierClass = game.tier ? (TIER_COLOR[game.tier] ?? 'bg-ink-200 text-ink-700') : null
   return (
     <button onClick={onClick}
       className="relative rounded-2xl overflow-hidden shadow-md border border-ink-200 hover:shadow-xl hover:border-accent-400 hover:scale-[1.03] transition-all duration-200 press-feedback bg-ink-950 group"
       style={{ aspectRatio: '2/3' }}
     >
       <CoverImg url={game.primary_cover_url} title={game.title} className="absolute inset-0" />
-      {tierClass && <span className={`absolute top-2 left-2 z-10 text-[10px] font-bold px-1.5 py-0.5 rounded ${tierClass}`}>{game.tier}</span>}
-      <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 items-end">
-        {game.is_iconic && <span className="text-xs drop-shadow">⭐</span>}
-        {game.is_coop   && <span className="text-[9px] font-bold bg-cyan-500 text-white px-1 rounded">2P</span>}
+
+      <span className="absolute top-2 left-2 z-10"><TierBadge tier={game.tier} /></span>
+      <span className="absolute top-2 right-2 z-10"><RatingBadge rating={game.rating} /></span>
+
+      {/* Resting state: just enough to identify the game. */}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-8 group-hover:opacity-0 transition-opacity duration-150">
+        <div className="flex items-center gap-1 mb-1"><SystemChip game={game} size="sm" /><FlagBadges game={game} size="sm" /></div>
+        <p className="text-white text-[11px] font-semibold leading-snug line-clamp-1">{game.title}</p>
       </div>
-      <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-3 pt-10 pb-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200">
+
+      {/* Hover: the full record. */}
+      <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/95 via-black/80 to-transparent px-3 pt-10 pb-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200">
+        <div className="flex items-center gap-1 mb-1.5 flex-wrap"><SystemChip game={game} size="sm" /><FlagBadges game={game} size="sm" /></div>
         <p className="text-white text-xs font-bold leading-snug line-clamp-2 mb-1">{game.title}</p>
-        {game.series_name && <p className="text-white/60 text-[10px] mb-1.5 truncate">{game.series_name}</p>}
+        {game.series_name && <p className="text-white/60 text-[10px] mb-1 truncate">{game.series_name}</p>}
+        {(game.genres?.length ?? 0) > 0 && (
+          <p className="text-white/50 text-[10px] mb-1.5 truncate">{game.genres!.slice(0, 3).join(' · ')}</p>
+        )}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>{STATUS_LABEL[game.play_status] ?? game.play_status}</span>
-          {game.rating != null && <span className="text-[10px] text-accent-300 font-bold">★{game.rating}</span>}
           {game.release_year && <span className="text-[10px] text-white/50">{game.release_year}</span>}
+          {game.players && <span className="text-[10px] text-white/50">👤{game.players}</span>}
         </div>
-      </div>
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-2 pt-6 group-hover:opacity-0 transition-opacity duration-150">
-        <p className="text-white text-[10px] font-semibold leading-snug line-clamp-1">{game.title}</p>
       </div>
     </button>
   )
@@ -169,7 +181,7 @@ function GameListItem({ game, onClick }: { game: Game; onClick: () => void }) {
       </div>
       <div className="flex-shrink-0 text-right space-y-0.5">
         {game.rating != null && <p className="text-xs text-accent-600 font-semibold">★{game.rating}</p>}
-        {game.platforms.slice(0, 2).map(p => <p key={p.id} className="text-[10px] text-ink-400">{p.system}</p>)}
+        <div className="flex justify-end"><SystemChip game={game} size="sm" /></div>
       </div>
     </button>
   )
@@ -194,7 +206,7 @@ function GameTableRow({ game, onClick }: { game: Game; onClick: () => void }) {
         {game.tier && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${TIER_COLOR[game.tier] ?? ''}`}>{game.tier}</span>}
       </td>
       <td className="py-2 pr-3 text-xs text-accent-600 font-semibold">{game.rating != null ? `★${game.rating}` : '—'}</td>
-      <td className="py-2 pr-3 max-w-[150px]"><p className="text-[10px] text-ink-400 truncate">{game.platforms.slice(0, 2).map(p => p.system).join(', ') || '—'}</p></td>
+      <td className="py-2 pr-3 max-w-[150px]"><p className="text-[10px] text-ink-400 truncate">{[...new Set(game.platforms.map(p => systemMeta(p.system).label))].slice(0, 2).join(', ') || '—'}</p></td>
       <td className="py-2 pr-3 max-w-[140px]"><p className="text-[10px] text-ink-400 truncate">{game.genres?.slice(0, 2).join(', ') ?? '—'}</p></td>
       <td className="py-2 pr-3 text-sm whitespace-nowrap">
         {game.is_iconic && '⭐'}
@@ -248,7 +260,6 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
             </div>
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-2">
               {gs.map((g, idx) => {
-                const tierClass = g.tier ? (TIER_COLOR[g.tier] ?? 'bg-ink-200 text-ink-700') : null
                 const dotColor  = ({ playing: 'bg-orange-400', completed: 'bg-green-500', wishlist: 'bg-purple-500', backlog: 'bg-ink-300', dropped: 'bg-red-400' } as Record<string,string>)[g.play_status] ?? 'bg-ink-300'
                 return (
                   <button key={g.id} onClick={() => onSelect(g.id)} title={g.title}
@@ -256,15 +267,25 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
                     style={{ aspectRatio: '3/4' }}
                   >
                     <CoverImg url={g.primary_cover_url} title={g.title} />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-                    {!isStandalone && <span className="absolute top-1 left-1 text-[9px] font-bold bg-black/60 text-white px-1 py-0.5 rounded leading-none">#{idx + 1}</span>}
-                    {tierClass && <span className={`absolute top-1 right-1 text-[9px] font-bold px-1 py-0.5 rounded leading-none ${tierClass}`}>{g.tier}</span>}
-                    <span className={`absolute bottom-1 right-1 w-2 h-2 rounded-full border border-white/60 ${dotColor}`} />
-                    {g.is_iconic && <span className="absolute bottom-1 left-1 text-[10px] leading-none">⭐</span>}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-3 pt-4 transition-opacity duration-150 lg:group-hover:opacity-0">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
+                    {/* Same corner rule as every other cover card — tier left, rating
+                        right — with the series position sharing the left corner. */}
+                    <span className="absolute top-1 left-1 flex items-center gap-0.5">
+                      {!isStandalone && <span className="text-[9px] font-bold bg-black/70 text-white px-1 py-0.5 rounded-md leading-none">#{idx + 1}</span>}
+                      <TierBadge tier={g.tier} size="sm" />
+                    </span>
+                    <span className="absolute top-1 right-1"><RatingBadge rating={g.rating} size="sm" /></span>
+                    <span className="absolute inset-x-1 bottom-1 flex items-end justify-between gap-1 z-10">
+                      <SystemChip game={g} size="sm" />
+                      <span className="flex items-center gap-0.5">
+                        {g.is_iconic && <span className="text-[10px] leading-none drop-shadow">⭐</span>}
+                        <span className={`w-2 h-2 rounded-full border border-white/60 mb-0.5 ${dotColor}`} />
+                      </span>
+                    </span>
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-6 pt-4 transition-opacity duration-150 lg:group-hover:opacity-0">
                       <p className="text-white text-[9px] font-semibold leading-tight line-clamp-1">{g.title}</p>
                     </div>
-                    <div className="hidden lg:block absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-3 pt-4 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <div className="hidden lg:block absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1.5 pb-6 pt-4 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                       <p className="text-white text-[9px] font-semibold leading-tight line-clamp-2">{g.title}</p>
                     </div>
                   </button>
