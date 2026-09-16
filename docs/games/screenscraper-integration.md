@@ -856,3 +856,46 @@ others would give a bare row a perfect zero-of-zero against every candidate,
 right and wrong alike. `valuesAgree` is deliberately loose — case-insensitive,
 order-insensitive for lists — because marking `Action, Platform` against
 `platform, action` as a difference trains the eye to ignore the marks.
+
+
+---
+
+## 15. What their answer actually contains, and what we now keep (2026-09-16)
+
+Three defects found in live use, all mine.
+
+**`systemeid` is MANDATORY for a filename lookup.** Their own error says it:
+`Champ systemeid obligatoire si aucun CRC`. §14's change assumed it was
+optional and turned a clean refusal into their 400. The correct behaviour:
+filename + system when the system is known, and the game's **title through
+jeuRecherche** (which genuinely needs no id) when it is not — marked `via:
+'name'` so the review knows a name match is a weaker claim than a filename
+match. A hash needs no system either, which is why it is the best mode.
+
+**The dry run sent only the GAPS.** `proposed` was built from
+`fillOnlyMissing`, so any field the user already had was absent from the
+payload and the comparison rendered it as "—" on ScreenScraper's side. A
+complete response looked like a nearly empty one, and the side-by-side view was
+useless exactly where it mattered. `proposed` is now the WHOLE mapped
+candidate; `would_fill` remains what is writable.
+
+**Twenty-three of twenty-six media types were being thrown away**, along with
+most of the metadata block. Migration `099` adds two jsonb columns:
+
+| Column | What goes in |
+|---|---|
+| `games.media` | media type → **Supabase Storage URL**, for every non-video type mirrored. Never a ScreenScraper URL — theirs carry `devid`/`devpassword`. |
+| `games.provider_data` | everything else: their /20 score, `rotation`, `cloneof`, `notgame`, every regional title and date, the full `classifications` list, the ROM block's crc/md5/sha1/size/regions/languages and its beta/demo/proto/hack/unl/alt flags, and the **media inventory** — which types exist with their region/format/size, including the ones not mirrored, so "what else is available" is answerable without asking again. |
+
+Two jsonb columns rather than twenty-six real ones because this is a provider's
+payload, not facts this app reasons about: nothing filters, sorts or joins on
+it, and the UI reads a key when it wants one. Same shape, same reason, as
+`health_workouts.raw`.
+
+**Video is the one exclusion, and it is deliberate**: `video` and
+`video-normalized` are tens of megabytes per game against a bucket sized for
+box art, and nothing in this app plays one. Everything else they send is taken.
+
+Mirroring all of it is one download per image, so `all_media` defaults on but
+is a flag — twenty images a game across a thousand games is not something to
+spend a shared daily allowance on by accident.
