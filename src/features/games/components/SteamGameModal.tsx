@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useSteamAppDetails, useSteamAppReviews, useSteamCurrentPlayers, STORE_UNAVAILABLE } from '../hooks/useSteam'
 import { SteamAchievementGrid } from './SteamAchievementGrid'
+import { LibraryControls } from './LibraryControls'
+import { useLibraryEntry } from '../hooks/useGames'
 import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
 
 // Detail popup for one owned Steam game — the anchor piece of the Steam tab
@@ -60,6 +62,7 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
   const [wantPlayers, setWantPlayers] = useState(false)
   const players = useSteamCurrentPlayers(game.appid, wantPlayers)
   const [imgOk, setImgOk] = useState(true)
+  const { entry } = useLibraryEntry('steam', String(game.appid))
 
   const d = details.data?.details ?? null
   const genres = details.data?.genres ?? d?.genres?.map(g => g.description) ?? []
@@ -95,6 +98,12 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
           </div>
 
           <div className="px-4 py-4 space-y-4">
+            {/* The personal side: the same status/tier/rating controls the
+                retro library has, now that migration 096 gives a Steam game a
+                real row to write them to. */}
+            <LibraryControls entry={entry}
+              notImportedHint="This game is not in your library yet. Use “Add … to library” on the Steam tab, then status, tier and rating appear here." />
+
             {/* Your own numbers — always available, no extra request */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <Stat label="Total" value={fmtHours(game.playtime_forever)} />

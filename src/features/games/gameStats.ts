@@ -229,3 +229,26 @@ export function computeGameStats(
 export const LIBRARY_LABEL: Record<string, string> = {
   retro: 'Retro', steam: 'Steam', playstation: 'PlayStation',
 }
+
+// ─── "You are clearly playing this" ──────────────────────────────────────────
+
+/**
+ * Recorded play time past which a game stops being a backlog entry.
+ *
+ * Thirty minutes, not the first launch: booting a ROM to check it runs is the
+ * single most common thing that happens in a retro library, and promoting on
+ * that would relabel half the collection as in-progress.
+ */
+export const AUTO_PLAYING_SECONDS = 30 * 60
+
+/**
+ * Whether a recorded play time should move a game to `playing`.
+ *
+ * ONLY from `backlog`, which is the default nothing chose. Every other status
+ * is a statement the user made — `completed`, `dropped`, `wishlist` — and a
+ * sync must never argue with it. In particular this can never un-complete a
+ * game someone replays for an hour.
+ */
+export function shouldAutoMarkPlaying(status: string | null | undefined, seconds: number | null | undefined): boolean {
+  return status === 'backlog' && (seconds ?? 0) >= AUTO_PLAYING_SECONDS
+}

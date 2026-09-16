@@ -4,8 +4,9 @@ import {
   fetchGameStats, fetchAllGames, fetchGameDetail, fetchGamesNeedingReview, fetchPlayQueue,
   createGame, updateGame, deleteGame, reorderQueue, addToQueue, removeFromQueue,
   addPlatform, updatePlatform, deletePlatform, setPrimaryVariant, setPlayStatus,
+  fetchLibraryGames,
 } from '../api/gamesApi'
-import type { Game, GamePatch, CreateGameInput, GamePlatformInput, PlayStatus } from '../types'
+import type { Game, GamePatch, CreateGameInput, GamePlatformInput, PlayStatus, GameLibrary } from '../types'
 
 const GAMES_QK  = ['games', 'all']
 const QUEUE_QK  = ['games', 'queue']
@@ -158,4 +159,22 @@ export function useSetPrimaryVariant() {
     mutationFn: ({ gameId, platformId }) => setPrimaryVariant(gameId, platformId),
     onSuccess: () => invalidateAllGames(qc),
   })
+}
+
+
+/**
+ * The library row behind a provider game, if it has been imported.
+ *
+ * Keyed on `external_ref` — the Steam appid or the PSN store SKU — which is
+ * what `importProviderGames` writes. A game that has not been imported simply
+ * has no row, and the modal says so rather than inventing one.
+ */
+export function useLibraryEntry(library: GameLibrary, externalRef: string | null | undefined) {
+  const q = useQuery({
+    queryKey: ['games', 'library', library],
+    queryFn: () => fetchLibraryGames(library),
+    staleTime: 60_000,
+  })
+  const entry = externalRef ? (q.data ?? []).find(g => g.external_ref === externalRef) ?? null : null
+  return { entry, isLoading: q.isLoading }
 }
