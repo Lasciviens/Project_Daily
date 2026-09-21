@@ -5,11 +5,17 @@
 > critiqued. Once the feature ships and CLAUDE.md carries a "Books Feature Detail"
 > section, **delete this file** — CLAUDE.md is the settled record, this is not.
 >
-> Status: **research complete, nothing built.** Second pass done: owner decisions folded in
-> (§2.3 loans, §4.2 AI catalog, §4.4 glance board), four self-critique findings applied
-> (§6.1), two of them resolved with source-level research (§4.2.1 book identity, §3
-> Phase 1 incremental sync). **One item is still open and blocks the phase ordering** — see
-> the *UNRESOLVED* block at the top of §3.
+> Status: **research complete, nothing built.** Third pass done: the unattended-sync
+> question that blocked the phase ordering is **answered** (§3.0) — automatic sync is
+> achievable, it rides `NetworkConnected` plus an on-disk outbox, and it folds into Phase 1
+> rather than being a later phase. The second pass had folded in the owner's decisions
+> (§2.3 loans, §4.2 AI catalog, §4.4 glance board) and four self-critique findings (§6.1),
+> two of them resolved with source-level research (§4.2.1 book identity, §3 Phase 1
+> incremental sync).
+>
+> **Every KOReader claim in this document was verified by reading
+> `koreader/koreader` @ `dcf6e3b426ffca0de52e543c725a8000ea64f105`.** The `file:line`
+> citations are the point of this document — preserve them when editing it.
 
 ---
 
@@ -166,36 +172,160 @@ fixed milestone **2025.08**). On firmware 4.45 with an older KOReader the device
 
 ---
 
-## 3. Delivery plan — three phases
+## 3. Delivery plan
 
-Each phase is independently useful and the riskiest work is last.
+**Two phases, plus a fallback that may never be needed.** The riskiest work is last — and
+the piece that used to *be* last, automatic unattended sync, turns out to be nearly free and
+now lives inside Phase 1.
 
-> **UNRESOLVED — research in flight.** The phase ordering below is **provisional** and may
-> change.
->
-> The problem: the headline feature is a **daily minutes goal plus a streak**, and both need
-> *today's* data. But Phase 1's sync is a **manual tap inside KOReader**. An evening's
-> reading that is never synced does not read as "unknown" — it reads as **zero**, so the
-> goal shows as missed and the streak breaks, for a night that was actually read. Both
-> numbers lie, and they lie in the direction that punishes the user. A tracker whose
-> headline metric is wrong whenever the user forgets a tap is not a tracker.
->
-> Three options are on the table, none chosen here:
-> 1. **Accept a sync ritual** and make the UI honest about it — never render a bare zero for
->    a day with no sync; show "last synced N ago" and treat unsynced days as unknown rather
->    than as a broken streak.
-> 2. **Move the automatic trigger earlier** — i.e. promote Phase 2 (NickelMenu / KFMon)
->    ahead of the goal-and-streak UI, accepting its fragility as a prerequisite.
-> 3. **Hook the plugin to fire on book-close / suspend** from inside KOReader itself, so the
->    sync rides the reading session instead of a separate deliberate action.
->
-> One relevant fact already confirmed while researching C3: KoInsight's `db_reader.lua`
-> calls `ui.statistics:insertDB()` before reading, which flushes the currently-open book's
-> in-memory page stats into `statistics.sqlite3` first — so a sync fired mid-session does
-> capture the session so far, not just the last closed book. That helps option 3 and is
-> neutral for the others.
->
-> A separate research pass is answering this. **Do not pick an option here.**
+### 3.0 Unattended sync — **RESOLVED**
+
+The question that used to block the phase ordering: a daily minutes goal and a streak both
+need *today's* data, but a sync that only happens on a manual tap turns an unsynced evening
+into a **zero** rather than into "unknown" — the streak breaks on a night that was actually
+read. A tracker whose headline number is wrong whenever the owner forgets a tap is not a
+tracker.
+
+**Answer: unattended sync is achievable — but not on book-close and not on suspend. The
+trigger is `NetworkConnected` plus a persistent on-disk outbox, which is exactly the
+architecture KOReader's own KOSync plugin already ships.** It needs no NickelMenu, no KFMon,
+no shell script and no second binary, so it folds into Phase 1 as a few dozen lines of Lua
+plus two stock settings the owner switches on.
+
+#### Why suspend and close cannot carry a network request
+
+- **Wi-Fi is already torn down before any plugin hears `Suspend`.** `Device:onPowerEvent`
+  (`frontend/device/generic/device.lua:462-496`) calls `network_manager:disableWifi()`, and
+  only *then* does `Device:_beforeSuspend` (`generic/device.lua:1099-1101`) broadcast
+  `Event:new("Suspend")`. `Kobo:suspend()` (`kobo/device.lua:1382-1387`) kills it a second
+  time, with a source comment naming this exact plan: *"Murder Wi-Fi (again…) if NetworkMgr
+  is attempting to connect… (Most likely because of a rerunWhenOnline in a Suspend
+  handler)"*.
+- **This is hardware, not policy.** `generic/device.lua:481-484` states that suspending with
+  Wi-Fi on will *"at best fail, and at worst **deadlock the system**"*. Documented real
+  incident: [koreader#12614](https://github.com/koreader/koreader/issues/12614) — automatic
+  progress sync on suspend produced an unwakeable device needing a paperclip reset. It was
+  fixed by killing Wi-Fi *harder*
+  ([PR #12616](https://github.com/koreader/koreader/pull/12616)), not by making the sync
+  work.
+- **The budget does not fit regardless.** `suspend_wait_timeout = 15` seconds
+  (`generic/device.lua:84`) against a connect path that `NetworkMgr:connectivityCheck`
+  allows **45 s** (`frontend/ui/network/manager.lua:82-84`).
+- **`CloseDocument` fires synchronously** (`frontend/apps/reader/readerui.lua:883`) inside
+  `ReaderUI:onClose`, which then immediately tears down the document and the dialog. An
+  async callback scheduled from there fires against a dead ReaderUI.
+- **KoInsight's "aggressive sync on suspend" must not be copied.** It busy-waits with
+  `os.execute("sleep 0.5")` inside `onSuspend` to block the UIManager loop so the scheduled
+  suspend cannot run. That is the #12614 hang class, deliberately induced.
+
+#### What does work
+
+KOSync's own answer: `plugins/kosync.koplugin/KOSyncQueue.lua` — an on-disk `Persist` store
+(`settings/kosync_queue.lua`, `codec="dump"`), drained on `NetworkConnected`. Its
+`_onCloseDocument` (`kosync.koplugin/main.lua:942-965`) sends only if the device is *already*
+online and otherwise **queues instead of forcing the radio up**.
+
+Two stock KOReader settings then supply a free, silent network window:
+
+- **`auto_restore_wifi`** — `NetworkListener:onResume`
+  (`frontend/ui/network/networklistener.lua:220-228`) runs `restore-wifi-async.sh` (pure
+  shell, zero UI) on every wake, then `scheduleConnectivityCheck()`, which broadcasts
+  `NetworkConnected`. KOReader's own menu text calls this *"silently"* (`manager.lua:990`).
+- **`auto_disable_wifi`** — `networklistener.lua:133-176` polls tx_packets and kills the
+  radio after a quiet period (5 → 30 min).
+
+Together: silent Wi-Fi on every wake, an event to hook, and a radio that tears itself back
+down. Zero taps, and no battery cost beyond what the owner already pays for
+restore-on-resume.
+
+#### The NetworkMgr API, as it actually is
+
+Correcting this document's earlier guesses — all `frontend/ui/network/manager.lua`:
+
+| Call | Line | Behaviour |
+|---|---|---|
+| `enableWifi(cb, interactive)` | :358 | **Bypasses the user's setting.** Do not use. |
+| `beforeWifiAction(cb)` | :605 | **Respects** `wifi_enable_action` |
+| `runWhenOnline(cb)` | :698 | Runs now if online, otherwise after a connect |
+| `willRerunWhenOnline(cb)` | :727 | Whether a callback is already parked |
+| `goOnlineToRun(cb)` | :753 | Blocking; **hard-refuses** unless `wifi_enable_action == "turn_on"` |
+| `isOnline()` / `isConnected()` / `isWifiOn()` | :641 / :187 / :182 | Three different questions |
+| `afterWifiAction(cb)` | :621 | |
+
+**Rule for our plugin, and the reason for it: never call `enableWifi`, and never bring the
+radio up behind the user's setting.** `wifi_enable_action` **defaults to `"prompt"`**
+(`manager.lua:1007`) — i.e. a dialog, i.e. a human tap. KOSync treats that setting as the
+user's standing consent and **auto-disables itself if it drifts**
+(`kosync.koplugin/main.lua:102-105`, `:1066-1073`); we do the same. Note also that even a
+non-interactive `enableWifi` is not silent — Kobo's `turnOnWifi` shows a "Scanning for
+networks…" InfoMessage (`manager.lua:1116-1119`).
+
+#### Two hard constraints, recorded prominently because they kill the obvious alternatives
+
+1. **`UIManager:scheduleIn` runs on `CLOCK_MONOTONIC`, which does not advance during
+   suspend** — `frontend/ui/time.lua:245`, `:300` say so explicitly. A polling timer
+   therefore measures *awake* time: "every 30 minutes" becomes "every 30 minutes of
+   reading". **A polling loop is not a viable trigger.** Consistent with the ecosystem: no
+   shipped plugin does periodic unattended network work, and kosync's own source comment
+   says it deliberately does not force the radio up.
+2. **On Kobo, KOReader replaces Nickel.** While Nickel is in the foreground, KOReader's
+   process does not exist — no plugin, no scheduler, no outbox drain. This also kills
+   **NickelDBus as a KOReader-side trigger**: its signals only fire while Nickel runs, which
+   is precisely when KOReader does not.
+
+#### RTC wakeup — real, but unproven here
+
+`Device.wakeup_mgr:addTask(secs, cb)` sets a genuine RTC alarm
+(`frontend/device/wakeupmgr.lua`, `koreader-base/ffi/rtc.lua:102-140`), giving a silent
+~30-second window before `Kobo:suspend()` puts the device back to sleep. **Unconfirmed on
+MediaTek MT8113** — no in-tree quirk flag, no report either way, and KOReader's source
+carries MTK warnings elsewhere. **Prototype it before designing anything around it, and
+never make it the primary trigger.**
+
+#### TLS is not a blocker — this document's earlier caveat was simply wrong
+
+`socket.http` dispatches `https://` to LuaSec transparently: LuaSocket's `http.lua` (pinned
+commit `a3bcaed1`) carries a `SCHEMES` table whose `https.create` does
+`require("ssl.https")`, and **LuaSec v1.3.2 is bundled**
+(`koreader-base/thirdparty/luasec/CMakeLists.txt`). So KoInsight using plain `socket.http`
+is **not** evidence against HTTPS, and the "verify before building on it" warning this plan
+used to carry was a false alarm rather than a caution to soften.
+
+**What *is* true is narrower: certificate verification is off by default.** A CA bundle
+ships (`koreader-base/thirdparty/certifi/` → `data/ca-bundle.crt`) and **nothing wires it
+up** — `grep -rn "ca-bundle\|cafile\|cacert"` across the Lua tree returns zero hits, LuaSec
+1.3.2 defaults to `verify="none"`, and KOReader's own async client hard-codes
+`verify = "none"` (`frontend/httpasync.lua:138-139`). So HTTPS to Supabase **connects and
+works, with the server certificate unverified**; verifying it means passing LuaSec params
+pointing at that bundle. Whether the file is actually present in the shipped Kobo tarball is
+**unconfirmed — a to-verify-on-device item**, not an assumption to build on.
+
+Working request shape, taken from shipped production code doing HTTPS against
+`app.wallabag.it` (`plugins/wallabag.koplugin/main.lua:885-920`):
+
+```lua
+socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
+local code, resp_headers = socket.skip(1, http.request{
+    method  = "POST",
+    url     = url,
+    headers = headers,
+    source  = ltn12.source.string(body),
+    sink    = ltn12.sink.table(sink),
+})
+socketutil:reset_timeout()
+-- resp_headers == nil means a network error, not an HTTP status
+```
+
+SQLite from Lua is `local SQ3 = require("lua-ljsqlite3/init")`.
+
+#### What this resolution costs the design
+
+Nothing structural, but it **relocates the failure mode: sync is now late, never a false
+zero.** The minutes are captured in `statistics.sqlite3` and then in the outbox whether or
+not a radio ever comes up. Lateness is still fatal to a *naive* streak, so it forces two
+server-side rules — the real design consequence of this whole finding. They are stated in
+**§4.1** (back-dated records, idempotency, `last_seen`) and **§5** (retroactive streaks,
+"0 minutes" ≠ "no data") and are not optional polish.
 
 ### Phase 0 — one-time library-inventory import (small, cheap, browser-only)
 
@@ -242,8 +372,10 @@ loans out of scope in §2.3 applies to Nickel's own numbers for our own books.
 
 ### Phase 1 — KOReader + our own plugin → `kobo-sync` edge function (the real feature)
 
-A KOReader plugin reads `statistics.sqlite3` and POSTs JSON to a Supabase edge function on
-a menu tap.
+A KOReader plugin reads `statistics.sqlite3`, writes what it finds into an on-disk outbox,
+and drains that outbox to a Supabase edge function over HTTPS whenever KOReader sees the
+network come up. A manual "Sync now" menu action exists as well, but it is the escape hatch,
+not the mechanism — **automatic sync is part of this phase**, on the evidence in §3.0.
 
 **There is a working MIT-licensed template: KoInsight's `koinsight.koplugin`.** Its source
 was read, so this contract is confirmed rather than inferred:
@@ -254,15 +386,58 @@ was read, so this contract is confirmed rather than inferred:
   `{stats, books, annotations, device_id, version}`
 - `call_api.lua` uses `socket.http.request()` with `ltn12` sink/source and
   `socketutil:set_timeout(LARGE_BLOCK_TIMEOUT, LARGE_TOTAL_TIMEOUT)`
-- `main.lua` pulls in `ui/network/manager`, i.e. it can bring Wi-Fi up itself
+- `main.lua` pulls in `ui/network/manager`, i.e. it can bring Wi-Fi up itself — **and this
+  is one of the two things not to copy** (the other is the unbounded history upload below).
+  Our plugin queues and waits for `NetworkConnected`; it never forces the radio up behind
+  `wifi_enable_action`. See §3.0.
 
-**⚠ The one thing that must be verified before committing to this path:** no explicit
-`ssl.https` usage was found in `call_api.lua`, and KoInsight's own documentation has users
-configuring a plain `http://server-ip:3000`. Supabase is HTTPS-only. KOReader bundles
-LuaSec and a certificate store, and other first-party plugins (e.g. `wallabag.koplugin`) do
-use HTTPS — **so it is possible, but it is not proven for this code path.** Verify before
-building anything on top of it. If LuaSec turns out to be awkward, the fallback is shelling
-out to a bundled `curl` from the plugin.
+**On HTTPS — settled, and not a risk (§3.0).** An earlier draft of this section flagged
+KoInsight's plain `socket.http` usage and its `http://server-ip:3000` documentation as
+evidence that TLS might be a blocker. It is not: `socket.http` dispatches `https://` to
+LuaSec transparently and LuaSec v1.3.2 is bundled. No `curl` fallback is needed and none
+should be designed in. The only residual item is that **certificate verification defaults to
+off** and wiring the shipped CA bundle up is unverified on-device — see §3.0. Use the
+`wallabag.koplugin` request shape quoted there.
+
+#### The plugin's trigger design
+
+Concretely, from §3.0:
+
+1. **`onCloseDocument` and `onSuspend`: write to the outbox, never send.** Defer the
+   `statistics.sqlite3` read to `UIManager:nextTick` so the statistics plugin's own flush
+   lands first — its flush points are `onCloseDocument`
+   (`plugins/statistics.koplugin/main.lua:2672`), `onSuspend` (`:2694`) and `onSaveSettings`
+   (`:2689`, default every **15 min**), and `broadcastEvent` walks the window stack top-down,
+   so the ordering is not otherwise guaranteed.
+2. **`onNetworkConnected`: drain the outbox**, oldest entry first, over HTTPS, deleting an
+   entry **only on a confirmed 2xx**.
+3. **`onReaderReady` / `Start`: opportunistic drain** if `NetworkMgr:isOnline()` already.
+4. **Recommend — never force — `auto_restore_wifi` and `auto_disable_wifi`** to the owner.
+   They are what turn (2) from a hook into an actual unattended sync. In the setup list
+   below.
+5. **Optional, off by default:** if `wifi_enable_action == "turn_on"`, also
+   `runWhenOnline(drain)` on `CloseDocument`. Never when the setting says otherwise — see
+   §3.0's rule.
+
+This composes with the incremental-sync cursor below rather than replacing it: **the outbox
+decides what to send, the cursor decides what to read.** The cursor may only advance on a
+2xx, so an entry still sitting unsent in the outbox can never let the cursor move past its
+rows.
+
+One already-confirmed detail that makes a mid-session drain worth doing: KoInsight's
+`db_reader.lua` calls `ui.statistics:insertDB()` before reading, flushing the currently-open
+book's in-memory page stats into `statistics.sqlite3` first — so a sync fired mid-session
+captures the session so far, not just the last closed book.
+
+**Device setup, one-time, all inside KOReader's own menus** (add these to the runbook when
+one is written):
+
+- install KOReader **≥ 2025.08** (§2.3)
+- turn on **`auto_restore_wifi`** — "automatically restore Wi-Fi connection after resume"
+- turn on **`auto_disable_wifi`** — "disable Wi-Fi connection when inactive"
+- leave `wifi_enable_action` wherever the owner wants it; the plugin respects it either way
+  and must never work around it
+- install the plugin and paste the device secret
 
 #### Incremental sync is not optional — design it in from the start
 
@@ -352,16 +527,19 @@ has an `annotations` key, so its plugin reads them from somewhere — find out w
 promising highlights in this phase. If it turns out to be sidecar-walking, that is a
 separate, larger piece of work and highlights should move to Phase 3.
 
-### Phase 2 — on-device trigger (only once the feature proves itself)
+### Phase 2 (fallback only) — an on-device trigger outside KOReader
 
-Phase 1 needs a manual tap inside KOReader. Making it automatic means a **NickelMenu** entry
-(`cmd_spawn` runs an arbitrary shell command) or **KFMon** (opening a dummy "book" launches
-an action), plus a shell script and a working HTTPS client.
+**This is no longer the automation path, and it is no longer a planned phase.** §3.0 moved
+automatic sync into Phase 1, where it costs a few dozen lines of Lua and two stock settings
+instead of a Nickel mod, a shell script and a second HTTPS binary. This section survives
+only as the answer to a scenario that may never arise: KOReader's own `NetworkConnected`
+window turning out to be too rare in this owner's actual routine (reads with Wi-Fi
+permanently off, never resumes with it restored), or a firmware change breaking the plugin
+path entirely.
 
-Do not build this until daily use proves it is worth the fragility — **unless the
-*UNRESOLVED* block at the top of §3 lands on option 2**, in which case this phase becomes a
-prerequisite of the goal-and-streak UI rather than a follow-up to it, and this heading is
-wrong. Notes for when it happens:
+If that day comes, it means a **NickelMenu** entry (`cmd_spawn` runs an arbitrary shell
+command) or **KFMon** (opening a dummy "book" launches an action), plus a shell script and a
+working HTTPS client. Notes for then:
 
 - **NickelMenu documents support for FW 4.6+ but is "thoroughly tested" only on
   4.20–4.31.** KFMon is tested 4.7–4.28. This device is on **4.45** — both are *expected* to
@@ -375,9 +553,17 @@ wrong. Notes for when it happens:
   binaries run; `koxtoolchain` gives a matching cross-compiler if a small static Go binary
   is preferred instead (Kobo-UNCaGED is the precedent — a Go binary doing real networking
   from inside the Nickel environment).
-- `NickelDBus` can expose Nickel state over D-Bus (`qndb` CLI); its documented
-  `pfmDoneProcessing` signal — content import finished — would be a natural "sync now"
-  trigger. Whether it exposes Wi-Fi state is **unconfirmed**; check with `qndb` on-device.
+- **KoboCloud's real mechanism is now confirmed, and its choices are the useful part:** udev
+  rules on `KERNEL=="wlan*", ACTION=="add"` (`src/etc/udev/rules.d/97-kobocloud.rules`),
+  firing whenever the Wi-Fi module is inserted. Notable corollary: it ships **its own ARM
+  `curl` and its own CA bundle** — strong evidence that stock Kobo firmware has no
+  TLS-capable HTTP client at all, which is exactly the cost this fallback carries and Phase
+  1 does not.
+- `NickelDBus` is **ruled out as a KOReader-side trigger** (§3.0 constraint 2): its signals
+  only fire while Nickel is running, which is precisely when KOReader's process does not
+  exist. It remains usable only *within* this Nickel-side fallback, where its documented
+  `pfmDoneProcessing` signal (content import finished) would be a natural "sync now" hook.
+  Whether it exposes Wi-Fi state is **unconfirmed**; check with `qndb` on-device.
 
 ### Deliberately NOT doing
 
@@ -394,6 +580,17 @@ wrong. Notes for when it happens:
   percentage, a position string, a device name. **No reading time, no sessions, no
   highlights.** Wrong protocol for a tracker. (KoInsight can act as a kosync server *as well*
   as a stats dashboard, which is why the two get confused.)
+- **A polling timer inside the plugin.** `UIManager:scheduleIn` runs on `CLOCK_MONOTONIC`,
+  which does not advance during suspend (§3.0) — "every 30 minutes" silently means "every 30
+  minutes of reading". Not a trigger.
+- **`crond`.** Frozen during suspend-to-RAM, no catch-up semantics for the minutes it missed,
+  and not running on stock firmware in the first place. Dead end.
+- **KFMon as a scheduler.** It is a *launcher* — inotify on a file being opened. No timer, no
+  boot trigger, no network trigger. It can only appear in the Phase 2 fallback, and only as
+  the thing a human tap starts.
+- **Sync on suspend or on book-close.** Both are structurally impossible and one of them is
+  dangerous; full evidence in §3.0, including the real device-hang incident it caused
+  upstream.
 - **Readwise / StoryGraph.** StoryGraph's native Kobo integration (June 2026) and Readwise's
   official integration both cover store purchases and Libby loans only — **not sideloaded
   books** — and neither back-syncs. For this library they are close to useless.
@@ -416,6 +613,29 @@ handheld or the iPhone.
 - Self-contained, no `_shared` imports, per this repo's deploy convention
 - Batched (`esde-sync` caps at 150; size the cap once real payload sizes are measured),
   every batch independent and idempotent so a retry or a full re-push is always safe
+
+**Three rules that §3.0 forces on this function.** Sync is *late*, not absent — which
+removes the false-zero problem but not the lateness, and lateness reaches the server as
+back-dated and repeated data:
+
+- **Back-dated rows are normal input, never an exception.** A batch arriving on Wednesday
+  routinely carries Monday's and Tuesday's pages, because that is how an outbox drained on
+  `NetworkConnected` behaves. The function stores each row at its own `started_at` and must
+  **never** clamp, re-stamp or reject a row for being older than the request. Nothing
+  downstream may treat "received today" as "read today" — and the streak is computed
+  retroactively for exactly this reason (§5).
+- **Idempotent on re-sends and on overlapping days.** Three separate mechanisms re-send rows
+  the server already holds: the cursor's deliberate lookback window, the "Full re-sync"
+  action, and any outbox entry retried after an unconfirmed response. Insert through
+  `UNIQUE (user_id, book_id, page, started_at)` with **ignore-on-conflict, never an
+  update** — a re-send must not be able to change a stored duration, and a
+  partially-applied batch must be safe to replay whole. The response should report how many
+  rows were genuinely new, so a drain that did nothing is visible rather than looking like
+  a successful sync.
+- **Every request carries a `last_seen`** (the device's own clock at send time), stamped
+  onto `reading_settings` (or this function's own small state row). This is what lets the UI
+  say *"not heard from the device since ‹timestamp›"* instead of rendering a silent zero —
+  see §5. It is the one piece of state the sync exists to carry that is not a page event.
 
 Phase 0's browser import writes through the normal authenticated client, not this function.
 
@@ -645,8 +865,20 @@ retroactively re-filter imported history against a threshold set later.
 
 And the failure generator this feature is most likely to build by accident is not a
 threshold set too high — it is **a day with no sync being counted as a day with no
-reading.** That is the open question in §3's *UNRESOLVED* block, and whatever it resolves
-to, the streak rule must distinguish **zero minutes** from **no data**.
+reading.** §3.0 makes sync *late* rather than absent, which removes the false zero at the
+source but not the lateness. Two rules follow, and neither is optional polish:
+
+1. **The streak is computed retroactively, at read time, from whatever rows exist now** —
+   never incrementally, and never stored as a counter that a missing day decrements.
+   **"No row for yesterday" must never mean "streak broken."** Only a **synced** day with
+   genuinely zero minutes breaks it. A batch landing on Wednesday carrying Monday's pages
+   then repairs Monday in place and the streak is simply correct again, with no special-case
+   repair code anywhere — because nothing was ever written down as broken. This is also
+   what makes §4.1's back-dated-records rule load-bearing rather than pedantic.
+2. **The UI distinguishes "0 minutes" from "not heard from the device since
+   ‹timestamp›"**, backed by the `last_seen` in §4.1. A day *after* the last `last_seen` is
+   **unknown** and renders as such; a day *before* it with no rows is a real zero. A streak
+   that silently resets because a radio did not come up is worse than having no streak.
 
 ---
 
@@ -654,7 +886,10 @@ to, the streak rule must distinguish **zero minutes** from **no data**.
 
 1. **N365 or P365?** Not blocking while nothing is flashed, but it must be on record.
 2. **Automatic firmware updates — off?** This is the one genuinely urgent item.
-3. **Can KOReader's plugin HTTP client do TLS as written?** Gates Phase 1's shape.
+3. **~~Can KOReader's plugin HTTP client do TLS as written?~~ Answered — yes (§3.0).** What
+   is left is much narrower and gates nothing: **is `data/ca-bundle.crt` actually present in
+   the shipped Kobo tarball?** HTTPS works either way; this only decides whether the server
+   certificate can be verified rather than trusted blindly. Check on device.
 4. **Where does KoInsight's plugin read highlight *text* from?** Decides whether highlights
    land in Phase 1 or Phase 3. Partially narrowed while researching incremental sync:
    `upload.lua` gets them from a sibling `annotation_reader.lua`
@@ -664,13 +899,18 @@ to, the streak rule must distinguish **zero minutes** from **no data**.
 5. **Are the EPUB files reachable in the same browser session as the sqlite copy?** Decides
    whether the Phase 0 inventory can compute `partialMD5` itself (§4.2.1 step 1) or falls
    back to manual merging.
-6. **Phase ordering versus the goal-and-streak honesty problem** — see the *UNRESOLVED*
-   block at the top of §3. Being researched separately; not an item to answer here.
+6. **How often does `NetworkConnected` actually fire in this owner's routine?** Not
+   blocking, and not answerable in advance — it decides only whether Phase 2's fallback
+   ever needs to exist. Measure it in daily use.
+7. **Does RTC wakeup work on MediaTek MT8113?** (§3.0.) Only worth answering if (6) turns
+   out badly. Prototype before designing around it.
 
 **Answered and closed since the first draft:** whether to track Deichman/OverDrive loans
 (no — §2.3), whether `books`/`book_highlights` are AI-writable (yes, `rw` — §4.2), whether
-Books gets a glance-board cell (yes — §4.4), and whether the device holds enough
-pre-KOReader history to justify Phase 0 (irrelevant — Phase 0 was rescoped, §3).
+Books gets a glance-board cell (yes — §4.4), whether the device holds enough pre-KOReader
+history to justify Phase 0 (irrelevant — Phase 0 was rescoped, §3), **how automatic sync is
+triggered** (§3.0 — `NetworkConnected` plus an on-disk outbox, folded into Phase 1, which
+also settles the phase ordering), and **whether TLS is a blocker** (it is not — §3.0).
 
 ---
 
@@ -703,12 +943,30 @@ just the corrected text.
   the cursor in from the start costs almost nothing; retrofitting it after the plugin is in
   daily use costs a migration of the device's own state. Designed in §3, Phase 1.
 - **The headline feature's dependency on sync freshness went unexamined.** A daily minutes
-  goal and a streak both need today's data, and Phase 1 delivers data only when the user
-  remembers to tap. An unsynced night reads as a zero, not as unknown — so the streak
+  goal and a streak both need today's data, and Phase 1 delivered data only when the user
+  remembered to tap. An unsynced night reads as a zero, not as unknown — so the streak
   breaks on a night that was actually read. The first draft put the automatic trigger in
   Phase 2 "only once the feature proves itself" without noticing that the feature cannot
-  prove itself while its headline number is wrong. Still open; see the *UNRESOLVED* block
-  in §3.
+  prove itself while its headline number is wrong. **Now resolved (§3.0)**, and the
+  resolution inverted the phase ordering rather than patching it: automatic sync is an
+  outbox inside a plugin we were writing anyway plus two settings the owner switches on, so
+  it belongs in Phase 1 and Phase 2 stops being an automation phase at all. The remaining
+  honesty rules moved to §4.1 and §5.
+- **HTTPS was recorded as a possible hard blocker. It was not one — the claim was wrong,
+  not merely cautious.** §3 used to carry a "⚠ the one thing that must be verified" warning
+  built on KoInsight using plain `socket.http` and documenting an `http://server-ip:3000`
+  server, and it proposed shelling out to a bundled `curl` as the fallback. LuaSocket
+  dispatches `https://` to LuaSec by scheme and LuaSec is bundled, so the evidence never
+  supported the worry. The real, much smaller finding underneath it — certificate
+  verification defaults to `verify="none"` and nothing wires the shipped CA bundle up — was
+  missed entirely by looking at the wrong layer. Recorded because the mistake is
+  generalisable: *"plugin X doesn't visibly require the TLS library"* is not evidence that
+  the runtime cannot do TLS.
+- **Two on-device trigger options were carried for a while that cannot work at all**, and
+  would have cost real build time before failing: a polling `scheduleIn` timer (monotonic
+  clock, does not advance across suspend) and NickelDBus (its signals only exist while
+  Nickel runs, which is exactly when KOReader does not). Both are now in the "deliberately
+  NOT doing" list with their reasons, so they cannot be re-proposed cheaply.
 
 ---
 
@@ -734,7 +992,36 @@ the `UNIQUE (id_book, page, start_time)` constraint, the `INSERT OR IGNORE`, and
 `DELETE`/DB-merge paths), and `Ko-Insight/KoInsight` `master`
 `plugins/koinsight.koplugin/db_reader.lua` + `upload.lua` (the unbounded
 `SELECT * FROM page_stat_data`, the per-row md5/device-id repetition, the `#body`
-`Content-Length`, and the `ui.statistics:insertDB()` pre-sync flush).
+`Content-Length`, and the `ui.statistics:insertDB()` pre-sync flush); its `onSuspend`
+handler's `os.execute("sleep 0.5")` busy-wait — the "aggressive sync on suspend" pattern
+§3.0 explicitly refuses to copy — is in the same plugin.
+Unattended sync (§3.0), all read from `koreader/koreader` @
+`dcf6e3b426ffca0de52e543c725a8000ea64f105`:
+`frontend/device/generic/device.lua` (`:84` suspend timeout, `:462-496` `onPowerEvent`
+disabling Wi-Fi, `:481-484` the deadlock warning, `:1099-1101` the `Suspend` broadcast),
+`frontend/device/kobo/device.lua:1382-1387` (the "Murder Wi-Fi (again…)" comment naming a
+`rerunWhenOnline` in a Suspend handler), `frontend/apps/reader/readerui.lua:883`
+(synchronous `CloseDocument`), `frontend/ui/network/manager.lua` (`:82-84` the 45 s
+connectivity check, `:182`/`:187`/`:641` the three state queries, `:358` `enableWifi`,
+`:605` `beforeWifiAction`, `:621` `afterWifiAction`, `:698` `runWhenOnline`, `:727`
+`willRerunWhenOnline`, `:753` `goOnlineToRun`, `:990` the "silently" menu text, `:1007` the
+`"prompt"` default, `:1116-1119` the Kobo "Scanning for networks…" InfoMessage),
+`frontend/ui/network/networklistener.lua` (`:133-176` `auto_disable_wifi`, `:220-228`
+`auto_restore_wifi` → `restore-wifi-async.sh` → `scheduleConnectivityCheck`),
+`frontend/ui/time.lua:245`/`:300` (`CLOCK_MONOTONIC` does not advance during suspend),
+`plugins/kosync.koplugin/KOSyncQueue.lua` and `kosync.koplugin/main.lua` (`:102-105` and
+`:1066-1073` the `wifi_enable_action` consent check, `:942-965` queue-instead-of-connect),
+`plugins/statistics.koplugin/main.lua` (`:2672` `onCloseDocument`, `:2689` `onSaveSettings`
+15-minute default, `:2694` `onSuspend`), `plugins/wallabag.koplugin/main.lua:885-920` (the
+working HTTPS request shape), `frontend/httpasync.lua:138-139` (`verify = "none"`),
+`frontend/device/wakeupmgr.lua` + `koreader-base/ffi/rtc.lua:102-140` (real RTC alarms),
+`koreader-base/thirdparty/luasec/CMakeLists.txt` (LuaSec 1.3.2) and
+`koreader-base/thirdparty/certifi/` (→ `data/ca-bundle.crt`, wired up nowhere).
+Upstream incident: koreader issues #12614 and PR #12616 (auto-sync on suspend produced an
+unwakeable device; fixed by killing Wi-Fi harder, not by making the sync work).
+KoboCloud's actual trigger: `divx118/KoboCloud`
+`src/etc/udev/rules.d/97-kobocloud.rules` (`KERNEL=="wlan*", ACTION=="add"`), which also
+ships its own ARM `curl` and CA bundle.
 Plugin template: `Ko-Insight/KoInsight` (MIT). Dashboards for prior art: `paviro/KoShelf`,
 `VirInvictus/Colophon`, `gildo/talpa`, `timchurchard/kobo-readstat`, `mfdaves/kobo-db-tools`.
 Streaks: `advokatb/readingstreak.koplugin`, `fiksr/habitreads.koplugin`.
