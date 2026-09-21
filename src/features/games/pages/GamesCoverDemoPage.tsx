@@ -331,6 +331,14 @@ export function GamesCoverDemoPage() {
     }
   }, [games, effectiveSystem])
 
+  const libraryItems: { key: StatusFilter; label: string; icon: LucideIcon; count: number }[] = [
+    { key: 'all', label: 'All games', icon: Gamepad2, count: games.length },
+    { key: 'playing', label: 'Playing', icon: PlayCircle, count: statusCounts.playing },
+    { key: 'completed', label: 'Completed', icon: CheckCircle2, count: statusCounts.completed },
+    { key: 'backlog', label: 'Backlog', icon: PackageOpen, count: statusCounts.backlog },
+    { key: 'wishlist', label: 'Wishlist', icon: Heart, count: statusCounts.wishlist },
+  ]
+
   return (
     <div className="min-h-full bg-canvas text-ink-900">
       <div className="mx-auto max-w-[1680px] px-3 sm:px-5 lg:px-6 py-3 sm:py-5">
@@ -361,23 +369,20 @@ export function GamesCoverDemoPage() {
           <aside className="hidden lg:block">
             <div className="sticky top-4 rounded-[20px] border border-ink-200 bg-cream-50/80 p-3">
               <p className="px-2 pt-1 pb-2 text-[10px] font-bold uppercase tracking-[.16em] text-ink-400">Library</p>
-              {[
-                ['all', 'All games', Gamepad2, games.length],
-                ['playing', 'Playing', PlayCircle, statusCounts.playing],
-                ['completed', 'Completed', CheckCircle2, statusCounts.completed],
-                ['backlog', 'Backlog', PackageOpen, statusCounts.backlog],
-                ['wishlist', 'Wishlist', Heart, statusCounts.wishlist],
-              ].map(([key, label, Icon, count]) => (
-                <button
-                  key={String(key)}
-                  onClick={() => setStatus(key as StatusFilter)}
-                  className={`w-full min-h-[40px] px-2.5 rounded-xl flex items-center gap-2 text-xs transition-colors ${status === key ? 'bg-accent-500/12 text-accent-600 font-semibold' : 'text-ink-600 hover:bg-ink-100'}`}
-                >
-                  <Icon size={16} />
-                  <span className="flex-1 text-left">{String(label)}</span>
-                  <span className="text-[10px] text-ink-400">{String(count)}</span>
-                </button>
-              ))}
+              {libraryItems.map(item => {
+                const Icon = item.icon
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => setStatus(item.key)}
+                    className={`w-full min-h-[40px] px-2.5 rounded-xl flex items-center gap-2 text-xs transition-colors ${status === item.key ? 'bg-accent-500/12 text-accent-600 font-semibold' : 'text-ink-600 hover:bg-ink-100'}`}
+                  >
+                    <Icon size={16} />
+                    <span className="flex-1 text-left">{item.label}</span>
+                    <span className="text-[10px] text-ink-400">{item.count}</span>
+                  </button>
+                )
+              })}
               <p className="px-2 pt-5 pb-2 text-[10px] font-bold uppercase tracking-[.16em] text-ink-400">Platforms</p>
               <button onClick={() => setSystemFilter('all')} className={`w-full min-h-[38px] px-2.5 rounded-xl flex items-center justify-between text-xs ${effectiveSystem === 'all' ? 'bg-accent-500/12 text-accent-600 font-semibold' : 'text-ink-600 hover:bg-ink-100'}`}>
                 <span>All Platforms</span><span className="text-[10px] text-ink-400">{games.length}</span>
