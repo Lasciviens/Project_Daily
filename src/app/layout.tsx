@@ -24,7 +24,7 @@ import { useUIStore } from './store'
 const ROUTE_TITLES: Record<string, string> = {
   '/home': 'Home', '/daily': 'Personal', '/shop': 'Shop', '/recipes': 'Food',
   '/media': 'Media', '/work': 'Work', '/projects': 'Projects', '/training': 'Training',
-  '/games': 'Games', '/games-demo': 'Games Demo', '/wishes': 'Wishes', '/developer': 'Developer',
+  '/games': 'Games', '/games-demo': 'Games Demo', '/games-cover-demo': 'Cover Demo', '/wishes': 'Wishes', '/developer': 'Developer',
 }
 
 // Remembered scroll offsets per route (#7) — restored on a Back (POP) nav so
@@ -191,7 +191,7 @@ const MORE_TABS: { to: string; label: string; icon: LucideIcon; match: string[] 
   { to: '/wishes',    label: 'Wishes',    icon: Star,         match: ['/wishes'] },
   { to: '/work',      label: 'Work',      icon: Briefcase,    match: ['/work'] },
   { to: '/projects',  label: 'Projects',  icon: FolderKanban, match: ['/projects'] },
-  { to: '/games',     label: 'Games',     icon: Gamepad2,     match: ['/games', '/games-demo'] },
+  { to: '/games',     label: 'Games',     icon: Gamepad2,     match: ['/games', '/games-demo', '/games-cover-demo'] },
   { to: '/developer', label: 'Developer', icon: Code2,        match: ['/developer'] },
 ]
 
