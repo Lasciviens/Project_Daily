@@ -327,6 +327,113 @@ server-side rules — the real design consequence of this whole finding. They ar
 **§4.1** (back-dated records, idempotency, `last_seen`) and **§5** (retroactive streaks,
 "0 minutes" ≠ "no data") and are not optional polish.
 
+### 3.0.1 Write our own plugin, or reuse BookOrbit's? — **OPEN, the owner decides**
+
+A prior draft assumed we would write our own plugin. That assumption went unexamined, and
+it is the largest remaining decision in this document, so it is recorded as open rather
+than silently settled.
+
+**BookOrbit** (`github.com/bookorbit/bookorbit`, ~4.5k stars, actively developed) is a
+self-hosted reading platform whose monorepo contains **both** a Kobo store-API emulator
+**and** `koreader-plugin/bookorbit.koplugin/` — 37 Lua modules, ~19k lines, plus ~12k lines
+of Busted specs. It already implements, in shipped and tested code, the exact architecture
+§3.0 arrives at independently. Every claim below was verified by reading its source.
+
+**What it confirms about our design** (independent corroboration, arrived at from KOSync):
+
+- `_onCloseDocument` (`main.lua:1172`) and `_onSuspend` (`:1217`) capture and persist; they
+  do not depend on the network. Bound only when `auto_sync` is on, which **defaults off**.
+- A real on-disk outbox, `bookorbit_lifecycle_outbox.lua` (535 lines), whose header states
+  the same conclusion in its own words: *"Close and suspend handlers must not run network
+  I/O, so they capture a snapshot and persist it here instead."*
+- Offline it queues **without touching the radio**: close/suspend call the drain
+  non-interactively, so `if NetworkMgr:isConnected() then submit() … else return false`.
+  There is no `NetworkMgr:enableWifi` call anywhere in the plugin.
+- Drained on `NetworkConnected` (`:1230`), book open (`:897`), startup (`:189`), plus
+  close, suspend, manual and a self-chaining `"recovery"` pass — one entry per invocation,
+  re-chaining on success, so a backlog clears a book at a time rather than in a burst.
+- HTTPS works through `socket.http` + `ltn12` + `socketutil`, with **no TLS options set at
+  all** — confirming §3.0's finding that certificates go unverified by default.
+
+**Three corrections to how this project is usually described:**
+
+1. **The every-N-pages push carries no statistics.** `pages_before_update` (default 10,
+   10-second re-arming debounce, `bookorbit_progress_sync.lua:361`) sends progress only —
+   `{document, percentage, progress, device, device_id, timestamp}`. Reading-time data
+   moves on close/suspend/manual and nowhere else.
+2. **The outbox has no eviction and no expiry.** At the hard limit (1000 entries / 200 MiB)
+   `enqueue` **refuses the new entry** rather than dropping an old one. After
+   `MAX_ATTEMPTS = 5` an entry is *parked*, not deleted — skipped by automatic drains so it
+   cannot head-of-line-block, and only a manual sync retries it.
+3. **The licence is stricter than "AGPL".** `AGPL-3.0-only` **plus `ADDITIONAL_TERMS.md`**
+   (§7(b)-(e), effective 10 Sep 2026) requiring a prominent, non-removable "Powered by
+   BookOrbit" notice in every interactive UI of a covered work. Those terms travel with any
+   reused code and cannot be stripped.
+
+#### The three options
+
+- **A — write our own minimal plugin.** Full control of the wire contract and our own pace.
+  Cost: we reimplement the queue, backoff, phase-level acks and subprocess-forking that
+  BookOrbit already has tested, and we will get some of it wrong first.
+- **B — run BookOrbit's plugin unmodified and implement its server contract in
+  `kobo-sync`.** No plugin for us to maintain, mature code on the device. We hold no
+  BookOrbit code, so its §7 attribution term does not reach our app. Cost: we track their
+  API, and a change upstream is our problem.
+- **C — run BookOrbit itself and read from its API.** A second server to operate. Heavy for
+  one reader.
+
+**Not chosen here.** Option B looks strong on effort alone, but A's control over the
+contract is worth more than it first appears given every other ingest path in this repo is
+ours end to end.
+
+#### If B — the contract, read out of their source
+
+Worth recording either way, because these are the decisions a stats sync has to get right
+and they are cheap to copy and expensive to rediscover:
+
+- **Every request carries `deviceTime`**, and the source says why: *"KOReader datetimes are
+  local wall clock with no timezone; the server needs our clock to mint device datetimes
+  that are not in our future."* This repo has paid for that lesson twice already
+  (`phone-gateway`'s `import_body_composition`, `esde-sync`).
+- **The stats event is KOReader's `page_stat_data` row unchanged** —
+  `{page, startTime, durationSeconds, totalPages}`, grouped under a book `hash`. Do not
+  invent a different shape.
+- **Sessions are derived server-side**, not sent: a gap **> 1800 s** splits a session,
+  clusters **< 10 s** are discarded, and
+  `duration = min(Σ event durations, endEpoch − firstStart)` — so idle gaps inside a cluster
+  are excluded while wall clock still caps the total.
+- **Idempotency is a derived key, never a client id:**
+  `kor:${deviceId.slice(0,8)}:${bookFileId}:${clusterStartEpoch}`, upserted on
+  `(userId, sessionId)`. A client-generated UUID would not survive re-clustering when a late
+  batch extends a session; they additionally scan backwards and delete/reinsert overlapping
+  sessions when a late batch merges two clusters.
+- **Responses carry `unmatched: string[]`** so the device learns which hashes the server
+  does not know, without holding a library list itself.
+- Server-side validation worth mirroring: `page ≥ 0`, `startTime ≥ 1`,
+  `0 ≤ durationSeconds ≤ 86400`, `totalPages ≥ 1`, hash matched against an MD5 hex regex,
+  ≤50 books per request. The plugin caps its own body at 900 KiB and batches 500 events.
+- `deviceId` is load-bearing for dedup, not decoration — their README warns that a cloned
+  device with a *different* `device_id` double-counts reading time.
+
+#### Licensing, factually
+
+KOReader itself is **AGPL-3.0** (`COPYING`); in discussion #11652 a maintainer reads it as
+or-later, but the project has never formally declared it. **Whether a `.koplugin` is a
+derivative work is genuinely unresolved** — no KOReader policy, no CONTRIBUTING statement,
+no case law — and community practice is visibly split: `koreader/contrib` and
+`readingstreak.koplugin` are AGPL-3.0, `kobo.koplugin` is GPL-3.0, and **KoInsight, the
+closest analogue to what we would build, is MIT**.
+
+What matters practically: **`kobo-sync` is not affected either way.** AGPL §13 obliges
+offering source to users interacting with *the covered work* over a network; our edge
+function is separate software containing no AGPL code, and the person running the plugin is
+the person holding it. Publishing our plugin in a public repo incurs nothing extra either —
+publishing source is how AGPL obligations are *satisfied*, not how they are triggered.
+
+If we take option A, licensing the plugin **AGPL-3.0-or-later** — matching KOReader itself
+and `koreader/contrib` — sidesteps the derivative-work question rather than betting on an
+answer, at no cost to us.
+
 ### Phase 0 — one-time library-inventory import (small, cheap, browser-only)
 
 Plug the device in, copy `KoboReader.sqlite`, parse it **in the browser** with `sql.js`
@@ -884,6 +991,10 @@ source but not the lateness. Two rules follow, and neither is optional polish:
 
 ## 6. Open questions — answer before writing code
 
+0. **Write our own plugin, or reuse BookOrbit's? (§3.0.1)** The largest open decision in
+   this document, and the owner's to make. It changes what Phase 1 even is: option A is a
+   plugin we write and maintain, option B is implementing someone else's wire contract.
+   Everything else below is detail by comparison.
 1. **N365 or P365?** Not blocking while nothing is flashed, but it must be on record.
 2. **Automatic firmware updates — off?** This is the one genuinely urgent item.
 3. **~~Can KOReader's plugin HTTP client do TLS as written?~~ Answered — yes (§3.0).** What
@@ -904,6 +1015,10 @@ source but not the lateness. Two rules follow, and neither is optional polish:
    ever needs to exist. Measure it in daily use.
 7. **Does RTC wakeup work on MediaTek MT8113?** (§3.0.) Only worth answering if (6) turns
    out badly. Prototype before designing around it.
+
+**Deliberately NOT answered here:** question 0. A prior pass in this document slid from
+"find the answer" into "pick the answer" on a question that was the owner's; §3.0.1 lays
+out A/B/C with the evidence and stops there.
 
 **Answered and closed since the first draft:** whether to track Deichman/OverDrive loans
 (no — §2.3), whether `books`/`book_highlights` are AI-writable (yes, `rw` — §4.2), whether
