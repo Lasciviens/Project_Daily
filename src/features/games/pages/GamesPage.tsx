@@ -72,7 +72,7 @@ function sortGames(gs: Game[], sort: SortKey): Game[] {
 function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className="relative bg-cream-50 rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-lg hover:scale-[1.02] transition-all duration-150 press-feedback group"
+      className="cv-card relative bg-cream-50 rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-lg hover:scale-[1.02] transition-[border-color,box-shadow,transform] duration-150 press-feedback group"
     >
       {/* The cover's own colours, blurred, as this card's ground. */}
       <CoverBackdrop url={game.primary_cover_url} />
@@ -92,7 +92,7 @@ function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
         </div>
       </div>
 
-      <div className="relative p-2 flex flex-col gap-1 flex-1 bg-cream-50/85 backdrop-blur-sm">
+      <div className="relative p-2 flex flex-col gap-1 flex-1 bg-cream-50/85 sm:backdrop-blur-sm">
         <p className="text-xs font-semibold text-ink-800 leading-snug line-clamp-2 flex-1">{game.title}</p>
         {game.series_name && <p className="text-[10px] text-ink-400 truncate">{game.series_name}</p>}
         {(game.genres?.length ?? 0) > 0 && (
@@ -114,7 +114,7 @@ function CompactCard({ game, onClick }: { game: Game; onClick: () => void }) {
   const dotColor  = ({ playing: 'bg-orange-400', completed: 'bg-green-500', wishlist: 'bg-purple-500', backlog: 'bg-ink-300', dropped: 'bg-red-400' } as Record<string, string>)[game.play_status] ?? 'bg-ink-300'
   return (
     <button onClick={onClick} title={game.title}
-      className="relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-all duration-150 press-feedback bg-ink-100 shadow-sm group"
+      className="cv-tile relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-[border-color,transform] duration-150 press-feedback bg-ink-100 shadow-sm group"
       style={{ aspectRatio: '3/4' }}
     >
       <CoverImg url={game.primary_cover_url} title={game.title} />
@@ -136,7 +136,7 @@ function CompactCard({ game, onClick }: { game: Game; onClick: () => void }) {
 function PosterCard({ game, onClick }: { game: Game; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className="relative rounded-2xl overflow-hidden shadow-md border border-ink-200 hover:shadow-xl hover:border-accent-400 hover:scale-[1.03] transition-all duration-200 press-feedback bg-ink-950 group"
+      className="cv-card relative rounded-2xl overflow-hidden shadow-md border border-ink-200 hover:shadow-xl hover:border-accent-400 hover:scale-[1.03] transition-[border-color,box-shadow,transform] duration-200 press-feedback bg-ink-950 group"
       style={{ aspectRatio: '2/3' }}
     >
       <CoverImg url={game.primary_cover_url} title={game.title} className="absolute inset-0" />
@@ -283,7 +283,7 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
                 const dotColor  = ({ playing: 'bg-orange-400', completed: 'bg-green-500', wishlist: 'bg-purple-500', backlog: 'bg-ink-300', dropped: 'bg-red-400' } as Record<string,string>)[g.play_status] ?? 'bg-ink-300'
                 return (
                   <button key={g.id} onClick={() => onSelect(g.id)} title={g.title}
-                    className="relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-all duration-150 bg-ink-100 shadow-sm group"
+                    className="relative rounded-lg overflow-hidden border border-ink-200 hover:border-accent-400 hover:scale-105 transition-[border-color,transform] duration-150 bg-ink-100 shadow-sm group"
                     style={{ aspectRatio: '3/4' }}
                   >
                     <CoverImg url={g.primary_cover_url} title={g.title} />
@@ -370,34 +370,53 @@ function LibraryTab({ onOpenDetail, onFilteredChange }: {
   // the two can never disagree about what a group contains. Counts come from
   // the unfiltered library: a facet that reads 0 tells you it is empty, not
   // that your other choices excluded it.
-  const filterGroups = useMemo(() => {
+  // Counting is expensive (five passes over every game) and depends ONLY on
+  // the library — so it is memoised on the library alone. An earlier version
+  // folded it into the group descriptors, whose dependencies include the
+  // selected values, so every single checkbox tap recounted 1150 games five
+  // times over before the panel could repaint. That is what made the filter
+  // sheet feel heavy.
+  const facetCounts = useMemo(() => {
     const countBy = (pick: (g: Game) => string[]) => {
       const m = new Map<string, number>()
       for (const g of allGames) for (const v of pick(g)) m.set(v, (m.get(v) ?? 0) + 1)
       return m
     }
-    const tierCounts   = countBy(g => (g.tier ? [g.tier] : []))
-    const genreCounts  = countBy(g => g.genres ?? [])
-    const systemCounts = countBy(g => [...new Set(g.platforms.map(p => p.system))])
-    const seriesCounts = countBy(g => (g.series_name ? [g.series_name] : []))
-    const devCounts    = countBy(g => (g.developer ? [g.developer] : []))
+    return {
+      tier:   countBy(g => (g.tier ? [g.tier] : [])),
+      genre:  countBy(g => g.genres ?? []),
+      system: countBy(g => [...new Set(g.platforms.map(p => p.system))]),
+      series: countBy(g => (g.series_name ? [g.series_name] : [])),
+      dev:    countBy(g => (g.developer ? [g.developer] : [])),
+    }
+  }, [allGames])
+
+  // Options carry the counts and are likewise library-only, so re-selecting
+  // never rebuilds these arrays either.
+  const facetOptions = useMemo(() => {
     const opts = (values: string[], counts: Map<string, number>, label?: (v: string) => string) =>
       values.map(v => ({ value: v, label: label ? label(v) : v, count: counts.get(v) ?? 0 }))
+    return {
+      tier:   opts([...TIERS], facetCounts.tier, t => `Tier ${t}`),
+      genre:  opts(genreOptions, facetCounts.genre),
+      system: opts(systemOptions, facetCounts.system),
+      series: opts(seriesOptions, facetCounts.series),
+      dev:    opts(devOptions, facetCounts.dev),
+    }
+  }, [facetCounts, genreOptions, systemOptions, seriesOptions, devOptions])
 
-    return [
-      { key: 'tier'   as const, label: 'Tier',   selected: tierFilter,   onChange: setTierFilter,   options: opts([...TIERS], tierCounts, t => `Tier ${t}`) },
-      { key: 'genre'  as const, label: 'Genre',  selected: genreFilter,  onChange: setGenreFilter,  options: opts(genreOptions, genreCounts) },
-      { key: 'system' as const, label: 'System', selected: systemFilter, onChange: setSystemFilter, options: opts(systemOptions, systemCounts) },
-      ...(seriesOptions.length > 0
-        ? [{ key: 'series' as const, label: 'Series', selected: seriesFilter, onChange: setSeriesFilter, options: opts(seriesOptions, seriesCounts) }]
-        : []),
-      // Only offered once the library actually knows some developers — an
-      // empty group is a button that does nothing.
-      ...(devOptions.length > 0
-        ? [{ key: 'developer' as const, label: 'Developer', selected: devFilter, onChange: setDevFilter, options: opts(devOptions, devCounts) }]
-        : []),
-    ]
-  }, [allGames, genreOptions, systemOptions, seriesOptions, devOptions,
+  // Only this last, cheap step depends on what is selected.
+  const filterGroups = useMemo(() => [
+    { key: 'tier'   as const, label: 'Tier',   selected: tierFilter,   onChange: setTierFilter,   options: facetOptions.tier },
+    { key: 'genre'  as const, label: 'Genre',  selected: genreFilter,  onChange: setGenreFilter,  options: facetOptions.genre },
+    { key: 'system' as const, label: 'System', selected: systemFilter, onChange: setSystemFilter, options: facetOptions.system },
+    ...(seriesOptions.length > 0
+      ? [{ key: 'series' as const, label: 'Series', selected: seriesFilter, onChange: setSeriesFilter, options: facetOptions.series }]
+      : []),
+    ...(devOptions.length > 0
+      ? [{ key: 'developer' as const, label: 'Developer', selected: devFilter, onChange: setDevFilter, options: facetOptions.dev }]
+      : []),
+  ], [facetOptions, seriesOptions.length, devOptions.length,
       tierFilter, genreFilter, systemFilter, seriesFilter, devFilter])
 
   const openGroup = filterGroups.find(g => g.key === openFilter) ?? null
