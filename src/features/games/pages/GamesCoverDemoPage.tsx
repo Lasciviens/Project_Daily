@@ -4,6 +4,7 @@ import {
   Heart, CheckCircle2, PackageOpen, PlayCircle, Moon, Sun, SlidersHorizontal,
   ChevronDown, X, Sparkles,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import {
   useAllGames, useSetPlayStatus, useUpdateGame, useAddToQueue, useRemoveFromQueue,
 } from '../hooks/useGames'
