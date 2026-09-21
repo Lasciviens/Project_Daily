@@ -12,6 +12,7 @@ import { MediaPage } from '../features/media/pages/MediaPage'
 import { WorkPage } from '../features/work/pages/WorkPage'
 import { TrainingPage } from '../features/training/pages/TrainingPage'
 import { GamesPage } from '../features/games/pages/GamesPage'
+import { GamesLibraryDemoPage } from '../features/games/pages/GamesLibraryDemoPage'
 import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
 import { WishesPage } from '../features/wishes/pages/WishesPage'
 import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
@@ -44,6 +45,7 @@ export function Router() {
           <Route path="/work"     element={<WorkPage />} />
           <Route path="/training"  element={<TrainingPage />} />
           <Route path="/games"     element={<GamesPage />} />
+          <Route path="/games-demo" element={<GamesLibraryDemoPage />} />
           <Route path="/projects"  element={<ProjectsPage />} />
           <Route path="/wishes"    element={<WishesPage />} />
           <Route path="/developer" element={<DeveloperPage />} />
