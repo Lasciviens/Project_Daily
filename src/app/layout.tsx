@@ -91,7 +91,10 @@ export function Layout() {
     <div className="h-full flex flex-col bg-canvas overflow-hidden">
       <Nav scrolled={scrolled} collapsed={headerHidden} />
       <main
-        className="flex-1 min-h-0 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
+        // overscroll-contain: a flick that reaches the end of this list stops
+        // there instead of handing the gesture to the page behind it, which on
+        // iOS is what makes a long grid feel like it "slips".
+        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-0 relative"
         onScroll={e => { const y = (e.target as HTMLElement).scrollTop; reportScroll(y); scrollPositions.set(pathname, y) }}
         {...pullToRefresh.containerProps}
       >
