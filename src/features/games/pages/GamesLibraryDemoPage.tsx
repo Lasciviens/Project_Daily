@@ -312,7 +312,7 @@ function DetailsDrawer({
             </div>
             <div className="flex items-start gap-2">
               <CalendarDays size={17} className="text-ink-400 mt-0.5" />
-              <div><p className="text-[10px] uppercase tracking-wide text-ink-400">Last played</p><p className="font-semibold text-ink-800">{fmtDate(stats.lastPlayed)}</p></div>
+              <div><p className="text-[10px] uppercase tracking-wide text-ink-400">Last played</p><p className="font-semibold text-ink-800">{fmtDate(stats.last)}</p></div>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wide text-ink-400">Players</p>
