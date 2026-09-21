@@ -1,8 +1,12 @@
 name: Deploy to GitHub Pages
 
 on:
+  # TEMP DEMO: the feature branch is intentionally allowed to publish the same
+  # Pages artifact so /#/games-demo can be reviewed without merging. Remove the
+  # feature branch from this list (or delete the branch) after review, then run
+  # the main workflow once to restore the canonical main build.
   push:
-    branches: [main]
+    branches: [main, feature/games-library-demo-v2]
   workflow_dispatch:
 
 permissions:
