@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Search, Gamepad2, Play, CheckCircle2, PackageOpen, Heart, X, Clock3,
-  CalendarDays, Star, ListPlus, ListX, Pencil, ChevronRight, Plus, Grid3X3,
+  CalendarDays, Star, ListPlus, ListX, Pencil, ChevronRight, Plus,
 } from 'lucide-react'
 import {
   useAllGames, useSetPlayStatus, useUpdateGame, useAddToQueue, useRemoveFromQueue,
@@ -230,7 +230,7 @@ function DetailsDrawer({
   }
 
   return (
-    <aside className="fixed top-12 sm:top-14 right-0 bottom-0 z-30 w-full sm:w-[430px] lg:w-[490px] bg-cream-50 border-l border-ink-200 shadow-[-18px_0_40px_-28px_rgba(20,18,14,0.5)] overflow-y-auto">
+    <aside className="fixed top-[calc(3rem+env(safe-area-inset-top))] sm:top-14 right-0 bottom-0 z-50 w-full sm:w-[430px] lg:w-[490px] bg-cream-50 border-l border-ink-200 shadow-[-18px_0_40px_-28px_rgba(20,18,14,0.5)] overflow-y-auto">
       <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 bg-cream-50/95 backdrop-blur border-b border-ink-100">
         <div>
           <p className="text-[10px] uppercase tracking-[0.16em] font-semibold text-ink-400">Game details</p>
@@ -552,7 +552,7 @@ export function GamesLibraryDemoPage() {
               {label}
             </button>
           ))}
-          <span className="ml-auto hidden sm:inline-flex items-center gap-1 text-[11px] text-ink-400 px-2"><Grid3X3 size={13} /> {filtered.length} games</span>
+          <span className="ml-auto hidden sm:inline-flex items-center gap-1 text-[11px] text-ink-400 px-2"><Gamepad2 size={13} /> {filtered.length} games</span>
         </div>
       </div>
 
