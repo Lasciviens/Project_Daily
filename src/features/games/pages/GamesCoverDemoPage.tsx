@@ -2,7 +2,7 @@ import { memo, useDeferredValue, useMemo, useState } from 'react'
 import {
   Search, Gamepad2, Star, Pencil, ListPlus, ListX,
   Heart, CheckCircle2, PackageOpen, PlayCircle, Moon, Sun, SlidersHorizontal,
-  X, Library, MoreHorizontal, Plus, Grid2X2, List, Disc3,
+  X, Library, MoreHorizontal, Plus, Grid2X2, List, Disc3, Monitor, Joystick,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -32,6 +32,15 @@ function systemLabel(key: string): string {
   return systemMeta(key).label
 }
 
+function systemClass(key: string): string {
+  return key.replace(/[^a-z0-9-]/g, '')
+}
+
+function PlatformGlyph({ system, size = 14 }: { system: string; size?: number }) {
+  const handheld = ['psp', 'gba', 'nds', 'n3ds', 'switch'].includes(system)
+  return handheld ? <Gamepad2 size={size} /> : <Monitor size={size} />
+}
+
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return 'Never'
   const date = new Date(iso)
@@ -57,9 +66,11 @@ const CoverCard = memo(function CoverCard({
   onOpen: () => void
 }) {
   const stats = playStatsOf(game)
+  const system = primarySystem(game)
+  const platform = game.platforms.find(p => p.is_primary_variant) ?? game.platforms[0]
   return (
-    <button type="button" className={`gcl-card ${selected ? 'selected' : ''}`} onClick={onOpen} aria-label={`Open ${game.title}`}>
-      <div className="gcl-case">
+    <button type="button" className={`gcl-card gcl-platform-${systemClass(system)} ${selected ? 'selected' : ''}`} onClick={onOpen} aria-label={`Open ${game.title}`}>
+      <div className="gcl-case" data-platform={systemLabel(system)}>
         {game.primary_cover_url ? (
           <img src={game.primary_cover_url} alt="" loading="lazy" decoding="async" />
         ) : (
@@ -67,6 +78,7 @@ const CoverCard = memo(function CoverCard({
         )}
       </div>
       <div className="gcl-card-title">{game.title}</div>
+      {platform?.region && <div className="gcl-card-region">{platform.region}</div>}
       <div className="gcl-card-meta">
         <span className={`gcl-dot ${game.play_status}`} />
         <span>{STATUS_LABEL[game.play_status] ?? game.play_status}</span>
@@ -154,7 +166,7 @@ export function GamesCoverDemoPage() {
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
   const [filter, setFilter] = useState<LibraryFilter>('all')
-  const [systemFilter, setSystemFilter] = useState('auto')
+  const [systemFilter, setSystemFilter] = useState('all')
   const [sort, setSort] = useState<SortKey>('title')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
@@ -175,9 +187,7 @@ export function GamesCoverDemoPage() {
     })
   }, [games])
 
-  const effectiveSystem = systemFilter === 'auto'
-    ? (systems.find(([key]) => key === 'ps2')?.[0] ?? systems[0]?.[0] ?? 'all')
-    : systemFilter
+  const effectiveSystem = systemFilter
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase()
@@ -212,13 +222,13 @@ export function GamesCoverDemoPage() {
   ]
 
   function chooseFilter(next: LibraryFilter) {
-    setFilter(next)
+    setFilter(current => current === next && next !== 'all' ? 'all' : next)
     setVisibleCount(PAGE_SIZE)
     setSelectedId(null)
   }
 
   function chooseSystem(next: string) {
-    setSystemFilter(next)
+    setSystemFilter(current => current === next && next !== 'all' ? 'all' : next)
     setVisibleCount(PAGE_SIZE)
     setSelectedId(null)
   }
@@ -235,9 +245,12 @@ export function GamesCoverDemoPage() {
             </button>
           })}
           <div className="gcl-nav-title">Platforms</div>
-          {systems.slice(0, 9).map(([key, count]) => (
+          <button type="button" className={`gcl-navbtn ${effectiveSystem === 'all' ? 'active' : ''}`} onClick={() => chooseSystem('all')}>
+            <Joystick size={14} /><span>All Platforms</span><span className="count">{games.length}</span>
+          </button>
+          {systems.map(([key, count]) => (
             <button type="button" key={key} className={`gcl-navbtn ${effectiveSystem === key ? 'active' : ''}`} onClick={() => chooseSystem(key)}>
-              <Disc3 size={14} /><span>{systemLabel(key)}</span><span className="count">{count}</span>
+              <PlatformGlyph system={key} /><span>{systemLabel(key)}</span><span className="count">{count}</span>
             </button>
           ))}
         </aside>
@@ -286,7 +299,8 @@ export function GamesCoverDemoPage() {
             </div>
           </section>
 
-          <section className="gcl-shelves">
+          <section className={`gcl-shelves gcl-library-platform-${systemClass(effectiveSystem)}`}>
+            {effectiveSystem !== 'all' && <div className="gcl-platform-watermark" aria-hidden="true"><PlatformGlyph system={effectiveSystem} size={150} /><span>{activeLabel}</span></div>}
             {isLoading ? (
               <div className="gcl-empty-detail">Loading library…</div>
             ) : error ? (
