@@ -19,6 +19,7 @@ import './GamesCoverDemoPage.css'
 type LibraryFilter = 'all' | 'queue' | PlayStatus
 type SortKey = 'recent' | 'title' | 'rating' | 'playtime'
 type DemoTheme = 'dark' | 'light'
+type ViewMode = 'grid' | 'shelf' | 'list'
 
 const PAGE_SIZE = 12
 const SYSTEM_ORDER = ['ps2', 'psp', 'gc', 'switch', 'wii', 'n3ds', 'xbox360', 'psx', 'n64', 'gba', 'dreamcast', 'saturn', 'genesis', 'snes', 'nes']
@@ -155,6 +156,7 @@ export function GamesCoverDemoPage() {
   const [filter, setFilter] = useState<LibraryFilter>('all')
   const [systemFilter, setSystemFilter] = useState('auto')
   const [sort, setSort] = useState<SortKey>('title')
+  const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -222,7 +224,7 @@ export function GamesCoverDemoPage() {
   }
 
   return (
-    <div className={`gcl-demo ${theme === 'dark' ? 'gcl-dark' : 'gcl-light'}`}>
+    <div className={`gcl-demo ${theme === 'dark' ? 'gcl-dark' : 'gcl-light'} gcl-view-${viewMode}`}>
       <div className="gcl-shell">
         <aside className="gcl-side">
           <div className="gcl-brand"><span className="gcl-brandmark"><Gamepad2 size={17} /></span> Game Library</div>
@@ -257,8 +259,9 @@ export function GamesCoverDemoPage() {
             <select className="gcl-filter" value={sort} onChange={e => setSort(e.target.value as SortKey)}>
               <option value="title">Sort: Title</option><option value="recent">Sort: Recent</option><option value="rating">Sort: Rating</option><option value="playtime">Sort: Playtime</option>
             </select>
-            <button type="button" className="gcl-iconbtn active" aria-label="Grid view"><Grid2X2 size={15} /></button>
-            <button type="button" className="gcl-iconbtn" aria-label="List view"><List size={15} /></button>
+            <button type="button" className={`gcl-iconbtn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')} aria-label="Grid view"><Grid2X2 size={15} /></button>
+            <button type="button" className={`gcl-iconbtn ${viewMode === 'shelf' ? 'active' : ''}`} onClick={() => setViewMode('shelf')} aria-label="Shelf view"><Disc3 size={15} /></button>
+            <button type="button" className={`gcl-iconbtn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} aria-label="List view"><List size={15} /></button>
             <button type="button" className="gcl-iconbtn" onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} aria-label="Toggle demo theme">{theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}</button>
             <button type="button" className="gcl-iconbtn" onClick={() => setAddOpen(true)} aria-label="Add game"><Plus size={15} /></button>
           </div>
