@@ -34,3 +34,36 @@
  .gcl-mobile-nav{position:fixed;left:0;right:0;bottom:0;height:58px;border-top:1px solid var(--g-line);background:color-mix(in srgb,var(--g-panel) 95%,transparent);backdrop-filter:blur(14px);z-index:60;display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom)}.gcl-mobile-nav button{border:0;background:none;color:var(--g-muted);font-size:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}.gcl-mobile-nav button.active{color:var(--g-blue)}
 }
 @media(prefers-reduced-motion:reduce){.gcl-demo *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Platform identity — intentionally CSS-only so the library stays cheap to render. */
+.gcl-shelves{position:relative;isolation:isolate;overflow:hidden}
+.gcl-platform-watermark{position:absolute;inset:0;z-index:-1;pointer-events:none;display:flex;align-items:flex-start;justify-content:flex-end;padding:28px 38px;color:var(--g-text);opacity:.035;filter:blur(.2px)}
+.gcl-platform-watermark span{position:absolute;right:30px;top:155px;font-size:34px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.gcl-library-platform-ps2{background:radial-gradient(circle at 88% 10%,rgba(65,78,173,.10),transparent 34%)}
+.gcl-library-platform-psx,.gcl-library-platform-psp{background:radial-gradient(circle at 88% 10%,rgba(45,82,150,.09),transparent 34%)}
+.gcl-library-platform-switch{background:radial-gradient(circle at 88% 10%,rgba(230,0,18,.08),transparent 34%)}
+.gcl-library-platform-gc{background:radial-gradient(circle at 88% 10%,rgba(100,73,184,.09),transparent 34%)}
+.gcl-library-platform-xbox360{background:radial-gradient(circle at 88% 10%,rgba(16,124,16,.09),transparent 34%)}
+.gcl-library-platform-dreamcast{background:radial-gradient(circle at 88% 10%,rgba(241,92,34,.07),transparent 34%)}
+.gcl-library-platform-n64,.gcl-library-platform-gba,.gcl-library-platform-n3ds,.gcl-library-platform-wii,.gcl-library-platform-wiiu{background:radial-gradient(circle at 88% 10%,rgba(216,36,42,.06),transparent 34%)}
+.gcl-case:after{content:attr(data-platform);position:absolute;left:7px;right:5px;top:6px;height:16px;display:flex;align-items:center;padding-left:5px;border-radius:2px;background:rgba(12,15,20,.82);color:#fff;font-size:6px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;z-index:3;opacity:.88}
+.gcl-platform-ps2 .gcl-case{border:1px solid #14181d;border-left:5px solid #101419;background:#11161c;padding:3px 3px 3px 2px;box-shadow:0 11px 18px rgba(0,0,0,.34),inset 1px 0 rgba(65,81,112,.75),inset 0 0 0 1px rgba(255,255,255,.13)}
+.gcl-platform-ps2 .gcl-case:before{left:-4px;top:12%;bottom:12%;width:3px;background:linear-gradient(#05080d,#32466d,#05080d)}
+.gcl-platform-ps2 .gcl-case:after{background:linear-gradient(90deg,#0b0f17,#1b2b49);color:#d9e6ff}
+.gcl-platform-switch .gcl-case{background:#e60012;border:2px solid #e60012;padding:3px}.gcl-platform-switch .gcl-case:after{background:#e60012;color:#fff}
+.gcl-platform-gc .gcl-case{background:#3f347c;border:2px solid #514398}.gcl-platform-gc .gcl-case:after{background:#493d8c}
+.gcl-platform-psp .gcl-case{background:#12151a;border:2px solid #2c3038}.gcl-platform-psp .gcl-case:after{background:linear-gradient(90deg,#1d2735,#090b0f)}
+.gcl-platform-psx .gcl-case{background:#d7d7d4;border:2px solid #b9b9b4}.gcl-platform-psx .gcl-case:after{background:#efefeb;color:#222}
+.gcl-platform-xbox360 .gcl-case{background:#e9ece7;border:2px solid #8da88a}.gcl-platform-xbox360 .gcl-case:after{background:#107c10}
+.gcl-platform-dreamcast .gcl-case{background:#f2f2f2;border:2px solid #ddd}.gcl-platform-dreamcast .gcl-case:after{background:#f15a24}
+.gcl-card-region{max-width:126px;margin:2px auto -1px;font-size:6.5px;line-height:1;color:var(--g-muted);opacity:.72;text-transform:uppercase;letter-spacing:.05em}
+@media(min-width:761px) and (max-width:1450px){
+ .gcl-shell{grid-template-columns:164px minmax(0,1fr) 286px;max-width:none}
+ .gcl-side{padding-left:8px;padding-right:8px}.gcl-toolbar{padding-left:12px;padding-right:12px;gap:6px}
+ .gcl-search{min-width:150px}.gcl-filter{padding:0 7px}.gcl-library-head{padding-left:13px;padding-right:13px}.gcl-shelves{padding-left:8px;padding-right:8px}
+ .gcl-covers{gap:10px}.gcl-case{max-width:112px}.gcl-card-title,.gcl-card-meta,.gcl-card-region{max-width:112px}.gcl-detail-body{padding-left:13px;padding-right:13px}
+}
+@media(max-width:1180px) and (min-width:761px){
+ .gcl-shell{grid-template-columns:154px minmax(0,1fr)}.gcl-detail{display:none}.gcl-side{font-size:9px}.gcl-covers{gap:8px}.gcl-case{max-width:118px}
+}
+@media(max-width:760px){.gcl-platform-watermark{display:none}.gcl-card-region{max-width:none}.gcl-case:after{height:14px;font-size:5.5px}}
