@@ -181,3 +181,37 @@
  .gcl-continue{height:37px;grid-template-columns:22px minmax(0,1fr) auto;padding:3px 6px;gap:6px}.gcl-continue img{width:22px;height:29px}.gcl-continue small{font-size:5px}.gcl-continue strong{font-size:7.5px}.gcl-continue em{font-size:6px}
  .gcl-more-row .gcl-more{margin-top:9px}
 }
+
+/* Smart collections, controller navigation and selected-game ambient art. */
+.gcl-demo{position:relative;isolation:isolate}
+.gcl-shell{position:relative;z-index:1}
+.gcl-selected-ambient{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;opacity:.075;animation:gclAmbientIn .42s ease both}
+.gcl-selected-ambient:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--g-bg) 0%,transparent 24%,transparent 72%,var(--g-bg) 100%),linear-gradient(180deg,var(--g-bg) 0%,transparent 18%,var(--g-bg) 88%)}
+.gcl-selected-ambient img{width:100%;height:100%;object-fit:cover;filter:blur(26px) saturate(1.35);transform:scale(1.08)}
+@keyframes gclAmbientIn{from{opacity:0;transform:scale(1.015)}to{opacity:.075;transform:scale(1)}}
+.gcl-dark .gcl-selected-ambient{opacity:.11}
+
+.gcl-smart-collections{display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none}
+.gcl-smart-collections>span{font-size:6px;text-transform:uppercase;letter-spacing:.11em;font-weight:800;color:var(--g-muted);margin-right:2px;white-space:nowrap}
+.gcl-smart-collections button{height:23px;padding:0 7px;border:1px solid color-mix(in srgb,var(--g-line) 78%,transparent);border-radius:6px;background:transparent;color:var(--g-muted);font-size:6.8px;font-weight:700;white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:4px}
+.gcl-smart-collections button:hover,.gcl-smart-collections button.active{color:var(--g-text);border-color:color-mix(in srgb,var(--g-blue) 38%,var(--g-line));background:color-mix(in srgb,var(--g-blue) 9%,var(--g-soft))}
+.gcl-smart-collections button.active{color:var(--g-blue)}
+.gcl-smart-collections b{font-size:5.8px;font-weight:800;min-width:13px;height:13px;padding:0 3px;display:grid;place-items:center;border-radius:7px;background:var(--g-soft);color:var(--g-muted)}
+
+.gcl-gamepad-live{height:24px;padding:0 7px;border:1px solid color-mix(in srgb,var(--g-green) 35%,var(--g-line));border-radius:7px;background:color-mix(in srgb,var(--g-green) 9%,transparent);color:var(--g-green);font-size:6.5px;font-weight:800;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.gcl-card.selected .gcl-case{box-shadow:0 12px 24px rgba(0,0,0,.28),0 0 0 2px var(--g-blue),0 0 22px color-mix(in srgb,var(--g-blue) 22%,transparent)}
+.gcl-card.selected{outline:none}
+.gcl-card:focus-visible .gcl-case{box-shadow:0 12px 24px rgba(0,0,0,.28),0 0 0 2px var(--g-blue),0 0 22px color-mix(in srgb,var(--g-blue) 22%,transparent)}
+
+.gcl-detail-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
+.gcl-detail-badges span{height:20px;padding:0 6px;border:1px solid var(--g-line);border-radius:999px;background:var(--g-soft);color:var(--g-muted);font-size:6.5px;font-weight:750;display:inline-flex;align-items:center;text-transform:capitalize}
+.gcl-detail-badges span.tier{color:#f5a623;border-color:color-mix(in srgb,#f5a623 34%,var(--g-line));background:color-mix(in srgb,#f5a623 8%,var(--g-soft))}
+.gcl-detail-badges span.ready,.gcl-detail-badges span.perf-good{color:var(--g-green);border-color:color-mix(in srgb,var(--g-green) 32%,var(--g-line));background:color-mix(in srgb,var(--g-green) 8%,var(--g-soft))}
+.gcl-detail-badges span.perf-warn{color:#f5a623}.gcl-detail-badges span.perf-bad{color:#ef5555}
+
+@media(max-width:760px){
+ .gcl-selected-ambient{opacity:.055}.gcl-dark .gcl-selected-ambient{opacity:.075}
+ .gcl-smart-collections{gap:3px}.gcl-smart-collections>span{font-size:5px}.gcl-smart-collections button{height:20px;padding:0 6px;font-size:5.8px}.gcl-smart-collections b{font-size:5px;height:11px;min-width:11px}
+ .gcl-gamepad-live{height:22px;font-size:5.8px}
+ .gcl-detail-badges{margin-top:7px;gap:3px}.gcl-detail-badges span{height:18px;padding:0 5px;font-size:5.8px}
+}
