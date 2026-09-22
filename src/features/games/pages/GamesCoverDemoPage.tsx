@@ -1,6 +1,6 @@
 import { memo, useDeferredValue, useMemo, useState } from 'react'
 import {
-  Search, Gamepad2, Star, Clock3, CalendarDays, Pencil, ListPlus, ListX,
+  Search, Gamepad2, Star, Pencil, ListPlus, ListX,
   Heart, CheckCircle2, PackageOpen, PlayCircle, Moon, Sun, SlidersHorizontal,
   X, Library, MoreHorizontal, Plus, Grid2X2, List, Disc3,
 } from 'lucide-react'
@@ -190,7 +190,7 @@ export function GamesCoverDemoPage() {
     if (sort === 'recent') rows = sortByRecentlyPlayed(rows)
     else if (sort === 'title') rows = [...rows].sort((a, b) => a.title.localeCompare(b.title))
     else if (sort === 'rating') rows = [...rows].sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1))
-    else rows = [...rows].sort((a, b) => playStatsOf(b).seconds - playStatsOf(a).seconds)
+    else rows = [...rows].sort((a, b) => (playStatsOf(b).seconds ?? 0) - (playStatsOf(a).seconds ?? 0))
     return rows
   }, [games, deferredQuery, effectiveSystem, filter, sort])
 
