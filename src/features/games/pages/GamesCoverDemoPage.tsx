@@ -266,6 +266,19 @@ export function GamesCoverDemoPage() {
           ))}
         </aside>
 
+        <nav className="gcl-mobile-rail" aria-label="Mobile library navigation">
+          <button type="button" className={filter === 'all' ? 'active' : ''} onClick={() => chooseFilter('all')} aria-label="Library"><Library size={15} /></button>
+          <button type="button" className={filter === 'queue' ? 'active' : ''} onClick={() => chooseFilter('queue')} aria-label="Play Queue"><PlayCircle size={15} /></button>
+          <button type="button" className={filter === 'wishlist' ? 'active' : ''} onClick={() => chooseFilter('wishlist')} aria-label="Wishlist"><Heart size={15} /></button>
+          <span className="gcl-mobile-rail-sep" />
+          <button type="button" className={effectiveSystem === 'all' ? 'active' : ''} onClick={() => chooseSystem('all')} aria-label="All Platforms"><Joystick size={15} /></button>
+          {systems.slice(0, 6).map(([key]) => (
+            <button type="button" key={key} className={effectiveSystem === key ? 'active' : ''} onClick={() => chooseSystem(key)} aria-label={systemLabel(key)} title={systemLabel(key)}>
+              <PlatformGlyph system={key} size={13} />
+            </button>
+          ))}
+        </nav>
+
         <main className="gcl-main">
           <div className="gcl-mobile-top">
             <span className="gcl-brandmark"><Gamepad2 size={15} /></span><strong>Game Library</strong><span className="spacer" />
