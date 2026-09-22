@@ -1,8 +1,9 @@
-import { memo, useDeferredValue, useMemo, useState } from 'react'
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Search, Gamepad2, Star, Pencil, ListPlus, ListX,
   Heart, CheckCircle2, PackageOpen, PlayCircle, Moon, Sun, SlidersHorizontal,
   X, Library, MoreHorizontal, Plus, Grid2X2, List, Disc3, Monitor, Joystick, PanelLeftOpen, PanelLeftClose,
+  Dice5, Sparkles, HardDrive, RotateCcw, Clock3,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -184,6 +185,10 @@ export function GamesCoverDemoPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [fullEditId, setFullEditId] = useState<string | null>(null)
   const [sideOpen, setSideOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 761px)').matches)
+  const [genreFilter, setGenreFilter] = useState<string | null>(null)
+  const [iconicOnly, setIconicOnly] = useState(false)
+  const [installedOnly, setInstalledOnly] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const systems = useMemo(() => {
     const counts = new Map<string, number>()
@@ -200,12 +205,21 @@ export function GamesCoverDemoPage() {
 
   const effectiveSystem = systemFilter
 
+  const genres = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const game of games) for (const genre of game.genres ?? []) counts.set(genre, (counts.get(genre) ?? 0) + 1)
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [games])
+
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase()
     let rows = games.filter(game => {
       if (effectiveSystem !== 'all' && primarySystem(game) !== effectiveSystem) return false
       if (filter === 'queue' && game.play_order == null) return false
       if (filter !== 'all' && filter !== 'queue' && game.play_status !== filter) return false
+      if (genreFilter && !(game.genres ?? []).includes(genreFilter)) return false
+      if (iconicOnly && !game.is_iconic) return false
+      if (installedOnly && !game.platforms.some(p => p.rom_status === 'installed' || p.rom_status === 'sd_card')) return false
       if (!q) return true
       return [game.title, game.series_name, game.developer, game.publisher, ...(game.genres ?? [])]
         .filter(Boolean).some(v => String(v).toLowerCase().includes(q))
@@ -215,7 +229,24 @@ export function GamesCoverDemoPage() {
     else if (sort === 'rating') rows = [...rows].sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1))
     else rows = [...rows].sort((a, b) => (playStatsOf(b).seconds ?? 0) - (playStatsOf(a).seconds ?? 0))
     return rows
-  }, [games, deferredQuery, effectiveSystem, filter, sort])
+  }, [games, deferredQuery, effectiveSystem, filter, genreFilter, iconicOnly, installedOnly, sort])
+
+  const libraryStats = useMemo(() => {
+    const totalSeconds = filtered.reduce((sum, game) => sum + (playStatsOf(game).seconds ?? 0), 0)
+    const rated = filtered.filter(game => game.rating != null)
+    return {
+      playing: filtered.filter(game => game.play_status === 'playing').length,
+      queue: filtered.filter(game => game.play_order != null).length,
+      iconic: filtered.filter(game => game.is_iconic).length,
+      hours: Math.round(totalSeconds / 3600),
+      average: rated.length ? rated.reduce((sum, game) => sum + Number(game.rating), 0) / rated.length : null,
+    }
+  }, [filtered])
+
+  const continueGame = useMemo(() => {
+    const candidates = games.filter(game => game.play_status === 'playing' && (effectiveSystem === 'all' || primarySystem(game) === effectiveSystem))
+    return sortByRecentlyPlayed(candidates)[0] ?? null
+  }, [games, effectiveSystem])
 
   const visibleGames = filtered.slice(0, visibleCount)
   const rows = chunk(visibleGames, 4)
@@ -244,6 +275,41 @@ export function GamesCoverDemoPage() {
     setVisibleCount(PAGE_SIZE)
     setSelectedId(null)
   }
+
+  function clearFilters() {
+    setQuery('')
+    setFilter('all')
+    setSystemFilter('all')
+    setGenreFilter(null)
+    setIconicOnly(false)
+    setInstalledOnly(false)
+    setVisibleCount(PAGE_SIZE)
+    setSelectedId(null)
+  }
+
+  function surpriseMe() {
+    if (!filtered.length) return
+    const game = filtered[Math.floor(Math.random() * filtered.length)]
+    setSelectedId(game.id)
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || target?.isContentEditable
+      if (event.key === '/' && !typing) {
+        event.preventDefault()
+        searchRef.current?.focus()
+      } else if (event.key === 'Escape') {
+        setSelectedId(null)
+        if (document.activeElement === searchRef.current) searchRef.current?.blur()
+      } else if (event.key.toLowerCase() === 'r' && !typing) {
+        surpriseMe()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [filtered])
 
   return (
     <div className={`gcl-demo ${theme === 'dark' ? 'gcl-dark' : 'gcl-light'} gcl-view-${viewMode} ${sideOpen ? 'gcl-side-open' : 'gcl-side-closed'}`}>
@@ -297,7 +363,7 @@ export function GamesCoverDemoPage() {
           </div>
 
           <div className="gcl-toolbar">
-            <div className="gcl-search"><Search size={14} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search games, consoles, or tags..." /></div>
+            <div className="gcl-search"><Search size={14} /><input ref={searchRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search games, consoles, or tags..." />{query && <button type="button" className="gcl-search-clear" onClick={() => setQuery('')} aria-label="Clear search"><X size={12} /></button>}<kbd>/</kbd></div>
             <select className="gcl-filter" value={filter} onChange={e => chooseFilter(e.target.value as LibraryFilter)}>
               <option value="all">All Status</option><option value="playing">Playing</option><option value="completed">Completed</option><option value="backlog">Backlog</option><option value="wishlist">Wishlist</option><option value="queue">Play Queue</option>
             </select>
@@ -331,6 +397,31 @@ export function GamesCoverDemoPage() {
             </div>
           </section>
 
+          <section className="gcl-utility">
+            <div className="gcl-stat-strip">
+              <span><strong>{filtered.length}</strong><small>Games</small></span>
+              <span><strong>{libraryStats.playing}</strong><small>Playing</small></span>
+              <span><strong>{libraryStats.queue}</strong><small>Queue</small></span>
+              <span><strong>{libraryStats.hours}h</strong><small>Playtime</small></span>
+              <span><strong>{libraryStats.average != null ? libraryStats.average.toFixed(1) : '—'}</strong><small>Avg rating</small></span>
+            </div>
+            <div className="gcl-smart-actions">
+              <button type="button" onClick={surpriseMe} disabled={!filtered.length} title="Random game (R)"><Dice5 size={13} /> Surprise me <kbd>R</kbd></button>
+              <button type="button" className={iconicOnly ? 'active' : ''} onClick={() => { setIconicOnly(v => !v); setVisibleCount(PAGE_SIZE) }}><Sparkles size={13} /> Iconic <span>{libraryStats.iconic}</span></button>
+              <button type="button" className={installedOnly ? 'active' : ''} onClick={() => { setInstalledOnly(v => !v); setVisibleCount(PAGE_SIZE) }}><HardDrive size={13} /> Installed</button>
+              {(query || filter !== 'all' || effectiveSystem !== 'all' || genreFilter || iconicOnly || installedOnly) && <button type="button" onClick={clearFilters}><RotateCcw size={13} /> Reset</button>}
+            </div>
+            {genres.length > 0 && <div className="gcl-genre-strip">
+              <button type="button" className={!genreFilter ? 'active' : ''} onClick={() => setGenreFilter(null)}>All genres</button>
+              {genres.slice(0, 9).map(([genre, count]) => <button type="button" key={genre} className={genreFilter === genre ? 'active' : ''} onClick={() => { setGenreFilter(current => current === genre ? null : genre); setVisibleCount(PAGE_SIZE) }}>{genre}<span>{count}</span></button>)}
+            </div>}
+            {continueGame && <button type="button" className="gcl-continue" onClick={() => setSelectedId(continueGame.id)}>
+              {continueGame.primary_cover_url && <img src={continueGame.primary_cover_url} alt="" loading="lazy" decoding="async" />}
+              <span><small><Clock3 size={10} /> Continue playing</small><strong>{continueGame.title}</strong></span>
+              <em>{formatPlaytime(playStatsOf(continueGame).seconds) || 'In progress'} →</em>
+            </button>}
+          </section>
+
           <section className={`gcl-shelves gcl-library-platform-${systemClass(effectiveSystem)}`}>
             {platformArt && (
               <div className="gcl-platform-stage" aria-hidden="true">
@@ -357,7 +448,7 @@ export function GamesCoverDemoPage() {
                     </div>
                   </div>
                 ))}
-                {visibleCount < filtered.length && <button type="button" className="gcl-more" onClick={() => setVisibleCount(v => v + PAGE_SIZE)}>Show more</button>}
+                {visibleCount < filtered.length && <div className="gcl-more-row"><button type="button" className="gcl-more" onClick={() => setVisibleCount(v => v + PAGE_SIZE)}>Show more</button><button type="button" className="gcl-more secondary" onClick={() => setVisibleCount(filtered.length)}>Show all {filtered.length}</button></div>}
               </>
             )}
           </section>
