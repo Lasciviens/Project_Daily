@@ -36,8 +36,18 @@ function systemClass(key: string): string {
   return key.replace(/[^a-z0-9-]/g, '')
 }
 
+const PLATFORM_ART: Record<string, { image: string; kicker: string; tagline: string }> = {
+  ps2: { image: 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Sony-PlayStation-2-30001-wController-L.png', kicker: 'SONY COMPUTER ENTERTAINMENT', tagline: 'Emotion Engine · DualShock 2' },
+  psx: { image: 'https://commons.wikimedia.org/wiki/Special:Redirect/file/PlayStation_Controller_transparent.png', kicker: 'PLAYSTATION', tagline: 'The original 32-bit era' },
+  gc: { image: 'https://commons.wikimedia.org/wiki/Special:Redirect/file/GameCube_Controller.png', kicker: 'NINTENDO GAMECUBE', tagline: 'Born to play' },
+  switch: { image: 'https://www.nintendo.com/eu/media/images/08_content_images/systems_5/nintendo_switch_3/nintendo_switch_2/CI_NSwitch_CompareBundles_Console.png', kicker: 'NINTENDO SWITCH', tagline: 'Play anywhere · Joy-Con' },
+  psp: { image: 'https://commons.wikimedia.org/wiki/Special:Redirect/file/PSP-1000.png', kicker: 'PLAYSTATION PORTABLE', tagline: 'PlayStation in your hands' },
+}
+
 function PlatformGlyph({ system, size = 14 }: { system: string; size?: number }) {
-  const handheld = ['psp', 'gba', 'nds', 'n3ds', 'switch'].includes(system)
+  const art = PLATFORM_ART[system]
+  if (art) return <img className="gcl-platform-icon" src={art.image} alt="" width={size + 4} height={size + 4} loading="lazy" decoding="async" />
+  const handheld = ['gba', 'nds', 'n3ds'].includes(system)
   return handheld ? <Gamepad2 size={size} /> : <Monitor size={size} />
 }
 
@@ -211,6 +221,7 @@ export function GamesCoverDemoPage() {
   const selected = selectedId ? games.find(g => g.id === selectedId) ?? null : null
   const desktopSelected = selected ?? visibleGames[0] ?? null
   const activeLabel = effectiveSystem === 'all' ? 'All Platforms' : systemLabel(effectiveSystem)
+  const platformArt = effectiveSystem === 'all' ? null : PLATFORM_ART[effectiveSystem]
 
   const countStatus = (status: PlayStatus) => games.filter(g => g.play_status === status).length
   const navItems: { key: LibraryFilter; label: string; icon: LucideIcon; count?: number }[] = [
@@ -300,7 +311,13 @@ export function GamesCoverDemoPage() {
           </section>
 
           <section className={`gcl-shelves gcl-library-platform-${systemClass(effectiveSystem)}`}>
-            {effectiveSystem !== 'all' && <div className="gcl-platform-watermark" aria-hidden="true"><PlatformGlyph system={effectiveSystem} size={150} /><span>{activeLabel}</span></div>}
+            {platformArt && (
+              <div className="gcl-platform-stage" aria-hidden="true">
+                <div className="gcl-platform-copy"><small>{platformArt.kicker}</small><strong>{activeLabel}</strong><span>{platformArt.tagline}</span></div>
+                <img src={platformArt.image} alt="" loading="lazy" decoding="async" />
+              </div>
+            )}
+            {effectiveSystem !== 'all' && !platformArt && <div className="gcl-platform-watermark" aria-hidden="true"><PlatformGlyph system={effectiveSystem} size={150} /><span>{activeLabel}</span></div>}
             {isLoading ? (
               <div className="gcl-empty-detail">Loading library…</div>
             ) : error ? (
@@ -311,6 +328,9 @@ export function GamesCoverDemoPage() {
               <>
                 {rows.map((row, rowIndex) => (
                   <div className="gcl-shelf-row" key={rowIndex}>
+                    <div className="gcl-row-ambient" aria-hidden="true">
+                      <span>{activeLabel}</span><i>{String(rowIndex + 1).padStart(2, '0')}</i>
+                    </div>
                     <div className="gcl-covers">
                       {row.map(game => <CoverCard key={game.id} game={game} selected={selectedId === game.id} onOpen={() => setSelectedId(game.id)} />)}
                     </div>
