@@ -277,74 +277,81 @@ function sessionMs(s: unknown): number | null {
   return Number.isFinite(t) ? t : null
 }
 
-// Clusters pre-aggregated sessions whose [sleepStart, sleepEnd] windows
-// overlap and keeps only the LONGEST (by totalSleep) session per cluster —
-// overlapping windows are duplicate reports of the same sleep (old
-// midnight-keyed row vs new sleepStart-keyed row after a re-export, or a
-// partial "Since Last Sync" delivery), never two real simultaneous sleeps.
-// Sessions with unparseable times are kept as-is (can't prove overlap).
+// Drops pre-aggregated sessions that are DUPLICATE REPORTS of another session,
+// and keeps everything else so the night's real blocks are summed.
 //
-// ⚠️ KNOWN LIMITATION — this merge is NOT the whole story for Apple/HAE sleep.
-// Live case (night of 2026-07-17): DB had ONLY two overlapping rows,
-// 02:00→07:27/4.94h and its subset 03:36→07:27/3.34h, BOTH deep=0. Keep-
-// longest yields 4.94h and the site showed 4h56m — but Apple Health's own UI
-// showed 8h8m for that night, with all the Deep sleep in an EARLIER session
-// (~21:45→~01:00) that NEVER arrived in our DB. So the low number was a DATA-
-// DELIVERY gap (HAE's aggregate + "Since Last Sync" mode split the night and
-// dropped the early piece), not a merge win. Two aggregate rows carry no
-// per-segment timestamps, so a lost sub-session is unrecoverable from them —
-// the merge can only dedupe what actually arrived. Mitigation: run HAE's
-// "Previous 7 Days" reconciliation automation (re-sends a complete night as
-// ONE row, as the clean 2026-07-18 00:51→09:55/8.64h row proves). Do NOT
-// "fix" this by summing overlapping rows — that double-counts the genuine
-// duplicate-redelivery case.
+// REAL BUG this replaced (reported as "Health sleep is far lower than Apple
+// Health"): the old rule was "any time-overlap at all ⇒ same sleep ⇒ keep only
+// the longest", which is right for a re-report and catastrophic for a normal
+// interrupted night. When you wake briefly and go back to sleep, Apple counts
+// the awake stretch at the edge of BOTH blocks, so the two session windows
+// overlap by a few minutes while being genuinely different sleep. Measured:
+// 23:10→03:20 (4.10h) plus 03:15→07:40 (4.35h) — five minutes of edge overlap
+// — reported 4.35h where Apple showed 8.45h. Half the night, deleted by a
+// rounding artifact at a boundary.
+//
+// The distinction that actually holds: a duplicate re-report is substantially
+// CONTAINED in the session it duplicates (an exact resend, or a partial
+// "Since Last Sync" delivery that shares a start and stops early, or the
+// 02:00→07:27 / 03:36→07:27 subset pair seen live). Two real blocks of one
+// night touch only at the edges. So a session is dropped only when ≥90% of its
+// own window lies inside a better-ranked session's window; anything less is
+// kept and summed. Sessions with unparseable times are kept as-is (can't prove
+// containment).
+//
+// Ranking is (totalSleep desc, duration desc, input order) so the survivor of a
+// duplicate pair is deterministic and is always the fullest report — the answer
+// no longer depends on the order the query returned rows in.
+//
+// ⚠️ This merge still cannot invent data that never arrived. HAE's "Since Last
+// Sync" mode can split a night and never send the early piece; two aggregate
+// rows carry no per-segment timestamps, so a genuinely lost sub-session is
+// unrecoverable. Mitigation is HAE's "Previous 7 Days" reconciliation
+// automation, which re-sends a complete night as ONE row. But do NOT diagnose a
+// short night as a delivery gap without checking the rows first — the case
+// documented here as "the early session never arrived" (2026-07-17, Apple 8h8m
+// vs our 4h56m) is exactly what this bug also looks like from the outside.
+const SESSION_CONTAINMENT_RATIO = 0.9
 function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
-  interface Sess { p: HealthMetric; start: number; end: number; total: number }
+  interface Sess { p: HealthMetric; start: number; end: number; total: number; order: number }
   const timed: Sess[] = []
   const untimed: HealthMetric[] = []
   const seenExact = new Set<string>()
   for (const p of preAggregated) {
     const start = sessionMs(p.value?.sleepStart)
     const end   = sessionMs(p.value?.sleepEnd)
-    // REAL BUG (fixed): this key used to be the sleepStart ALONE, so two rows
-    // that merely SHARE a start — a partial "Since Last Sync" delivery and the
-    // complete re-export of the same night — collapsed to whichever one the
-    // query happened to return first, rather than to the longer one. Reachable
-    // because `recorded_at` for sleep IS the session's own sleepStart, so the
-    // `(user_id,metric_name,recorded_at,source)` unique key lets a same-start
-    // pair coexist whenever `source` differs — exactly what the pre-
-    // canonicalizeSource rows still sitting in the table look like (those were
-    // never deleted). Symptom: a night silently reads SHORT, and can change
-    // value between loads.
-    // Identity is the whole session, not its start. Two rows with the same
-    // start but different ends necessarily overlap, so letting them through
-    // hands them to the keep-longest clustering below, which is the branch
-    // that gets this right.
+    // Identity is the whole session, never its start alone: two rows can share
+    // a sleepStart and still be different reports (a partial delivery and the
+    // complete re-export). Keying on the start alone made the answer depend on
+    // which row the query returned first.
     const key   = [p.value?.sleepStart ?? p.recorded_at, p.value?.sleepEnd ?? '', p.value?.totalSleep ?? ''].join('|')
     if (seenExact.has(key)) continue // the same session under two row keys
     seenExact.add(key)
     if (start != null && end != null && end > start) {
-      timed.push({ p, start, end, total: p.value?.totalSleep ?? 0 })
+      timed.push({ p, start, end, total: p.value?.totalSleep ?? 0, order: timed.length })
     } else {
       untimed.push(p)
     }
   }
-  timed.sort((a, b) => a.start - b.start)
-  const kept: HealthMetric[] = [...untimed]
-  let cluster: Sess[] = []
-  let clusterEnd = -Infinity
-  const flush = () => {
-    if (cluster.length === 0) return
-    kept.push(cluster.reduce((best, s) => (s.total > best.total ? s : best)).p)
-    cluster = []
+  // Fullest report first, so a duplicate is always judged against the better
+  // copy of itself and the survivor never depends on row order.
+  const ranked = [...timed].sort((a, b) =>
+    (b.total - a.total) || ((b.end - b.start) - (a.end - a.start)) || (a.order - b.order))
+
+  const isDuplicateOf = (s: Sess, other: Sess): boolean => {
+    const overlap = Math.min(s.end, other.end) - Math.max(s.start, other.start)
+    if (overlap <= 0) return false
+    const span = s.end - s.start
+    return span > 0 && overlap / span >= SESSION_CONTAINMENT_RATIO
   }
-  for (const s of timed) {
-    if (s.start >= clusterEnd) flush()
-    cluster.push(s)
-    clusterEnd = Math.max(clusterEnd, s.end)
+
+  const survivors: Sess[] = []
+  for (const s of ranked) {
+    if (!survivors.some(k => isDuplicateOf(s, k))) survivors.push(s)
   }
-  flush()
-  return kept
+  // Back to chronological order — callers render these as a timeline.
+  survivors.sort((a, b) => a.start - b.start)
+  return [...untimed, ...survivors.map(s => s.p)]
 }
 
 export interface SleepSessionInterval { startMs: number; endMs: number; totalSleep: number }

@@ -105,6 +105,45 @@ function segment(stage, qty, { date = '2026-07-17', source = "Furkan's Apple Wat
     extractSleepSessions([first, second], '2026-07-17').length, 2)
 }
 
+// ─── §2b Edge overlap is NOT a duplicate ─────────────────────────────────────
+// The bug this section exists for, reported as "Health sleep is far lower than
+// Apple Health". Waking briefly makes Apple count the awake stretch at the edge
+// of BOTH blocks, so two genuinely different parts of one night overlap by a
+// few minutes. The old "any overlap ⇒ keep the longest" rule deleted the
+// smaller block: 4.10h + 4.35h with five minutes of edge overlap reported
+// 4.35h where Apple showed 8.45h.
+{
+  const before = session({ start: at('19', '23:10:00'), end: at('20', '03:20:00'), total: 4.10, core: 2.5, rem: 0.8, deep: 0.8 })
+  const after  = session({ start: at('20', '03:15:00'), end: at('20', '07:40:00'), total: 4.35, core: 2.6, rem: 0.9, deep: 0.85 })
+  check('§2b.1 five minutes of edge overlap does not delete a block',
+    round(computeSleepSummary([before, after])[0].total), 8.45)
+  check('§2b.2 …and the order of the two rows does not change it',
+    round(computeSleepSummary([after, before])[0].total), 8.45)
+  check('§2b.3 stages are summed across both blocks',
+    round(computeSleepSummary([before, after])[0].deep), 1.65)
+  check('§2b.4 both blocks survive onto the session timeline',
+    extractSleepSessions([before, after], '2026-07-20').length, 2)
+  check('§2b.5 …in chronological order, not ranked order',
+    extractSleepSessions([before, after], '2026-07-20').map(s => s.totalSleep), [4.10, 4.35])
+}
+
+// The containment rule has to keep working in the other direction, or the fix
+// above just trades an under-report for a double-count.
+{
+  const full   = session({ start: at('17', '02:00:00'), end: at('17', '07:00:00'), total: 5.0 })
+  // A subset sharing the END — the other half of the partial-delivery shape.
+  const subset = session({ start: at('17', '05:00:00'), end: at('17', '07:00:00'), total: 2.0 })
+  check('§2b.6 a fully contained subset is still dropped, not summed',
+    round(computeSleepSummary([full, subset])[0].total), 5)
+
+  // 30 min of a 60 min session lies inside the other: 50%, well under the
+  // containment bar, so it is real sleep and is kept.
+  const a = session({ start: at('17', '01:00:00'), end: at('17', '02:00:00'), total: 1.0 })
+  const b = session({ start: at('17', '01:30:00'), end: at('17', '06:00:00'), total: 4.5 })
+  check('§2b.7 a half-overlapping session is kept, not treated as a duplicate',
+    round(computeSleepSummary([a, b])[0].total), 5.5)
+}
+
 // Sessions whose timestamps cannot be parsed can't be proven to overlap, so
 // they are kept rather than silently dropped.
 {
