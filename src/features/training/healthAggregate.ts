@@ -306,8 +306,22 @@ function mergeSleepSessions(preAggregated: HealthMetric[]): HealthMetric[] {
   for (const p of preAggregated) {
     const start = sessionMs(p.value?.sleepStart)
     const end   = sessionMs(p.value?.sleepEnd)
-    const key   = `${p.value?.sleepStart ?? p.recorded_at}`
-    if (seenExact.has(key)) continue // identical session under two row keys
+    // REAL BUG (fixed): this key used to be the sleepStart ALONE, so two rows
+    // that merely SHARE a start — a partial "Since Last Sync" delivery and the
+    // complete re-export of the same night — collapsed to whichever one the
+    // query happened to return first, rather than to the longer one. Reachable
+    // because `recorded_at` for sleep IS the session's own sleepStart, so the
+    // `(user_id,metric_name,recorded_at,source)` unique key lets a same-start
+    // pair coexist whenever `source` differs — exactly what the pre-
+    // canonicalizeSource rows still sitting in the table look like (those were
+    // never deleted). Symptom: a night silently reads SHORT, and can change
+    // value between loads.
+    // Identity is the whole session, not its start. Two rows with the same
+    // start but different ends necessarily overlap, so letting them through
+    // hands them to the keep-longest clustering below, which is the branch
+    // that gets this right.
+    const key   = [p.value?.sleepStart ?? p.recorded_at, p.value?.sleepEnd ?? '', p.value?.totalSleep ?? ''].join('|')
+    if (seenExact.has(key)) continue // the same session under two row keys
     seenExact.add(key)
     if (start != null && end != null && end > start) {
       timed.push({ p, start, end, total: p.value?.totalSleep ?? 0 })
