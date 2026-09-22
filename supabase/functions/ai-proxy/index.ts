@@ -1355,12 +1355,35 @@ async function computeSleepNights(supabase: AnyRecord, userId: string, since: st
     return { start: ms(v.sleepStart), end: ms(v.sleepEnd), total: Number(v.totalSleep) || 0,
              deep: Number(v.deep) || 0, core: Number(v.core) || 0, rem: Number(v.rem) || 0, awake: Number(v.awake) || 0 }
   }).filter(s => s.start != null && s.end != null && (s.end as number) > (s.start as number))
-  sessions.sort((a, b) => (a.start as number) - (b.start as number))
+  // Hand-mirrored from healthAggregate.ts's mergeSleepSessions -- ai-proxy is a
+  // self-contained Deno function and cannot import it. CHANGE ONE, CHANGE THE
+  // OTHER; the web app's copy is the one with the assertions
+  // (scripts/verify-sleep-aggregate.cjs).
+  //
+  // REAL BUG this replaced: the rule was "any time-overlap ⇒ same sleep ⇒ keep
+  // only the longest". Right for a duplicate re-report, catastrophic for a
+  // normal interrupted night -- waking briefly makes Apple count the awake
+  // stretch at the edge of BOTH blocks, so two genuinely different parts of one
+  // night overlap by a few minutes and the smaller one was deleted. Measured on
+  // the web copy: 4.10h + 4.35h with five minutes of edge overlap reported
+  // 4.35h where Apple Health showed 8.45h.
+  //
+  // A duplicate is substantially CONTAINED in what it duplicates; two real
+  // blocks touch only at the edges. So drop a session only when >=90% of its
+  // own window lies inside a better-ranked one.
+  const CONTAINMENT = 0.9
+  const ranked = [...sessions].sort((a, b) =>
+    (b.total - a.total) ||
+    (((b.end as number) - (b.start as number)) - ((a.end as number) - (a.start as number))))
   const kept: typeof sessions = []
-  let cluster: typeof sessions = []; let cEnd = -Infinity
-  const flush = () => { if (cluster.length) { kept.push(cluster.reduce((b, s) => (s.total > b.total ? s : b))); cluster = [] } }
-  for (const s of sessions) { if ((s.start as number) >= cEnd) flush(); cluster.push(s); cEnd = Math.max(cEnd, s.end as number) }
-  flush()
+  for (const s of ranked) {
+    const dup = kept.some(k => {
+      const overlap = Math.min(s.end as number, k.end as number) - Math.max(s.start as number, k.start as number)
+      const span = (s.end as number) - (s.start as number)
+      return overlap > 0 && span > 0 && overlap / span >= CONTAINMENT
+    })
+    if (!dup) kept.push(s)
+  }
   return kept.map(s => ({
     date:  new Date(s.end as number).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' }),
     hours: Math.round(s.total * 100) / 100,
