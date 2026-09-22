@@ -161,24 +161,63 @@ async function computeSleepNightsGw(userId: string): Promise<AnyRecord[]> {
     const v = r.value ?? {}
     return { v, start: parse(v.sleepStart), end: parse(v.sleepEnd), total: num(v.totalSleep) }
   }).filter(s => s.start != null && s.end != null && (s.end as number) > (s.start as number))
-  sess.sort((a, b) => (a.start as number) - (b.start as number))
-  const kept: typeof sess = []; let cl: typeof sess = []; let cEnd = -Infinity
-  const flush = () => { if (cl.length) { kept.push(cl.reduce((b, s) => (s.total > b.total ? s : b))); cl = [] } }
-  for (const s of sess) { if ((s.start as number) >= cEnd) flush(); cl.push(s); cEnd = Math.max(cEnd, s.end as number) }
-  flush()
+  // THIRD hand-mirrored copy of healthAggregate.ts's mergeSleepSessions (the
+  // others are in ai-proxy and the web app). CHANGE ONE, CHANGE ALL THREE;
+  // scripts/verify-ai-sleep-merge.cjs asserts they agree.
+  //
+  // REAL BUG this replaced: "any time-overlap means the same sleep, keep only
+  // the longest" deleted a genuine second block of an interrupted night,
+  // because Apple counts the awake stretch at the edge of BOTH blocks so their
+  // windows overlap by a few minutes. Measured on the web copy: 4.10h + 4.35h
+  // with five minutes of edge overlap reported 4.35h against Apple's 8.45h.
+  // A duplicate re-report is substantially CONTAINED in what it duplicates;
+  // two real blocks only touch at the edges.
+  const CONTAINMENT = 0.9
+  const ranked = [...sess].sort((a, b) =>
+    (b.total - a.total) ||
+    (((b.end as number) - (b.start as number)) - ((a.end as number) - (a.start as number))))
+  const kept: typeof sess = []
+  for (const s of ranked) {
+    const dup = kept.some(k => {
+      const overlap = Math.min(s.end as number, k.end as number) - Math.max(s.start as number, k.start as number)
+      const span = (s.end as number) - (s.start as number)
+      return overlap > 0 && span > 0 && overlap / span >= CONTAINMENT
+    })
+    if (!dup) kept.push(s)
+  }
+  kept.sort((a, b) => (a.start as number) - (b.start as number))
   const hm  = (m: number | null) => m == null ? null : new Date(m).toLocaleTimeString('en-GB', { timeZone: 'Europe/Oslo', hour: '2-digit', minute: '2-digit' })
   const day = (m: number) => new Date(m).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
-  return kept.map(s => {
+  // Sum the surviving sessions PER NIGHT, matching healthAggregate.ts and
+  // ai-proxy. One row per SESSION was fine while the merge kept exactly one
+  // per night; once an interrupted night legitimately keeps two, the Shortcut
+  // would read a single block as the whole night.
+  interface Night { date: string; hours: number; in_bed_h: number | null; deep_h: number; core_h: number; rem_h: number; awake_h: number; startMs: number; endMs: number }
+  const byNight = new Map<string, Night>()
+  for (const s of kept) {
     const v = s.v, inS = parse(v.inBedStart), inE = parse(v.inBedEnd)
-    return {
-      date:  day(s.end as number),
-      hours: Math.round(s.total * 100) / 100,
-      in_bed_h: (inS != null && inE != null && inE > inS) ? Math.round((inE - inS) / 36000) / 100 : null,
-      deep_h: Math.round(num(v.deep) * 100) / 100, core_h: Math.round(num(v.core) * 100) / 100,
-      rem_h:  Math.round(num(v.rem) * 100) / 100, awake_h: Math.round(num(v.awake) * 100) / 100,
-      start: hm(s.start), end: hm(s.end),
+    const inBed = (inS != null && inE != null && inE > inS) ? (inE - inS) / 3600000 : null
+    const date = day(s.end as number)
+    const n = byNight.get(date)
+    if (!n) {
+      byNight.set(date, { date, hours: s.total, in_bed_h: inBed,
+        deep_h: num(v.deep), core_h: num(v.core), rem_h: num(v.rem), awake_h: num(v.awake),
+        startMs: s.start as number, endMs: s.end as number })
+    } else {
+      n.hours += s.total
+      n.in_bed_h = inBed == null ? n.in_bed_h : (n.in_bed_h ?? 0) + inBed
+      n.deep_h += num(v.deep); n.core_h += num(v.core); n.rem_h += num(v.rem); n.awake_h += num(v.awake)
+      n.startMs = Math.min(n.startMs, s.start as number)
+      n.endMs   = Math.max(n.endMs, s.end as number)
     }
-  }).sort((a, b) => a.date.localeCompare(b.date))
+  }
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  return [...byNight.values()].map(n => ({
+    date: n.date, hours: r2(n.hours),
+    in_bed_h: n.in_bed_h == null ? null : r2(n.in_bed_h),
+    deep_h: r2(n.deep_h), core_h: r2(n.core_h), rem_h: r2(n.rem_h), awake_h: r2(n.awake_h),
+    start: hm(n.startMs), end: hm(n.endMs),
+  })).sort((a, b) => a.date.localeCompare(b.date))
 }
 
 // ── Body composition report import (smart-scale OCR → Shortcut → gateway) ──

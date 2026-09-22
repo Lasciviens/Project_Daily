@@ -1384,12 +1384,22 @@ async function computeSleepNights(supabase: AnyRecord, userId: string, since: st
     })
     if (!dup) kept.push(s)
   }
-  return kept.map(s => ({
-    date:  new Date(s.end as number).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' }),
-    hours: Math.round(s.total * 100) / 100,
-    deep_h: Math.round(s.deep * 100) / 100, core_h: Math.round(s.core * 100) / 100,
-    rem_h:  Math.round(s.rem * 100) / 100, awake_h: Math.round(s.awake * 100) / 100,
-  })).sort((a, b) => a.date.localeCompare(b.date))
+  // Sum the surviving sessions PER NIGHT, the way healthAggregate.ts does.
+  // Returning one row per session (as this did) was fine while the merge kept
+  // exactly one session per night, and became wrong the moment an interrupted
+  // night legitimately kept two: the caller got two rows for the same date and
+  // nothing summed them, so the model would quote one block as the night.
+  const byNight = new Map<string, AnyRecord>()
+  for (const s of kept) {
+    const date = new Date(s.end as number).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
+    const n = byNight.get(date) ?? { date, hours: 0, deep_h: 0, core_h: 0, rem_h: 0, awake_h: 0 }
+    n.hours += s.total; n.deep_h += s.deep; n.core_h += s.core; n.rem_h += s.rem; n.awake_h += s.awake
+    byNight.set(date, n)
+  }
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  return [...byNight.values()]
+    .map(n => ({ date: n.date, hours: r2(n.hours), deep_h: r2(n.deep_h), core_h: r2(n.core_h), rem_h: r2(n.rem_h), awake_h: r2(n.awake_h) }))
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
 
 // Mirrors healthAggregate.ts's hour-level dedup (hand-synced, not imported --
