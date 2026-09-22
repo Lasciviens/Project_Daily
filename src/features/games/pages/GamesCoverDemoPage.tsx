@@ -2,7 +2,7 @@ import { memo, useDeferredValue, useMemo, useState } from 'react'
 import {
   Search, Gamepad2, Star, Pencil, ListPlus, ListX,
   Heart, CheckCircle2, PackageOpen, PlayCircle, Moon, Sun, SlidersHorizontal,
-  X, Library, MoreHorizontal, Plus, Grid2X2, List, Disc3, Monitor, Joystick,
+  X, Library, MoreHorizontal, Plus, Grid2X2, List, Disc3, Monitor, Joystick, PanelLeftOpen, PanelLeftClose,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -183,6 +183,7 @@ export function GamesCoverDemoPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [fullEditId, setFullEditId] = useState<string | null>(null)
+  const [sideOpen, setSideOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 761px)').matches)
 
   const systems = useMemo(() => {
     const counts = new Map<string, number>()
@@ -245,10 +246,12 @@ export function GamesCoverDemoPage() {
   }
 
   return (
-    <div className={`gcl-demo ${theme === 'dark' ? 'gcl-dark' : 'gcl-light'} gcl-view-${viewMode}`}>
+    <div className={`gcl-demo ${theme === 'dark' ? 'gcl-dark' : 'gcl-light'} gcl-view-${viewMode} ${sideOpen ? 'gcl-side-open' : 'gcl-side-closed'}`}>
       <div className="gcl-shell">
         <aside className="gcl-side">
-          <div className="gcl-brand"><span className="gcl-brandmark"><Gamepad2 size={17} /></span> Game Library</div>
+          <div className="gcl-brand"><span className="gcl-brandmark"><Gamepad2 size={17} /></span><span className="gcl-brand-label">Game Library</span>
+            <button type="button" className="gcl-side-toggle" onClick={() => setSideOpen(false)} aria-label="Close sidebar" title="Close sidebar"><PanelLeftClose size={14} /></button>
+          </div>
           {navItems.map(item => {
             const Icon = item.icon
             return <button type="button" key={item.key} className={`gcl-navbtn ${filter === item.key ? 'active' : ''}`} onClick={() => chooseFilter(item.key)}>
@@ -279,8 +282,13 @@ export function GamesCoverDemoPage() {
           ))}
         </nav>
 
+        <button type="button" className="gcl-desktop-side-opener" onClick={() => setSideOpen(true)} aria-label="Open sidebar" title="Open sidebar"><PanelLeftOpen size={15} /></button>
+
         <main className="gcl-main">
           <div className="gcl-mobile-top">
+            <button type="button" className="gcl-iconbtn gcl-mobile-side-toggle" onClick={() => setSideOpen(open => !open)} aria-label={sideOpen ? 'Close sidebar' : 'Open sidebar'} aria-expanded={sideOpen}>
+              {sideOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+            </button>
             <span className="gcl-brandmark"><Gamepad2 size={15} /></span><strong>Game Library</strong><span className="spacer" />
             <button type="button" className="gcl-iconbtn" onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} aria-label="Toggle demo theme">
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
