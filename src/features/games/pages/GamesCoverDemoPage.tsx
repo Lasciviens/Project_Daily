@@ -21,6 +21,7 @@ type LibraryFilter = 'all' | 'queue' | PlayStatus
 type SortKey = 'recent' | 'title' | 'rating' | 'playtime'
 type DemoTheme = 'dark' | 'light'
 type ViewMode = 'grid' | 'shelf' | 'list'
+type SmartCollection = 'unplayed' | 'high-rated' | 'coop' | 'review'
 
 const PAGE_SIZE = 12
 const SYSTEM_ORDER = ['ps2', 'psp', 'gc', 'switch', 'wii', 'n3ds', 'xbox360', 'psx', 'n64', 'gba', 'dreamcast', 'saturn', 'genesis', 'snes', 'nes']
@@ -80,7 +81,7 @@ const CoverCard = memo(function CoverCard({
   const system = primarySystem(game)
   const platform = game.platforms.find(p => p.is_primary_variant) ?? game.platforms[0]
   return (
-    <button type="button" className={`gcl-card gcl-platform-${systemClass(system)} ${selected ? 'selected' : ''}`} onClick={onOpen} aria-label={`Open ${game.title}`}>
+    <button type="button" data-game-id={game.id} className={`gcl-card gcl-platform-${systemClass(system)} ${selected ? 'selected' : ''}`} onClick={onOpen} aria-label={`Open ${game.title}`}>
       <div className="gcl-case" data-platform={systemLabel(system)}>
         {game.primary_cover_url ? (
           <img src={game.primary_cover_url} alt="" loading="lazy" decoding="async" />
@@ -114,6 +115,7 @@ function DetailPanel({
   const stats = playStatsOf(game)
   const media = mediaFor(game)
   const system = primarySystem(game)
+  const platform = game.platforms.find(p => p.is_primary_variant) ?? game.platforms[0]
   const hero = game.fanart_url ?? game.screenshot_url ?? game.primary_cover_url
 
   return (
@@ -138,6 +140,16 @@ function DetailPanel({
             </div>
           </div>
 
+          <div className="gcl-detail-badges">
+            {game.tier && <span className="tier">Tier {game.tier}</span>}
+            {game.players && <span>{game.players} players</span>}
+            {game.age_rating && <span>{game.age_rating}</span>}
+            {game.is_coop && <span>Co-op</span>}
+            {platform?.region && <span>{platform.region}</span>}
+            {platform?.rom_status && <span className={platform.rom_status === 'installed' || platform.rom_status === 'sd_card' ? 'ready' : ''}>{platform.rom_status.replace('_', ' ')}</span>}
+            {platform?.performance && <span className={`perf-${platform.performance}`}>{platform.performance}</span>}
+          </div>
+
           <select className="gcl-status" value={game.play_status}
             onChange={e => setStatus.mutate({ id: game.id, status: e.target.value as PlayStatus })}
             disabled={setStatus.isPending}>
@@ -149,6 +161,8 @@ function DetailPanel({
             <dt>Last Played</dt><dd>{fmtDate(stats.last)}</dd>
             {game.developer && <><dt>Developer</dt><dd>{game.developer}</dd></>}
             {game.publisher && <><dt>Publisher</dt><dd>{game.publisher}</dd></>}
+            {platform?.emulator && <><dt>Emulator</dt><dd>{platform.emulator}</dd></>}
+            {game.modes?.length ? <><dt>Modes</dt><dd>{game.modes.join(', ')}</dd></> : null}
           </dl>
 
           {(game.description || game.storyline) && <p className="gcl-desc">{game.description || game.storyline}</p>}
@@ -188,6 +202,8 @@ export function GamesCoverDemoPage() {
   const [genreFilter, setGenreFilter] = useState<string | null>(null)
   const [iconicOnly, setIconicOnly] = useState(false)
   const [installedOnly, setInstalledOnly] = useState(false)
+  const [smartCollection, setSmartCollection] = useState<SmartCollection | null>(null)
+  const [gamepadActive, setGamepadActive] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
   const systems = useMemo(() => {
@@ -220,6 +236,10 @@ export function GamesCoverDemoPage() {
       if (genreFilter && !(game.genres ?? []).includes(genreFilter)) return false
       if (iconicOnly && !game.is_iconic) return false
       if (installedOnly && !game.platforms.some(p => p.rom_status === 'installed' || p.rom_status === 'sd_card')) return false
+      if (smartCollection === 'unplayed' && (playStatsOf(game).count ?? 0) > 0) return false
+      if (smartCollection === 'high-rated' && (game.rating ?? 0) < 4) return false
+      if (smartCollection === 'coop' && !game.is_coop) return false
+      if (smartCollection === 'review' && !game.needs_review) return false
       if (!q) return true
       return [game.title, game.series_name, game.developer, game.publisher, ...(game.genres ?? [])]
         .filter(Boolean).some(v => String(v).toLowerCase().includes(q))
@@ -229,7 +249,14 @@ export function GamesCoverDemoPage() {
     else if (sort === 'rating') rows = [...rows].sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1))
     else rows = [...rows].sort((a, b) => (playStatsOf(b).seconds ?? 0) - (playStatsOf(a).seconds ?? 0))
     return rows
-  }, [games, deferredQuery, effectiveSystem, filter, genreFilter, iconicOnly, installedOnly, sort])
+  }, [games, deferredQuery, effectiveSystem, filter, genreFilter, iconicOnly, installedOnly, smartCollection, sort])
+
+  const smartCounts = useMemo(() => ({
+    unplayed: games.filter(game => (playStatsOf(game).count ?? 0) === 0).length,
+    'high-rated': games.filter(game => (game.rating ?? 0) >= 4).length,
+    coop: games.filter(game => game.is_coop).length,
+    review: games.filter(game => game.needs_review).length,
+  }), [games])
 
   const libraryStats = useMemo(() => {
     const totalSeconds = filtered.reduce((sum, game) => sum + (playStatsOf(game).seconds ?? 0), 0)
@@ -283,6 +310,7 @@ export function GamesCoverDemoPage() {
     setGenreFilter(null)
     setIconicOnly(false)
     setInstalledOnly(false)
+    setSmartCollection(null)
     setVisibleCount(PAGE_SIZE)
     setSelectedId(null)
   }
@@ -294,9 +322,21 @@ export function GamesCoverDemoPage() {
   }
 
   useEffect(() => {
+    function moveSelection(delta: number) {
+      if (!filtered.length) return
+      const current = selectedId ? filtered.findIndex(game => game.id === selectedId) : -1
+      const nextIndex = Math.max(0, Math.min(filtered.length - 1, (current < 0 ? 0 : current) + delta))
+      const next = filtered[nextIndex]
+      if (!next) return
+      setSelectedId(next.id)
+      if (nextIndex >= visibleCount) setVisibleCount(Math.min(filtered.length, nextIndex + PAGE_SIZE))
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-game-id="${next.id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
+    }
+
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null
       const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' || target?.isContentEditable
+      const columns = window.matchMedia('(max-width: 760px)').matches ? 3 : viewMode === 'list' ? 1 : 4
       if (event.key === '/' && !typing) {
         event.preventDefault()
         searchRef.current?.focus()
@@ -305,14 +345,49 @@ export function GamesCoverDemoPage() {
         if (document.activeElement === searchRef.current) searchRef.current?.blur()
       } else if (event.key.toLowerCase() === 'r' && !typing) {
         surpriseMe()
+      } else if (!typing && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+        event.preventDefault()
+        if (event.key === 'ArrowLeft') moveSelection(-1)
+        if (event.key === 'ArrowRight') moveSelection(1)
+        if (event.key === 'ArrowUp') moveSelection(-columns)
+        if (event.key === 'ArrowDown') moveSelection(columns)
       }
     }
+
+    let raf = 0
+    let lastGamepadAction = 0
+    function pollGamepad(now: number) {
+      const pad = navigator.getGamepads?.().find(Boolean)
+      setGamepadActive(Boolean(pad))
+      if (pad && now - lastGamepadAction > 180) {
+        const columns = window.matchMedia('(max-width: 760px)').matches ? 3 : viewMode === 'list' ? 1 : 4
+        const left = pad.buttons[14]?.pressed || (pad.axes[0] ?? 0) < -0.65
+        const right = pad.buttons[15]?.pressed || (pad.axes[0] ?? 0) > 0.65
+        const up = pad.buttons[12]?.pressed || (pad.axes[1] ?? 0) < -0.65
+        const down = pad.buttons[13]?.pressed || (pad.axes[1] ?? 0) > 0.65
+        if (left || right || up || down) {
+          moveSelection(left ? -1 : right ? 1 : up ? -columns : columns)
+          lastGamepadAction = now
+        }
+        if (pad.buttons[1]?.pressed) {
+          setSelectedId(null)
+          lastGamepadAction = now
+        }
+      }
+      raf = requestAnimationFrame(pollGamepad)
+    }
+
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [filtered])
+    if ('getGamepads' in navigator) raf = requestAnimationFrame(pollGamepad)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      cancelAnimationFrame(raf)
+    }
+  }, [filtered, selectedId, visibleCount, viewMode])
 
   return (
     <div className={`gcl-demo ${theme === 'dark' ? 'gcl-dark' : 'gcl-light'} gcl-view-${viewMode} ${sideOpen ? 'gcl-side-open' : 'gcl-side-closed'}`}>
+      {desktopSelected && (desktopSelected.fanart_url || desktopSelected.screenshot_url) && <div className="gcl-selected-ambient" aria-hidden="true" key={desktopSelected.id}><img src={desktopSelected.fanart_url ?? desktopSelected.screenshot_url ?? ''} alt="" /></div>}
       <div className="gcl-shell">
         <aside className="gcl-side">
           <div className="gcl-brand"><span className="gcl-brandmark"><Gamepad2 size={17} /></span><span className="gcl-brand-label">Game Library</span>
@@ -409,7 +484,15 @@ export function GamesCoverDemoPage() {
               <button type="button" onClick={surpriseMe} disabled={!filtered.length} title="Random game (R)"><Dice5 size={13} /> Surprise me <kbd>R</kbd></button>
               <button type="button" className={iconicOnly ? 'active' : ''} onClick={() => { setIconicOnly(v => !v); setVisibleCount(PAGE_SIZE) }}><Sparkles size={13} /> Iconic <span>{libraryStats.iconic}</span></button>
               <button type="button" className={installedOnly ? 'active' : ''} onClick={() => { setInstalledOnly(v => !v); setVisibleCount(PAGE_SIZE) }}><HardDrive size={13} /> Installed</button>
-              {(query || filter !== 'all' || effectiveSystem !== 'all' || genreFilter || iconicOnly || installedOnly) && <button type="button" onClick={clearFilters}><RotateCcw size={13} /> Reset</button>}
+              {gamepadActive && <span className="gcl-gamepad-live"><Gamepad2 size={11} /> Controller</span>}
+              {(query || filter !== 'all' || effectiveSystem !== 'all' || genreFilter || iconicOnly || installedOnly || smartCollection) && <button type="button" onClick={clearFilters}><RotateCcw size={13} /> Reset</button>}
+            </div>
+            <div className="gcl-smart-collections">
+              <span>Smart Collections</span>
+              <button type="button" className={smartCollection === 'unplayed' ? 'active' : ''} onClick={() => { setSmartCollection(v => v === 'unplayed' ? null : 'unplayed'); setVisibleCount(PAGE_SIZE) }}>Unplayed <b>{smartCounts.unplayed}</b></button>
+              <button type="button" className={smartCollection === 'high-rated' ? 'active' : ''} onClick={() => { setSmartCollection(v => v === 'high-rated' ? null : 'high-rated'); setVisibleCount(PAGE_SIZE) }}>★ 4+ <b>{smartCounts['high-rated']}</b></button>
+              <button type="button" className={smartCollection === 'coop' ? 'active' : ''} onClick={() => { setSmartCollection(v => v === 'coop' ? null : 'coop'); setVisibleCount(PAGE_SIZE) }}>Co-op <b>{smartCounts.coop}</b></button>
+              <button type="button" className={smartCollection === 'review' ? 'active' : ''} onClick={() => { setSmartCollection(v => v === 'review' ? null : 'review'); setVisibleCount(PAGE_SIZE) }}>Needs review <b>{smartCounts.review}</b></button>
             </div>
             {genres.length > 0 && <div className="gcl-genre-strip">
               <button type="button" className={!genreFilter ? 'active' : ''} onClick={() => setGenreFilter(null)}>All genres</button>
