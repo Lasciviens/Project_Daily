@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, BarChart, LineChart } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { useHealthMetricSeries } from '../hooks/useHealthExport'
-import { computeSleepSummary, computeDailySeries } from '../healthAggregate'
+import { computeSleepSummary, computeDailySeries, formatSleepHours } from '../healthAggregate'
 import { computeWeeklyVolumeTrend } from '../progressAggregate'
 import { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } from '../recoveryAggregate'
 import { lastCompleteWeek } from '../trainingInsights'
@@ -139,7 +139,7 @@ export function RecoveryLoadPanel() {
             <Tooltip
               cursor={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
-              formatter={(v: any, _n: any, entry: any) => [v == null ? 'not enough nights tracked' : `${v} h (${entry?.payload?.sleepNights}/7 nights)`, 'Sleep']}
+              formatter={(v: any, _n: any, entry: any) => [v == null ? 'not enough nights tracked' : `${formatSleepHours(Number(v))} (${entry?.payload?.sleepNights}/7 nights)`, 'Sleep']}
               labelFormatter={weekRangeLabelFormatter}
               contentStyle={{ fontSize: 11, borderRadius: 8 }}
             />

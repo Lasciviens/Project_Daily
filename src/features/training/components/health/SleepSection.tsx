@@ -123,7 +123,7 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
     return (
       <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5 pointer-events-none">
         <p className="text-ink-400 font-medium">{label}</p>
-        <p className="font-semibold text-indigo-600">{point.value != null ? `${point.value} hr` : '—'}</p>
+        <p className="font-semibold text-indigo-600">{point.value != null ? fmtHrs(point.value) : '—'}</p>
         {sources && sources.size > 0 && (
           <p className="text-ink-400">{[...sources].join(', ')}</p>
         )}
@@ -182,7 +182,10 @@ export function SleepSection({ range }: { range: HealthRange }) {
   // shows as a gap on the axis instead of silently disappearing.
   const chartData = datesBetweenStr(chartRange.from, chartRange.to).map(date => {
     const s = summaryByDate.get(date)
-    return { label: fmtDay(date), date, total: s ? Math.round(s.total * 10) / 10 : null }
+    // NOT rounded to one decimal here: the tooltip formats this same value as
+    // "6h 52m", and pre-rounding 6.87 to 6.9 would render it as 6h 54m. The Y
+    // axis has its own tick formatter, so full precision costs the chart nothing.
+    return { label: fmtDay(date), date, total: s ? s.total : null }
   })
 
   // Shown in the trend chart's tooltip so it's clear which nights are
@@ -454,11 +457,11 @@ export function SleepSection({ range }: { range: HealthRange }) {
                     {isSession ? (
                       <>
                         <span className="text-ink-700">{hhmm(v.sleepStart)}→{hhmm(v.sleepEnd)}</span>
-                        <span className="text-ink-900 font-semibold">{Number(v.totalSleep).toFixed(2)}h</span>
-                        <span className="text-ink-400">C{Number(v.core ?? 0).toFixed(1)} R{Number(v.rem ?? 0).toFixed(1)} D{Number(v.deep ?? 0).toFixed(1)} A{Number(v.awake ?? 0).toFixed(1)}</span>
+                        <span className="text-ink-900 font-semibold">{fmtHrs(Number(v.totalSleep))}</span>
+                        <span className="text-ink-400">C{fmtHrs(Number(v.core ?? 0))} R{fmtHrs(Number(v.rem ?? 0))} D{fmtHrs(Number(v.deep ?? 0))} A{fmtHrs(Number(v.awake ?? 0))}</span>
                       </>
                     ) : (
-                      <span className="text-ink-700">{String(v?.value ?? '?')} {typeof v?.qty === 'number' ? `${v.qty.toFixed(2)}h` : ''}</span>
+                      <span className="text-ink-700">{String(v?.value ?? '?')} {typeof v?.qty === 'number' ? fmtHrs(v.qty) : ''}</span>
                     )}
                   </div>
                 )
