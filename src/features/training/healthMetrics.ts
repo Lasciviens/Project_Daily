@@ -53,17 +53,32 @@ export const METRIC_AGGREGATION: Record<string, AggType> = {
   // waking resting_heart_rate) — a point-in-time nightly value.
   sleeping_heart_rate: 'latest',
 
-  // Net-new metrics that arrive from Fitbit Air (registered inert in Phase 0 —
-  // nothing writes them until the Google Health poller lands in Phase 3):
-  // - oxygen_saturation: overnight SpO2. LOCKED as minmaxavg for now on the
-  //   assumption it arrives heart_rate-shaped (Min/Avg/Max for a continuous
-  //   overnight vital) — re-verify against the first real Fitbit payload in
-  //   Phase 3 and correct here if it's actually single-point samples.
-  oxygen_saturation: 'minmaxavg',
-  // - active_zone_minutes: Fitbit's own cumulative daily activity metric.
+  // Fitbit-era metric names. The integration was removed on 2026-09-01 and
+  // none of these has received a row since, but the historical rows are still
+  // in health_metrics, so their aggregation rules stay defined rather than
+  // silently falling through to the 'latest' default. Their Apple equivalents
+  // are blood_oxygen_saturation and apple_sleeping_wrist_temperature below;
+  // Active Zone Minutes has none.
+  oxygen_saturation: 'minmaxavg',   // arrived Min/Avg/Max shaped
   active_zone_minutes: 'sum',
-  // - skin_temperature: nightly skin-temp deviation (point-in-time).
   skin_temperature: 'latest',
+
+  // Apple's own SpO2, single {qty} samples taken through the day and night
+  // (12-20 a day) — a percentage, so the mean is the only sane daily read;
+  // summing it would be nonsense and 'latest' would report one spot check.
+  blood_oxygen_saturation: 'average',
+  // One row per night: Apple's count of breathing interruptions. A nightly
+  // level, not a running total, so it must not sum across a multi-day window.
+  breathing_disturbances: 'average',
+
+  // Gait percentage — same shape and reasoning as walking_asymmetry_percentage.
+  walking_double_support_percentage: 'average',
+  // Cumulative ride distance, exactly like walking_running_distance.
+  cycling_distance: 'sum',
+  // Hand-entered in Apple Health, so the newest entry IS the answer.
+  waist_circumference: 'latest',
+  // Apple re-estimates this occasionally; the newest estimate stands.
+  six_minute_walking_test_distance: 'latest',
 
   // Running dynamics (rate/level metrics from a run — never sum)
   running_speed: 'average',

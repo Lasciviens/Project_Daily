@@ -4,8 +4,6 @@ import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import type { HealthRange } from './sectionTypes'
 import { rangeForAnchor, labelForAnchor } from './dateNav'
-import { MetricMiniGrid } from './MetricMiniGrid'
-import { ENERGY_EXTRA_METRICS } from './miniMetrics'
 import { compactAxisTick } from './axisFormat'
 
 function fmtDay(dateStr: string): string {
@@ -169,7 +167,6 @@ export function EnergySection({ range }: { range: HealthRange }) {
         </ResponsiveContainer>
       </div>
 
-      <MetricMiniGrid title="Nutrition" metrics={ENERGY_EXTRA_METRICS} />
     </div>
   )
 }
