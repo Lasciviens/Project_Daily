@@ -3,6 +3,7 @@ import { useHealthMetricSeries } from '../../../training/hooks/useHealthExport'
 import {
   computeSleepSummary,
   computeDailySeries, computeHeartRateDailySeries,
+  formatSleepHours as fmtHrs,
 } from '../../../training/healthAggregate'
 import { shiftDateStr } from '../../../../shared/utils/dateUtils'
 
@@ -12,11 +13,6 @@ import { shiftDateStr } from '../../../../shared/utils/dateUtils'
 // reuses the SAME aggregation code as Training → Health, so numbers can't
 // disagree. Deep-dives live in Training; this is the glance.
 
-function fmtHrs(h: number): string {
-  const hrs = Math.floor(h)
-  const mins = Math.round((h - hrs) * 60)
-  return `${hrs}h ${mins}m`
-}
 const round = (n: number, d = 0) => { const p = 10 ** d; return Math.round(n * p) / p }
 
 function Panel({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {

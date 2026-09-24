@@ -1,5 +1,5 @@
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeDailySeries, computeHeartRateDailySeries, computeSleepSummary } from '../../healthAggregate'
+import { computeDailySeries, computeHeartRateDailySeries, computeSleepSummary, formatSleepHours } from '../../healthAggregate'
 import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
 import type { SectionId } from './sectionTypes'
 
@@ -146,10 +146,10 @@ function SleepStats() {
 
   return (
     <Panel title="Sleep analysis">
-      <StatRow label="7-night average" value={curAvg != null ? `${curAvg.toFixed(1)}h` : '—'}
+      <StatRow label="7-night average" value={curAvg != null ? formatSleepHours(curAvg) : '—'}
         trend={<TrendBadge pct={trendPct(curAvg, prevAvg)} />} />
       {best && (
-        <StatRow label="Best night" value={`${best.total.toFixed(1)}h`}
+        <StatRow label="Best night" value={formatSleepHours(best.total)}
           sub={new Date(best.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' })} />
       )}
       <StatRow label="Nights tracked" value={String(summary.length)} />
@@ -192,7 +192,7 @@ function OverviewStats() {
       <StatRow label="Steps" value={steps != null ? Math.round(steps).toLocaleString('en-GB') : '—'} />
       <StatRow label="Active energy" value={active != null ? `${Math.round(active)} kcal` : '—'} />
       <StatRow label="Heart rate" value={hrRange ? `${Math.round(hrRange.min)}–${Math.round(hrRange.max)}` : '—'} sub={hrRange ? 'bpm' : undefined} />
-      <StatRow label="Sleep" value={sleep ? `${sleep.total.toFixed(1)}h` : '—'} />
+      <StatRow label="Sleep" value={sleep ? formatSleepHours(sleep.total) : '—'} />
     </Panel>
   )
 }
