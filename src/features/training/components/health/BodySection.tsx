@@ -1,10 +1,11 @@
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { shiftStr } from './dateNav'
+import { shiftStr, rangeForAnchor } from './dateNav'
 import { computeDailySeries } from '../../healthAggregate'
 import { BarLineChart } from './BarLineChart'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { BODY_EXTRA_METRICS } from './miniMetrics'
 import { BodyCompositionPanel } from './BodyCompositionPanel'
+import type { HealthRange } from './sectionTypes'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -76,7 +77,11 @@ function BodyMiniChart({ title, icon, unit, color, series, decimals = 1, viewedD
   )
 }
 
-export function BodySection({ dateStr }: { dateStr: string }) {
+export function BodySection({ range }: { range: HealthRange }) {
+  const dateStr = range.anchor
+  // The mini cards follow the page's own date/period control; the weight
+  // charts below keep their own wide 90-day window (see the comment there).
+  const miniWindow = { ...rangeForAnchor(range.period, range.anchor), period: range.period }
   // Weight/body composition metrics are sparse, event-based (only update when
   // you step on the scale) — a wide window so charts aren't mostly empty.
   // The window ENDS at the day being viewed (Health's one shared day
@@ -104,7 +109,7 @@ export function BodySection({ dateStr }: { dateStr: string }) {
         <BodyMiniChart title="BMI" icon="📐" unit="" color="#0ea5e9" series={bmi} decimals={1} viewedDate={dateStr} />
       </div>
 
-      <MetricMiniGrid title="Lifestyle & Environment" metrics={BODY_EXTRA_METRICS} />
+      <MetricMiniGrid title="Lifestyle & Environment" metrics={BODY_EXTRA_METRICS} window={miniWindow} />
 
       <BodyCompositionPanel />
     </div>

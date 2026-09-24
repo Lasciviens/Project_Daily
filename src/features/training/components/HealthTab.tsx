@@ -7,7 +7,7 @@ import { EnergySection } from './health/EnergySection'
 import { HeartSection } from './health/HeartSection'
 import { SleepSection } from './health/SleepSection'
 import { BodySection } from './health/BodySection'
-import { SECTIONS, type SectionId } from './health/sectionTypes'
+import { SECTIONS, type SectionId, type HealthRange } from './health/sectionTypes'
 import { DateNav } from './health/DateNav'
 import { PeriodToggle, type Period } from './health/PeriodToggle'
 import { useAnchorDate } from './health/useAnchorDate'
@@ -120,9 +120,13 @@ interface Props {
   // isn't relevant here, so that space is reclaimed for per-section stats.
   section?: SectionId
   onSectionChange?: (s: SectionId) => void
+  /** Lifted by TrainingPage so the right-rail HealthStatsPanel — a sibling of
+   *  this component — can describe the SAME window. Kept optional so the tab
+   *  still works standalone. */
+  range?: HealthRange
 }
 
-export function HealthTab({ section: controlledSection, onSectionChange }: Props = {}) {
+export function HealthTab({ section: controlledSection, onSectionChange, range: controlledRange }: Props = {}) {
   const [localSection, setLocalSection] = useState<SectionId>('overview')
   const section = controlledSection ?? localSection
   const setSection = onSectionChange ?? setLocalSection
@@ -135,9 +139,13 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
   // in every section, and Overview/Body had no day control at all. Switching
   // section now keeps the day you were looking at.
   const today = todayStr()
-  const [anchor, setAnchor] = useAnchorDate()
-  const [period, setPeriod] = useState<Period>('week')
-  const range = { anchor, setAnchor, period, setPeriod }
+  const [localAnchor, setLocalAnchor] = useAnchorDate()
+  const [localPeriod, setLocalPeriod] = useState<Period>('week')
+  const range: HealthRange = controlledRange ?? {
+    anchor: localAnchor, setAnchor: setLocalAnchor,
+    period: localPeriod, setPeriod: setLocalPeriod,
+  }
+  const { anchor, setAnchor, period, setPeriod } = range
 
   // The pill strip scrolls on a phone and the right-edge fade paints over
   // whatever sits under it — an ACTIVE (near-black) pill under that gradient
@@ -202,7 +210,7 @@ export function HealthTab({ section: controlledSection, onSectionChange }: Props
       {section === 'energy' && <EnergySection range={range} />}
       {section === 'heart'  && <HeartSection  range={range} />}
       {section === 'sleep'  && <SleepSection  range={range} />}
-      {section === 'body'   && <BodySection   dateStr={anchor} />}
+      {section === 'body'   && <BodySection   range={range} />}
     </div>
   )
 }

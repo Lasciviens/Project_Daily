@@ -15,6 +15,11 @@ export function HeartSection({ range }: { range: HealthRange }) {
   const today = todayStr()
   const { anchor, setAnchor, period, setPeriod } = range
 
+  // The mini-metric cards read the SAME window the rest of the page is on
+  // (they used to be pinned to the last 7 days ending today, so they sat
+  // frozen while this control moved).
+  const miniWindow = { ...rangeForAnchor(period, anchor), period }
+
   // Headline follows the SELECTED PERIOD: Day → that day's min–max + resting
   // + HRV; Week/Month → period averages of the daily values, from the same
   // range the chart shows (in Day mode from==to==anchor, so nothing extra
@@ -93,7 +98,7 @@ export function HeartSection({ range }: { range: HealthRange }) {
         } : undefined}
       />
 
-      <MetricMiniGrid title="Cardio Extras" metrics={HEART_EXTRA_METRICS} />
+      <MetricMiniGrid title="Cardio Extras" metrics={HEART_EXTRA_METRICS} window={miniWindow} />
     </div>
   )
 }

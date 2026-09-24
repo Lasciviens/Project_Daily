@@ -1,14 +1,83 @@
 import { useHealthMetricSeries } from '../../hooks/useHealthExport'
 import { computeDailySeries, computeHeartRateDailySeries, computeSleepSummary, formatSleepHours } from '../../healthAggregate'
-import { todayStr, daysAgoStr } from '../../../../shared/utils/dateUtils'
-import type { SectionId } from './sectionTypes'
+import { todayStr } from '../../../../shared/utils/dateUtils'
+import { rangeForAnchor, shiftStr, labelForAnchor } from './dateNav'
+import type { SectionId, HealthRange } from './sectionTypes'
 
 // Plain computed stats (no AI) shown where the training calendar normally
 // sits — the calendar isn't relevant while browsing Health, so this reclaims
 // that space with a short analysis of whichever section is active.
+//
+// Every panel here used to hardcode "the last 14 days ending today" and took
+// no notice of the Health tab's own date/period control, so the numbers never
+// moved when you changed the day or switched Day/Week/Month — reported as
+// "ya sabit ya yanlış ya eksik". Three separate defects behind that:
+//
+//   1. STATIC — the window was fixed, and Overview was pinned to today
+//      outright, so browsing back a day changed everything on the page
+//      except this panel.
+//   2. WRONG — rows under a "7-day average" were computed over 14 days
+//      ("best day", "days tracked"), so the headline and the supporting
+//      rows described different windows. Averages also swallowed the
+//      in-progress day, which drags every one of them down before evening
+//      (the same defect already fixed in EnergySection's own average).
+//   3. MISSING — no panel said which window it was describing, so there was
+//      no way to tell a stale number from a real one.
+//
+// Now: one window, the selected one; a same-length preceding window for the
+// trend badge; the in-progress day excluded from averages; and every panel
+// prints the window it used.
+
+interface Win {
+  /** The selected window. */
+  from: string
+  to: string
+  /** The same-length window immediately before it, for the trend badge. */
+  prevFrom: string
+  prevTo: string
+  /** Full span including the comparison window — what to fetch in one go. */
+  fetchFrom: string
+  label: string
+  isDay: boolean
+}
+
+function daysBetween(a: string, b: string): number {
+  const d1 = new Date(a + 'T00:00:00')
+  const d2 = new Date(b + 'T00:00:00')
+  return Math.round((d2.getTime() - d1.getTime()) / 86_400_000)
+}
+
+function buildWindow(range: HealthRange): Win {
+  const { from, to } = rangeForAnchor(range.period, range.anchor)
+  const span = daysBetween(from, to) + 1
+  const prevTo = shiftStr(from, -1)
+  const prevFrom = shiftStr(from, -span)
+  return {
+    from, to, prevFrom, prevTo, fetchFrom: prevFrom,
+    label: labelForAnchor(range.period, range.anchor),
+    isDay: range.period === 'day',
+  }
+}
+
+// Averages must not include a day that hasn't finished yet: at 09:00 today
+// carries a fraction of its real steps/energy and pulls every mean down.
+function completed(series: { date: string; value: number }[]): { date: string; value: number }[] {
+  const t = todayStr()
+  return series.filter(d => d.date !== t)
+}
 
 function avg(values: number[]): number | null {
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null
+}
+
+/** Split one fetched series into the selected window and the one before it,
+ *  with the in-progress day removed from both. */
+function split(series: { date: string; value: number }[], w: Win) {
+  const done = completed(series)
+  return {
+    current: done.filter(d => d.date >= w.from && d.date <= w.to),
+    previous: done.filter(d => d.date >= w.prevFrom && d.date <= w.prevTo),
+  }
 }
 
 function trendPct(current: number | null, previous: number | null): number | null {
@@ -21,7 +90,8 @@ function TrendBadge({ pct, goodDirection = 'up' }: { pct: number | null; goodDir
   const isUp = pct > 0
   const isGood = goodDirection === 'up' ? isUp : !isUp
   return (
-    <span className={`text-[10px] font-semibold ${isGood ? 'text-emerald-600' : 'text-red-500'}`}>
+    <span className={`text-[10px] font-semibold ${isGood ? 'text-emerald-600' : 'text-red-500'}`}
+      title="Compared with the same-length window immediately before this one">
       {isUp ? '▲' : '▼'} {Math.abs(pct)}%
     </span>
   )
@@ -29,12 +99,12 @@ function TrendBadge({ pct, goodDirection = 'up' }: { pct: number | null; goodDir
 
 function StatRow({ label, value, sub, trend }: { label: string; value: string; sub?: string; trend?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-ink-50 last:border-0">
-      <div>
+    <div className="flex items-center justify-between py-1.5 border-b border-ink-50 last:border-0 gap-2">
+      <div className="min-w-0">
         <p className="text-xs text-ink-500">{label}</p>
         {sub && <p className="text-[10px] text-ink-300">{sub}</p>}
       </div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 shrink-0">
         <span className="text-sm font-bold text-ink-900">{value}</span>
         {trend}
       </div>
@@ -42,166 +112,196 @@ function StatRow({ label, value, sub, trend }: { label: string; value: string; s
   )
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ title, win, children }: { title: string; win: Win; children: React.ReactNode }) {
   return (
     <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 mb-2">📈 {title}</p>
+      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">📈 {title}</p>
+      {/* Which window produced these numbers. Without it there was no way to
+          tell whether a figure was for the day you were looking at or a
+          leftover from a different range. */}
+      <p className="text-[10px] text-ink-300 mb-2">{win.label}</p>
       {children}
     </div>
   )
 }
 
-// Split a metric's daily series into "last 7 days" vs "the 7 days before that".
-function splitWeeks(series: { date: string; value: number }[]) {
-  const to = todayStr()
-  const weekAgo = daysAgoStr(6)
-  const twoWeeksAgo = daysAgoStr(13)
-  const current = series.filter(d => d.date >= weekAgo && d.date <= to).map(d => d.value)
-  const previous = series.filter(d => d.date >= twoWeeksAgo && d.date < weekAgo).map(d => d.value)
-  return { current, previous }
+function fmtDate(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
-function StepsStats() {
-  const { data: points = [] } = useHealthMetricSeries('step_count', daysAgoStr(13), todayStr())
+/** "Average" is meaningless for a single day — say what the number really is. */
+function avgLabel(win: Win, noun: string): string {
+  return win.isDay ? `${noun} that day` : `Average ${noun.toLowerCase()}/day`
+}
+
+function StepsStats({ range }: { range: HealthRange }) {
+  const win = buildWindow(range)
+  const { data: points = [] } = useHealthMetricSeries('step_count', win.fetchFrom, win.to)
   const series = computeDailySeries('step_count', points)
-  const { current, previous } = splitWeeks(series)
-  const curAvg = avg(current), prevAvg = avg(previous)
-  const best = series.length ? series.reduce((a, b) => (b.value > a.value ? b : a)) : null
+  const { current, previous } = split(series, win)
+  const curAvg = avg(current.map(d => d.value)), prevAvg = avg(previous.map(d => d.value))
+  const best = current.length ? current.reduce((a, b) => (b.value > a.value ? b : a)) : null
+  const total = current.reduce((s, d) => s + d.value, 0)
 
   return (
-    <Panel title="Steps analysis">
-      <StatRow label="7-day average" value={curAvg != null ? Math.round(curAvg).toLocaleString('en-GB') : '—'}
+    <Panel title="Steps analysis" win={win}>
+      <StatRow label={avgLabel(win, 'Steps')} value={curAvg != null ? Math.round(curAvg).toLocaleString('en-GB') : '—'}
         trend={<TrendBadge pct={trendPct(curAvg, prevAvg)} />} />
-      {best && (
-        <StatRow label="Best day" value={best.value.toLocaleString('en-GB')}
-          sub={new Date(best.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' })} />
+      {!win.isDay && <StatRow label="Total in window" value={Math.round(total).toLocaleString('en-GB')} />}
+      {!win.isDay && best && (
+        <StatRow label="Best day" value={Math.round(best.value).toLocaleString('en-GB')} sub={fmtDate(best.date)} />
       )}
-      <StatRow label="Days tracked" value={String(series.length)} />
+      <StatRow label="Days with data" value={String(current.length)} />
     </Panel>
   )
 }
 
-function EnergyStats() {
-  const { data: activePoints = [] } = useHealthMetricSeries('active_energy', daysAgoStr(13), todayStr())
-  const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', daysAgoStr(13), todayStr())
-  const activeSeries = computeDailySeries('active_energy', activePoints)
-  const basalSeries = computeDailySeries('basal_energy_burned', basalPoints)
-  const { current: curActive, previous: prevActive } = splitWeeks(activeSeries)
-  const { current: curBasal } = splitWeeks(basalSeries)
-  const curAvgActive = avg(curActive), prevAvgActive = avg(prevActive)
-  const curAvgBasal = avg(curBasal)
+function EnergyStats({ range }: { range: HealthRange }) {
+  const win = buildWindow(range)
+  const { data: activePoints = [] } = useHealthMetricSeries('active_energy', win.fetchFrom, win.to)
+  const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', win.fetchFrom, win.to)
+  const active = split(computeDailySeries('active_energy', activePoints), win)
+  const basal = split(computeDailySeries('basal_energy_burned', basalPoints), win)
+  const curActive = avg(active.current.map(d => d.value)), prevActive = avg(active.previous.map(d => d.value))
+  const curBasal = avg(basal.current.map(d => d.value)), prevBasal = avg(basal.previous.map(d => d.value))
+  const totalPerDay = curActive != null && curBasal != null ? curActive + curBasal : null
 
   return (
-    <Panel title="Energy analysis">
-      <StatRow label="Avg active/day" value={curAvgActive != null ? `${Math.round(curAvgActive)} kcal` : '—'}
-        trend={<TrendBadge pct={trendPct(curAvgActive, prevAvgActive)} />} />
-      <StatRow label="Avg basal/day" value={curAvgBasal != null ? `${Math.round(curAvgBasal)} kcal` : '—'} />
-      <StatRow label="Days tracked" value={String(activeSeries.length)} />
+    <Panel title="Energy analysis" win={win}>
+      <StatRow label={avgLabel(win, 'Active')} value={curActive != null ? `${Math.round(curActive)} kcal` : '—'}
+        trend={<TrendBadge pct={trendPct(curActive, prevActive)} />} />
+      <StatRow label={avgLabel(win, 'Basal')} value={curBasal != null ? `${Math.round(curBasal)} kcal` : '—'}
+        trend={<TrendBadge pct={trendPct(curBasal, prevBasal)} />} />
+      <StatRow label="Total burn/day" value={totalPerDay != null ? `${Math.round(totalPerDay)} kcal` : '—'} />
+      <StatRow label="Days with data" value={String(active.current.length)} />
     </Panel>
   )
 }
 
-function HeartStats() {
-  const { data: hrPoints = [] } = useHealthMetricSeries('heart_rate', daysAgoStr(13), todayStr())
-  const { data: restingPoints = [] } = useHealthMetricSeries('resting_heart_rate', daysAgoStr(13), todayStr())
+function HeartStats({ range }: { range: HealthRange }) {
+  const win = buildWindow(range)
+  const { data: hrPoints = [] } = useHealthMetricSeries('heart_rate', win.fetchFrom, win.to)
+  const { data: restingPoints = [] } = useHealthMetricSeries('resting_heart_rate', win.fetchFrom, win.to)
   const ranges = computeHeartRateDailySeries(hrPoints)
-  const restingSeries = computeDailySeries('resting_heart_rate', restingPoints)
-  const { current: restingCurrent, previous: restingPrevious } = splitWeeks(restingSeries)
-  const curAvgResting = avg(restingCurrent), prevAvgResting = avg(restingPrevious)
-  const overallMin = ranges.length ? Math.min(...ranges.map(r => r.min)) : null
-  const overallMax = ranges.length ? Math.max(...ranges.map(r => r.max)) : null
+  const inWindow = ranges.filter(r => r.date >= win.from && r.date <= win.to)
+  const resting = split(computeDailySeries('resting_heart_rate', restingPoints), win)
+  const curResting = avg(resting.current.map(d => d.value)), prevResting = avg(resting.previous.map(d => d.value))
 
-  // "Today's average" — today's own avg-of-avgs across the day's windows.
-  const todayAvg = ranges.find(r => r.date === todayStr())?.avg ?? null
+  // Mean of each day's OWN average, not one flat mean over every raw point —
+  // otherwise a day with many active windows outweighs a quiet one.
+  const dayAvgs = split(ranges.map(r => ({ date: r.date, value: r.avg })), win)
+  const curAvg = avg(dayAvgs.current.map(d => d.value)), prevAvg = avg(dayAvgs.previous.map(d => d.value))
 
-  // "This week's intraday average" — mean of each of the last 7 days' own
-  // daily average (not a single flat number across all raw points, so a
-  // handful of very active/very quiet windows on one day don't skew it).
-  const avgSeries = ranges.map(r => ({ date: r.date, value: r.avg }))
-  const { current: weekAvgs, previous: prevWeekAvgs } = splitWeeks(avgSeries)
-  const weekAvg = avg(weekAvgs)
-  const prevWeekAvg = avg(prevWeekAvgs)
+  const lo = inWindow.length ? Math.min(...inWindow.map(r => r.min)) : null
+  const hi = inWindow.length ? Math.max(...inWindow.map(r => r.max)) : null
 
   return (
-    <Panel title="Heart analysis">
-      <StatRow label="Today's average" value={todayAvg != null ? `${Math.round(todayAvg)} bpm` : '—'} />
-      <StatRow label="Week avg (intraday)" value={weekAvg != null ? `${Math.round(weekAvg)} bpm` : '—'}
-        trend={<TrendBadge pct={trendPct(weekAvg, prevWeekAvg)} goodDirection="down" />} />
-      <StatRow label="Avg resting HR" value={curAvgResting != null ? `${Math.round(curAvgResting)} bpm` : '—'}
-        trend={<TrendBadge pct={trendPct(curAvgResting, prevAvgResting)} goodDirection="down" />} />
-      {overallMin != null && overallMax != null && (
-        <StatRow label="14-day range" value={`${Math.round(overallMin)}–${Math.round(overallMax)}`} sub="bpm" />
+    <Panel title="Heart analysis" win={win}>
+      <StatRow label={avgLabel(win, 'Heart rate')} value={curAvg != null ? `${Math.round(curAvg)} bpm` : '—'}
+        trend={<TrendBadge pct={trendPct(curAvg, prevAvg)} goodDirection="down" />} />
+      <StatRow label={avgLabel(win, 'Resting HR')} value={curResting != null ? `${Math.round(curResting)} bpm` : '—'}
+        trend={<TrendBadge pct={trendPct(curResting, prevResting)} goodDirection="down" />} />
+      {lo != null && hi != null && (
+        <StatRow label="Range in window" value={`${Math.round(lo)}–${Math.round(hi)}`} sub="bpm" />
       )}
-      <StatRow label="Days tracked" value={String(ranges.length)} />
+      <StatRow label="Days with data" value={String(inWindow.length)} />
     </Panel>
   )
 }
 
-function SleepStats() {
-  const { data: points = [] } = useHealthMetricSeries('sleep_analysis', daysAgoStr(13), todayStr())
+function SleepStats({ range }: { range: HealthRange }) {
+  const win = buildWindow(range)
+  const { data: points = [] } = useHealthMetricSeries('sleep_analysis', win.fetchFrom, win.to)
   const summary = computeSleepSummary(points)
-  const { current, previous } = splitWeeks(summary.map(s => ({ date: s.date, value: s.total })))
-  const curAvg = avg(current), prevAvg = avg(previous)
-  const best = summary.length ? summary.reduce((a, b) => (b.total > a.total ? b : a)) : null
+  const { current, previous } = split(summary.map(s => ({ date: s.date, value: s.total })), win)
+  const curAvg = avg(current.map(d => d.value)), prevAvg = avg(previous.map(d => d.value))
+  const best = current.length ? current.reduce((a, b) => (b.value > a.value ? b : a)) : null
+  const worst = current.length ? current.reduce((a, b) => (b.value < a.value ? b : a)) : null
 
   return (
-    <Panel title="Sleep analysis">
-      <StatRow label="7-night average" value={curAvg != null ? formatSleepHours(curAvg) : '—'}
+    <Panel title="Sleep analysis" win={win}>
+      <StatRow label={win.isDay ? 'Slept that night' : 'Average per night'}
+        value={curAvg != null ? formatSleepHours(curAvg) : '—'}
         trend={<TrendBadge pct={trendPct(curAvg, prevAvg)} />} />
-      {best && (
-        <StatRow label="Best night" value={formatSleepHours(best.total)}
-          sub={new Date(best.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' })} />
-      )}
-      <StatRow label="Nights tracked" value={String(summary.length)} />
+      {!win.isDay && best && <StatRow label="Best night" value={formatSleepHours(best.value)} sub={fmtDate(best.date)} />}
+      {!win.isDay && worst && <StatRow label="Shortest night" value={formatSleepHours(worst.value)} sub={fmtDate(worst.date)} />}
+      <StatRow label="Nights with data" value={String(current.length)} />
     </Panel>
   )
 }
 
-function BodyStats() {
-  const { data: points = [] } = useHealthMetricSeries('weight_body_mass', daysAgoStr(89), todayStr())
+function BodyStats({ range }: { range: HealthRange }) {
+  const win = buildWindow(range)
+  // Weigh-ins are sparse and event-based, so a narrow window would usually be
+  // empty. A fixed 90 days ending at the SELECTED day keeps the change figure
+  // meaningful while still following the page's date control.
+  const from = shiftStr(win.to, -89)
+  const { data: points = [] } = useHealthMetricSeries('weight_body_mass', from, win.to)
+  const { data: fatPoints = [] } = useHealthMetricSeries('body_fat_percentage', from, win.to)
   const series = computeDailySeries('weight_body_mass', points)
-  const first = series[0]?.value
-  const latest = series[series.length - 1]?.value
-  const delta = first != null && latest != null ? latest - first : null
+  const fat = computeDailySeries('body_fat_percentage', fatPoints)
+  const first = series[0]
+  const latest = series[series.length - 1]
+  const delta = first && latest ? latest.value - first.value : null
+  const latestFat = fat[fat.length - 1]
 
   return (
-    <Panel title="Body analysis">
-      <StatRow label="Latest weight" value={latest != null ? `${latest.toFixed(1)} kg` : '—'} />
-      {delta != null && (
-        <StatRow label="Change (90 days)" value={`${delta > 0 ? '+' : ''}${delta.toFixed(1)} kg`} />
+    <Panel title="Body analysis" win={win}>
+      <StatRow label="Latest weight" value={latest ? `${latest.value.toFixed(1)} kg` : '—'}
+        sub={latest ? fmtDate(latest.date) : undefined} />
+      {latestFat && <StatRow label="Latest body fat" value={`${latestFat.value.toFixed(1)} %`} sub={fmtDate(latestFat.date)} />}
+      {delta != null && first && (
+        // Labelled with the real span between the two readings, not a blanket
+        // "90 days" — the first reading is the earliest one that EXISTS in the
+        // window, which is rarely 90 days back.
+        <StatRow label="Change" value={`${delta > 0 ? '+' : ''}${delta.toFixed(1)} kg`}
+          sub={`over ${daysBetween(first.date, latest!.date)} days`} />
       )}
-      <StatRow label="Weigh-ins" value={String(series.length)} />
+      <StatRow label="Weigh-ins (90d)" value={String(series.length)} />
     </Panel>
   )
 }
 
-function OverviewStats() {
-  const today = todayStr()
-  const { data: stepPoints = [] } = useHealthMetricSeries('step_count', today, today)
-  const { data: activePoints = [] } = useHealthMetricSeries('active_energy', today, today)
-  const { data: hrPoints = [] } = useHealthMetricSeries('heart_rate', today, today)
-  const { data: sleepPoints = [] } = useHealthMetricSeries('sleep_analysis', daysAgoStr(1), today)
+function OverviewStats({ range }: { range: HealthRange }) {
+  const win = buildWindow(range)
+  // Overview was pinned to today outright — it now describes the selected
+  // window like every other panel.
+  const { data: stepPoints = [] } = useHealthMetricSeries('step_count', win.from, win.to)
+  const { data: activePoints = [] } = useHealthMetricSeries('active_energy', win.from, win.to)
+  const { data: basalPoints = [] } = useHealthMetricSeries('basal_energy_burned', win.from, win.to)
+  const { data: hrPoints = [] } = useHealthMetricSeries('heart_rate', win.from, win.to)
+  const { data: sleepPoints = [] } = useHealthMetricSeries('sleep_analysis', win.from, win.to)
 
-  const steps = computeDailySeries('step_count', stepPoints)[0]?.value
-  const active = computeDailySeries('active_energy', activePoints)[0]?.value
-  const hrRange = computeHeartRateDailySeries(hrPoints)[0]
-  const sleep = computeSleepSummary(sleepPoints).pop()
+  const steps = completed(computeDailySeries('step_count', stepPoints)).filter(d => d.date >= win.from)
+  const active = completed(computeDailySeries('active_energy', activePoints)).filter(d => d.date >= win.from)
+  const basal = completed(computeDailySeries('basal_energy_burned', basalPoints)).filter(d => d.date >= win.from)
+  const hr = computeHeartRateDailySeries(hrPoints).filter(d => d.date >= win.from)
+  const sleep = computeSleepSummary(sleepPoints).filter(d => d.date >= win.from)
+
+  const avgSteps = avg(steps.map(d => d.value))
+  const avgActive = avg(active.map(d => d.value))
+  const avgBasal = avg(basal.map(d => d.value))
+  const avgSleep = avg(sleep.map(s => s.total))
+  const lo = hr.length ? Math.min(...hr.map(r => r.min)) : null
+  const hi = hr.length ? Math.max(...hr.map(r => r.max)) : null
 
   return (
-    <Panel title="Today at a glance">
-      <StatRow label="Steps" value={steps != null ? Math.round(steps).toLocaleString('en-GB') : '—'} />
-      <StatRow label="Active energy" value={active != null ? `${Math.round(active)} kcal` : '—'} />
-      <StatRow label="Heart rate" value={hrRange ? `${Math.round(hrRange.min)}–${Math.round(hrRange.max)}` : '—'} sub={hrRange ? 'bpm' : undefined} />
-      <StatRow label="Sleep" value={sleep ? formatSleepHours(sleep.total) : '—'} />
+    <Panel title={win.isDay ? 'That day at a glance' : 'Window at a glance'} win={win}>
+      <StatRow label={avgLabel(win, 'Steps')} value={avgSteps != null ? Math.round(avgSteps).toLocaleString('en-GB') : '—'} />
+      <StatRow label={avgLabel(win, 'Active energy')} value={avgActive != null ? `${Math.round(avgActive)} kcal` : '—'} />
+      <StatRow label={avgLabel(win, 'Basal energy')} value={avgBasal != null ? `${Math.round(avgBasal)} kcal` : '—'} />
+      <StatRow label="Heart rate range" value={lo != null && hi != null ? `${Math.round(lo)}–${Math.round(hi)}` : '—'}
+        sub={lo != null ? 'bpm' : undefined} />
+      <StatRow label={win.isDay ? 'Sleep' : 'Average sleep'} value={avgSleep != null ? formatSleepHours(avgSleep) : '—'} />
     </Panel>
   )
 }
 
-export function HealthStatsPanel({ section }: { section: SectionId }) {
-  if (section === 'steps') return <StepsStats />
-  if (section === 'energy') return <EnergyStats />
-  if (section === 'heart') return <HeartStats />
-  if (section === 'sleep') return <SleepStats />
-  if (section === 'body') return <BodyStats />
-  return <OverviewStats />
+export function HealthStatsPanel({ section, range }: { section: SectionId; range: HealthRange }) {
+  if (section === 'steps') return <StepsStats range={range} />
+  if (section === 'energy') return <EnergyStats range={range} />
+  if (section === 'heart') return <HeartStats range={range} />
+  if (section === 'sleep') return <SleepStats range={range} />
+  if (section === 'body') return <BodyStats range={range} />
+  return <OverviewStats range={range} />
 }

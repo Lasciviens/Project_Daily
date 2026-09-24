@@ -16,6 +16,11 @@ export function StepsSection({ range }: { range: HealthRange }) {
   const today = todayStr()
   const { anchor, setAnchor, period, setPeriod } = range
 
+  // The mini-metric cards read the SAME window the rest of the page is on
+  // (they used to be pinned to the last 7 days ending today, so they sat
+  // frozen while this control moved).
+  const miniWindow = { ...rangeForAnchor(period, anchor), period }
+
   // Headline follows the SELECTED PERIOD, not always a single day: Day →
   // that day's total; Week/Month → daily average + period totals, computed
   // from the same range the chart shows (in Day mode from==to==anchor, so
@@ -126,8 +131,8 @@ export function StepsSection({ range }: { range: HealthRange }) {
         </ResponsiveContainer>
       </div>
 
-      <MetricMiniGrid title="Mobility & Activity" metrics={STEPS_EXTRA_METRICS} />
-      <MetricMiniGrid title="Running Dynamics" metrics={RUNNING_EXTRA_METRICS} />
+      <MetricMiniGrid title="Mobility & Activity" metrics={STEPS_EXTRA_METRICS} window={miniWindow} />
+      <MetricMiniGrid title="Running Dynamics" metrics={RUNNING_EXTRA_METRICS} window={miniWindow} />
     </div>
   )
 }
