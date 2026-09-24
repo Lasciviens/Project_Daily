@@ -28,8 +28,6 @@ export const STEPS_EXTRA_METRICS: MiniMetricConfig[] = [
     description: 'Equivalent flights of stairs climbed today.' },
   { metric: 'push_count', icon: '🦽', title: 'Pushes', unit: 'pushes', decimals: 0,
     description: 'HealthKit "wheelchair push count" — if you don’t use a wheelchair, this is likely misdetected (check Watch Settings → Accessibility → Wheelchair).' },
-  { metric: 'time_in_daylight', icon: '☀️', title: 'Daylight Time', unit: 'min', decimals: 0,
-    description: 'Minutes spent in outdoor daylight — linked to sleep quality & mood.' },
 ]
 
 export const ENERGY_EXTRA_METRICS: MiniMetricConfig[] = [
@@ -92,10 +90,14 @@ export const SLEEP_EXTRA_METRICS: MiniMetricConfig[] = [
 // data, just judged not worth a permanent card here; if HealthKit sends them
 // they're still in health_metrics, just not surfaced under Body any more.
 export const BODY_EXTRA_METRICS: MiniMetricConfig[] = [
-  { metric: 'uv_exposure', icon: '🕶️', title: 'UV Exposure', unit: 'index', decimals: 1,
-    description: 'Estimated UV exposure today — higher means more sun protection needed.' },
-  { metric: 'handwashing', icon: '🧼', title: 'Handwashing', unit: 'min', decimals: 0, showTodayCount: true,
-    description: 'Total time spent handwashing today.' },
+  // UV Exposure and Handwashing removed on request (2026-09-24). uv_exposure
+  // has never produced a single row -- the card could only ever read "—" --
+  // and handwashing stopped arriving on 2026-08-20. Daylight Time takes the
+  // sun/environment slot UV held; it moved here from Steps, where it sat among
+  // gait metrics it has nothing to do with. Both metrics keep flowing into
+  // health_metrics either way; only the cards are gone.
+  { metric: 'time_in_daylight', icon: '☀️', title: 'Daylight Time', unit: 'min', decimals: 0,
+    description: 'Minutes spent in outdoor daylight — linked to sleep quality & mood.' },
   { metric: 'toothbrushing', icon: '🪥', title: 'Toothbrushing', unit: 'min', decimals: 0, showTodayCount: true, showTodayTimes: true,
     description: 'Total time spent brushing teeth today.' },
 ]
