@@ -88,7 +88,21 @@ export function EnergySection({ range }: { range: HealthRange }) {
 
   // Week/Month headline = daily averages over days that actually have data,
   // straight from chartData (same numbers the bars show, no extra queries).
-  const dataDays = !isDay ? chartData.filter(d => d.active + d.basal > 0) : []
+  // Two exclusions, both about the same thing: a day whose numbers are not
+  // finished yet must not drag the average down.
+  //   1. TODAY is in progress by definition — at 09:00 it carries a few
+  //      hundred kcal against a real day's ~2600, and averaging that in made
+  //      the week/month headline read low every single time it was opened.
+  //   2. MIN_COMPLETE_DAY_KCAL catches the same shape on a day that is over
+  //      but under-delivered (the Watch off the wrist, a sync that never
+  //      landed): basal alone is ~1600-2400 for this user, so a day totalling
+  //      under this floor is a coverage gap, not a genuinely light day.
+  // Both only narrow what the AVERAGE is computed from — every day still
+  // renders its own real bar, nothing is hidden (NEVER_HIDES).
+  const MIN_COMPLETE_DAY_KCAL = 1550
+  const dataDays = !isDay
+    ? chartData.filter(d => d.date !== today && d.active + d.basal > MIN_COMPLETE_DAY_KCAL)
+    : []
   const avgActive = dataDays.length ? Math.round(dataDays.reduce((s, d) => s + d.active, 0) / dataDays.length) : 0
   const avgBasal = dataDays.length ? Math.round(dataDays.reduce((s, d) => s + d.basal, 0) / dataDays.length) : 0
 

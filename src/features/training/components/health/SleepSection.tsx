@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { useHealthMetricSeries, useAddManualSleep } from '../../hooks/useHealthExport'
-import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions } from '../../healthAggregate'
+import { computeSleepSummary, estimateSleepStageProportions, extractSleepSessions, formatSleepHours as fmtHrs } from '../../healthAggregate'
 import { todayStr, daysAgoStr, datesBetweenStr } from '../../../../shared/utils/dateUtils'
 import { shiftStr, rangeForAnchor } from './dateNav'
 import type { HealthRange } from './sectionTypes'
@@ -16,12 +16,6 @@ function fmtDay(dateStr: string): string {
 
 function fmtDayLong(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
-}
-
-function fmtHrs(h: number): string {
-  const hrs = Math.floor(h)
-  const mins = Math.round((h - hrs) * 60)
-  return `${hrs}h ${mins}m`
 }
 
 const STAGES = [

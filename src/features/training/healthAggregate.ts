@@ -450,3 +450,15 @@ export function estimateSleepStageProportions(summaries: SleepSummary[]): { deep
   const avgOf = (key: 'deep' | 'core' | 'rem') => fractions.reduce((sum, f) => sum + f[key], 0) / fractions.length
   return { deep: avgOf('deep'), core: avgOf('core'), rem: avgOf('rem') }
 }
+
+// Sleep durations are read as wall-clock, never as a decimal fraction of an
+// hour: "6h 52m" is instantly comparable to a bedtime/wake time, "6.8h" makes
+// the reader do the ×60 themselves. Lived in three hand-copied definitions
+// (SleepSection, Daily's HealthCard) while HealthStatsPanel printed a raw
+// `toFixed(1)` instead — one exported formatter so every sleep hour figure in
+// the app reads the same way.
+export function formatSleepHours(hours: number): string {
+  if (!Number.isFinite(hours)) return '—'
+  const total = Math.round(hours * 60)
+  return `${Math.floor(total / 60)}h ${total % 60}m`
+}
