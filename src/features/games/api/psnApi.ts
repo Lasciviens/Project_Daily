@@ -107,9 +107,28 @@ export interface PsnTrophyGroup {
   lastUpdatedDateTime: string | null
 }
 
+/** Sony's session died and only a fresh npsso restores it — a normal,
+ *  expected state (Sony's reCAPTCHA blocks a scripted npsso mint, so the
+ *  human re-pastes one every month or two), NOT an application failure. It
+ *  gets its own class so the UI can show a reconnect panel instead of an
+ *  error box, let alone crash. */
+export class PsnReauthRequired extends Error {
+  readonly sonyMessage?: string
+  constructor(sonyMessage?: string) {
+    super(sonyMessage ?? 'PlayStation session expired')
+    this.name = 'PsnReauthRequired'
+    this.sonyMessage = sonyMessage
+  }
+}
+
+export function isPsnReauthRequired(e: unknown): e is PsnReauthRequired {
+  return e instanceof PsnReauthRequired
+}
+
 async function invoke<T>(action: string, extra?: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('psn-api', { body: { action, ...extra } })
   if (error) throw error
+  if (data?.error === 'reauth_required') throw new PsnReauthRequired(data.sonyMessage)
   if (data?.error) throw new Error(data.error)
   return data as T
 }

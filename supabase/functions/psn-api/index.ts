@@ -58,6 +58,38 @@ const CORS: Record<string, string> = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
+// Sony reports an expired/revoked session as HTTP **200** with an error
+// envelope in the body:
+//
+//   {"error":{"referenceId":"…","code":2241164,"message":"Expired token"}}
+//
+// Nothing throws, so every `.catch(() => null)` below stays silent and the
+// envelope is handed to the client as if it were real data. Observed live
+// (2026-09-25): `profile` returned `{profile:null, summary:{error:{…}}}`,
+// the web app's `summary &&` guard passed on the truthy envelope, and
+// reading `summary.earnedTrophies.platinum` crashed the whole tab into its
+// ErrorBoundary -- "Cannot read properties of undefined (reading
+// 'platinum')" instead of "your PlayStation session expired".
+//
+// This is the single most common PSN failure by design: Sony's reCAPTCHA
+// blocks a scripted npsso mint, so the human MUST re-paste one periodically.
+// The one predictable failure mode has to be a clear message, not a crash.
+function sonyError(v: unknown): { code?: number; message?: string } | null {
+  const e = (v as AnyRec)?.error
+  if (!e || typeof e !== 'object') return null
+  if (typeof e.message !== 'string' && typeof e.code !== 'number') return null
+  return { code: e.code, message: e.message }
+}
+
+// Sony's auth-family codes are not documented anywhere stable, so this keys
+// on the message text as well and errs toward "re-authenticate": telling the
+// user to reconnect when the real fault was something else costs one paste;
+// the opposite silently hands broken data to the UI.
+const REAUTH_RE = /expired|invalid.*token|unauthor|not.*authenticated|access denied/i
+function isReauth(err: { code?: number; message?: string }): boolean {
+  return REAUTH_RE.test(err.message ?? '') || err.code === 2241164
+}
+
 type Action =
   | 'connect' | 'status' | 'disconnect' | 'profile'
   | 'games' | 'played_games' | 'purchased_games'
@@ -162,16 +194,30 @@ Deno.serve(async (req: Request) => {
         // Region needs the LEGACY profile endpoint (it decodes the region
         // out of that response's npId), so it is best-effort and never
         // allowed to fail the whole profile call.
+        // Either payload can carry Sony's 200-with-error envelope (see
+        // sonyError above). Profile is the tab's gate, so an expired session
+        // must surface HERE as a typed signal rather than as data.
+        const sErr = sonyError(summary) ?? sonyError(profile)
+        if (sErr && isReauth(sErr)) {
+          return json({ error: 'reauth_required', sonyMessage: sErr.message ?? 'Session expired' })
+        }
         let region = null
         const onlineId = (profile as AnyRec)?.onlineId
         if (onlineId) region = await getUserRegion(auth, onlineId).catch(() => null)
-        return json({ profile, summary, region })
+        return json({
+          // Never hand an error envelope on as if it were data.
+          profile: sonyError(profile) ? null : profile,
+          summary: sonyError(summary) ? null : summary,
+          region,
+        })
       }
 
       // The trophy-set list (NPWR ids). Distinct from `played_games` below,
       // which is the store-SKU list carrying real playtime.
       case 'games': {
         const titles = await getUserTitles(auth, 'me')
+        const e = sonyError(titles)
+        if (e && isReauth(e)) return json({ error: 'reauth_required', sonyMessage: e.message ?? 'Session expired' })
         return json({ titles: (titles as AnyRec)?.trophyTitles ?? [] })
       }
 
@@ -181,6 +227,8 @@ Deno.serve(async (req: Request) => {
         const titles: AnyRec[] = []
         for (let page = 0; page < PLAYED_MAX_PAGES; page++) {
           const res = await getUserPlayedGames(auth, 'me', { limit: PLAYED_PAGE, offset: page * PLAYED_PAGE })
+          const e = sonyError(res)
+          if (e && isReauth(e)) return json({ error: 'reauth_required', sonyMessage: e.message ?? 'Session expired' })
           const batch = (res as AnyRec)?.titles ?? []
           titles.push(...batch)
           if (batch.length < PLAYED_PAGE) break
