@@ -23,7 +23,7 @@ function Tile({ icon, label, value, adornment, sub, onOpen }: {
         <span className="flex w-full min-w-0 items-center gap-2.5">
           {icon}
           <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--tg-text-2)]">{label}</span>
-          <ChevronRight size={14} strokeWidth={2.2} aria-hidden className="shrink-0 text-[var(--tg-faint)] transition-transform [@media(hover:hover)]:group-hover:translate-x-0.5" />
+          <ChevronRight size={14} strokeWidth={2.2} aria-hidden className="hidden shrink-0 text-[var(--tg-faint)] transition-transform @md:block [@media(hover:hover)]:group-hover:translate-x-0.5" />
         </span>
         <span className="mt-3.5 flex min-h-[30px] w-full items-center justify-between gap-2">
           <span className="truncate text-[26px] font-semibold leading-none tracking-[-0.02em] text-[var(--tg-text)]">{value}</span>

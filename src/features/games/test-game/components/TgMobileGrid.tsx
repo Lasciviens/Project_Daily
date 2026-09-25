@@ -16,8 +16,11 @@ const MobileCard = memo(function MobileCard({ game, onSelect }: { game: TgGame; 
       // at 393px wide, so the scrollbar doesn't jump as rows render in.
       className="group block min-w-0 rounded-md text-left [contain-intrinsic-size:auto_280px] [content-visibility:auto]"
     >
-      <div className="relative aspect-[0.72] w-full overflow-hidden rounded-md bg-[var(--tg-panel-2)] shadow-[shadow:var(--tg-cover-shadow)] ring-1 ring-[var(--tg-border)] transition-transform duration-150 group-active:scale-[0.98]">
-        <TgCover game={game} mode="contain" className="h-full w-full" />
+      {/* Every cell keeps the same box so titles line up, but the frame (radius,
+          shadow) hugs the art itself: a wide or square cover stands on the
+          page background at the box's foot instead of over a blurred fill. */}
+      <div className="relative aspect-[0.72] w-full transition-transform duration-150 group-active:scale-[0.98]">
+        <TgCover game={game} mode="natural" />
       </div>
       <div className="mt-2 truncate text-[13px] font-semibold leading-[1.35] text-[var(--tg-text)]">
         {game.title}
