@@ -102,8 +102,9 @@ export const BODY_EXTRA_METRICS: MiniMetricConfig[] = [
   // gait metrics it has nothing to do with.
   { metric: 'time_in_daylight', icon: '☀️', title: 'Daylight Time', unit: 'min', decimals: 0,
     description: 'Minutes spent in outdoor daylight — linked to sleep quality & mood.' },
-  { metric: 'waist_circumference', icon: '📐', title: 'Waist', unit: 'cm', decimals: 0,
-    description: 'Waist circumference — entered by hand in Apple Health rather than measured by the Watch, so it only moves when you log it.' },
+  // Waist circumference removed on request (2026-09-24): it already comes
+  // through Hevy's own body measurements, and two sources for one tape reading
+  // is one too many.
   { metric: 'toothbrushing', icon: '🪥', title: 'Toothbrushing', unit: 's', decimals: 0, showTodayCount: true, showTodayTimes: true,
     description: 'Total time spent brushing teeth today.' },
 ]

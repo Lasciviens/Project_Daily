@@ -137,6 +137,11 @@ export function SleepSection({ range }: { range: HealthRange }) {
   const today = todayStr()
   const { anchor, setAnchor, period, setPeriod } = range
 
+  // The mini-metric cards read the SAME window the rest of the page is on
+  // (they used to be pinned to the last 7 days ending today, so they sat
+  // frozen while this control moved).
+  const miniWindow = { ...rangeForAnchor(period, anchor), period }
+
   // In Day mode the chart still shows a 7-night CONTEXT window ending at the
   // anchor (a 1-bar chart is useless) while the detail block below reflects
   // just the anchored night. Week/Month behave as a normal trend range.
@@ -428,7 +433,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
         </div>
       )}
 
-      <MetricMiniGrid title="Sleep Extras" metrics={SLEEP_EXTRA_METRICS} />
+      <MetricMiniGrid title="Sleep Extras" metrics={SLEEP_EXTRA_METRICS} window={miniWindow} />
 
       {/* Raw incoming rows — the actual health_metrics stored for this range,
           so what the webhook received can be inspected directly (each value is

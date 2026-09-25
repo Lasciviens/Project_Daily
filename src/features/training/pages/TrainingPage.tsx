@@ -7,7 +7,9 @@ import { HevySyncButton } from '../components/HevySyncButton'
 import { TrainingCalendar } from '../components/TrainingCalendar'
 import { NextSessionBanner } from '../components/NextSessionBanner'
 import { HealthStatsPanel } from '../components/health/HealthStatsPanel'
-import type { SectionId } from '../components/health/sectionTypes'
+import type { SectionId, HealthRange } from '../components/health/sectionTypes'
+import { useAnchorDate } from '../components/health/useAnchorDate'
+import type { Period } from '../components/health/PeriodToggle'
 
 type Tab = 'hevy' | 'strava' | 'health' | 'coach'
 type HevySub = 'workouts' | 'routines' | 'prs' | 'progress' | 'muscles' | 'body' | 'exercises'
@@ -26,6 +28,17 @@ const HEADER_BG =
 export function TrainingPage() {
   const [tab, setTab] = useState<Tab>('hevy')
   const [healthSection, setHealthSection] = useState<SectionId>('overview')
+  // The Health tab's day/period selection is lifted here for the same reason
+  // `healthSection` already is: HealthStatsPanel is rendered in the right rail,
+  // a SIBLING of HealthTab, and it has to describe the window the user
+  // actually has selected. While it lived inside HealthTab the panel could not
+  // see it at all, which is why every one of its numbers sat frozen.
+  const [healthAnchor, setHealthAnchor] = useAnchorDate()
+  const [healthPeriod, setHealthPeriod] = useState<Period>('week')
+  const healthRange: HealthRange = {
+    anchor: healthAnchor, setAnchor: setHealthAnchor,
+    period: healthPeriod, setPeriod: setHealthPeriod,
+  }
   const [hevySub, setHevySub] = useState<HevySub>('workouts')
   void hevySub // sub-tab no longer affects layout width, but the callback contract stays
 
@@ -92,7 +105,7 @@ export function TrainingPage() {
         <div className={`w-full lg:max-w-4xl min-w-0 ${wide ? '2xl:max-w-none 2xl:flex-1' : ''}`}>
           {tab === 'hevy'   && <HevyTab onSubTabChange={setHevySub} />}
           {tab === 'strava' && <StravaTab />}
-          {tab === 'health' && <HealthTab section={healthSection} onSectionChange={setHealthSection} />}
+          {tab === 'health' && <HealthTab section={healthSection} onSectionChange={setHealthSection} range={healthRange} />}
           {tab === 'coach'  && <PTCoachTab />}
         </div>
 
@@ -104,7 +117,7 @@ export function TrainingPage() {
             content for one line of text, the exact width waste being
             standardised away. */}
         <div className="w-full lg:w-[440px] lg:flex-shrink-0 flex flex-col gap-4">
-          {tab === 'health' ? <HealthStatsPanel section={healthSection} /> : <TrainingCalendar />}
+          {tab === 'health' ? <HealthStatsPanel section={healthSection} range={healthRange} /> : <TrainingCalendar />}
           <NextSessionBanner />
         </div>
       </div>
