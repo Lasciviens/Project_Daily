@@ -11,6 +11,7 @@ import {
   mergeOwnership, psnKind, hideNonGames, countNonGames, OWNERSHIP_LABEL, type Ownership,
 } from '../providerEntries'
 import { ImportProviderButton } from './ImportProviderButton'
+import { PsnNpssoForm } from './PsnNpssoForm'
 import type { ProviderGameInput } from '../api/gamesApi'
 
 // PlayStation integration — the community npsso-cookie flow (Sony has no
@@ -119,9 +120,11 @@ function TrophyCard({ title, onOpen }: { title: PsnTrophyTitle; onOpen: () => vo
 function LoadError({ error, what }: { error: unknown; what: string }) {
   if (isPsnReauthRequired(error)) {
     return (
-      <div className="text-sm text-ink-500 py-8 text-center">
-        Your PlayStation session expired. Paste a fresh npsso in{' '}
-        <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>.
+      <div className="max-w-md mx-auto py-8">
+        <p className="text-sm text-ink-500 text-center mb-3">Your PlayStation session expired.</p>
+        <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4">
+          <PsnNpssoForm />
+        </div>
       </div>
     )
   }
@@ -323,27 +326,47 @@ function ConnectedView() {
   )
 }
 
+// CLAUDE.md's "connections live in ONE place" rule says a feature page may
+// LINK to Developer → Connections but must never carry its own connect UI.
+// This is a deliberate, narrow exception the user asked for (2026-09-25), and
+// it serves the rule's actual purpose rather than defeating it: the rule
+// exists so "is X connected?" has one answer and reconnecting isn't a hunt
+// across pages. Re-authenticating an ALREADY-configured integration, at the
+// exact point where it just failed, is recovery in place — not a second
+// status widget. The form is the same component Connections renders, so there
+// is one implementation; first-time connect and disconnect stay there only.
 function NotConnected({ expired, detail }: { expired?: boolean; detail?: string }) {
   return (
-    <div className="max-w-xl mx-auto text-center py-12 px-4">
-      <p className="text-4xl mb-3">🎮</p>
-      <h2 className="text-base font-bold text-ink-900 mb-1">
-        {expired ? 'PlayStation session expired' : 'PlayStation is not connected'}
-      </h2>
-      <p className="text-sm text-ink-500">
-        {expired ? (
-          <>
+    <div className="max-w-md mx-auto py-12 px-4">
+      <div className="text-center">
+        <p className="text-4xl mb-3">🎮</p>
+        <h2 className="text-base font-bold text-ink-900 mb-1">
+          {expired ? 'PlayStation session expired' : 'PlayStation is not connected'}
+        </h2>
+      </div>
+      {expired ? (
+        <>
+          <p className="text-sm text-ink-500 text-center">
             Sony stopped accepting the stored session{detail ? ` (“${detail}”)` : ''}. This is expected
-            rather than a fault: Sony guards its login with a reCAPTCHA, so the npsso cookie behind this
+            rather than a fault: Sony guards its login with a reCAPTCHA, so the token behind this
             integration cannot be renewed automatically and has to be pasted again every month or two.
-          </>
-        ) : null}
-      </p>
-      <p className="text-sm text-ink-500 mt-2">
-        {expired ? 'Paste a fresh npsso in ' : 'Connect it in '}
-        <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>
-        {expired ? '.' : ', where every integration is managed.'}
-      </p>
+          </p>
+          <div className="mt-4 rounded-2xl border border-ink-200 bg-cream-50 p-4">
+            <PsnNpssoForm />
+          </div>
+          <p className="text-[11px] text-ink-400 mt-3 text-center">
+            Also available in{' '}
+            <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>,
+            along with every other integration.
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-ink-500 text-center">
+          Connect it in{' '}
+          <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>,
+          where every integration is managed.
+        </p>
+      )}
     </div>
   )
 }
