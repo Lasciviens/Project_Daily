@@ -18,6 +18,7 @@ import { GamesCoverDemoPage } from '../features/games/pages/GamesCoverDemoPage'
 import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
 import { WishesPage } from '../features/wishes/pages/WishesPage'
 import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
+import { logError } from '../shared/utils/logError'
 
 // ── Test-Game, loaded on demand ─────────────────────────────────────────────
 // A standalone experiment reached from one link, so its ~100 kB of JS and its
@@ -68,7 +69,11 @@ function lazyWithReload<P extends object>(load: () => Promise<ComponentType<P>>)
       const component = await load()
       try { sessionStorage.removeItem(CHUNK_RELOAD_FLAG) } catch { /* storage blocked: nothing to clear */ }
       return { default: component }
-    } catch {
+    } catch (err) {
+      // Logged either way: a stale chunk after a deploy is expected, but an
+      // exception thrown while the page module evaluates lands here too, and
+      // without a record it would only ever look like "check your connection".
+      void logError((err as Error)?.message ?? 'Lazy route failed to load', { action: 'lazy_route_load' })
       if (markReloadAttempt()) {
         window.location.reload()
         return new Promise(() => {}) // keep the fallback up until the reload lands

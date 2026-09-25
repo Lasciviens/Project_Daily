@@ -39,6 +39,8 @@ export function isCoverFailed(url: string): boolean {
  */
 export function reportCoverError(url: string): 'retry' | 'dead' {
   if (failed.has(url)) return 'dead'
+  // Not "loaded" any more: the retry must stay hidden until it really loads.
+  loaded.delete(url)
   if (!errored.has(url)) {
     errored.add(url)
     return 'retry'

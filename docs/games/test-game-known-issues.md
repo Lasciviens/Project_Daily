@@ -45,6 +45,10 @@ The owner confirmed this page will **replace the current Games page**, so the ba
 - Needs-review count on the Advanced tab; Random pick names its pool.
 
 ## Follow-ups outside this page
+- The Advanced tabs reuse the current page's components verbatim, and three of them show a FAILED fetch as
+  empty data (Tiers: "No games", Needs review: "Nothing needs attention", Classic library: "0 games"); the old
+  Stats panel renders nothing at all on a failed fetch. Pre-existing on `/games`; to fix when those
+  components are brought into the new design.
 - `esde-sync` should also write `games.play_seconds / play_count / last_played_at` (edge-function change,
   manual redeploy, one-off `UPDATE`). The page and `/games` already read the ES-DE figures correctly.
 - Display-sized derivatives for ES-DE fanart/screenshots (the page downloads the originals) — needs the RP6

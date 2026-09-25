@@ -13,13 +13,24 @@ import { useStableValue } from './useStableValue'
 interface Props {
   game: TgGame | null
   actions: TgActions
-  variant: 'panel' | 'sheet'
+  /**
+   * `panel` — a standalone card (its own border and radius); `overlay` — the
+   * same card filling the tablet/desktop overlay, which owns the edge, radius
+   * and shadow; `sheet` — inside the phone's full-screen sheet.
+   */
+  variant: 'panel' | 'overlay' | 'sheet'
   onClose?: () => void
+}
+
+const SHELL: Record<Props['variant'], string> = {
+  panel: 'tg-panel h-full w-full',
+  overlay: 'h-full w-full bg-[var(--tg-panel)]',
+  sheet: 'h-full w-full bg-[var(--tg-panel)]',
 }
 
 const firstText = (...xs: (string | null | undefined)[]) => xs.map(x => x?.trim()).find(Boolean) ?? null
 
-/** The right-hand detail card (desktop), or the same content inside a sheet. */
+/** The detail card: the tablet/desktop overlay's content, or the same inside the phone sheet. */
 export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null)
   const extras = useSteamExtras(game?.steamAppId ?? null)
@@ -38,9 +49,9 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
     [extras.screenshots, extras.fullScreenshots],
   )
 
-  const shell = variant === 'panel'
-    ? 'tg-panel h-full w-full'
-    : 'h-full w-full bg-[var(--tg-panel)]'
+  const shell = SHELL[variant]
+  // The hero and footer size themselves for a viewport-tall card or a sheet.
+  const layout = variant === 'sheet' ? 'sheet' : 'panel'
 
   if (!game) {
     return (
@@ -59,7 +70,7 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
   return (
     <div className={`${shell} relative flex flex-col overflow-hidden`}>
       <div ref={bodyRef} className="tg-scroll-y min-h-0 flex-1">
-        <TgDetailHero game={game} variant={variant} steamGenre={extras.genre} />
+        <TgDetailHero game={game} variant={layout} steamGenre={extras.genre} />
         {/* Tall screens (a monitor) space the block out and let the text and
             screenshots grow (TgDetailInfo/Description/ScreenshotStrip), so the
             card fills the panel instead of leaving a blank band over the footer. */}
@@ -72,7 +83,7 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
         <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-2 h-2 bg-gradient-to-t from-[var(--tg-panel)] to-transparent" />
       </div>
 
-      <TgDetailActions game={game} actions={actions} variant={variant} />
+      <TgDetailActions game={game} actions={actions} variant={layout} />
 
       {variant === 'sheet' && onClose && (
         <button

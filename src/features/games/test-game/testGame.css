@@ -159,13 +159,13 @@
 
 /* ─── Status colour, set once per element via data-status ─────────────────── */
 
-/* Unscoped on purpose: the attribute only ever appears inside this page's own
-   markup (root or portal), and the variables it reads are defined only there. */
-[data-status] { --st: var(--tg-grey); --st-soft: var(--tg-grey-soft); }
-[data-status='playing']   { --st: var(--tg-green);  --st-soft: var(--tg-green-soft); }
-[data-status='completed'] { --st: var(--tg-blue);   --st-soft: var(--tg-blue-soft); }
-[data-status='wishlist']  { --st: var(--tg-purple); --st-soft: var(--tg-purple-soft); }
-[data-status='dropped']   { --st: var(--tg-red);    --st-soft: var(--tg-red-soft); }
+/* Scoped like everything else: inside the page root, inside a portal, or on
+   the portal element itself. */
+.tg-root [data-status], .tg-portal [data-status], .tg-portal[data-status] { --st: var(--tg-grey); --st-soft: var(--tg-grey-soft); }
+.tg-root [data-status='playing'], .tg-portal [data-status='playing'], .tg-portal[data-status='playing'] { --st: var(--tg-green); --st-soft: var(--tg-green-soft); }
+.tg-root [data-status='completed'], .tg-portal [data-status='completed'], .tg-portal[data-status='completed'] { --st: var(--tg-blue); --st-soft: var(--tg-blue-soft); }
+.tg-root [data-status='wishlist'], .tg-portal [data-status='wishlist'], .tg-portal[data-status='wishlist'] { --st: var(--tg-purple); --st-soft: var(--tg-purple-soft); }
+.tg-root [data-status='dropped'], .tg-portal [data-status='dropped'], .tg-portal[data-status='dropped'] { --st: var(--tg-red); --st-soft: var(--tg-red-soft); }
 
 .tg-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--st, var(--tg-grey)); flex-shrink: 0; }
 .tg-status-text { color: var(--st, var(--tg-grey)); }
