@@ -39,7 +39,8 @@ const usePending = create<PendingStore>()((set) => ({
 }))
 
 function live<T>(o: Override<T> | undefined, stamp: string): Override<T> | undefined {
-  return o && o.stamp === stamp ? o : undefined
+  // No stamp → nothing could ever end the override, so none is applied.
+  return stamp !== '' && o?.stamp === stamp ? o : undefined
 }
 
 export interface DetailState {
@@ -60,7 +61,7 @@ export function useDetailState(game: TgGame): DetailState {
   const setPlayStatus = useSetPlayStatus()
   const updateGame = useUpdateGame()
 
-  const stamp = game.updated_at
+  const stamp = game.updated_at ?? ''
   const statusOverride = live(pending?.status, stamp)
   const ratingOverride = live(pending?.rating, stamp)
   const status = statusOverride ? statusOverride.value : game.play_status

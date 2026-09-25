@@ -52,22 +52,20 @@ export function TgQueueView({ games, selectedId, onSelect }: Props) {
   const remove = useCallback((id: string) => removeFromQueue(id), [removeFromQueue])
 
   return (
-    <div className="h-full tg-scroll-y">
-      <ol ref={listRef} aria-label="Play queue" className="tg-panel flex flex-col gap-1 p-1.5 sm:p-2">
-        {ordered.map((g, i) => (
-          <TgQueueViewRow
-            key={g.id}
-            game={g}
-            position={i + 1}
-            selected={g.id === selectedId}
-            canMoveUp={i > 0}
-            canMoveDown={i < ordered.length - 1}
-            onSelect={onSelect}
-            onMove={move}
-            onRemove={remove}
-          />
-        ))}
-      </ol>
-    </div>
+    <ol ref={listRef} aria-label="Play queue" className="tg-panel tg-scroll-y h-full space-y-1 p-1.5 sm:p-2">
+      {ordered.map((g, i) => (
+        <TgQueueViewRow
+          key={g.id}
+          game={g}
+          position={i + 1}
+          selected={g.id === selectedId}
+          canMoveUp={i > 0}
+          canMoveDown={i < ordered.length - 1}
+          onSelect={onSelect}
+          onMove={move}
+          onRemove={remove}
+        />
+      ))}
+    </ol>
   )
 }

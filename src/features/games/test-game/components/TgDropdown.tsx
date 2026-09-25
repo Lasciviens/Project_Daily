@@ -40,7 +40,7 @@ export function TgDropdown<T extends string>({
       <ListboxOptions
         anchor={{ to: align === 'end' ? 'bottom end' : 'bottom start', gap: 6, padding: 12 }}
         transition
-        className="tg-portal tg-menu w-max min-w-[var(--button-width)] max-w-[min(20rem,calc(100vw-24px))] max-h-80 overflow-y-auto transition duration-150 ease-out data-[closed]:-translate-y-1 data-[closed]:opacity-0"
+        className="tg-portal tg-menu focus-visible:!rounded-[14px] focus-visible:!outline-none w-max min-w-[var(--button-width)] max-w-[min(20rem,calc(100vw-24px))] max-h-80 overflow-y-auto transition duration-150 ease-out data-[closed]:-translate-y-1 data-[closed]:opacity-0"
       >
         {options.map(o => (
           <ListboxOption key={o.value} value={o.value} className="tg-menu-item">

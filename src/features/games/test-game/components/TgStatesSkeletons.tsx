@@ -1,66 +1,96 @@
 import { useState } from 'react'
-import { useShelfLayout } from './useShelfLayout'
+import { SHELF_LABEL, useShelfLayout } from './useShelfLayout'
 
-// Placeholders shaped exactly like the view that replaces them, so the first
-// paint of the library never jumps from one layout to another.
+// Placeholders built from the same geometry and classes as the view that
+// replaces them (TgShelf, TgGridView, TgMobileGrid, the list rows), so the
+// first paint of the library never jumps from one layout to another.
 
-const Line = ({ className }: { className: string }) => <span className={`tg-skeleton block rounded ${className}`} />
+const Bar = ({ className }: { className: string }) => <span className={`tg-skeleton block rounded ${className}`} />
 
-/** The bookcase, same geometry as TgShelf (same layout hook), with empty cases. */
+/** Title + status/rating rows, at TgGameCard's exact line heights. */
+function CardText({ titleLeading = 'h-[18px]', metaLeading = 'h-4' }: { titleLeading?: string; metaLeading?: string }) {
+  return (
+    <>
+      <span className={`mt-2 flex items-center ${titleLeading}`}><Bar className="h-3 w-3/4" /></span>
+      <span className={`mt-1 flex items-center justify-between ${metaLeading}`}>
+        <Bar className="h-2.5 w-1/2" /><Bar className="h-2.5 w-6" />
+      </span>
+    </>
+  )
+}
+
+/** An empty case standing in its cover slot, like TgCover's own placeholder. */
+const Case = () => <span className="tg-skeleton aspect-[0.7] h-full max-w-full rounded-[4px]" />
+
+/** The bookcase: TgShelf's layout hook and row anatomy, with empty cases. */
 export function TgStatesShelfSkeleton() {
   const [el, setEl] = useState<HTMLDivElement | null>(null)
-  const { cols, rows, slotWidth, coverHeight, gap } = useShelfLayout(el)
+  const { rows, cols, slotWidth, coverHeight, gap, rowHeight, measured } = useShelfLayout(el)
 
   return (
-    <div ref={setEl} className="tg-shelf h-full flex flex-col">
-      {Array.from({ length: Math.max(2, rows) }, (_, r) => (
-        <div key={r} className="tg-shelf-row flex-1 overflow-hidden" style={{ minHeight: coverHeight + 84 }}>
-          <div className="flex pt-[18px] px-[44px] pb-[26px]" style={{ gap }}>
-            {Array.from({ length: Math.max(1, cols) }, (_, c) => (
-              <div key={c} className="relative shrink-0" style={{ width: slotWidth }}>
-                <span aria-hidden className="tg-spot" />
-                <div className="tg-cover-slot" style={{ height: coverHeight }}>
-                  <span className="tg-skeleton block rounded" style={{ width: Math.round(coverHeight * 0.7), height: coverHeight }} />
+    <div ref={setEl} className="h-full overflow-hidden rounded-2xl">
+      <div className="tg-shelf min-h-full">
+        {measured && Array.from({ length: rows }, (_, r) => (
+          <div key={r} className="tg-shelf-row" style={{ height: rowHeight }}>
+            <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-[linear-gradient(180deg,var(--tg-shelf-edge),transparent),linear-gradient(180deg,var(--tg-shelf-edge),transparent_55%)]" />
+            <span aria-hidden className="tg-plank" style={{ height: SHELF_LABEL }} />
+            <div className="relative z-[2] flex h-full overflow-hidden px-11" style={{ gap }}>
+              {Array.from({ length: cols }, (_, c) => (
+                <div key={c} className="relative flex h-full shrink-0 items-end pb-[14px]" style={{ width: slotWidth }}>
+                  <span aria-hidden className="tg-spot" />
+                  <div className="w-full">
+                    <span className="tg-cover-slot" style={{ height: coverHeight }}><Case /></span>
+                    <CardText />
+                  </div>
                 </div>
-                <Line className="mt-2.5 h-3 w-3/4" />
-                <Line className="mt-2 h-2.5 w-1/2" />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-          <span aria-hidden className="tg-plank" />
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }
 
-/** The dense cover wall (grid view). */
+/** The dense cover wall (TgGridView). */
 export function TgStatesGridSkeleton() {
   return (
-    <div className="h-full overflow-hidden grid content-start gap-x-5 gap-y-6 grid-cols-[repeat(auto-fill,minmax(132px,1fr))]">
-      {Array.from({ length: 18 }, (_, i) => (
-        <div key={i}>
-          <span className="tg-skeleton block w-full aspect-[1/1.3] rounded" />
-          <Line className="mt-2.5 h-3 w-3/4" />
-          <Line className="mt-2 h-2.5 w-1/2" />
-        </div>
-      ))}
+    <div className="h-full overflow-hidden [scrollbar-gutter:stable]">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-x-5 gap-y-6 px-3 pb-6 pt-4">
+        {Array.from({ length: 18 }, (_, i) => (
+          <div key={i}>
+            <span className="tg-cover-slot aspect-[1/1.3]"><Case /></span>
+            <CardText />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
-/** List rows (list view) or queue rows (Play Queue). */
+/** List-view rows (TgListView) or Play Queue rows (TgQueueView). */
 export function TgStatesListSkeleton({ variant }: { variant: 'list' | 'queue' }) {
-  const queue = variant === 'queue'
+  if (variant === 'queue') {
+    return (
+      <div className="tg-panel h-full overflow-hidden space-y-1 p-1.5 sm:p-2">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="flex min-h-[76px] items-center gap-3 pl-2 sm:gap-4 sm:pl-3">
+            <Bar className="hidden h-5 w-11 opacity-60 sm:block" />
+            <span className="tg-skeleton block h-[60px] w-11 shrink-0 rounded-md" />
+            <TwoLines />
+          </div>
+        ))}
+      </div>
+    )
+  }
   return (
-    <div className={`h-full overflow-hidden ${queue ? 'tg-panel p-1.5 sm:p-2' : ''}`}>
-      {Array.from({ length: queue ? 6 : 9 }, (_, i) => (
-        <div key={i} className={`flex items-center gap-4 px-3 ${queue ? 'min-h-[76px]' : 'min-h-[64px]'}`}>
-          {queue && <Line className="hidden sm:block h-5 w-8" />}
-          <span className={`tg-skeleton block shrink-0 rounded-md ${queue ? 'w-11 h-[60px]' : 'w-10 h-[54px]'}`} />
-          <div className="flex-1 min-w-0">
-            <Line className="h-3.5 w-2/5 max-w-[260px]" />
-            <Line className="mt-2 h-2.5 w-1/4 max-w-[180px]" />
+    <div className="tg-panel h-full overflow-hidden px-2 pb-2">
+      <div className="flex h-[38px] items-end gap-4 px-3.5 pb-2"><Bar className="ml-14 h-2.5 w-10" /><Bar className="h-2.5 w-12" /></div>
+      {Array.from({ length: 9 }, (_, i) => (
+        <div key={i} className="p-0.5">
+          <div className="flex min-h-[64px] items-center gap-4 px-3 py-1.5">
+            <span className="tg-skeleton block h-[54px] w-10 shrink-0 rounded-md" />
+            <TwoLines />
           </div>
         </div>
       ))}
@@ -68,15 +98,23 @@ export function TgStatesListSkeleton({ variant }: { variant: 'list' | 'queue' })
   )
 }
 
-/** The phone's two-column card grid. */
+function TwoLines() {
+  return (
+    <div className="min-w-0 flex-1">
+      <Bar className="h-3.5 w-2/5 max-w-[260px]" />
+      <Bar className="mt-2 h-2.5 w-1/4 max-w-[180px]" />
+    </div>
+  )
+}
+
+/** The phone's two-column card grid (TgMobileGrid). */
 export function TgStatesMobileSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-5">
+    <div className="grid grid-cols-2 gap-x-4 gap-y-6 pb-4">
       {Array.from({ length: 6 }, (_, i) => (
         <div key={i}>
-          <span className="tg-skeleton block w-full aspect-[0.72] rounded-md" />
-          <Line className="mt-2 h-3 w-3/4" />
-          <Line className="mt-1.5 h-2.5 w-1/2" />
+          <span className="tg-skeleton block aspect-[0.72] w-full rounded-md" />
+          <CardText titleLeading="h-[18px]" metaLeading="h-[14px]" />
         </div>
       ))}
     </div>

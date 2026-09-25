@@ -35,7 +35,7 @@ export function TgSidebarPlatforms({ platforms, others }: { platforms: PlatformC
           type="button"
           aria-pressed={allActive}
           onClick={() => setPlatform(ALL_PLATFORMS)}
-          className={`ml-auto inline-flex min-h-[28px] items-center rounded-md px-2 text-[11px] font-semibold transition-colors [@media(pointer:coarse)]:min-h-[44px] ${
+          className={`ml-auto inline-flex min-h-6 items-center rounded-md px-2 text-[11px] font-semibold transition-colors [@media(pointer:coarse)]:min-h-[44px] ${
             allActive ? 'text-[var(--tg-accent)]' : 'text-[var(--tg-muted)] hover:text-[var(--tg-text)]'
           }`}
         >

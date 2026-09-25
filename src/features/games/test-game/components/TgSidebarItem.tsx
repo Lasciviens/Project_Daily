@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 /**
- * One sidebar row. 32px on a mouse — the design's rhythm, which is what lets
+ * One sidebar row. 31px on a mouse — the design's rhythm, which is what lets
  * the whole list fit a 680px-tall laptop without scrolling — while
  * testGame.css keeps touch at 44px. `!` because testGame.css loads after the
  * Tailwind utilities, so a plain utility would lose to `.tg-nav-item`.
@@ -27,7 +27,7 @@ export function TgSidebarItem({
       title={title}
       aria-current={pressed === undefined && active ? 'page' : undefined}
       aria-pressed={pressed}
-      className={`tg-nav-item !gap-3.5 !pl-3 !pr-2 [@media(pointer:fine)]:!min-h-[32px] ${active ? 'is-active' : ''}`}
+      className={`tg-nav-item !gap-3.5 !pl-3 !pr-2 [@media(pointer:fine)]:!min-h-[31px] ${active ? 'is-active' : ''}`}
     >
       {icon}
       <span className="min-w-0 flex-1 truncate">{label}</span>

@@ -61,7 +61,7 @@ export function TgStars({ stars, size = 14, className = '', onChange }: Props) {
     onChange(value === stars ? null : value)
   }
 
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const current = stars ?? 0
     let next: number | null | undefined
     if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = Math.min(5, current + 0.5)

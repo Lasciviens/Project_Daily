@@ -58,7 +58,7 @@ export function TgTopBarSearch({ className = '' }: { className?: string }) {
           if (search) setSearch('')
           else e.currentTarget.blur()
         }}
-        className={`tg-input truncate pl-10 ${search ? 'pr-10' : 'pr-3 lg:pr-16'}`}
+        className={`tg-input truncate pl-10 ${search ? 'pr-10' : 'pr-3 xl:pr-16'}`}
       />
       {search ? (
         <button
@@ -72,7 +72,7 @@ export function TgTopBarSearch({ className = '' }: { className?: string }) {
       ) : (
         <kbd
           aria-hidden
-          className="tg-kbd pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 !border-transparent !bg-[var(--tg-hover)] [font-family:inherit] max-lg:!hidden"
+          className="tg-kbd pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 !border-transparent !bg-[var(--tg-hover)] [font-family:inherit] max-xl:!hidden"
         >
           {IS_MAC ? '⌘' : 'Ctrl'}
           <span className="ml-1">K</span>

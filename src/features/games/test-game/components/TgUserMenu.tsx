@@ -33,7 +33,7 @@ export function TgUserMenu({ className = '' }: { className?: string }) {
       <MenuItems
         anchor={{ to: 'bottom end', gap: 6, padding: 12 }}
         transition
-        className="tg-portal tg-menu w-64 transition duration-150 ease-out data-[closed]:-translate-y-1 data-[closed]:opacity-0"
+        className="tg-portal tg-menu w-64 focus-visible:!rounded-[14px] focus-visible:!outline-none transition duration-150 ease-out data-[closed]:-translate-y-1 data-[closed]:opacity-0"
       >
         <div className="px-2.5 pb-2 pt-1.5">
           <div className="text-[11px] font-medium text-[var(--tg-faint)]">Signed in as</div>

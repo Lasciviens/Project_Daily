@@ -16,6 +16,9 @@ const THEMES: { value: ThemePreference; label: string; Icon: ComponentType<Lucid
 ]
 
 const ROW = 'flex w-full min-h-[48px] items-center gap-3 rounded-xl px-3 text-left text-[15px] font-medium transition-colors'
+// Hover only where a pointer can hover: on touch, :hover sticks to whatever was
+// tapped last (the row under the finger that opened this sheet) — press state instead.
+const ROW_IDLE = 'active:bg-[var(--tg-hover)] [@media(hover:hover)]:hover:bg-[var(--tg-hover)]'
 
 /** Everything the four-slot tab bar has no room for. */
 export function TgMobileMoreSheet({ open, onClose, counts }: {
@@ -55,7 +58,7 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
               className={`${ROW} ${
                 active
                   ? 'bg-[var(--tg-nav-active-bg)] font-semibold text-[var(--tg-nav-active-text)]'
-                  : 'text-[var(--tg-text)] hover:bg-[var(--tg-hover)]'
+                  : `text-[var(--tg-text)] ${ROW_IDLE}`
               }`}
             >
               <Icon size={19} strokeWidth={1.8} aria-hidden className="shrink-0" />
@@ -109,7 +112,7 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
         // Replaces the sheet's own history entry, so Back from the Games page
         // returns here instead of to a stale overlay entry.
         onClick={() => navigate('/games', { replace: true })}
-        className={`${ROW} text-[var(--tg-text-2)] hover:bg-[var(--tg-hover)]`}
+        className={`${ROW} text-[var(--tg-text-2)] ${ROW_IDLE}`}
       >
         <ArrowLeft size={19} strokeWidth={1.8} aria-hidden className="shrink-0" />
         Back to Lasci's Board
