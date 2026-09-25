@@ -74,6 +74,31 @@ const json = (body: unknown, status = 200) =>
 // This is the single most common PSN failure by design: Sony's reCAPTCHA
 // blocks a scripted npsso mint, so the human MUST re-paste one periodically.
 // The one predictable failure mode has to be a clear message, not a crash.
+// Sony's ssocookie endpoint answers with the whole object, not a bare token:
+//
+//   {"npsso":"…","expires_in":5183980}
+//
+// Asking the user to pick the value out from between the quotes was one
+// manual step too many on the action they have to repeat every couple of
+// months -- and it threw away `expires_in`, the one date they can actually
+// act on. Accept either form: paste the whole response, or just the token.
+function parseNpssoInput(raw: string): { npsso: string; expiresIn: number | null } {
+  const text = String(raw ?? '').trim()
+  if (!text) return { npsso: '', expiresIn: null }
+  if (text.startsWith('{')) {
+    try {
+      const o = JSON.parse(text) as AnyRec
+      const npsso = typeof o?.npsso === 'string' ? o.npsso.trim() : ''
+      const secs = Number(o?.expires_in)
+      return { npsso, expiresIn: Number.isFinite(secs) && secs > 0 ? secs : null }
+    } catch {
+      // Malformed JSON: fall through and treat it as a bare token rather than
+      // rejecting outright -- a stray brace shouldn't block a reconnect.
+    }
+  }
+  return { npsso: text, expiresIn: null }
+}
+
 function sonyError(v: unknown): { code?: number; message?: string } | null {
   const e = (v as AnyRec)?.error
   if (!e || typeof e !== 'object') return null
@@ -131,20 +156,34 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (action === 'connect') {
-      if (!body.npsso?.trim()) return json({ error: 'npsso required' }, 400)
-      const accessCode = await exchangeNpssoForAccessCode(body.npsso.trim())
+      const parsed = parseNpssoInput(body.npsso ?? '')
+      if (!parsed.npsso) return json({ error: 'npsso required' }, 400)
+      const accessCode = await exchangeNpssoForAccessCode(parsed.npsso)
       const authorization = await exchangeAccessCodeForAuthTokens(accessCode)
       const expiresAt = new Date(Date.now() + (authorization.expiresIn ?? 3600) * 1000).toISOString()
-      const { error } = await supabase.from('psn_tokens').upsert({
+      const npssoExpiresAt = parsed.expiresIn
+        ? new Date(Date.now() + parsed.expiresIn * 1000).toISOString()
+        : null
+
+      const row: AnyRec = {
         user_id: userId,
-        npsso: body.npsso.trim(),
+        npsso: parsed.npsso,
         access_token: authorization.accessToken,
         refresh_token: authorization.refreshToken,
         access_token_expires_at: expiresAt,
         connected_at: new Date().toISOString(),
-      })
+        npsso_expires_at: npssoExpiresAt,
+      }
+      let { error } = await supabase.from('psn_tokens').upsert(row)
+      // Pre-migration-safe, the convention this repo already uses for a new
+      // column (recipes.fiber_g, tasks.start_date): retry once without it so
+      // connecting still works before migration 101 is applied.
+      if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+        delete row.npsso_expires_at
+        ;({ error } = await supabase.from('psn_tokens').upsert(row))
+      }
       if (error) throw error
-      return json({ connected: true, expiresAt })
+      return json({ connected: true, expiresAt, npssoExpiresAt })
     }
 
     if (action === 'disconnect') {
@@ -153,8 +192,10 @@ Deno.serve(async (req: Request) => {
       return json({ connected: false })
     }
 
+    // `*` rather than a column list so this keeps working both before and
+    // after migration 101 adds npsso_expires_at.
     const { data: row } = await supabase.from('psn_tokens')
-      .select('access_token, refresh_token, access_token_expires_at, connected_at')
+      .select('*')
       .eq('user_id', userId).maybeSingle()
 
     if (action === 'status') {
@@ -162,6 +203,10 @@ Deno.serve(async (req: Request) => {
         connected: !!row,
         connectedAt: row?.connected_at ?? null,
         expiresAt: row?.access_token_expires_at ?? null,
+        // The npsso's OWN expiry — the only date a human can act on. The
+        // access-token expiry above is refreshed automatically and means
+        // nothing to them.
+        npssoExpiresAt: (row as AnyRec | null)?.npsso_expires_at ?? null,
       })
     }
 

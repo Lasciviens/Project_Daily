@@ -85,7 +85,7 @@ export function usePsnTrophyGroups(npCommunicationId: string | null, npServiceNa
 
 export function useConnectPsn() {
   const qc = useQueryClient()
-  return useMutationWithFeedback<{ connected: true; expiresAt: string }, string>({
+  return useMutationWithFeedback<{ connected: true; expiresAt: string; npssoExpiresAt: string | null }, string>({
     action: 'connect_psn',
     successMessage: 'PlayStation connected ✓',
     mutationFn: connectPsn,
