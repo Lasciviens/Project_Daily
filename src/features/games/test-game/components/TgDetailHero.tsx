@@ -19,7 +19,9 @@ function HeroArt({ game }: { game: TgGame }) {
   const url = candidates.find(u => !failed.has(u))
 
   return (
-    <div className="tg-hero h-[228px] bg-[var(--tg-panel-2)]">
+    // Laptop-height screens (1469×680) get a shorter hero so the whole card,
+    // screenshots included, fits without scrolling — as in the design.
+    <div className="tg-hero h-[228px] bg-[var(--tg-panel-2)] [@media(max-height:760px)]:h-[208px]">
       {url ? (
         <img
           src={url}

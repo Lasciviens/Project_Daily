@@ -18,7 +18,7 @@ export function TgDetailDescription({ text }: { text: string }) {
     <div>
       <p
         ref={ref}
-        className={`whitespace-pre-line text-[12.5px] leading-[1.55] text-[var(--tg-text-2)] ${expanded ? '' : 'line-clamp-3'}`}
+        className={`whitespace-pre-line text-[12px] leading-[1.5] text-[var(--tg-text-2)] ${expanded ? '' : 'line-clamp-3'}`}
       >
         {text}
       </p>
@@ -28,7 +28,7 @@ export function TgDetailDescription({ text }: { text: string }) {
           onClick={() => setExpanded(v => !v)}
           aria-expanded={expanded}
           // A full 44px target, pulled up so it reads as a link under the text.
-          className="-mb-3 -ml-2 -mt-2.5 flex w-fit min-h-[44px] items-center px-2 text-[12.5px] font-semibold text-[var(--tg-accent)] hover:underline"
+          className="-mb-3 -ml-2 -mt-2.5 flex w-fit min-h-[44px] items-center px-2 text-[12px] font-semibold text-[var(--tg-accent)] hover:underline"
         >
           {expanded ? 'Less' : 'More'}
         </button>

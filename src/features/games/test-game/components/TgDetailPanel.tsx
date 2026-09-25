@@ -55,7 +55,7 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
     <div className={`${shell} relative flex flex-col overflow-hidden`}>
       <div ref={bodyRef} className="tg-scroll-y min-h-0 flex-1">
         <TgDetailHero game={game} steamGenre={extras.genre} />
-        <div className="flex flex-col gap-4 px-5 pb-2 pt-5">
+        <div className="flex flex-col gap-3.5 px-5 pb-2 pt-4">
           <TgDetailInfo game={game} extras={extras} />
           {description && <TgDetailDescription key={`text-${game.id}`} text={description} />}
           <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} />

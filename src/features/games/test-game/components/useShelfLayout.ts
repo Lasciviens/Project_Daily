@@ -40,6 +40,11 @@ export interface ElementSize { w: number; h: number }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
+/** 'smooth', unless the viewer asked for reduced motion (CSS can't reach JS scrolls). */
+export function smoothScroll(): ScrollBehavior {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+}
+
 /**
  * Pure: the bookcase for a `width` × `height` case.
  *
@@ -114,7 +119,7 @@ export function useRevealCard(root: HTMLElement | null, id: string | null, revea
     if (!root || !id || revealKey == null) return
     const card = root.querySelector<HTMLElement>(`[data-game-id="${CSS.escape(id)}"]`)
     if (!card) return
-    card.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: revealed.current ? 'smooth' : 'auto' })
+    card.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: revealed.current ? smoothScroll() : 'auto' })
     revealed.current = true
   }, [root, id, revealKey])
 }

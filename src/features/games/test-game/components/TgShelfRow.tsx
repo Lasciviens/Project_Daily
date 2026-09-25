@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { TgGame } from '../testGameModel'
 import { TgGameCard } from './TgGameCard'
-import { SHELF_LABEL, SHELF_SIDE, type ShelfLayout } from './useShelfLayout'
+import { SHELF_LABEL, SHELF_SIDE, smoothScroll, type ShelfLayout } from './useShelfLayout'
 
 interface Props {
   games: TgGame[]
@@ -66,7 +66,7 @@ export const TgShelfRow = memo(function TgShelfRow({ games, layout, selectedId, 
       window.clearTimeout(settle)
       settle = window.setTimeout(() => { acc = 0 }, 200)
       if (Math.abs(acc) >= WHEEL_STEP) {
-        track.scrollBy({ left: Math.sign(acc) * pitch, behavior: 'smooth' })
+        track.scrollBy({ left: Math.sign(acc) * pitch, behavior: smoothScroll() })
         acc = 0
       }
     }
@@ -83,7 +83,7 @@ export const TgShelfRow = memo(function TgShelfRow({ games, layout, selectedId, 
   function page(dir: 1 | -1) {
     if (!track) return
     const perPage = Math.max(1, Math.floor((track.clientWidth - 2 * SHELF_SIDE + gap) / pitch))
-    track.scrollBy({ left: dir * perPage * pitch, behavior: 'smooth' })
+    track.scrollBy({ left: dir * perPage * pitch, behavior: smoothScroll() })
   }
 
   const chevronTop = rowHeight - SHELF_LABEL - coverHeight / 2
