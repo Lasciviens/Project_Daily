@@ -55,7 +55,7 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   }, [platform, others.length, counts, settling])
 
   const fixedStatus = STATUS_SECTIONS[section]
-  const isGameSection = section !== 'analytics' && section !== 'advanced'
+  const isGameSection = section !== 'analytics' && section !== 'advanced' && section !== 'scrape'
   const scope = useMemo(
     () => scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform, search, genres }),
     [lib.games, section, effectivePlatform, otherKeys, scopePlatform, search, genres],

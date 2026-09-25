@@ -16,7 +16,7 @@ import { ADVANCED_TABS } from './advancedTabs'
 
 const SECTION_TITLE: Record<TgSection, string> = {
   library: 'Library', queue: 'Play Queue', wishlist: 'Wishlist', completed: 'Completed',
-  backlog: 'Backlog', analytics: 'Analytics', advanced: 'Advanced',
+  backlog: 'Backlog', analytics: 'Analytics', scrape: 'Scrape', advanced: 'Advanced',
 }
 
 function plural(n: number, word: string) { return `${n} ${word}${n === 1 ? '' : 's'}` }
@@ -94,9 +94,12 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
     if (section === 'analytics') {
       return { title: 'Analytics', subtitle: 'Your library in numbers', logo: 'analytics', tabs: [], activeTab: null }
     }
+    if (section === 'scrape') {
+      return { title: 'Scrape', subtitle: 'Find a game on ScreenScraper and choose what to save', logo: 'scrape', tabs: [], activeTab: null }
+    }
     return {
       title: 'Advanced',
-      subtitle: 'Data quality, ScreenScraper and the Steam & PlayStation libraries',
+      subtitle: 'Data quality and the Steam & PlayStation libraries',
       logo: 'advanced',
       tabs: ADVANCED_TABS.map(t => ({
         key: t.key, label: t.label, count: t.key === 'review' && reviewCount ? reviewCount : undefined,

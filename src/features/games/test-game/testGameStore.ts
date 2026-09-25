@@ -16,9 +16,12 @@ import type { TgaLibrary, TgaWindow } from './components/tgAnalyticsModel'
 // the details are open — a reload starts with nothing picked and nothing
 // covering the games (a stale search restored on reload reads as missing games).
 
-export type AdvancedTab = 'review' | 'scraper' | 'steam' | 'playstation'
+export type AdvancedTab = 'review' | 'steam' | 'playstation'
 
-const ADVANCED_KEYS: readonly AdvancedTab[] = ['review', 'scraper', 'steam', 'playstation']
+const ADVANCED_KEYS: readonly AdvancedTab[] = ['review', 'steam', 'playstation']
+
+/** The Scrape page's two modes: one game at a time, or many. */
+export type ScrapeMode = 'search' | 'batch'
 
 /**
  * What a click or Enter on a game did to the tablet/desktop detail overlay:
@@ -51,6 +54,9 @@ interface TgState {
    *  which remounts the view, doesn't reset them. */
   analyticsPeriod: TgaWindow
   analyticsLibrary: TgaLibrary
+  /** The game the Scrape page is working on (not persisted). */
+  scrapeTargetId: string | null
+  scrapeMode: ScrapeMode
 
   setSection: (s: TgSection) => void
   setPlatform: (p: string) => void
@@ -79,6 +85,10 @@ interface TgState {
   setAdvancedTab: (t: AdvancedTab) => void
   setAnalyticsPeriod: (p: TgaWindow) => void
   setAnalyticsLibrary: (l: TgaLibrary) => void
+  /** Opens the Scrape page on a game (the detail's Scrape button, a batch row). */
+  openScrape: (gameId: string | null) => void
+  setScrapeTarget: (gameId: string | null) => void
+  setScrapeMode: (m: ScrapeMode) => void
 }
 
 // Moving to another section or platform is navigation, not filtering: the
@@ -102,6 +112,8 @@ export const useTestGameStore = create<TgState>()(
       advancedTab: 'review',
       analyticsPeriod: 'all',
       analyticsLibrary: 'all',
+      scrapeTargetId: null,
+      scrapeMode: 'search',
 
       // Changing section resets the per-section narrowing: a "Playing" tab
       // carried into Completed, or a platform chip carried into Wishlist,
@@ -145,6 +157,11 @@ export const useTestGameStore = create<TgState>()(
       setDetailCollapsed: (detailCollapsed) => set({ detailCollapsed }),
       setAnalyticsPeriod: (analyticsPeriod) => set({ analyticsPeriod }),
       setAnalyticsLibrary: (analyticsLibrary) => set({ analyticsLibrary }),
+      openScrape: (scrapeTargetId) => set(s => ({
+        scrapeTargetId, scrapeMode: 'search', section: 'scrape', ...(s.section !== 'scrape' && LEAVE_SHELF),
+      })),
+      setScrapeTarget: (scrapeTargetId) => set({ scrapeTargetId }),
+      setScrapeMode: (scrapeMode) => set({ scrapeMode }),
       setAdvancedTab: (advancedTab) => set(s => ({ advancedTab, section: 'advanced', ...(s.section !== 'advanced' && LEAVE_SHELF) })),
     }),
     {
@@ -153,11 +170,16 @@ export const useTestGameStore = create<TgState>()(
       // ever the old default, so it moves over once; any other choice stays.
       // v2: Classic library, Tiers, Queue editor and Add & random left
       // Advanced; a saved one of those lands on Needs review.
-      version: 2,
+      // v3: ScreenScraper left Advanced for its own Scrape page.
+      version: 3,
       migrate: (persisted, version) => {
         const p = (persisted ?? {}) as Partial<TgState>
         if (version < 1 && (p.sort == null || p.sort === 'title')) p.sort = 'recent'
-        if (version < 2 && !ADVANCED_KEYS.includes(p.advancedTab as AdvancedTab)) p.advancedTab = 'review'
+        if (version < 3 && !ADVANCED_KEYS.includes(p.advancedTab as AdvancedTab)) {
+          // A saved ScreenScraper tab opens the page that replaced it.
+          if ((p.advancedTab as string) === 'scraper' && p.section === 'advanced') p.section = 'scrape'
+          p.advancedTab = 'review'
+        }
         return p as TgState
       },
       partialize: (s) => ({

@@ -5,7 +5,7 @@ import { GameDetailModal } from '../components/GameDetailModal'
 import { AddGameModal } from '../components/AddGameModal'
 import { PlayQueueTab } from '../components/PlayQueueTab'
 import { NeedsReviewTab } from '../components/NeedsReviewTab'
-import { ScreenScraperStudio } from '../components/studio/ScreenScraperStudio'
+import { useTestGameStore } from '../test-game/testGameStore'
 import { StatsPanel } from '../components/StatsPanel'
 import { PlayStationTab } from '../components/PlayStationTab'
 import { SteamTab } from '../components/SteamTab'
@@ -771,17 +771,28 @@ export function GamesPage() {
           {/* Its own tab rather than a band on top of Review: Review answers
               "what is missing", this is where you sit and fix it, and the two
               are not read in one glance. */}
-          {tab === 'scraper' && (
-            <ErrorBoundary label="ScreenScraper" action="screenscraper_tab">
-              <ScreenScraperStudio />
-            </ErrorBoundary>
-          )}
+          {tab === 'scraper' && <ScraperMoved />}
           {tab === 'stats'   && <StatsPanel />}
 
           {selectedId && <GameDetailModal gameId={selectedId} onClose={() => setSelectedId(null)} />}
           <AddGameModal open={addOpen} onClose={() => setAddOpen(false)} />
         </>
       )}
+    </div>
+  )
+}
+
+/** The old ScreenScraper studio was rewritten as the new Games page's Scrape
+ *  page; this page is going away, so it only points there. */
+function ScraperMoved() {
+  const openScrape = useTestGameStore(s => s.openScrape)
+  return (
+    <div className="rounded-2xl border border-ink-200 bg-cream-50 p-5 max-w-lg">
+      <p className="font-semibold text-ink-900">ScreenScraper moved to the new Games page</p>
+      <p className="mt-1 text-sm text-ink-500">Search by name or ROM, see every result, choose what to save — under More → Scrape.</p>
+      <Link to="/games" onClick={() => openScrape(null)} className="mt-3 inline-flex min-h-[44px] items-center rounded-lg bg-accent-500 px-4 text-sm font-semibold text-white">
+        Open Scrape
+      </Link>
     </div>
   )
 }

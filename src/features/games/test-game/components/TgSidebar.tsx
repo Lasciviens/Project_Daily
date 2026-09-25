@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Heart, Plus, SlidersHorizontal, SquarePlay,
+  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Heart, Plus, SlidersHorizontal, SquarePlay, Wand2,
 } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import type { PlatformCount, TgSection } from '../testGameModel'
@@ -101,6 +101,12 @@ export function TgSidebar({ counts, platforms, others }: {
           label="Add game"
           active={false}
           onClick={() => openAddGame(true)}
+        />
+        <TgSidebarItem
+          icon={<Wand2 aria-hidden className={navIcon(section === 'scrape')} strokeWidth={2.2} />}
+          label="Scrape"
+          active={section === 'scrape'}
+          onClick={() => setSection('scrape')}
         />
         <TgSidebarItem
           icon={<SlidersHorizontal aria-hidden className={navIcon(section === 'advanced')} strokeWidth={2.2} />}

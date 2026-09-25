@@ -30,7 +30,7 @@ function transform(file) {
   const out = []
   for (const line of src.split('\n')) {
     if (/^import\s/.test(line)) continue
-    if (/^type Rec = /.test(line) || /^\/\/ deno-lint-ignore no-explicit-any$/.test(line)) continue
+    if (/^type Rec = /.test(line) || /^\/\/ (deno-lint-ignore |eslint-disable-next-line @typescript-eslint\/)no-explicit-any$/.test(line)) continue
     out.push(line.replace(/^export (?=(async |function |const |type |interface |let ))/, ''))
   }
   return `// ── ${file} ──\n${out.join('\n').trim()}\n`

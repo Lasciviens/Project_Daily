@@ -13,7 +13,7 @@ import { playStatsOf } from '../gameStats'
 
 /** The sidebar's top section. `wishlist`/`completed`/`backlog` are status
  *  views across EVERY platform; `library` is scoped by the platform list. */
-export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'advanced'
+export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'scrape' | 'advanced'
 export type TgView = 'shelf' | 'grid' | 'list'
 export type TgSort = 'title' | 'title-desc' | 'recent' | 'playtime' | 'rating' | 'year-desc' | 'year-asc' | 'added'
 export type TgStatusFilter = 'all' | PlayStatus

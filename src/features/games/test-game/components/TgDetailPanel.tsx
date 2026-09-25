@@ -7,6 +7,7 @@ import { TgDetailInfo } from './TgDetailInfo'
 import { TgDetailDescription } from './TgDetailDescription'
 import { TgDetailActions } from './TgDetailActions'
 import { TgDetailFields } from './TgDetailFields'
+import { TgDetailScreenScraper } from './TgDetailScreenScraper'
 import { TgScreenshotStrip } from './TgScreenshotStrip'
 import { useSteamExtras } from './useSteamExtras'
 import { useStableValue } from './useStableValue'
@@ -86,6 +87,7 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
           <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} defer={settledId !== game.id} />
           {showStory && <TgDetailDescription key={`story-${game.id}`} text={storyline} label="Storyline" mode={textMode} />}
           <TgDetailFields game={game} />
+          <TgDetailScreenScraper key={`ss-${game.id}`} game={game} />
         </div>
         {/* Softens content scrolling under the pinned footer; over padding when nothing scrolls. */}
         <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-2 h-2 bg-gradient-to-t from-[var(--tg-panel)] to-transparent" />

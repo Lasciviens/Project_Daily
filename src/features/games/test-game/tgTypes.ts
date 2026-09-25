@@ -7,7 +7,7 @@ export interface TgHeaderTab { key: string; label: string; count?: number }
 /** Which glyph the header shows left of the title. `platform` renders the
  *  platform's wordmark (the design's "PS2" logo); the rest are section icons. */
 export type TgHeaderLogo =
-  | 'platform' | 'all' | 'others' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'advanced'
+  | 'platform' | 'all' | 'others' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'scrape' | 'advanced'
 
 export interface TgHeaderConfig {
   title: string

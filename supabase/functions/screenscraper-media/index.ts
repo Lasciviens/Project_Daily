@@ -654,6 +654,19 @@ function toCandidate(jeu: Rec, matchedBy: MatchBasis[], opts: MapOptions, maxRom
   }
 }
 
+/**
+ * The user picked a specific regional title or description language in the
+ * review. Only an existing variant can be picked — an unknown key changes
+ * nothing, so a stale choice never blanks a field.
+ */
+function withOverrides(c: SsCandidate, o: { titleRegion?: string | null; descriptionLang?: string | null } | null | undefined): SsCandidate {
+  if (!o) return c
+  const title = o.titleRegion ? c.names.find(n => n.key === o.titleRegion)?.text : undefined
+  const description = o.descriptionLang ? c.synopses.find(s => s.key === o.descriptionLang)?.text : undefined
+  if (title === undefined && description === undefined) return c
+  return { ...c, values: { ...c.values, ...(title !== undefined ? { title } : {}), ...(description !== undefined ? { description } : {}) } }
+}
+
 /** A jeuRecherche with no hit answers `jeux: [{}]` — an entry without an id is no entry. */
 const isRealJeu = (j: unknown): j is Rec => !!j && typeof j === 'object' && str((j as Rec).id) != null
 
@@ -1048,7 +1061,7 @@ function mergeCandidates(groups: { kind: MatchBasis; items: SsCandidate[] }[]): 
   const best = (c: SsCandidate) => Math.min(...c.matched_by.map(k => BASIS_RANK[k]))
   return [...byId.values()]
     .sort((a, b) => best(a) - best(b) || a._order - b._order)
-    .map(({ _order: _o, ...c }) => c)
+    .map(({ _order, ...c }) => { void _order; return c })
 }
 
 // ─── Apply ───────────────────────────────────────────────────────────────────

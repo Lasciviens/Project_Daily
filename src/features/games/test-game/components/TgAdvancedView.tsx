@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react'
-import { Gamepad2, Monitor, ScanSearch, Wand2, type LucideIcon } from 'lucide-react'
+import { Gamepad2, Monitor, ScanSearch, type LucideIcon } from 'lucide-react'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { NeedsReviewTab } from '../../components/NeedsReviewTab'
-import { ScreenScraperStudio } from '../../components/studio/ScreenScraperStudio'
 import { SteamTab } from '../../components/SteamTab'
 import { PlayStationTab } from '../../components/PlayStationTab'
 import { useTestGameStore, type AdvancedTab } from '../testGameStore'
@@ -20,10 +19,6 @@ const TABS: Record<AdvancedTab, { title: string; intro: string; Icon: LucideIcon
   review: {
     title: 'Needs review', Icon: ScanSearch,
     intro: 'Games missing a cover, genres, a year or a platform.',
-  },
-  scraper: {
-    title: 'ScreenScraper', Icon: Wand2,
-    intro: 'Fill in missing metadata and artwork from ScreenScraper.',
   },
   steam: {
     title: 'Steam', Icon: Monitor,
@@ -48,11 +43,8 @@ export function TgAdvancedView({ onOpenDetail }: {
 
   let content: ReactNode
   switch (active) {
-    // The last three render reverse-engineered or third-party payloads; a
+    // Both render reverse-engineered or third-party payloads; a
     // render-time throw stays inside this card instead of blanking the page.
-    case 'scraper':
-      content = <ErrorBoundary label="ScreenScraper" action="test_game_scraper"><ScreenScraperStudio /></ErrorBoundary>
-      break
     case 'steam':
       content = <ErrorBoundary label="Steam" action="test_game_steam_tab"><SteamTab /></ErrorBoundary>
       break

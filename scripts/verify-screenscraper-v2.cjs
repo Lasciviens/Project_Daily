@@ -124,6 +124,9 @@ eq(cand.clone_of, null, 'cloneof "0" means not a clone')
 eq(cand.rotation, null, 'rotation "0" means none')
 const ng = R.toCandidate({ id: '9', notgame: 'true', noms: [{ region: 'ss', text: 'ZZZ(notgame): BIOS' }] }, ['name'], { regions: [], languages: [] })
 eq([ng.values.title, ng.not_a_game, ng.flags], ['BIOS', true, ['not a game']], 'not-a-game prefix cleaned and flagged')
+eq(R.withOverrides(cand, { titleRegion: 'wor', descriptionLang: 'fr' }).values.title, 'Sonic the Hedgehog', 'override picks a regional title')
+eq(R.withOverrides(cand, { descriptionLang: 'fr' }).values.description, 'Texte', 'override picks a description language')
+eq(R.withOverrides(cand, { titleRegion: 'xx' }).values.title, 'Sonic The Hedgehog', 'an unknown override changes nothing')
 eq([R.isRealJeu({}), R.isRealJeu({ id: '3' })], [false, true], 'an empty search entry is no entry')
 
 // ── Plain-text answers ──────────────────────────────────────────────────────

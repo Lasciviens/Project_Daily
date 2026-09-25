@@ -21,6 +21,7 @@ import { TgMobileHeader, TgBottomTabs, TgMobileGrid } from './components/TgMobil
 import { TgQueueView } from './components/TgQueueView'
 import { TgAnalyticsView } from './components/TgAnalyticsView'
 import { TgAdvancedView } from './components/TgAdvancedView'
+import { TgScrapeView } from './components/scrape/TgScrapeView'
 import { TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderError } from './components/TgStates'
 
 // /#/test-game — the Games page rebuilt on the "Game Library" design. It lives
@@ -155,6 +156,7 @@ export function TestGamePage() {
 
   function renderSection(layout: 'desktop' | 'mobile') {
     if (section === 'analytics') return <TgAnalyticsView />
+    if (section === 'scrape') return <TgScrapeView games={lib.games} loading={lib.isLoading} layout={layout} />
     if (section === 'advanced') {
       return <TgAdvancedView onOpenDetail={actions.openFull} randomPool={visible} randomScope={{ platform: effectivePlatform, search, genres: pickedGenres }} />
     }

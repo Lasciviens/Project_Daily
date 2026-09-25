@@ -7,6 +7,7 @@ import type { FieldPolicy, MatchBasis, SsCandidate, SsField, SsPrefs, SsRomQuery
 import { MEDIA_TYPES, mediaInfo, type MediaMode } from './ssMediaCatalog'
 
 // deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Rec = Record<string, any>
 
 // ─── Fields ──────────────────────────────────────────────────────────────────
@@ -227,7 +228,7 @@ export function mergeCandidates(groups: { kind: MatchBasis; items: SsCandidate[]
   const best = (c: SsCandidate) => Math.min(...c.matched_by.map(k => BASIS_RANK[k]))
   return [...byId.values()]
     .sort((a, b) => best(a) - best(b) || a._order - b._order)
-    .map(({ _order: _o, ...c }) => c)
+    .map(({ _order, ...c }) => { void _order; return c })
 }
 
 // ─── Apply ───────────────────────────────────────────────────────────────────

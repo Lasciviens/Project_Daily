@@ -1,7 +1,7 @@
 import { useState, type ComponentType } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Plus, SlidersHorizontal,
+  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Plus, SlidersHorizontal, Wand2,
   type LucideProps,
 } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
@@ -33,6 +33,7 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
     { key: 'completed', label: 'Completed', Icon: CircleCheckBig, count: counts.completed },
     { key: 'backlog', label: 'Backlog', Icon: Archive, count: counts.backlog },
     { key: 'analytics', label: 'Analytics', Icon: ChartColumn },
+    { key: 'scrape', label: 'Scrape (ScreenScraper)', Icon: Wand2 },
     { key: 'advanced', label: 'Advanced tools', Icon: SlidersHorizontal },
   ]
 

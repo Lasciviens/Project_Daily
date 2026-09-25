@@ -672,6 +672,19 @@ function toCandidate(jeu: Rec, matchedBy: MatchBasis[], opts: MapOptions, maxRom
   }
 }
 
+/**
+ * The user picked a specific regional title or description language in the
+ * review. Only an existing variant can be picked — an unknown key changes
+ * nothing, so a stale choice never blanks a field.
+ */
+function withOverrides(c: SsCandidate, o: { titleRegion?: string | null; descriptionLang?: string | null } | null | undefined): SsCandidate {
+  if (!o) return c
+  const title = o.titleRegion ? c.names.find(n => n.key === o.titleRegion)?.text : undefined
+  const description = o.descriptionLang ? c.synopses.find(s => s.key === o.descriptionLang)?.text : undefined
+  if (title === undefined && description === undefined) return c
+  return { ...c, values: { ...c.values, ...(title !== undefined ? { title } : {}), ...(description !== undefined ? { description } : {}) } }
+}
+
 /** A jeuRecherche with no hit answers `jeux: [{}]` — an entry without an id is no entry. */
 const isRealJeu = (j: unknown): j is Rec => !!j && typeof j === 'object' && str((j as Rec).id) != null
 
@@ -1066,7 +1079,7 @@ function mergeCandidates(groups: { kind: MatchBasis; items: SsCandidate[] }[]): 
   const best = (c: SsCandidate) => Math.min(...c.matched_by.map(k => BASIS_RANK[k]))
   return [...byId.values()]
     .sort((a, b) => best(a) - best(b) || a._order - b._order)
-    .map(({ _order: _o, ...c }) => c)
+    .map(({ _order, ...c }) => { void _order; return c })
 }
 
 // ─── Apply ───────────────────────────────────────────────────────────────────
@@ -1348,6 +1361,7 @@ interface ApplyInput {
   prefs: SsPrefs
   runId: string
   basis: MatchBasis[]
+  overrides: { titleRegion?: string | null; descriptionLang?: string | null } | null
 }
 
 const PLATFORM_KEY = (c: string) => `platform.${c}`
@@ -1381,7 +1395,7 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   }
   const left = remaining()
   const opts = { regions: input.prefs.regions, languages: input.prefs.languages }
-  const cand = await signed(toCandidate(jeu, input.basis, opts, SNAPSHOT_CAPS.roms))
+  const cand = withOverrides(await signed(toCandidate(jeu, input.basis, opts, SNAPSHOT_CAPS.roms)), input.overrides)
   const urls = urlsByToken(jeu)
 
   // ── Media ──
@@ -1627,6 +1641,15 @@ function fieldPolicies(raw: unknown, prefs: SsPrefs): Partial<Record<SsField, Fi
   return out
 }
 
+const CODE_RE = /^[a-z]{2,4}$/
+function overridesOf(raw: unknown): ApplyInput['overrides'] {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Rec
+  const titleRegion = typeof r.title_region === 'string' && CODE_RE.test(r.title_region) ? r.title_region : null
+  const descriptionLang = typeof r.description_lang === 'string' && CODE_RE.test(r.description_lang) ? r.description_lang : null
+  return titleRegion || descriptionLang ? { titleRegion, descriptionLang } : null
+}
+
 const BASES: MatchBasis[] = ['hash', 'filename', 'serial', 'id', 'name']
 const basisOf = (raw: unknown): MatchBasis[] => (Array.isArray(raw) ? raw.filter((b): b is MatchBasis => BASES.includes(b)) : [])
 
@@ -1725,6 +1748,7 @@ Deno.serve(async (req) => {
         const result = await applyOne(userId, {
           gameId, jeuId, system: body.system, rom: body.rom && typeof body.rom === 'object' ? body.rom : null,
           fields: fieldPolicies(body.fields, prefs), media: mediaChoices(body.media, prefs), prefs, runId, basis: basisOf(body.matched_by),
+          overrides: overridesOf(body.overrides),
         })
         return json({ status: 'ok', run_id: runId, result, requests: issued })
       }
@@ -1755,6 +1779,7 @@ Deno.serve(async (req) => {
             gameId: String(it.game_id), jeuId, system: it.system ?? null,
             rom: it.rom_filename ? { filename: String(it.rom_filename) } : null,
             fields: fieldPolicies(null, prefs), media: mediaChoices(null, prefs), prefs, runId, basis: basisOf(it.matched_by),
+            overrides: null,
           }))
         }
         return json({ status: 'ok', run_id: runId, results, requests: issued, remaining_today: remaining() })

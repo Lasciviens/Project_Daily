@@ -13,6 +13,7 @@
 import type { MatchBasis, MediaEndpoint, SsCandidate, SsLocalized, SsMediaEntry, SsRomInfo } from './ssTypes'
 
 // deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Rec = Record<string, any>
 
 // ─── Security ────────────────────────────────────────────────────────────────
@@ -329,6 +330,19 @@ export function toCandidate(jeu: Rec, matchedBy: MatchBasis[], opts: MapOptions,
     media: mediaInventory(jeu.medias),
     media_sig: null,
   }
+}
+
+/**
+ * The user picked a specific regional title or description language in the
+ * review. Only an existing variant can be picked — an unknown key changes
+ * nothing, so a stale choice never blanks a field.
+ */
+export function withOverrides(c: SsCandidate, o: { titleRegion?: string | null; descriptionLang?: string | null } | null | undefined): SsCandidate {
+  if (!o) return c
+  const title = o.titleRegion ? c.names.find(n => n.key === o.titleRegion)?.text : undefined
+  const description = o.descriptionLang ? c.synopses.find(s => s.key === o.descriptionLang)?.text : undefined
+  if (title === undefined && description === undefined) return c
+  return { ...c, values: { ...c.values, ...(title !== undefined ? { title } : {}), ...(description !== undefined ? { description } : {}) } }
 }
 
 /** A jeuRecherche with no hit answers `jeux: [{}]` — an entry without an id is no entry. */

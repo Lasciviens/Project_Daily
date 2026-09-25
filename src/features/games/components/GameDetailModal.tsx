@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import {
   useGameDetail, useUpdateGame, useDeleteGame, useAddToQueue, useRemoveFromQueue,
@@ -7,7 +8,7 @@ import {
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { ScrapeGameButton } from './ScrapeGameButton'
+import { useTestGameStore } from '../test-game/testGameStore'
 import { CoverImg, CoverBackdrop, RatingBadge, SystemChip } from './gameCardKit'
 import { systemMeta } from '../systemMeta'
 import { formatPlaytime, playStatsOf } from '../gameStats'
@@ -434,6 +435,8 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
   // Cancel return to the page; opened as the full record, they only close the
   // form (/games).
   const finishEditing = initialEditing ? onClose : () => setEditing(false)
+  const navigate = useNavigate()
+  const openScrape = useTestGameStore(s => s.openScrape)
 
   function handleSave(id: string, patch: GamePatch) {
     update.mutate({ id, patch }, { onSuccess: finishEditing })
@@ -520,7 +523,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
                     {game.play_order != null ? `✕ Remove from Queue (#${game.play_order})` : '🎮 Add to Queue'}
                   </button>
                   <button onClick={() => setPlanOpen(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
-                  <ScrapeGameButton gameId={game.id} title={game.title} className="font-semibold" />
+                  <button onClick={() => { onClose(); openScrape(game.id); navigate('/games') }} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors">✨ Scrape</button>
                   <button onClick={() => setConfirmDelete(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-red-100 text-ink-500 hover:text-red-600 transition-colors">🗑 Delete</button>
                 </div>
               </div>
