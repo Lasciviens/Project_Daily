@@ -8,6 +8,7 @@ import { steamKind, hideNonGames, countNonGames } from '../providerEntries'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ImportProviderButton } from './ImportProviderButton'
 import type { ProviderGameInput } from '../api/gamesApi'
+import { formatPlaytime } from '../api/playtimeFormat'
 
 // Steam integration — read-only proxy through the `steam-api` edge function
 // (personal Web API key + SteamID64 in Vault). Everything about the user is a
@@ -27,11 +28,6 @@ const SORTS: { v: SortKey; label: string }[] = [
   { v: 'recent', label: 'Last played' },
   { v: 'name', label: 'A → Z' },
 ]
-
-function fmtHours(minutes: number): string {
-  const h = minutes / 60
-  return h >= 10 ? `${Math.round(h)}s` : `${h.toFixed(1)}s`
-}
 
 function relativeDay(unix?: number): string | null {
   if (!unix) return null
@@ -69,14 +65,14 @@ function GameCard({ game, onOpen }: { game: SteamGame; onOpen: () => void }) {
           : <div className="w-full h-full flex items-center justify-center text-2xl">🎮</div>}
         {deck > 0 && (
           <span className="absolute top-1.5 right-1.5 text-[10px] font-bold bg-black/70 text-white px-1.5 py-0.5 rounded"
-            title={`${fmtHours(deck)} on Steam Deck`}>🎮 {fmtHours(deck)}</span>
+            title={`${formatPlaytime(deck)} on Steam Deck`}>🎮 {formatPlaytime(deck)}</span>
         )}
       </div>
       <div className="p-2 flex-1">
         <p className="text-xs font-semibold text-ink-800 leading-snug line-clamp-2">{game.name}</p>
         <p className="text-[10px] text-ink-400 mt-1">
-          {fmtHours(game.playtime_forever)}
-          {game.playtime_2weeks ? ` · ${fmtHours(game.playtime_2weeks)} son 2hf` : last ? ` · ${last}` : ''}
+          {formatPlaytime(game.playtime_forever)}
+          {game.playtime_2weeks ? ` · ${formatPlaytime(game.playtime_2weeks)} last 2 weeks` : last ? ` · ${last}` : ''}
         </p>
       </div>
     </button>
@@ -97,7 +93,7 @@ function RecentStrip({ games, onOpen }: { games: SteamGame[]; onOpen: (g: SteamG
             </div>
             <div className="p-2">
               <p className="text-[11px] font-semibold text-ink-800 truncate">{g.name}</p>
-              <p className="text-[10px] text-accent-600 font-medium">{fmtHours(g.playtime_2weeks ?? 0)} this period</p>
+              <p className="text-[10px] text-accent-600 font-medium">{formatPlaytime(g.playtime_2weeks ?? 0)} this period</p>
             </div>
           </button>
         ))}
@@ -161,7 +157,9 @@ export function SteamTab() {
   if ((profile.error as Error)?.message === 'not_configured') return <NotConfigured />
 
   const player = profile.data
-  const totalHours = Math.round((owned.data?.games ?? []).reduce((s, g) => s + g.playtime_forever, 0) / 60)
+  // Summed in MINUTES (Steam's own unit) rather than pre-rounded to hours,
+  // so the formatter still has the remainder to show.
+  const totalMinutes = (owned.data?.games ?? []).reduce((s, g) => s + g.playtime_forever, 0)
 
   // Steam reports playtime in MINUTES and last-played as a unix timestamp;
   // both are converted here so `games.play_seconds` has one unit whatever the
@@ -247,7 +245,7 @@ export function SteamTab() {
               </label>
             )}
             <p className="text-xs text-ink-400 ml-auto">
-              {games.length} games · {totalHours.toLocaleString('en-GB')} hours total
+              {games.length} games · {formatPlaytime(totalMinutes)} total
             </p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
