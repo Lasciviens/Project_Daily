@@ -5,6 +5,19 @@ fix round (PR #491). Items move to "Fixed" as follow-up PRs land. Findings come 
 (desktop/phone visual fidelity, data wiring, runtime at ~1,500 games, feature coverage, rules/a11y) plus a
 real-data audit, each adversarially verified.
 
+## Owner feedback on the live demo (2026-09-25) — in progress
+
+The owner confirmed this page will **replace the current Games page**, so the bar is production quality.
+
+- **No horizontal scrolling.** The per-row shelf carousels go; the bookcase becomes a vertical stack of full
+  shelves (as many covers per shelf as fit the width) and the whole case scrolls down.
+- **Analytics looked cheap.** Rebuilt as a first-class screen in the design language (KPI tiles, platform and
+  status breakdowns, most played with covers, completions over time, ratings, genres) instead of wrapping
+  the old Stats panel.
+- **Detail panel as an overlay, not a permanent column.** The games get the full width; picking a game slides
+  the panel in over the shelf (non-modal, the shelf stays usable); it can collapse to a slim tab and expand
+  again, or close. The phone keeps its full-screen sheet.
+
 ## In progress (partially applied in the first demo, finishing in the follow-up PR)
 
 **Shelf, cards, stylesheet**
