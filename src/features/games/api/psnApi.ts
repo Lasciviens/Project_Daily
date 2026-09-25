@@ -17,7 +17,12 @@ import { supabase } from '../../../integrations/supabase/client'
 export interface PsnStatus {
   connected: boolean
   connectedAt: string | null
+  /** The ACCESS token's expiry (~1h). Refreshed automatically — not something
+   *  a user can act on; `npssoExpiresAt` is the date that matters to them. */
   expiresAt: string | null
+  /** When the npsso cookie itself expires (~60d). Null on a bare-token paste
+   *  or a row predating migration 101 — unknown, never "expired". */
+  npssoExpiresAt?: string | null
 }
 
 export interface PsnProfile {
@@ -153,7 +158,7 @@ export async function fetchPsnStatus(): Promise<PsnStatus> {
   return invoke('status')
 }
 
-export async function connectPsn(npsso: string): Promise<{ connected: true; expiresAt: string }> {
+export async function connectPsn(npsso: string): Promise<{ connected: true; expiresAt: string; npssoExpiresAt: string | null }> {
   return invoke('connect', { npsso })
 }
 

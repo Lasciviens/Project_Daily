@@ -26,16 +26,20 @@ export function PsnNpssoForm({ compact, onConnected }: { compact?: boolean; onCo
         <li>
           Open{' '}
           <a href="https://ca.account.sony.com/api/v1/ssocookie" target="_blank" rel="noreferrer"
-             className="text-accent-600 underline">the ssocookie endpoint</a>{' '}
-          — it returns <code className="text-[11px] bg-ink-100 px-1 rounded">{'{"npsso":"…"}'}</code>.
+             className="text-accent-600 underline">the ssocookie endpoint</a>.
         </li>
-        <li>Paste the value between the quotes below.</li>
+        {/* Pasting the WHOLE response is the preferred path, not a
+            convenience: Sony returns the cookie's own lifetime in the same
+            object, and that expiry is what lets the app warn before the
+            token dies instead of after. Picking the value out of the quotes
+            still works — it just costs the countdown. */}
+        <li>Paste its whole response below — <code className="text-[11px] bg-ink-100 px-1 rounded">{'{"npsso":"…","expires_in":…}'}</code>. Just the token works too, but pasting all of it lets the app warn you before it expires.</li>
       </ol>
       <textarea
         value={npsso}
         onChange={e => setNpsso(e.target.value)}
         rows={2}
-        placeholder="Paste your npsso token here…"
+        placeholder='{"npsso":"…","expires_in":…}  — or just the token'
         spellCheck={false}
         autoCapitalize="none"
         autoCorrect="off"

@@ -12,6 +12,7 @@ import {
 } from '../providerEntries'
 import { ImportProviderButton } from './ImportProviderButton'
 import { PsnNpssoForm } from './PsnNpssoForm'
+import { npssoLifetime, npssoLifetimeLabel } from '../api/psnTokenLifetime'
 import type { ProviderGameInput } from '../api/gamesApi'
 
 // PlayStation integration — the community npsso-cookie flow (Sony has no
@@ -371,6 +372,32 @@ function NotConnected({ expired, detail }: { expired?: boolean; detail?: string 
   )
 }
 
+// Shown while the session still WORKS but its token is about to die. The
+// renewal needs a desktop browser and a manual paste, so a warning that only
+// arrives at the moment of failure arrives too late to be useful — this is
+// the window in which the user can still choose when to do it.
+function ExpiringSoonBanner({ label }: { label: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs text-amber-700">
+          Your PlayStation token {label}. Renewing early replaces it — nothing else changes.
+        </p>
+        <button type="button" onClick={() => setOpen(o => !o)}
+          className="text-xs font-semibold text-accent-600 underline min-h-[44px] px-1">
+          {open ? 'Hide' : 'Renew now'}
+        </button>
+      </div>
+      {open && (
+        <div className="mt-2 rounded-lg border border-ink-200 bg-cream-50 p-3">
+          <PsnNpssoForm onConnected={() => setOpen(false)} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function PlayStationTab() {
   const status = usePsnStatus()
   // `status` only proves a psn_tokens ROW exists — it has never asked Sony
@@ -384,5 +411,12 @@ export function PlayStationTab() {
   if (isPsnReauthRequired(profile.error)) {
     return <NotConnected expired detail={profile.error.sonyMessage} />
   }
-  return <ConnectedView />
+  const life = npssoLifetime(status.data?.npssoExpiresAt)
+  const label = npssoLifetimeLabel(life)
+  return (
+    <>
+      {life.state === 'soon' && label && <ExpiringSoonBanner label={label} />}
+      <ConnectedView />
+    </>
+  )
 }

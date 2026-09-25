@@ -9,6 +9,7 @@ import { useStravaStatus } from '../../training/hooks/useTrainingSessions'
 import { usePsnStatus, useDisconnectPsn, usePsnProfile } from '../../games/hooks/usePlayStation'
 import { PsnNpssoForm } from '../../games/components/PsnNpssoForm'
 import { isPsnReauthRequired } from '../../games/api/psnApi'
+import { npssoLifetime, npssoLifetimeLabel } from '../../games/api/psnTokenLifetime'
 import { useSteamProfile } from '../../games/hooks/useSteam'
 import { GOOGLE_SCOPES } from '../../calendar/googleScopes'
 
@@ -164,21 +165,62 @@ function PlayStationCard() {
   const profile = usePsnProfile(hasRow)
   const expired = isPsnReauthRequired(profile.error)
   const connected = hasRow && !expired
+  // The npsso's own countdown. Renewing is a manual, desktop-browser-only
+  // chore, so the point of showing it is to let the user do it at a moment
+  // they choose rather than the moment Sony picks.
+  const life = npssoLifetime(status.data?.npssoExpiresAt)
+  const lifeLabel = npssoLifetimeLabel(life)
+  const [renewing, setRenewing] = useState(false)
+  const showForm = !connected || renewing || life.state === 'soon'
 
   return (
     <ConnectionCard icon="🎮" name="PlayStation" scope="Playtime library · trophies · PS Plus provenance"
       status={status.isLoading ? 'unknown' : connected ? 'connected' : expired ? 'expired' : 'disconnected'}
       footer="Sony has no official API, so this uses the community npsso token flow. Sony's login now has a reCAPTCHA that blocks scripted refresh — expect to paste a fresh token every month or two.">
       {connected ? (
-        <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={() => disconnect.mutate()} disabled={disconnect.isPending}
-            className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-red-300 hover:text-red-600 transition-colors disabled:opacity-40">
-            Disconnect
-          </button>
-          {status.data?.connectedAt && (
-            <span className="text-xs text-ink-400">
-              since {new Date(status.data.connectedAt).toLocaleDateString('en-GB')}
-            </span>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <button onClick={() => disconnect.mutate()} disabled={disconnect.isPending}
+              className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-red-300 hover:text-red-600 transition-colors disabled:opacity-40">
+              Disconnect
+            </button>
+            {/* Renewing EARLY is the whole point of tracking the expiry — the
+                old token is simply replaced, so there is never a reason to
+                wait for it to die first. */}
+            {!showForm && (
+              <button onClick={() => setRenewing(true)}
+                className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 hover:text-accent-600 transition-colors">
+                Renew token
+              </button>
+            )}
+            {status.data?.connectedAt && (
+              <span className="text-xs text-ink-400">
+                since {new Date(status.data.connectedAt).toLocaleDateString('en-GB')}
+              </span>
+            )}
+            {lifeLabel && (
+              <span className={`text-xs font-semibold ${life.state === 'soon' ? 'text-amber-600' : 'text-ink-400'}`}>
+                token {lifeLabel}
+              </span>
+            )}
+            {/* A row written before migration 101, or a bare-token paste,
+                has no expiry to show. Say so plainly rather than implying
+                the token is fine. */}
+            {!lifeLabel && (
+              <span className="text-xs text-ink-300" title="Paste the full ssocookie response next time and the app can count down to the expiry.">
+                token expiry unknown
+              </span>
+            )}
+          </div>
+          {showForm && (
+            <div className="rounded-xl border border-ink-200 bg-canvas p-3">
+              {life.state === 'soon' && (
+                <p className="text-xs text-amber-700 mb-2">
+                  This token {lifeLabel}. Renew it now — the old one is replaced and nothing else changes.
+                </p>
+              )}
+              <PsnNpssoForm onConnected={() => setRenewing(false)} />
+            </div>
           )}
         </div>
       ) : (
