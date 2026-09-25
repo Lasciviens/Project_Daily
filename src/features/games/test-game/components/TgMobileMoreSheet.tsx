@@ -40,7 +40,7 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
   ]
 
   function go(key: TgSection) {
-    setSection(key)
+    if (key !== section) setSection(key) // re-picking the current one keeps its filters
     onClose()
   }
 

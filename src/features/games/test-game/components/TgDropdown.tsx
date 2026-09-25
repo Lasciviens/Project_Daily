@@ -26,6 +26,8 @@ export function TgDropdown<T extends string>({
   fullWidth?: boolean
   icon?: ReactNode
 }) {
+  // Rows without a status keep the dot's slot so every label lines up.
+  const hasDots = options.some(o => o.status)
   return (
     <Listbox value={value} onChange={onChange}>
       <ListboxLabel className="sr-only">{ariaLabel}</ListboxLabel>
@@ -46,7 +48,7 @@ export function TgDropdown<T extends string>({
           <ListboxOption key={o.value} value={o.value} className="tg-menu-item">
             {({ selected }) => (
               <>
-                {o.status && <span aria-hidden data-status={o.status} className="tg-dot" />}
+                {hasDots && <span aria-hidden data-status={o.status} className={`tg-dot ${o.status ? '' : 'invisible'}`} />}
                 <span className="min-w-0 flex-1 truncate">{o.label}</span>
                 {o.count != null && (
                   <span className="pl-3 text-[12px] font-medium tabular-nums text-[var(--tg-muted)]">{o.count}</span>

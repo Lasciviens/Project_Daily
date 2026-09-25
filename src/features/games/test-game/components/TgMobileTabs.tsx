@@ -36,6 +36,9 @@ export function TgBottomTabs({ counts }: {
   const section = useTestGameStore(s => s.section)
   const setSection = useTestGameStore(s => s.setSection)
   const [moreOpen, setMoreOpen] = useState(false)
+  // setSection resets the status filter and platform scope, so re-tapping the
+  // current tab must not quietly clear what the filter sheet just set.
+  const go = (s: TgSection) => { if (s !== section) setSection(s) }
   const icon = { size: 22, strokeWidth: 1.8, 'aria-hidden': true } as const
 
   return (
@@ -44,10 +47,10 @@ export function TgBottomTabs({ counts }: {
         aria-label="Game Library sections"
         className="tg-bottom-bar fixed inset-x-0 bottom-0 z-40 flex pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
       >
-        <TabButton label="Library" active={section === 'library'} onClick={() => setSection('library')}>
+        <TabButton label="Library" active={section === 'library'} onClick={() => go('library')}>
           {section === 'library' ? <TgMobileGamepad size={24} /> : <Gamepad2 {...icon} />}
         </TabButton>
-        <TabButton label="Queue" active={section === 'queue'} onClick={() => setSection('queue')}>
+        <TabButton label="Queue" active={section === 'queue'} onClick={() => go('queue')}>
           <SquarePlus {...icon} />
           {counts.queue > 0 && (
             <span className="absolute -right-2.5 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--tg-accent)] px-1 text-[10px] font-semibold leading-none tabular-nums text-[var(--tg-on-accent)] ring-2 ring-[var(--tg-sidebar)]">
@@ -56,7 +59,7 @@ export function TgBottomTabs({ counts }: {
             </span>
           )}
         </TabButton>
-        <TabButton label="Wishlist" active={section === 'wishlist'} onClick={() => setSection('wishlist')}>
+        <TabButton label="Wishlist" active={section === 'wishlist'} onClick={() => go('wishlist')}>
           <Heart {...icon} className={section === 'wishlist' ? 'fill-[var(--tg-accent-soft)]' : undefined} />
         </TabButton>
         <TabButton label="More" active={MORE_SECTIONS.includes(section)} onClick={() => setMoreOpen(true)} opensSheet>
