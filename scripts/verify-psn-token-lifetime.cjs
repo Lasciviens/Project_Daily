@@ -21,37 +21,45 @@ const check = (label, actual, expected) => {
 
 const NOW = Date.parse('2026-09-25T08:00:00Z')
 const inDays = d => new Date(NOW + d * 86_400_000).toISOString()
+const inMinutes = m => new Date(NOW + m * 60_000).toISOString()
+/** state + days only — the minute field is asserted separately below. */
+const sd = at => { const l = npssoLifetime(at, NOW); return [l.state, l.days] }
 
 // A missing expiry is UNKNOWN, never expired — a bare-token paste and every
 // pre-migration-101 row have none, and nothing may be gated on that.
-check('null        ', npssoLifetime(null, NOW), { state: 'unknown', days: null })
-check('undefined   ', npssoLifetime(undefined, NOW), { state: 'unknown', days: null })
-check('empty       ', npssoLifetime('', NOW), { state: 'unknown', days: null })
-check('garbage     ', npssoLifetime('not a date', NOW), { state: 'unknown', days: null })
+const UNKNOWN = { state: 'unknown', days: null, minutes: null }
+check('null         ', npssoLifetime(null, NOW), UNKNOWN)
+check('undefined    ', npssoLifetime(undefined, NOW), UNKNOWN)
+check('empty        ', npssoLifetime('', NOW), UNKNOWN)
+check('garbage      ', npssoLifetime('not a date', NOW), UNKNOWN)
 
 // The real thing: Sony's expires_in is 5183980s ≈ 59.9 days.
-const sony = new Date(NOW + 5183980 * 1000).toISOString()
-check('sony 60d    ', npssoLifetime(sony, NOW), { state: 'ok', days: 59 })
+check('sony 60d     ', sd(new Date(NOW + 5183980 * 1000).toISOString()), ['ok', 59])
 
-check('30 days     ', npssoLifetime(inDays(30), NOW), { state: 'ok', days: 30 })
-check('window+1    ', npssoLifetime(inDays(NPSSO_RENEW_WINDOW_DAYS + 1), NOW),
-  { state: 'ok', days: NPSSO_RENEW_WINDOW_DAYS + 1 })
+check('30 days      ', sd(inDays(30)), ['ok', 30])
+check('window+1     ', sd(inDays(NPSSO_RENEW_WINDOW_DAYS + 1)), ['ok', NPSSO_RENEW_WINDOW_DAYS + 1])
 // Boundary: exactly at the window is already "renew soon", not "fine".
-check('window exact', npssoLifetime(inDays(NPSSO_RENEW_WINDOW_DAYS), NOW),
-  { state: 'soon', days: NPSSO_RENEW_WINDOW_DAYS })
-check('3 days      ', npssoLifetime(inDays(3), NOW), { state: 'soon', days: 3 })
-check('2 hours     ', npssoLifetime(new Date(NOW + 2 * 3600_000).toISOString(), NOW),
-  { state: 'soon', days: 0 })
-check('exactly now ', npssoLifetime(new Date(NOW).toISOString(), NOW), { state: 'expired', days: 0 })
-check('1 day past  ', npssoLifetime(inDays(-1), NOW), { state: 'expired', days: -1 })
-check('60 days past', npssoLifetime(inDays(-60), NOW), { state: 'expired', days: -60 })
+check('window exact ', sd(inDays(NPSSO_RENEW_WINDOW_DAYS)), ['soon', NPSSO_RENEW_WINDOW_DAYS])
+check('3 days       ', sd(inDays(3)), ['soon', 3])
+check('2 hours      ', sd(inMinutes(120)), ['soon', 0])
+check('exactly now  ', sd(new Date(NOW).toISOString()), ['expired', 0])
+check('1 day past   ', sd(inDays(-1)), ['expired', -1])
+check('60 days past ', sd(inDays(-60)), ['expired', -60])
 
-// Labels
+// Minutes are what the label is built from, so they carry their own checks.
+check('minutes 2h   ', npssoLifetime(inMinutes(120), NOW).minutes, 120)
+check('minutes past ', npssoLifetime(inMinutes(-90), NOW).minutes, -90)
+
+// ── Labels: days/hours/minutes, the same units the rest of Games uses ───────
 check('label unknown', npssoLifetimeLabel(npssoLifetime(null, NOW)), null)
-check('label ok     ', npssoLifetimeLabel(npssoLifetime(inDays(42), NOW)), '42 days left')
-check('label one    ', npssoLifetimeLabel(npssoLifetime(inDays(1), NOW)), '1 day left')
-check('label today  ', npssoLifetimeLabel(npssoLifetime(new Date(NOW + 3600_000).toISOString(), NOW)), 'expires today')
 check('label expired', npssoLifetimeLabel(npssoLifetime(inDays(-2), NOW)), 'expired')
+check('label days   ', npssoLifetimeLabel(npssoLifetime(inDays(42), NOW)), '42d')
+check('label one day', npssoLifetimeLabel(npssoLifetime(inDays(1), NOW)), '1d')
+check('label hours  ', npssoLifetimeLabel(npssoLifetime(inMinutes(60), NOW)), '1h')
+check('label minutes', npssoLifetimeLabel(npssoLifetime(inMinutes(41), NOW)), '41m')
+// The reported shape, in full. A bare day count would render this as "64 days
+// left" at 64d 5h and again at 64d 0h 1m -- the last day would be invisible.
+check('label d h m  ', npssoLifetimeLabel(npssoLifetime(inMinutes(64 * 1440 + 5 * 60 + 41), NOW)), '64d 5h 41m')
 
 console.log(`\n${passed} passed, ${failures.length} failed`)
 if (failures.length) {

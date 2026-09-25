@@ -76,19 +76,42 @@ export function steamKind(type: string | null | undefined): GameKind {
   return 'not_game'
 }
 
+// ─── "Should this row be in the grid?" ───────────────────────────────────────
+
 /**
- * Filter for the "hide things that are not games" toggle.
+ * Whether a library row is hidden, for either of the two reasons there are.
  *
- * `unknown` is KEPT. The toggle removes what is known not to be a game, never
- * what has simply not been classified — otherwise turning it on would empty a
- * Steam library whose store pages have not been fetched yet, which reads as
- * the app losing the data.
+ * AUTOMATIC: the provider's own type says it is not a game (a launcher, a
+ * streaming app). `unknown` is KEPT — the rule removes what is known not to be
+ * a game, never what has simply not been classified yet, or a Steam library
+ * whose store pages have not been fetched would empty itself and read as the
+ * app losing the data.
+ *
+ * EXPLICIT: the user ticked "hide", which stores `play_status = 'hidden'` on
+ * the library row (migration 102). This wins over everything: it is the only
+ * way to hide a title the provider insists IS a game, and — being a real
+ * status — it is the same on every device instead of a per-browser toggle.
+ *
+ * An explicit status can also UN-hide: a row whose provider type says
+ * "not a game" but which carries any normal play status is one the user has
+ * deliberately taken an interest in, so it stays.
  */
-export function hideNonGames<T>(items: T[], kindOf: (item: T) => GameKind): T[] {
-  return items.filter(i => kindOf(i) !== 'not_game')
+export function isHiddenEntry(kind: GameKind, playStatus: string | null | undefined): boolean {
+  if (playStatus === 'hidden') return true
+  if (playStatus) return false
+  return kind === 'not_game'
 }
 
-/** How many rows a toggle would remove, for an honest label. */
-export function countNonGames<T>(items: T[], kindOf: (item: T) => GameKind): number {
-  return items.filter(i => kindOf(i) === 'not_game').length
+/** The rows a grid should show, given the toggle's current state. */
+export function visibleEntries<T>(
+  items: T[],
+  hiddenOf: (item: T) => boolean,
+  showHidden: boolean,
+): T[] {
+  return showHidden ? items : items.filter(i => !hiddenOf(i))
+}
+
+/** How many rows the toggle is currently keeping out, for an honest label. */
+export function countHidden<T>(items: T[], hiddenOf: (item: T) => boolean): number {
+  return items.filter(hiddenOf).length
 }

@@ -259,13 +259,21 @@ export async function updateGame(id: string, patch: GamePatch): Promise<void> {
 // matching Media's own "stamp once" convention for started_at/finished_at.
 export async function setPlayStatus(id: string, status: PlayStatus): Promise<void> {
   const { data: current, error: readErr } = await supabase
-    .from('games').select('started_at, finished_at').eq('id', id).single()
+    .from('games').select('started_at, finished_at, last_played_at').eq('id', id).single()
   if (readErr) throw isMissingTable(readErr) ? new Error(NOT_MIGRATED) : readErr
 
   const patch: GamePatch = { play_status: status }
   const now = new Date().toISOString()
   if (status === 'playing' && !current?.started_at) patch.started_at = now
-  if (status === 'completed' && !current?.finished_at) patch.finished_at = now
+  // The day you FINISHED it, not the day you pressed the button. For an
+  // imported Steam/PSN library those are wildly different: marking fifty old
+  // games completed in one sitting used to stamp today on every one of them,
+  // collapsing years of play history onto one afternoon. The provider's own
+  // last session is the honest answer; now() is only the fallback for a game
+  // no provider ever reported a session for (a retro title, a manual add).
+  if (status === 'completed' && !current?.finished_at) {
+    patch.finished_at = (current?.last_played_at as string | null) ?? now
+  }
 
   const { error } = await supabase.from('games').update(patch).eq('id', id)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error

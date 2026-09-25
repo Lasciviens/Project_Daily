@@ -200,7 +200,7 @@ function PlayStationCard() {
             )}
             {lifeLabel && (
               <span className={`text-xs font-semibold ${life.state === 'soon' ? 'text-amber-600' : 'text-ink-400'}`}>
-                token {lifeLabel}
+                PSN token expires in {lifeLabel}
               </span>
             )}
             {/* A row written before migration 101, or a bare-token paste,
@@ -216,7 +216,8 @@ function PlayStationCard() {
             <div className="rounded-xl border border-ink-200 bg-canvas p-3">
               {life.state === 'soon' && (
                 <p className="text-xs text-amber-700 mb-2">
-                  This token {lifeLabel}. Renew it now — the old one is replaced and nothing else changes.
+                  PSN token expires in {lifeLabel}. Renew it now — the old one is replaced and nothing
+                  else changes.
                 </p>
               )}
               <PsnNpssoForm onConnected={() => setRenewing(false)} />

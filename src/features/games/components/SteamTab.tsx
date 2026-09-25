@@ -4,11 +4,12 @@ import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useSteamProfile, useSteamOwnedGames, useSteamLevelBadges } from '../hooks/useSteam'
 import { SteamGameModal } from './SteamGameModal'
 import { steamGameHeaderUrl, fetchSteamAppTypes, type SteamGame } from '../api/steamApi'
-import { steamKind, hideNonGames, countNonGames } from '../providerEntries'
+import { steamKind, isHiddenEntry, visibleEntries, countHidden } from '../providerEntries'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ImportProviderButton } from './ImportProviderButton'
 import type { ProviderGameInput } from '../api/gamesApi'
 import { formatPlaytime } from '../api/playtimeFormat'
+import { useLibraryGames } from '../hooks/useGames'
 
 // Steam integration — read-only proxy through the `steam-api` edge function
 // (personal Web API key + SteamID64 in Vault). Everything about the user is a
@@ -109,9 +110,12 @@ export function SteamTab() {
   // Two Steam round trips for one line of header text — queued behind the
   // library rather than competing with it for the first paint.
   const levelBadges = useSteamLevelBadges(!!owned.data)
-  const [sort, setSort] = useState<SortKey>('playtime')
+  // Last played by default: "what was I on?" is the question a library is
+  // opened with far more often than "what have I sunk the most hours into",
+  // and the all-time leader never changes.
+  const [sort, setSort] = useState<SortKey>('recent')
   const [search, setSearch] = useState('')
-  const [gamesOnly, setGamesOnly] = useState(false)
+  const [showHidden, setShowHidden] = useState(false)
   const [openGame, setOpenGame] = useState<SteamGame | null>(null)
 
   // Derived, not fetched: GetOwnedGames already returns `playtime_2weeks`.
@@ -135,14 +139,20 @@ export function SteamTab() {
     (g: SteamGame) => steamKind(appTypes.data?.get(g.appid)),
     [appTypes.data],
   )
-  const nonGameCount = useMemo(
-    () => countNonGames(owned.data?.games ?? [], kindOfApp),
-    [owned.data, kindOfApp],
+  // Our OWN rows for this library, so an explicit "hide" (stored as a status,
+  // migration 102) is honoured here and not just inside the modal that set it.
+  const { byRef } = useLibraryGames('steam')
+  const isHidden = useCallback(
+    (g: SteamGame) => isHiddenEntry(kindOfApp(g), byRef.get(String(g.appid))?.play_status),
+    [kindOfApp, byRef],
+  )
+  const hiddenCount = useMemo(
+    () => countHidden(owned.data?.games ?? [], isHidden),
+    [owned.data, isHidden],
   )
 
   const games = useMemo(() => {
-    let gs = owned.data?.games ?? []
-    if (gamesOnly) gs = hideNonGames(gs, kindOfApp)
+    let gs = visibleEntries(owned.data?.games ?? [], isHidden, showHidden)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       gs = gs.filter(g => g.name?.toLowerCase().includes(q))
@@ -152,7 +162,7 @@ export function SteamTab() {
       if (sort === 'recent') return (b.rtime_last_played ?? 0) - (a.rtime_last_played ?? 0)
       return b.playtime_forever - a.playtime_forever
     })
-  }, [owned.data, sort, search, gamesOnly, kindOfApp])
+  }, [owned.data, sort, search, showHidden, isHidden])
 
   if ((profile.error as Error)?.message === 'not_configured') return <NotConfigured />
 
@@ -229,23 +239,24 @@ export function SteamTab() {
               className="min-h-[44px] px-2 text-sm rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400">
               {SORTS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
             </select>
-            {/* Only offered once something is actually known not to be a
-                game: a toggle that would change nothing is noise. */}
-            {nonGameCount > 0 && (
+            {/* Only offered once something is actually hidden: a toggle that
+                would change nothing is noise. */}
+            {hiddenCount > 0 && (
               <label className="flex items-center gap-1.5 text-xs text-ink-600 min-h-[44px] cursor-pointer">
-                <input type="checkbox" checked={gamesOnly} onChange={e => setGamesOnly(e.target.checked)}
+                <input type="checkbox" checked={showHidden} onChange={e => setShowHidden(e.target.checked)}
                   className="w-4 h-4 accent-current text-accent-500" />
-                Games only
-                <InfoBubble label="What gets hidden?">
-                  The {nonGameCount} entries whose Steam store page says they are DLC, a demo, a
-                  soundtrack, a video or a tool. Most of a large library has never had its store
-                  page fetched — Steam rate-limits that hard — and anything unclassified stays
-                  visible, because hiding it would look like the app losing your library.
+                Show hidden ({hiddenCount})
+                <InfoBubble label="What counts as hidden?">
+                  Entries whose Steam store page says they are DLC, a demo, a soundtrack, a video
+                  or a tool, plus anything you have hidden yourself from a game's own panel.
+                  Most of a large library has never had its store page fetched — Steam rate-limits
+                  that hard — and anything unclassified stays visible, because hiding it would
+                  look like the app losing your library.
                 </InfoBubble>
               </label>
             )}
             <p className="text-xs text-ink-400 ml-auto">
-              {games.length} games · {formatPlaytime(totalMinutes)} total
+              {games.length} games · {formatPlaytime(totalMinutes)} played
             </p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">

@@ -36,11 +36,17 @@ export function LibraryControls({ entry, notImportedHint }: {
 
   const play = playStatsOf(entry)
   const patch = (p: Parameters<typeof update.mutate>[0]['patch']) => update.mutate({ id: entry.id, patch: p })
+  const hidden = entry.play_status === 'hidden'
 
   return (
     <div className="rounded-xl border border-ink-200 bg-cream-50 p-3 space-y-3">
       <div>
         <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Status</p>
+        {hidden && (
+          <p className="text-[11px] text-ink-400 mb-1.5">
+            Hidden from the library grid. Picking a status below brings it back.
+          </p>
+        )}
         <div className="flex flex-wrap gap-1.5">
           {STATUSES.map(s => (
             <button key={s} type="button"
@@ -92,6 +98,18 @@ export function LibraryControls({ entry, notImportedHint }: {
           className={`min-h-[36px] px-2.5 text-xs font-medium rounded-lg border transition-colors ${
             entry.is_coop ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'
           }`}>2P Co-op</button>
+        {/* Hiding is stored as a STATUS (migration 102), so it is the same on
+            every device rather than a per-browser toggle — and it is the only
+            way to hide a title the provider insists is a game. Un-hiding puts
+            the row back at 'backlog': a status has to be *something*, and the
+            one it had before hiding is not recorded anywhere. */}
+        <button type="button"
+          onClick={() => setStatus.mutate({ id: entry.id, status: (hidden ? 'backlog' : 'hidden') as PlayStatus })}
+          disabled={setStatus.isPending}
+          aria-pressed={hidden}
+          className={`min-h-[36px] px-2.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-50 ${
+            hidden ? 'bg-ink-500 text-white border-ink-500' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-accent-300'
+          }`}>{hidden ? '🙈 Hidden' : '🙈 Hide game'}</button>
         {(entry.started_at || entry.finished_at) && (
           <span className="min-h-[36px] px-2.5 text-[11px] text-ink-400 flex items-center">
             {entry.started_at && `▶ started ${new Date(entry.started_at).toLocaleDateString('en-GB')}`}

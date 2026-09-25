@@ -4,7 +4,7 @@
 
 export const STATUS_LABEL: Record<string, string> = {
   playing: 'Playing', completed: 'Completed', wishlist: 'Wishlist',
-  backlog: 'Backlog', dropped: 'Dropped',
+  backlog: 'Backlog', dropped: 'Dropped', hidden: 'Hidden',
 }
 
 export const STATUS_COLOR: Record<string, string> = {
@@ -13,6 +13,7 @@ export const STATUS_COLOR: Record<string, string> = {
   wishlist:  'bg-purple-100 text-purple-700',
   backlog:   'bg-ink-100 text-ink-500',
   dropped:   'bg-red-100 text-red-600',
+  hidden:    'bg-ink-200 text-ink-500',
 }
 
 export const STATUS_BORDER: Record<string, string> = {
@@ -30,6 +31,9 @@ export const TIER_COLOR: Record<string, string> = {
 }
 
 export const TIERS    = ['S', 'A', 'B', 'C', 'D', 'F']
+// The status PICKER. 'hidden' is deliberately absent: it is set by its own
+// checkbox (LibraryControls), because offering it as a sixth pill would read
+// as a kind of progress rather than "keep this out of the grid".
 export const STATUSES = ['playing', 'wishlist', 'backlog', 'completed', 'dropped']
 
 // Was independently forked in GameDetailModal (perfBadgeClass) and referenced

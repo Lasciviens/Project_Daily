@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -8,8 +8,11 @@ import { PsnGameModal } from './PsnGameModal'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { parsePlayDurationMinutes, isPsnReauthRequired, type PsnPlayedGame, type PsnTrophyTitle } from '../api/psnApi'
 import {
-  mergeOwnership, psnKind, hideNonGames, countNonGames, OWNERSHIP_LABEL, type Ownership,
+  mergeOwnership, psnKind, isHiddenEntry, visibleEntries, countHidden,
+  OWNERSHIP_LABEL, type Ownership,
 } from '../providerEntries'
+import { psnGamesFromLibrary, psnRecentlyPlayed } from '../api/psnLibraryFallback'
+import { useLibraryGames } from '../hooks/useGames'
 import { ImportProviderButton } from './ImportProviderButton'
 import { PsnNpssoForm } from './PsnNpssoForm'
 import { npssoLifetime, npssoLifetimeLabel } from '../api/psnTokenLifetime'
@@ -142,9 +145,11 @@ function ConnectedView() {
   // user actually switches to that view.
   const titles = usePsnTitles(view === 'trophies')
 
-  const [sort, setSort] = useState<SortKey>('playtime')
+  // Last played by default, like Steam: a library is opened to answer "what
+  // was I on?" far more often than "what have I sunk the most hours into".
+  const [sort, setSort] = useState<SortKey>('recent')
   const [search, setSearch] = useState('')
-  const [gamesOnly, setGamesOnly] = useState(false)
+  const [showHidden, setShowHidden] = useState(false)
   const [openGame, setOpenGame] = useState<PsnPlayedGame | null>(null)
   const [openTitle, setOpenTitle] = useState<PsnTrophyTitle | null>(null)
 
@@ -155,14 +160,32 @@ function ConnectedView() {
     [purchased.data],
   )
 
-  const nonGameCount = useMemo(
-    () => countNonGames(played.data ?? [], g => psnKind(g.category)),
-    [played.data],
+  // Our own saved rows: the fallback the grid paints from while Sony is still
+  // being reached, AND the source of an explicit per-title "hide".
+  const { games: dbGames, byRef } = useLibraryGames('playstation')
+  const usingSavedLibrary = !played.data && dbGames.length > 0
+  const sourceGames = useMemo(
+    () => played.data ?? psnGamesFromLibrary(dbGames),
+    [played.data, dbGames],
+  )
+
+  const isHidden = useCallback(
+    (g: PsnPlayedGame) => isHiddenEntry(psnKind(g.category), byRef.get(g.titleId)?.play_status),
+    [byRef],
+  )
+  const hiddenCount = useMemo(() => countHidden(sourceGames, isHidden), [sourceGames, isHidden])
+
+  // PSN exposes NO per-period playtime — only a cumulative lifetime total and
+  // the last session's timestamp — so this is "played in the last two weeks",
+  // not "hours in the last two weeks". Steam's equivalent strip really does
+  // have the hours; claiming the same here would be inventing a number.
+  const recentGames = useMemo(
+    () => psnRecentlyPlayed(visibleEntries(sourceGames, isHidden, showHidden)).slice(0, 12),
+    [sourceGames, isHidden, showHidden],
   )
 
   const games = useMemo(() => {
-    let gs = played.data ?? []
-    if (gamesOnly) gs = hideNonGames(gs, g => psnKind(g.category))
+    let gs = visibleEntries(sourceGames, isHidden, showHidden)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       gs = gs.filter(g => g.name?.toLowerCase().includes(q))
@@ -174,14 +197,14 @@ function ConnectedView() {
       }
       return parsePlayDurationMinutes(b.playDuration) - parsePlayDurationMinutes(a.playDuration)
     })
-  }, [played.data, sort, search, gamesOnly])
+  }, [sourceGames, sort, search, showHidden, isHidden])
 
   const p = profile.data?.profile
   const summary = profile.data?.summary
   const avatar = p?.avatars?.find(a => a.size === 'l')?.url ?? p?.avatars?.[0]?.url
   // Summed in MINUTES, not pre-rounded to hours: rounding first threw away
   // the remainder the formatter is meant to show.
-  const totalMinutes = (played.data ?? []).reduce((s, g) => s + parsePlayDurationMinutes(g.playDuration), 0)
+  const totalMinutes = sourceGames.reduce((s, g) => s + parsePlayDurationMinutes(g.playDuration), 0)
 
   // PSN reports playtime as an ISO-8601 duration and keys games by store SKU
   // (npTitleId). Converted to seconds here so `games.play_seconds` has one
@@ -245,13 +268,53 @@ function ConnectedView() {
 
       {view === 'library' && (
         <>
-          {played.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading library…</div>}
-          {played.error && <LoadError error={played.error} what="games" />}
-          {!played.isLoading && !played.error && games.length === 0 && (
+          {/* A spinner only when there is genuinely nothing to show. With a
+              saved library the grid paints immediately and the refresh runs
+              behind it. */}
+          {played.isLoading && sourceGames.length === 0 && (
+            <div className="text-sm text-ink-400 py-8 text-center">Loading library…</div>
+          )}
+          {played.error && sourceGames.length === 0 && <LoadError error={played.error} what="games" />}
+          {!played.isLoading && !played.error && games.length === 0 && sourceGames.length === 0 && (
             <div className="text-center py-12 text-ink-400 text-sm">No played games found.</div>
           )}
-          {(played.data?.length ?? 0) > 0 && (
+          {sourceGames.length > 0 && (
             <>
+              {usingSavedLibrary && (
+                <p className="text-[11px] text-ink-400 mb-2">
+                  Showing your saved library{played.isLoading ? ' — refreshing from PlayStation…' : ''}
+                  {played.error ? ' — PlayStation could not be reached just now.' : ''}
+                </p>
+              )}
+              {recentGames.length > 0 && !search.trim() && (
+                <div className="mb-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mb-2">
+                    Last 2 weeks
+                    <InfoBubble label="Why no hours?">
+                      PlayStation only reports a game's LIFETIME total and the date of its last
+                      session — there is no per-period playtime anywhere in its API. So this is
+                      what you played recently, not how long you played it. Steam's own strip can
+                      show hours because Steam actually sends them.
+                    </InfoBubble>
+                  </h3>
+                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none scroll-fade-x">
+                    {recentGames.map(g => (
+                      <button key={g.titleId} onClick={() => setOpenGame(g)}
+                        className="flex-shrink-0 w-32 rounded-xl border border-ink-200 bg-cream-50 overflow-hidden text-left hover:border-accent-300 transition-colors press-feedback">
+                        <div className="bg-ink-100 aspect-square">
+                          {g.imageUrl
+                            ? <img src={g.imageUrl} alt={g.name} loading="lazy" className="w-full h-full object-cover" />
+                            : <div className="w-full h-full flex items-center justify-center text-2xl">🎮</div>}
+                        </div>
+                        <div className="p-2">
+                          <p className="text-[11px] font-semibold text-ink-800 truncate">{g.localizedName || g.name}</p>
+                          <p className="text-[10px] text-accent-600 font-medium">{relativeDay(g.lastPlayedDateTime) ?? '—'}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search games…"
                   className="min-h-[44px] px-3 text-sm rounded-xl border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 max-w-xs flex-1" />
@@ -261,20 +324,21 @@ function ConnectedView() {
                 </select>
                 {/* Only offered when Sony actually flagged something as not a
                     game — a toggle that would change nothing is noise. */}
-                {nonGameCount > 0 && (
+                {hiddenCount > 0 && (
                   <label className="flex items-center gap-1.5 text-xs text-ink-600 min-h-[44px] cursor-pointer">
-                    <input type="checkbox" checked={gamesOnly} onChange={e => setGamesOnly(e.target.checked)}
+                    <input type="checkbox" checked={showHidden} onChange={e => setShowHidden(e.target.checked)}
                       className="w-4 h-4 accent-current text-accent-500" />
-                    Games only
-                    <InfoBubble label="What gets hidden?">
-                      The {nonGameCount} entries Sony's own category says are apps or media players,
-                      not games. Anything it does not classify stays visible — hiding what is merely
-                      unclassified would look like the app losing your library.
+                    Show hidden ({hiddenCount})
+                    <InfoBubble label="What counts as hidden?">
+                      Entries Sony's own category says are apps or media players rather than games,
+                      plus anything you have hidden yourself from a game's own panel. Anything Sony
+                      does not classify stays visible — hiding what is merely unclassified would
+                      look like the app losing your library.
                     </InfoBubble>
                   </label>
                 )}
                 <p className="text-xs text-ink-400 ml-auto">
-                  {games.length} games · {formatPlaytime(totalMinutes)} total
+                  {games.length} games · {formatPlaytime(totalMinutes)} played
                 </p>
               </div>
               {/* PS Plus provenance comes from Sony's most fragile call. If
@@ -379,11 +443,37 @@ function ExpiringSoonBanner({ label }: { label: string }) {
     <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-xs text-amber-700">
-          Your PlayStation token {label}. Renewing early replaces it — nothing else changes.
+          PSN token expires in {label}. Renewing early replaces it — nothing else changes.
         </p>
         <button type="button" onClick={() => setOpen(o => !o)}
           className="text-xs font-semibold text-accent-600 underline min-h-[44px] px-1">
           {open ? 'Hide' : 'Renew now'}
+        </button>
+      </div>
+      {open && (
+        <div className="mt-2 rounded-lg border border-ink-200 bg-cream-50 p-3">
+          <PsnNpssoForm onConnected={() => setOpen(false)} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// The session is already dead, but a saved library is still worth showing —
+// so this sits ABOVE the grid rather than replacing it, unlike the full-page
+// panel used when there is nothing to show at all.
+function ExpiredBanner({ detail }: { detail?: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs text-red-700">
+          PSN token expired{detail ? ` (“${detail}”)` : ''} — this library is your last saved copy
+          and will not refresh until you paste a fresh token.
+        </p>
+        <button type="button" onClick={() => setOpen(o => !o)}
+          className="text-xs font-semibold text-accent-600 underline min-h-[44px] px-1">
+          {open ? 'Hide' : 'Reconnect'}
         </button>
       </div>
       {open && (
@@ -402,17 +492,27 @@ export function PlayStationTab() {
   // sail straight into ConnectedView and crash there. The profile query is
   // the first real call, so it is what actually decides.
   const profile = usePsnProfile(!!status.data?.connected)
+  // …but none of that should stand between the user and a library we already
+  // have. Once anything is saved, the connection state only decides which
+  // NOTE sits above the grid, never whether the grid renders at all.
+  const { games: dbGames, isLoading: dbLoading } = useLibraryGames('playstation')
+  const hasSaved = dbGames.length > 0
 
-  if (status.isLoading) return <div className="text-sm text-ink-400 py-12 text-center">Checking connection…</div>
-  if (!status.data?.connected) return <NotConnected />
-  if (isPsnReauthRequired(profile.error)) {
-    return <NotConnected expired detail={profile.error.sonyMessage} />
+  if (!hasSaved) {
+    if (status.isLoading || dbLoading) return <div className="text-sm text-ink-400 py-12 text-center">Checking connection…</div>
+    if (!status.data?.connected) return <NotConnected />
+    if (isPsnReauthRequired(profile.error)) {
+      return <NotConnected expired detail={profile.error.sonyMessage} />
+    }
   }
+
+  const reauth = isPsnReauthRequired(profile.error) ? profile.error : null
   const life = npssoLifetime(status.data?.npssoExpiresAt)
   const label = npssoLifetimeLabel(life)
   return (
     <>
-      {life.state === 'soon' && label && <ExpiringSoonBanner label={label} />}
+      {reauth && <ExpiredBanner detail={reauth.sonyMessage} />}
+      {!reauth && life.state === 'soon' && label && <ExpiringSoonBanner label={label} />}
       <ConnectedView />
     </>
   )
