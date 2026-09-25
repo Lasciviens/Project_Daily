@@ -7,7 +7,7 @@ const IDLE_TAB = 'bg-[var(--tg-tab-idle-bg,color-mix(in_srgb,var(--tg-panel)_55%
 
 /** The main column's heading: logo, title, count line and the tab pills. */
 export function TgHeader({ config }: { config: TgHeaderConfig }) {
-  const { title, subtitle, logo, platformKey, tabs, activeTab, onTab } = config
+  const { title, subtitle, logo, platformKey, tabs, activeTab, activeTabs, onTab } = config
   const isPlatform = logo === 'platform' && !!platformKey
 
   return (
@@ -29,7 +29,7 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
       {tabs.length > 0 && (
         <div role="group" aria-label={`${title} filter`} className="tg-scroll-x -m-1 mt-2 flex gap-2.5 p-1">
           {tabs.map(t => {
-            const active = t.key === activeTab
+            const active = activeTabs ? activeTabs.includes(t.key) : t.key === activeTab
             return (
               <button
                 key={t.key}

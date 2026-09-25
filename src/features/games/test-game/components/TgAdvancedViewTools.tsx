@@ -18,13 +18,13 @@ function ToolCard({ icon, title, text, children }: { icon: ReactNode; title: str
   )
 }
 
-function poolText(n: number, { platform, search, genre }: TgRandomScope): string {
+function poolText(n: number, { platform, search, genres }: TgRandomScope): string {
   const where = platform === ALL_PLATFORMS ? 'in your library'
     : platform === OTHER_PLATFORMS ? 'on Other Platforms'
     : platform === NO_PLATFORM ? 'with no platform'
     : `on ${platformInfo(platform).name}`
   const q = search.trim()
-  const narrowed = [q && `matching “${q}”`, genre && `in ${genre}`].filter(Boolean).join(' ')
+  const narrowed = [q && `matching “${q}”`, genres.length > 0 && `in ${genres.join(' or ')}`].filter(Boolean).join(' ')
   const scope = `${where}${narrowed ? ` ${narrowed}` : ''} (the Library's current shelf)`
   if (n === 0) return `No games ${scope} to pick from.`
   if (n === 1) return `Opens the only game ${scope}.`
@@ -39,7 +39,7 @@ export function TgAdvancedViewTools({ onOpenDetail, randomPool, scope }: {
 }) {
   const [addOpen, setAddOpen] = useState(false)
   const n = randomPool.length
-  const narrowed = scope.search.trim() !== '' || scope.genre != null
+  const narrowed = scope.search.trim() !== '' || scope.genres.length > 0
   const clearFilters = () => { const s = useTestGameStore.getState(); s.setSearch(''); s.setGenre(null) }
 
   function pickRandom() {

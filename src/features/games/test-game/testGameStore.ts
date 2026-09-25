@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
-  ALL_PLATFORMS, type TgSection, type TgSort, type TgStatusFilter, type TgView,
+  ALL_PLATFORMS, toggleValue, type TgSection, type TgSort, type TgStatusFilter, type TgView,
 } from './testGameModel'
+import type { PlayStatus } from '../types'
 import type { TgaLibrary, TgaWindow } from './components/tgAnalyticsModel'
 
 // UI state for the Test-Game page. Its own store (not the app's useUIStore)
@@ -31,8 +32,10 @@ interface TgState {
   platform: string
   /** Wishlist/Completed/Backlog views: one platform, or all. */
   scopePlatform: string
-  status: TgStatusFilter
-  genre: string | null
+  /** Multi-select status filter (Library only); empty = every visible game. */
+  statuses: PlayStatus[]
+  /** Multi-select genre filter; a game matches ANY of them; empty = all genres. */
+  genres: string[]
   sort: TgSort
   view: TgView
   search: string
@@ -50,8 +53,16 @@ interface TgState {
   setSection: (s: TgSection) => void
   setPlatform: (p: string) => void
   setScopePlatform: (p: string) => void
+  /** Exactly one status ('all' clears) — the header tabs and "Show all games". */
   setStatus: (s: TgStatusFilter) => void
+  /** Exactly one genre, or none (null) — Analytics rows, "Clear filters". */
   setGenre: (g: string | null) => void
+  setStatuses: (list: PlayStatus[]) => void
+  setGenres: (list: string[]) => void
+  toggleStatus: (s: PlayStatus) => void
+  toggleGenre: (g: string) => void
+  /** Drops every status and genre filter (not the search or the sort). */
+  clearFilters: () => void
   setSort: (s: TgSort) => void
   setView: (v: TgView) => void
   setSearch: (q: string) => void
@@ -78,8 +89,8 @@ export const useTestGameStore = create<TgState>()(
       section: 'library',
       platform: ALL_PLATFORMS,
       scopePlatform: ALL_PLATFORMS,
-      status: 'all',
-      genre: null,
+      statuses: [],
+      genres: [],
       sort: 'recent',
       view: 'shelf',
       search: '',
@@ -97,16 +108,21 @@ export const useTestGameStore = create<TgState>()(
       // genre picked elsewhere (an Analytics row, a sidebar shelf), which
       // otherwise lingered as a filter the user had to find and clear.
       setSection: (section) => set(s => ({
-        section, status: 'all', scopePlatform: ALL_PLATFORMS, ...(s.section !== section && LEAVE_SHELF),
-        ...(section === 'library' && { platform: ALL_PLATFORMS, genre: null, ...(s.platform !== ALL_PLATFORMS && LEAVE_SHELF) }),
+        section, statuses: [], scopePlatform: ALL_PLATFORMS, ...(s.section !== section && LEAVE_SHELF),
+        ...(section === 'library' && { platform: ALL_PLATFORMS, genres: [], ...(s.platform !== ALL_PLATFORMS && LEAVE_SHELF) }),
       })),
       setPlatform: (platform) => set(s => ({
-        platform, section: 'library', status: 'all',
+        platform, section: 'library', statuses: [],
         ...((s.platform !== platform || s.section !== 'library') && LEAVE_SHELF),
       })),
       setScopePlatform: (scopePlatform) => set({ scopePlatform }),
-      setStatus: (status) => set({ status }),
-      setGenre: (genre) => set({ genre }),
+      setStatus: (status) => set({ statuses: status === 'all' ? [] : [status] }),
+      setGenre: (genre) => set({ genres: genre ? [genre] : [] }),
+      setStatuses: (statuses) => set({ statuses }),
+      setGenres: (genres) => set({ genres }),
+      toggleStatus: (status) => set(s => ({ statuses: toggleValue(s.statuses, status) })),
+      toggleGenre: (genre) => set(s => ({ genres: toggleValue(s.genres, genre) })),
+      clearFilters: () => set({ statuses: [], genres: [] }),
       setSort: (sort) => set({ sort }),
       setView: (view) => set({ view }),
       setSearch: (search) => set({ search }),

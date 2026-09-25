@@ -16,6 +16,9 @@ export interface TgHeaderConfig {
   platformKey?: string
   tabs: TgHeaderTab[]
   activeTab: string | null
+  /** Several tabs lit at once (the Library's multi-select status filter);
+   *  when set it wins over `activeTab` for highlighting. */
+  activeTabs?: readonly string[]
   onTab?: (key: string) => void
 }
 

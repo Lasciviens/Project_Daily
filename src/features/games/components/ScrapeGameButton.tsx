@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { scrapeBatch, type ScrapeResult } from '../api/screenscraperApi'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
@@ -30,10 +30,34 @@ const OUTCOME_TEXT: Record<ScrapeResult['outcome'], string> = {
   error: 'Failed',
 }
 
-export function ScrapeGameButton({ gameId, title, className = '' }: {
+/** What a custom trigger needs to draw itself (the Games page's own button style). */
+export interface ScrapeTrigger {
+  onClick: () => void
+  busy: boolean
+  outcome: ScrapeResult['outcome'] | null
+  /** "Working…", the last outcome, or null for the idle state. */
+  statusText: string | null
+  hint: string
+}
+
+/** The approval step, for a caller that draws dialogs in its own design tokens. */
+export interface ScrapeConfirm {
+  open: boolean
+  title: string
+  message: string
+  confirmLabel: string
+  onConfirm: () => void
+  onClose: () => void
+}
+
+export function ScrapeGameButton({ gameId, title, className = '', renderTrigger, renderConfirm }: {
   gameId: string
   title: string
   className?: string
+  /** Replaces the default button; the two-step behaviour is unchanged. */
+  renderTrigger?: (t: ScrapeTrigger) => ReactNode
+  /** Replaces the default ConfirmDialog. */
+  renderConfirm?: (c: ScrapeConfirm) => ReactNode
 }) {
   const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
@@ -117,34 +141,38 @@ export function ScrapeGameButton({ gameId, title, className = '' }: {
     : 'border-ink-200 text-ink-600 hover:border-accent-400 hover:text-accent-700'
 
   const fields = preview?.would_fill ?? []
+  const hint = `Look up ${title} on ScreenScraper — you approve the match before anything is saved`
+  const statusText = busy ? 'Working…' : outcome ? OUTCOME_TEXT[outcome] : null
+  const confirm: ScrapeConfirm = {
+    open: !!preview,
+    title: 'Save this match?',
+    confirmLabel: 'Save',
+    message:
+      `ScreenScraper matched "${title}" to "${preview?.matched_title ?? '—'}"`
+      + (preview?.system ? `, searched as ${preview.system}.` : '.')
+      + (fields.length
+        ? `\n\nIt would fill: ${fields.join(', ')}.`
+        : '\n\nIt would fill no new fields — every one this game is missing is empty on their side too.')
+      + '\n\nOnly empty fields are written; anything you have already entered stays. Artwork is downloaded and re-hosted.',
+    onConfirm: applyScrape,
+    onClose: () => setPreview(null),
+  }
 
   return (
     <>
-      <button
-        type="button"
-        onClick={runPreview}
-        disabled={busy}
-        title={`Look up ${title} on ScreenScraper — you approve the match before anything is saved`}
-        className={`flex-shrink-0 min-h-[44px] px-3 text-xs rounded-lg border bg-cream-50 transition-colors disabled:opacity-50 ${tone} ${className}`}
-      >
-        {busy ? 'Working…' : outcome ? OUTCOME_TEXT[outcome] : '🎲 Scrape'}
-      </button>
+      {renderTrigger ? renderTrigger({ onClick: runPreview, busy, outcome, statusText, hint }) : (
+        <button
+          type="button"
+          onClick={runPreview}
+          disabled={busy}
+          title={hint}
+          className={`flex-shrink-0 min-h-[44px] px-3 text-xs rounded-lg border bg-cream-50 transition-colors disabled:opacity-50 ${tone} ${className}`}
+        >
+          {statusText ?? '🎲 Scrape'}
+        </button>
+      )}
 
-      <ConfirmDialog
-        open={!!preview}
-        title="Save this match?"
-        confirmLabel="Save"
-        message={
-          `ScreenScraper matched "${title}" to "${preview?.matched_title ?? '—'}"`
-          + (preview?.system ? `, searched as ${preview.system}.` : '.')
-          + (fields.length
-            ? `\n\nIt would fill: ${fields.join(', ')}.`
-            : '\n\nIt would fill no new fields — every one this game is missing is empty on their side too.')
-          + '\n\nOnly empty fields are written; anything you have already entered stays. Artwork is downloaded and re-hosted.'
-        }
-        onConfirm={applyScrape}
-        onClose={() => setPreview(null)}
-      />
+      {renderConfirm ? renderConfirm(confirm) : <ConfirmDialog {...confirm} />}
     </>
   )
 }

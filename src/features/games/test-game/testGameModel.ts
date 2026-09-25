@@ -22,6 +22,9 @@ export const ALL_PLATFORMS = 'all'
 /** The sidebar's "Others" row: every platform past the top few, as one filter. */
 export const OTHER_PLATFORMS = 'others'
 
+/** The sort a fresh page starts on; a different one is a choice, not a filter. */
+export const DEFAULT_SORT: TgSort = 'recent'
+
 export const SORT_LABEL: Record<TgSort, string> = {
   title: 'Title',
   'title-desc': 'Title (Z–A)',
@@ -362,13 +365,15 @@ export interface FilterOptions {
   otherKeys?: string[]
   /** Status sections only: narrow to one platform, or ALL_PLATFORMS. */
   scopePlatform?: string
-  status: TgStatusFilter
-  genre: string | null
+  /** Status filter: empty = every visible game (see applyStatus). */
+  statuses: readonly PlayStatus[]
+  /** Genre filter: a game matches ANY picked genre; empty = every genre. */
+  genres?: readonly string[]
   search: string
 }
 
 /** Everything in scope BEFORE the status filter — what the status tabs count. */
-export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'status'>): TgGame[] {
+export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'statuses'>): TgGame[] {
   let gs = games
   const fixed = STATUS_SECTIONS[o.section]
   if (o.section === 'queue') {
@@ -382,15 +387,38 @@ export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'status'>): T
   } else if (o.platform && o.platform !== ALL_PLATFORMS) {
     gs = gs.filter(g => g.platformKey === o.platform)
   }
-  if (o.genre) gs = gs.filter(g => (g.genres ?? []).some(x => x.trim() === o.genre))
+  if (o.genres?.length) {
+    const want = new Set(o.genres)
+    gs = gs.filter(g => (g.genres ?? []).some(x => want.has(x.trim())))
+  }
   if (o.search.trim()) gs = gs.filter(g => matchesSearch(g, o.search))
   return gs
 }
 
-export function applyStatus(games: TgGame[], status: TgStatusFilter): TgGame[] {
-  if (status === 'hidden') return games.filter(g => g.hidden)
-  const visible = games.filter(g => !g.hidden)
-  return status === 'all' ? visible : visible.filter(g => g.play_status === status)
+/**
+ * The status filter. Takes one value ('all' = every visible game) or a set
+ * picked in the multi-select filters, where an empty set also means "all".
+ * Hidden rows only ever show when 'hidden' is among the picked values; a
+ * picked play status never matches a hidden row (a Steam non-game still
+ * holding 'backlog' belongs to Hidden, not Backlog).
+ */
+export function applyStatus(games: TgGame[], status: TgStatusFilter | readonly TgStatusFilter[]): TgGame[] {
+  const picked = new Set<TgStatusFilter>(typeof status === 'string' ? [status] : status)
+  picked.delete('all')
+  if (picked.size === 0) return games.filter(g => !g.hidden)
+  return games.filter(g => (g.hidden ? picked.has('hidden') : picked.has(g.play_status as TgStatusFilter)))
+}
+
+/** A multi-select filter's button text: "All Genres" / "Action" / "3 genres". */
+export function multiLabel(values: readonly string[], all: string, noun: string, name: (v: string) => string = v => v): string {
+  if (values.length === 0) return all
+  if (values.length === 1) return name(values[0])
+  return `${values.length} ${noun}`
+}
+
+/** Adds a value to a multi-select filter, or removes it when already picked. */
+export function toggleValue<T>(list: readonly T[], value: T): T[] {
+  return list.includes(value) ? list.filter(v => v !== value) : [...list, value]
 }
 
 const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true })

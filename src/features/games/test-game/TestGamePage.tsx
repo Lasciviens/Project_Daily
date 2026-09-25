@@ -31,7 +31,7 @@ export function TestGamePage() {
   const lib = useTestGameLibrary()
   const bp = useTgBreakpoint()
   const section = useTestGameStore(s => s.section)
-  const genre = useTestGameStore(s => s.genre)
+  const pickedGenres = useTestGameStore(s => s.genres)
   const view = useTestGameStore(s => s.view)
   const search = useTestGameStore(s => s.search)
   const selectedId = useTestGameStore(s => s.selectedId)
@@ -132,7 +132,7 @@ export function TestGamePage() {
     // shelf, a queued PlayStation game): wait for them rather than say "empty".
     if (visible.length === 0 && lib.providersLoading) return <TgLoadingShelf />
     if (lib.games.length === 0) return <TgEmptyState kind="library" />
-    if (visible.length === 0) return <TgEmptyState kind={search || genre ? 'filtered' : section === 'queue' ? 'queue' : 'section'} />
+    if (visible.length === 0) return <TgEmptyState kind={search || pickedGenres.length ? 'filtered' : section === 'queue' ? 'queue' : 'section'} />
     const selId = selected?.id ?? null
     if (section === 'queue') {
       return <TgQueueView games={visible} ranks={ranks} selectedId={selId} onSelect={onSelect} fill={layout === 'desktop'} />
@@ -146,7 +146,7 @@ export function TestGamePage() {
   function renderSection(layout: 'desktop' | 'mobile') {
     if (section === 'analytics') return <TgAnalyticsView />
     if (section === 'advanced') {
-      return <TgAdvancedView onOpenDetail={actions.openFull} randomPool={visible} randomScope={{ platform: effectivePlatform, search, genre }} />
+      return <TgAdvancedView onOpenDetail={actions.openFull} randomPool={visible} randomScope={{ platform: effectivePlatform, search, genres: pickedGenres }} />
     }
     return renderGames(layout)
   }

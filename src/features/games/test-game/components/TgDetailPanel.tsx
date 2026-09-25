@@ -6,6 +6,7 @@ import { TgDetailHero } from './TgDetailHero'
 import { TgDetailInfo } from './TgDetailInfo'
 import { TgDetailDescription } from './TgDetailDescription'
 import { TgDetailActions } from './TgDetailActions'
+import { TgDetailFields } from './TgDetailFields'
 import { TgScreenshotStrip } from './TgScreenshotStrip'
 import { useSteamExtras } from './useSteamExtras'
 import { useStableValue } from './useStableValue'
@@ -66,6 +67,11 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
   }
 
   const description = firstText(game.description, extras.description, game.storyline)
+  // Its own block, unless it already stands in for a missing description.
+  const storyline = firstText(game.storyline)
+  const showStory = storyline != null && storyline !== description
+  // The sheet scrolls, so it shows every word; the viewport-tall overlay clamps.
+  const textMode = variant === 'sheet' ? 'full' : 'clamped'
 
   return (
     <div className={`${shell} relative flex flex-col overflow-hidden`}>
@@ -76,8 +82,10 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
             card fills the panel instead of leaving a blank band over the footer. */}
         <div className="flex flex-col gap-3.5 px-5 pb-2 pt-4 [@media(min-height:1000px)]:gap-5 [@media(min-height:1000px)]:pt-5">
           <TgDetailInfo game={game} extras={extras} />
-          {description && <TgDetailDescription key={`text-${game.id}`} text={description} />}
+          {description && <TgDetailDescription key={`text-${game.id}`} text={description} mode={textMode} />}
           <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} defer={settledId !== game.id} />
+          {showStory && <TgDetailDescription key={`story-${game.id}`} text={storyline} label="Storyline" mode={textMode} />}
+          <TgDetailFields game={game} />
         </div>
         {/* Softens content scrolling under the pinned footer; over padding when nothing scrolls. */}
         <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-2 h-2 bg-gradient-to-t from-[var(--tg-panel)] to-transparent" />

@@ -34,8 +34,8 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   const section = useTestGameStore(s => s.section)
   const platform = useTestGameStore(s => s.platform)
   const scopePlatform = useTestGameStore(s => s.scopePlatform)
-  const status = useTestGameStore(s => s.status)
-  const genre = useTestGameStore(s => s.genre)
+  const statuses = useTestGameStore(s => s.statuses)
+  const genres = useTestGameStore(s => s.genres)
   const sort = useTestGameStore(s => s.sort)
   const search = useTestGameStore(s => s.search)
 
@@ -57,11 +57,11 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   const fixedStatus = STATUS_SECTIONS[section]
   const isGameSection = section !== 'analytics' && section !== 'advanced'
   const scope = useMemo(
-    () => scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform, search, genre }),
-    [lib.games, section, effectivePlatform, otherKeys, scopePlatform, search, genre],
+    () => scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform, search, genres }),
+    [lib.games, section, effectivePlatform, otherKeys, scopePlatform, search, genres],
   )
-  const genres = useMemo(
-    () => genreOptions(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform, search, genre: null })),
+  const genreList = useMemo(
+    () => genreOptions(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform, search })),
     [lib.games, section, effectivePlatform, otherKeys, scopePlatform, search],
   )
   const sCounts = useMemo(() => statusCounts(scope), [scope])
@@ -70,8 +70,8 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
     if (section === 'queue') return queueOrder(applyStatus(scope, 'all'))
     // Advanced's Random pool: no status filter Advanced could not show.
     if (!isGameSection) return applyStatus(scope, 'all')
-    return sortGames(applyStatus(scope, fixedStatus ? 'all' : status), sort)
-  }, [scope, section, isGameSection, fixedStatus, status, sort])
+    return sortGames(applyStatus(scope, fixedStatus ? 'all' : statuses), sort)
+  }, [scope, section, isGameSection, fixedStatus, statuses, sort])
 
   const ranks = useMemo(() => queueRanks(lib.games), [lib.games])
   const navCounts = useMemo(() => {
@@ -80,7 +80,7 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   }, [lib.games, ranks])
 
   return {
-    counts, shown, others, effectivePlatform, isGameSection, genres,
+    counts, shown, others, effectivePlatform, isGameSection, genres: genreList,
     statusCounts: sCounts, visible, ranks, navCounts,
   }
 }

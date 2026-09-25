@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { Award, Ellipsis, Eye, EyeOff, Flag, FlagOff, Info, ListPlus, ListX, Trash2, Trophy } from 'lucide-react'
-import { ConfirmDialog } from '../../../../shared/components/ConfirmDialog'
+import { Award, Ellipsis, Eye, EyeOff, Flag, FlagOff, Info, ListPlus, ListX, Pencil, Trash2, Trophy } from 'lucide-react'
 import { useAddToQueue, useDeleteGame, useRemoveFromQueue, useUpdateGame } from '../../hooks/useGames'
 import { STATUS_TEXT, type TgGame } from '../testGameModel'
 import type { PlayStatus } from '../../types'
@@ -9,6 +8,7 @@ import type { TgActions } from '../tgTypes'
 import { useDetailState } from './TgDetailState'
 import { useQueuePosition } from './TgMoreMenuQueue'
 import { TgStatusIcon } from './TgStatusIcon'
+import { TgConfirmDialog } from './TgConfirmDialog'
 
 // The statuses that keep a "not a game" Steam app visible (Backlog would hide it again).
 const SHOW_AS: PlayStatus[] = ['playing', 'completed', 'wishlist', 'dropped']
@@ -25,7 +25,7 @@ function Item({ icon, onClick, danger, children }: { icon: ReactNode; onClick: (
   )
 }
 
-/** The footer's "⋯": queue, hide, review flag, provider pages, full record, delete. */
+/** The footer's "⋯": edit, queue, hide, review flag, provider pages, classic record, delete. */
 export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const { hiddenByStatus, autoHidden, setStatus } = useDetailState(game)
@@ -52,6 +52,8 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
           transition
           className="tg-portal tg-menu w-[244px] origin-bottom-right transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
         >
+          <Item icon={<Pencil aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openEdit(game.id)}>Edit details</Item>
+          <div className="tg-menu-sep" role="separator" />
           {queued ? (
             <Item icon={<ListX aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => removeFromQueue.mutate(game.id)}>
               Remove from Play Queue
@@ -90,14 +92,15 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
           <div className="tg-menu-sep" role="separator" />
           {isSteam && <Item icon={<Award aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openProvider(game)}>Achievements & store page</Item>}
           {isPsn && <Item icon={<Trophy aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openProvider(game)}>Trophies</Item>}
-          <Item icon={<Info aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openFull(game.id)}>Full details</Item>
+          <Item icon={<Info aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openFull(game.id)}>Manage platforms…</Item>
 
           <div className="tg-menu-sep" role="separator" />
           <Item icon={<Trash2 aria-hidden className={ICON} strokeWidth={1.9} />} danger onClick={() => setConfirmDelete(true)}>Delete game…</Item>
         </MenuItems>
       </Menu>
 
-      <ConfirmDialog
+      <TgConfirmDialog
+        danger
         open={confirmDelete}
         title={`Delete "${game.title}"?`}
         message="This can't be undone — the game and all its platform entries will be removed from your library."

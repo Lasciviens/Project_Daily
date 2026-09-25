@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 import { FilterX, Inbox, LibraryBig, ListVideo, Plus, RotateCw, SearchX, TriangleAlert } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import { useTgBreakpoint } from '../useTgBreakpoint'
-import { STATUS_TEXT, type TgSection, type TgStatusFilter } from '../testGameModel'
+import { STATUS_TEXT, type TgSection } from '../testGameModel'
+import type { PlayStatus } from '../../types'
 import {
   TgStatesGridSkeleton, TgStatesListSkeleton, TgStatesMobileSkeleton, TgStatesShelfSkeleton,
 } from './TgStatesSkeletons'
@@ -27,9 +28,12 @@ function StateCard({ icon, tone = 'accent', title, children, actions }: {
   )
 }
 
-function sectionHint(section: TgSection, status: TgStatusFilter): string {
-  if (section === 'library' && status === 'hidden') return 'No hidden games on this shelf.'
-  if (section === 'library' && status !== 'all') return `No ${STATUS_TEXT[status].toLowerCase()} games on this shelf yet.`
+function sectionHint(section: TgSection, statuses: PlayStatus[]): string {
+  if (section === 'library' && statuses.length === 1 && statuses[0] === 'hidden') return 'No hidden games on this shelf.'
+  if (section === 'library' && statuses.length === 1) return `No ${STATUS_TEXT[statuses[0]].toLowerCase()} games on this shelf yet.`
+  if (section === 'library' && statuses.length > 1) {
+    return `No ${statuses.map(s => STATUS_TEXT[s].toLowerCase()).join(' or ')} games on this shelf yet.`
+  }
   if (section === 'wishlist' || section === 'completed' || section === 'backlog') {
     return `Games you mark as ${STATUS_TEXT[section]} show up here.`
   }
@@ -38,7 +42,7 @@ function sectionHint(section: TgSection, status: TgStatusFilter): string {
 
 export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' | 'section' }) {
   const section = useTestGameStore(s => s.section)
-  const status = useTestGameStore(s => s.status)
+  const statuses = useTestGameStore(s => s.statuses)
   const search = useTestGameStore(s => s.search)
   // Setters are read at click time; subscribing to them would only add renders.
   const act = useTestGameStore.getState
@@ -59,7 +63,7 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
   }
 
   if (kind === 'filtered') {
-    const clear = () => { const s = act(); s.setSearch(''); s.setGenre(null); s.setStatus('all') }
+    const clear = () => { const s = act(); s.setSearch(''); s.clearFilters() }
     return (
       <StateCard icon={<SearchX {...ICON} />} title="No games match your search or filters" actions={
         <button type="button" className="tg-btn tg-btn-primary" onClick={clear}>
@@ -81,12 +85,12 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
     )
   }
 
-  const narrowed = section === 'library' && status !== 'all'
+  const narrowed = section === 'library' && statuses.length > 0
   return (
     <StateCard icon={<Inbox {...ICON} />} title="Nothing here yet" actions={narrowed && (
       <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setStatus('all')}>Show all games</button>
     )}>
-      {sectionHint(section, status)}
+      {sectionHint(section, statuses)}
     </StateCard>
   )
 }

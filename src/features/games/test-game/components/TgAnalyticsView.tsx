@@ -1,12 +1,14 @@
 import { useTestGameStore } from '../testGameStore'
 import { useTestGameLibrary } from '../useTestGameLibrary'
 import { formatDay } from '../testGameModel'
-import type { TgaLibrary } from './tgAnalyticsModel'
+import { useState } from 'react'
+import type { TgaLibrary, TgaTile } from './tgAnalyticsModel'
 import { useLibraryCounts, useTgAnalyticsData } from './tgAnalyticsData'
 import { useToday } from './tgAnalyticsClock'
 import { TGA_GRID, TGA_ORDER_RATINGS, TGA_RANGE, TGA_SPAN_RECENT, TGA_SPAN_WIDE } from './tgAnalyticsFormat'
 import { TgAnalyticsControls } from './TgAnalyticsControls'
 import { TgAnalyticsKpis } from './TgAnalyticsKpis'
+import { TgAnalyticsDrill } from './TgAnalyticsDrill'
 import { TgAnalyticsStatusMix } from './TgAnalyticsStatusMix'
 import { TgAnalyticsCompletions, TgAnalyticsRatings } from './TgAnalyticsCharts'
 import { TgAnalyticsPlatforms, TgAnalyticsGenres } from './TgAnalyticsBreakdowns'
@@ -28,6 +30,8 @@ export function TgAnalyticsView() {
   const setPeriod = useTestGameStore(s => s.setAnalyticsPeriod)
   const picked = useTestGameStore(s => s.analyticsLibrary)
   const setLibrary = useTestGameStore(s => s.setAnalyticsLibrary)
+
+  const [drill, setDrill] = useState<TgaTile | null>(null)
 
   const counts = useLibraryCounts(lib.games)
   // A library that has since lost its last visible game falls back to All.
@@ -60,7 +64,7 @@ export function TgAnalyticsView() {
         />
       ) : (
         <>
-          <TgAnalyticsKpis k={d.kpis} windowed={windowed} />
+          <TgAnalyticsKpis k={d.kpis} windowed={windowed} onOpen={setDrill} />
           <div className={TGA_GRID}>
             <TgAnalyticsCompletions series={d.completions} period={period} className={TGA_SPAN_WIDE} />
             <TgAnalyticsStatusMix mix={d.mix} total={d.scoped.length} />
@@ -72,6 +76,7 @@ export function TgAnalyticsView() {
           </div>
         </>
       )}
+      <TgAnalyticsDrill kind={drill} scoped={d.scoped} start={d.start} library={library} onClose={() => setDrill(null)} />
     </div>
   )
 }
