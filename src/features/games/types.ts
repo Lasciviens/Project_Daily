@@ -99,6 +99,9 @@ export interface Game {
   // (gamesApi.ts::setPlayStatus); also directly editable.
   started_at:            string | null
   finished_at:           string | null
+  /** Mirrored artwork, ScreenScraper media type → public Storage URL
+   *  (migration 099). Optional: absent before 099 and `{}` for most rows. */
+  media?:                Record<string, string> | null
   esde_playcount:        number | null
   esde_last_played:      string | null
   esde_playtime_seconds: number | null

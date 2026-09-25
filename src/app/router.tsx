@@ -14,6 +14,7 @@ import { TrainingPage } from '../features/training/pages/TrainingPage'
 import { GamesPage } from '../features/games/pages/GamesPage'
 import { GamesLibraryDemoPage } from '../features/games/pages/GamesLibraryDemoPage'
 import { GamesCoverDemoPage } from '../features/games/pages/GamesCoverDemoPage'
+import { TestGamePage } from '../features/games/test-game/TestGamePage'
 import { ProjectsPage } from '../features/projects/pages/ProjectsPage'
 import { WishesPage } from '../features/wishes/pages/WishesPage'
 import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
@@ -24,6 +25,11 @@ export function Router() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+        {/* Test-Game: the Games page rebuilt on the new design. Outside
+            <Layout> on purpose — it draws its own sidebar, top bar and phone
+            tab bar, exactly as the design does — but behind the same guard. */}
+        <Route path="/test-game" element={<SessionGuard><TestGamePage /></SessionGuard>} />
 
         <Route
           element={

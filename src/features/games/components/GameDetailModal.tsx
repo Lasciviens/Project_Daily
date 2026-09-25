@@ -402,15 +402,20 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
-interface Props { gameId: string; onClose: () => void }
+interface Props {
+  gameId: string
+  onClose: () => void
+  /** Open straight into the edit form (the Test-Game page's "Edit" button). */
+  initialEditing?: boolean
+}
 
-export function GameDetailModal({ gameId, onClose }: Props) {
+export function GameDetailModal({ gameId, onClose, initialEditing = false }: Props) {
   const { data: game, isLoading } = useGameDetail(gameId)
   const update = useUpdateGame()
   const del = useDeleteGame()
   const addToQueue = useAddToQueue()
   const removeFromQueue = useRemoveFromQueue()
-  const [editing, setEditing]   = useState(false)
+  const [editing, setEditing]   = useState(initialEditing)
   const [planOpen, setPlanOpen] = useState(false)
   const [addingPlatform, setAddingPlatform] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
