@@ -36,6 +36,8 @@ export function useTgSheetDrag(open: boolean, onClose: () => void) {
     if (open) { setOffset(0); setDragging(false) }
   }
 
+  useEffect(() => { if (open) offsetRef.current = 0 }, [open])
+
   const apply = (px: number) => { offsetRef.current = px; setOffset(px) }
   const begin = (y: number) => {
     track.current = { startY: y - offsetRef.current, lastY: y, lastT: performance.now(), v: 0 }
