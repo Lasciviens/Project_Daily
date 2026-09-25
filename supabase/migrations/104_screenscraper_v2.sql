@@ -70,3 +70,49 @@ ALTER TABLE public.scrape_decisions
 
 COMMENT ON COLUMN public.scrape_decisions.prior_values IS
   'What each field in fields_written held before the write (NULL when it was empty). Undo restores this, and only where the live value still equals written_values.';
+
+-- ============================================================
+-- game_media_usage() — how full the artwork bucket is, in one query
+-- ============================================================
+-- The Free plan's 1 GB is a hard wall: a project over quota gets a one-off
+-- grace period and is then locked with 402 on EVERY request — tasks, food and
+-- training included, not just Games. So the scraper checks the bucket before
+-- it stores an image and refuses above the user's budget.
+--
+-- Walking the bucket through the Storage API costs one call per game folder
+-- (~1,000 calls today). `storage.objects` already records each object's size,
+-- so this sums it in SQL. SECURITY DEFINER because `storage` is not exposed to
+-- PostgREST; it returns only per-category totals for this one bucket, which is
+-- public-read anyway, and reads nothing else.
+--
+-- Categories follow the bucket's real layout: `<user>/esde/<variant>/<hash>.webp`
+-- is the optimized ES-DE cover, anything else under `/esde/` is an ES-DE
+-- original, `pending/` is the old scraper's review quarantine, and the rest
+-- (`<game>/<type>.<ext>`) is ScreenScraper artwork.
+CREATE OR REPLACE FUNCTION public.game_media_usage()
+RETURNS TABLE (category text, files bigint, bytes bigint)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT c.category, count(*)::bigint AS files,
+         coalesce(sum((o.metadata->>'size')::bigint), 0)::bigint AS bytes
+  FROM storage.objects o
+  CROSS JOIN LATERAL (
+    SELECT CASE
+      WHEN o.name LIKE 'pending/%' THEN 'pending'
+      WHEN o.name LIKE '%/esde/%' AND o.name LIKE '%.webp' THEN 'esde_cover'
+      WHEN o.name LIKE '%/esde/%' THEN 'esde_original'
+      ELSE 'screenscraper'
+    END AS category
+  ) c
+  WHERE o.bucket_id = 'game-media'
+  GROUP BY c.category
+$$;
+
+REVOKE ALL ON FUNCTION public.game_media_usage() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.game_media_usage() TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.game_media_usage() IS
+  'Per-category file count and bytes of the game-media bucket (ES-DE covers, ES-DE originals, ScreenScraper, pending). The scraper refuses to store an image above the user''s storage budget.';

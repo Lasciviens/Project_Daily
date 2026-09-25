@@ -56,3 +56,9 @@ verify_jwt = false
 # Original images and source metadata; authenticates x-esde-secret itself.
 [functions.esde-content-sync]
 verify_jwt = false
+
+# Streams ScreenScraper media to <img>/<video> tags, which cannot send a JWT.
+# Every request carries an HMAC issued by screenscraper-sync (checked in-code),
+# binding one game on one system — without it nothing is fetched.
+[functions.screenscraper-media]
+verify_jwt = false

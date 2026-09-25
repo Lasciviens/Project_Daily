@@ -1,72 +1,54 @@
-// screenscraper-sync — search ScreenScraper, then save exactly what the user
-// chose from a result: fields, artwork, and their full record.
+// screenscraper-media — streams one ScreenScraper file to the browser without
+// ever showing the browser a ScreenScraper URL.
 //
-// Rewritten from scratch (2026-09-25). Browser-JWT auth (verify_jwt ON): the
-// caller is resolved from their token and every read and write is scoped to
-// them. The pure logic — normalization, search planning, field policies,
-// credential stripping, media signing — lives in src/features/games/scraper/
-// and is copied into the `<ss-shared>` region below by
-// scripts/sync-screenscraper-shared.mjs. Edit it there.
+// Every URL ScreenScraper hands out carries devid/devpassword/ssid/sspassword
+// in its query string, so it can never reach a browser, a log or the database.
+// This function takes a signed reference instead — ?j=<game>&s=<system>&m=
+// <their media token>&k=<signature> (+ w/f for a resized image, e for a video
+// or manual) — adds the credentials server-side and streams the bytes back.
+// Nothing is stored: this is how "fetch on demand" media costs no Storage at
+// all. (Stored copies are made by screenscraper-sync, not here.)
 //
-// ── Actions ─────────────────────────────────────────────────────────────────
-//  status          account, quota, library counts, storage usage
-//  storage         storage usage only (no ScreenScraper request)
-//  refresh_systems cache their system list (ES-DE folder → numeric id)
-//  search          name and/or ROM (filename, size, CRC/MD5/SHA1, serial)
-//                  and/or ScreenScraper id — all at once, merged
-//  candidate       one entry in full, with its complete record
-//  apply           write one chosen entry to one game, as chosen
-//  find_batch      best match for up to 10 games (no writes)
-//  apply_batch     apply with the saved defaults, up to 5 games
-//  undo            take a whole apply run back
-//  sweep_pending   delete the old scraper's review quarantine
+// ── Auth: JWT verification OFF, signature ON ───────────────────────────────
+// An <img> or <video> tag cannot send an Authorization header, so platform
+// JWT checks must be off for this function (supabase/config.toml). Instead
+// every request carries an HMAC that screenscraper-sync issued, binding ONE
+// game on ONE system. Without a valid signature nothing is fetched, so the
+// account's daily allowance cannot be spent by strangers; with one, the most a
+// leaked link fetches is that one game's own artwork.
+//
+// ── Politeness ──────────────────────────────────────────────────────────────
+// ScreenScraper answers 429 above the account's thread limit and 401/423 when
+// their servers are overloaded or closed. The browser side queues proxy loads
+// (a few at a time); here a busy answer is retried once after a short pause
+// and otherwise passed on as 503 with Retry-After, never as a broken image
+// the browser would cache.
 //
 // ── Security, all load-bearing ─────────────────────────────────────────────
-//  1. No ScreenScraper URL is ever returned, logged or stored: every URL they
-//     send carries devid/devpassword/ssid/sspassword. Responses are passed
-//     through `stripCredentials` before they leave this function, media is
-//     either copied into Storage here or served by the signed
-//     `screenscraper-media` proxy.
-//  2. Every error string is scrubbed — failures end up in app_error_logs,
-//     which ai-proxy can read.
-//  3. Redirects are never followed with the credentials attached.
-//
-// ── Storage budget ─────────────────────────────────────────────────────────
-// The Free plan's 1 GB is a hard wall: over quota, the project is eventually
-// locked (402 on every request — tasks, food, training, not only Games). So
-// nothing is stored without first reading the bucket's size
-// (game_media_usage(), migration 104) and staying under the user's budget. An
-// image that would cross it is linked on demand instead, and said so.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+//  1. No upstream URL, header or body text is ever returned or logged; errors
+//     are fixed short strings.
+//  2. Redirects are not followed with credentials: `redirect: 'manual'`, and
+//     a Location is followed once, bare.
+//  3. Only the content types a media file can have are passed through, and
+//     only a whitelist of response headers.
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-client-info',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  'Access-Control-Allow-Headers': 'range, apikey, authorization, x-client-info',
+  'Access-Control-Expose-Headers': 'content-length, content-range, accept-ranges',
 }
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
 const API = 'https://api.screenscraper.fr/api2'
 const SOFTNAME = 'lascisboard'
-const BUCKET = 'game-media'
-/** Below this many requests left today, nothing starts (the handheld's own
- *  ES-DE scraping spends from the same account-wide allowance). */
-const QUOTA_FLOOR = 300
-/** Concurrent ScreenScraper requests from one invocation. The account grants 7
- *  threads; the proxy and the handheld need some of them too. */
-const PARALLEL = 3
-const FIND_MAX = 10
-const APPLY_BATCH_MAX = 5
-
 const DEVID = Deno.env.get('SCREENSCRAPER_DEVID') ?? ''
 const DEVPASSWORD = Deno.env.get('SCREENSCRAPER_DEVPASSWORD') ?? ''
 const SSID = Deno.env.get('SCREENSCRAPER_SSID') ?? ''
 const SSPASSWORD = Deno.env.get('SCREENSCRAPER_SSPASSWORD') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-const SECRETS = [DEVID, DEVPASSWORD, SSID, SSPASSWORD]
 
-const admin = createClient(Deno.env.get('SUPABASE_URL')!, SERVICE_KEY)
+const text = (status: number, body: string, extra: Record<string, string> = {}) =>
+  new Response(body, { status, headers: { ...CORS, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...extra } })
 
 // <ss-shared>
 // GENERATED from src/features/games/scraper/ by scripts/sync-screenscraper-shared.mjs.
@@ -1124,674 +1106,89 @@ function planPatch(
 
 // </ss-shared>
 
-const scrub = (t: string) => scrubSecrets(t, SECRETS)
-const fail = (message: string, status = 500, extra: Rec = {}) => json({ status: 'error', error: scrub(message), ...extra }, status)
-
-// ─── ScreenScraper calls ─────────────────────────────────────────────────────
-
-let issued = 0
-let lastUser: { used: number; max: number } | null = null
-
-function apiUrl(endpoint: string, params: Record<string, string>): string {
-  const u = new URL(`${API}/${endpoint}`)
+function upstreamUrl(req: ProxyRequest): string {
+  const { file, params } = upstreamFor(req)
+  const u = new URL(`${API}/${file}`)
   u.searchParams.set('devid', DEVID)
   u.searchParams.set('devpassword', DEVPASSWORD)
   u.searchParams.set('softname', SOFTNAME)
-  u.searchParams.set('output', 'json')
   if (SSID) u.searchParams.set('ssid', SSID)
   if (SSPASSWORD) u.searchParams.set('sspassword', SSPASSWORD)
-  for (const [k, v] of Object.entries(params)) if (v !== '') u.searchParams.set(k, v)
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v)
   return u.toString()
 }
 
-/** Their JSON has known defects: trailing commas, unescaped backslashes. */
-function parseLenient(body: string): Rec | null {
-  try { return JSON.parse(body) } catch { /* try the repaired form */ }
-  try {
-    return JSON.parse(body.replace(/,(\s*[}\]])/g, '$1').replace(/\\(?!["\\/bfnrtu])/g, '\\\\'))
-  } catch { return null }
-}
-
-type ApiResult = { ok: true; data: Rec } | { ok: false; kind: SsTextKind; status: number; message: string }
-
-/**
- * One API call. Errors arrive as PLAIN TEXT, often with HTTP 200 (a failed
- * login is a 200 reading "Erreur de login…"), so the body decides, not the
- * status. A 404 is a normal answer ("not in their database"), not a failure.
- */
-async function callApi(endpoint: string, params: Record<string, string>): Promise<ApiResult> {
-  issued++
-  let res: Response
-  try {
-    res = await fetch(apiUrl(endpoint, params), { headers: { 'User-Agent': SOFTNAME }, redirect: 'manual' })
-  } catch (e) {
-    return { ok: false, kind: 'other', status: 0, message: scrub((e as Error).message) }
+/** One upstream fetch; a redirect is followed once WITHOUT the credentials. */
+async function fetchUpstream(url: string, range: string | null): Promise<Response> {
+  const headers: Record<string, string> = { 'User-Agent': SOFTNAME }
+  if (range) headers.Range = range
+  let res = await fetch(url, { redirect: 'manual', headers })
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get('location')
+    await res.body?.cancel()
+    if (!location) return new Response(null, { status: 502 })
+    res = await fetch(location, { redirect: 'follow', headers: range ? { Range: range } : {} })
   }
-  const body = await res.text().catch(() => '')
-  const data = body.trimStart().startsWith('{') ? parseLenient(body) : null
-  if (!res.ok || !data) {
-    const kind = classifyText(res.status, body)
-    return { ok: false, kind, status: res.status, message: TEXT_MESSAGE[kind] }
-  }
-  const u = data?.response?.ssuser
-  if (u && u.maxrequestsperday != null) lastUser = { used: Number(u.requeststoday ?? 0), max: Number(u.maxrequestsperday ?? 0) }
-  return { ok: true, data }
+  return res
 }
 
-/** Runs tasks a few at a time — never more than the share of the account's
- *  threads this function allows itself. */
-async function inParallel<T, R>(items: T[], fn: (item: T, i: number) => Promise<R>, width = PARALLEL): Promise<R[]> {
-  const out: R[] = new Array(items.length)
-  let next = 0
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++
-      out[i] = await fn(items[i], i)
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(width, items.length) }, worker))
-  return out
-}
-
-async function readQuota(): Promise<{ used: number; max: number; threads: number; level: string } | { error: string }> {
-  const r = await callApi('ssuserInfos.php', {})
-  if (!r.ok) return { error: r.message }
-  const u = r.data?.response?.ssuser ?? {}
-  return {
-    used: Number(u.requeststoday ?? 0), max: Number(u.maxrequestsperday ?? 0),
-    threads: Number(u.maxthreads ?? 1), level: String(u.niveau ?? '0'),
-  }
-}
-const remaining = () => (lastUser ? Math.max(0, lastUser.max - lastUser.used) : null)
-
-// ─── Systems ─────────────────────────────────────────────────────────────────
-
-/**
- * ES-DE folder → numeric system id. Several systems claim the same alias
- * (snes: 4 Super Nintendo | 202 "Super Mario World Hacks"); the LOWEST id is
- * the real console every time — a last-write-wins map once sent 604 games to
- * a ROM-hack database.
- */
-async function loadSystems(): Promise<Map<string, { id: number; name: string }>> {
-  const { data, error } = await admin.from('screenscraper_systems').select('id, name, retropie_names')
-  if (error) throw new Error(`systems read: ${error.message}`)
-  const map = new Map<string, { id: number; name: string }>()
-  for (const s of data ?? []) {
-    const id = Number(s.id)
-    if (!Number.isFinite(id)) continue
-    map.set(`#${id}`, { id, name: s.name ?? String(id) })
-    for (const alias of (s.retropie_names ?? []) as string[]) {
-      const key = String(alias ?? '').trim().toLowerCase()
-      const cur = key ? map.get(key) : undefined
-      if (key && (!cur || id < cur.id)) map.set(key, { id, name: s.name ?? String(id) })
-    }
-  }
-  return map
-}
-
-/** A system as the caller names it: their numeric id, or an ES-DE folder. */
-function resolveSystem(map: Map<string, { id: number; name: string }>, raw: unknown): { id: number; name: string } | null {
-  if (raw === null || raw === undefined || raw === '') return null
-  const s = String(raw).trim().toLowerCase()
-  if (/^\d+$/.test(s)) return map.get(`#${s}`) ?? { id: Number(s), name: s }
-  return map.get(s) ?? null
-}
-
-// ─── Media ───────────────────────────────────────────────────────────────────
-
-/** Every media URL of an entry, by token — server memory only, never returned. */
-function urlsByToken(jeu: Rec): Map<string, string> {
-  const map = new Map<string, string>()
-  for (const m of Array.isArray(jeu.medias) ? jeu.medias : []) {
-    const ref = mediaRef(m?.url)
-    if (ref && !map.has(ref.token)) map.set(ref.token, m.url)
-  }
-  return map
-}
-
-/** Downloads one image — resized by ScreenScraper itself (`maxwidth`,
- *  `outputformat`), so no CPU is spent here. */
-async function downloadImage(url: string, width: number | null, format: 'png' | 'jpg'): Promise<{ bytes: Uint8Array; type: string } | { error: string }> {
-  issued++
-  const u = new URL(url)
-  if (width) u.searchParams.set('maxwidth', String(width))
-  u.searchParams.set('outputformat', format)
-  try {
-    let res = await fetch(u.toString(), { redirect: 'manual', headers: { 'User-Agent': SOFTNAME } })
-    if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get('location')
-      await res.body?.cancel()
-      if (!loc) return { error: 'redirect without a location' }
-      res = await fetch(loc, { redirect: 'follow' })
-    }
-    const ct = res.headers.get('content-type') ?? ''
-    if (!res.ok || !ct.startsWith('image/')) {
-      const body = await res.text().catch(() => '')
-      return { error: TEXT_MESSAGE[classifyText(res.status, body)] }
-    }
-    return { bytes: new Uint8Array(await res.arrayBuffer()), type: ct }
-  } catch (e) {
-    return { error: scrub((e as Error).message) }
-  }
-}
-
-/** Bytes used by the artwork bucket, or null when it cannot be read (then
- *  nothing is stored — guessing is how a project gets locked). */
-async function bucketBytes(): Promise<{ total: number; groups: Rec[] } | null> {
-  const { data, error } = await admin.rpc('game_media_usage')
-  if (error || !Array.isArray(data)) return null
-  const groups = data.map((r: Rec) => ({ category: String(r.category), files: Number(r.files), bytes: Number(r.bytes) }))
-  return { total: groups.reduce((s: number, g: Rec) => s + g.bytes, 0), groups }
-}
-
-// ─── Journal ─────────────────────────────────────────────────────────────────
-
-async function journal(userId: string, row: Rec): Promise<void> {
-  let { error } = await admin.from('scrape_decisions').insert({ user_id: userId, ...row })
-  if (error && isMissingColumn(error) && 'prior_values' in row) {
-    const { prior_values: _p, ...rest } = row
-    ;({ error } = await admin.from('scrape_decisions').insert({ user_id: userId, ...rest }))
-  }
-  if (error) console.log(`scrape_decisions insert skipped (${(error as Rec).code ?? 'unknown'})`)
-}
-
-function isMissingColumn(e: unknown): boolean {
-  const x = e as { code?: string; message?: string } | null
-  return x?.code === '42703' || x?.code === 'PGRST204' || /column .* does not exist/i.test(x?.message ?? '')
-}
-const jsonEqual = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
-
-// ─── Search ──────────────────────────────────────────────────────────────────
-
-async function signed(c: SsCandidate): Promise<SsCandidate> {
-  return c.system.id != null ? { ...c, media_sig: await signMedia(SERVICE_KEY, c.jeu_id, c.system.id) } : c
-}
-
-async function runSearch(body: Rec, prefs: SsPrefs) {
-  const systems = await loadSystems()
-  const sys = resolveSystem(systems, body.system)
-  const rom = (body.rom && typeof body.rom === 'object' ? body.rom : null) as SsRomQuery | null
-  const plan = planSearch({
-    name: body.name, systemId: sys?.id ?? null, rom, jeuId: body.jeu_id,
-    useName: body.use_name !== false, useRom: body.use_rom !== false,
-  })
-  const opts = { regions: prefs.regions, languages: prefs.languages }
-  const outcomes: SsQueryOutcome[] = plan.notes.map(n => ({ kind: n.kind, status: 'skipped' as const, count: 0, message: n.message }))
-  if (body.system && !sys) outcomes.push({ kind: 'name', status: 'skipped', count: 0, message: `"${body.system}" is not in the cached system list, so nothing was narrowed by system.` })
-
-  const groups = await inParallel(plan.queries, async (q) => {
-    const r = await callApi(q.endpoint, q.params)
-    if (!r.ok) {
-      outcomes.push({ kind: q.kind, status: r.kind === 'not_found' ? 'no_match' : 'error', count: 0, message: r.kind === 'not_found' ? undefined : r.message })
-      return { kind: q.kind, items: [] as SsCandidate[] }
-    }
-    const list = q.endpoint === 'jeuRecherche.php'
-      ? (Array.isArray(r.data?.response?.jeux) ? r.data.response.jeux : [])
-      : [r.data?.response?.jeu]
-    const items = list.filter(isRealJeu).map((j: Rec) => toCandidate(j, [q.kind], opts))
-    outcomes.push({ kind: q.kind, status: items.length ? 'ok' : 'no_match', count: items.length })
-    return { kind: q.kind, items }
-  })
-  const candidates = await Promise.all(mergeCandidates(groups).map(signed))
-  return { candidates, outcomes, system: sys }
-}
-
-// ─── Apply ───────────────────────────────────────────────────────────────────
-
-interface ApplyInput {
-  gameId: string
-  jeuId: string
-  system: unknown
-  rom: SsRomQuery | null
-  fields: Partial<Record<SsField, FieldPolicy>>
-  media: SsMediaChoice[]
-  prefs: SsPrefs
-  runId: string
-  basis: MatchBasis[]
-}
-
-const PLATFORM_KEY = (c: string) => `platform.${c}`
-
-async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
-  const { data: game, error: gErr } = await admin.from('games').select('*').eq('user_id', userId).eq('id', input.gameId).maybeSingle()
-  if (gErr) return { game_id: input.gameId, outcome: 'error', reason: scrub(gErr.message) }
-  if (!game) return { game_id: input.gameId, outcome: 'error', reason: 'game not found' }
-  const { data: plats } = await admin.from('game_platforms').select('*').eq('user_id', userId).eq('game_id', input.gameId)
-  const platform = (plats ?? []).find((p: Rec) => p.is_primary_variant) ?? (plats ?? [])[0] ?? null
-
-  const systems = await loadSystems()
-  const sys = resolveSystem(systems, input.system)
-
-  // Fetch the chosen entry. With ROM identity, ask by ROM first so the answer
-  // carries the `rom` block for THIS dump (its regions, languages, flags);
-  // only when that names a different game is the entry fetched by id.
-  let jeu: Rec | null = null
-  const romPlan = input.rom ? planSearch({ rom: input.rom, systemId: sys?.id ?? null, useName: false }).queries.find(q => q.kind !== 'serial') : null
-  if (romPlan) {
-    const r = await callApi(romPlan.endpoint, romPlan.params)
-    if (r.ok && String(r.data?.response?.jeu?.id ?? '') === input.jeuId) jeu = r.data.response.jeu
-  }
-  if (!jeu) {
-    const r = await callApi('jeuInfos.php', { gameid: input.jeuId })
-    if (!r.ok) return { game_id: input.gameId, outcome: r.kind === 'not_found' ? 'no_match' : 'error', reason: r.message }
-    jeu = r.data?.response?.jeu ?? null
-  }
-  if (!jeu || String(jeu.id) !== input.jeuId) {
-    return { game_id: input.gameId, outcome: 'stale', reason: 'ScreenScraper answered with a different entry than the one chosen — search again.' }
-  }
-  const left = remaining()
-  const opts = { regions: input.prefs.regions, languages: input.prefs.languages }
-  const cand = await signed(toCandidate(jeu, input.basis, opts, SNAPSHOT_CAPS.roms))
-  const urls = urlsByToken(jeu)
-
-  // ── Media ──
-  // Copies saved by an earlier apply of THIS entry stay valid; after a
-  // different match they belong to the wrong game and are forgotten.
-  const prev = game.provider_data?.jeu_id === cand.jeu_id ? (game.provider_data as Rec) : null
-  const saved: Rec = prev?.saved && typeof prev.saved === 'object' ? { ...prev.saved } : {}
-  const linked = new Set<string>(Array.isArray(prev?.linked) ? prev.linked : [])
-  const mediaResults: Rec[] = []
-  const paths: string[] = []
-  let addedBytes = 0
-  const wantsStore = input.media.some(m => m.mode === 'store')
-  const usage = wantsStore ? await bucketBytes() : null
-  const budget = input.prefs.budgetMb * 1024 * 1024
-  const lowQuota = left != null && left < QUOTA_FLOOR
-
-  await inParallel(input.media, async (choice) => {
-    const entry = (choice.token ? cand.media.find(m => m.token === choice.token) : null) ?? pickMediaEntry(cand.media, choice.type, input.prefs.regions)
-    if (!entry) { mediaResults.push({ type: choice.type, mode: choice.mode, ok: false, reason: 'not available' }); return }
-    if (choice.mode === 'on_demand' || !canStore(entry.type)) {
-      linked.add(entry.type)
-      mediaResults.push({ type: entry.type, mode: 'on_demand', ok: true, token: entry.token })
-      return
-    }
-    const reasonNotStored =
-      lowQuota ? 'quota nearly used up today' :
-      !usage ? 'storage usage unknown (apply migration 104)' :
-      usage.total + addedBytes + (entry.size ?? 500_000) > budget ? 'over your storage budget' : null
-    if (reasonNotStored) {
-      linked.add(entry.type)
-      mediaResults.push({ type: entry.type, mode: 'on_demand', ok: true, token: entry.token, reason: `linked instead of saved: ${reasonNotStored}` })
-      return
-    }
-    const url = urls.get(entry.token)
-    if (!url) { mediaResults.push({ type: entry.type, mode: 'store', ok: false, reason: 'no file' }); return }
-    const format = outputFormatFor(entry.type, entry.size)
-    const got = await downloadImage(url, storeWidth(input.prefs, entry.type), format)
-    if ('error' in got) { mediaResults.push({ type: entry.type, mode: 'store', ok: false, reason: got.error }); return }
-    const ext = got.type.includes('png') ? 'png' : got.type.includes('webp') ? 'webp' : 'jpg'
-    const path = storedPath(input.gameId, entry.type, ext)
-    const { error } = await admin.storage.from(BUCKET).upload(path, got.bytes, { contentType: got.type, upsert: true, cacheControl: '31536000' })
-    if (error) { mediaResults.push({ type: entry.type, mode: 'store', ok: false, reason: scrub(error.message) }); return }
-    addedBytes += got.bytes.byteLength
-    // A version stamp, because the path is reused on a re-scrape and the
-    // object is cached for a year.
-    saved[entry.type] = `${admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl}?v=${Date.now()}`
-    linked.delete(entry.type)
-    paths.push(path)
-    mediaResults.push({ type: entry.type, mode: 'store', ok: true, bytes: got.bytes.byteLength, token: entry.token })
-  })
-
-  // ── Fields ── Columns only ever take a STORED copy: a proxied cover in the
-  // library grid would be a thousand ScreenScraper requests per scroll.
-  const values: Partial<Record<SsField, unknown>> = { ...cand.values }
-  for (const [field, type] of Object.entries(FIELD_MEDIA)) values[field as SsField] = saved[type as string] ?? null
-  const plan = planPatch({ games: game, platform }, values, input.fields)
-
-  // games.media holds only what the library list reads, and only stored copies.
-  const listMedia: Rec = { ...(game.media ?? {}) }
-  for (const t of LIST_MEDIA_TYPES) if (saved[t]) listMedia[t] = saved[t]
-
-  const snapshot = input.prefs.snapshot ? stripCredentials({ ...jeu, medias: undefined }) : undefined
-  const providerData = {
-    v: 2, source: 'screenscraper', fetched_at: new Date().toISOString(),
-    jeu_id: cand.jeu_id, rom_id: cand.rom_id, system_id: cand.system.id, system_name: cand.system.name,
-    matched_by: input.basis, media_sig: cand.media_sig,
-    saved, linked: [...linked],
-    // The full ROM list lives in the raw record; the summary keeps the first few.
-    summary: { ...cand, roms: cand.roms.slice(0, 20), media_sig: undefined },
-    ...(snapshot ? { jeu: snapshot } : {}),
-  }
-
-  const gamePatch: Rec = {
-    ...plan.games, media: listMedia, provider_data: providerData,
-    external_ref: cand.jeu_id, external_source: 'screenscraper', synced_at: new Date().toISOString(), needs_review: false,
-  }
-  const priorGame: Rec = {}
-  for (const k of Object.keys(gamePatch)) priorGame[k] = game[k] ?? null
-  const { error: uErr } = await admin.from('games').update(gamePatch).eq('id', input.gameId).eq('user_id', userId)
-  if (uErr) return { game_id: input.gameId, outcome: 'error', reason: scrub(uErr.message) }
-
-  const platPatch: Rec = platform ? { ...plan.platform, external_ref: cand.jeu_id, external_source: 'screenscraper', synced_at: new Date().toISOString() } : {}
-  const priorPlat: Rec = {}
-  if (platform) {
-    for (const k of Object.keys(platPatch)) priorPlat[PLATFORM_KEY(k)] = platform[k] ?? null
-    const { error } = await admin.from('game_platforms').update(platPatch).eq('id', platform.id).eq('user_id', userId)
-    if (error) mediaResults.push({ type: 'platform', ok: false, reason: scrub(error.message) })
-  }
-
-  // Everything written is journaled with what it replaced, so undo can put
-  // the old values back exactly (fill-only undo used to mean "set to null").
-  // `synced_at` is bookkeeping (and a timestamp reads back in a different
-  // text form), `needs_review` has its own column in the journal.
-  const written: Rec = {}
-  for (const [k, v] of Object.entries(gamePatch)) if (k !== 'synced_at' && k !== 'needs_review') written[k] = v
-  for (const [k, v] of Object.entries(platPatch)) if (k !== 'synced_at') written[PLATFORM_KEY(k)] = v
-  const priorAll: Rec = {}
-  for (const k of Object.keys(written)) priorAll[k] = { ...priorGame, ...priorPlat }[k] ?? null
-  await journal(userId, {
-    game_id: input.gameId, run_id: input.runId, decision: 'applied', jeu_id: cand.jeu_id,
-    matched_title: cand.values.title ?? null, system_used: cand.system.name,
-    fields_written: Object.keys(written), written_values: written,
-    prior_values: priorAll, storage_paths: paths, prior_needs_review: game.needs_review === true,
-  })
-
-  return {
-    game_id: input.gameId, outcome: 'applied', matched_title: cand.values.title ?? null,
-    written: plan.written, skipped: plan.skipped, media: mediaResults, bytes_stored: addedBytes,
-    remaining_today: remaining(),
-  }
-}
-
-// ─── Undo ────────────────────────────────────────────────────────────────────
-
-async function undoRun(userId: string, runId: string): Promise<Rec> {
-  const { data: rows, error } = await admin.from('scrape_decisions').select('*')
-    .eq('user_id', userId).eq('run_id', runId).in('decision', ['applied', 'undone'])
-  if (error) {
-    const code = (error as Rec).code
-    if (code === '42P01' || code === 'PGRST205') return { status: 'no_journal', message: 'Migration 097 is not applied, so there is no record of what to undo.' }
-    throw new Error(`journal read: ${error.message}`)
-  }
-  const undone = new Set((rows ?? []).filter((r: Rec) => r.decision === 'undone').map((r: Rec) => String(r.game_id)))
-  let reverted = 0
-  const skipped: Rec[] = []
-  for (const row of (rows ?? []).filter((r: Rec) => r.decision === 'applied')) {
-    if (undone.has(String(row.game_id))) continue
-    const written = (row.written_values ?? {}) as Rec
-    const prior = (row.prior_values ?? {}) as Rec
-    const hasPrior = row.prior_values && Object.keys(prior).length > 0
-    const { data: live } = await admin.from('games').select('*').eq('id', row.game_id).eq('user_id', userId).maybeSingle()
-    if (!live) { skipped.push({ game_id: row.game_id, reason: 'game no longer exists' }); continue }
-    const { data: plats } = await admin.from('game_platforms').select('*').eq('user_id', userId).eq('game_id', row.game_id)
-    const platform = (plats ?? []).find((p: Rec) => p.is_primary_variant) ?? (plats ?? [])[0] ?? null
-
-    const gamePatch: Rec = {}
-    const platPatch: Rec = {}
-    const kept: string[] = []
-    for (const key of (row.fields_written ?? []) as string[]) {
-      const isPlat = key.startsWith('platform.')
-      const col = isPlat ? key.slice(9) : key
-      const liveRow = isPlat ? platform : live
-      if (!liveRow) continue
-      if (!jsonEqual(liveRow[col], written[key])) { kept.push(col); continue }
-      // Old journal rows (before migration 104) have no prior values: the old
-      // apply only ever filled empty fields, so empty is the true inverse.
-      const restore = hasPrior ? (prior[key] ?? null) : null
-      ;(isPlat ? platPatch : gamePatch)[col] = restore
-    }
-    if (live.needs_review === false && row.prior_needs_review === true && 'needs_review' in gamePatch === false) gamePatch.needs_review = true
-    if (!Object.keys(gamePatch).length && !Object.keys(platPatch).length) {
-      skipped.push({ game_id: row.game_id, reason: 'everything has been edited since — nothing to revert' }); continue
-    }
-    if (Object.keys(gamePatch).length) {
-      const { error: e } = await admin.from('games').update(gamePatch).eq('id', row.game_id).eq('user_id', userId)
-      if (e) { skipped.push({ game_id: row.game_id, reason: scrub(e.message) }); continue }
-    }
-    if (platform && Object.keys(platPatch).length) {
-      await admin.from('game_platforms').update(platPatch).eq('id', platform.id).eq('user_id', userId)
-    }
-    // Remove a stored copy only when nothing on the row points at it any more.
-    const { data: now } = await admin.from('games').select('primary_cover_url, screenshot_url, fanart_url, media, provider_data').eq('id', row.game_id).maybeSingle()
-    const refs = JSON.stringify(now ?? {})
-    const removable = ((row.storage_paths ?? []) as string[]).filter(p => !refs.includes(p))
-    if (removable.length) await admin.storage.from(BUCKET).remove(removable)
-    await journal(userId, {
-      game_id: row.game_id, run_id: runId, decision: 'undone', jeu_id: row.jeu_id, matched_title: row.matched_title,
-      system_used: row.system_used, fields_written: Object.keys({ ...gamePatch, ...platPatch }), written_values: {},
-      storage_paths: removable, prior_needs_review: row.prior_needs_review,
-    })
-    reverted++
-    if (kept.length) skipped.push({ game_id: row.game_id, reason: `kept your own edits to ${kept.join(', ')}` })
-  }
-  return { status: 'ok', reverted, skipped }
-}
-
-// ─── Batch find ──────────────────────────────────────────────────────────────
-
-/** "Sonic The Hedgehog (USA, Europe) [!]" → "Sonic The Hedgehog" — what a name search wants. */
-const searchTitle = (t: string) => t.replace(/\s*[([][^)\]]*[)\]]/g, '').replace(/\s+/g, ' ').trim()
-
-async function findBatch(userId: string, gameIds: string[], prefs: SsPrefs): Promise<Rec[]> {
-  const { data: games } = await admin.from('games').select('id, title').eq('user_id', userId).in('id', gameIds)
-  const { data: plats } = await admin.from('game_platforms').select('game_id, esde_path, esde_system, is_primary_variant').eq('user_id', userId).in('game_id', gameIds)
-  const systems = await loadSystems()
-  const opts = { regions: prefs.regions, languages: prefs.languages }
-  const runId = crypto.randomUUID()
-  return inParallel(games ?? [], async (g: Rec) => {
-    const mine = (plats ?? []).filter((p: Rec) => p.game_id === g.id)
-    const p = mine.find((x: Rec) => x.is_primary_variant) ?? mine[0]
-    const sys = resolveSystem(systems, p?.esde_system)
-    const file = romFileName(p?.esde_path)
-    const plan = planSearch({ name: searchTitle(String(g.title ?? '')), systemId: sys?.id ?? null, rom: file ? { filename: file } : null })
-    // The strongest lookup first; a name search only when there is no ROM lookup to make.
-    const q = plan.queries.find(x => x.kind === 'filename') ?? plan.queries.find(x => x.kind === 'name')
-    if (!q) {
-      await journal(userId, { game_id: g.id, run_id: runId, decision: 'unmatchable', system_used: sys?.name ?? p?.esde_system ?? null })
-      return { game_id: g.id, outcome: 'unmatchable', reason: plan.notes[0]?.message ?? 'nothing to search with' }
-    }
-    const r = await callApi(q.endpoint, q.params)
-    if (!r.ok) {
-      if (r.kind === 'not_found') await journal(userId, { game_id: g.id, run_id: runId, decision: 'no_match', system_used: sys?.name ?? null })
-      return { game_id: g.id, outcome: r.kind === 'not_found' ? 'no_match' : 'error', basis: q.kind, reason: r.kind === 'not_found' ? undefined : r.message }
-    }
-    const jeu = q.endpoint === 'jeuRecherche.php' ? (r.data?.response?.jeux ?? []).find(isRealJeu) : r.data?.response?.jeu
-    if (!isRealJeu(jeu)) {
-      await journal(userId, { game_id: g.id, run_id: runId, decision: 'no_match', system_used: sys?.name ?? null })
-      return { game_id: g.id, outcome: 'no_match', basis: q.kind }
-    }
-    const cand = await signed(toCandidate(jeu, [q.kind], opts, 0))
-    return { game_id: g.id, outcome: 'match', basis: q.kind, rom_filename: file, system: sys, candidate: cand }
-  })
-}
-
-// ─── Handler ─────────────────────────────────────────────────────────────────
-
-async function loadPrefs(userId: string, override: unknown): Promise<SsPrefs> {
-  if (override && typeof override === 'object') return normalizePrefs(override)
-  const { data } = await admin.from('screenscraper_prefs').select('prefs').eq('user_id', userId).maybeSingle()
-  return normalizePrefs(data?.prefs)
-}
-
-function mediaChoices(raw: unknown, prefs: SsPrefs, inventoryTypes?: string[]): SsMediaChoice[] {
-  if (Array.isArray(raw)) {
-    return raw.filter((m: Rec) => m && typeof m.type === 'string' && /^[A-Za-z0-9-]{1,40}$/.test(m.type) && (m.mode === 'store' || m.mode === 'on_demand'))
-      .map((m: Rec) => ({ type: m.type, token: typeof m.token === 'string' && MEDIA_TOKEN.test(m.token) ? m.token : null, mode: m.mode }))
-      .slice(0, 60)
-  }
-  // No explicit list: the saved defaults, for every type in the catalogue.
-  const types = inventoryTypes ?? MEDIA_TYPES.map(t => t.type)
-  return types.map(t => ({ type: t, mode: mediaModeFor(prefs, t) }))
-    .filter((c): c is SsMediaChoice => c.mode === 'store' || c.mode === 'on_demand')
-}
-
-function fieldPolicies(raw: unknown, prefs: SsPrefs): Partial<Record<SsField, FieldPolicy>> {
-  const out: Partial<Record<SsField, FieldPolicy>> = { ...prefs.fields }
-  if (raw && typeof raw === 'object') {
-    for (const f of ALL_FIELDS) {
-      const v = (raw as Rec)[f]
-      if (v === 'fill' || v === 'replace' || v === 'skip') out[f] = v
-    }
-  }
-  return out
-}
-
-const BASES: MatchBasis[] = ['hash', 'filename', 'serial', 'id', 'name']
-const basisOf = (raw: unknown): MatchBasis[] => (Array.isArray(raw) ? raw.filter((b): b is MatchBasis => BASES.includes(b)) : [])
+const PASS_HEADERS = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified', 'etag']
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
-  if (req.method !== 'POST') return fail('Method Not Allowed', 405)
-  if (!DEVID || !DEVPASSWORD) return json({ status: 'not_configured', error: 'SCREENSCRAPER_DEVID / SCREENSCRAPER_DEVPASSWORD are not set' })
+  if (req.method !== 'GET' && req.method !== 'HEAD') return text(405, 'Method Not Allowed')
+  if (!DEVID || !DEVPASSWORD || !SERVICE_KEY) return text(503, 'not configured')
 
-  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
-  const { data: userData, error: userErr } = await admin.auth.getUser(token)
-  if (userErr || !userData?.user) return fail('Unauthorized', 401)
-  const userId = userData.user.id
-  issued = 0
-  lastUser = null
+  const parsed = parseProxyQuery(new URL(req.url).searchParams)
+  if ('error' in parsed) return text(400, parsed.error)
 
-  const body = await req.json().catch(() => ({})) as Rec
-  const action = String(body.action ?? 'status')
+  const expected = await signMedia(SERVICE_KEY, parsed.jeuId, parsed.systemId)
+  if (!safeEqual(expected, parsed.sig)) return text(403, 'bad signature')
 
-  try {
-    switch (action) {
-      case 'status': {
-        const [quota, usage, counts] = await Promise.all([
-          readQuota(),
-          bucketBytes(),
-          Promise.all([
-            admin.from('games').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('library', 'retro'),
-            admin.from('games').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('library', 'retro').eq('external_source', 'screenscraper'),
-            admin.from('games').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('library', 'retro').is('primary_cover_url', null),
-            admin.from('games').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('library', 'retro').is('description', null),
-            admin.from('screenscraper_systems').select('id', { count: 'exact', head: true }),
-          ]),
-        ])
-        const [all, scraped, noCover, noDesc, systems] = counts.map(c => c.count ?? 0)
-        return json({
-          status: 'ok',
-          account: 'error' in quota ? null : { level: quota.level, premium: quota.level !== '0', threads: quota.threads, used: quota.used, max: quota.max },
-          account_error: 'error' in quota ? quota.error : undefined,
-          remaining_today: 'error' in quota ? null : Math.max(0, quota.max - quota.used),
-          storage: usage,
-          library: { retro: all, scraped, missing_cover: noCover, missing_description: noDesc },
-          systems_known: systems,
-        })
-      }
+  const url = upstreamUrl(parsed)
+  const range = parsed.ep === 'video' ? req.headers.get('range') : null
 
-      case 'storage':
-        return json({ status: 'ok', storage: await bucketBytes() })
-
-      case 'refresh_systems': {
-        const r = await callApi('systemesListe.php', {})
-        if (!r.ok) return fail(`systemesListe: ${r.message}`, 502)
-        const list = r.data?.response?.systemes
-        if (!Array.isArray(list)) return fail('systemesListe returned no system list', 502)
-        const rows = list.map((s: Rec) => {
-          const noms = (s.noms ?? {}) as Rec
-          // `nom_retropie` is optional and comma-separated; every other name
-          // is an alias too (ES-DE's `n3ds` is not in their retropie field).
-          const extra = [noms.nom_eu, noms.nom_us, noms.nom_jp, noms.noms_commun, noms.nom_recalbox, noms.nom_launchbox]
-            .flatMap(v => String(v ?? '').split(',')).map(a => a.trim().toLowerCase()).filter(Boolean)
-          const aliases = [
-            ...String(noms.nom_retropie ?? '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean),
-            ...extra, ...extra.map(a => a.replace(/[^a-z0-9]/g, '')).filter(Boolean),
-          ]
-          return { id: Number(s.id), name: noms.nom_eu ?? noms.nom_us ?? noms.noms_commun ?? null,
-                   retropie_names: aliases.length ? [...new Set(aliases)] : null, company: s.compagnie ?? null,
-                   fetched_at: new Date().toISOString() }
-        }).filter((x: Rec) => Number.isFinite(x.id))
-        const { error } = await admin.from('screenscraper_systems').upsert(rows, { onConflict: 'id' })
-        if (error) return fail(`systems upsert: ${error.message}`)
-        return json({ status: 'ok', systems: rows.length })
-      }
-
-      case 'search': {
-        const prefs = await loadPrefs(userId, body.prefs)
-        const out = await runSearch(body, prefs)
-        return json({ status: 'ok', ...out, requests: issued, remaining_today: remaining() })
-      }
-
-      case 'candidate': {
-        const jeuId = String(body.jeu_id ?? '')
-        if (!/^\d{1,10}$/.test(jeuId)) return fail('candidate needs a numeric jeu_id', 400)
-        const prefs = await loadPrefs(userId, body.prefs)
-        const r = await callApi('jeuInfos.php', { gameid: jeuId })
-        if (!r.ok) return json({ status: r.kind === 'not_found' ? 'not_found' : 'error', error: r.message })
-        const jeu = r.data?.response?.jeu
-        if (!isRealJeu(jeu)) return json({ status: 'not_found', error: TEXT_MESSAGE.not_found })
-        const candidate = await signed(toCandidate(jeu, basisOf(body.matched_by), { regions: prefs.regions, languages: prefs.languages }, SNAPSHOT_CAPS.roms))
-        return json({ status: 'ok', candidate, record: stripCredentials({ ...jeu, medias: undefined }), remaining_today: remaining() })
-      }
-
-      case 'apply': {
-        const gameId = String(body.game_id ?? '')
-        const jeuId = String(body.jeu_id ?? '')
-        if (!gameId || !/^\d{1,10}$/.test(jeuId)) return fail('apply needs game_id and a numeric jeu_id', 400)
-        const prefs = await loadPrefs(userId, body.prefs)
-        const runId = typeof body.run_id === 'string' && body.run_id ? body.run_id : crypto.randomUUID()
-        const result = await applyOne(userId, {
-          gameId, jeuId, system: body.system, rom: body.rom && typeof body.rom === 'object' ? body.rom : null,
-          fields: fieldPolicies(body.fields, prefs), media: mediaChoices(body.media, prefs), prefs, runId, basis: basisOf(body.matched_by),
-        })
-        return json({ status: 'ok', run_id: runId, result, requests: issued })
-      }
-
-      case 'find_batch': {
-        const ids = Array.isArray(body.game_ids) ? body.game_ids.map(String).slice(0, FIND_MAX) : []
-        if (!ids.length) return fail('find_batch needs game_ids', 400)
-        const quota = await readQuota()
-        if (!('error' in quota) && quota.max - quota.used < QUOTA_FLOOR) {
-          return json({ status: 'quota_exhausted', remaining_today: Math.max(0, quota.max - quota.used) })
-        }
-        const prefs = await loadPrefs(userId, body.prefs)
-        const results = await findBatch(userId, ids, prefs)
-        return json({ status: 'ok', results, requests: issued, remaining_today: remaining() })
-      }
-
-      case 'apply_batch': {
-        const items = Array.isArray(body.items) ? body.items.slice(0, APPLY_BATCH_MAX) : []
-        if (!items.length) return fail('apply_batch needs items', 400)
-        const prefs = await loadPrefs(userId, body.prefs)
-        const runId = typeof body.run_id === 'string' && body.run_id ? body.run_id : crypto.randomUUID()
-        const results: Rec[] = []
-        // One game at a time: each already downloads its images in parallel.
-        for (const it of items as Rec[]) {
-          const jeuId = String(it.jeu_id ?? '')
-          if (!/^\d{1,10}$/.test(jeuId)) { results.push({ game_id: it.game_id, outcome: 'error', reason: 'bad jeu_id' }); continue }
-          results.push(await applyOne(userId, {
-            gameId: String(it.game_id), jeuId, system: it.system ?? null,
-            rom: it.rom_filename ? { filename: String(it.rom_filename) } : null,
-            fields: fieldPolicies(null, prefs), media: mediaChoices(null, prefs), prefs, runId, basis: basisOf(it.matched_by),
-          }))
-        }
-        return json({ status: 'ok', run_id: runId, results, requests: issued, remaining_today: remaining() })
-      }
-
-      case 'undo': {
-        const runId = String(body.run_id ?? '')
-        if (!runId) return fail('undo needs a run_id', 400)
-        return json(await undoRun(userId, runId))
-      }
-
-      case 'sweep_pending': {
-        let removed = 0
-        const list = async (prefix: string) => {
-          const names: string[] = []
-          for (let offset = 0; ; offset += 100) {
-            const { data, error } = await admin.storage.from(BUCKET).list(prefix, { limit: 100, offset })
-            if (error) throw new Error(error.message)
-            names.push(...(data ?? []).map(d => d.name))
-            if (!data || data.length < 100) break
-          }
-          return names
-        }
-        for (const g of await list('pending')) {
-          for (const j of await list(`pending/${g}`)) {
-            const base = `pending/${g}/${j}`
-            const paths = (await list(base)).map(n => `${base}/${n}`)
-            if (paths.length) { await admin.storage.from(BUCKET).remove(paths); removed += paths.length }
-          }
-        }
-        return json({ status: 'ok', removed })
-      }
-
-      default:
-        return fail(`Unknown action "${action}"`, 400)
-    }
-  } catch (e) {
-    return fail((e as Error).message)
+  // A file, or the KIND of their plain-text answer (read only to classify —
+  // never echoed). A busy answer is worth one short retry; any other is final.
+  type Attempt = { file: Response } | { kind: SsTextKind }
+  const attempt = async (): Promise<Attempt> => {
+    const res = await fetchUpstream(url, range)
+    const ct = res.headers.get('content-type') ?? ''
+    if ((res.ok || res.status === 206) && allowedContentType(parsed.ep, ct)) return { file: res }
+    const body = await res.text().catch(() => '')
+    return { kind: classifyText(res.status, body) }
   }
+  let got: Attempt
+  try {
+    got = await attempt()
+    if ('kind' in got && got.kind === 'busy') {
+      await new Promise(r => setTimeout(r, 1500))
+      got = await attempt()
+    }
+  } catch {
+    return text(502, 'upstream unreachable', { 'Retry-After': '30' })
+  }
+
+  if ('file' in got) {
+    const res = got.file
+    const headers = new Headers(CORS)
+    for (const h of PASS_HEADERS) {
+      const v = res.headers.get(h)
+      if (v) headers.set(h, v)
+    }
+    // Same signed parameters, same bytes — safe to cache for a year. A new
+    // version of their artwork arrives under a new token or a re-scrape.
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+    headers.set('Cross-Origin-Resource-Policy', 'cross-origin')
+    headers.set('X-Content-Type-Options', 'nosniff')
+    if (req.method === 'HEAD') { await res.body?.cancel(); return new Response(null, { status: res.status, headers }) }
+    return new Response(res.body, { status: res.status, headers })
+  }
+
+  const kind = got.kind
+  if (kind === 'no_media' || kind === 'not_found') return text(404, 'no such media', { 'Cache-Control': 'public, max-age=86400' })
+  if (kind === 'busy' || kind === 'closed') return text(503, 'screenscraper busy', { 'Retry-After': '20' })
+  if (kind === 'quota') return text(503, 'daily quota used', { 'Retry-After': '3600' })
+  if (kind === 'login') return text(502, 'upstream login failed')
+  return text(502, 'upstream error')
 })
