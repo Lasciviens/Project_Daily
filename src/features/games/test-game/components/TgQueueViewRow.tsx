@@ -51,7 +51,7 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
           <span className="mr-px align-top text-[13px] font-semibold opacity-70">#</span>{position}
         </span>
 
-        <span className="relative block w-11 h-[60px] shrink-0 overflow-hidden rounded-md bg-[var(--tg-panel-2)] shadow-[var(--tg-cover-shadow)]">
+        <span className="relative block w-11 h-[60px] shrink-0 overflow-hidden rounded-md bg-[var(--tg-panel-2)] shadow-[shadow:var(--tg-cover-shadow)]">
           <TgCover game={game} mode="contain" />
           <span className="sm:hidden absolute left-0 top-0 min-w-[18px] rounded-br-md bg-[var(--tg-accent)] px-1 text-center text-[10px] font-bold leading-[16px] text-[var(--tg-on-accent)] tabular-nums">
             {position}

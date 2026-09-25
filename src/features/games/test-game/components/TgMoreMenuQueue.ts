@@ -1,21 +1,20 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { Game } from '../../types'
+import { fetchAllGames, fetchLibraryGames } from '../../api/gamesApi'
 
 // The game's place in the Play Queue ("#3"), counted the way the Queue view
 // numbers its rows. `play_order` itself can have gaps (removing a game leaves
 // one), so the raw value would disagree with the list.
 //
-// Reads the page's already-loaded libraries WITHOUT subscribing a fetching
-// observer (`enabled: false`): the ⋯ menu mounts with every phone sheet, and a
-// normal observer would refetch all three libraries each time once stale.
-
-const cacheOnly = (queryKey: readonly unknown[]) => ({ queryKey, enabled: false })
+// Reads the page's already-loaded libraries (the same keys and fetchers as
+// useTestGameLibrary) through observers that never fetch (`enabled: false`):
+// the ⋯ menu mounts with every phone sheet, and a normal observer would
+// refetch all three libraries on each open once the data is a minute old.
 
 export function useQueuePosition(id: string, playOrder: number | null): number | null {
-  const retro = useQuery<Game[]>(cacheOnly(['games', 'all']))
-  const steam = useQuery<Game[]>(cacheOnly(['games', 'library', 'steam']))
-  const psn = useQuery<Game[]>(cacheOnly(['games', 'library', 'playstation']))
+  const retro = useQuery({ queryKey: ['games', 'all'], queryFn: fetchAllGames, enabled: false })
+  const steam = useQuery({ queryKey: ['games', 'library', 'steam'], queryFn: () => fetchLibraryGames('steam'), enabled: false })
+  const psn = useQuery({ queryKey: ['games', 'library', 'playstation'], queryFn: () => fetchLibraryGames('playstation'), enabled: false })
 
   return useMemo(() => {
     if (playOrder == null) return null

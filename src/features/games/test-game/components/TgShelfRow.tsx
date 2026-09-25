@@ -18,6 +18,16 @@ const WHEEL_STEP = 40
 
 interface Edges { left: boolean; right: boolean }
 
+/** The light pool over a slot and the small fixture on the ceiling casting it. */
+function Lamp() {
+  return (
+    <>
+      <span aria-hidden className="tg-spot" />
+      <span aria-hidden className="pointer-events-none absolute left-1/2 top-[3px] h-[3px] w-[34%] -translate-x-1/2 rounded-full bg-[color-mix(in_srgb,var(--tg-spot-core),white_55%)] shadow-[0_0_12px_3px_var(--tg-spot)]" />
+    </>
+  )
+}
+
 function readEdges(el: HTMLElement): Edges {
   return { left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 }
 }
@@ -91,7 +101,7 @@ export const TgShelfRow = memo(function TgShelfRow({ games, layout, selectedId, 
         <div ref={setStrip} className="flex h-full w-max px-11" style={{ gap }}>
           {games.map(g => (
             <div key={g.id} className="relative flex h-full shrink-0 items-end pb-[14px]" style={{ width: slotWidth }}>
-              <span aria-hidden className="tg-spot" />
+              <Lamp />
               <TgGameCard
                 game={g}
                 selected={g.id === selectedId}
@@ -104,7 +114,7 @@ export const TgShelfRow = memo(function TgShelfRow({ games, layout, selectedId, 
           ))}
           {Array.from({ length: emptySlots }, (_, i) => (
             <div key={`empty-${i}`} aria-hidden className="relative h-full shrink-0" style={{ width: slotWidth }}>
-              <span className="tg-spot" />
+              <Lamp />
             </div>
           ))}
         </div>
