@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import {
   ALL_PLATFORMS, type TgSection, type TgSort, type TgStatusFilter, type TgView,
 } from './testGameModel'
+import type { TgaLibrary, TgaWindow } from './components/tgAnalyticsModel'
 
 // UI state for the Test-Game page. Its own store (not the app's useUIStore)
 // because the page is a self-contained experiment: nothing else in the app
@@ -41,6 +42,10 @@ interface TgState {
   /** The overlay is tucked into its slim tab at the right edge (tablet/desktop). */
   detailCollapsed: boolean
   advancedTab: AdvancedTab
+  /** Analytics filters: kept here (not persisted) so a tablet↔phone switch,
+   *  which remounts the view, doesn't reset them. */
+  analyticsPeriod: TgaWindow
+  analyticsLibrary: TgaLibrary
 
   setSection: (s: TgSection) => void
   setPlatform: (p: string) => void
@@ -59,6 +64,8 @@ interface TgState {
   closeDetail: () => void
   setDetailCollapsed: (collapsed: boolean) => void
   setAdvancedTab: (t: AdvancedTab) => void
+  setAnalyticsPeriod: (p: TgaWindow) => void
+  setAnalyticsLibrary: (l: TgaLibrary) => void
 }
 
 // Moving to another section or platform is navigation, not filtering: the
@@ -80,6 +87,8 @@ export const useTestGameStore = create<TgState>()(
       detailOpen: false,
       detailCollapsed: false,
       advancedTab: 'classic',
+      analyticsPeriod: 'all',
+      analyticsLibrary: 'all',
 
       // Changing section resets the per-section narrowing: a "Playing" tab
       // carried into Completed, or a platform chip carried into Wishlist,
@@ -112,6 +121,8 @@ export const useTestGameStore = create<TgState>()(
       },
       closeDetail: () => set({ detailOpen: false }),
       setDetailCollapsed: (detailCollapsed) => set({ detailCollapsed }),
+      setAnalyticsPeriod: (analyticsPeriod) => set({ analyticsPeriod }),
+      setAnalyticsLibrary: (analyticsLibrary) => set({ analyticsLibrary }),
       setAdvancedTab: (advancedTab) => set(s => ({ advancedTab, section: 'advanced', ...(s.section !== 'advanced' && LEAVE_SHELF) })),
     }),
     {

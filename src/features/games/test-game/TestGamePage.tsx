@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './testGame.css'
 import { useTestGameLibrary } from './useTestGameLibrary'
 import { useTestGameStore } from './testGameStore'
@@ -41,6 +41,7 @@ export function TestGamePage() {
   const openDetail = useTestGameStore(s => s.openDetail)
   const activateGame = useTestGameStore(s => s.activateGame)
   const closeDetail = useTestGameStore(s => s.closeDetail)
+  const setDetailCollapsed = useTestGameStore(s => s.setDetailCollapsed)
 
   const [editId, setEditId] = useState<string | null>(null)
   const [fullId, setFullId] = useState<string | null>(null)
@@ -61,6 +62,29 @@ export function TestGamePage() {
   )
   const detailGame = detailOpen ? selected : null
 
+  // The open game left the library (deleted from Edit, dropped by a provider
+  // refetch): close its details rather than leave them "open" with nothing
+  // shown, which made the next click only swap or tuck instead of opening.
+  const libSettled = !lib.isLoading && !lib.providersLoading
+  useEffect(() => {
+    if (detailOpen && selectedId && libSettled && !lib.games.some(g => g.id === selectedId)) {
+      select(null)
+      closeDetail()
+    }
+  }, [detailOpen, selectedId, libSettled, lib.games, select, closeDetail])
+
+  // Widening past the phone layout swaps the full-screen sheet for the
+  // overlay; the sheet's focus target unmounts with the phone tree, so hand
+  // focus to the overlay or Esc would reach nothing.
+  const prevBp = useRef(bp)
+  useEffect(() => {
+    const was = prevBp.current
+    prevBp.current = bp
+    if (was === 'mobile' && bp !== 'mobile' && detailOpen && !collapsed) {
+      requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }))
+    }
+  }, [bp, detailOpen, collapsed])
+
   const header = useTgHeaderConfig({ games: lib.games, platform: effectivePlatform, statusCounts: sCounts, visibleCount: visible.length })
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -76,11 +100,24 @@ export function TestGamePage() {
     const pick = pickRef.current
     pickRef.current = null
     if (bp === 'mobile') openDetail(id)
-    else if (pick === 'arrow') select(id)
+    else if (pick === 'arrow') {
+      select(id)
+      // The expanded overlay covers the right-hand columns. Walking onto a
+      // card underneath it tucks the overlay into its tab (which follows the
+      // selection) so the card being chosen is actually visible.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const panel = panelRef.current
+        const card = document.querySelector<HTMLElement>(`[data-game-id="${CSS.escape(id)}"]`)
+        if (!panel || !card || !panel.isConnected) return
+        const p = panel.getBoundingClientRect()
+        const c = card.getBoundingClientRect()
+        if (p.width > 0 && c.right > p.left + 8 && c.bottom > p.top && c.top < p.bottom) setDetailCollapsed(true)
+      }))
+    }
     else if (activateGame(id) === 'opened' && pick === 'keyboard') {
       requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }))
     }
-  }, [bp, openDetail, select, activateGame])
+  }, [bp, openDetail, select, activateGame, setDetailCollapsed])
   const closeModal = useCallback((which: 'edit' | 'full' | 'provider') => {
     if (which === 'edit') setEditId(null)
     else if (which === 'full') setFullId(null)

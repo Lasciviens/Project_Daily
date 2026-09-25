@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useTestGameStore } from '../testGameStore'
 import { useTestGameLibrary } from '../useTestGameLibrary'
 import { formatDay } from '../testGameModel'
-import type { TgaLibrary, TgaWindow } from './tgAnalyticsModel'
+import type { TgaLibrary } from './tgAnalyticsModel'
 import { useLibraryCounts, useTgAnalyticsData } from './tgAnalyticsData'
 import { useToday } from './tgAnalyticsClock'
 import { TGA_GRID, TGA_ORDER_RATINGS, TGA_RANGE, TGA_SPAN_RECENT, TGA_SPAN_WIDE } from './tgAnalyticsFormat'
@@ -24,8 +24,10 @@ const ROOT = '@container flex flex-col gap-5 pb-4 pt-2'
 export function TgAnalyticsView() {
   const lib = useTestGameLibrary()
   const today = useToday()
-  const [period, setPeriod] = useState<TgaWindow>('all')
-  const [picked, setLibrary] = useState<TgaLibrary>('all')
+  const period = useTestGameStore(s => s.analyticsPeriod)
+  const setPeriod = useTestGameStore(s => s.setAnalyticsPeriod)
+  const picked = useTestGameStore(s => s.analyticsLibrary)
+  const setLibrary = useTestGameStore(s => s.setAnalyticsLibrary)
 
   const counts = useLibraryCounts(lib.games)
   // A library that has since lost its last visible game falls back to All.
