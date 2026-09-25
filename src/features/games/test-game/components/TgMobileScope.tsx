@@ -1,6 +1,6 @@
 import { useTestGameStore } from '../testGameStore'
 import {
-  ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, platformInfo, splitPlatforms,
+  ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, platformInfo, platformLabels, splitPlatforms,
   type PlatformCount,
 } from '../testGameModel'
 import type { TgHeaderConfig } from '../tgTypes'
@@ -22,9 +22,11 @@ export function TgMobileScope({ platforms, header }: { platforms: PlatformCount[
     // falls back to All there, and the pill must say what the grid shows.
     const current = header.platformKey ?? platform
     const total = platforms.reduce((n, p) => n + p.count, 0)
+    // Two systems sharing a short name ("Arcade") are spelled out in full.
+    const labels = platformLabels(platforms)
     const options: TgOption<string>[] = [
       { value: ALL_PLATFORMS, label: 'All platforms', count: total },
-      ...platforms.map(p => ({ value: p.key, label: p.info.short, count: p.count })),
+      ...platforms.map(p => ({ value: p.key, label: labels.get(p.key) ?? p.info.short, count: p.count })),
     ]
     // "Others" only exists as a desktop sidebar row; the phone lists every
     // platform by name, but a persisted Others choice must stay visible here.
@@ -37,7 +39,7 @@ export function TgMobileScope({ platforms, header }: { platforms: PlatformCount[
         value={current}
         options={options}
         onChange={setPlatform}
-        buttonLabel={platformInfo(current).short}
+        buttonLabel={labels.get(current) ?? platformInfo(current).short}
         ariaLabel="Platform"
         align="start"
         // The design's platform pill reads larger and bolder than the desktop filter pills.

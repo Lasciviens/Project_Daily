@@ -1,5 +1,5 @@
 import {
-  Archive, ChartColumn, CircleCheck, Gamepad2, Heart, LibraryBig, ListVideo, Shapes, SlidersHorizontal,
+  Archive, ChartColumn, CircleCheckBig, Gamepad2, Heart, LibraryBig, Shapes, SlidersHorizontal, SquarePlay,
   type LucideIcon,
 } from 'lucide-react'
 import { platformInfo, type PlatformFamily } from '../testGameModel'
@@ -8,15 +8,25 @@ import {
   PLATFORM_GLYPHS, PS_LINE_LAST, PS_LINE_P, PS_LINE_S, textWordmark, wordmarkSizeClass,
 } from './platformArtData'
 
-/** A recognisable line glyph per platform family, drawn in currentColor. */
+/** A recognisable glyph per platform family, drawn in currentColor. */
 export function PlatformIcon({ family, className }: { family: PlatformFamily; className?: string }) {
   const parts = PLATFORM_GLYPHS[family] ?? PLATFORM_GLYPHS.other
   return (
     <svg
-      viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={1.8}
+      viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth={2.2}
       strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}
     >
       {parts.map((p, i) => {
+        if ('f' in p) {
+          const k = p.s ?? 1
+          const shift = Math.round((12 - 12 * k) * 1000) / 1000
+          return (
+            <path
+              key={i} d={p.f} fill="currentColor" stroke="none"
+              transform={k === 1 ? undefined : `matrix(${k} 0 0 ${k} ${shift} ${shift})`}
+            />
+          )
+        }
         if ('d' in p) return <path key={i} d={p.d} />
         if ('c' in p) return <circle key={i} cx={p.c[0]} cy={p.c[1]} r={p.c[2]} />
         const [x, y, width, height, rx] = p.r
@@ -38,7 +48,7 @@ export function PlatformWordmark({ platformKey, className = '' }: { platformKey:
   if (last) {
     return (
       <svg
-        viewBox="0 0 105 20" width={104} height={20} fill="none" stroke="currentColor" strokeWidth={1.9}
+        viewBox="0 0 105 20" width={124} height={24} fill="none" stroke="currentColor" strokeWidth={1.9}
         strokeLinecap="butt" strokeLinejoin="miter" role="img" aria-label={info.name}
         className={`text-[var(--tg-nav-active-text)] ${className}`}
       >
@@ -73,9 +83,9 @@ const SECTION_ICONS: Record<TgHeaderLogo, LucideIcon> = {
   platform: Gamepad2,
   all: LibraryBig,
   others: Shapes,
-  queue: ListVideo,
+  queue: SquarePlay,
   wishlist: Heart,
-  completed: CircleCheck,
+  completed: CircleCheckBig,
   backlog: Archive,
   analytics: ChartColumn,
   advanced: SlidersHorizontal,

@@ -9,6 +9,7 @@ import { SteamTab } from '../../components/SteamTab'
 import { PlayStationTab } from '../../components/PlayStationTab'
 import { useTestGameStore, type AdvancedTab } from '../testGameStore'
 import type { TgGame } from '../testGameModel'
+import type { TgRandomScope } from '../advancedTabs'
 import { TgAdvancedViewTools } from './TgAdvancedViewTools'
 
 // Every feature of the current Games page the new design has no place for
@@ -27,7 +28,11 @@ const INTRO: Record<AdvancedTab, string> = {
   tools: 'The current page’s Add game and Random buttons, reused as-is.',
 }
 
-export function TgAdvancedView({ onOpenDetail, randomPool }: { onOpenDetail: (id: string) => void; randomPool: TgGame[] }) {
+export function TgAdvancedView({ onOpenDetail, randomPool, randomScope }: {
+  onOpenDetail: (id: string) => void
+  randomPool: TgGame[]
+  randomScope: TgRandomScope
+}) {
   const tab = useTestGameStore(s => s.advancedTab)
   // A persisted tab from an older build may no longer exist.
   const active: AdvancedTab = tab in INTRO ? tab : 'classic'
@@ -48,7 +53,7 @@ export function TgAdvancedView({ onOpenDetail, randomPool }: { onOpenDetail: (id
     case 'playstation':
       content = <ErrorBoundary label="PlayStation" action="test_game_psn_tab"><PlayStationTab /></ErrorBoundary>
       break
-    case 'tools': content = <TgAdvancedViewTools onOpenDetail={onOpenDetail} randomPool={randomPool} />; break
+    case 'tools': content = <TgAdvancedViewTools onOpenDetail={onOpenDetail} randomPool={randomPool} scope={randomScope} />; break
     default: content = <LibraryTab onOpenDetail={onOpenDetail} />
   }
 

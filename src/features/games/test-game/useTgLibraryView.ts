@@ -1,0 +1,86 @@
+import { useMemo } from 'react'
+import { useTestGameStore } from './testGameStore'
+import {
+  ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS,
+  applyStatus, genreOptions, platformCounts, queueOrder, queueRanks,
+  scopeGames, sortGames, splitPlatforms, statusCounts,
+  type PlatformCount, type StatusCounts, type TgGame,
+} from './testGameModel'
+import type { TestGameLibrary } from './useTestGameLibrary'
+
+// What the page shows, derived from the library and the page state: which
+// platform shelf, which games in which order, and every count the sidebar,
+// tabs and badges print. The shell only renders it.
+
+export interface TgLibraryView {
+  counts: PlatformCount[]
+  /** The sidebar's platform rows, and the ones folded into "Others". */
+  shown: PlatformCount[]
+  others: PlatformCount[]
+  /** The Library's platform after the stale-platform fallback. */
+  effectivePlatform: string
+  /** Library, queue and the three status sections (not Analytics / Advanced). */
+  isGameSection: boolean
+  genres: { genre: string; count: number }[]
+  statusCounts: StatusCounts
+  /** The current section's games in display order (Advanced: the Random pool). */
+  visible: TgGame[]
+  /** ONE queue numbering for the badges, the queue rows and the ⋯ menu. */
+  ranks: Map<string, number>
+  navCounts: { queue: number; wishlist: number; completed: number; backlog: number }
+}
+
+export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
+  const section = useTestGameStore(s => s.section)
+  const platform = useTestGameStore(s => s.platform)
+  const scopePlatform = useTestGameStore(s => s.scopePlatform)
+  const status = useTestGameStore(s => s.status)
+  const genre = useTestGameStore(s => s.genre)
+  const sort = useTestGameStore(s => s.sort)
+  const search = useTestGameStore(s => s.search)
+
+  const counts = useMemo(() => platformCounts(lib.games), [lib.games])
+  const { shown, others } = useMemo(() => splitPlatforms(counts, 8), [counts])
+  const otherKeys = useMemo(() => others.map(o => o.key), [others])
+
+  // A persisted platform that no longer has games (renamed system, emptied
+  // library) would pin the page to an empty shelf — fall back to everything,
+  // but only once every library has settled: a saved Steam shelf waits for
+  // Steam instead of flashing All Games first.
+  const settling = lib.isLoading || lib.providersLoading
+  const effectivePlatform = useMemo(() => {
+    if (platform === ALL_PLATFORMS) return ALL_PLATFORMS
+    if (platform === OTHER_PLATFORMS) return others.length || settling ? OTHER_PLATFORMS : ALL_PLATFORMS
+    return counts.some(c => c.key === platform) || settling ? platform : ALL_PLATFORMS
+  }, [platform, others.length, counts, settling])
+
+  const fixedStatus = STATUS_SECTIONS[section]
+  const isGameSection = section !== 'analytics' && section !== 'advanced'
+  const scope = useMemo(
+    () => scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform, search, genre }),
+    [lib.games, section, effectivePlatform, otherKeys, scopePlatform, search, genre],
+  )
+  const genres = useMemo(
+    () => genreOptions(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform, search, genre: null })),
+    [lib.games, section, effectivePlatform, otherKeys, scopePlatform, search],
+  )
+  const sCounts = useMemo(() => statusCounts(scope), [scope])
+
+  const visible = useMemo(() => {
+    if (section === 'queue') return queueOrder(applyStatus(scope, 'all'))
+    // Advanced's Random pool: no status filter Advanced could not show.
+    if (!isGameSection) return applyStatus(scope, 'all')
+    return sortGames(applyStatus(scope, fixedStatus ? 'all' : status), sort)
+  }, [scope, section, isGameSection, fixedStatus, status, sort])
+
+  const ranks = useMemo(() => queueRanks(lib.games), [lib.games])
+  const navCounts = useMemo(() => {
+    const all = statusCounts(lib.games)
+    return { queue: ranks.size, wishlist: all.wishlist, completed: all.completed, backlog: all.backlog }
+  }, [lib.games, ranks])
+
+  return {
+    counts, shown, others, effectivePlatform, isGameSection, genres,
+    statusCounts: sCounts, visible, ranks, navCounts,
+  }
+}

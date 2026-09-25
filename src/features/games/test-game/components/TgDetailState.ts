@@ -47,7 +47,8 @@ export interface DetailState {
   status: PlayStatus
   /** Hidden by its status (not by the Steam "not a game" rule). */
   hiddenByStatus: boolean
-  /** Hidden automatically: a Steam app whose store type is not a game. */
+  /** Hidden automatically: a Steam app whose store type is not a game, with
+   *  no deliberate status yet (see `isHiddenRow`). */
   autoHidden: boolean
   stars: number | null
   setStatus: (next: PlayStatus) => void
@@ -70,16 +71,20 @@ export function useDetailState(game: TgGame): DetailState {
   const { id } = game
   const statusMutate = setPlayStatus.mutateAsync
   const updateMutate = updateGame.mutateAsync
+  const autoHidden = game.hidden && game.play_status !== 'hidden' && !statusOverride
 
   // The promise form, not `mutate(v, { onError })`: per-call callbacks are
   // skipped once the component unmounts (a sheet closed mid-request), which
   // would leave a failed value painted over the real one. The hooks already
   // toast the error — the catch only withdraws the override.
   const setStatus = useCallback((next: PlayStatus) => {
-    if (next === status) return
+    // Re-picking Playing on an auto-hidden row is a real write: an importer-
+    // promoted "playing" has no start date, and the write stamps one — which
+    // is what takes the row out of the "undecided" group.
+    if (next === status && !(autoHidden && next === 'playing')) return
     patch(id, { status: { value: next, stamp } })
     statusMutate({ id, status: next }).catch(() => drop(id, 'status', stamp))
-  }, [id, stamp, status, patch, drop, statusMutate])
+  }, [id, stamp, status, autoHidden, patch, drop, statusMutate])
 
   const setStars = useCallback((stars: number | null) => {
     const next = stars == null ? null : ratingFromStars(stars)
@@ -91,7 +96,7 @@ export function useDetailState(game: TgGame): DetailState {
   return {
     status,
     hiddenByStatus: status === 'hidden',
-    autoHidden: game.hidden && game.play_status !== 'hidden' && !statusOverride,
+    autoHidden,
     stars: starsFromRating(rating),
     setStatus,
     setStars,

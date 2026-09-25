@@ -18,6 +18,39 @@ export function withOrderOverrides<T extends QueueItem>(games: T[], overrides: R
 }
 
 /**
+ * Each row's play_order as it will be once the in-flight moves land. A swap
+ * must be built from THESE values, not the fetched ones: the rows on screen
+ * already sit where the overrides put them, and swapping their stale stored
+ * values would write two rows onto one slot.
+ */
+export function effectiveOrder(games: QueueItem[], overrides: Record<string, number>): QueueItem[] {
+  return games.map(g => ({ id: g.id, play_order: overrides[g.id] ?? g.play_order }))
+}
+
+/**
+ * The number printed on each row. `ranks` is every row's place in the WHOLE
+ * queue (a search can show a subset); while a move is in flight a row takes the
+ * rank of the row whose stored slot it now holds, so the numbers travel with
+ * the rows instead of lagging a round trip behind.
+ */
+export function displayRanks(
+  games: QueueItem[], ranks: ReadonlyMap<string, number>, overrides: Record<string, number>,
+): Map<string, number> {
+  const rankOfSlot = new Map<number, number>()
+  for (const g of games) {
+    const r = ranks.get(g.id)
+    if (g.play_order != null && r != null && !rankOfSlot.has(g.play_order)) rankOfSlot.set(g.play_order, r)
+  }
+  const out = new Map<string, number>()
+  for (const g of games) {
+    const slot = overrides[g.id]
+    const r = (slot != null ? rankOfSlot.get(slot) : undefined) ?? ranks.get(g.id)
+    if (r != null) out.set(g.id, r)
+  }
+  return out
+}
+
+/**
  * The two writes that swap the games at `from` and `to`.
  *
  * A swap of the two stored values, never a renumbering: the list on screen can

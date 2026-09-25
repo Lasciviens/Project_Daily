@@ -41,6 +41,8 @@ export function usePlayQueue() {
   return useQuery({ queryKey: QUEUE_QK, queryFn: fetchPlayQueue, staleTime: 30_000 })
 }
 
+const NO_GAMES: Game[] = Object.freeze([]) as unknown as Game[]
+
 function invalidateAllGames(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['games'] })
 }
@@ -99,7 +101,10 @@ export function useReorderQueue() {
   return useMutationWithFeedback<void, { id: string; play_order: number }[]>({
     action: 'reorder_play_queue',
     mutationFn: reorderQueue,
-    onSettled: () => qc.invalidateQueries({ queryKey: QUEUE_QK }),
+    // The whole namespace, like every mutation here: the Library, the
+    // provider libraries and the Test-Game queue all read play_order too, and
+    // refreshing only the old queue query left them showing the previous order.
+    onSettled: () => invalidateAllGames(qc),
   })
 }
 
@@ -187,7 +192,17 @@ export function useLibraryGames(library: GameLibrary) {
     for (const g of q.data ?? []) if (g.external_ref) m.set(g.external_ref, g)
     return m
   }, [q.data])
-  return { games: q.data ?? [], byRef, isLoading: q.isLoading }
+  return {
+    // The SAME empty array on every render while there is no data: a fresh
+    // `[]` each time broke every memo downstream for as long as the request
+    // was pending or had failed.
+    games: q.data ?? NO_GAMES,
+    byRef,
+    isLoading: q.isLoading,
+    isError: q.isError,
+    error: q.error,
+    refetch: q.refetch,
+  }
 }
 
 export function useLibraryEntry(library: GameLibrary, externalRef: string | null | undefined) {

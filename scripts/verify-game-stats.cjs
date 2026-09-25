@@ -76,9 +76,32 @@ ok(sortByRecentlyPlayed([
   { id: 'x', esde_last_played: null, esde_playtime_seconds: null },
 ]).length, 1, 'an unplayed game is still in the list')
 
-// ── playStatsOf: neutral columns win, ES-DE is the pre-096 fallback ─────────
-ok(playStatsOf({ id: 'a', title: 'x', play_seconds: 600, esde_playtime_seconds: 60 }).seconds, 600,
-  'the source-neutral column wins over the ES-DE one')
+// ── playStatsOf ─────────────────────────────────────────────────────────────
+// Provider rows: the neutral columns (their importers keep them current) win.
+ok(playStatsOf({ id: 'a', title: 'x', library: 'steam', play_seconds: 600, esde_playtime_seconds: 60 }).seconds, 600,
+  'a Steam row reads the source-neutral column')
+ok(playStatsOf({ id: 'a', title: 'x', library: 'playstation', play_count: 4, esde_playcount: 1, last_played_at: '2026-01-01T00:00:00Z', esde_last_played: '2026-09-01T00:00:00Z' }),
+  { seconds: null, count: 4, last: '2026-01-01T00:00:00Z' },
+  'a PlayStation row keeps its own count and date')
+// Retro rows: the neutral trio is migration 096's one-time backfill; ES-DE
+// keeps updating only esde_*. Reading the backfill first was the bug.
+const staleRetro = {
+  id: 'r', title: 'Zelda', library: 'retro',
+  play_seconds: 600, play_count: 2, last_played_at: '2026-05-19T19:06:43+00:00',
+  esde_playtime_seconds: 36000, esde_playcount: 9, esde_last_played: '2026-09-24T20:00:00+00:00',
+}
+ok(playStatsOf(staleRetro), { seconds: 36000, count: 9, last: '2026-09-24T20:00:00+00:00' },
+  'a retro row reads the live ES-DE figures, not the frozen backfill')
+ok(playStatsOf({ ...staleRetro, library: null }).seconds, 36000, 'a row with no library (pre-096) is retro')
+ok(playStatsOf({ ...staleRetro, library: undefined }).count, 9, 'an absent library is retro too')
+ok(playStatsOf({ id: 'r', title: 'x', library: 'retro', play_seconds: 600, esde_playtime_seconds: null }).seconds, 600,
+  'a retro row ES-DE never reported on falls back to the neutral copy')
+ok(playStatsOf({ id: 'r', title: 'x', library: 'retro', last_played_at: '2026-09-24T21:00:00Z', esde_last_played: '2026-09-24T20:00:00+00:00' }).last,
+  '2026-09-24T21:00:00Z', 'last played is the LATER of the two, whichever column holds it')
+ok(playStatsOf({ id: 'r', title: 'x', library: 'retro', last_played_at: '2026-09-24T19:30:00-02:00', esde_last_played: '2026-09-24T21:00:00+00:00' }).last,
+  '2026-09-24T19:30:00-02:00', 'compared as instants, not strings (19:30 at -02:00 is 21:30 UTC)')
+ok(playStatsOf({ id: 'r', title: 'x', library: 'retro', last_played_at: 'garbage', esde_last_played: '2026-09-24T20:00:00Z' }).last,
+  '2026-09-24T20:00:00Z', 'an unparseable date never wins over a real one')
 ok(playStatsOf({ id: 'a', title: 'x', esde_playtime_seconds: 60, esde_playcount: 2, esde_last_played: 'z' }),
   { seconds: 60, count: 2, last: 'z' },
   'before migration 096 the ES-DE figures are still read')
@@ -86,8 +109,13 @@ ok(playStatsOf({ id: 'a', title: 'x' }), { seconds: null, count: null, last: nul
   'a row with neither reports nothing rather than zero')
 // A Steam row has no esde_* at all — it must still count.
 ok(computePlaytimeStats([
-  { id: 's', title: 'Steam game', play_seconds: 7200, play_count: 3, last_played_at: '2026-09-01T00:00:00Z' },
+  { id: 's', title: 'Steam game', library: 'steam', play_seconds: 7200, play_count: 3, last_played_at: '2026-09-01T00:00:00Z' },
 ]).totalSeconds, 7200, 'a provider row with only neutral columns is counted')
+ok(computePlaytimeStats([staleRetro]).totalSeconds, 36000, 'library totals use the live retro figure')
+ok(sortByRecentlyPlayed([
+  { id: 'steam-aug', title: 'a', library: 'steam', play_seconds: 9000, last_played_at: '2026-08-01T00:00:00Z' },
+  staleRetro,
+]).map(g => g.id), ['r', 'steam-aug'], 'a retro game played yesterday sorts above an August Steam session')
 
 // ── withinWindow ────────────────────────────────────────────────────────────
 const NOW = new Date('2026-09-16T12:00:00Z')

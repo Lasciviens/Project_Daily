@@ -8,8 +8,11 @@ import { TgMobileGamepad } from './TgMobileGlyph'
 import { TgMobileScope } from './TgMobileScope'
 import { TgMobileFilterSheet } from './TgMobileFilterSheet'
 
-// Horizontal padding that also clears a landscape notch.
-const GUTTER = 'pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]'
+// Horizontal padding that also clears a landscape notch — the design's ~20px
+// phone gutter, matching the grid's cover edges. The chip row's scroll padding
+// repeats it so a chip scrolled into view keeps the gutter.
+const GUTTER = 'pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]'
+const SCROLL_GUTTER = 'scroll-pl-[max(1.25rem,env(safe-area-inset-left))] scroll-pr-[max(1.25rem,env(safe-area-inset-right))]'
 
 export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
   platforms: PlatformCount[]
@@ -25,12 +28,20 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
   const sort = useTestGameStore(s => s.sort)
   const [searchOpen, setSearchOpen] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  // An open but empty field doesn't follow you to another section (it would
+  // come back focused, keyboard up, on a tab where you never asked for it).
+  const [searchSection, setSearchSection] = useState(section)
+  if (searchSection !== section) {
+    setSearchSection(section)
+    setSearchOpen(false)
+  }
 
+  // Search, filters and sort only exist where there is a game list to narrow.
+  const hasFilters = section !== 'analytics' && section !== 'advanced'
   // A live query keeps the field open, so the list is never filtered by text you can't see.
-  const showSearch = searchOpen || search !== ''
+  const showSearch = hasFilters && (searchOpen || search !== '')
   const closeSearch = () => { setSearch(''); setSearchOpen(false) }
 
-  const hasFilters = section !== 'analytics' && section !== 'advanced'
   const showStatus = section === 'library'
   const showSort = section !== 'queue' // the queue is always in play order
   const filtered = (showStatus && status !== 'all') || genre != null || (showSort && sort !== 'title')
@@ -48,15 +59,17 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
           <h1 className="truncate text-[19px] font-bold tracking-[-0.01em]">Game Library</h1>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => (showSearch ? closeSearch() : setSearchOpen(true))}
-            aria-label={showSearch ? 'Close search' : 'Search games'}
-            aria-expanded={showSearch}
-            className="tg-icon-btn"
-          >
-            <Search size={20} strokeWidth={1.9} />
-          </button>
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={() => (showSearch ? closeSearch() : setSearchOpen(true))}
+              aria-label={showSearch ? 'Close search' : 'Search games'}
+              aria-expanded={showSearch}
+              className="tg-icon-btn"
+            >
+              <Search size={20} strokeWidth={1.9} />
+            </button>
+          )}
           <TgUserMenu />
         </div>
       </div>
@@ -107,7 +120,7 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
       </div>
 
       {section === 'advanced' && header.tabs.length > 0 && (
-        <div className={`tg-scroll-x flex gap-2 pb-2 ${GUTTER}`}>
+        <div className={`tg-scroll-x flex gap-2 pb-2 ${GUTTER} ${SCROLL_GUTTER}`}>
           {header.tabs.map(t => {
             const active = t.key === header.activeTab
             return (

@@ -1,11 +1,11 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { shouldAutoMarkPlaying } from '../gameStats'
+import { playStatsOf, shouldAutoMarkPlaying } from '../gameStats'
 import type {
   Game, GamePlatform, QueueGame, PlayStatus,
   CreateGameInput, GamePatch, GamePlatformInput, GameLibrary,
 } from '../types'
-import type { StatsRow } from '../gameStats'
+import type { PlayStatRow, StatsRow } from '../gameStats'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -82,10 +82,50 @@ async function fetchAllPages<T>(
   return out
 }
 
+// ─── List columns ────────────────────────────────────────────────────────────
+// List reads name every column EXCEPT the two heavy blobs nothing in a list
+// reads: `games.provider_data` (migration 099, a provider's raw payload) and
+// `game_platforms.esde_source` (migration 100, the full parsed gamelist XML of
+// every variant). Named one by one rather than narrowed to what the grids
+// show, because `['games','all']` feeds several views that read region,
+// rom_status, performance and more. Before a migration adds one of these
+// columns the named list 42703s, and `withListColumns` retries with `*`.
+// `fetchGameDetail` keeps `*`: one row, and the record modal may want it all.
+const GAME_LIST_COLUMNS = [
+  'id', 'user_id', 'title', 'release_year', 'publisher', 'developer', 'description', 'storyline',
+  'genres', 'series_name', 'play_status', 'tier', 'rating', 'play_order', 'is_coop', 'coop_notes',
+  'is_iconic', 'play_notes', 'game_log', 'primary_cover_url', 'age_rating', 'players', 'modes',
+  'screenshot_url', 'fanart_url', 'external_ref', 'external_source', 'synced_at', 'needs_review',
+  'esde_playcount', 'esde_last_played', 'esde_playtime_seconds', 'created_at', 'updated_at',
+  // 090 · 096 · 099
+  'started_at', 'finished_at', 'library', 'play_seconds', 'play_count', 'last_played_at', 'media',
+].join(', ')
+
+const PLATFORM_LIST_COLUMNS = [
+  'id', 'user_id', 'game_id', 'system', 'emulator', 'emulator_type', 'performance', 'performance_notes',
+  'cover_url', 'region', 'rom_status', 'rom_url', 'folder_path', 'is_primary_variant', 'version_title',
+  'rating', 'release_date', 'box_url', 'wheel_url', 'external_ref', 'external_source', 'synced_at',
+  'needs_review', 'created_at', 'updated_at',
+  // 093 · 100
+  'esde_system', 'esde_path', 'esde_playcount', 'esde_playtime_seconds', 'esde_last_played',
+  'esde_source_hash', 'esde_assets',
+].join(', ')
+
+/** Runs a list read with the named columns, and once more with `*` if the
+ *  database is older than one of them. */
+async function withListColumns<T>(columns: string, read: (columns: string) => Promise<T>): Promise<T> {
+  try {
+    return await read(columns)
+  } catch (e) {
+    if (!isMissingColumn(e)) throw e
+    return read('*')
+  }
+}
+
 /** Every platform row this user owns — RLS already scopes it, so no filter. */
 async function fetchAllPlatformRows(): Promise<GamePlatform[]> {
-  return fetchAllPages<GamePlatform>((from, to) =>
-    supabase.from('game_platforms').select('*').range(from, to))
+  return withListColumns(PLATFORM_LIST_COLUMNS, cols => fetchAllPages<GamePlatform>((from, to) =>
+    supabase.from('game_platforms').select(cols).range(from, to).overrideTypes<GamePlatform[], { merge: false }>()))
 }
 
 /**
@@ -98,12 +138,15 @@ async function fetchAllPlatformsFor(gameIds: string[]): Promise<GamePlatform[]> 
   if (gameIds.length === 0) return []
   const chunks: string[][] = []
   for (let i = 0; i < gameIds.length; i += IN_CHUNK) chunks.push(gameIds.slice(i, i + IN_CHUNK))
-  const results = await Promise.all(chunks.map(async chunk => {
-    const { data, error } = await supabase.from('game_platforms').select('*').in('game_id', chunk)
-    if (error) { if (isMissingTable(error)) return []; throw error }
-    return data ?? []
-  }))
-  return results.flat()
+  return withListColumns(PLATFORM_LIST_COLUMNS, async cols => {
+    const results = await Promise.all(chunks.map(async chunk => {
+      const { data, error } = await supabase.from('game_platforms').select(cols).in('game_id', chunk)
+        .overrideTypes<GamePlatform[], { merge: false }>()
+      if (error) { if (isMissingTable(error)) return []; throw error }
+      return data ?? []
+    }))
+    return results.flat()
+  })
 }
 
 // (An explicit EMPTY_STATS constant used to live here for the pre-migration
@@ -123,18 +166,26 @@ async function fetchAllPlatformsFor(gameIds: string[]): Promise<GamePlatform[]> 
  * It retries unscoped in that case: every row IS retro before the migration.
  */
 export async function fetchAllGames(): Promise<Game[]> {
-  let rows: Omit<Game, 'platforms'>[]
+  // The two reads do not depend on each other, so they run side by side.
+  // Every game is wanted here, so the platform table is read whole rather
+  // than asking for 1225 ids by name.
+  const [rows, platforms] = await Promise.all([fetchRetroGameRows(), fetchAllPlatformRows()])
+  return attachPlatforms(rows, platforms)
+}
+
+async function fetchRetroGameRows(): Promise<Omit<Game, 'platforms'>[]> {
+  const read = (cols: string, scoped: boolean) => fetchAllPages<Omit<Game, 'platforms'>>((from, to) => {
+    const q = supabase.from('games').select(cols)
+    return (scoped ? q.eq('library', 'retro') : q).order('title', { ascending: true }).range(from, to)
+      .overrideTypes<Omit<Game, 'platforms'>[], { merge: false }>()
+  })
   try {
-    rows = await fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
-      supabase.from('games').select('*').eq('library', 'retro').order('title', { ascending: true }).range(from, to))
+    return await withListColumns(GAME_LIST_COLUMNS, cols => read(cols, true))
   } catch (e) {
     if (!isMissingColumn(e)) throw e
-    rows = await fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
-      supabase.from('games').select('*').order('title', { ascending: true }).range(from, to))
+    // Pre-096: no `library` column to filter on, and every row IS retro.
+    return read('*', false)
   }
-  // Every game is wanted here, so read the platform table whole rather than
-  // asking for 1225 ids by name.
-  return attachPlatforms(rows, await fetchAllPlatformRows())
 }
 
 export async function fetchGameDetail(id: string): Promise<Game> {
@@ -190,10 +241,13 @@ export async function fetchGamesNeedingReview(): Promise<Game[]> {
 }
 
 export async function fetchPlayQueue(): Promise<QueueGame[]> {
-  const { data: games, error } = await supabase
-    .from('games').select('*').not('play_order', 'is', null).order('play_order', { ascending: true })
-  if (error) { if (isMissingTable(error)) return []; throw error }
-  const rows = games ?? []
+  const rows = await withListColumns(GAME_LIST_COLUMNS, async cols => {
+    const { data, error } = await supabase
+      .from('games').select(cols).not('play_order', 'is', null).order('play_order', { ascending: true })
+      .overrideTypes<Omit<Game, 'platforms'>[], { merge: false }>()
+    if (error) { if (isMissingTable(error)) return []; throw error }
+    return data ?? []
+  })
   const platforms = await fetchAllPlatformsFor(rows.map(g => g.id))
   return attachPlatforms(rows, platforms) as QueueGame[]
 }
@@ -259,7 +313,7 @@ export async function updateGame(id: string, patch: GamePatch): Promise<void> {
 // matching Media's own "stamp once" convention for started_at/finished_at.
 export async function setPlayStatus(id: string, status: PlayStatus): Promise<void> {
   const { data: current, error: readErr } = await supabase
-    .from('games').select('started_at, finished_at, last_played_at').eq('id', id).single()
+    .from('games').select('id, title, library, started_at, finished_at, last_played_at, esde_last_played').eq('id', id).single()
   if (readErr) throw isMissingTable(readErr) ? new Error(NOT_MIGRATED) : readErr
 
   const patch: GamePatch = { play_status: status }
@@ -270,9 +324,11 @@ export async function setPlayStatus(id: string, status: PlayStatus): Promise<voi
   // games completed in one sitting used to stamp today on every one of them,
   // collapsing years of play history onto one afternoon. The provider's own
   // last session is the honest answer; now() is only the fallback for a game
-  // no provider ever reported a session for (a retro title, a manual add).
+  // no provider ever reported a session for (a manual add). Read through
+  // playStatsOf: for a retro row `last_played_at` is migration 096's frozen
+  // backfill and ES-DE's own date is the live one.
   if (status === 'completed' && !current?.finished_at) {
-    patch.finished_at = (current?.last_played_at as string | null) ?? now
+    patch.finished_at = (current ? playStatsOf(current as PlayStatRow).last : null) ?? now
   }
 
   const { error } = await supabase.from('games').update(patch).eq('id', id)
@@ -475,9 +531,10 @@ export async function fetchProviderRefs(library: GameLibrary): Promise<Set<strin
 /** Every game in one provider library, newest-played first. */
 export async function fetchLibraryGames(library: GameLibrary): Promise<Game[]> {
   try {
-    const rows = await fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
-      supabase.from('games').select('*').eq('library', library)
-        .order('last_played_at', { ascending: false, nullsFirst: false }).range(from, to))
+    const rows = await withListColumns(GAME_LIST_COLUMNS, cols => fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
+      supabase.from('games').select(cols).eq('library', library)
+        .order('last_played_at', { ascending: false, nullsFirst: false }).range(from, to)
+        .overrideTypes<Omit<Game, 'platforms'>[], { merge: false }>()))
     return attachPlatforms(rows, [])
   } catch (e) {
     if (isMissingColumn(e)) return []

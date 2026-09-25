@@ -132,3 +132,20 @@ export function TgErrorState({ error, onRetry }: { error: unknown; onRetry: () =
     </StateCard>
   )
 }
+
+/** Steam or PlayStation failed while the retro library loaded: the page stays
+ *  usable, and this says why those games are missing instead of hiding them. */
+export function TgProviderError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <div role="alert" className="tg-fade-in mb-3 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-[var(--tg-red-soft)] py-1.5 pl-3.5 pr-1.5">
+      <TriangleAlert aria-hidden size={18} strokeWidth={2} className="shrink-0 text-[var(--tg-red)]" />
+      <p className="min-w-0 flex-1 text-[13px] leading-snug text-[var(--tg-text)]">
+        <span className="font-semibold">Your Steam or PlayStation games couldn't be loaded.</span>{' '}
+        <span className="break-words tg-muted">{messageOf(error)}</span>
+      </p>
+      <button type="button" className="tg-btn tg-btn-secondary !px-3.5" onClick={onRetry}>
+        <RotateCw size={16} strokeWidth={2} />Try again
+      </button>
+    </div>
+  )
+}

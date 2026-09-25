@@ -1,16 +1,14 @@
 import { useTestGameStore } from '../testGameStore'
-import { ALL_PLATFORMS, OTHER_PLATFORMS, platformInfo, type PlatformCount } from '../testGameModel'
+import {
+  ALL_PLATFORMS, OTHER_PLATFORMS, platformInfo, platformLabels, type PlatformCount,
+} from '../testGameModel'
 import { PlatformIcon } from './platformArt'
 import { TgSidebarItem } from './TgSidebarItem'
 
-/** Two systems can share a short name ("Arcade" for MAME and FinalBurn Neo). */
-function labelsFor(platforms: PlatformCount[]): Map<string, string> {
-  const seen = new Map<string, number>()
-  for (const p of platforms) seen.set(p.info.short, (seen.get(p.info.short) ?? 0) + 1)
-  return new Map(platforms.map(p => [p.key, (seen.get(p.info.short) ?? 0) > 1 ? p.info.name : p.info.short]))
-}
-
-const iconClass = (active: boolean) => `tg-nav-icon ${active ? 'text-[var(--tg-accent)] !opacity-100' : ''}`
+// Bold 20px glyphs as the design draws them (`!` beats testGame.css's 18px):
+// near-white in dark mode and near-black in light, the accent when active.
+const iconClass = (active: boolean) =>
+  `tg-nav-icon !h-5 !w-5 !opacity-100 ${active ? 'text-[var(--tg-accent)]' : 'text-[var(--tg-text)]'}`
 
 /** The sidebar's PLATFORMS block: the biggest platforms, then one "Others" row. */
 export function TgSidebarPlatforms({ platforms, others }: { platforms: PlatformCount[]; others: PlatformCount[] }) {
@@ -21,7 +19,9 @@ export function TgSidebarPlatforms({ platforms, others }: { platforms: PlatformC
   if (platforms.length === 0 && others.length === 0) return null
 
   const inLibrary = section === 'library'
-  const labels = labelsFor(platforms)
+  // Every platform, shown or folded into Others, so a shared short name
+  // ("Arcade", "SNES") is spelled out whichever side its twin landed on.
+  const labels = platformLabels([...platforms, ...others])
   const toggle = (key: string) => setPlatform(inLibrary && platform === key ? ALL_PLATFORMS : key)
   const allActive = inLibrary && platform === ALL_PLATFORMS
   const othersActive = inLibrary && platform === OTHER_PLATFORMS
@@ -35,8 +35,8 @@ export function TgSidebarPlatforms({ platforms, others }: { platforms: PlatformC
           type="button"
           aria-pressed={allActive}
           onClick={() => setPlatform(ALL_PLATFORMS)}
-          className={`ml-auto inline-flex min-h-6 items-center rounded-md px-2 text-[11px] font-semibold transition-colors [@media(pointer:coarse)]:min-h-[44px] ${
-            allActive ? 'text-[var(--tg-accent)]' : 'text-[var(--tg-muted)] hover:text-[var(--tg-text)]'
+          className={`ml-auto inline-flex min-h-6 items-center justify-center rounded-md px-2 text-[11px] font-semibold transition-colors [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px] ${
+            allActive ? 'text-[var(--tg-accent)]' : 'text-[var(--tg-muted)] [@media(hover:hover)]:hover:text-[var(--tg-text)]'
           }`}
         >
           All

@@ -1,13 +1,17 @@
 import type { TgHeaderConfig } from '../tgTypes'
 import { PlatformWordmark, SectionGlyph } from './platformArt'
 
+// Idle status tabs: faint pills in dark mode, plain text in light (the
+// design's two variants) — `--tg-tab-idle-bg` from testGame.css when defined.
+const IDLE_TAB = 'bg-[var(--tg-tab-idle-bg,color-mix(in_srgb,var(--tg-panel)_55%,transparent))]'
+
 /** The main column's heading: logo, title, count line and the tab pills. */
 export function TgHeader({ config }: { config: TgHeaderConfig }) {
   const { title, subtitle, logo, platformKey, tabs, activeTab, onTab } = config
   const isPlatform = logo === 'platform' && !!platformKey
 
   return (
-    <header className="shrink-0 pb-3">
+    <header className="shrink-0 pb-1.5 pt-3">
       <div className={`flex min-h-[44px] items-center ${isPlatform ? 'gap-5' : 'gap-3.5'}`}>
         {isPlatform ? (
           <div className="flex h-11 min-w-[110px] max-w-[170px] shrink-0 items-center">
@@ -17,8 +21,8 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
           <SectionGlyph logo={logo} />
         )}
         <div className="min-w-0">
-          <h1 className="truncate text-[20px] font-bold leading-6 tracking-[-0.01em] text-[var(--tg-text)]">{title}</h1>
-          <p className="mt-0.5 truncate text-[12px] leading-4 text-[var(--tg-muted)]">{subtitle}</p>
+          <h1 className="truncate text-[24px] font-semibold leading-7 tracking-[-0.01em] text-[var(--tg-text)]">{title}</h1>
+          <p className="mt-0.5 truncate text-[11px] leading-4 text-[var(--tg-muted)]">{subtitle}</p>
         </div>
       </div>
 
@@ -33,7 +37,7 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
                 aria-pressed={active}
                 disabled={!onTab}
                 onClick={() => onTab?.(t.key)}
-                className={`tg-tab shrink-0 ${active ? 'is-active' : 'bg-[color-mix(in_srgb,var(--tg-panel)_55%,transparent)]'}`}
+                className={`tg-tab shrink-0 ${active ? 'is-active' : IDLE_TAB}`}
               >
                 {t.label}
                 {t.count != null && (

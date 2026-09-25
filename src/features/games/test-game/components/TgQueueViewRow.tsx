@@ -6,10 +6,11 @@ import {
   type TgGame, type TgStatusFilter,
 } from '../testGameModel'
 import { TgCover } from './TgCover'
+import { TgStatusIcon } from './TgStatusIcon'
 
 interface Props {
   game: TgGame
-  /** 1-based position in the queue as shown. */
+  /** 1-based place in the whole queue (a search can show a subset). */
   position: number
   selected: boolean
   canMoveUp: boolean
@@ -28,6 +29,8 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
   const seconds = playSeconds(game)
   const last = lastPlayedIso(game)
   const status = (game.play_status ?? 'backlog') as TgStatusFilter
+  const statusText = STATUS_TEXT[status] ?? status
+  const playtime = seconds != null ? formatPlaytime(seconds / 60) : null
 
   return (
     <li
@@ -40,7 +43,7 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
         type="button"
         onClick={() => onSelect(game.id)}
         aria-pressed={selected}
-        aria-label={`#${position} ${game.title}`}
+        aria-label={`#${position} ${game.title}, ${statusText}${playtime ? `, ${playtime} played` : ''}`}
         className="flex-1 min-w-0 min-h-[76px] flex items-center gap-3 sm:gap-4 py-2 text-left rounded-lg"
       >
         <span
@@ -62,14 +65,14 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
           <span className="block truncate text-[14px] font-semibold text-[var(--tg-text)]">{game.title}</span>
           <span className="block truncate text-[12px] tg-muted">{subtitleParts(game).join(' · ')}</span>
           <span data-status={status} className="mt-1 flex items-center gap-1.5 text-[12px] font-medium">
-            <span className="tg-dot" />
-            <span className="tg-status-text">{STATUS_TEXT[status] ?? status}</span>
+            <TgStatusIcon status={status} size={13} />
+            <span className="tg-status-text">{statusText}</span>
           </span>
         </span>
 
         <span className="hidden lg:flex w-40 shrink-0 flex-col items-end text-right text-[12px]">
           <span className="font-medium text-[var(--tg-text-2)] tabular-nums">
-            {seconds != null ? formatPlaytime(seconds / 60) : '—'}
+            {playtime ?? '—'}
           </span>
           <span className="tg-faint">{last ? `Last played ${formatDay(last)}` : 'Never played'}</span>
         </span>

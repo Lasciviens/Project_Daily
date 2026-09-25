@@ -11,10 +11,13 @@ export interface TgOption<T extends string> { value: T; label: string; count?: n
  * options are portaled, so the button IS the element that sits in the
  * caller's flex row. `icon` (optional) replaces the label below `lg`, where
  * the tablet top bar has no room for three text pills; the label stays
- * readable to screen readers there.
+ * readable to screen readers there. `active` (value differs from the
+ * default) then tints the icon pill and adds the phone filter button's dot,
+ * because an icon alone can't show that a filter is narrowing the shelf.
  */
 export function TgDropdown<T extends string>({
   value, options, onChange, buttonLabel, ariaLabel, align = 'start', className = '', fullWidth = false, icon,
+  active = false,
 }: {
   value: T
   options: TgOption<T>[]
@@ -25,17 +28,29 @@ export function TgDropdown<T extends string>({
   className?: string
   fullWidth?: boolean
   icon?: ReactNode
+  active?: boolean
 }) {
   // Rows without a status keep the dot's slot so every label lines up.
   const hasDots = options.some(o => o.status)
+  const iconActive = !!icon && active
   return (
     <Listbox value={value} onChange={onChange}>
       <ListboxLabel className="sr-only">{ariaLabel}</ListboxLabel>
       <ListboxButton
         title={icon ? buttonLabel : undefined}
-        className={`tg-select min-w-0 ${fullWidth ? 'w-full justify-between' : ''} ${className}`}
+        className={`tg-select relative min-w-0 ${fullWidth ? 'w-full justify-between' : ''} ${
+          iconActive ? 'max-lg:!border-[var(--tg-accent)]' : ''
+        } ${className}`}
       >
-        {icon && <span aria-hidden className="inline-flex lg:hidden">{icon}</span>}
+        {icon && (
+          <span aria-hidden className={`inline-flex lg:hidden ${iconActive ? 'text-[var(--tg-accent)]' : ''}`}>{icon}</span>
+        )}
+        {iconActive && (
+          <span
+            aria-hidden
+            className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[var(--tg-accent)] ring-2 ring-[var(--tg-panel)] lg:hidden"
+          />
+        )}
         <span className={icon ? 'sr-only lg:not-sr-only lg:min-w-0 lg:truncate' : 'min-w-0 truncate'}>{buttonLabel}</span>
         <ChevronDown aria-hidden className="tg-chev ml-auto shrink-0" strokeWidth={2} />
       </ListboxButton>

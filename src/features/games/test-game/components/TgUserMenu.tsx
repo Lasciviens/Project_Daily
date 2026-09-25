@@ -26,7 +26,7 @@ export function TgUserMenu({ className = '' }: { className?: string }) {
     <Menu>
       <MenuButton
         aria-label="Account menu"
-        className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-90 ${className}`}
+        className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity [@media(hover:hover)]:hover:opacity-90 ${className}`}
       >
         <TgUserMenuAvatar user={user} />
       </MenuButton>

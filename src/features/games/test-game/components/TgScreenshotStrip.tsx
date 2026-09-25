@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { TgLightbox } from './TgLightbox'
+import { isCoverFailed, reportCoverError } from './coverCache'
+import { smoothScroll } from './useShelfLayout'
 
 interface Props {
   images: string[]
@@ -9,15 +11,20 @@ interface Props {
   fullSize?: Readonly<Record<string, string>>
 }
 
+const RETRY_MS = 1200
+
 /** Three 16:9 thumbnails with a chevron, as drawn; a click opens the lightbox. */
 export function TgScreenshotStrip({ images, title, fullSize }: Props) {
   const trackRef = useRef<HTMLDivElement>(null)
-  const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set())
+  const [, bump] = useReducer((n: number) => n + 1, 0)
+  const [retried, setRetried] = useState<ReadonlySet<string>>(() => new Set())
   const [edges, setEdges] = useState({ left: false, right: false })
   const [open, setOpen] = useState<number | null>(null)
 
-  const shown = useMemo(() => images.filter(u => !failed.has(u)), [images, failed])
-  const large = useMemo(() => shown.map(u => fullSize?.[u] ?? u), [shown, fullSize])
+  // The shared cover cache: a URL that died once this session (in this strip,
+  // the hero or the backdrop) is not requested again.
+  const shown = images.filter(u => !isCoverFailed(u))
+  const large = shown.map(u => fullSize?.[u] ?? u)
 
   useEffect(() => {
     const el = trackRef.current
@@ -35,9 +42,15 @@ export function TgScreenshotStrip({ images, title, fullSize }: Props) {
 
   if (shown.length === 0) return null
 
+  // One retry per URL (a network blip is not a dead link), then it is dropped.
+  const onError = (url: string) => {
+    if (reportCoverError(url) === 'retry') window.setTimeout(() => setRetried(s => new Set(s).add(url)), RETRY_MS)
+    else bump()
+  }
+
   const page = (dir: 1 | -1) => {
     const el = trackRef.current
-    if (el) el.scrollBy({ left: dir * el.clientWidth, behavior: 'smooth' })
+    if (el) el.scrollBy({ left: dir * el.clientWidth, behavior: smoothScroll() })
   }
 
   return (
@@ -52,13 +65,14 @@ export function TgScreenshotStrip({ images, title, fullSize }: Props) {
             className="tg-thumb aspect-video w-[calc((100%_-_20px)/3)] shrink-0 snap-start"
           >
             <img
+              key={retried.has(url) ? `${url}#retry` : url}
               src={url}
               alt=""
               loading="lazy"
               decoding="async"
               draggable={false}
-              onError={() => setFailed(f => new Set(f).add(url))}
-              className="h-full w-full object-cover transition-transform duration-200 hover:scale-[1.04]"
+              onError={() => onError(url)}
+              className="h-full w-full object-cover transition-transform duration-200 [@media(hover:hover)]:hover:scale-[1.04]"
             />
           </button>
         ))}

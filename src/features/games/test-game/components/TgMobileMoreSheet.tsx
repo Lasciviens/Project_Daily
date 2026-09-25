@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Archive, ArrowLeft, ChartColumn, CircleCheck, Monitor, Moon, SlidersHorizontal, Sun,
+  Archive, ArrowLeft, ChartColumn, CircleCheckBig, Monitor, Moon, SlidersHorizontal, Sun,
   type LucideProps,
 } from 'lucide-react'
 import { useThemeStore, type ThemePreference } from '../../../../app/store'
@@ -33,7 +33,7 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
   const setTheme = useThemeStore(s => s.setTheme)
 
   const items: { key: TgSection; label: string; Icon: ComponentType<LucideProps>; count?: number }[] = [
-    { key: 'completed', label: 'Completed', Icon: CircleCheck, count: counts.completed },
+    { key: 'completed', label: 'Completed', Icon: CircleCheckBig, count: counts.completed },
     { key: 'backlog', label: 'Backlog', Icon: Archive, count: counts.backlog },
     { key: 'analytics', label: 'Analytics', Icon: ChartColumn },
     { key: 'advanced', label: 'Advanced tools', Icon: SlidersHorizontal },

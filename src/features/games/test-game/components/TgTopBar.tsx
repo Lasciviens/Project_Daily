@@ -11,18 +11,29 @@ import { TgUserMenu } from './TgUserMenu'
 
 /** Listbox values are strings; genres are never empty, so '' can mean "all". */
 const ALL_GENRES = ''
+const DEFAULT_SORT: TgSort = 'title'
 const SORT_OPTIONS = (Object.keys(SORT_LABEL) as TgSort[]).map(s => ({ value: s, label: SORT_LABEL[s] }))
 const ICON = 'h-4 w-4'
 // The design's pills sit on the panel colour (the phone's use the softer panel-2).
 // Below lg they turn icon-only and tighten so the tablet row never overflows.
 const PILL = '!bg-[var(--tg-panel)] max-lg:!px-2.5 lg:min-w-[104px]'
 
-/** Search, filters, view switch and account — across the main and detail columns. */
-export function TgTopBar({ genres, statusCounts, showStatus, showViews }: {
+/**
+ * Search, filters, view switch and account — across the main and detail
+ * columns. The shell hides whatever does nothing in the current section
+ * (Sort on the queue, which is always in play order; everything but the
+ * account menu on Analytics and Advanced).
+ */
+export function TgTopBar({
+  genres, statusCounts, showStatus, showViews, showSearch = true, showGenre = true, showSort = true,
+}: {
   genres: { genre: string; count: number }[]
   statusCounts: StatusCounts
   showStatus: boolean
   showViews: boolean
+  showSearch?: boolean
+  showGenre?: boolean
+  showSort?: boolean
 }) {
   const status = useTestGameStore(s => s.status)
   const setStatus = useTestGameStore(s => s.setStatus)
@@ -46,8 +57,10 @@ export function TgTopBar({ genres, statusCounts, showStatus, showViews }: {
   ]
 
   return (
-    <div className="relative z-10 flex h-16 shrink-0 items-center gap-1.5 px-5 lg:gap-2.5 xl:px-6">
-      <TgTopBarSearch className="min-w-[110px] max-w-[460px] flex-1" />
+    // The top inset keeps an installed iPad PWA's status bar off the controls,
+    // the right one a landscape phone's notch off the avatar.
+    <div className="relative z-10 flex h-[calc(4rem+env(safe-area-inset-top))] shrink-0 items-center gap-1.5 pl-5 pr-[max(1.25rem,env(safe-area-inset-right))] pt-[env(safe-area-inset-top)] lg:gap-2.5 xl:pl-6 xl:pr-[max(1.5rem,env(safe-area-inset-right))]">
+      {showSearch && <TgTopBarSearch className="min-w-[96px] max-w-[460px] flex-1" />}
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:gap-2.5">
         {showStatus && (
@@ -60,28 +73,35 @@ export function TgTopBar({ genres, statusCounts, showStatus, showViews }: {
             align="end"
             className={PILL}
             icon={<ListFilter className={ICON} strokeWidth={2} />}
+            active={status !== 'all'}
           />
         )}
-        <TgDropdown
-          value={genre ?? ALL_GENRES}
-          options={genreOptions}
-          onChange={v => setGenre(v === ALL_GENRES ? null : v)}
-          buttonLabel={genre ?? 'All Genres'}
-          ariaLabel="Filter by genre"
-          align="end"
-          className={`${PILL} lg:max-w-[140px] xl:max-w-[180px]`}
-          icon={<Tags className={ICON} strokeWidth={2} />}
-        />
-        <TgDropdown
-          value={sort}
-          options={SORT_OPTIONS}
-          onChange={setSort}
-          buttonLabel={`Sort: ${SORT_LABEL[sort]}`}
-          ariaLabel="Sort games"
-          align="end"
-          className={`${PILL} lg:min-w-[118px] lg:max-w-[150px] xl:max-w-[210px]`}
-          icon={<ArrowUpDown className={ICON} strokeWidth={2} />}
-        />
+        {showGenre && (
+          <TgDropdown
+            value={genre ?? ALL_GENRES}
+            options={genreOptions}
+            onChange={v => setGenre(v === ALL_GENRES ? null : v)}
+            buttonLabel={genre ?? 'All Genres'}
+            ariaLabel="Filter by genre"
+            align="end"
+            className={`${PILL} lg:max-w-[140px] xl:max-w-[180px]`}
+            icon={<Tags className={ICON} strokeWidth={2} />}
+            active={genre != null}
+          />
+        )}
+        {showSort && (
+          <TgDropdown
+            value={sort}
+            options={SORT_OPTIONS}
+            onChange={setSort}
+            buttonLabel={`Sort: ${SORT_LABEL[sort]}`}
+            ariaLabel="Sort games"
+            align="end"
+            className={`${PILL} lg:min-w-[118px] lg:max-w-[150px] xl:max-w-[210px]`}
+            icon={<ArrowUpDown className={ICON} strokeWidth={2} />}
+            active={sort !== DEFAULT_SORT}
+          />
+        )}
       </div>
 
       {showViews && <TgTopBarViews className="ml-2 shrink-0 lg:ml-4" />}

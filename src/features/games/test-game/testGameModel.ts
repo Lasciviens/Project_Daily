@@ -2,11 +2,12 @@
 //
 // Every decision the page makes about WHICH games to show, in WHAT order, on
 // WHICH shelf and with WHICH picture lives here, so the components only
-// render. Type-only imports on purpose (the `progressAggregate.ts`
-// convention): `scripts/verify-test-game-model.cjs` requires this file through
-// sucrase without a live Supabase client.
+// render. Only type imports and import-free modules (`gameStats.ts` is one —
+// the `progressAggregate.ts` convention): `scripts/verify-test-game-model.cjs`
+// requires this file through sucrase without a live Supabase client.
 
 import type { Game, PlayStatus } from '../types'
+import { playStatsOf } from '../gameStats'
 
 // ─── Page state vocabulary ───────────────────────────────────────────────────
 
@@ -105,14 +106,87 @@ const PLATFORMS: Record<string, PlatformSpec> = {
   androidgames: { short: 'Android',     name: 'Android games',            family: 'android',     brand: '#16a34a' },
 }
 
+/** The key a game with no platform variant at all is filed under. */
+export const NO_PLATFORM = 'unknown'
+
 export function platformInfo(key: string | null | undefined): PlatformInfo {
   const k = (key ?? '').trim().toLowerCase()
   if (k === ALL_PLATFORMS) return { key: k, short: 'All', name: 'All Games', family: 'other', brand: '#2f6bff' }
   if (k === OTHER_PLATFORMS) return { key: k, short: 'Others', name: 'Other Platforms', family: 'other', brand: '#64748b' }
+  // A game with no variant is still a game — "UNKNOWN" read like a console.
+  if (!k || k === NO_PLATFORM) return { key: NO_PLATFORM, short: 'No platform', name: 'No platform', family: 'other', brand: '#64748b' }
   const spec = PLATFORMS[k]
   if (spec) return { key: k, ...spec }
-  const label = k ? k.toUpperCase() : 'Unknown'
-  return { key: k || 'unknown', short: label, name: label, family: 'other', brand: '#64748b' }
+  const label = k.toUpperCase()
+  return { key: k, short: label, name: label, family: 'other', brand: '#64748b' }
+}
+
+/**
+ * Display labels for a list of platforms: the short name, or the full name
+ * when two platforms in the list share a short one ("SNES" for snes and
+ * snesna, "Arcade" for fbneo and mame, "Android" for the two Android folders).
+ * One helper so the sidebar, the phone scope and the status tabs agree.
+ */
+export function platformLabels(counts: PlatformCount[]): Map<string, string> {
+  const tally = (labels: string[]) => {
+    const m = new Map<string, number>()
+    for (const l of labels) m.set(l, (m.get(l) ?? 0) + 1)
+    return m
+  }
+  const shorts = tally(counts.map(c => c.info.short))
+  const picked = counts.map(c => [c.key, (shorts.get(c.info.short) ?? 0) > 1 ? c.info.name : c.info.short] as const)
+  // Two platforms whose full names ALSO collide keep their key, so no two
+  // rows in one list ever read the same.
+  const labels = tally(picked.map(([, l]) => l))
+  return new Map(picked.map(([k, l]) => [k, (labels.get(l) ?? 0) > 1 ? `${l} (${k})` : l]))
+}
+
+// ─── Free-text systems ───────────────────────────────────────────────────────
+
+/** Lower-case, letters and digits only: "Wii U" → "wiiu", "PS-1" → "ps1". */
+const normSystem = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+// Spellings no key, short label or full name covers. Genesis and Mega Drive
+// stay two platforms on purpose: they are two ES-DE folders (NA vs PAL sets).
+const EXPLICIT_ALIASES: Record<string, string> = {
+  ps1: 'psx', playstation1: 'psx', psone: 'psx',
+  // A retro row's "PlayStation" is the first console. The PSN library is a
+  // provider (filed by `library`, never by a system string), so it is left
+  // out of the alias table below entirely.
+  playstation: 'psx',
+  playstation2: 'ps2',
+  gamecube: 'gc', ngc: 'gc',
+  ds: 'nds', '3ds': 'n3ds',
+  arcade: 'fbneo',
+  android: 'androidgames',
+}
+
+const SYSTEM_ALIASES: ReadonlyMap<string, string> = (() => {
+  const m = new Map<string, string>(Object.entries(EXPLICIT_ALIASES))
+  const entries = Object.entries(PLATFORMS).filter(([key]) => key !== 'playstation')
+  // First writer wins: explicit aliases, then keys, then full names, then
+  // short labels (the only ones two platforms share).
+  for (const pick of [(k: string) => k, (_: string, s: PlatformSpec) => s.name, (_: string, s: PlatformSpec) => s.short]) {
+    for (const [key, spec] of entries) {
+      const a = normSystem(pick(key, spec))
+      if (a && !m.has(a)) m.set(a, key)
+    }
+  }
+  return m
+})()
+
+/**
+ * The platform key for a `game_platforms.system` value. `system` is free text
+ * the user can rename ("GameCube", "PS1", "Wii U"), so it is normalised and
+ * resolved through every known spelling. Deliberately NOT `esde_system`: that
+ * is ES-DE's folder, while `system` is what the user chose to call the copy.
+ * An unknown system keeps its normalised spelling, so "PC 98" and "pc98" are
+ * still one platform.
+ */
+export function resolveSystemKey(system: string | null | undefined): string {
+  const n = normSystem(system ?? '')
+  if (!n) return NO_PLATFORM
+  return SYSTEM_ALIASES.get(n) ?? n
 }
 
 // ─── Derived game rows ───────────────────────────────────────────────────────
@@ -124,6 +198,10 @@ export interface TgGame extends Game {
   hidden: boolean
   /** Steam rows carry their appid in `external_ref`. */
   steamAppId: number | null
+  /** A Steam row whose cached store type is known and is not "game" (a tool,
+   *  a DLC, a soundtrack). Such a row is hidden while its status is undecided,
+   *  so a menu must never offer it a status that would hide it again. */
+  notAGame: boolean
 }
 
 /**
@@ -135,8 +213,7 @@ export function derivePlatformKey(g: Game): string {
   if (g.library === 'steam') return 'steam'
   if (g.library === 'playstation') return 'playstation'
   const primary = g.platforms?.find(p => p.is_primary_variant) ?? g.platforms?.[0]
-  const sys = primary?.system?.trim().toLowerCase()
-  return sys || 'unknown'
+  return resolveSystemKey(primary?.system)
 }
 
 export function steamAppIdOf(g: Game): number | null {
@@ -145,23 +222,56 @@ export function steamAppIdOf(g: Game): number | null {
   return Number.isInteger(n) && n > 0 ? n : null
 }
 
+/** A Steam row whose cached store type is known and is not a game. */
+export function isNotAGame(g: Game, steamType: string | null | undefined): boolean {
+  if (g.library !== 'steam') return false
+  const t = String(steamType ?? '').trim().toLowerCase()
+  return !!t && t !== 'game'
+}
+
+/**
+ * A status nobody chose. `backlog` is the import default, and a `playing` with
+ * neither date was set by the importer's "has real hours" promotion
+ * (`shouldAutoMarkPlaying`) — `setPlayStatus` stamps `started_at` whenever a
+ * person picks Playing, so the missing date is what tells the two apart.
+ */
+export function isUndecidedStatus(g: Pick<Game, 'play_status' | 'started_at' | 'finished_at'>): boolean {
+  const s = g.play_status
+  return !s || s === 'backlog' || (s === 'playing' && !g.started_at && !g.finished_at)
+}
+
 /**
  * Whether a row stays out of the grid.
  *
- * Mirrors `providerEntries.isHiddenEntry` (kept import-free here): an explicit
- * `hidden` status always hides, any other explicit status always shows, and
- * only a Steam row whose cached store type is known NOT to be a game hides
- * automatically. An unclassified app stays visible — hiding what has merely
- * not been looked up yet would read as the library losing data.
+ * An explicit `hidden` status always hides. Otherwise only a Steam row known
+ * NOT to be a game hides, and only while its status is undecided (see
+ * `isUndecidedStatus`). An unclassified app stays visible — hiding what has
+ * merely not been looked up yet would read as the library losing data.
+ *
+ * Stricter than `providerEntries.isHiddenEntry` (/games), which treats every
+ * status as a decision: here the importer's own writes are not evidence of
+ * interest, so a Steam tool it promoted to Playing does not fill the shelf.
  */
 export function isHiddenRow(g: Game, steamType: string | null | undefined): boolean {
   if (g.play_status === 'hidden') return true
-  if (g.library !== 'steam') return false
-  const t = String(steamType ?? '').trim().toLowerCase()
-  if (!t || t === 'game') return false
-  // A deliberately tracked app (playing/completed/…) stays; `backlog` is the
-  // import default, so it is not evidence of interest.
-  return g.play_status === 'backlog' || !g.play_status
+  return isNotAGame(g, steamType) && isUndecidedStatus(g)
+}
+
+// Keeps each derived row's identity while its source row and classification
+// are unchanged. TanStack's structural sharing keeps the objects of rows a
+// refetch did not change, so a status change re-renders one memoised card
+// instead of the whole library.
+const derivedCache = new WeakMap<Game, TgGame>()
+
+function deriveOne(g: Game, steamAppId: number | null, notAGame: boolean): TgGame {
+  return {
+    ...g,
+    platforms: g.platforms ?? [],
+    platformKey: derivePlatformKey(g),
+    steamAppId,
+    notAGame,
+    hidden: g.play_status === 'hidden' || (notAGame && isUndecidedStatus(g)),
+  }
 }
 
 export function deriveGames(games: Game[], steamTypes?: Map<number, string | null>): TgGame[] {
@@ -171,13 +281,12 @@ export function deriveGames(games: Game[], steamTypes?: Map<number, string | nul
     if (!g?.id || seen.has(g.id)) continue
     seen.add(g.id)
     const steamAppId = steamAppIdOf(g)
-    out.push({
-      ...g,
-      platforms: g.platforms ?? [],
-      platformKey: derivePlatformKey(g),
-      steamAppId,
-      hidden: isHiddenRow(g, steamAppId != null ? steamTypes?.get(steamAppId) : null),
-    })
+    const notAGame = isNotAGame(g, steamAppId != null ? steamTypes?.get(steamAppId) : null)
+    const hit = derivedCache.get(g)
+    if (hit && hit.notAGame === notAGame) { out.push(hit); continue }
+    const tg = deriveOne(g, steamAppId, notAGame)
+    derivedCache.set(g, tg)
+    out.push(tg)
   }
   return out
 }
@@ -289,16 +398,22 @@ const time = (iso: string | null | undefined) => {
   const t = iso ? Date.parse(iso) : NaN
   return Number.isFinite(t) ? t : -Infinity
 }
-const lastPlayedOf = (g: Game) => g.last_played_at ?? g.esde_last_played ?? null
-const playSecondsOf = (g: Game) => g.play_seconds ?? g.esde_playtime_seconds ?? 0
+
+/** Sorts by a precomputed key, so a comparator never re-derives play stats. */
+function sortByKey<T>(games: T[], key: (g: T) => number, dir: 1 | -1, tie: (a: T, b: T) => number): T[] {
+  return games
+    .map(g => ({ g, k: key(g) }))
+    .sort((a, b) => (a.k === b.k ? 0 : a.k < b.k ? -dir : dir) || tie(a.g, b.g))
+    .map(x => x.g)
+}
 
 export function sortGames<T extends Game>(games: T[], sort: TgSort): T[] {
   const byTitle = (a: T, b: T) => collator.compare(a.title, b.title)
   const gs = [...games]
   switch (sort) {
     case 'title-desc': return gs.sort((a, b) => byTitle(b, a))
-    case 'recent':     return gs.sort((a, b) => time(lastPlayedOf(b)) - time(lastPlayedOf(a)) || byTitle(a, b))
-    case 'playtime':   return gs.sort((a, b) => playSecondsOf(b) - playSecondsOf(a) || byTitle(a, b))
+    case 'recent':     return sortByKey(gs, g => time(lastPlayedIso(g)), -1, byTitle)
+    case 'playtime':   return sortByKey(gs, g => playSeconds(g) ?? 0, -1, byTitle)
     case 'rating':     return gs.sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1) || byTitle(a, b))
     case 'year-desc':  return gs.sort((a, b) => (b.release_year ?? -Infinity) - (a.release_year ?? -Infinity) || byTitle(a, b))
     case 'year-asc':   return gs.sort((a, b) => (a.release_year ?? Infinity) - (b.release_year ?? Infinity) || byTitle(a, b))
@@ -307,9 +422,30 @@ export function sortGames<T extends Game>(games: T[], sort: TgSort): T[] {
   }
 }
 
-/** The queue in play order, whatever sort the library uses. */
+/**
+ * The queue in play order, whatever sort the library uses. Two rows can share
+ * a `play_order` (two quick "Add to Play Queue" taps), so ties fall back to
+ * the title and then the id — every view numbers a tie the same way.
+ */
 export function queueOrder<T extends Game>(games: T[]): T[] {
-  return games.filter(g => g.play_order != null).sort((a, b) => (a.play_order ?? 0) - (b.play_order ?? 0))
+  return games
+    .filter(g => g.play_order != null)
+    .sort((a, b) => (a.play_order ?? 0) - (b.play_order ?? 0)
+      || collator.compare(a.title, b.title)
+      || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
+/**
+ * Each queued game's place in the Play Queue ("#3"), 1-based, counted among
+ * the rows the queue actually shows: hidden games keep their `play_order`
+ * (hiding does not clear it) but take no place. `play_order` itself can have
+ * gaps, so its raw value would disagree with the list. The map's size is the
+ * queue's length — use it for every badge.
+ */
+export function queueRanks(games: TgGame[]): Map<string, number> {
+  const ranks = new Map<string, number>()
+  queueOrder(games.filter(g => !g.hidden)).forEach((g, i) => ranks.set(g.id, i + 1))
+  return ranks
 }
 
 // ─── Shelf layout ────────────────────────────────────────────────────────────
@@ -335,19 +471,28 @@ export function chunkShelves<T>(items: T[], rows: number, cols: number): T[][] {
 
 // ─── Rating ──────────────────────────────────────────────────────────────────
 
-/** `games.rating` is 0–10 (migration 089); the design shows it out of 5. */
+/**
+ * `games.rating` is 0–10 (migration 089); the design shows it out of 5.
+ * Exact, not rounded to a half star: a 9.5 is 4.75 stars and reads "4.75/5" —
+ * rounding it to 5 would claim a rating nobody gave. Two decimals at most.
+ */
 export function starsFromRating(rating: number | null | undefined): number | null {
-  if (rating == null || !Number.isFinite(Number(rating))) return null
-  return Math.round(Math.min(10, Math.max(0, Number(rating)))) / 2
+  if (rating == null) return null
+  const r = Number(rating)
+  if (!Number.isFinite(r)) return null
+  return Math.round(Math.min(10, Math.max(0, r)) * 50) / 100
 }
 
+/** Clicks set whole or half stars, written back on the 0–10 scale. */
 export function ratingFromStars(stars: number): number {
   return Math.min(10, Math.max(0, Math.round(stars * 2)))
 }
 
+/** "4.0" · "4.5" · "4.75" — whole stars keep one decimal like the design. */
 export function formatStars(stars: number | null): string {
-  if (stars == null) return '—'
-  return Number.isInteger(stars) ? `${stars}.0` : String(stars)
+  if (stars == null || !Number.isFinite(stars)) return '—'
+  const s = Math.round(stars * 100) / 100
+  return Number.isInteger(s) ? s.toFixed(1) : String(s)
 }
 
 // ─── Images ──────────────────────────────────────────────────────────────────
@@ -395,10 +540,43 @@ function esdeOf(g: Game, ...categories: string[]): string[] {
   return out
 }
 
+// A Steam header (460×215, landscape) is a store banner, not box art: stretched
+// into a portrait case it was cropped to an unreadable strip. The importer
+// saves it as `primary_cover_url`, so it is matched by path, on any CDN host.
+const STEAM_HEADER = /\/apps\/\d+\/header\.jpg(?:[?#]|$)/i
+const isSteamHeader = (u: string) => STEAM_HEADER.test(u)
+
+/**
+ * The Steam header banner, for the case art to paint inside its front panel
+ * when a Steam row has no portrait capsule. Also recognised on a non-Steam row
+ * whose saved cover happens to be one.
+ */
+export function steamHeaderOf(g: TgGame): string | null {
+  if (g.steamAppId) return steamArt.header(g.steamAppId)
+  const saved = typeof g.primary_cover_url === 'string' ? g.primary_cover_url.trim() : ''
+  return isUrl(saved) && isSteamHeader(saved) ? saved : null
+}
+
+const PSN_IMAGE_HOST = 'image.api.playstation.com'
+const PSN_COVER_WIDTH = 440
+
+/**
+ * PlayStation's image CDN resizes on request (`?w=`), and an unsized store
+ * cover is the full-resolution original — megabytes per card. The sized copy
+ * goes first; the original stays right behind it for the error walk.
+ */
+function psnSized(u: string): string | null {
+  let url: URL
+  try { url = new URL(u) } catch { return null }
+  if (url.hostname !== PSN_IMAGE_HOST || url.searchParams.has('w')) return null
+  url.searchParams.set('w', String(PSN_COVER_WIDTH))
+  return url.toString()
+}
+
 /** Box art, best first. The cover component walks this list on load errors. */
 export function coverCandidates(g: TgGame): string[] {
   const primary = g.platforms.find(p => p.is_primary_variant) ?? g.platforms[0]
-  return uniq([
+  const raw = uniq([
     g.steamAppId ? steamArt.portrait(g.steamAppId) : null,
     g.primary_cover_url,
     primary?.cover_url,
@@ -408,7 +586,8 @@ export function coverCandidates(g: TgGame): string[] {
     ...g.platforms.flatMap(p => [p.cover_url, p.box_url]),
     ...mediaOf(g, 'box-3D'),
     ...esdeOf(g, '3dboxes'),
-  ])
+  ]).filter(u => !isSteamHeader(u))
+  return uniq(raw.flatMap(u => [psnSized(u), u]))
 }
 
 /** Wide scene art for the detail panel's hero, best first. */
@@ -469,5 +648,13 @@ export function subtitleParts(g: TgGame, genreFallback?: string | null): string[
   ].filter((x): x is string => !!x)
 }
 
-export function lastPlayedIso(g: Game): string | null { return lastPlayedOf(g) }
-export function playSeconds(g: Game): number | null { return g.play_seconds ?? g.esde_playtime_seconds ?? null }
+// ─── Play statistics ─────────────────────────────────────────────────────────
+// One reading for the sort AND every display, shared with /games through
+// `gameStats.ts::playStatsOf`. For a retro row the neutral columns are a
+// one-time backfill (migration 096) that nothing updates any more — ES-DE
+// keeps writing only `esde_*` — so reading them first froze play time and
+// "last played" at the day 096 ran.
+
+export function lastPlayedIso(g: Game): string | null { return playStatsOf(g).last }
+export function playSeconds(g: Game): number | null { return playStatsOf(g).seconds }
+export function playCount(g: Game): number | null { return playStatsOf(g).count }
