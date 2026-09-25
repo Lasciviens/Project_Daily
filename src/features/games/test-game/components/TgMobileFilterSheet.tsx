@@ -1,72 +1,73 @@
 import { useTestGameStore } from '../testGameStore'
-import {
-  SORT_LABEL, STATUS_FILTERS, STATUS_TEXT,
-  type StatusCounts, type TgSort, type TgStatusFilter,
-} from '../testGameModel'
+import { STATUS_FILTERS, STATUS_TEXT, type StatusCounts } from '../testGameModel'
+import type { PlayStatus } from '../../types'
 import { TgMobileSheet } from './TgMobileSheet'
 
-const SORTS = Object.keys(SORT_LABEL) as TgSort[]
-// Genre is nullable in the store; the chip row needs a string key for "All".
-const ALL_GENRES = ''
-
-function ChipGroup<T extends string>({ label, options, value, onChange }: {
+/**
+ * A multi-select chip row: each chip toggles on its own, the leading "All"
+ * chip is lit while nothing is picked and clears the picks when tapped.
+ */
+function ChipGroup<T extends string>({ label, allLabel, options, values, onToggle, onClear }: {
   label: string
+  allLabel: string
   options: { value: T; label: string; count?: number }[]
-  value: T
-  onChange: (v: T) => void
+  values: readonly T[]
+  onToggle: (v: T) => void
+  onClear: () => void
 }) {
+  const chip = (key: string, text: string, active: boolean, onClick: () => void, count?: number) => (
+    <button
+      key={key}
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`tg-tab border ${
+        active ? 'is-active border-transparent' : 'border-[var(--tg-border)] bg-[var(--tg-panel-2)]'
+      }`}
+    >
+      <span>{text}</span>
+      {count != null && <span className="tg-tab-count">{count}</span>}
+    </button>
+  )
   return (
     <section className="mt-5 first:mt-1">
-      <h3 className="tg-section-label mb-2.5">{label}</h3>
+      <h3 className="tg-section-label mb-2.5">
+        {label}
+        {values.length > 1 && <span className="ml-1.5 normal-case tracking-normal tg-muted">· {values.length} picked</span>}
+      </h3>
       <div role="group" aria-label={label} className="flex flex-wrap gap-2">
-        {options.map(o => {
-          const active = o.value === value
-          return (
-            <button
-              key={o.value}
-              type="button"
-              aria-pressed={active}
-              onClick={() => onChange(o.value)}
-              className={`tg-tab border ${
-                active ? 'is-active border-transparent' : 'border-[var(--tg-border)] bg-[var(--tg-panel-2)]'
-              }`}
-            >
-              <span>{o.label}</span>
-              {o.count != null && <span className="tg-tab-count">{o.count}</span>}
-            </button>
-          )
-        })}
+        {chip('__all', allLabel, values.length === 0, onClear)}
+        {options.map(o => chip(o.value, o.label, values.includes(o.value), () => onToggle(o.value), o.count))}
       </div>
     </section>
   )
 }
 
-/** Status (Library only), Genre and Sort — bound live to the store; "Done" only closes. */
-export function TgMobileFilterSheet({ open, onClose, genres, statusCounts, showStatus, showSort }: {
+/** Status (Library only) and Genre, multi-select and bound live to the store; "Done" only closes. */
+export function TgMobileFilterSheet({ open, onClose, genres, statusCounts, showStatus }: {
   open: boolean
   onClose: () => void
   genres: { genre: string; count: number }[]
   statusCounts: StatusCounts
   showStatus: boolean
-  showSort: boolean
 }) {
-  const status = useTestGameStore(s => s.status)
-  const genre = useTestGameStore(s => s.genre)
-  const sort = useTestGameStore(s => s.sort)
-  const setStatus = useTestGameStore(s => s.setStatus)
-  const setGenre = useTestGameStore(s => s.setGenre)
-  const setSort = useTestGameStore(s => s.setSort)
+  const statuses = useTestGameStore(s => s.statuses)
+  const picked = useTestGameStore(s => s.genres)
+  const toggleStatus = useTestGameStore(s => s.toggleStatus)
+  const toggleGenre = useTestGameStore(s => s.toggleGenre)
+  const setStatuses = useTestGameStore(s => s.setStatuses)
+  const setGenres = useTestGameStore(s => s.setGenres)
 
-  const changed = (showStatus && status !== 'all') || genre != null || (showSort && sort !== 'title')
+  const changed = (showStatus && statuses.length > 0) || picked.length > 0
   function reset() {
-    if (showStatus) setStatus('all')
-    setGenre(null)
-    if (showSort) setSort('title')
+    if (showStatus) setStatuses([])
+    setGenres([])
   }
 
   // A genre picked on another shelf may have no games here; keep it listed
   // (at 0) so the empty grid it causes can be undone from this sheet.
-  const genreList = genre && !genres.some(g => g.genre === genre) ? [{ genre, count: 0 }, ...genres] : genres
+  const missing = picked.filter(p => !genres.some(g => g.genre === p)).map(genre => ({ genre, count: 0 }))
+  const genreList = [...missing, ...genres]
 
   return (
     <TgMobileSheet
@@ -89,30 +90,25 @@ export function TgMobileFilterSheet({ open, onClose, genres, statusCounts, showS
       }
     >
       {showStatus && (
-        <ChipGroup<TgStatusFilter>
+        <ChipGroup<PlayStatus>
           label="Status"
-          value={status}
-          onChange={setStatus}
-          options={STATUS_FILTERS.map(s => ({ value: s, label: STATUS_TEXT[s], count: statusCounts[s] }))}
+          allLabel="All"
+          values={statuses}
+          onToggle={toggleStatus}
+          onClear={() => setStatuses([])}
+          options={STATUS_FILTERS.filter(s => s !== 'all').map(s => ({
+            value: s as PlayStatus, label: STATUS_TEXT[s], count: statusCounts[s],
+          }))}
         />
       )}
       <ChipGroup<string>
         label="Genre"
-        value={genre ?? ALL_GENRES}
-        onChange={v => setGenre(v === ALL_GENRES ? null : v)}
-        options={[
-          { value: ALL_GENRES, label: 'All genres' },
-          ...genreList.map(g => ({ value: g.genre, label: g.genre, count: g.count })),
-        ]}
+        allLabel="All genres"
+        values={picked}
+        onToggle={toggleGenre}
+        onClear={() => setGenres([])}
+        options={genreList.map(g => ({ value: g.genre, label: g.genre, count: g.count }))}
       />
-      {showSort && (
-        <ChipGroup<TgSort>
-          label="Sort by"
-          value={sort}
-          onChange={setSort}
-          options={SORTS.map(s => ({ value: s, label: SORT_LABEL[s] }))}
-        />
-      )}
     </TgMobileSheet>
   )
 }

@@ -712,12 +712,12 @@ export function GamesPage() {
     <div className="min-h-full w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
       <div className="flex items-center gap-3 mb-4 sm:mb-6 flex-wrap">
         <h1 className="text-lg font-bold text-ink-900">🎮 Games</h1>
-        {/* The redesign under test — its own full-screen page, reading the
-            same library. Linked from here so it is reachable without typing
-            the URL; nothing on this page depends on it. */}
-        <Link to="/test-game"
+        {/* Legacy page: the redesigned Games page at /games replaced it.
+            Kept reachable (and linked back) until nothing here is needed. */}
+        <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">Legacy</span>
+        <Link to="/games"
           className="min-h-[44px] px-3 inline-flex items-center gap-1.5 text-sm font-semibold rounded-lg border border-accent-300 text-accent-700 bg-accent-50 hover:bg-accent-100 transition-colors">
-          🧪 Test-Game
+          ← New Games page
         </Link>
         {platform === 'retro' && (
           <>

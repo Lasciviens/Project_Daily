@@ -4,6 +4,9 @@ import { formatDay, platformInfo } from '../testGameModel'
 import type { TgaPlayed } from './tgAnalyticsModel'
 import { TgCover } from './TgCover'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
+import { openGameFromAnalytics } from './tgAnalyticsOpen'
+
+const PRESS = 'rounded-[10px] text-left transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:none)]:active:bg-[var(--tg-hover)]'
 
 const FRAME = 'relative overflow-hidden bg-[var(--tg-panel-2)] ring-1 ring-[var(--tg-border)] shadow-[shadow:var(--tg-cover-shadow)]'
 
@@ -25,7 +28,9 @@ export function TgAnalyticsMostPlayed({ items }: { items: TgaPlayed[] }) {
       {items.length ? (
         <ol className="flex flex-col">
           {items.map(({ game, seconds, last }, i) => (
-            <li key={game.id} className="grid grid-cols-[1.1rem_32px_minmax(0,1fr)_auto] items-center gap-x-3 py-1">
+            <li key={game.id}>
+              <button type="button" onClick={() => openGameFromAnalytics(game.id)} aria-label={`${game.title}, ${hours(seconds)}. Open details`}
+                className={`${PRESS} -mx-2 grid w-[calc(100%+1rem)] grid-cols-[1.1rem_32px_minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1`}>
               <span className="text-right text-[12px] font-semibold tabular-nums text-[var(--tg-faint)]">{i + 1}</span>
               <span className={`${FRAME} h-11 w-8 rounded-[5px]`}>
                 <TgCover game={game} mode="contain" />
@@ -39,6 +44,7 @@ export function TgAnalyticsMostPlayed({ items }: { items: TgaPlayed[] }) {
                 <span aria-hidden className="mt-1 block h-[3px] rounded-full bg-[var(--tg-accent)] opacity-80" style={{ width: `max(4px, ${((seconds ?? 0) / top) * 100}%)` }} />
               </span>
               <span className="self-start pt-px text-right text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{hours(seconds)}</span>
+              </button>
             </li>
           ))}
         </ol>
@@ -57,14 +63,17 @@ export function TgAnalyticsRecent({ items, className = '' }: { items: TgaPlayed[
         <ul className={RECENT_GRID}>
           {items.map(({ game, seconds, last }) => (
             <li key={game.id} className="min-w-0">
-              <span className={`${FRAME} block aspect-[0.72] w-full rounded-lg`}>
+              <button type="button" onClick={() => openGameFromAnalytics(game.id)} aria-label={`${game.title}. Open details`}
+                className="group block w-full rounded-lg text-left">
+              <span className={`${FRAME} block aspect-[0.72] w-full rounded-lg transition-[filter] [@media(hover:hover)]:group-hover:brightness-110`}>
                 <TgCover game={game} mode="contain" />
               </span>
-              <p className="mt-2 truncate text-[12px] font-medium text-[var(--tg-text)]" title={game.title}>{game.title}</p>
-              <p className="mt-0.5 truncate text-[11px] text-[var(--tg-muted)]">
+              <span className="mt-2 block truncate text-[12px] font-medium text-[var(--tg-text)]" title={game.title}>{game.title}</span>
+              <span className="mt-0.5 block truncate text-[11px] text-[var(--tg-muted)]">
                 {formatDay(last)}
                 {seconds ? <span className="text-[var(--tg-faint)]"> · {hours(seconds)}</span> : null}
-              </p>
+              </span>
+              </button>
             </li>
           ))}
         </ul>

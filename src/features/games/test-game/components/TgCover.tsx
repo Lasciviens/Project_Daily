@@ -29,7 +29,8 @@ const RETRY_MS = 1800
  *
  *   natural  the image keeps its own aspect, standing bottom-centre; the image
  *            IS the frame, so the selection outline hugs the real box
- *   contain  fills the box, no crop, over a blurred copy of itself
+ *   contain  fills the box, no crop; the letterbox is left empty, so whatever
+ *            surface the box sits on shows through (never a blurred copy)
  *   cover    fills the box, cropped (tiny thumbnails)
  */
 export function TgCover({ game, mode, eager = false, className = '' }: Props) {
@@ -99,15 +100,14 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
   }
 
   return (
-    <div className={`relative h-full w-full overflow-hidden bg-[var(--tg-panel-2)] ${className}`}>
+    // The tint only holds the place while nothing is on screen; once the art
+    // shows, a letterboxed cover sits on the caller's own surface.
+    <div className={`relative h-full w-full overflow-hidden ${visible && src ? '' : 'bg-[var(--tg-panel-2)]'} ${className}`}>
       {!src ? (
         <TgCaseArt game={game} className="w-full" />
       ) : (
         <>
           {!visible && <span aria-hidden className="tg-cover-ph absolute inset-0" />}
-          {mode === 'contain' && visible && (
-            <img aria-hidden src={src} alt="" draggable={false} className="absolute inset-0 h-full w-full scale-125 object-cover opacity-60 blur-lg" />
-          )}
           <img
             key={imgKey}
             {...imgProps}

@@ -1,12 +1,12 @@
 import { useCallback, useState } from 'react'
-import { Search, SlidersHorizontal, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import type { PlatformCount, StatusCounts } from '../testGameModel'
 import type { TgHeaderConfig } from '../tgTypes'
 import { TgUserMenu } from './TgUserMenu'
 import { TgMobileGamepad } from './TgMobileGlyph'
 import { TgMobileScope } from './TgMobileScope'
-import { TgMobileFilterSheet } from './TgMobileFilterSheet'
+import { TgMobileListTools } from './TgMobileListTools'
 
 // Horizontal padding that also clears a landscape notch — the design's ~20px
 // phone gutter, matching the grid's cover edges. The chip row's scroll padding
@@ -23,11 +23,7 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
   const section = useTestGameStore(s => s.section)
   const search = useTestGameStore(s => s.search)
   const setSearch = useTestGameStore(s => s.setSearch)
-  const status = useTestGameStore(s => s.status)
-  const genre = useTestGameStore(s => s.genre)
-  const sort = useTestGameStore(s => s.sort)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [filtersOpen, setFiltersOpen] = useState(false)
   // An open but empty field doesn't follow you to another section (it would
   // come back focused, keyboard up, on a tab where you never asked for it).
   const [searchSection, setSearchSection] = useState(section)
@@ -44,7 +40,6 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
 
   const showStatus = section === 'library'
   const showSort = section !== 'queue' // the queue is always in play order
-  const filtered = (showStatus && status !== 'all') || genre != null || (showSort && sort !== 'title')
 
   // Keeps the active Advanced chip on screen when it sits past the row's edge.
   const revealChip = useCallback((el: HTMLButtonElement | null) => {
@@ -105,17 +100,7 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
       <div className={`flex min-h-[48px] items-center justify-between gap-3 pb-2 pt-1 ${GUTTER}`}>
         <TgMobileScope platforms={platforms} header={header} />
         {hasFilters && (
-          <button
-            type="button"
-            onClick={() => setFiltersOpen(true)}
-            aria-label={filtered ? 'Filters (active)' : 'Filters'}
-            className="tg-icon-btn is-bordered relative shrink-0"
-          >
-            <SlidersHorizontal size={18} strokeWidth={1.9} />
-            {filtered && (
-              <span aria-hidden className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--tg-accent)] ring-2 ring-[var(--tg-panel-2)]" />
-            )}
-          </button>
+          <TgMobileListTools genres={genres} statusCounts={statusCounts} showStatus={showStatus} showSort={showSort} />
         )}
       </div>
 
@@ -139,16 +124,6 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
         </div>
       )}
 
-      {hasFilters && (
-        <TgMobileFilterSheet
-          open={filtersOpen}
-          onClose={() => setFiltersOpen(false)}
-          genres={genres}
-          statusCounts={statusCounts}
-          showStatus={showStatus}
-          showSort={showSort}
-        />
-      )}
     </header>
   )
 }

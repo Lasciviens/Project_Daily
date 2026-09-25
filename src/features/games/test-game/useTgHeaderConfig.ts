@@ -5,7 +5,7 @@ import { useTestGameStore, type AdvancedTab } from './testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, STATUS_TABS, STATUS_TEXT,
   platformCounts, platformInfo, platformLabels,
-  type StatusCounts, type TgGame, type TgSection,
+  type StatusCounts, type TgGame, type TgSection, type TgStatusFilter,
 } from './testGameModel'
 import type { TgHeaderConfig } from './tgTypes'
 import { ADVANCED_TABS } from './advancedTabs'
@@ -33,7 +33,7 @@ interface Input {
 
 export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visibleCount }: Input): TgHeaderConfig {
   const section = useTestGameStore(s => s.section)
-  const status = useTestGameStore(s => s.status)
+  const statuses = useTestGameStore(s => s.statuses)
   const scopePlatform = useTestGameStore(s => s.scopePlatform)
   const advancedTab = useTestGameStore(s => s.advancedTab)
   const setStatus = useTestGameStore(s => s.setStatus)
@@ -61,8 +61,15 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
         logo: platform === ALL_PLATFORMS ? 'all' : platform === OTHER_PLATFORMS ? 'others' : 'platform',
         platformKey: platform,
         tabs: STATUS_TABS.map(s => ({ key: s, label: STATUS_TEXT[s], count: sCounts[s] })),
-        activeTab: STATUS_TABS.includes(status) ? status : null,
-        onTab: (k) => setStatus(k as typeof status),
+        // Several statuses can be picked in the filter menus; every picked one
+        // that has a tab lights up. A tab selects only its status, and a tab
+        // that is already the whole filter (or All) clears it.
+        activeTab: statuses.length ? null : 'all',
+        activeTabs: statuses.length ? statuses : ['all'],
+        onTab: (k) => {
+          const only = statuses.length === 1 && statuses[0] === k
+          setStatus(only ? 'all' : k as TgStatusFilter)
+        },
       }
     }
     if (fixedStatus) {
@@ -97,6 +104,6 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       activeTab: advancedTab,
       onTab: (k) => setAdvancedTab(k as AdvancedTab),
     }
-  }, [section, platform, sCounts, status, fixedStatus, games, scopePlatform, visibleCount,
+  }, [section, platform, sCounts, statuses, fixedStatus, games, scopePlatform, visibleCount,
       advancedTab, reviewCount, setStatus, setScopePlatform, setAdvancedTab])
 }

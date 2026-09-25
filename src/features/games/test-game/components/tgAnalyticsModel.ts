@@ -84,33 +84,56 @@ export interface TgaKpis {
   backlogUnplayed: number
 }
 
-export function computeKpis(scoped: TgGame[], start: number | null): TgaKpis {
-  let playtimeSeconds = 0, playedGames = 0, starSum = 0, rated = 0
-  let playing = 0, queued = 0, backlog = 0, backlogUnplayed = 0, completedStatus = 0, wishlist = 0, finished = 0
-  for (const g of scoped) {
-    const secs = playSeconds(g) ?? 0
-    if (secs > 0) { playtimeSeconds += secs; playedGames++ }
-    const stars = starsFromRating(g.rating)
-    if (stars != null) { starSum += stars; rated++ }
-    if (g.play_order != null) queued++
-    if (start != null && inWindow(g.finished_at, start)) finished++
-    const s = g.play_status
-    if (s === 'playing') playing++
-    else if (s === 'completed') completedStatus++
-    else if (s === 'wishlist') wishlist++
-    else if (s === 'backlog' || !s) {
-      backlog++
-      if (secs <= 0 && !lastPlayedIso(g)) backlogUnplayed++
-    }
+/** The six headline tiles. Each tile's number is exactly its `tileGames` list. */
+export type TgaTile = 'games' | 'playing' | 'completed' | 'playtime' | 'rating' | 'backlog'
+
+const byTitle = (a: TgGame, b: TgGame) => a.title.localeCompare(b.title)
+const desc = (x: number, y: number) => (Number.isFinite(y) ? y : -Infinity) - (Number.isFinite(x) ? x : -Infinity)
+const recency = (a: TgGame, b: TgGame) => desc(at(lastPlayedIso(a)), at(lastPlayedIso(b))) || byTitle(a, b)
+const isBacklog = (g: TgGame) => g.play_status === 'backlog' || !g.play_status
+
+/**
+ * The games behind one tile, in the order the drill-down lists them. The tile
+ * figures come from these same lists (computeKpis), so a list always adds up
+ * to its tile. Completed: all time = status Completed; a window = finished in it.
+ */
+export function tileGames(kind: TgaTile, scoped: TgGame[], start: number | null): TgGame[] {
+  switch (kind) {
+    case 'games': return [...scoped].sort(recency)
+    case 'playing': return scoped.filter(g => g.play_status === 'playing').sort(recency)
+    case 'backlog': return scoped.filter(isBacklog).sort(recency)
+    case 'completed':
+      return scoped
+        .filter(g => (start == null ? g.play_status === 'completed' : inWindow(g.finished_at, start)))
+        .sort((a, b) => desc(at(a.finished_at), at(b.finished_at)) || byTitle(a, b))
+    case 'playtime':
+      return scoped.filter(g => (playSeconds(g) ?? 0) > 0)
+        .sort((a, b) => (playSeconds(b) ?? 0) - (playSeconds(a) ?? 0) || byTitle(a, b))
+    case 'rating':
+      return scoped.filter(g => starsFromRating(g.rating) != null)
+        .sort((a, b) => (starsFromRating(b.rating) ?? 0) - (starsFromRating(a.rating) ?? 0) || byTitle(a, b))
   }
+}
+
+export function computeKpis(scoped: TgGame[], start: number | null): TgaKpis {
+  const played = tileGames('playtime', scoped, null)
+  const rated = tileGames('rating', scoped, null)
+  const backlog = tileGames('backlog', scoped, null)
+  const starSum = rated.reduce((n, g) => n + (starsFromRating(g.rating) ?? 0), 0)
+  const wishlist = scoped.filter(g => g.play_status === 'wishlist').length
   return {
     games: scoped.length,
     platforms: new Set(scoped.map(g => g.platformKey)).size,
-    playing, queued, backlog, backlogUnplayed,
-    completed: start == null ? completedStatus : finished,
+    playing: tileGames('playing', scoped, start).length,
+    queued: scoped.filter(g => g.play_order != null).length,
+    backlog: backlog.length,
+    backlogUnplayed: backlog.filter(g => (playSeconds(g) ?? 0) <= 0 && !lastPlayedIso(g)).length,
+    completed: tileGames('completed', scoped, start).length,
     completionBase: start == null ? scoped.length - wishlist : scoped.length,
-    playtimeSeconds, playedGames, rated,
-    avgStars: rated ? Math.round((starSum / rated) * 100) / 100 : null,
+    playtimeSeconds: played.reduce((n, g) => n + (playSeconds(g) ?? 0), 0),
+    playedGames: played.length,
+    rated: rated.length,
+    avgStars: rated.length ? Math.round((starSum / rated.length) * 100) / 100 : null,
   }
 }
 

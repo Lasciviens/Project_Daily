@@ -5,11 +5,12 @@ import type { TgGame } from '../testGameModel'
 import type { TgActions } from '../tgTypes'
 import { useDetailState } from './TgDetailState'
 import { TgMoreMenu } from './TgMoreMenu'
+import { TgScrapeButton } from './TgScrapeButton'
 
 const ALREADY_PLAYING = 'Already playing — launching from the web works for Steam games only'
 const MARKS_PLAYING = 'Marks the game as Playing — launching from the web works for Steam games only'
 
-/** The pinned footer: ▶ Play · ✎ Edit · ⋯ */
+/** The pinned footer: ▶ Play · Scrape (retro) or ✎ Edit · ⋯ */
 export function TgDetailActions({ game, actions, variant }: { game: TgGame; actions: TgActions; variant: 'panel' | 'sheet' }) {
   const { status, setStatus } = useDetailState(game)
   const noteId = useId()
@@ -38,10 +39,14 @@ export function TgDetailActions({ game, actions, variant }: { game: TgGame; acti
         <span className="truncate">Play</span>
       </button>
       <span id={noteId} hidden>{note}</span>
-      <button type="button" onClick={() => actions.openEdit(game.id)} className="tg-btn tg-btn-secondary !px-3">
-        <Pencil aria-hidden className="h-4 w-4 shrink-0" strokeWidth={2} />
-        <span className="truncate">Edit</span>
-      </button>
+      {/* ScreenScraper only knows ROMs, so Scrape is a retro action; Steam and
+          PlayStation rows keep Edit here (it is in the ⋯ menu for every game). */}
+      {game.library === 'retro' ? <TgScrapeButton gameId={game.id} title={game.title} /> : (
+        <button type="button" onClick={() => actions.openEdit(game.id)} className="tg-btn tg-btn-secondary !px-3">
+          <Pencil aria-hidden className="h-4 w-4 shrink-0" strokeWidth={2} />
+          <span className="truncate">Edit</span>
+        </button>
+      )}
       <TgMoreMenu game={game} actions={actions} />
     </div>
   )

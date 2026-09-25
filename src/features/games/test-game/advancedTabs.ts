@@ -16,4 +16,4 @@ export const ADVANCED_TABS: { key: AdvancedTab; label: string }[] = [
 
 /** What Advanced → Add & random draws its Random pick from: the Library's
  *  platform, still narrowed by a search or genre that Advanced does not show. */
-export interface TgRandomScope { platform: string; search: string; genre: string | null }
+export interface TgRandomScope { platform: string; search: string; genres: readonly string[] }

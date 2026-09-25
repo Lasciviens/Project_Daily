@@ -1,17 +1,16 @@
 import { ArrowUpDown, ListFilter, Tags } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import {
-  SORT_LABEL, STATUS_FILTERS, STATUS_TEXT,
+  DEFAULT_SORT, SORT_LABEL, STATUS_FILTERS, STATUS_TEXT, multiLabel,
   type StatusCounts, type TgSort, type TgStatusFilter,
 } from '../testGameModel'
+import type { PlayStatus } from '../../types'
 import { TgDropdown, type TgOption } from './TgDropdown'
+import { TgMultiDropdown } from './TgMultiDropdown'
 import { TgTopBarSearch } from './TgTopBarSearch'
 import { TgTopBarViews } from './TgTopBarViews'
 import { TgUserMenu } from './TgUserMenu'
 
-/** Listbox values are strings; genres are never empty, so '' can mean "all". */
-const ALL_GENRES = ''
-const DEFAULT_SORT: TgSort = 'title'
 const SORT_OPTIONS = (Object.keys(SORT_LABEL) as TgSort[]).map(s => ({ value: s, label: SORT_LABEL[s] }))
 const ICON = 'h-4 w-4'
 // The design's pills sit on the panel colour (the phone's use the softer panel-2).
@@ -36,26 +35,20 @@ export function TgTopBar({
   showGenre?: boolean
   showSort?: boolean
 }) {
-  const status = useTestGameStore(s => s.status)
-  const setStatus = useTestGameStore(s => s.setStatus)
-  const genre = useTestGameStore(s => s.genre)
-  const setGenre = useTestGameStore(s => s.setGenre)
+  const statuses = useTestGameStore(s => s.statuses)
+  const setStatuses = useTestGameStore(s => s.setStatuses)
+  const pickedGenres = useTestGameStore(s => s.genres)
+  const setGenres = useTestGameStore(s => s.setGenres)
   const sort = useTestGameStore(s => s.sort)
   const setSort = useTestGameStore(s => s.setSort)
 
-  const statusOptions: TgOption<TgStatusFilter>[] = STATUS_FILTERS.map(s => ({
-    value: s,
-    label: s === 'all' ? 'All statuses' : STATUS_TEXT[s],
-    count: statusCounts[s],
-    status: s === 'all' ? undefined : s,
+  const statusOptions: TgOption<PlayStatus>[] = STATUS_FILTERS.filter(s => s !== 'all').map(s => ({
+    value: s as PlayStatus, label: STATUS_TEXT[s], count: statusCounts[s], status: s,
   }))
 
   // A genre picked on another platform stays selectable (at 0) so it can be cleared.
-  const genreList = genre && !genres.some(g => g.genre === genre) ? [...genres, { genre, count: 0 }] : genres
-  const genreOptions: TgOption<string>[] = [
-    { value: ALL_GENRES, label: 'All genres' },
-    ...genreList.map(g => ({ value: g.genre, label: g.genre, count: g.count })),
-  ]
+  const missing = pickedGenres.filter(p => !genres.some(g => g.genre === p)).map(genre => ({ genre, count: 0 }))
+  const genreOptions: TgOption<string>[] = [...genres, ...missing].map(g => ({ value: g.genre, label: g.genre, count: g.count }))
 
   return (
     // The top inset keeps an installed iPad PWA's status bar off the controls,
@@ -65,29 +58,29 @@ export function TgTopBar({
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:gap-2.5">
         {showStatus && (
-          <TgDropdown
-            value={status}
+          <TgMultiDropdown
+            values={statuses}
             options={statusOptions}
-            onChange={setStatus}
-            buttonLabel={status === 'all' ? 'All Status' : STATUS_TEXT[status]}
+            allLabel="All statuses"
+            onChange={setStatuses}
+            buttonLabel={multiLabel(statuses, 'All Status', 'statuses', s => STATUS_TEXT[s as TgStatusFilter])}
             ariaLabel="Filter by status"
             align="end"
             className={PILL}
             icon={<ListFilter className={ICON} strokeWidth={2} />}
-            active={status !== 'all'}
           />
         )}
         {showGenre && (
-          <TgDropdown
-            value={genre ?? ALL_GENRES}
+          <TgMultiDropdown
+            values={pickedGenres}
             options={genreOptions}
-            onChange={v => setGenre(v === ALL_GENRES ? null : v)}
-            buttonLabel={genre ?? 'All Genres'}
+            allLabel="All genres"
+            onChange={setGenres}
+            buttonLabel={multiLabel(pickedGenres, 'All Genres', 'genres')}
             ariaLabel="Filter by genre"
             align="end"
             className={`${PILL} lg:max-w-[140px] xl:max-w-[180px]`}
             icon={<Tags className={ICON} strokeWidth={2} />}
-            active={genre != null}
           />
         )}
         {showSort && (
