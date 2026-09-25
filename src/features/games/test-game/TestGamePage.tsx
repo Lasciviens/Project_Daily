@@ -123,7 +123,7 @@ export function TestGamePage() {
       {bp === 'mobile' ? (
         <div key="phone" className="tg-root h-[100dvh] flex flex-col overflow-hidden">
           <TgMobileHeader platforms={counts} genres={genres} statusCounts={sCounts} header={header} />
-          <div className="flex-1 min-h-0 tg-scroll-y pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2 pb-[calc(76px+env(safe-area-inset-bottom))]">
+          <div className="flex-1 min-h-0 tg-scroll-y pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] pt-2 pb-[calc(76px+env(safe-area-inset-bottom))]">
             {providerError}
             {renderSection('mobile')}
           </div>

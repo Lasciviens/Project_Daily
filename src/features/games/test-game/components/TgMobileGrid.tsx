@@ -40,13 +40,12 @@ const MobileCard = memo(function MobileCard({ game, onSelect }: { game: TgGame; 
 
 /**
  * The phone's two-column cover grid; tapping a card opens the detail sheet.
- * The design's gutters are ~20px with a ~24px column gap: px-1 here adds to
- * the phone scroller's own 16px (px-4 in TestGamePage), so the grid keeps its
- * spacing without the shell padding every section differently.
+ * The design's gutters are ~20px with a ~24px column gap; the 20px comes from
+ * the phone scroller in TestGamePage, shared by every section and the header.
  */
 export function TgMobileGrid({ games, onSelect }: { games: TgGame[]; onSelect: (id: string) => void }) {
   return (
-    <div className="grid grid-cols-2 gap-x-6 gap-y-6 px-1 pb-4">
+    <div className="grid grid-cols-2 gap-x-6 gap-y-6 pb-4">
       {games.map(g => <MobileCard key={g.id} game={g} onSelect={onSelect} />)}
     </div>
   )
