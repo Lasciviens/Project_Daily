@@ -70,7 +70,7 @@ export function TgAnalyticsKpis({ k, windowed }: { k: TgaKpis; windowed: boolean
       />
       <Tile
         icon={<StatusChip status="completed" />}
-        label="Completed"
+        label={windowed ? 'Finished' : 'Completed'}
         value={fmtInt(k.completed)}
         adornment={k.completionBase > 0 ? <Ring share={rate} /> : undefined}
         sub={k.completionBase ? `${fmtPct(k.completed, k.completionBase)} of ${windowed ? 'games played' : 'owned games'}` : 'Nothing to complete yet'}

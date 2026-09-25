@@ -7,6 +7,14 @@ import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
 
 const FRAME = 'relative overflow-hidden bg-[var(--tg-panel-2)] ring-1 ring-[var(--tg-border)] shadow-[shadow:var(--tg-cover-shadow)]'
 
+// Columns follow the card, and the item count follows the columns so no row
+// is left half-empty: 3×2 narrow, 4×2 in a monitor's one-column card, 6×1 wide.
+const RECENT_GRID = [
+  'grid grid-cols-3 gap-x-3 gap-y-4 [&>li:nth-child(n+7)]:hidden',
+  '@[26rem]:grid-cols-4 @[26rem]:[&>li:nth-child(n+7)]:block',
+  '@[40rem]:grid-cols-6 @[40rem]:gap-x-4 @[40rem]:[&>li:nth-child(n+7)]:hidden',
+].join(' ')
+
 const hours = (seconds: number | null) => (seconds ? formatPlaytime(seconds / 60) : '—')
 
 /** The eight games with the most recorded time, with a thin bar for their share of the leader. */
@@ -46,7 +54,7 @@ export function TgAnalyticsRecent({ items, className = '' }: { items: TgaPlayed[
   return (
     <TgAnalyticsCard label="Recently played" meta={items.length ? 'latest session first' : undefined} className={className}>
       {items.length ? (
-        <ul className="grid grid-cols-3 gap-x-3 gap-y-4 @[34rem]:grid-cols-6 @[34rem]:gap-x-4">
+        <ul className={RECENT_GRID}>
           {items.map(({ game, seconds, last }) => (
             <li key={game.id} className="min-w-0">
               <span className={`${FRAME} block aspect-[0.72] w-full rounded-lg`}>

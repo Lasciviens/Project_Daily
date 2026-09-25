@@ -177,7 +177,7 @@ export function mostPlayed(scoped: TgGame[], n = 8): TgaPlayed[] {
 }
 
 /** Latest sessions first. A launch shorter than five minutes (checking a ROM boots) is not play. */
-export function recentlyPlayed(scoped: TgGame[], n = 6): TgaPlayed[] {
+export function recentlyPlayed(scoped: TgGame[], n = 8): TgaPlayed[] {
   return scoped
     .map(game => ({ game, seconds: playSeconds(game), last: lastPlayedIso(game) }))
     .filter(x => Number.isFinite(at(x.last)) && (x.seconds == null || isRealPlay(x.seconds)))
