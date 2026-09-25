@@ -1,4 +1,4 @@
-import { useReducer, useState, type SyntheticEvent } from 'react'
+import { useReducer, useState, type CSSProperties, type SyntheticEvent } from 'react'
 import { coverCandidates, type TgGame } from '../testGameModel'
 import { firstLiveCover, isCoverLoaded, markCoverFailed, markCoverLoaded, reportCoverError } from './coverCache'
 import { TgCaseArt } from './TgCaseArt'
@@ -10,7 +10,20 @@ interface Props {
   mode: CoverMode
   eager?: boolean
   className?: string
+  /**
+   * natural only: where art that doesn't fill the box sits. `center` (phone
+   * grid, cover wall) keeps every cover's middle on one line, so a wide or
+   * small cover never drops to the foot of its cell; `bottom` (the shelf) keeps
+   * a case standing on its plank.
+   */
+  align?: 'center' | 'bottom'
 }
+
+// Each URL's width/height ratio, learned on load. A natural-mode image is then
+// scaled UP to fit its box (a 184px-wide thumbnail in a 170px cell no longer
+// sits there at its own tiny size), and an image seen before fits on its first
+// frame instead of growing once it loads again.
+const ratios = new Map<string, number>()
 
 // Anything smaller is a tracking pixel or a "no image" placeholder, not box art.
 const MIN_EDGE = 16
@@ -27,14 +40,16 @@ const RETRY_MS = 1800
  * decoded — so a broken or half-loaded image is never on screen — and falls
  * back to a drawn case. While an image loads, a static tint holds its place.
  *
- *   natural  the image keeps its own aspect, standing bottom-centre; the image
- *            IS the frame, so the selection outline hugs the real box
+ *   natural  the image keeps its own aspect, scaled to fit, centred or
+ *            standing bottom-centre (`align`); the image IS the frame, so the
+ *            selection outline hugs the real box
  *   contain  fills the box, no crop; the letterbox is left empty, so whatever
  *            surface the box sits on shows through (never a blurred copy)
  *   cover    fills the box, cropped (tiny thumbnails)
  */
-export function TgCover({ game, mode, eager = false, className = '' }: Props) {
+export function TgCover({ game, mode, eager = false, className = '', align = 'bottom' }: Props) {
   const [attempt, bump] = useReducer((n: number) => n + 1, 0)
+  const [, remeasured] = useReducer((n: number) => n + 1, 0)
   const [fadeSrc, setFadeSrc] = useState<string | null>(null)
   // The <img> element (URL + attempt) that fired onError: hidden from that
   // moment on — a failed image is never on screen, even for a URL that loaded
@@ -65,6 +80,10 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
       if (src) markCoverFailed(src)
       return bump()
     }
+    if (src && !ratios.has(src)) {
+      ratios.set(src, img.naturalWidth / img.naturalHeight)
+      if (cached) remeasured() // re-render so the fit applies (no fade: it was already on screen)
+    }
     if (cached || !src) return
     markCoverLoaded(src)
     setFadeSrc(src)
@@ -82,8 +101,16 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
   }
 
   if (mode === 'natural') {
+    const ratio = src ? ratios.get(src) : undefined
+    // Contain-fit through container units: the box is a size container, so the
+    // art is as wide as fits both edges and keeps its own aspect. The frame
+    // still hugs the art (a letterbox around it would carry the shadow).
+    const fit: CSSProperties | undefined = ratio
+      ? { aspectRatio: String(ratio), width: `min(100cqw, ${ratio} * 100cqh)`, height: 'auto' }
+      : undefined
+    const place = align === 'center' ? 'inset-0 m-auto' : 'inset-x-0 bottom-0 mx-auto'
     return (
-      <div className={`relative flex h-full w-full items-end justify-center ${className}`}>
+      <div className={`relative flex h-full w-full justify-center [container-type:size] ${align === 'center' ? 'items-center' : 'items-end'} ${className}`}>
         {!src ? (
           <TgCaseArt game={game} className="tg-cover-frame" />
         ) : (
@@ -92,7 +119,7 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
             {/* An absolutely placed replaced element sizes through max-width/
                 max-height with its aspect kept, in every engine. `!absolute`
                 beats the frame class's own `position: relative`. */}
-            <img key={imgKey} {...imgProps} className={`tg-cover-frame tg-cover-img !absolute inset-x-0 bottom-0 mx-auto ${reveal}`} />
+            <img key={imgKey} {...imgProps} style={fit} className={`tg-cover-frame tg-cover-img !absolute ${place} ${reveal}`} />
           </>
         )}
       </div>

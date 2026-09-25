@@ -17,10 +17,10 @@ const MobileCard = memo(function MobileCard({ game, onSelect }: { game: TgGame; 
       className="group block min-w-0 rounded-md text-left [contain-intrinsic-size:auto_280px] [content-visibility:auto]"
     >
       {/* Every cell keeps the same box so titles line up, but the frame (radius,
-          shadow) hugs the art itself: a wide or square cover stands on the
-          page background at the box's foot instead of over a blurred fill. */}
+          shadow) hugs the art itself: a wide, square or small cover is scaled
+          to fit and centred in the box, on the page background (no blurred fill). */}
       <div className="relative aspect-[0.72] w-full transition-transform duration-150 group-active:scale-[0.98]">
-        <TgCover game={game} mode="natural" />
+        <TgCover game={game} mode="natural" align="center" />
       </div>
       <div className="mt-2 truncate text-[13px] font-semibold leading-[1.35] text-[var(--tg-text)]">
         {game.title}

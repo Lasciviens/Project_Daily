@@ -29,7 +29,7 @@ export function TgGridView({ games, selectedId, onSelect }: Props) {
           const selected = g.id === selectedId
           return (
             <div key={g.id} className={selected ? 'tg-cell is-selected' : 'tg-cell'}>
-              <TgGameCard game={g} selected={selected} onSelect={onSelect} />
+              <TgGameCard game={g} selected={selected} onSelect={onSelect} coverAlign="center" />
             </div>
           )
         })}

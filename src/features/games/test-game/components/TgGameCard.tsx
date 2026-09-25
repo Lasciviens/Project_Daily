@@ -19,6 +19,8 @@ interface Props {
   coverHeight?: number
   /** The shelf keeps one card tabbable and moves between cards with arrow keys. */
   tabIndex?: number
+  /** The cover wall centres art that doesn't fill its slot; the shelf stands it on the plank. */
+  coverAlign?: 'center' | 'bottom'
 }
 
 /**
@@ -28,7 +30,7 @@ interface Props {
  * Memoised: a library can hold well over a thousand of these, and a selection
  * change should repaint two cards, not all of them.
  */
-export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, width, coverHeight, tabIndex }: Props) {
+export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, width, coverHeight, tabIndex, coverAlign = 'bottom' }: Props) {
   const stars = starsFromRating(game.rating)
   const size = width == null && coverHeight == null ? undefined : ({
     ...(width != null && { '--tg-card-w': `${width}px` }),
@@ -50,7 +52,7 @@ export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, w
       style={size}
     >
       <span className="tg-cover-slot">
-        <TgCover game={game} mode="natural" />
+        <TgCover game={game} mode="natural" align={coverAlign} />
       </span>
       <span className="tg-card-text">
         <span title={game.title} className="mt-2 block truncate text-[12px] font-medium leading-[18px] text-[var(--tg-text)]">

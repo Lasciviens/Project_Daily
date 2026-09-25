@@ -8,11 +8,11 @@ import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ScrapeGameButton } from './ScrapeGameButton'
-import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip } from './gameCardKit'
+import { CoverImg, CoverBackdrop, RatingBadge, SystemChip } from './gameCardKit'
 import { systemMeta } from '../systemMeta'
 import { formatPlaytime, playStatsOf } from '../gameStats'
 import {
-  STATUS_LABEL, TIER_COLOR, TIERS, STATUSES,
+  STATUS_LABEL, STATUSES,
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
 } from '../gamesMeta'
 import type { Game, GamePatch, GamePlatform, GamePlatformInput, PlayStatus } from '../types'
@@ -202,7 +202,6 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
   const [fanartUrl, setFanartUrl]   = useState(game.fanart_url ?? '')
 
   const [status, setStatus]     = useState(game.play_status)
-  const [tier, setTier]         = useState(game.tier ?? '')
   const [rating, setRating]     = useState(game.rating?.toString() ?? '')
   const [iconic, setIconic]     = useState(game.is_iconic)
   const [coop, setCoop]         = useState(game.is_coop)
@@ -236,7 +235,6 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
       screenshot_url:    screenshotUrl.trim() || null,
       fanart_url:        fanartUrl.trim() || null,
       play_status:  status,
-      tier:         (tier || null) as GamePatch['tier'],
       rating:       ratingNum != null && !isNaN(ratingNum) ? Math.min(10, Math.max(0, ratingNum)) : null,
       is_iconic:    iconic,
       is_coop:      coop,
@@ -336,13 +334,6 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
             </select>
           </div>
           <div>
-            <label className={labelCls}>Tier</label>
-            <select value={tier} onChange={e => setTier(e.target.value)} className={fieldCls}>
-              <option value="">— None —</option>
-              {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
-            </select>
-          </div>
-          <div>
             <label className={labelCls}>My Rating (0–10)</label>
             <input type="number" min={0} max={10} step={0.5} value={rating} onChange={e => setRating(e.target.value)} placeholder="—" className={fieldCls} />
           </div>
@@ -407,9 +398,11 @@ interface Props {
   onClose: () => void
   /** Open straight into the edit form (the Test-Game page's "Edit" button). */
   initialEditing?: boolean
+  /** Extra classes on the dialog root — the Games page passes its own theme scope. */
+  className?: string
 }
 
-export function GameDetailModal({ gameId, onClose, initialEditing = false }: Props) {
+export function GameDetailModal({ gameId, onClose, initialEditing = false, className = '' }: Props) {
   const { data: game, isLoading } = useGameDetail(gameId)
   const update = useUpdateGame()
   const del = useDeleteGame()
@@ -452,7 +445,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false }: Pro
 
   return (
     <>
-    <Dialog open onClose={onClose} className="relative z-40">
+    <Dialog open onClose={onClose} className={`relative z-40 ${className}`}>
       <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <DialogPanel transition className="w-full sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto bg-cream-50 rounded-t-2xl sm:rounded-2xl border border-ink-200 shadow-2xl transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
@@ -480,7 +473,6 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false }: Pro
               <CoverBackdrop url={game.primary_cover_url} />
               <div className="relative flex-shrink-0 w-24 sm:w-28 rounded-xl overflow-hidden border border-ink-200 bg-ink-100 self-start shadow-md" style={{ aspectRatio: '3/4' }}>
                 <CoverImg url={game.primary_cover_url} title={game.title} />
-                <span className="absolute top-1 left-1"><TierBadge tier={game.tier} size="sm" /></span>
                 <span className="absolute top-1 right-1"><RatingBadge rating={game.rating} size="sm" /></span>
                 <span className="absolute inset-x-1 bottom-1 flex"><SystemChip game={game} size="sm" /></span>
               </div>
@@ -494,7 +486,6 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false }: Pro
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {game.tier && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TIER_COLOR[game.tier] ?? 'bg-ink-200'}`}>Tier {game.tier}</span>}
                   {game.is_iconic && <span className="text-sm">⭐</span>}
                   {game.is_coop && <span className="text-xs font-bold bg-cyan-500 text-white px-2 py-0.5 rounded-full">2P</span>}
                   {game.needs_review && <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Needs review</span>}
