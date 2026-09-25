@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { SHELF_LABEL, textInset, useShelfLayout } from './useShelfLayout'
+import { shelfVars, useShelfLayout } from './useShelfLayout'
 
 // Placeholders built from the same geometry and classes as the view that
 // replaces them (TgShelf, TgGridView, TgMobileGrid, the list rows), so the
@@ -22,43 +22,30 @@ function CardText({ titleLeading = 'h-[18px]', metaLeading = 'h-4' }: { titleLea
 /** An empty case standing in its cover slot, like TgCover's own placeholder. */
 const Case = () => <span className="tg-skeleton aspect-[0.7] h-full max-w-full rounded-[4px]" />
 
-/** The bookcase: TgShelf's layout hook, CSS geometry and row anatomy, with empty cases. */
+/** The bookcase: TgShelf's layout hook, CSS geometry and grid, with empty cases. */
 export function TgStatesShelfSkeleton() {
   const [el, setEl] = useState<HTMLDivElement | null>(null)
   const layout = useShelfLayout(el)
   const { rows, cols, measured } = layout
-  const vars = {
-    '--tg-card-w': `${layout.slotWidth}px`,
-    '--tg-cover-h': `${layout.coverHeight}px`,
-    '--tg-gap': `${layout.gap}px`,
-    '--tg-half-gap': `${layout.gap / 2}px`,
-    '--tg-row-h': `${layout.rowHeight}px`,
-    '--tg-text-inset': `${textInset(layout)}px`,
-  } as CSSProperties
 
   return (
-    <div ref={setEl} className="h-full overflow-hidden rounded-2xl">
-      <div className="tg-shelf min-h-full" style={vars}>
-        {measured && Array.from({ length: rows }, (_, r) => (
-          <div key={r} className="tg-shelf-row" style={{ height: 'var(--tg-row-h)' }}>
-            <span aria-hidden className="tg-ceiling" />
-            <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-[linear-gradient(180deg,var(--tg-shelf-edge),transparent),linear-gradient(180deg,var(--tg-shelf-edge),transparent_55%)]" />
-            <span aria-hidden className="tg-plank" style={{ height: SHELF_LABEL }} />
-            <div className="relative z-[2] flex h-full overflow-hidden px-11" style={{ gap: 'var(--tg-gap)' }}>
-              {Array.from({ length: cols }, (_, c) => (
-                <div key={c} className="tg-slot is-empty">
-                  <span aria-hidden className="tg-spot" />
-                  <span aria-hidden className="tg-lamp is-l" />
-                  <span aria-hidden className="tg-lamp is-r" />
-                  <div className="tg-card">
-                    <span className="tg-cover-slot"><Case /></span>
-                    <span className="tg-card-text"><CardText /></span>
-                  </div>
+    <div ref={setEl} className="h-full overflow-hidden rounded-2xl [scrollbar-gutter:stable]">
+      <div className="tg-shelf min-h-full">
+        {measured && (
+          <div className="tg-case" style={shelfVars(layout) as CSSProperties}>
+            {Array.from({ length: rows * cols }, (_, i) => (
+              <div key={i} className="tg-slot">
+                <span aria-hidden className="tg-spot" />
+                <span aria-hidden className="tg-lamp is-l" />
+                <span aria-hidden className="tg-lamp is-r" />
+                <div className="tg-card">
+                  <span className="tg-cover-slot"><Case /></span>
+                  <span className="tg-card-text"><CardText /></span>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     </div>
   )
