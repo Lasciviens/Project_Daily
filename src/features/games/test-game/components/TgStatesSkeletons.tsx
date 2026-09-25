@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { SHELF_LABEL, useShelfLayout } from './useShelfLayout'
+import { useState, type CSSProperties } from 'react'
+import { shelfVars, useShelfLayout } from './useShelfLayout'
 
 // Placeholders built from the same geometry and classes as the view that
 // replaces them (TgShelf, TgGridView, TgMobileGrid, the list rows), so the
@@ -22,31 +22,30 @@ function CardText({ titleLeading = 'h-[18px]', metaLeading = 'h-4' }: { titleLea
 /** An empty case standing in its cover slot, like TgCover's own placeholder. */
 const Case = () => <span className="tg-skeleton aspect-[0.7] h-full max-w-full rounded-[4px]" />
 
-/** The bookcase: TgShelf's layout hook and row anatomy, with empty cases. */
+/** The bookcase: TgShelf's layout hook, CSS geometry and grid, with empty cases. */
 export function TgStatesShelfSkeleton() {
   const [el, setEl] = useState<HTMLDivElement | null>(null)
-  const { rows, cols, slotWidth, coverHeight, gap, rowHeight, measured } = useShelfLayout(el)
+  const layout = useShelfLayout(el)
+  const { rows, cols, measured } = layout
 
   return (
-    <div ref={setEl} className="h-full overflow-hidden rounded-2xl">
+    <div ref={setEl} className="h-full overflow-hidden rounded-2xl [scrollbar-gutter:stable]">
       <div className="tg-shelf min-h-full">
-        {measured && Array.from({ length: rows }, (_, r) => (
-          <div key={r} className="tg-shelf-row" style={{ height: rowHeight }}>
-            <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-[linear-gradient(180deg,var(--tg-shelf-edge),transparent),linear-gradient(180deg,var(--tg-shelf-edge),transparent_55%)]" />
-            <span aria-hidden className="tg-plank" style={{ height: SHELF_LABEL }} />
-            <div className="relative z-[2] flex h-full overflow-hidden px-11" style={{ gap }}>
-              {Array.from({ length: cols }, (_, c) => (
-                <div key={c} className="relative flex h-full shrink-0 items-end pb-[14px]" style={{ width: slotWidth }}>
-                  <span aria-hidden className="tg-spot" />
-                  <div className="w-full">
-                    <span className="tg-cover-slot" style={{ height: coverHeight }}><Case /></span>
-                    <CardText />
-                  </div>
+        {measured && (
+          <div className="tg-case" style={shelfVars(layout) as CSSProperties}>
+            {Array.from({ length: rows * cols }, (_, i) => (
+              <div key={i} className="tg-slot">
+                <span aria-hidden className="tg-spot" />
+                <span aria-hidden className="tg-lamp is-l" />
+                <span aria-hidden className="tg-lamp is-r" />
+                <div className="tg-card">
+                  <span className="tg-cover-slot"><Case /></span>
+                  <span className="tg-card-text"><CardText /></span>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     </div>
   )
@@ -56,11 +55,11 @@ export function TgStatesShelfSkeleton() {
 export function TgStatesGridSkeleton() {
   return (
     <div className="h-full overflow-hidden [scrollbar-gutter:stable]">
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-x-5 gap-y-6 px-3 pb-6 pt-4">
+      <div className="tg-cover-grid grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-x-5 gap-y-6 px-3 pb-6 pt-4">
         {Array.from({ length: 18 }, (_, i) => (
-          <div key={i}>
-            <span className="tg-cover-slot aspect-[1/1.3]"><Case /></span>
-            <CardText />
+          <div key={i} className="tg-card">
+            <span className="tg-cover-slot"><Case /></span>
+            <span className="tg-card-text"><CardText /></span>
           </div>
         ))}
       </div>
@@ -110,7 +109,7 @@ function TwoLines() {
 /** The phone's two-column card grid (TgMobileGrid). */
 export function TgStatesMobileSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-6 pb-4">
+    <div className="grid grid-cols-2 gap-x-6 gap-y-6 px-1 pb-4">
       {Array.from({ length: 6 }, (_, i) => (
         <div key={i}>
           <span className="tg-skeleton block aspect-[0.72] w-full rounded-md" />

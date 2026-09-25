@@ -41,6 +41,11 @@ function HeroArt({ game, variant }: { game: TgGame; variant: Variant }) {
   const [, bump] = useReducer((n: number) => n + 1, 0)
   const [retried, setRetried] = useState<string | null>(null)
   const [fadeSrc, setFadeSrc] = useState<string | null>(null)
+  // The attempt (URL, or URL#retry) whose load just failed. A URL that loaded
+  // earlier counts as cached and is shown without a fade, so without this a
+  // later failure of that same URL left the browser's broken-image icon on
+  // screen for the whole retry pause.
+  const [failedKey, setFailedKey] = useState<string | null>(null)
 
   // Holding an arrow key along the shelf passes a game every few frames: only
   // the one the user stops on downloads its full-size art. Art the browser
@@ -50,10 +55,13 @@ function HeroArt({ game, variant }: { game: TgGame; variant: Variant }) {
   const live = firstLiveCover(candidates)
   const cached = isCoverLoaded(live)
   const url = settledId === game.id || cached ? live : null
-  const reveal = url != null && fadeSrc === url ? 'tg-fade-in' : cached ? '' : 'opacity-0'
+  const attemptKey = url != null && retried === url ? `${url}#retry` : url
+  const reveal = attemptKey != null && failedKey === attemptKey ? 'opacity-0'
+    : url != null && fadeSrc === url ? 'tg-fade-in' : cached ? '' : 'opacity-0'
 
   function onError() {
     if (!url) return
+    setFailedKey(attemptKey)
     if (reportCoverError(url) === 'retry') window.setTimeout(() => setRetried(url), RETRY_MS)
     else bump()
   }
@@ -74,7 +82,7 @@ function HeroArt({ game, variant }: { game: TgGame; variant: Variant }) {
       </div>
       {url && (
         <img
-          key={retried === url ? `${url}#retry` : url}
+          key={attemptKey ?? undefined}
           src={url}
           alt=""
           decoding="async"

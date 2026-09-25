@@ -1,7 +1,7 @@
-import { useMemo, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { chunkShelves, type TgGame } from '../testGameModel'
-import { TgShelfRow } from './TgShelfRow'
-import { textInset, useRevealCard, useShelfLayout } from './useShelfLayout'
+import { useState, type CSSProperties, type KeyboardEvent } from 'react'
+import type { TgGame } from '../testGameModel'
+import { TgShelfSlot } from './TgShelfSlot'
+import { shelfVars, useRevealCard, useShelfLayout } from './useShelfLayout'
 
 interface Props {
   games: TgGame[]
@@ -10,33 +10,28 @@ interface Props {
 }
 
 /**
- * The bookcase: as many shelves as fit the height (two to five), each a
- * carousel of cases standing on a lit plank. Arrow keys move the selection —
- * Left/Right along the list, Up/Down to the same place on the next shelf.
+ * The bookcase: full shelves stacked top to bottom, as many cases per shelf
+ * as fit the width, the whole case scrolling vertically. Spare lit shelves
+ * fill the view when the library is short, so it always reads as a bookcase.
+ * Arrow keys move the selection — Left/Right along the list, Up/Down one
+ * shelf.
  *
- * The geometry reaches the rows and cards as CSS custom properties on the
- * case, never as props: a resize restyles every slot but re-renders no card.
+ * One CSS grid holds every case (the planks, ceilings and walls are painted
+ * per row by .tg-case), and the geometry reaches it as CSS custom
+ * properties: a resize restyles the case but re-renders no card, and nothing
+ * is ever re-chunked into rows. Off-screen slots skip layout and paint.
  */
 export function TgShelf({ games, selectedId, onSelect }: Props) {
   const [el, setEl] = useState<HTMLDivElement | null>(null)
-  const layout = useShelfLayout(el, games.length)
-  const { rows, cols, measured } = layout
-  const shelves = useMemo(() => chunkShelves(games, rows, cols), [games, rows, cols])
+  const layout = useShelfLayout(el)
+  const { cols, rows, measured } = layout
 
-  // Mirrors chunkShelves' shelf length, so Up/Down lands in the same column.
-  const perShelf = Math.max(cols, Math.ceil(games.length / rows))
   const selectedIndex = selectedId ? games.findIndex(g => g.id === selectedId) : -1
   const focusId = selectedIndex >= 0 ? selectedId : games[0]?.id ?? null
   useRevealCard(el, selectedId, measured ? 'shelf' : null, games.length)
 
-  const vars = {
-    '--tg-card-w': `${layout.slotWidth}px`,
-    '--tg-cover-h': `${layout.coverHeight}px`,
-    '--tg-gap': `${layout.gap}px`,
-    '--tg-half-gap': `${layout.gap / 2}px`,
-    '--tg-row-h': `${layout.rowHeight}px`,
-    '--tg-text-inset': `${textInset(layout)}px`,
-  } as CSSProperties
+  const shelves = Math.max(rows, Math.ceil(games.length / cols))
+  const emptySlots = shelves * cols - games.length
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !games.length) return
@@ -46,11 +41,11 @@ export function TgShelf({ games, selectedId, onSelect }: Props) {
     switch (e.key) {
       case 'ArrowLeft': next = Math.max(0, cur - 1); break
       case 'ArrowRight': next = Math.min(last, cur + 1); break
-      case 'ArrowUp': next = cur - perShelf >= 0 ? cur - perShelf : cur; break
+      case 'ArrowUp': next = cur - cols >= 0 ? cur - cols : cur; break
       case 'ArrowDown': {
-        // From a longer shelf onto a shorter last one, land on its last case.
-        const onLastShelf = Math.floor(cur / perShelf) === Math.floor(last / perShelf)
-        next = cur + perShelf <= last ? cur + perShelf : onLastShelf ? cur : last
+        // From a full shelf onto a shorter last one, land on its last case.
+        const onLastShelf = Math.floor(cur / cols) === Math.floor(last / cols)
+        next = cur + cols <= last ? cur + cols : onLastShelf ? cur : last
         break
       }
       default: return
@@ -67,14 +62,17 @@ export function TgShelf({ games, selectedId, onSelect }: Props) {
       role="region"
       aria-label="Game shelf"
       onKeyDown={onKeyDown}
-      className="tg-scroll-y h-full rounded-2xl"
+      className="tg-scroll-y h-full rounded-2xl [scrollbar-gutter:stable]"
     >
-      <div className="tg-shelf min-h-full" style={vars}>
-        {/* Keyed by position: a re-chunk or a sort then moves cards between
-            shelves that stay mounted, instead of remounting whole shelves. */}
-        {measured && shelves.map((shelf, i) => (
-          <TgShelfRow key={i} games={shelf} cols={cols} selectedId={selectedId} focusId={focusId} onSelect={onSelect} />
-        ))}
+      <div className="tg-shelf min-h-full">
+        {measured && (
+          <div className="tg-case" style={shelfVars(layout) as CSSProperties}>
+            {games.map(g => (
+              <TgShelfSlot key={g.id} game={g} selected={g.id === selectedId} focusable={g.id === focusId} onSelect={onSelect} />
+            ))}
+            {Array.from({ length: emptySlots }, (_, i) => <TgShelfSlot key={`empty-${i}`} />)}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -35,16 +35,23 @@ const RETRY_MS = 1800
 export function TgCover({ game, mode, eager = false, className = '' }: Props) {
   const [attempt, bump] = useReducer((n: number) => n + 1, 0)
   const [fadeSrc, setFadeSrc] = useState<string | null>(null)
+  // The <img> element (URL + attempt) that fired onError: hidden from that
+  // moment on — a failed image is never on screen, even for a URL that loaded
+  // fine earlier in the session.
+  const [erroredKey, setErroredKey] = useState<string | null>(null)
 
   const src = firstLiveCover(coverCandidates(game))
+  const imgKey = `${src}#${attempt}`
   // Captured per render: an image the browser already had shows at once, with
   // no fade; one this mount watched arrive fades in.
   const cached = isCoverLoaded(src)
   const fade = src != null && fadeSrc === src
-  const visible = cached || fade
+  const visible = (cached || fade) && erroredKey !== imgKey
 
   function onError() {
     if (!src) return
+    setErroredKey(imgKey)
+    setFadeSrc(null)
     // The remount after the pause (a new key) requests the same URL again.
     if (reportCoverError(src) === 'retry') window.setTimeout(bump, RETRY_MS)
     else bump()
@@ -62,7 +69,7 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
     setFadeSrc(src)
   }
 
-  const reveal = fade ? 'tg-fade-in' : visible ? '' : 'opacity-0'
+  const reveal = !visible ? 'opacity-0' : fade ? 'tg-fade-in' : ''
   const imgProps = {
     src: src ?? undefined,
     alt: '',
@@ -84,7 +91,7 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
             {/* An absolutely placed replaced element sizes through max-width/
                 max-height with its aspect kept, in every engine. `!absolute`
                 beats the frame class's own `position: relative`. */}
-            <img key={`${src}#${attempt}`} {...imgProps} className={`tg-cover-frame tg-cover-img !absolute inset-x-0 bottom-0 mx-auto ${reveal}`} />
+            <img key={imgKey} {...imgProps} className={`tg-cover-frame tg-cover-img !absolute inset-x-0 bottom-0 mx-auto ${reveal}`} />
           </>
         )}
       </div>
@@ -102,7 +109,7 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
             <img aria-hidden src={src} alt="" draggable={false} className="absolute inset-0 h-full w-full scale-125 object-cover opacity-60 blur-lg" />
           )}
           <img
-            key={`${src}#${attempt}`}
+            key={imgKey}
             {...imgProps}
             className={`absolute inset-0 h-full w-full ${mode === 'contain' ? 'object-contain' : 'object-cover'} ${reveal}`}
           />

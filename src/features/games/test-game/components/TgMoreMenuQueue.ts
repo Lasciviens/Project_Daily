@@ -15,17 +15,16 @@ import { deriveGames, queueRanks } from '../testGameModel'
 
 type SteamTypes = Map<number, string | null>
 
-/**
- * The newest Steam store-type map in the cache. Found by shape rather than by
- * exact key, so it never falls out of step with the library hook's own key
- * (which hashes the appid list). Returns the cached Map itself, so the
- * snapshot is stable until the cache actually changes.
- */
+// useTestGameLibrary's store-type query, by key prefix: its last segment
+// hashes the appid list, which this hook does not rebuild.
+const STEAM_TYPES_PREFIX = ['steam', 'app-types', 'library']
+
+/** The newest cached classification. Returns the cached Map itself, so the
+ *  snapshot stays referentially stable until the cache actually changes. */
 function latestSteamTypes(queries: Query[]): SteamTypes | undefined {
   let best: Query | undefined
   for (const q of queries) {
     if (!(q.state.data instanceof Map)) continue
-    if (!q.queryKey.some(k => typeof k === 'string' && /types$/.test(k))) continue
     if (!best || q.state.dataUpdatedAt > best.state.dataUpdatedAt) best = q
   }
   return best?.state.data as SteamTypes | undefined
@@ -43,7 +42,7 @@ export function useQueuePosition(id: string): number | null {
     (onChange: () => void) => cache.subscribe(e => { if (e.type === 'updated' || e.type === 'removed') onChange() }),
     [cache],
   )
-  const steamTypes = useSyncExternalStore(subscribe, () => latestSteamTypes(cache.getAll()))
+  const steamTypes = useSyncExternalStore(subscribe, () => latestSteamTypes(cache.findAll({ queryKey: STEAM_TYPES_PREFIX })))
 
   const ranks = useMemo(
     () => queueRanks(deriveGames([...(retro.data ?? []), ...(steam.data ?? []), ...(psn.data ?? [])], steamTypes)),

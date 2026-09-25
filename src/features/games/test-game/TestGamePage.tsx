@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './testGame.css'
 import { useTestGameLibrary } from './useTestGameLibrary'
 import { useTestGameStore } from './testGameStore'
 import { useTgBreakpoint } from './useTgBreakpoint'
 import { useTgHeaderConfig } from './useTgHeaderConfig'
 import { useTgLibraryView } from './useTgLibraryView'
-import { heroCandidates, type TgGame } from './testGameModel'
+import type { TgGame } from './testGameModel'
 import type { TgActions } from './tgTypes'
 import { TgSidebar } from './components/TgSidebar'
 import { TgTopBar } from './components/TgTopBar'
@@ -13,25 +13,19 @@ import { TgHeader } from './components/TgHeader'
 import { TgShelf } from './components/TgShelf'
 import { TgGridView } from './components/TgGridView'
 import { TgListView } from './components/TgListView'
-import { TgDetailPanel } from './components/TgDetailPanel'
+import { TgDetailOverlayHost, type TgPickIntent } from './components/TgDetailOverlayHost'
+import { TgDetailOverlayBackdrop } from './components/TgDetailOverlayBackdrop'
 import { TgModals } from './components/TgModals'
 import { TgMobileHeader, TgBottomTabs, TgMobileGrid } from './components/TgMobile'
 import { TgQueueView } from './components/TgQueueView'
 import { TgAnalyticsView } from './components/TgAnalyticsView'
 import { TgAdvancedView } from './components/TgAdvancedView'
 import { TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderError } from './components/TgStates'
-import { firstLiveCover } from './components/coverCache'
-import { useStableValue } from './components/useStableValue'
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  /#/test-game — the Games page rebuilt on the "Game Library" design.
-//
-//  A TEST page: it lives outside the app shell (its own sidebar, top bar and
-//  phone tab bar, exactly as the design draws them), reads and writes the SAME
-//  Supabase tables through the SAME hooks as /#/games, and replaces nothing.
-//  Features the design has no place for yet live under Advanced, reused
-//  verbatim from the current page, to be brought in one at a time.
-// ─────────────────────────────────────────────────────────────────────────────
+// /#/test-game — the Games page rebuilt on the "Game Library" design. It lives
+// outside the app shell (its own sidebar, top bar and phone tab bar, as the
+// design draws them) and reads and writes the SAME tables through the SAME
+// hooks as /#/games. What the design has no place for yet lives under Advanced.
 
 export function TestGamePage() {
   const lib = useTestGameLibrary()
@@ -41,36 +35,55 @@ export function TestGamePage() {
   const view = useTestGameStore(s => s.view)
   const search = useTestGameStore(s => s.search)
   const selectedId = useTestGameStore(s => s.selectedId)
+  const detailOpen = useTestGameStore(s => s.detailOpen)
+  const collapsed = useTestGameStore(s => s.detailCollapsed)
   const select = useTestGameStore(s => s.select)
+  const openDetail = useTestGameStore(s => s.openDetail)
+  const activateGame = useTestGameStore(s => s.activateGame)
+  const closeDetail = useTestGameStore(s => s.closeDetail)
+  const setDetailCollapsed = useTestGameStore(s => s.setDetailCollapsed)
 
   const [editId, setEditId] = useState<string | null>(null)
   const [fullId, setFullId] = useState<string | null>(null)
   const [provider, setProvider] = useState<TgGame | null>(null)
-  // Below desktop the detail opens as a sheet; desktop shows it permanently.
-  // Widening to desktop closes the sheet, so narrowing back never reopens it
-  // on a game picked long before.
-  const [sheetId, setSheetId] = useState<string | null>(null)
-  const [prevBp, setPrevBp] = useState(bp)
-  if (bp !== prevBp) {
-    setPrevBp(bp)
-    if (bp === 'desktop') setSheetId(null)
-  }
+  const pickRef = useRef<TgPickIntent>(null)
+  const panelRef = useRef<HTMLElement>(null)
 
   const {
     counts, shown, others, effectivePlatform, isGameSection, genres, statusCounts: sCounts, visible, ranks, navCounts,
   } = useTgLibraryView(lib)
 
-  const selected = useMemo(() => {
-    if (!isGameSection) return null
-    return visible.find(g => g.id === selectedId) ?? (bp === 'desktop' ? visible[0] ?? null : null)
-  }, [visible, selectedId, bp, isGameSection])
-  const sheetGame = useMemo(() => lib.games.find(g => g.id === sheetId) ?? null, [lib.games, sheetId])
+  // Looked up in the whole library, not the current view: a status changed in
+  // the details can take the game out of the open tab, and its details must
+  // not vanish mid-edit. Nothing is selected until the user picks a game.
+  const selected = useMemo(
+    () => (isGameSection && selectedId ? lib.games.find(g => g.id === selectedId) ?? null : null),
+    [lib.games, selectedId, isGameSection],
+  )
+  const detailGame = detailOpen ? selected : null
 
-  // Arrowing along the shelf passes a game every few frames; the full-size
-  // backdrop follows only once the selection rests, and skips dead art.
-  const backdropId = useStableValue(selected?.id ?? null, 250)
-  const backdropGame = useMemo(() => lib.games.find(g => g.id === backdropId) ?? null, [lib.games, backdropId])
-  const backdrop = isGameSection && backdropGame ? firstLiveCover(heroCandidates(backdropGame)) : null
+  // The open game left the library (deleted from Edit, dropped by a provider
+  // refetch): close its details rather than leave them "open" with nothing
+  // shown, which made the next click only swap or tuck instead of opening.
+  const libSettled = !lib.isLoading && !lib.providersLoading
+  useEffect(() => {
+    if (detailOpen && selectedId && libSettled && !lib.games.some(g => g.id === selectedId)) {
+      select(null)
+      closeDetail()
+    }
+  }, [detailOpen, selectedId, libSettled, lib.games, select, closeDetail])
+
+  // Widening past the phone layout swaps the full-screen sheet for the
+  // overlay; the sheet's focus target unmounts with the phone tree, so hand
+  // focus to the overlay or Esc would reach nothing.
+  const prevBp = useRef(bp)
+  useEffect(() => {
+    const was = prevBp.current
+    prevBp.current = bp
+    if (was === 'mobile' && bp !== 'mobile' && detailOpen && !collapsed) {
+      requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }))
+    }
+  }, [bp, detailOpen, collapsed])
 
   const header = useTgHeaderConfig({ games: lib.games, platform: effectivePlatform, statusCounts: sCounts, visibleCount: visible.length })
 
@@ -80,11 +93,31 @@ export function TestGamePage() {
     openFull: (id) => setFullId(id),
     openProvider: (g) => setProvider(g),
   }), [])
+  // Phone: a tap opens the full-screen sheet. Wider: an arrow key only walks
+  // the selection (an open overlay follows it); a click opens the overlay and
+  // leaves focus alone; Enter opens it and moves focus in.
   const onSelect = useCallback((id: string) => {
-    select(id)
-    if (bp !== 'desktop') setSheetId(id)
-  }, [select, bp])
-  const closeSheet = useCallback(() => setSheetId(null), [])
+    const pick = pickRef.current
+    pickRef.current = null
+    if (bp === 'mobile') openDetail(id)
+    else if (pick === 'arrow') {
+      select(id)
+      // The expanded overlay covers the right-hand columns. Walking onto a
+      // card underneath it tucks the overlay into its tab (which follows the
+      // selection) so the card being chosen is actually visible.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const panel = panelRef.current
+        const card = document.querySelector<HTMLElement>(`[data-game-id="${CSS.escape(id)}"]`)
+        if (!panel || !card || !panel.isConnected) return
+        const p = panel.getBoundingClientRect()
+        const c = card.getBoundingClientRect()
+        if (p.width > 0 && c.right > p.left + 8 && c.bottom > p.top && c.top < p.bottom) setDetailCollapsed(true)
+      }))
+    }
+    else if (activateGame(id) === 'opened' && pick === 'keyboard') {
+      requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }))
+    }
+  }, [bp, openDetail, select, activateGame, setDetailCollapsed])
   const closeModal = useCallback((which: 'edit' | 'full' | 'provider') => {
     if (which === 'edit') setEditId(null)
     else if (which === 'full') setFullId(null)
@@ -127,7 +160,7 @@ export function TestGamePage() {
       {bp === 'mobile' ? (
         <div key="phone" className="tg-root h-[100dvh] flex flex-col overflow-hidden">
           <TgMobileHeader platforms={counts} genres={genres} statusCounts={sCounts} header={header} />
-          <div className="flex-1 min-h-0 tg-scroll-y pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2 pb-[calc(76px+env(safe-area-inset-bottom))]">
+          <div className="flex-1 min-h-0 tg-scroll-y pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] pt-2 pb-[calc(76px+env(safe-area-inset-bottom))]">
             {providerError}
             {renderSection('mobile')}
           </div>
@@ -137,31 +170,23 @@ export function TestGamePage() {
         <div key="wide" className="tg-root h-[100dvh] flex overflow-hidden">
           <TgSidebar counts={navCounts} platforms={shown} others={others} />
           <div className="relative flex-1 min-w-0 flex flex-col">
-            {backdrop && <div aria-hidden className="tg-backdrop" style={{ backgroundImage: `url("${backdrop}")` }} />}
+            <TgDetailOverlayBackdrop selected={selected} games={lib.games} />
             <TgTopBar
               genres={genres} statusCounts={sCounts} showStatus={section === 'library'}
               showViews={isGameSection && section !== 'queue'} showSort={isGameSection && section !== 'queue'}
               showSearch={isGameSection} showGenre={isGameSection}
             />
-            {/* Right and bottom insets: a landscape phone's notch, an iPad's home indicator.
-                The sidebar and the top bar pad for theirs. */}
-            <div className="relative flex-1 min-h-0 flex gap-5 pl-5 pr-[max(1.25rem,env(safe-area-inset-right))] pb-[max(1.25rem,env(safe-area-inset-bottom))] xl:pl-6 xl:pr-[max(1.5rem,env(safe-area-inset-right))]">
-              <main className="flex-1 min-w-0 flex flex-col">
-                <TgHeader config={header} />
-                {providerError}
-                <div className={`flex-1 min-h-0 ${isGameSection ? '' : 'tg-scroll-y'}`}>{renderSection('desktop')}</div>
-              </main>
-              {bp === 'desktop' && isGameSection && (
-                <aside className="w-[380px] 2xl:w-[420px] shrink-0 min-h-0 flex">
-                  <TgDetailPanel game={selected} actions={actions} variant="panel" />
-                </aside>
-              )}
-            </div>
+            <TgDetailOverlayHost
+              game={detailGame} actions={actions} scroll={!isGameSection} pickRef={pickRef} panelRef={panelRef}
+              header={<><TgHeader config={header} />{providerError}</>}
+            >
+              {renderSection('desktop')}
+            </TgDetailOverlayHost>
           </div>
         </div>
       )}
       <TgModals
-        bp={bp} actions={actions} sheetGame={sheetGame} onCloseSheet={closeSheet}
+        bp={bp} actions={actions} sheetGame={collapsed ? null : detailGame} onCloseSheet={closeDetail}
         editId={editId} fullId={fullId} provider={provider} onClose={closeModal}
       />
     </>

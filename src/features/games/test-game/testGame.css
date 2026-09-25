@@ -64,14 +64,19 @@
      case, set into a slightly darker ceiling board so the white lamps show. */
   --tg-shelf-bg: linear-gradient(180deg, #fbfcfe 0%, #f2f5f9 100%);
   --tg-shelf-edge: rgba(15, 23, 42, 0.06);
-  --tg-ceiling: linear-gradient(180deg, #e2e6ec 0%, #eceff3 100%);
   --tg-lamp: #fffdf8;
   --tg-lamp-glow: 0 0 0 1px rgba(15, 23, 42, 0.06), 0 0 5px 1px rgba(255, 244, 214, 0.95), 0 0 12px 3px rgba(255, 255, 255, 0.9);
   --tg-spot: rgba(255, 255, 255, 0.9);
   --tg-spot-core: rgba(255, 251, 240, 0.9);
-  --tg-plank:
-    linear-gradient(180deg, #ffffff 0 1px, #e8ecf1 1px, #f1f4f7 11px, #f8f9fb 12px, #f5f7f9 100%);
-  --tg-plank-shadow: 0 10px 18px -8px rgba(15, 23, 42, 0.18), 0 -1px 0 rgba(15, 23, 42, 0.05);
+  /* One shelf, painted per grid row by .tg-case: the underside of the board
+     above (where the lamps sit) at the top, the plank's front face — a lit
+     lip, an ~11px board, then the band behind the titles — at the bottom
+     (SHELF_LABEL = 60px). The plank gradient runs bottom-up (0deg). */
+  --tg-ceiling-tile:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.06) 0 1px, #e2e6ec 1px, #eceff3 8px, transparent 8px),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.035), transparent 32px);
+  --tg-plank-tile:
+    linear-gradient(0deg, #f5f7f9 0, #f8f9fb 48px, #f1f4f7 49px, #e8ecf1 59px, #ffffff 59px 60px, rgba(15, 23, 42, 0.07) 60px 61px, transparent 61px);
   --tg-cover-shadow: 0 12px 20px -10px rgba(15, 23, 42, 0.45), 0 2px 4px rgba(15, 23, 42, 0.12);
   --tg-cover-ph: linear-gradient(160deg, #e9edf2 0%, #dfe4eb 100%);
   --tg-chevron-bg: #ffffff;
@@ -134,14 +139,15 @@
     radial-gradient(90% 40% at 50% 0%, rgba(255, 170, 90, 0.05), transparent 70%),
     linear-gradient(180deg, #0e0d0e 0%, #0b0a0b 100%);
   --tg-shelf-edge: rgba(214, 198, 182, 0.07);
-  --tg-ceiling: linear-gradient(180deg, #171413 0%, #0f0d0d 100%);
   --tg-lamp: #fff6e8;
   --tg-lamp-glow: 0 0 5px 1px rgba(255, 214, 160, 0.55), 0 0 14px 4px rgba(255, 176, 96, 0.28);
   --tg-spot: rgba(255, 190, 130, 0.12);
   --tg-spot-core: rgba(255, 214, 160, 0.3);
-  --tg-plank:
-    linear-gradient(180deg, rgba(214, 198, 182, 0.8) 0 1px, #2a1d1a 1px, #1c1614 11px, #080808 12px, #080808 100%);
-  --tg-plank-shadow: 0 -1px 16px -6px rgba(255, 170, 90, 0.18);
+  --tg-ceiling-tile:
+    linear-gradient(180deg, rgba(214, 198, 182, 0.07) 0 1px, #171413 1px, #0f0d0d 8px, transparent 8px),
+    linear-gradient(180deg, rgba(214, 198, 182, 0.05), transparent 32px);
+  --tg-plank-tile:
+    linear-gradient(0deg, #080808 0 48px, #1c1614 49px, #2a1d1a 59px, rgba(214, 198, 182, 0.8) 59px 60px, rgba(255, 170, 90, 0.07) 60px, transparent 72px);
   --tg-cover-shadow: 0 16px 26px -12px rgba(0, 0, 0, 0.95), 0 0 24px -12px rgba(255, 170, 90, 0.35);
   --tg-cover-ph: linear-gradient(160deg, #1a1d24 0%, #121419 100%);
   --tg-chevron-bg: color-mix(in srgb, var(--tg-panel-2) 85%, transparent);
@@ -153,13 +159,13 @@
 
 /* ─── Status colour, set once per element via data-status ─────────────────── */
 
-/* Unscoped on purpose: the attribute only ever appears inside this page's own
-   markup (root or portal), and the variables it reads are defined only there. */
-[data-status] { --st: var(--tg-grey); --st-soft: var(--tg-grey-soft); }
-[data-status='playing']   { --st: var(--tg-green);  --st-soft: var(--tg-green-soft); }
-[data-status='completed'] { --st: var(--tg-blue);   --st-soft: var(--tg-blue-soft); }
-[data-status='wishlist']  { --st: var(--tg-purple); --st-soft: var(--tg-purple-soft); }
-[data-status='dropped']   { --st: var(--tg-red);    --st-soft: var(--tg-red-soft); }
+/* Scoped like everything else: inside the page root, inside a portal, or on
+   the portal element itself. */
+.tg-root [data-status], .tg-portal [data-status], .tg-portal[data-status] { --st: var(--tg-grey); --st-soft: var(--tg-grey-soft); }
+.tg-root [data-status='playing'], .tg-portal [data-status='playing'], .tg-portal[data-status='playing'] { --st: var(--tg-green); --st-soft: var(--tg-green-soft); }
+.tg-root [data-status='completed'], .tg-portal [data-status='completed'], .tg-portal[data-status='completed'] { --st: var(--tg-blue); --st-soft: var(--tg-blue-soft); }
+.tg-root [data-status='wishlist'], .tg-portal [data-status='wishlist'], .tg-portal[data-status='wishlist'] { --st: var(--tg-purple); --st-soft: var(--tg-purple-soft); }
+.tg-root [data-status='dropped'], .tg-portal [data-status='dropped'], .tg-portal[data-status='dropped'] { --st: var(--tg-red); --st-soft: var(--tg-red-soft); }
 
 .tg-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--st, var(--tg-grey)); flex-shrink: 0; }
 .tg-status-text { color: var(--st, var(--tg-grey)); }
@@ -320,23 +326,26 @@
   background: var(--tg-shelf-bg);
   box-shadow: inset 0 0 0 1px var(--tg-shelf-edge);
 }
-.tg-shelf-row { position: relative; }
-.tg-shelf-row + .tg-shelf-row { border-top: 1px solid var(--tg-shelf-edge); }
-/* Underside of the board above: the lamps are mounted in it. */
-.tg-ceiling {
-  position: absolute; inset: 0 0 auto 0; height: 8px;
-  background: var(--tg-ceiling, transparent); pointer-events: none;
-}
-.tg-plank {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 14px;
-  background: var(--tg-plank); box-shadow: var(--tg-plank-shadow);
-  pointer-events: none; z-index: 1;
+.tg-case {
+  display: grid;
+  grid-template-columns: repeat(var(--tg-cols), var(--tg-card-w));
+  grid-auto-rows: var(--tg-row-h);
+  column-gap: var(--tg-gap);
+  justify-content: center;
+  padding-inline: var(--tg-side);
+  /* Every row is one shelf: ceiling + plank tiles repeat at the row height,
+     over faint side walls. */
+  background-image:
+    var(--tg-ceiling-tile), var(--tg-plank-tile),
+    linear-gradient(90deg, var(--tg-shelf-edge), transparent 40px),
+    linear-gradient(270deg, var(--tg-shelf-edge), transparent 40px);
+  background-size: 100% var(--tg-row-h);
+  background-repeat: repeat-y;
 }
 
-/* One slot of the case. Geometry comes from CSS custom properties that
-   TgShelf sets on .tg-shelf (--tg-card-w, --tg-cover-h, --tg-gap,
-   --tg-half-gap, --tg-row-h), so a resize restyles the slots without
-   re-rendering a single card.
+/* One slot of the case. Geometry comes from the CSS custom properties TgShelf
+   sets on .tg-case (--tg-card-w, --tg-cover-h, --tg-gap, --tg-half-gap,
+   --tg-row-h), so a resize restyles the slots without re-rendering a card.
 
    The slot's box reaches half a gap into each neighbouring gap (negative
    margin, equal padding), so the paint containment that content-visibility
@@ -344,8 +353,7 @@
    style, layout and paint. The selected slot opts out: its glow is wider than
    any slot. */
 .tg-slot {
-  position: relative; display: flex; align-items: flex-end; flex-shrink: 0;
-  width: calc(var(--tg-card-w) + var(--tg-gap, 0px)); height: 100%;
+  position: relative; display: flex; align-items: flex-end; min-width: 0;
   margin-inline: calc(var(--tg-half-gap, 0px) * -1);
   padding: 0 var(--tg-half-gap, 0px) 14px;
   content-visibility: auto;
@@ -378,7 +386,7 @@
   content-visibility: auto; contain-intrinsic-size: auto 150px auto 250px;
 }
 .tg-cell.is-selected { content-visibility: visible; }
-.tg-cover-grid { --tg-cover-aspect: 10 / 13; }
+.tg-cover-grid { --tg-cover-aspect: 10 / 13; --tg-text-overhang: 8px; }
 
 .tg-card {
   position: relative; flex-shrink: 0; scroll-snap-align: start; text-align: left; outline: none;
@@ -388,8 +396,13 @@
   position: relative; display: flex; align-items: flex-end; justify-content: center;
   height: var(--tg-cover-h, auto); aspect-ratio: var(--tg-cover-aspect, auto);
 }
-/* Title and meta line up with the cover's edges, not the wider slot's. */
-.tg-card-text { display: block; padding-inline: var(--tg-text-inset, 4.5%); }
+/* The title starts at the cover's left edge, not the wider slot's; like the
+   design, the text may run a little past the cover's right edge — into the
+   gap (--tg-text-overhang, always less than the slot's half-gap reach). */
+.tg-card-text {
+  display: block; padding-inline-start: var(--tg-text-inset, 4.5%);
+  margin-inline-end: calc(var(--tg-text-overhang, 0px) * -1);
+}
 .tg-cover-frame {
   position: relative; display: block; max-width: 100%; max-height: 100%;
   border-radius: 4px; box-shadow: var(--tg-cover-shadow);

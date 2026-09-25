@@ -1,43 +1,48 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-// Bookcase geometry for TgShelf, plus the two small DOM hooks the three game
-// views share (element size, reveal the selected card).
+// Bookcase geometry for TgShelf (and its loading skeleton), plus the two small
+// DOM hooks the three game views share (element size, reveal the selected card).
 
-/** Row padding either side of the covers: room for the carousel chevrons. */
-export const SHELF_SIDE = 44
+/** Case padding either side of the outer columns. */
+export const SHELF_SIDE = 28
 /** Headroom between a shelf's ceiling lamps and the tops of its covers. */
 export const SHELF_CEIL = 22
 /**
  * The plank's front face under the covers: TgGameCard's title (mt-2 + 18px
- * line) and meta row (mt-1 + 16px line) plus 14px below. The row's covers
- * stand exactly on the plank's lit top edge because of this number.
+ * line) and meta row (mt-1 + 16px line) plus 14px below. The covers stand
+ * exactly on the plank's lit top edge because of this number (.tg-case paints
+ * the plank as the bottom SHELF_LABEL px of every row).
  */
 export const SHELF_LABEL = 60
 
 const CHROME = SHELF_CEIL + SHELF_LABEL
 const MIN_COVER = 132
-const MAX_COVER = 200
+const MAX_COVER = 184
 /**
- * Largest cover when a small library would leave shelves bare: the design's
- * 155px cover at 680px, scaled to a 1130px monitor.
+ * Cover height the case aims for: with the detail panel as an overlay the
+ * shelf spans the whole main column, and this gives ~7 columns on a laptop
+ * and ~11 on a 2450px monitor, two to four shelves tall.
  */
-const MAX_COVER_TALL = 260
-/** Title/meta inset per cover height: a 0.7 case centred in its 0.78 slot. */
-const CASE_ASPECT = 0.7
+const PREF_COVER = 168
 /** Slot width per cover height: a 0.72 case plus a hair of room for its title. */
 const SLOT_PER_COVER = 0.78
 /** The design spaces its cases about 0.4 of a slot apart. */
 const GAP_PER_SLOT = 0.4
+/** Title/meta inset per cover height: a 0.7 case centred in its 0.78 slot. */
+const CASE_ASPECT = 0.7
 const MIN_ROWS = 2
-const MAX_ROWS = 5
+/** Extra headroom per cover height a shelf may take to fill the view evenly. */
+const MAX_SLACK = 0.12
 
 export interface ShelfLayout {
+  /** Cases per shelf: the case is a row-major grid of this many columns. */
   cols: number
+  /** Shelves it takes to fill the visible height; spare, empty ones fill it. */
   rows: number
   slotWidth: number
   coverHeight: number
   gap: number
-  /** Height of one shelf; the rows split the case's height evenly. */
+  /** Height of one shelf: cover + chrome, or an even split of the view when close. */
   rowHeight: number
   /** False until the container has been measured once. */
   measured: boolean
@@ -53,48 +58,21 @@ export function smoothScroll(): ScrollBehavior {
 }
 
 /**
- * Pure: the bookcase for a `width` × `height` case holding `count` games.
+ * Pure: the bookcase for a `width` × `height` view. The case scrolls
+ * vertically; nothing scrolls sideways.
  *
- * Cover height is bounded by the height first (two shelves must fit — the
- * design never shows fewer), then grows into whatever spare height the chosen
- * row count leaves. Columns come from the width: when the width is the limit
- * the covers shrink a little rather than drop a column; when the height is the
- * limit the spare width goes between the cases, like a real bookcase.
- *
- * A library smaller than that case (12 games on a monitor laid out as 8 × 3)
- * would leave whole shelves bare, so the rows are capped at
- * max(2, ceil(count / cols)) and the covers grow — up to MAX_COVER_TALL — to
- * fill the case, as long as every game still fits without a carousel.
- * Libraries that fill or overflow the case are laid out exactly as before.
+ * Covers are sized so a whole number of shelves (two or more) would fill the
+ * height, within MIN_COVER…MAX_COVER. Columns come from the width: when the
+ * width is the limit the covers shrink a little rather than drop a column;
+ * otherwise the spare width goes between the cases, like a real bookcase.
+ * A shelf stays tight around its covers (lamps just above them, like the
+ * design) unless an even split of the view is only a little taller — then the
+ * view ends exactly on a plank.
  */
-export function shelfGeometry(width: number, height: number, count = Infinity): ShelfLayout {
-  const base = baseGeometry(width, height)
-  if (!(count > 0 && count < base.rows * base.cols)) return base
+export function shelfGeometry(width: number, height: number): ShelfLayout {
   const inner = Math.max(0, width - 2 * SHELF_SIDE)
-  for (let cover = MAX_COVER_TALL; cover > base.coverHeight; cover -= 2) {
-    const slot = Math.round(cover * SLOT_PER_COVER)
-    const gapTarget = Math.round(slot * GAP_PER_SLOT)
-    const cols = Math.max(1, Math.floor((inner + gapTarget) / (slot + gapTarget)))
-    const needed = Math.ceil(count / cols)
-    const rows = Math.max(MIN_ROWS, needed)
-    if (needed > MAX_ROWS || rows * (cover + CHROME) > height) continue
-    const gap = cols > 1 ? Math.min(Math.round(gapTarget * 1.8), Math.floor((inner - cols * slot) / (cols - 1))) : gapTarget
-    return { cols, rows, slotWidth: slot, coverHeight: cover, gap, rowHeight: Math.floor(height / rows), measured: true }
-  }
-  return base
-}
-
-/** Title/meta side inset that lines the text up with a boxed cover's edges. */
-export function textInset(layout: ShelfLayout): number {
-  return Math.max(0, Math.round((layout.slotWidth - layout.coverHeight * CASE_ASPECT) / 2))
-}
-
-function baseGeometry(width: number, height: number): ShelfLayout {
-  const inner = Math.max(0, width - 2 * SHELF_SIDE)
-  const byHeight = Math.floor(height / MIN_ROWS) - CHROME
-  let cover = clamp(Math.min(Math.round(inner * 0.2), byHeight), MIN_COVER, MAX_COVER)
-  const rows = clamp(Math.floor(height / (cover + CHROME)), MIN_ROWS, MAX_ROWS)
-  cover = clamp(Math.floor(height / rows) - CHROME, cover, Math.min(MAX_COVER, Math.round(cover * 1.3)))
+  const fit = Math.max(MIN_ROWS, Math.floor(height / (PREF_COVER + CHROME)))
+  let cover = clamp(Math.floor(height / fit) - CHROME, MIN_COVER, MAX_COVER)
 
   let slot = Math.round(cover * SLOT_PER_COVER)
   const gapTarget = Math.round(slot * GAP_PER_SLOT)
@@ -108,9 +86,36 @@ function baseGeometry(width: number, height: number): ShelfLayout {
     gap = Math.min(Math.round(gapTarget * 1.8), Math.floor((inner - cols * slot) / (cols - 1)))
   }
 
-  // Short containers keep full-size shelves and scroll — covers never squash.
-  const rowHeight = Math.max(cover + CHROME, Math.floor(height / rows))
+  // Short views keep full-size shelves and scroll — covers never squash.
+  const tight = cover + CHROME
+  const even = Math.floor(height / fit)
+  const rowHeight = even >= tight && even - tight <= Math.round(cover * MAX_SLACK) ? even : tight
+  const rows = Math.max(MIN_ROWS, Math.ceil(height / rowHeight))
   return { cols, rows, slotWidth: slot, coverHeight: cover, gap, rowHeight, measured: true }
+}
+
+/** Title/meta side inset that lines the text up with a boxed cover's left edge. */
+export function textInset(layout: ShelfLayout): number {
+  return Math.max(0, Math.round((layout.slotWidth - layout.coverHeight * CASE_ASPECT) / 2))
+}
+
+/**
+ * The case geometry as the CSS custom properties .tg-case, .tg-slot and
+ * TgGameCard read — set once on the case, so a resize restyles every slot and
+ * re-renders no card.
+ */
+export function shelfVars(layout: ShelfLayout): Record<string, string> {
+  return {
+    '--tg-cols': String(layout.cols),
+    '--tg-side': `${SHELF_SIDE}px`,
+    '--tg-card-w': `${layout.slotWidth}px`,
+    '--tg-cover-h': `${layout.coverHeight}px`,
+    '--tg-gap': `${layout.gap}px`,
+    '--tg-half-gap': `${layout.gap / 2}px`,
+    '--tg-row-h': `${layout.rowHeight}px`,
+    '--tg-text-inset': `${textInset(layout)}px`,
+    '--tg-text-overhang': `${Math.max(0, Math.min(12, Math.floor(layout.gap / 2) - 2))}px`,
+  }
 }
 
 /**
@@ -134,12 +139,16 @@ export function useElementSize(el: HTMLElement | null, box: 'content' | 'border'
   return size
 }
 
-/** `count` = games on the shelf; omit it (loading skeleton) for the full case. */
-export function useShelfLayout(el: HTMLElement | null, count = Infinity): ShelfLayout {
-  const size = useElementSize(el, 'border')
+/**
+ * `el` is the case's vertical scroller, with `scrollbar-gutter: stable` so its
+ * content width never changes as a scrollbar comes and goes (which would feed
+ * back into the column count).
+ */
+export function useShelfLayout(el: HTMLElement | null): ShelfLayout {
+  const size = useElementSize(el, 'content')
   return useMemo(
-    () => (size ? shelfGeometry(size.w, size.h, count) : { ...shelfGeometry(800, 490), measured: false }),
-    [size, count],
+    () => (size ? shelfGeometry(size.w, size.h) : { ...shelfGeometry(1200, 490), measured: false }),
+    [size],
   )
 }
 

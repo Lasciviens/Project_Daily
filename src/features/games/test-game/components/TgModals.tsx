@@ -10,11 +10,10 @@ import type { TgActions } from '../tgTypes'
 import type { TgBreakpoint } from '../useTgBreakpoint'
 import { TgDetailSheet } from './TgDetailSheet'
 
-// Every overlay the page owns, in one place the shell renders OUTSIDE its
-// layout tree — so the phone ↔ tablet switch (a phone rotated to landscape)
-// keeps the very same detail sheet mounted instead of unmounting the phone's
-// and mounting the tablet's, which used to close it: the unmount rolled back
-// the sheet's history entry and the new sheet caught that popstate as "Back".
+// Every modal the page owns, in one place the shell renders OUTSIDE its
+// layout tree, so switching layouts never remounts (and so closes) one. The
+// tablet/desktop details are not modal — they live in the layout as the
+// non-modal TgDetailOverlay — so the only sheet here is the phone's.
 
 /** A saved library row, shaped as the live Steam payload the modal expects. */
 function toSteamGame(g: TgGame): SteamGame {
@@ -38,7 +37,7 @@ const TOAST_POSITION: Record<TgBreakpoint, string> = {
 interface Props {
   bp: TgBreakpoint
   actions: TgActions
-  /** The game the tablet drawer / phone full-screen sheet shows (desktop: none). */
+  /** The game the phone's full-screen sheet shows (null: closed, and always at tablet/desktop width). */
   sheetGame: TgGame | null
   onCloseSheet: () => void
   editId: string | null
@@ -50,11 +49,11 @@ interface Props {
 export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId, provider, onClose }: Props) {
   return (
     <>
-      {/* ONE sheet whose variant follows the breakpoint. Desktop shows the
-          detail as a permanent panel, so the sheet is closed there. */}
+      {/* Widening past the phone layout closes the sheet (its history entry
+          rolls back) and the overlay takes the same open game over. */}
       <TgDetailSheet
-        game={bp === 'desktop' ? null : sheetGame}
-        variant={bp === 'mobile' ? 'fullscreen' : 'drawer'}
+        game={bp === 'mobile' ? sheetGame : null}
+        variant="fullscreen"
         actions={actions}
         onClose={onCloseSheet}
       />

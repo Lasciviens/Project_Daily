@@ -5,10 +5,9 @@ import {
 import { PlatformIcon } from './platformArt'
 import { TgSidebarItem } from './TgSidebarItem'
 
-// Bold 20px glyphs as the design draws them (`!` beats testGame.css's 18px):
-// near-white in dark mode and near-black in light, the accent when active.
-const iconClass = (active: boolean) =>
-  `tg-nav-icon !h-5 !w-5 !opacity-100 ${active ? 'text-[var(--tg-accent)]' : 'text-[var(--tg-text)]'}`
+// Bold glyphs as the design draws them: near-white in dark mode and
+// near-black in light, the accent when active.
+const iconClass = (active: boolean) => `tg-nav-icon ${active ? 'text-[var(--tg-accent)]' : 'text-[var(--tg-text)]'}`
 
 /** The sidebar's PLATFORMS block: the biggest platforms, then one "Others" row. */
 export function TgSidebarPlatforms({ platforms, others }: { platforms: PlatformCount[]; others: PlatformCount[] }) {
