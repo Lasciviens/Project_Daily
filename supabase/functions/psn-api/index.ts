@@ -358,6 +358,21 @@ Deno.serve(async (req: Request) => {
         return json({ error: 'unknown action' }, 400)
     }
   } catch (e) {
-    return json({ error: String((e as Error).message ?? e) }, 502)
+    // Sony reports a dead session TWO ways, and the envelope check above only
+    // covers one of them. `profile` and `games` get the 200-with-error body;
+    // `played_games` (a GraphQL call) instead THROWS -- observed live:
+    // `getUserPlayedGames` rejected with "expired jwt token" while `profile`
+    // on the very same session returned the envelope. That throw fell through
+    // to this catch and left the client with a bare 502, which Supabase's
+    // client surfaces only as "Edge Function returned a non-2xx status code"
+    // -- the body never reaches the caller, so the real reason was invisible.
+    //
+    // Classify it with the SAME predicate rather than a second list, and
+    // answer 200 so the reason survives the round trip.
+    const msg = String((e as Error).message ?? e)
+    if (isReauth({ message: msg })) {
+      return json({ error: 'reauth_required', sonyMessage: msg })
+    }
+    return json({ error: msg }, 502)
   }
 })

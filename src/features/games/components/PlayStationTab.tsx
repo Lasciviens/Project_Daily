@@ -112,6 +112,24 @@ function TrophyCard({ title, onOpen }: { title: PsnTrophyTitle; onOpen: () => vo
   )
 }
 
+// A dead session can also surface from a LIST call rather than from the gate:
+// the profile query may still be serving a cached success when the library
+// call is the first to hit Sony's rejection. Wherever it lands, it reads as
+// the same actionable sentence rather than a red error string.
+function LoadError({ error, what }: { error: unknown; what: string }) {
+  if (isPsnReauthRequired(error)) {
+    return (
+      <div className="text-sm text-ink-500 py-8 text-center">
+        Your PlayStation session expired. Paste a fresh npsso in{' '}
+        <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>.
+      </div>
+    )
+  }
+  return (
+    <div className="text-sm text-red-600 py-8 text-center">Couldn't load {what}: {(error as Error).message}</div>
+  )
+}
+
 function ConnectedView() {
   const qc = useQueryClient()
   const profile = usePsnProfile(true)
@@ -227,9 +245,7 @@ function ConnectedView() {
       {view === 'library' && (
         <>
           {played.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading library…</div>}
-          {played.error && (
-            <div className="text-sm text-red-600 py-8 text-center">Couldn't load games: {(played.error as Error).message}</div>
-          )}
+          {played.error && <LoadError error={played.error} what="games" />}
           {!played.isLoading && !played.error && games.length === 0 && (
             <div className="text-center py-12 text-ink-400 text-sm">No played games found.</div>
           )}
@@ -282,9 +298,7 @@ function ConnectedView() {
       {view === 'trophies' && (
         <>
           {titles.isLoading && <div className="text-sm text-ink-400 py-8 text-center">Loading trophies…</div>}
-          {titles.error && (
-            <div className="text-sm text-red-600 py-8 text-center">Couldn't load trophies: {(titles.error as Error).message}</div>
-          )}
+          {titles.error && <LoadError error={titles.error} what="trophies" />}
           {(titles.data?.length ?? 0) > 0 && (
             <>
               <p className="text-xs text-ink-400 mb-3">{titles.data!.length} games</p>
