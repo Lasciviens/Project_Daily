@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Dices, Plus } from 'lucide-react'
 import { AddGameModal } from '../../components/AddGameModal'
 import { useTestGameStore } from '../testGameStore'
-import { ALL_PLATFORMS, OTHER_PLATFORMS, platformInfo, type TgGame } from '../testGameModel'
+import { ALL_PLATFORMS, NO_PLATFORM, OTHER_PLATFORMS, platformInfo, type TgGame } from '../testGameModel'
 import type { TgRandomScope } from '../advancedTabs'
 
 function ToolCard({ icon, title, text, children }: { icon: ReactNode; title: string; text: string; children: ReactNode }) {
@@ -21,10 +21,14 @@ function ToolCard({ icon, title, text, children }: { icon: ReactNode; title: str
 function poolText(n: number, { platform, search, genre }: TgRandomScope): string {
   const where = platform === ALL_PLATFORMS ? 'in your library'
     : platform === OTHER_PLATFORMS ? 'on Other Platforms'
+    : platform === NO_PLATFORM ? 'with no platform'
     : `on ${platformInfo(platform).name}`
   const q = search.trim()
   const narrowed = [q && `matching “${q}”`, genre && `in ${genre}`].filter(Boolean).join(' ')
-  return `Picks one of the ${n} game${n === 1 ? '' : 's'} ${where}${narrowed ? ` ${narrowed}` : ''} (the Library's current shelf) and opens its full details.`
+  const scope = `${where}${narrowed ? ` ${narrowed}` : ''} (the Library's current shelf)`
+  if (n === 0) return `No games ${scope} to pick from.`
+  if (n === 1) return `Opens the only game ${scope}.`
+  return `Picks one of the ${n} games ${scope} and opens its full details.`
 }
 
 /** The current page's header buttons: "＋ Add game" and "🎲 Random". */
