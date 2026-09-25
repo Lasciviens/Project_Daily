@@ -1,0 +1,141 @@
+import { useCallback, useState } from 'react'
+import { Search, SlidersHorizontal, X } from 'lucide-react'
+import { useTestGameStore } from '../testGameStore'
+import type { PlatformCount, StatusCounts } from '../testGameModel'
+import type { TgHeaderConfig } from '../tgTypes'
+import { TgUserMenu } from './TgUserMenu'
+import { TgMobileGamepad } from './TgMobileGlyph'
+import { TgMobileScope } from './TgMobileScope'
+import { TgMobileFilterSheet } from './TgMobileFilterSheet'
+
+// Horizontal padding that also clears a landscape notch.
+const GUTTER = 'pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]'
+
+export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
+  platforms: PlatformCount[]
+  genres: { genre: string; count: number }[]
+  statusCounts: StatusCounts
+  header: TgHeaderConfig
+}) {
+  const section = useTestGameStore(s => s.section)
+  const search = useTestGameStore(s => s.search)
+  const setSearch = useTestGameStore(s => s.setSearch)
+  const status = useTestGameStore(s => s.status)
+  const genre = useTestGameStore(s => s.genre)
+  const sort = useTestGameStore(s => s.sort)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+
+  // A live query keeps the field open, so the list is never filtered by text you can't see.
+  const showSearch = searchOpen || search !== ''
+  const closeSearch = () => { setSearch(''); setSearchOpen(false) }
+
+  const hasFilters = section !== 'analytics' && section !== 'advanced'
+  const showStatus = section === 'library'
+  const showSort = section !== 'queue' // the queue is always in play order
+  const filtered = (showStatus && status !== 'all') || genre != null || (showSort && sort !== 'title')
+
+  // Keeps the active Advanced chip on screen when it sits past the row's edge.
+  const revealChip = useCallback((el: HTMLButtonElement | null) => {
+    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [])
+
+  return (
+    <header className="shrink-0 pt-[env(safe-area-inset-top)]">
+      <div className={`flex h-[60px] items-center justify-between gap-3 ${GUTTER}`}>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <TgMobileGamepad size={30} className="shrink-0 text-[var(--tg-text)]" />
+          <h1 className="truncate text-[19px] font-bold tracking-[-0.01em]">Game Library</h1>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => (showSearch ? closeSearch() : setSearchOpen(true))}
+            aria-label={showSearch ? 'Close search' : 'Search games'}
+            aria-expanded={showSearch}
+            className="tg-icon-btn"
+          >
+            <Search size={20} strokeWidth={1.9} />
+          </button>
+          <TgUserMenu />
+        </div>
+      </div>
+
+      {showSearch && (
+        <div className={`pb-2 ${GUTTER}`}>
+          <div className="relative">
+            <Search size={17} strokeWidth={1.9} aria-hidden className="tg-faint pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              inputMode="search"
+              enterKeyHint="search"
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') closeSearch() }}
+              placeholder="Search games, consoles, or tags..."
+              aria-label="Search games"
+              className="tg-input pl-10 pr-11"
+            />
+            <button
+              type="button"
+              onClick={closeSearch}
+              aria-label="Clear and close search"
+              className="tg-muted absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-[11px]"
+            >
+              <X size={17} strokeWidth={2} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className={`flex min-h-[48px] items-center justify-between gap-3 pb-2 pt-1 ${GUTTER}`}>
+        <TgMobileScope platforms={platforms} header={header} />
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(true)}
+            aria-label={filtered ? 'Filters (active)' : 'Filters'}
+            className="tg-icon-btn is-bordered relative shrink-0"
+          >
+            <SlidersHorizontal size={18} strokeWidth={1.9} />
+            {filtered && (
+              <span aria-hidden className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--tg-accent)] ring-2 ring-[var(--tg-panel-2)]" />
+            )}
+          </button>
+        )}
+      </div>
+
+      {section === 'advanced' && header.tabs.length > 0 && (
+        <div className={`tg-scroll-x flex gap-2 pb-2 ${GUTTER}`}>
+          {header.tabs.map(t => {
+            const active = t.key === header.activeTab
+            return (
+              <button
+                key={t.key}
+                ref={active ? revealChip : undefined}
+                type="button"
+                aria-pressed={active}
+                onClick={() => header.onTab?.(t.key)}
+                className={`tg-tab shrink-0 border ${active ? 'is-active border-transparent' : 'border-[var(--tg-border)]'}`}
+              >
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {hasFilters && (
+        <TgMobileFilterSheet
+          open={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          genres={genres}
+          statusCounts={statusCounts}
+          showStatus={showStatus}
+          showSort={showSort}
+        />
+      )}
+    </header>
+  )
+}
