@@ -4,6 +4,7 @@ import { usePsnTitleMap } from '../hooks/usePlayStation'
 import { PsnTrophyPanel } from './PsnTrophyPanel'
 import { parsePlayDurationMinutes, type PsnPlayedGame, type PsnPurchasedGame, type PsnTrophyTitle } from '../api/psnApi'
 import { OWNERSHIP_LABEL, type Ownership } from '../providerEntries'
+import { formatPlaytime } from '../api/playtimeFormat'
 import { LibraryControls } from './LibraryControls'
 import { useLibraryEntry } from '../hooks/useGames'
 
@@ -19,10 +20,6 @@ const CATEGORY_LABEL: Record<string, string> = {
   ps5_native_game: 'PS5', ps4_game: 'PS4', pspc_game: 'PC', unknown: '—',
 }
 
-const fmtHours = (min: number) => {
-  const h = min / 60
-  return h >= 10 ? `${Math.round(h)} h` : `${h.toFixed(1)} h`
-}
 const fmtDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-GB') : '—')
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -120,7 +117,7 @@ export function PsnGameModal({ game, title, purchased, ownership, onClose }: Pro
 
             {game && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <Stat label="Total playtime" value={minutes > 0 ? fmtHours(minutes) : '—'} />
+                <Stat label="Total playtime" value={minutes > 0 ? formatPlaytime(minutes) : '—'} />
                 <Stat label="Times launched" value={game.playCount != null ? String(game.playCount) : '—'} />
                 <Stat label="First played" value={fmtDate(game.firstPlayedDateTime)} />
                 <Stat label="Last played" value={fmtDate(game.lastPlayedDateTime)} />

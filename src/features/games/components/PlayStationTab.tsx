@@ -13,6 +13,7 @@ import {
 import { ImportProviderButton } from './ImportProviderButton'
 import { PsnNpssoForm } from './PsnNpssoForm'
 import { npssoLifetime, npssoLifetimeLabel } from '../api/psnTokenLifetime'
+import { formatPlaytime } from '../api/playtimeFormat'
 import type { ProviderGameInput } from '../api/gamesApi'
 
 // PlayStation integration — the community npsso-cookie flow (Sony has no
@@ -35,11 +36,6 @@ const SORTS: { v: SortKey; label: string }[] = [
   { v: 'recent', label: 'Last played' },
   { v: 'name', label: 'A → Z' },
 ]
-
-const fmtHours = (min: number) => {
-  const h = min / 60
-  return h >= 10 ? `${Math.round(h)}s` : `${h.toFixed(1)}s`
-}
 
 function relativeDay(iso?: string): string | null {
   if (!iso) return null
@@ -79,7 +75,7 @@ function GameCard({ game, ownership, onOpen }: {
       <div className="p-2 flex-1">
         <p className="text-xs font-semibold text-ink-800 leading-snug line-clamp-2">{game.name}</p>
         <p className="text-[10px] text-ink-400 mt-1">
-          {minutes > 0 ? fmtHours(minutes) : '—'}{last ? ` · ${last}` : ''}
+          {minutes > 0 ? formatPlaytime(minutes) : '—'}{last ? ` · ${last}` : ''}
         </p>
       </div>
     </button>
@@ -183,8 +179,9 @@ function ConnectedView() {
   const p = profile.data?.profile
   const summary = profile.data?.summary
   const avatar = p?.avatars?.find(a => a.size === 'l')?.url ?? p?.avatars?.[0]?.url
-  const totalHours = Math.round(
-    (played.data ?? []).reduce((s, g) => s + parsePlayDurationMinutes(g.playDuration), 0) / 60)
+  // Summed in MINUTES, not pre-rounded to hours: rounding first threw away
+  // the remainder the formatter is meant to show.
+  const totalMinutes = (played.data ?? []).reduce((s, g) => s + parsePlayDurationMinutes(g.playDuration), 0)
 
   // PSN reports playtime as an ISO-8601 duration and keys games by store SKU
   // (npTitleId). Converted to seconds here so `games.play_seconds` has one
@@ -277,7 +274,7 @@ function ConnectedView() {
                   </label>
                 )}
                 <p className="text-xs text-ink-400 ml-auto">
-                  {games.length} games · {totalHours.toLocaleString('en-GB')} hours total
+                  {games.length} games · {formatPlaytime(totalMinutes)} total
                 </p>
               </div>
               {/* PS Plus provenance comes from Sony's most fragile call. If

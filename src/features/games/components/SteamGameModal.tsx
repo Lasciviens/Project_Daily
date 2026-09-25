@@ -5,6 +5,7 @@ import { SteamAchievementGrid } from './SteamAchievementGrid'
 import { LibraryControls } from './LibraryControls'
 import { useLibraryEntry } from '../hooks/useGames'
 import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
+import { formatPlaytime } from '../api/playtimeFormat'
 
 // Detail popup for one owned Steam game — the anchor piece of the Steam tab
 // (the user asked for a popup showing a game's details). Pulls together
@@ -12,10 +13,6 @@ import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
 // split, last played), the cached store metadata (`steam_apps`, migration
 // 092), and — on an explicit tap only — the live concurrent-player count.
 
-const fmtHours = (min: number) => {
-  const h = min / 60
-  return h >= 10 ? `${Math.round(h)} h` : `${h.toFixed(1)} h`
-}
 const fmtDate = (unix?: number) =>
   unix ? new Date(unix * 1000).toLocaleDateString('en-GB') : '—'
 
@@ -48,7 +45,7 @@ function PlatformSplit({ game }: { game: SteamGame }) {
             <div className="flex-1 h-1.5 bg-ink-100 rounded-full overflow-hidden">
               <div className="h-full bg-accent-500 rounded-full" style={{ width: `${(r.min / total) * 100}%` }} />
             </div>
-            <span className="text-[11px] text-ink-500 w-16 text-right">{fmtHours(r.min)}</span>
+            <span className="text-[11px] text-ink-500 w-16 text-right">{formatPlaytime(r.min)}</span>
           </div>
         ))}
       </div>
@@ -106,8 +103,8 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
 
             {/* Your own numbers — always available, no extra request */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <Stat label="Total" value={fmtHours(game.playtime_forever)} />
-              <Stat label="Last 2 weeks" value={game.playtime_2weeks ? fmtHours(game.playtime_2weeks) : '—'} />
+              <Stat label="Total" value={formatPlaytime(game.playtime_forever)} />
+              <Stat label="Last 2 weeks" value={game.playtime_2weeks ? formatPlaytime(game.playtime_2weeks) : '—'} />
               <Stat label="Last played" value={fmtDate(game.rtime_last_played)} />
               <Stat label="Metacritic" value={details.data?.metacritic_score ? String(details.data.metacritic_score) : '—'} />
             </div>
