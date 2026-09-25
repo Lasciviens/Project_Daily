@@ -17,9 +17,9 @@ export function TgAnalyticsMostPlayed({ items }: { items: TgaPlayed[] }) {
       {items.length ? (
         <ol className="flex flex-col">
           {items.map(({ game, seconds, last }, i) => (
-            <li key={game.id} className="grid grid-cols-[1.1rem_36px_minmax(0,1fr)_auto] items-center gap-x-3 py-[5px]">
+            <li key={game.id} className="grid grid-cols-[1.1rem_32px_minmax(0,1fr)_auto] items-center gap-x-3 py-1">
               <span className="text-right text-[12px] font-semibold tabular-nums text-[var(--tg-faint)]">{i + 1}</span>
-              <span className={`${FRAME} h-[50px] w-9 rounded-[5px]`}>
+              <span className={`${FRAME} h-11 w-8 rounded-[5px]`}>
                 <TgCover game={game} mode="contain" />
               </span>
               <span className="min-w-0">
@@ -28,7 +28,7 @@ export function TgAnalyticsMostPlayed({ items }: { items: TgaPlayed[] }) {
                   {platformInfo(game.platformKey).short}
                   {last && <> · last played {formatDay(last)}</>}
                 </span>
-                <span aria-hidden className="mt-1.5 block h-[3px] rounded-full bg-[var(--tg-accent)] opacity-80" style={{ width: `max(4px, ${((seconds ?? 0) / top) * 100}%)` }} />
+                <span aria-hidden className="mt-1 block h-[3px] rounded-full bg-[var(--tg-accent)] opacity-80" style={{ width: `max(4px, ${((seconds ?? 0) / top) * 100}%)` }} />
               </span>
               <span className="self-start pt-px text-right text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{hours(seconds)}</span>
             </li>
