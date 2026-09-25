@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { TgGame } from '../testGameModel'
 import { TgGameCard } from './TgGameCard'
@@ -60,6 +60,14 @@ export const TgShelfRow = memo(function TgShelfRow({ games, cols, selectedId, fo
   const [track, setTrack] = useState<HTMLDivElement | null>(null)
   const [strip, setStrip] = useState<HTMLDivElement | null>(null)
   const [edges, setEdges] = useState<Edges>({ left: false, right: false })
+  const firstId = games[0]?.id
+
+  // New contents (a sort, a filter, another platform) start at the shelf's
+  // beginning. Before paint, so the old offset never flashes; the selected
+  // card's reveal (TgShelf, a parent effect) runs after this.
+  useLayoutEffect(() => {
+    if (track) track.scrollLeft = 0
+  }, [track, firstId])
 
   useEffect(() => {
     if (!track) return
@@ -123,7 +131,9 @@ export const TgShelfRow = memo(function TgShelfRow({ games, cols, selectedId, fo
 
       {/* tabIndex -1: the cards carry a roving tabindex, so a scrollable track
           must not become an extra, unnamed Tab stop of its own. */}
-      <div ref={setTrack} tabIndex={-1} className="tg-scroll-x relative z-[2] h-full snap-x snap-mandatory scroll-px-11 focus-visible:!outline-none">
+      {/* No scroll anchoring: when cards move between shelves it would drag
+          the offset along with whichever card it had anchored to. */}
+      <div ref={setTrack} tabIndex={-1} className="tg-scroll-x relative z-[2] h-full snap-x snap-mandatory scroll-px-11 [overflow-anchor:none] focus-visible:!outline-none">
         <div ref={setStrip} className="flex h-full w-max px-11" style={{ gap: 'var(--tg-gap)' }}>
           {games.map(g => {
             const selected = g.id === selectedId
