@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useAllGames } from '../hooks/useGames'
 import { GameDetailModal } from '../components/GameDetailModal'
 import { AddGameModal } from '../components/AddGameModal'
@@ -321,7 +322,7 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
 
 // ─── Library tab ──────────────────────────────────────────────────────────────
 
-function LibraryTab({ onOpenDetail, onFilteredChange }: {
+export function LibraryTab({ onOpenDetail, onFilteredChange }: {
   onOpenDetail: (id: string) => void
   /** Reports the currently VISIBLE games up, so the page's 🎲 Random button
    *  picks from what the user is actually looking at rather than the whole
@@ -711,6 +712,13 @@ export function GamesPage() {
     <div className="min-h-full w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
       <div className="flex items-center gap-3 mb-4 sm:mb-6 flex-wrap">
         <h1 className="text-lg font-bold text-ink-900">🎮 Games</h1>
+        {/* The redesign under test — its own full-screen page, reading the
+            same library. Linked from here so it is reachable without typing
+            the URL; nothing on this page depends on it. */}
+        <Link to="/test-game"
+          className="min-h-[44px] px-3 inline-flex items-center gap-1.5 text-sm font-semibold rounded-lg border border-accent-300 text-accent-700 bg-accent-50 hover:bg-accent-100 transition-colors">
+          🧪 Test-Game
+        </Link>
         {platform === 'retro' && (
           <>
             <button onClick={() => setAddOpen(true)}

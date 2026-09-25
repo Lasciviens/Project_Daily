@@ -83,8 +83,12 @@ export default defineConfig({
             },
           },
           {
-            // Supabase API — always network, fall back to cache
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            // Supabase REST reads only — network first, cache as the offline
+            // fallback. Storage objects (box art, screenshots) stay with the
+            // browser's HTTP cache: NetworkFirst gave them nothing over it, and
+            // in this 50-entry cache one shelf of covers evicted every API
+            // response.
+            urlPattern: /^https:\/\/[^/]+\.supabase\.co\/rest\/v1\/.*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'supabase-api',

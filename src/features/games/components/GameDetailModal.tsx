@@ -402,15 +402,20 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
-interface Props { gameId: string; onClose: () => void }
+interface Props {
+  gameId: string
+  onClose: () => void
+  /** Open straight into the edit form (the Test-Game page's "Edit" button). */
+  initialEditing?: boolean
+}
 
-export function GameDetailModal({ gameId, onClose }: Props) {
+export function GameDetailModal({ gameId, onClose, initialEditing = false }: Props) {
   const { data: game, isLoading } = useGameDetail(gameId)
   const update = useUpdateGame()
   const del = useDeleteGame()
   const addToQueue = useAddToQueue()
   const removeFromQueue = useRemoveFromQueue()
-  const [editing, setEditing]   = useState(false)
+  const [editing, setEditing]   = useState(initialEditing)
   const [planOpen, setPlanOpen] = useState(false)
   const [addingPlatform, setAddingPlatform] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -432,8 +437,13 @@ export function GameDetailModal({ gameId, onClose }: Props) {
   function prevScreenshot() { if (lightboxIdx !== null) setLightboxIdx((lightboxIdx - 1 + screenshots.length) % screenshots.length) }
   function nextScreenshot() { if (lightboxIdx !== null) setLightboxIdx((lightboxIdx + 1) % screenshots.length) }
 
+  // Opened straight into the form (the Test-Game page's "Edit"), Save and
+  // Cancel return to the page; opened as the full record, they only close the
+  // form (/games).
+  const finishEditing = initialEditing ? onClose : () => setEditing(false)
+
   function handleSave(id: string, patch: GamePatch) {
-    update.mutate({ id, patch }, { onSuccess: () => setEditing(false) })
+    update.mutate({ id, patch }, { onSuccess: finishEditing })
   }
 
   function handleDelete() {
@@ -478,7 +488,7 @@ export function GameDetailModal({ gameId, onClose }: Props) {
                 <h2 className="text-lg font-bold text-ink-900 leading-snug mb-0.5 pr-0 sm:pr-8">{game.title}</h2>
                 {game.series_name && <p className="text-xs text-ink-400 mb-1.5">⛓ {game.series_name}</p>}
 
-                {/* Quick status switch — the one-tap fix for "kolayca playing/finished yapamıyorum" */}
+                {/* Quick status switch — the one-tap fix for "I can't easily mark a game playing/finished" */}
                 <div className="mb-2">
                   <StatusQuickBar game={game} />
                 </div>
@@ -526,7 +536,7 @@ export function GameDetailModal({ gameId, onClose }: Props) {
             </div>
 
             {editing && (
-              <EditPanel game={game} onSave={handleSave} onCancel={() => setEditing(false)} saving={update.isPending} />
+              <EditPanel game={game} onSave={handleSave} onCancel={finishEditing} saving={update.isPending} />
             )}
 
             <div className="p-5 space-y-5">

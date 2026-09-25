@@ -40,12 +40,16 @@ function ToastItem({ toast }: { toast: Toast }) {
   )
 }
 
-export function Toaster() {
+const DEFAULT_POSITION = 'bottom-6 left-4 sm:left-6'
+
+/** `positionClassName` replaces the default bottom-left offsets — for a page
+ *  whose own chrome (a phone tab bar, a sheet footer) sits in that corner. */
+export function Toaster({ positionClassName = DEFAULT_POSITION }: { positionClassName?: string } = {}) {
   const toasts = useToastStore(s => s.toasts)
   if (!toasts.length) return null
 
   return (
-    <div className="fixed bottom-6 left-4 sm:left-6 z-[9999] flex flex-col gap-2 items-start pointer-events-none">
+    <div className={`fixed ${positionClassName} z-[9999] flex flex-col gap-2 items-start pointer-events-none`}>
       {toasts.map(t => (
         <div key={t.id} className="pointer-events-auto animate-[fadeSlideIn_0.2s_ease-out]">
           <ToastItem toast={t} />

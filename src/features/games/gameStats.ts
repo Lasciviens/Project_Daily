@@ -14,13 +14,16 @@
  *
  * Migration 096 added the source-neutral trio (`play_seconds`/`play_count`/
  * `last_played_at`) so a library mixing ES-DE, Steam and PlayStation totals
- * without every row needing a different column read. The `esde_*` fields are kept
- * as the fallback: until 096 is applied they are the only figures there are,
- * and after it they still hold ES-DE's own copy.
+ * without every row needing a different column read. Steam and PlayStation
+ * write it on every import. For a RETRO row, though, it is a one-time copy
+ * 096 backfilled from `esde_*` — `esde-sync` still updates only the `esde_*`
+ * trio — so for those rows ES-DE's own figures are the live ones.
  */
 export type PlayStatRow = {
   id: string
   title: string
+  /** 'retro' | 'steam' | 'playstation'; absent before migration 096, when every row is retro. */
+  library?: string | null
   play_seconds?: number | null
   play_count?: number | null
   last_played_at?: string | null
@@ -31,8 +34,34 @@ export type PlayStatRow = {
 
 export type ResolvedPlay = { seconds: number | null; count: number | null; last: string | null }
 
-/** The neutral columns win; ES-DE's are the pre-migration-096 fallback. */
+const parsed = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN)
+
+/** The later of two timestamps (by instant, not by string), ties to the first. */
+function laterIso(a: string | null | undefined, b: string | null | undefined): string | null {
+  const ta = parsed(a)
+  const tb = parsed(b)
+  if (Number.isFinite(ta) && Number.isFinite(tb)) return tb > ta ? b! : a!
+  if (Number.isFinite(ta)) return a!
+  if (Number.isFinite(tb)) return b!
+  return a ?? b ?? null
+}
+
+/**
+ * One reading of a row's play statistics, for every sort and every display.
+ *
+ * Retro (or pre-096) rows: ES-DE's figures first — the neutral columns are a
+ * frozen backfill — and the later of the two last-played dates, so a stale
+ * backfill can never hide a newer session. Steam/PlayStation rows: the
+ * neutral columns, which their importers keep current.
+ */
 export function playStatsOf(g: PlayStatRow): ResolvedPlay {
+  if (g.library == null || g.library === 'retro') {
+    return {
+      seconds: g.esde_playtime_seconds ?? g.play_seconds ?? null,
+      count:   g.esde_playcount ?? g.play_count ?? null,
+      last:    laterIso(g.esde_last_played, g.last_played_at),
+    }
+  }
   return {
     seconds: g.play_seconds ?? g.esde_playtime_seconds ?? null,
     count:   g.play_count ?? g.esde_playcount ?? null,
@@ -176,7 +205,6 @@ export type StatsRow = PlayStatRow & {
   is_coop: boolean
   needs_review: boolean
   rating: number | null
-  library?: string | null
 }
 
 export type GameStatsShape = {
