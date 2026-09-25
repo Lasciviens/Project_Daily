@@ -96,7 +96,7 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
     }
     return {
       title: 'Advanced',
-      subtitle: 'Everything from the current Games page the new design has no place for yet',
+      subtitle: 'Data quality, ScreenScraper and the Steam & PlayStation libraries',
       logo: 'advanced',
       tabs: ADVANCED_TABS.map(t => ({
         key: t.key, label: t.label, count: t.key === 'review' && reviewCount ? reviewCount : undefined,

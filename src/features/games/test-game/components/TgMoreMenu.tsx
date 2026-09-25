@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { Award, Ellipsis, Eye, EyeOff, Flag, FlagOff, Info, ListPlus, ListX, Pencil, Trash2, Trophy } from 'lucide-react'
+import { Award, Ellipsis, Gamepad2, Eye, EyeOff, Flag, FlagOff, Info, ListPlus, ListX, Pencil, Trash2, Trophy } from 'lucide-react'
 import { useAddToQueue, useDeleteGame, useRemoveFromQueue, useUpdateGame } from '../../hooks/useGames'
 import { STATUS_TEXT, type TgGame } from '../testGameModel'
 import type { PlayStatus } from '../../types'
@@ -9,6 +9,7 @@ import { useDetailState } from './TgDetailState'
 import { useQueuePosition } from './TgMoreMenuQueue'
 import { TgStatusIcon } from './TgStatusIcon'
 import { TgConfirmDialog } from './TgConfirmDialog'
+import { useSteamLaunch } from './tgSteamLaunch'
 
 // The statuses that keep a "not a game" Steam app visible (Backlog would hide it again).
 const SHOW_AS: PlayStatus[] = ['playing', 'completed', 'wishlist', 'dropped']
@@ -34,6 +35,7 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
   const removeFromQueue = useRemoveFromQueue()
   const updateGame = useUpdateGame()
   const deleteGame = useDeleteGame()
+  const launchSteam = useSteamLaunch(game)
 
   const queued = game.play_order != null
   const isSteam = game.library === 'steam' && game.steamAppId != null
@@ -53,6 +55,7 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
           className="tg-portal tg-menu w-[244px] origin-bottom-right transition duration-100 ease-out data-[closed]:scale-95 data-[closed]:opacity-0"
         >
           <Item icon={<Pencil aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openEdit(game.id)}>Edit details</Item>
+          {launchSteam && <Item icon={<Gamepad2 aria-hidden className={ICON} strokeWidth={1.9} />} onClick={launchSteam}>Launch on Steam</Item>}
           <div className="tg-menu-sep" role="separator" />
           {queued ? (
             <Item icon={<ListX aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => removeFromQueue.mutate(game.id)}>
