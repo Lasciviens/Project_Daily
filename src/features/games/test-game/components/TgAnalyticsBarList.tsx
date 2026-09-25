@@ -17,8 +17,8 @@ export function TgAnalyticsBarList({ rows, icon, onOpen, openLabel }: {
 }) {
   const max = Math.max(1, ...rows.map(r => r.count))
   const cols = icon
-    ? 'grid-cols-[20px_minmax(4.5rem,9rem)_minmax(0,1fr)_3.25rem_14px]'
-    : 'grid-cols-[minmax(5rem,10rem)_minmax(0,1fr)_3.25rem_14px]'
+    ? 'grid-cols-[20px_minmax(4.5rem,7.5rem)_minmax(0,1fr)_3.25rem_14px]'
+    : 'grid-cols-[minmax(5rem,8.5rem)_minmax(0,1fr)_3.25rem_14px]'
 
   return (
     <ul className="-mx-2 flex flex-col gap-0.5">
