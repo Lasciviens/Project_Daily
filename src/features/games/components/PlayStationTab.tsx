@@ -6,7 +6,7 @@ import {
 } from '../hooks/usePlayStation'
 import { PsnGameModal } from './PsnGameModal'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { parsePlayDurationMinutes, type PsnPlayedGame, type PsnTrophyTitle } from '../api/psnApi'
+import { parsePlayDurationMinutes, isPsnReauthRequired, type PsnPlayedGame, type PsnTrophyTitle } from '../api/psnApi'
 import {
   mergeOwnership, psnKind, hideNonGames, countNonGames, OWNERSHIP_LABEL, type Ownership,
 } from '../providerEntries'
@@ -86,7 +86,9 @@ function GameCard({ game, ownership, onOpen }: {
 
 function TrophyCard({ title, onOpen }: { title: PsnTrophyTitle; onOpen: () => void }) {
   const [imgOk, setImgOk] = useState(true)
-  const t = title.earnedTrophies
+  // Sony omits the counts entirely on some titles, and psn-api's own types
+  // don't admit it — a missing object here used to take the whole grid down.
+  const t = title.earnedTrophies ?? { bronze: 0, silver: 0, gold: 0, platinum: 0 }
   return (
     <button onClick={onOpen}
       className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm overflow-hidden flex flex-col text-left hover:border-accent-300 hover:shadow-md transition-all duration-150 press-feedback">
@@ -188,7 +190,7 @@ function ConnectedView() {
                 <span className="text-[10px] font-bold bg-blue-500/10 text-blue-600 border border-blue-500/30 px-1.5 py-0.5 rounded dark:text-blue-400">PS Plus</span>
               )}
             </div>
-            {summary && (
+            {summary?.earnedTrophies && (
               <p className="text-xs text-ink-500">
                 Level {summary.trophyLevel} · 🏆 {summary.earnedTrophies.platinum} platinum ·{' '}
                 {(summary.earnedTrophies.bronze + summary.earnedTrophies.silver +
@@ -307,19 +309,43 @@ function ConnectedView() {
   )
 }
 
-export function PlayStationTab() {
-  const status = usePsnStatus()
-  if (status.isLoading) return <div className="text-sm text-ink-400 py-12 text-center">Checking connection…</div>
-  if (status.data?.connected) return <ConnectedView />
+function NotConnected({ expired, detail }: { expired?: boolean; detail?: string }) {
   return (
     <div className="max-w-xl mx-auto text-center py-12 px-4">
       <p className="text-4xl mb-3">🎮</p>
-      <h2 className="text-base font-bold text-ink-900 mb-1">PlayStation is not connected</h2>
+      <h2 className="text-base font-bold text-ink-900 mb-1">
+        {expired ? 'PlayStation session expired' : 'PlayStation is not connected'}
+      </h2>
       <p className="text-sm text-ink-500">
-        Connect it in{' '}
-        <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>,
-        where every integration is managed.
+        {expired ? (
+          <>
+            Sony stopped accepting the stored session{detail ? ` (“${detail}”)` : ''}. This is expected
+            rather than a fault: Sony guards its login with a reCAPTCHA, so the npsso cookie behind this
+            integration cannot be renewed automatically and has to be pasted again every month or two.
+          </>
+        ) : null}
+      </p>
+      <p className="text-sm text-ink-500 mt-2">
+        {expired ? 'Paste a fresh npsso in ' : 'Connect it in '}
+        <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>
+        {expired ? '.' : ', where every integration is managed.'}
       </p>
     </div>
   )
+}
+
+export function PlayStationTab() {
+  const status = usePsnStatus()
+  // `status` only proves a psn_tokens ROW exists — it has never asked Sony
+  // whether that session still works, which is why an expired one used to
+  // sail straight into ConnectedView and crash there. The profile query is
+  // the first real call, so it is what actually decides.
+  const profile = usePsnProfile(!!status.data?.connected)
+
+  if (status.isLoading) return <div className="text-sm text-ink-400 py-12 text-center">Checking connection…</div>
+  if (!status.data?.connected) return <NotConnected />
+  if (isPsnReauthRequired(profile.error)) {
+    return <NotConnected expired detail={profile.error.sonyMessage} />
+  }
+  return <ConnectedView />
 }
