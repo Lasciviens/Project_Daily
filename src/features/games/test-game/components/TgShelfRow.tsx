@@ -23,7 +23,7 @@ function Lamp() {
   return (
     <>
       <span aria-hidden className="tg-spot" />
-      <span aria-hidden className="pointer-events-none absolute left-1/2 top-[3px] h-[3px] w-[34%] -translate-x-1/2 rounded-full bg-[color-mix(in_srgb,var(--tg-spot-core),white_55%)] shadow-[0_0_12px_3px_var(--tg-spot)]" />
+      <span aria-hidden className="pointer-events-none absolute left-1/2 top-[3px] h-[3px] w-[34%] -translate-x-1/2 rounded-full bg-[color-mix(in_srgb,var(--tg-spot-core),white_55%)] shadow-[shadow:0_0_12px_3px_var(--tg-spot)]" />
     </>
   )
 }

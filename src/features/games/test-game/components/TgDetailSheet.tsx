@@ -13,7 +13,7 @@ interface Props {
 }
 
 const PANEL: Record<Props['variant'], string> = {
-  drawer: 'fixed inset-y-0 right-0 flex h-full w-[420px] max-w-full overflow-hidden rounded-l-[18px] border-l border-[var(--tg-border)] shadow-[var(--tg-menu-shadow)] transition duration-300 ease-out data-[closed]:translate-x-full',
+  drawer: 'fixed inset-y-0 right-0 flex h-full w-[420px] max-w-full overflow-hidden rounded-l-[18px] border-l border-[var(--tg-border)] shadow-[shadow:var(--tg-menu-shadow)] transition duration-300 ease-out data-[closed]:translate-x-full',
   fullscreen: 'fixed inset-0 flex transition duration-300 ease-out data-[closed]:translate-y-full',
 }
 

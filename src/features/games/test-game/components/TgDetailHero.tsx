@@ -55,7 +55,7 @@ export function TgDetailHero({ game, steamGenre }: Props) {
     <div>
       <HeroArt game={game} />
       <div className="relative -mt-[118px] flex h-[150px] items-end gap-4 px-5">
-        <div className="relative h-[150px] w-[108px] shrink-0 overflow-hidden rounded-lg bg-[var(--tg-panel-2)] shadow-[var(--tg-cover-shadow)] ring-1 ring-[var(--tg-border-strong)]">
+        <div className="relative h-[150px] w-[108px] shrink-0 overflow-hidden rounded-lg bg-[var(--tg-panel-2)] shadow-[shadow:var(--tg-cover-shadow)] ring-1 ring-[var(--tg-border-strong)]">
           <TgCover game={game} mode="contain" eager />
         </div>
 

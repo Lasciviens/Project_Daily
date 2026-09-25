@@ -57,8 +57,8 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
         <TgDetailHero game={game} steamGenre={extras.genre} />
         <div className="flex flex-col gap-4 px-5 pb-2 pt-5">
           <TgDetailInfo game={game} extras={extras} />
-          {description && <TgDetailDescription key={game.id} text={description} />}
-          <TgScreenshotStrip key={game.id} images={images} title={game.title} fullSize={fullSize} />
+          {description && <TgDetailDescription key={`text-${game.id}`} text={description} />}
+          <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} />
         </div>
         {/* Softens content scrolling under the pinned footer; over padding when nothing scrolls. */}
         <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-2 h-2 bg-gradient-to-t from-[var(--tg-panel)] to-transparent" />
