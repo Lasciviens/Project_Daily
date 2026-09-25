@@ -69,3 +69,30 @@ export function swapUpdates(list: QueueItem[], from: number, to: number): QueueU
   const [first, second] = from < to ? [b, a] : [a, b]
   return [{ id: first.id, play_order: a.play_order }, { id: second.id, play_order: a.play_order + 1 }]
 }
+
+/**
+ * The writes that move the game at `from` to `to` (drag and drop, or a Move
+ * up / Move down press).
+ *
+ * The visible rows only trade the play_order SLOTS they already hold: the
+ * slots, in ascending order, are handed out again in the new row order. Rows
+ * the list does not show (a search, a genre filter, hidden games) keep their
+ * own slots, so nothing outside the view moves. Two visible rows on one value
+ * (a race between two "Add to queue" taps) are pulled apart first, each slot at
+ * least one past the previous. Only rows whose value changes are written.
+ */
+export function moveUpdates(list: QueueItem[], from: number, to: number): QueueUpdate[] | null {
+  if (from === to || !list[from] || !list[to] || list.some(g => g.play_order == null)) return null
+  const slots: number[] = []
+  for (const g of list) {
+    const v = g.play_order as number
+    slots.push(slots.length && v <= slots[slots.length - 1] ? slots[slots.length - 1] + 1 : v)
+  }
+  const next = [...list]
+  const [moved] = next.splice(from, 1)
+  next.splice(to, 0, moved)
+  const updates = next
+    .map((g, i) => ({ id: g.id, play_order: slots[i] }))
+    .filter(u => u.play_order !== list.find(g => g.id === u.id)?.play_order)
+  return updates.length ? updates : null
+}

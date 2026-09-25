@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { useAllGames } from '../hooks/useGames'
 import { GameDetailModal } from '../components/GameDetailModal'
 import { AddGameModal } from '../components/AddGameModal'
-import { TierEditorTab } from '../components/TierEditorTab'
 import { PlayQueueTab } from '../components/PlayQueueTab'
 import { NeedsReviewTab } from '../components/NeedsReviewTab'
 import { ScreenScraperStudio } from '../components/studio/ScreenScraperStudio'
@@ -11,26 +10,26 @@ import { StatsPanel } from '../components/StatsPanel'
 import { PlayStationTab } from '../components/PlayStationTab'
 import { SteamTab } from '../components/SteamTab'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
-import { STATUS_LABEL, STATUS_COLOR, STATUS_BORDER, TIER_COLOR, TIERS, STATUSES } from '../gamesMeta'
+import { STATUS_LABEL, STATUS_COLOR, STATUS_BORDER, STATUSES } from '../gamesMeta'
 import { Sheet } from '../../../shared/components/Sheet'
 import { haptic } from '../../../shared/utils/haptics'
 import { useGamesNeedingReview } from '../hooks/useGames'
 import { FilterGroupButton, CheckboxFilterPanel } from '../components/CheckboxFilterGroup'
 import {
-  CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip, FlagBadges, PlaytimeBadge, YearBadge,
+  CoverImg, CoverBackdrop, RatingBadge, SystemChip, FlagBadges, PlaytimeBadge, YearBadge,
 } from '../components/gameCardKit'
 import { systemMeta } from '../systemMeta'
 import { formatPlaytime, sortByRecentlyPlayed, playStatsOf, MIN_REAL_PLAY_SECONDS } from '../gameStats'
 import type { Game } from '../types'
 
 // Which filter group is expanded, if any.
-type FilterKey = 'tier' | 'genre' | 'system' | 'series' | 'developer'
+type FilterKey = 'genre' | 'system' | 'series' | 'developer'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 type SortKey = 'az' | 'za' | 'year-asc' | 'year-desc' | 'rating' | 'series' | 'playtime' | 'recent'
 type LibView = 'grid' | 'compact' | 'poster' | 'list' | 'table' | 'series'
-type MainTab = 'library' | 'tiers' | 'queue' | 'review' | 'scraper' | 'stats'
+type MainTab = 'library' | 'queue' | 'review' | 'scraper' | 'stats'
 // Platform-level split, one level above MainTab. Retro Games is the existing
 // RP5-migrated library (below); PlayStation/Steam are UI-only placeholders
 // for now (deliberate — no DB/backend yet, per the user's explicit request)
@@ -83,7 +82,7 @@ function GameCard({ game, onClick }: { game: Game; onClick: () => void }) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/20" />
 
         <span className="absolute top-1.5 left-1.5 flex items-center gap-1">
-          <TierBadge tier={game.tier} /><YearBadge year={game.release_year} />
+          <YearBadge year={game.release_year} />
         </span>
         <span className="absolute top-1.5 right-1.5"><RatingBadge rating={game.rating} /></span>
 
@@ -122,7 +121,7 @@ function CompactCard({ game, onClick }: { game: Game; onClick: () => void }) {
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
 
       <span className="absolute top-1 left-1 flex items-center gap-0.5">
-        <TierBadge tier={game.tier} size="sm" /><YearBadge year={game.release_year} size="sm" />
+        <YearBadge year={game.release_year} size="sm" />
       </span>
       <span className="absolute top-1 right-1"><RatingBadge rating={game.rating} size="sm" /></span>
 
@@ -143,7 +142,7 @@ function PosterCard({ game, onClick }: { game: Game; onClick: () => void }) {
       <CoverImg url={game.primary_cover_url} title={game.title} className="absolute inset-0" />
 
       <span className="absolute top-2 left-2 z-10 flex items-center gap-1">
-        <TierBadge tier={game.tier} /><YearBadge year={game.release_year} />
+        <YearBadge year={game.release_year} />
       </span>
       <span className="absolute top-2 right-2 z-10"><RatingBadge rating={game.rating} /></span>
 
@@ -184,7 +183,6 @@ function GameListItem({ game, onClick }: { game: Game; onClick: () => void }) {
         {game.series_name && <p className="text-[10px] text-ink-400 truncate mb-0.5">{game.series_name}</p>}
         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>{STATUS_LABEL[game.play_status] ?? game.play_status}</span>
-          {game.tier && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${TIER_COLOR[game.tier] ?? 'bg-ink-200'}`}>{game.tier}</span>}
           {game.release_year && <span className="text-[10px] text-ink-400">{game.release_year}</span>}
           {game.is_iconic && <span className="text-xs">⭐</span>}
           {game.is_coop   && <span className="text-[9px] font-bold bg-cyan-500 text-white px-1 rounded">2P</span>}
@@ -222,9 +220,6 @@ function GameTableRow({ game, onClick }: { game: Game; onClick: () => void }) {
       </td>
       <td className="py-2 pr-3 whitespace-nowrap">
         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>{STATUS_LABEL[game.play_status] ?? game.play_status}</span>
-      </td>
-      <td className="py-2 pr-3">
-        {game.tier && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${TIER_COLOR[game.tier] ?? ''}`}>{game.tier}</span>}
       </td>
       <td className="py-2 pr-3 text-xs text-accent-600 font-semibold">{game.rating != null ? `★${game.rating}` : '—'}</td>
       <td className="py-2 pr-3 max-w-[150px]"><p className="text-[10px] text-ink-400 truncate">{[...new Set(game.platforms.map(p => systemMeta(p.system).label))].slice(0, 2).join(', ') || '—'}</p></td>
@@ -289,11 +284,11 @@ function SeriesView({ games, onSelect }: { games: Game[]; onSelect: (id: string)
                   >
                     <CoverImg url={g.primary_cover_url} title={g.title} />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
-                    {/* Same corner rule as every other cover card — tier left, rating
+                    {/* Same corner rule as every other cover card — year left, rating
                         right — with the series position sharing the left corner. */}
                     <span className="absolute top-1 left-1 flex items-center gap-0.5">
                       {!isStandalone && <span className="text-[9px] font-bold bg-black/70 text-white px-1 py-0.5 rounded-md leading-none">#{idx + 1}</span>}
-                      <TierBadge tier={g.tier} size="sm" /><YearBadge year={g.release_year} size="sm" />
+                      <YearBadge year={g.release_year} size="sm" />
                     </span>
                     <span className="absolute top-1 right-1"><RatingBadge rating={g.rating} size="sm" /></span>
                     <span className="absolute inset-x-1 bottom-1 flex items-end justify-between gap-1 z-10">
@@ -334,7 +329,6 @@ export function LibraryTab({ onOpenDetail, onFilteredChange }: {
   const [statusFilter,   setStatusFilter]   = useState<string | null>(null)
   // Multi-select: each of these holds every checked value, and a group with
   // nothing checked means "don't narrow by this at all" (not "match nothing").
-  const [tierFilter,     setTierFilter]     = useState<string[]>([])
   const [genreFilter,    setGenreFilter]    = useState<string[]>([])
   // Default view excludes the four systems whose sheer size drowns everything
   // else out (they are 710 of ~1150 rows). Nothing is removed from the library
@@ -384,7 +378,6 @@ export function LibraryTab({ onOpenDetail, onFilteredChange }: {
       return m
     }
     return {
-      tier:   countBy(g => (g.tier ? [g.tier] : [])),
       genre:  countBy(g => g.genres ?? []),
       system: countBy(g => [...new Set(g.platforms.map(p => p.system))]),
       series: countBy(g => (g.series_name ? [g.series_name] : [])),
@@ -398,7 +391,6 @@ export function LibraryTab({ onOpenDetail, onFilteredChange }: {
     const opts = (values: string[], counts: Map<string, number>, label?: (v: string) => string) =>
       values.map(v => ({ value: v, label: label ? label(v) : v, count: counts.get(v) ?? 0 }))
     return {
-      tier:   opts([...TIERS], facetCounts.tier, t => `Tier ${t}`),
       genre:  opts(genreOptions, facetCounts.genre),
       system: opts(systemOptions, facetCounts.system),
       series: opts(seriesOptions, facetCounts.series),
@@ -408,7 +400,6 @@ export function LibraryTab({ onOpenDetail, onFilteredChange }: {
 
   // Only this last, cheap step depends on what is selected.
   const filterGroups = useMemo(() => [
-    { key: 'tier'   as const, label: 'Tier',   selected: tierFilter,   onChange: setTierFilter,   options: facetOptions.tier },
     { key: 'genre'  as const, label: 'Genre',  selected: genreFilter,  onChange: setGenreFilter,  options: facetOptions.genre },
     { key: 'system' as const, label: 'System', selected: systemFilter, onChange: setSystemFilter, options: facetOptions.system },
     ...(seriesOptions.length > 0
@@ -418,7 +409,7 @@ export function LibraryTab({ onOpenDetail, onFilteredChange }: {
       ? [{ key: 'developer' as const, label: 'Developer', selected: devFilter, onChange: setDevFilter, options: facetOptions.dev }]
       : []),
   ], [facetOptions, seriesOptions.length, devOptions.length,
-      tierFilter, genreFilter, systemFilter, seriesFilter, devFilter])
+      genreFilter, systemFilter, seriesFilter, devFilter])
 
   const openGroup = filterGroups.find(g => g.key === openFilter) ?? null
 
@@ -428,8 +419,7 @@ export function LibraryTab({ onOpenDetail, onFilteredChange }: {
     if (statusFilter)   gs = gs.filter(g => g.play_status === statusFilter)
     // Within a group the checked values are alternatives (OR); across groups
     // they narrow (AND) — the ordinary faceted-filter reading of "Genesis or
-    // SNES, and only tier S".
-    if (tierFilter.length)   gs = gs.filter(g => !!g.tier && tierFilter.includes(g.tier))
+    // SNES, and only RPGs".
     if (genreFilter.length)  gs = gs.filter(g => g.genres?.some(x => genreFilter.includes(x)) ?? false)
     // A game with NO platform row can match no system, and the default
     // selection below is non-empty — without this it would silently vanish
@@ -441,15 +431,15 @@ export function LibraryTab({ onOpenDetail, onFilteredChange }: {
     if (iconicOnly)     gs = gs.filter(g => g.is_iconic)
     if (view === 'series') return gs
     return sortGames(gs, sort)
-  }, [allGames, search, statusFilter, tierFilter, genreFilter, systemFilter, seriesFilter, devFilter, coopOnly, iconicOnly, sort, view])
+  }, [allGames, search, statusFilter, genreFilter, systemFilter, seriesFilter, devFilter, coopOnly, iconicOnly, sort, view])
 
   useEffect(() => { onFilteredChange?.(filtered) }, [filtered, onFilteredChange])
 
-  const pickedCount = tierFilter.length + genreFilter.length + systemFilter.length + seriesFilter.length + devFilter.length
+  const pickedCount = genreFilter.length + systemFilter.length + seriesFilter.length + devFilter.length
   const hasFilters = !!(search || statusFilter || coopOnly || iconicOnly) || pickedCount > 0
 
   const clearFilters = useCallback(() => {
-    setSearch(''); setStatusFilter(null); setTierFilter([])
+    setSearch(''); setStatusFilter(null)
     setGenreFilter([]); setSystemFilter([]); setSeriesFilter([]); setDevFilter([])
     setCoopOnly(false); setIconicOnly(false)
   }, [])
@@ -649,7 +639,6 @@ export function LibraryTab({ onOpenDetail, onFilteredChange }: {
                 <th className="py-2.5 pl-3 pr-2 w-8" />
                 <th className="py-2.5 pr-3 text-xs font-semibold text-ink-400 uppercase tracking-wide">Title</th>
                 <th className="py-2.5 pr-3 text-xs font-semibold text-ink-400 uppercase tracking-wide">Status</th>
-                <th className="py-2.5 pr-3 text-xs font-semibold text-ink-400 uppercase tracking-wide">Tier</th>
                 <th className="py-2.5 pr-3 text-xs font-semibold text-ink-400 uppercase tracking-wide">Mine</th>
                 <th className="py-2.5 pr-3 text-xs font-semibold text-ink-400 uppercase tracking-wide">Systems</th>
                 <th className="py-2.5 pr-3 text-xs font-semibold text-ink-400 uppercase tracking-wide">Genres</th>
@@ -674,7 +663,6 @@ export function LibraryTab({ onOpenDetail, onFilteredChange }: {
 
 const TABS: { t: MainTab; icon: string; label: string }[] = [
   { t: 'library', icon: '📚', label: 'Library' },
-  { t: 'tiers',   icon: '🏆', label: 'Tiers'   },
   { t: 'queue',   icon: '▶',  label: 'Queue'   },
   { t: 'review',  icon: '🔎', label: 'Review'  },
   { t: 'scraper', icon: '🎲', label: 'ScreenScraper' },
@@ -778,7 +766,6 @@ export function GamesPage() {
           </div>
 
           {tab === 'library' && <LibraryTab onOpenDetail={setSelectedId} onFilteredChange={setVisibleGames} />}
-          {tab === 'tiers'   && <TierEditorTab />}
           {tab === 'queue'   && <PlayQueueTab />}
           {tab === 'review'  && <NeedsReviewTab onOpenDetail={setSelectedId} />}
           {/* Its own tab rather than a band on top of Review: Review answers

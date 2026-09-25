@@ -7,6 +7,7 @@ import {
 import type { PlayStatus } from '../../types'
 import { TgDropdown, type TgOption } from './TgDropdown'
 import { TgMultiDropdown } from './TgMultiDropdown'
+import { TgRandomButton } from './TgRandomButton'
 import { TgTopBarSearch } from './TgTopBarSearch'
 import { TgTopBarViews } from './TgTopBarViews'
 import { TgUserMenu } from './TgUserMenu'
@@ -25,8 +26,10 @@ const PILL = '!bg-[var(--tg-panel)] max-lg:!gap-1.5 max-lg:!px-2 lg:min-w-[104px
  * account menu on Analytics and Advanced).
  */
 export function TgTopBar({
-  genres, statusCounts, showStatus, showViews, showSearch = true, showGenre = true, showSort = true,
+  genres, statusCounts, showStatus, showViews, showSearch = true, showGenre = true, showSort = true, onRandom,
 }: {
+  /** Opens a random game from the visible list; absent when the list is empty. */
+  onRandom?: () => void
   genres: { genre: string; count: number }[]
   statusCounts: StatusCounts
   showStatus: boolean
@@ -55,6 +58,7 @@ export function TgTopBar({
     // the right one a landscape phone's notch off the avatar.
     <div className="relative z-10 flex h-[calc(4rem+env(safe-area-inset-top))] shrink-0 items-center gap-1.5 pl-5 pr-[max(1.25rem,env(safe-area-inset-right))] pt-[env(safe-area-inset-top)] lg:gap-2.5 xl:pl-6 xl:pr-[max(1.5rem,env(safe-area-inset-right))]">
       {showSearch && <TgTopBarSearch className="min-w-[96px] max-w-[460px] flex-1" />}
+      {showSearch && <TgRandomButton onPick={onRandom} className="-ml-0.5 lg:ml-0" />}
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:gap-2.5">
         {showStatus && (

@@ -9,7 +9,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { usePlayQueue, useUpdateGame, useReorderQueue, useRemoveFromQueue } from '../hooks/useGames'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
-import { STATUS_LABEL, TIER_COLOR as TIER_BADGE } from '../gamesMeta'
+import { STATUS_LABEL } from '../gamesMeta'
 import { CoverImg, SystemChip } from './gameCardKit'
 import type { QueueGame } from '../types'
 
@@ -139,9 +139,6 @@ export function PlayQueueTab() {
             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border flex-shrink-0 ${STATUS_COLOR[game.play_status] ?? 'bg-ink-100 text-ink-500'}`}>
               {STATUS_LABEL[game.play_status] ?? game.play_status}
             </span>
-            {game.tier && (
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${TIER_BADGE[game.tier] ?? 'bg-ink-200'}`}>{game.tier}</span>
-            )}
             <SystemChip game={game} size="sm" />
           </div>
         </div>

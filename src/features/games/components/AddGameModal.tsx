@@ -116,20 +116,11 @@ export function AddGameModal({ open, onClose, className = '' }: Props) {
               <input value={coverUrl} onChange={e => setCoverUrl(e.target.value)} className={inputCls} />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className={labelCls}>Status</label>
-                <select value={status} onChange={e => setStatus(e.target.value as PlayStatus)} className={inputCls}>
-                  {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Tier</label>
-                <select value={tier} onChange={e => setTier(e.target.value)} className={inputCls}>
-                  <option value="">— None —</option>
-                  {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
-                </select>
-              </div>
+            <div>
+              <label className={labelCls}>Status</label>
+              <select value={status} onChange={e => setStatus(e.target.value as PlayStatus)} className={inputCls}>
+                {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+              </select>
             </div>
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 cursor-pointer min-h-[32px]">

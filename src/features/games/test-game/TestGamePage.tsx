@@ -7,6 +7,7 @@ import { useTgHeaderConfig } from './useTgHeaderConfig'
 import { useTgLibraryView } from './useTgLibraryView'
 import type { TgGame } from './testGameModel'
 import type { TgActions } from './tgTypes'
+import { pickRandomId } from './components/tgRandom'
 import { TgSidebar } from './components/TgSidebar'
 import { TgTopBar } from './components/TgTopBar'
 import { TgHeader } from './components/TgHeader'
@@ -118,6 +119,15 @@ export function TestGamePage() {
       requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }))
     }
   }, [bp, openDetail, select, activateGame, setDetailCollapsed])
+  // "Pick a random game" draws from exactly what the page shows (section,
+  // platform, status, genre and search all applied) and opens it.
+  const pickRandom = useCallback(() => {
+    const id = pickRandomId(visible, selectedId)
+    if (!id) return
+    if (bp === 'mobile') openDetail(id)
+    else activateGame(id)
+  }, [visible, selectedId, bp, openDetail, activateGame])
+  const onRandom = isGameSection && visible.length > 0 ? pickRandom : undefined
   const closeModal = useCallback((which: 'edit' | 'full' | 'provider') => {
     if (which === 'edit') setEditId(null)
     else if (which === 'full') setFullId(null)
@@ -159,7 +169,7 @@ export function TestGamePage() {
     <>
       {bp === 'mobile' ? (
         <div key="phone" className="tg-root h-[100dvh] flex flex-col overflow-hidden">
-          <TgMobileHeader platforms={counts} genres={genres} statusCounts={sCounts} header={header} />
+          <TgMobileHeader platforms={counts} genres={genres} statusCounts={sCounts} header={header} onRandom={onRandom} />
           <div className="flex-1 min-h-0 tg-scroll-y pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] pt-2 pb-[calc(76px+env(safe-area-inset-bottom))]">
             {providerError}
             {renderSection('mobile')}
@@ -174,7 +184,7 @@ export function TestGamePage() {
             <TgTopBar
               genres={genres} statusCounts={sCounts} showStatus={section === 'library'}
               showViews={isGameSection && section !== 'queue'} showSort={isGameSection && section !== 'queue'}
-              showSearch={isGameSection} showGenre={isGameSection}
+              showSearch={isGameSection} showGenre={isGameSection} onRandom={onRandom}
             />
             <TgDetailOverlayHost
               game={detailGame} actions={actions} scroll={!isGameSection} pickRef={pickRef} panelRef={panelRef}

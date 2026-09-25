@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { TIER_COLOR } from '../gamesMeta'
 import { systemMeta } from '../systemMeta'
 import { formatPlaytimeShort, playStatsOf } from '../gameStats'
 import type { Game } from '../types'
@@ -11,7 +10,7 @@ import type { Game } from '../types'
 // the hover panel on Poster, and the platform appeared on neither. One kit, one
 // placement rule:
 //
-//   top-left  = tier          top-right = my rating
+//   top-left  = year          top-right = my rating
 //   bottom    = platform + flags, over the cover's own gradient
 //
 // `CoverBackdrop` is the "give them a background" piece: the same cover URL,
@@ -53,15 +52,6 @@ export function CoverBackdrop({ url, className = '' }: { url?: string | null; cl
   )
 }
 
-export function TierBadge({ tier, size = 'md' }: { tier: string | null; size?: 'sm' | 'md' }) {
-  if (!tier) return null
-  const cls = TIER_COLOR[tier] ?? 'bg-ink-200 text-ink-700'
-  return (
-    <span className={`font-bold rounded-md shadow-sm leading-none ${cls} ${
-      size === 'sm' ? 'text-[9px] px-1 py-0.5' : 'text-[11px] px-1.5 py-1'
-    }`}>{tier}</span>
-  )
-}
 
 export function RatingBadge({ rating, size = 'md' }: { rating: number | null; size?: 'sm' | 'md' }) {
   if (rating == null) return null

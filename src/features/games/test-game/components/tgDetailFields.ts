@@ -29,7 +29,6 @@ const SOURCE_TEXT: Record<string, string> = {
 }
 const ROM_TEXT: Record<string, string> = { sd_card: 'On SD card', installed: 'Installed', verified: 'Verified', found: 'Found', missing: 'Missing' }
 const PERF_TEXT: Record<string, string> = { good: 'Runs well', warn: 'Some issues', bad: 'Poor' }
-const TIER_TEXT = (t: string) => `${t} tier`
 
 const clean = (s: string | null | undefined) => (s ?? '').trim()
 const list = (xs: string[] | null | undefined) => (xs ?? []).map(x => x.trim()).filter(Boolean)
@@ -96,7 +95,6 @@ export function detailSections(game: TgGame): DetailSection[] {
     { label: 'Co-op notes', value: clean(game.coop_notes), long: true },
   ])
   const progress = rows([
-    { label: 'Tier', value: game.tier ? TIER_TEXT(game.tier) : '' },
     { label: 'Plays', value: count(game.play_count, 'launch', 'launches') },
     { label: 'Started', value: day(game.started_at) },
     !finishedShown && { label: 'Finished', value: day(game.finished_at) },

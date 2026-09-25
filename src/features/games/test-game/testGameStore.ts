@@ -16,7 +16,9 @@ import type { TgaLibrary, TgaWindow } from './components/tgAnalyticsModel'
 // the details are open — a reload starts with nothing picked and nothing
 // covering the games (a stale search restored on reload reads as missing games).
 
-export type AdvancedTab = 'classic' | 'tiers' | 'review' | 'scraper' | 'steam' | 'playstation' | 'queue' | 'tools'
+export type AdvancedTab = 'review' | 'scraper' | 'steam' | 'playstation'
+
+const ADVANCED_KEYS: readonly AdvancedTab[] = ['review', 'scraper', 'steam', 'playstation']
 
 /**
  * What a click or Enter on a game did to the tablet/desktop detail overlay:
@@ -97,7 +99,7 @@ export const useTestGameStore = create<TgState>()(
       selectedId: null,
       detailOpen: false,
       detailCollapsed: false,
-      advancedTab: 'classic',
+      advancedTab: 'review',
       analyticsPeriod: 'all',
       analyticsLibrary: 'all',
 
@@ -149,10 +151,13 @@ export const useTestGameStore = create<TgState>()(
       name: 'test-game-ui-v1',
       // v1: Last played became the default sort. A saved "Title" was only
       // ever the old default, so it moves over once; any other choice stays.
-      version: 1,
+      // v2: Classic library, Tiers, Queue editor and Add & random left
+      // Advanced; a saved one of those lands on Needs review.
+      version: 2,
       migrate: (persisted, version) => {
         const p = (persisted ?? {}) as Partial<TgState>
         if (version < 1 && (p.sort == null || p.sort === 'title')) p.sort = 'recent'
+        if (version < 2 && !ADVANCED_KEYS.includes(p.advancedTab as AdvancedTab)) p.advancedTab = 'review'
         return p as TgState
       },
       partialize: (s) => ({

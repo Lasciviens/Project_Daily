@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ComponentType, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Heart, SlidersHorizontal, SquarePlay,
+  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Heart, Plus, SlidersHorizontal, SquarePlay,
 } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import type { PlatformCount, TgSection } from '../testGameModel'
 import { GameLibraryMark } from './platformArt'
 import { TgSidebarItem } from './TgSidebarItem'
 import { TgSidebarPlatforms } from './TgSidebarPlatforms'
+import { useTgAddGame } from './tgAddGame'
 
 interface NavCounts { queue: number; wishlist: number; completed: number; backlog: number }
 
@@ -56,6 +57,7 @@ export function TgSidebar({ counts, platforms, others }: {
   const setSection = useTestGameStore(s => s.setSection)
   const navRef = useRef<HTMLElement>(null)
   const moreBelow = useMoreBelow(navRef)
+  const openAddGame = useTgAddGame(s => s.setOpen)
 
   return (
     <aside
@@ -94,6 +96,12 @@ export function TgSidebar({ counts, platforms, others }: {
       </nav>
 
       <div className="shrink-0 border-t border-[var(--tg-border)] px-2.5 pb-2.5 pt-1.5">
+        <TgSidebarItem
+          icon={<Plus aria-hidden className={navIcon(false)} strokeWidth={2.2} />}
+          label="Add game"
+          active={false}
+          onClick={() => openAddGame(true)}
+        />
         <TgSidebarItem
           icon={<SlidersHorizontal aria-hidden className={navIcon(section === 'advanced')} strokeWidth={2.2} />}
           label="Advanced"

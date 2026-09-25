@@ -628,6 +628,13 @@ second status widget. It is bounded: the form is ONE shared component
 Connections only. Extend this to another integration only if its credential can
 also be revoked by the provider behind our back.
 
+**Second narrow extension (owner request 2026-09-25):** the Games page's profile
+menu (and the phone's More sheet) shows PSN/Steam status — incl. the npsso
+countdown — and offers PSN renew, via the shared `PsnNpssoForm` and the
+existing `usePlayStation`/`useSteam` hooks (`TgConnections`, fetched only while
+the menu/sheet is open). First-time connect and disconnect stay in Developer →
+Connections only.
+
 `ConnectionCard`'s `Status` therefore has a fourth value, **`expired`**: a
 credential IS stored, so "Not connected" would be wrong, but the provider no
 longer honours it, so "Connected" is a lie. Before this, PlayStation's card

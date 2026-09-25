@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRemoveFromQueue, useReorderQueue } from '../../hooks/useGames'
 import type { TgGame } from '../testGameModel'
-import { displayRanks, effectiveOrder, swapUpdates, withOrderOverrides } from './TgQueueViewOrder'
+import { displayRanks, effectiveOrder, moveUpdates, withOrderOverrides } from './TgQueueViewOrder'
+import { useQueueDrag } from './TgQueueViewDrag'
 import { TgQueueViewRow } from './TgQueueViewRow'
 
 interface Props {
@@ -39,10 +40,10 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
     row?.scrollIntoView({ block: 'nearest' })
   }, [selectedId])
 
-  const move = useCallback((id: string, dir: -1 | 1) => {
-    const list = effectiveOrder(ordered, overrides)
-    const from = list.findIndex(g => g.id === id)
-    const updates = from === -1 ? null : swapUpdates(list, from, from + dir)
+  // Drag and drop and Move up / Move down share one write path. The overrides
+  // put the rows in their new order at once; the writes follow in the background.
+  const reorderTo = useCallback((from: number, to: number) => {
+    const updates = moveUpdates(effectiveOrder(ordered, overrides), from, to)
     if (!updates) return
     setOverrides(prev => ({ ...prev, ...Object.fromEntries(updates.map(u => [u.id, u.play_order])) }))
 
@@ -66,13 +67,19 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
       })
   }, [ordered, overrides, reorder, qc])
 
+  const move = useCallback((id: string, dir: -1 | 1) => {
+    const from = ordered.findIndex(g => g.id === id)
+    if (from !== -1) reorderTo(from, from + dir)
+  }, [ordered, reorderTo])
+  const { dragId, onPointerDown } = useQueueDrag(listRef, reorderTo)
+
   const remove = useCallback((id: string) => removeFromQueue(id), [removeFromQueue])
 
   return (
     <ol
       ref={listRef}
       aria-label="Play queue"
-      className={`tg-panel space-y-1 p-1.5 sm:p-2 ${fill ? 'tg-scroll-y h-full' : ''}`}
+      className={`tg-queue tg-panel space-y-1 p-1.5 sm:p-2 ${fill ? 'tg-scroll-y h-full' : ''} ${dragId ? 'is-dragging' : ''}`}
     >
       {ordered.map((g, i) => (
         <TgQueueViewRow
@@ -80,11 +87,13 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
           game={g}
           position={shownRanks.get(g.id) ?? i + 1}
           selected={g.id === selectedId}
+          dragging={g.id === dragId}
           canMoveUp={i > 0}
           canMoveDown={i < ordered.length - 1}
           onSelect={onSelect}
           onMove={move}
           onRemove={remove}
+          onDragStart={onPointerDown}
         />
       ))}
     </ol>

@@ -1,5 +1,5 @@
-// Shared status/tier label + color maps for Games views (GamesPage,
-// PlayQueueTab, GameDetailModal, TierEditorTab) — was independently forked
+// Shared status label + color maps for Games views (GamesPage,
+// PlayQueueTab, GameDetailModal) — was independently forked
 // (sometimes under a different const name) in all 4.
 
 export const STATUS_LABEL: Record<string, string> = {
@@ -24,13 +24,6 @@ export const STATUS_BORDER: Record<string, string> = {
   dropped:   'border-l-red-400',
 }
 
-export const TIER_COLOR: Record<string, string> = {
-  S: 'bg-yellow-400 text-yellow-900', A: 'bg-orange-400 text-white',
-  B: 'bg-green-500 text-white',       C: 'bg-blue-400 text-white',
-  D: 'bg-ink-400 text-white',         F: 'bg-red-500 text-white',
-}
-
-export const TIERS    = ['S', 'A', 'B', 'C', 'D', 'F']
 // The status PICKER. 'hidden' is deliberately absent: it is set by its own
 // checkbox (LibraryControls), because offering it as a sixth pill would read
 // as a kind of progress rather than "keep this out of the grid".

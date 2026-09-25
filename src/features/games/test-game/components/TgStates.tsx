@@ -4,6 +4,7 @@ import { useTestGameStore } from '../testGameStore'
 import { useTgBreakpoint } from '../useTgBreakpoint'
 import { STATUS_TEXT, type TgSection } from '../testGameModel'
 import type { PlayStatus } from '../../types'
+import { useTgAddGame } from './tgAddGame'
 import {
   TgStatesGridSkeleton, TgStatesListSkeleton, TgStatesMobileSkeleton, TgStatesShelfSkeleton,
 } from './TgStatesSkeletons'
@@ -50,14 +51,14 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
   if (kind === 'library') {
     return (
       <StateCard icon={<LibraryBig {...ICON} />} title="Your library is empty" actions={<>
-        <button type="button" className="tg-btn tg-btn-primary" onClick={() => act().setAdvancedTab('tools')}>
+        <button type="button" className="tg-btn tg-btn-primary" onClick={() => useTgAddGame.getState().setOpen(true)}>
           <Plus size={17} strokeWidth={2} />Add a game
         </button>
         <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setAdvancedTab('steam')}>Open Steam</button>
         <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setAdvancedTab('playstation')}>Open PlayStation</button>
       </>}>
-        Add a game by hand in Advanced → Add &amp; random, or import your Steam and PlayStation
-        libraries from their tabs in Advanced.
+        Add a game by hand, or import your Steam and PlayStation libraries from their tabs in
+        Advanced.
       </StateCard>
     )
   }

@@ -7,6 +7,7 @@ import { TgUserMenu } from './TgUserMenu'
 import { TgMobileGamepad } from './TgMobileGlyph'
 import { TgMobileScope } from './TgMobileScope'
 import { TgMobileListTools } from './TgMobileListTools'
+import { TgRandomButton } from './TgRandomButton'
 
 // Horizontal padding that also clears a landscape notch — the design's ~20px
 // phone gutter, matching the grid's cover edges. The chip row's scroll padding
@@ -14,7 +15,9 @@ import { TgMobileListTools } from './TgMobileListTools'
 const GUTTER = 'pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))]'
 const SCROLL_GUTTER = 'scroll-pl-[max(1.25rem,env(safe-area-inset-left))] scroll-pr-[max(1.25rem,env(safe-area-inset-right))]'
 
-export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
+export function TgMobileHeader({ platforms, genres, statusCounts, header, onRandom }: {
+  /** Opens a random game from the visible list; absent when the list is empty. */
+  onRandom?: () => void
   platforms: PlatformCount[]
   genres: { genre: string; count: number }[]
   statusCounts: StatusCounts
@@ -54,6 +57,7 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header }: {
           <h1 className="truncate text-[19px] font-bold tracking-[-0.01em]">Game Library</h1>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {hasFilters && <TgRandomButton onPick={onRandom} />}
           {hasFilters && (
             <button
               type="button"

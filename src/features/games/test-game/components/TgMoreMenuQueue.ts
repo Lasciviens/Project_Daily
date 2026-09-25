@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient, type Query } from '@tanstack/react-query'
 import { fetchAllGames, fetchLibraryGames } from '../../api/gamesApi'
-import { deriveGames, queueRanks } from '../testGameModel'
+import { useAddToQueue, useRemoveFromQueue } from '../../hooks/useGames'
+import { deriveGames, queueRanks, type TgGame } from '../testGameModel'
 
 // The game's place in the Play Queue ("#3") — the SAME number the Queue view
 // and the queue badge show, because all three read `queueRanks`: hidden games
@@ -49,4 +50,31 @@ export function useQueuePosition(id: string): number | null {
     [retro.data, steam.data, psn.data, steamTypes],
   )
   return ranks.get(id) ?? null
+}
+
+/**
+ * The detail footer's queue toggle: in the queue (and where), and one call that
+ * adds to the end or removes. The button flips at once: the tapped state is
+ * held until the refetch brings a new play_order (or the write fails), so it
+ * never reads "Add to queue" again for the round trip after a successful add.
+ */
+export function useQueueToggle(game: TgGame) {
+  const position = useQueuePosition(game.id)
+  const add = useAddToQueue()
+  const remove = useRemoveFromQueue()
+  const [pending, setPending] = useState<{ id: string; basis: number | null; queued: boolean } | null>(null)
+  const stored = game.play_order != null
+  const held = pending && pending.id === game.id && pending.basis === game.play_order ? pending : null
+  const queued = held ? held.queued : stored
+
+  const toggle = useCallback(() => {
+    const next = !queued
+    setPending({ id: game.id, basis: game.play_order, queued: next })
+    const onError = () => setPending(null) // the hook toasts and logs the failure
+    if (next) add.mutate(game.id, { onError })
+    else remove.mutate(game.id, { onError })
+  }, [queued, game.id, game.play_order, add, remove])
+
+  // A fresh add has no rank until the refetch lands.
+  return { queued, position: queued && stored ? position : null, toggle, busy: held != null }
 }
