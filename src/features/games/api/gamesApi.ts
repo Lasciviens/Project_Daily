@@ -45,7 +45,10 @@ function attachPlatforms(games: Omit<Game, 'platforms'>[], platforms: GamePlatfo
   }
   return games.map(g => ({
     ...g,
-    platforms: (byGame.get(g.id) ?? []).sort((a, b) => Number(b.is_primary_variant) - Number(a.is_primary_variant)),
+    // Primary first, then a fixed order, so a refetch that changed nothing
+    // yields an equal array and TanStack keeps the row's object.
+    platforms: (byGame.get(g.id) ?? []).sort((a, b) =>
+      Number(b.is_primary_variant) - Number(a.is_primary_variant) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   }))
 }
 
@@ -66,6 +69,10 @@ const IN_CHUNK = 200
  * `hardCap` only exists so a server that never reports a short page cannot spin
  * forever; it is far above any real library size and hitting it is a bug, not a
  * limit to raise casually.
+ *
+ * Every caller orders by something that ends in `id`: without a TOTAL order
+ * Postgres may return rows in a different order for each page's request, so a
+ * row can land on two pages or on none once a read passes 1000 rows.
  */
 async function fetchAllPages<T>(
   page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
@@ -125,7 +132,7 @@ async function withListColumns<T>(columns: string, read: (columns: string) => Pr
 /** Every platform row this user owns — RLS already scopes it, so no filter. */
 async function fetchAllPlatformRows(): Promise<GamePlatform[]> {
   return withListColumns(PLATFORM_LIST_COLUMNS, cols => fetchAllPages<GamePlatform>((from, to) =>
-    supabase.from('game_platforms').select(cols).range(from, to).overrideTypes<GamePlatform[], { merge: false }>()))
+    supabase.from('game_platforms').select(cols).order('id', { ascending: true }).range(from, to).overrideTypes<GamePlatform[], { merge: false }>()))
 }
 
 /**
@@ -176,7 +183,7 @@ export async function fetchAllGames(): Promise<Game[]> {
 async function fetchRetroGameRows(): Promise<Omit<Game, 'platforms'>[]> {
   const read = (cols: string, scoped: boolean) => fetchAllPages<Omit<Game, 'platforms'>>((from, to) => {
     const q = supabase.from('games').select(cols)
-    return (scoped ? q.eq('library', 'retro') : q).order('title', { ascending: true }).range(from, to)
+    return (scoped ? q.eq('library', 'retro') : q).order('title', { ascending: true }).order('id', { ascending: true }).range(from, to)
       .overrideTypes<Omit<Game, 'platforms'>[], { merge: false }>()
   })
   try {
@@ -211,15 +218,15 @@ export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: {
 
   let rows: StatsRow[]
   try {
-    rows = await fetchAllPages<StatsRow>((from, to) => supabase.from('games').select(WITH_096).range(from, to))
+    rows = await fetchAllPages<StatsRow>((from, to) => supabase.from('games').select(WITH_096).order('id', { ascending: true }).range(from, to))
   } catch (e) {
     // Pre-096 the three neutral columns and `library` do not exist yet; the
     // ES-DE figures are then the only ones there are, and every row is retro.
     if (!isMissingColumn(e)) throw e
-    rows = await fetchAllPages<StatsRow>((from, to) => supabase.from('games').select(COLUMNS).range(from, to))
+    rows = await fetchAllPages<StatsRow>((from, to) => supabase.from('games').select(COLUMNS).order('id', { ascending: true }).range(from, to))
   }
   const platforms = await fetchAllPages<{ game_id: string; system: string }>((from, to) =>
-    supabase.from('game_platforms').select('game_id, system').range(from, to))
+    supabase.from('game_platforms').select('game_id, system').order('id', { ascending: true }).range(from, to))
   return { rows, platforms }
 }
 
@@ -443,7 +450,7 @@ export async function importProviderGames(
   let existing: { id: string; external_ref: string | null; play_status: string }[]
   try {
     existing = await fetchAllPages<{ id: string; external_ref: string | null; play_status: string }>((from, to) =>
-      supabase.from('games').select('id, external_ref, play_status').eq('library', library).range(from, to))
+      supabase.from('games').select('id, external_ref, play_status').eq('library', library).order('id', { ascending: true }).range(from, to))
   } catch (e) {
     throw isMissingTable(e) || isMissingColumn(e)
       ? new Error('Importing Steam/PlayStation games needs migration 096 — apply it first.')
@@ -520,7 +527,7 @@ export async function importProviderGames(
 export async function fetchProviderRefs(library: GameLibrary): Promise<Set<string>> {
   try {
     const rows = await fetchAllPages<{ external_ref: string | null }>((from, to) =>
-      supabase.from('games').select('external_ref').eq('library', library).range(from, to))
+      supabase.from('games').select('external_ref').eq('library', library).order('id', { ascending: true }).range(from, to))
     return new Set(rows.map(r => r.external_ref).filter(Boolean) as string[])
   } catch (e) {
     if (isMissingColumn(e) || isMissingTable(e)) return new Set()
@@ -533,7 +540,7 @@ export async function fetchLibraryGames(library: GameLibrary): Promise<Game[]> {
   try {
     const rows = await withListColumns(GAME_LIST_COLUMNS, cols => fetchAllPages<Omit<Game, 'platforms'>>((from, to) =>
       supabase.from('games').select(cols).eq('library', library)
-        .order('last_played_at', { ascending: false, nullsFirst: false }).range(from, to)
+        .order('last_played_at', { ascending: false, nullsFirst: false }).order('id', { ascending: true }).range(from, to)
         .overrideTypes<Omit<Game, 'platforms'>[], { merge: false }>()))
     return attachPlatforms(rows, [])
   } catch (e) {

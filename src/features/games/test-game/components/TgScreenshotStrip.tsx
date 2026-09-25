@@ -62,7 +62,8 @@ export function TgScreenshotStrip({ images, title, fullSize }: Props) {
             type="button"
             onClick={() => setOpen(i)}
             aria-label={`Open screenshot ${i + 1} of ${shown.length}`}
-            className="tg-thumb aspect-video w-[calc((100%_-_20px)/3)] shrink-0 snap-start"
+            // Three per view as drawn; two larger ones where the screen is tall.
+            className="tg-thumb aspect-video w-[calc((100%_-_20px)/3)] shrink-0 snap-start [@media(min-height:1000px)]:w-[calc((100%_-_10px)/2)]"
           >
             <img
               key={retried.has(url) ? `${url}#retry` : url}

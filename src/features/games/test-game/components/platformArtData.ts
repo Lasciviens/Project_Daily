@@ -31,9 +31,9 @@ export const PLATFORM_GLYPHS: Record<PlatformFamily, GlyphPart[]> = {
   ],
   // A solid isometric cube: its three faces, each inset so a hairline gap parts them.
   gamecube: [
-    { f: 'M12 3.36 18.72 7.25 12 11.15 5.28 7.25Z' },
-    { f: 'M4.54 8.53 11.26 12.43v7.79L4.54 16.32Z' },
-    { f: 'M12.74 12.43 19.46 8.53v7.79l-6.72 3.9Z' },
+    { f: 'M12 3.36 18.72 7.25 12 11.15 5.28 7.25Z', s: 1.12 },
+    { f: 'M4.54 8.53 11.26 12.43v7.79L4.54 16.32Z', s: 1.12 },
+    { f: 'M12.74 12.43 19.46 8.53v7.79l-6.72 3.9Z', s: 1.12 },
   ],
   switch: [
     { d: 'M10.5 3h-3A4.5 4.5 0 0 0 3 7.5v9A4.5 4.5 0 0 0 7.5 21h3Z' },

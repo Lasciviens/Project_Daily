@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
+// Three lines as drawn; a tall screen (a monitor) has the room for six.
+const CLAMP = 'line-clamp-3 [@media(min-height:1000px)]:line-clamp-6'
+
 /** Three lines, with More/Less only when the text actually runs longer. */
 export function TgDetailDescription({ text }: { text: string }) {
   const ref = useRef<HTMLParagraphElement>(null)
@@ -18,7 +21,7 @@ export function TgDetailDescription({ text }: { text: string }) {
     <div>
       <p
         ref={ref}
-        className={`whitespace-pre-line text-[12px] leading-[1.5] text-[var(--tg-text-2)] ${expanded ? '' : 'line-clamp-3'}`}
+        className={`whitespace-pre-line text-[12px] leading-[1.5] text-[var(--tg-text-2)] 2xl:text-[13px] ${expanded ? '' : CLAMP}`}
       >
         {text}
       </p>

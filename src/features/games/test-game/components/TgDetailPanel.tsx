@@ -55,7 +55,10 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
     <div className={`${shell} relative flex flex-col overflow-hidden`}>
       <div ref={bodyRef} className="tg-scroll-y min-h-0 flex-1">
         <TgDetailHero game={game} variant={variant} steamGenre={extras.genre} />
-        <div className="flex flex-col gap-3.5 px-5 pb-2 pt-4">
+        {/* Tall screens (a monitor) space the block out and let the text and
+            screenshots grow (TgDetailInfo/Description/ScreenshotStrip), so the
+            card fills the panel instead of leaving a blank band over the footer. */}
+        <div className="flex flex-col gap-3.5 px-5 pb-2 pt-4 [@media(min-height:1000px)]:gap-5 [@media(min-height:1000px)]:pt-5">
           <TgDetailInfo game={game} extras={extras} />
           {description && <TgDetailDescription key={`text-${game.id}`} text={description} />}
           <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} />
