@@ -7,7 +7,7 @@ import type { GameLibrary, GamePlatform } from '../../types'
 // reads the same wherever it is shown.
 //
 // Left out on purpose: the fields the card already shows above this block
-// (title, status, stars, playtime, last played, developer, publisher, the
+// (title, status, stars and rating, playtime, last played, developer, publisher, the
 // description) and plumbing no reader needs (ids, cover/media URLs, hashes).
 
 export interface DetailRow {
@@ -27,6 +27,8 @@ const LIBRARY_TEXT: Record<GameLibrary, string> = { retro: 'Retro', steam: 'Stea
 const SOURCE_TEXT: Record<string, string> = {
   screenscraper: 'ScreenScraper', esde: 'ES-DE', manual: 'Added by hand', steam: 'Steam', psn: 'PlayStation Network',
 }
+const ROM_TEXT: Record<string, string> = { sd_card: 'On SD card', installed: 'Installed', verified: 'Verified', found: 'Found', missing: 'Missing' }
+const PERF_TEXT: Record<string, string> = { good: 'Runs well', warn: 'Some issues', bad: 'Poor' }
 const TIER_TEXT = (t: string) => `${t} tier`
 
 const clean = (s: string | null | undefined) => (s ?? '').trim()
@@ -47,14 +49,14 @@ function rows(xs: (DetailRow | false | null | undefined)[]): DetailRow[] {
 function variantRows(p: GamePlatform): DetailRow[] {
   const emulator = [clean(p.emulator), p.emulator_type === 'retroarch_core' ? 'RetroArch core' : p.emulator_type === 'standalone' ? 'standalone' : '']
     .filter(Boolean).join(' · ')
-  const perf = [words(p.performance), clean(p.performance_notes)]
+  const perf = [PERF_TEXT[p.performance ?? ''] ?? words(p.performance), clean(p.performance_notes)]
     .filter(Boolean).join(' — ')
   const source = [SOURCE_TEXT[p.external_source ?? ''] ?? clean(p.external_source), clean(p.external_ref)].filter(Boolean).join(' · ')
   return rows([
     { label: 'Version', value: clean(p.version_title) },
     { label: 'Emulator', value: emulator },
     { label: 'Region', value: clean(p.region) },
-    { label: 'ROM', value: words(p.rom_status) },
+    { label: 'ROM', value: ROM_TEXT[p.rom_status ?? ''] ?? words(p.rom_status) },
     { label: 'File', value: fileName(p.esde_path) || fileName(p.rom_url) },
     { label: 'Folder', value: clean(p.folder_path) },
     { label: 'Performance', value: perf },
@@ -95,7 +97,6 @@ export function detailSections(game: TgGame): DetailSection[] {
   ])
   const progress = rows([
     { label: 'Tier', value: game.tier ? TIER_TEXT(game.tier) : '' },
-    { label: 'Rating', value: game.rating != null ? `${game.rating}/10` : '' },
     { label: 'Plays', value: count(game.play_count, 'launch', 'launches') },
     { label: 'Started', value: day(game.started_at) },
     !finishedShown && { label: 'Finished', value: day(game.finished_at) },

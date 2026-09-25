@@ -159,7 +159,7 @@ ok(M.genreOptions(lib).map(g => [g.genre, g.count]), [['Action', 2], ['Adventure
   'genres counted once per game, whitespace-trimmed')
 
 // ── Scoping / filtering ─────────────────────────────────────────────────────
-const base = { section: 'library', platform: 'ps2', otherKeys: [], scopePlatform: 'all', genre: null, search: '' }
+const base = { section: 'library', platform: 'ps2', otherKeys: [], scopePlatform: 'all', genres: [], search: '' }
 ok(M.scopeGames(lib, base).map(g => g.id).sort(), ['a', 'b', 'c', 'f'], 'a platform scope keeps its hidden row for the Hidden status')
 ok(M.applyStatus(M.scopeGames(lib, base), 'all').map(g => g.id).sort(), ['a', 'b', 'c'], '"All" never shows hidden rows')
 ok(M.applyStatus(M.scopeGames(lib, base), 'hidden').map(g => g.id), ['f'], 'only "Hidden" shows them')
@@ -169,7 +169,28 @@ ok(M.scopeGames(lib, { ...base, section: 'completed' }).map(g => g.id).sort(), [
   'a status section spans every platform regardless of the sidebar platform')
 ok(M.scopeGames(lib, { ...base, section: 'completed', scopePlatform: 'steam' }).map(g => g.id), ['g'], 'and narrows by its own chip')
 ok(M.scopeGames(lib, { ...base, section: 'queue' }).map(g => g.id).sort(), ['d', 'g'], 'the queue is every queued game')
-ok(M.scopeGames(lib, { ...base, platform: 'all', genre: 'RPG' }).map(g => g.id), ['c'], 'genre filter matches trimmed values')
+ok(M.scopeGames(lib, { ...base, platform: 'all', genres: ['RPG'] }).map(g => g.id), ['c'], 'genre filter matches trimmed values')
+ok(M.scopeGames(lib, { ...base, platform: 'all', genres: ['RPG', 'Adventure'] }).map(g => g.id).sort(), ['b', 'c'],
+  'several genres: a game matching ANY of them stays')
+ok(M.scopeGames(lib, { ...base, platform: 'all', genres: [] }).length, 7, 'no picked genre = every genre')
+ok(M.scopeGames(lib, { ...base, platform: 'all', genres: undefined }).length, 7, 'an omitted genre list = every genre')
+
+// ── Multi-select status ─────────────────────────────────────────────────────
+const ps2 = M.scopeGames(lib, base)
+ok(M.applyStatus(ps2, []).map(g => g.id).sort(), ['a', 'b', 'c'], 'an empty status set = "All" (no hidden rows)')
+ok(M.applyStatus(ps2, ['all']).map(g => g.id).sort(), ['a', 'b', 'c'], '"all" inside a set is ignored')
+ok(M.applyStatus(ps2, ['playing', 'completed']).map(g => g.id).sort(), ['a', 'b'], 'two statuses show both')
+ok(M.applyStatus(ps2, ['backlog', 'hidden']).map(g => g.id).sort(), ['c', 'f'], 'Hidden joins a set like any status')
+ok(M.applyStatus(ps2, ['wishlist']).length, 0, 'a status with no games here shows nothing')
+ok(M.applyStatus(M.deriveGames([game({ id: 'x', library: 'steam', external_ref: '8', play_status: 'backlog' })],
+  new Map([[8, 'dlc']])), ['backlog']).length, 0, 'a hidden row still holding backlog is not a Backlog game')
+ok(M.toggleValue(['playing'], 'completed'), ['playing', 'completed'], 'toggle adds an unpicked value')
+ok(M.toggleValue(['playing', 'completed'], 'playing'), ['completed'], 'toggle removes a picked value')
+ok(M.toggleValue([], 'x'), ['x'], 'toggle from nothing')
+ok(M.multiLabel([], 'All Genres', 'genres'), 'All Genres', 'nothing picked reads as All')
+ok(M.multiLabel(['RPG'], 'All Genres', 'genres'), 'RPG', 'one pick reads as its name')
+ok(M.multiLabel(['RPG', 'Action'], 'All Genres', 'genres'), '2 genres', 'several picks read as a count')
+ok(M.DEFAULT_SORT, 'recent', 'Last played is the default sort')
 ok(M.scopeGames(lib, { ...base, platform: 'all', search: 'playstation 2' }).length, 4, 'search matches the platform name ("consoles")')
 ok(M.scopeGames(lib, { ...base, platform: 'all', search: 'adventure' }).map(g => g.id), ['b'], 'search matches genres ("tags")')
 
