@@ -22,10 +22,12 @@ const RETRY_MS = 1200
 
 // The panel fills the viewport's height, so its hero grows with it: 208px on
 // a laptop-height screen (1469×680, where the whole card fits without
-// scrolling, as drawn), ~300px at 800px tall, 440px on a monitor. The sheet
-// scrolls, so it keeps the design's proportion instead.
+// scrolling, as drawn), ~300px at 800px tall, and on a monitor (the taller
+// content of TgDetailPanel's min-height rules) ~530px at 1130 — so the card is
+// filled instead of leaving a blank band over the footer. The sheet scrolls,
+// so it keeps the design's proportion instead.
 const HERO_SIZE: Record<Variant, string> = {
-  panel: 'h-[clamp(208px,calc(100dvh-500px),440px)]',
+  panel: 'h-[clamp(208px,calc(100dvh-500px),440px)] [@media(min-height:1000px)]:h-[clamp(400px,calc(100dvh-600px),640px)]',
   sheet: 'aspect-[5/3]',
 }
 

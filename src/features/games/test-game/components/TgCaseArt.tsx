@@ -1,4 +1,6 @@
-import { platformInfo, type TgGame } from '../testGameModel'
+import { useState } from 'react'
+import { platformInfo, steamHeaderOf, type TgGame } from '../testGameModel'
+import { isCoverFailed, markCoverFailed } from './coverCache'
 
 // A drawn game case for a game with no usable box art. It keeps a real case's
 // anatomy — the brand band across the top (the "PlayStation 2" strip on a PS2
@@ -9,8 +11,19 @@ import { platformInfo, type TgGame } from '../testGameModel'
 // daylight too, so the body does not follow the theme. Text sizes are in
 // container units, so the same case reads at 40px in a list and 150px on a shelf.
 
+// Longer platform names truncate in the band at every size ("PLAYSTATION
+// NET…"); those cases carry the short label instead ("PlayStation").
+const BAND_MAX_CHARS = 14
+
 export function TgCaseArt({ game, className = '' }: { game: TgGame; className?: string }) {
   const info = platformInfo(game.platformKey)
+  const band = info.name.length > BAND_MAX_CHARS ? info.short : info.name
+  // A Steam game's landscape header is not box art, but it makes a good
+  // picture on the front of its drawn case.
+  const header = steamHeaderOf(game)
+  const [deadHeader, setDeadHeader] = useState<string | null>(null)
+  const art = header && header !== deadHeader && !isCoverFailed(header) ? header : null
+
   return (
     <div
       aria-hidden
@@ -22,12 +35,23 @@ export function TgCaseArt({ game, className = '' }: { game: TgGame; className?: 
       <div className="@container absolute inset-0 flex flex-col">
         <div className="flex h-[13%] shrink-0 items-center px-[8%]" style={{ background: info.brand }}>
           <span className="truncate text-[length:max(5px,7cqw)] font-bold uppercase leading-none tracking-[0.12em] text-white [text-shadow:0_1px_1px_rgba(0,0,0,0.45)]">
-            {info.name}
+            {band}
           </span>
         </div>
         <div className="h-px shrink-0 bg-white/15" />
-        <div className="flex min-h-0 flex-1 items-center justify-center px-[10%] pb-[10%]">
-          <span className="line-clamp-3 break-words text-center text-[length:max(6px,11cqw)] font-semibold leading-[1.15] text-white/90 [text-wrap:balance]">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-[7%] px-[8%] pb-[10%]">
+          {art && (
+            <img
+              src={art}
+              alt=""
+              draggable={false}
+              loading="lazy"
+              decoding="async"
+              onError={() => { markCoverFailed(art); setDeadHeader(art) }}
+              className="aspect-[460/215] w-full shrink-0 rounded-[2px] object-cover shadow-[shadow:0_2px_6px_rgba(0,0,0,0.5)]"
+            />
+          )}
+          <span className={`${art ? 'line-clamp-2' : 'line-clamp-3'} break-words px-[2%] text-center text-[length:max(6px,11cqw)] font-semibold leading-[1.15] text-white/90 [text-wrap:balance]`}>
             {game.title}
           </span>
         </div>

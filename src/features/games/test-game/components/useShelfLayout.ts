@@ -17,6 +17,13 @@ export const SHELF_LABEL = 60
 const CHROME = SHELF_CEIL + SHELF_LABEL
 const MIN_COVER = 132
 const MAX_COVER = 200
+/**
+ * Largest cover when a small library would leave shelves bare: the design's
+ * 155px cover at 680px, scaled to a 1130px monitor.
+ */
+const MAX_COVER_TALL = 260
+/** Title/meta inset per cover height: a 0.7 case centred in its 0.78 slot. */
+const CASE_ASPECT = 0.7
 /** Slot width per cover height: a 0.72 case plus a hair of room for its title. */
 const SLOT_PER_COVER = 0.78
 /** The design spaces its cases about 0.4 of a slot apart. */
@@ -46,15 +53,43 @@ export function smoothScroll(): ScrollBehavior {
 }
 
 /**
- * Pure: the bookcase for a `width` × `height` case.
+ * Pure: the bookcase for a `width` × `height` case holding `count` games.
  *
  * Cover height is bounded by the height first (two shelves must fit — the
  * design never shows fewer), then grows into whatever spare height the chosen
  * row count leaves. Columns come from the width: when the width is the limit
  * the covers shrink a little rather than drop a column; when the height is the
  * limit the spare width goes between the cases, like a real bookcase.
+ *
+ * A library smaller than that case (12 games on a monitor laid out as 8 × 3)
+ * would leave whole shelves bare, so the rows are capped at
+ * max(2, ceil(count / cols)) and the covers grow — up to MAX_COVER_TALL — to
+ * fill the case, as long as every game still fits without a carousel.
+ * Libraries that fill or overflow the case are laid out exactly as before.
  */
-export function shelfGeometry(width: number, height: number): ShelfLayout {
+export function shelfGeometry(width: number, height: number, count = Infinity): ShelfLayout {
+  const base = baseGeometry(width, height)
+  if (!(count > 0 && count < base.rows * base.cols)) return base
+  const inner = Math.max(0, width - 2 * SHELF_SIDE)
+  for (let cover = MAX_COVER_TALL; cover > base.coverHeight; cover -= 2) {
+    const slot = Math.round(cover * SLOT_PER_COVER)
+    const gapTarget = Math.round(slot * GAP_PER_SLOT)
+    const cols = Math.max(1, Math.floor((inner + gapTarget) / (slot + gapTarget)))
+    const needed = Math.ceil(count / cols)
+    const rows = Math.max(MIN_ROWS, needed)
+    if (needed > MAX_ROWS || rows * (cover + CHROME) > height) continue
+    const gap = cols > 1 ? Math.min(Math.round(gapTarget * 1.8), Math.floor((inner - cols * slot) / (cols - 1))) : gapTarget
+    return { cols, rows, slotWidth: slot, coverHeight: cover, gap, rowHeight: Math.floor(height / rows), measured: true }
+  }
+  return base
+}
+
+/** Title/meta side inset that lines the text up with a boxed cover's edges. */
+export function textInset(layout: ShelfLayout): number {
+  return Math.max(0, Math.round((layout.slotWidth - layout.coverHeight * CASE_ASPECT) / 2))
+}
+
+function baseGeometry(width: number, height: number): ShelfLayout {
   const inner = Math.max(0, width - 2 * SHELF_SIDE)
   const byHeight = Math.floor(height / MIN_ROWS) - CHROME
   let cover = clamp(Math.min(Math.round(inner * 0.2), byHeight), MIN_COVER, MAX_COVER)
@@ -99,27 +134,36 @@ export function useElementSize(el: HTMLElement | null, box: 'content' | 'border'
   return size
 }
 
-export function useShelfLayout(el: HTMLElement | null): ShelfLayout {
+/** `count` = games on the shelf; omit it (loading skeleton) for the full case. */
+export function useShelfLayout(el: HTMLElement | null, count = Infinity): ShelfLayout {
   const size = useElementSize(el, 'border')
   return useMemo(
-    () => (size ? shelfGeometry(size.w, size.h) : { ...shelfGeometry(800, 490), measured: false }),
-    [size],
+    () => (size ? shelfGeometry(size.w, size.h, count) : { ...shelfGeometry(800, 490), measured: false }),
+    [size, count],
   )
 }
 
 /**
- * Scrolls the card for `id` (a `[data-game-id]` inside `root`) into view
- * whenever the id or `revealKey` changes — `revealKey` should change only when
- * the card may have moved (a re-chunk, a filter), not on every refetch, or a
- * row the user scrolled away would snap back. First reveal is instant.
+ * Scrolls the card for `id` (a `[data-game-id]` inside `root`) into view once
+ * per selection: when the id changes, or when `revealKey` first becomes
+ * non-null (the view is ready). A resize, a re-chunk or a library arriving
+ * never scrolls on its own — a user who scrolled away to browse stays put.
+ *
+ * `retryKey` covers a selected card that was not in the DOM yet (its library
+ * still loading): each change of it looks again until the card is found once.
+ * First reveal is instant, later ones smooth.
  */
-export function useRevealCard(root: HTMLElement | null, id: string | null, revealKey: string | null): void {
+export function useRevealCard(root: HTMLElement | null, id: string | null, revealKey: string | null, retryKey?: unknown): void {
   const revealed = useRef(false)
+  const doneFor = useRef<string | null>(null)
   useEffect(() => {
     if (!root || !id || revealKey == null) return
+    const key = `${revealKey}\u0000${id}`
+    if (doneFor.current === key) return
     const card = root.querySelector<HTMLElement>(`[data-game-id="${CSS.escape(id)}"]`)
     if (!card) return
     card.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: revealed.current ? smoothScroll() : 'auto' })
     revealed.current = true
-  }, [root, id, revealKey])
+    doneFor.current = key
+  }, [root, id, revealKey, retryKey])
 }

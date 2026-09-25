@@ -1,6 +1,6 @@
 import { useReducer, useState, type SyntheticEvent } from 'react'
 import { coverCandidates, type TgGame } from '../testGameModel'
-import { firstLiveCover, isCoverLoaded, markCoverFailed, markCoverLoaded } from './coverCache'
+import { firstLiveCover, isCoverLoaded, markCoverFailed, markCoverLoaded, reportCoverError } from './coverCache'
 import { TgCaseArt } from './TgCaseArt'
 
 type CoverMode = 'natural' | 'contain' | 'cover'
@@ -14,14 +14,18 @@ interface Props {
 
 // Anything smaller is a tracking pixel or a "no image" placeholder, not box art.
 const MIN_EDGE = 16
+// A URL's first error is retried once after this pause (a network blip, not a
+// 404); only its second error condemns it for the session.
+const RETRY_MS = 1800
 
 /**
  * A game's box art inside a parent-sized box — the parent fixes the size, so
  * nothing here can shift layout.
  *
- * Walks `coverCandidates` on load errors (a dead URL is remembered for the
- * session), holds the image invisible until it has decoded — so a broken or
- * half-loaded image is never on screen — and falls back to a drawn case.
+ * Walks `coverCandidates` on load errors (a URL is retried once, then
+ * remembered as dead for the session), holds the image invisible until it has
+ * decoded — so a broken or half-loaded image is never on screen — and falls
+ * back to a drawn case. While an image loads, a static tint holds its place.
  *
  *   natural  the image keeps its own aspect, standing bottom-centre; the image
  *            IS the frame, so the selection outline hugs the real box
@@ -29,7 +33,7 @@ const MIN_EDGE = 16
  *   cover    fills the box, cropped (tiny thumbnails)
  */
 export function TgCover({ game, mode, eager = false, className = '' }: Props) {
-  const [, bump] = useReducer((n: number) => n + 1, 0)
+  const [attempt, bump] = useReducer((n: number) => n + 1, 0)
   const [fadeSrc, setFadeSrc] = useState<string | null>(null)
 
   const src = firstLiveCover(coverCandidates(game))
@@ -40,13 +44,19 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
   const visible = cached || fade
 
   function onError() {
-    if (src) markCoverFailed(src)
-    bump()
+    if (!src) return
+    // The remount after the pause (a new key) requests the same URL again.
+    if (reportCoverError(src) === 'retry') window.setTimeout(bump, RETRY_MS)
+    else bump()
   }
 
   function onLoad(e: SyntheticEvent<HTMLImageElement>) {
     const img = e.currentTarget
-    if (img.naturalWidth < MIN_EDGE || img.naturalHeight < MIN_EDGE) return onError()
+    if (img.naturalWidth < MIN_EDGE || img.naturalHeight < MIN_EDGE) {
+      // A real (tiny) response, not a blip: no point asking again.
+      if (src) markCoverFailed(src)
+      return bump()
+    }
     if (cached || !src) return
     markCoverLoaded(src)
     setFadeSrc(src)
@@ -70,11 +80,11 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
           <TgCaseArt game={game} className="tg-cover-frame" />
         ) : (
           <>
-            {!visible && <span aria-hidden className="tg-skeleton aspect-[0.7] h-full max-w-full rounded-[4px]" />}
+            {!visible && <span aria-hidden className="tg-cover-ph aspect-[0.7] h-full max-w-full rounded-[4px]" />}
             {/* An absolutely placed replaced element sizes through max-width/
                 max-height with its aspect kept, in every engine. `!absolute`
                 beats the frame class's own `position: relative`. */}
-            <img key={src} {...imgProps} className={`tg-cover-frame tg-cover-img !absolute inset-x-0 bottom-0 mx-auto ${reveal}`} />
+            <img key={`${src}#${attempt}`} {...imgProps} className={`tg-cover-frame tg-cover-img !absolute inset-x-0 bottom-0 mx-auto ${reveal}`} />
           </>
         )}
       </div>
@@ -87,12 +97,12 @@ export function TgCover({ game, mode, eager = false, className = '' }: Props) {
         <TgCaseArt game={game} className="w-full" />
       ) : (
         <>
-          {!visible && <span aria-hidden className="tg-skeleton absolute inset-0" />}
+          {!visible && <span aria-hidden className="tg-cover-ph absolute inset-0" />}
           {mode === 'contain' && visible && (
             <img aria-hidden src={src} alt="" draggable={false} className="absolute inset-0 h-full w-full scale-125 object-cover opacity-60 blur-lg" />
           )}
           <img
-            key={src}
+            key={`${src}#${attempt}`}
             {...imgProps}
             className={`absolute inset-0 h-full w-full ${mode === 'contain' ? 'object-contain' : 'object-cover'} ${reveal}`}
           />

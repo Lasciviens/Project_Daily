@@ -1,10 +1,12 @@
 import { memo, useState } from 'react'
 import { formatPlaytime } from '../../api/playtimeFormat'
 import {
-  STATUS_TEXT, formatDay, lastPlayedIso, playSeconds, starsFromRating, subtitleParts, type TgGame,
+  formatDay, lastPlayedIso, playSeconds, starsFromRating, subtitleParts, type TgGame,
 } from '../testGameModel'
 import { TgCover } from './TgCover'
 import { TgStars } from './TgStars'
+import { TgStatusIcon } from './TgStatusIcon'
+import { statusLabel } from './TgStatusMeta'
 import { useRevealCard } from './useShelfLayout'
 
 interface Props {
@@ -39,8 +41,8 @@ const Row = memo(function Row({ game, selected, onSelect }: { game: TgGame; sele
           <span className="block truncate text-[12px] text-[var(--tg-muted)]">{subtitleParts(game).join(' · ')}</span>
         </span>
         <span data-status={game.play_status} className="flex min-w-0 items-center gap-2 text-[12.5px]">
-          <span className="tg-dot" />
-          <span className="tg-status-text truncate font-medium">{STATUS_TEXT[game.play_status] ?? game.play_status}</span>
+          <TgStatusIcon status={game.play_status} />
+          <span className="tg-status-text truncate font-medium">{statusLabel(game.play_status)}</span>
         </span>
         <TgStars stars={starsFromRating(game.rating)} size={12} />
         <span className="hidden text-[12.5px] tabular-nums text-[var(--tg-text-2)] lg:block">
@@ -55,8 +57,8 @@ const Row = memo(function Row({ game, selected, onSelect }: { game: TgGame; sele
 /** The third view: one dense row per game. */
 export function TgListView({ games, selectedId, onSelect }: Props) {
   const [list, setList] = useState<HTMLDivElement | null>(null)
-  const selectedIndex = selectedId ? games.findIndex(g => g.id === selectedId) : -1
-  useRevealCard(list, selectedId, `${games.length}:${selectedIndex}`)
+  // Scrolls to a newly selected row only — never on a refetch or a length change.
+  useRevealCard(list, selectedId, 'list', games.length)
 
   return (
     <div ref={setList} role="region" aria-label="Games list" className="tg-panel tg-scroll-y h-full px-2 pb-2">

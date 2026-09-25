@@ -43,6 +43,7 @@ function valueAt(e: MouseEvent<HTMLElement>, position: number): number {
  * Five stars with half steps. Interactive when `onChange` is given: hover
  * previews, a click on the left half of a star sets n − 0.5 and on the right
  * half n, clicking the current value clears it, and Left/Right step by 0.5.
+ * On touch each star is at least 28px wide, so a half is a 14px target.
  */
 export function TgStars({ stars, size = 14, className = '', onChange }: Props) {
   const [hover, setHover] = useState<number | null>(null)
@@ -90,7 +91,7 @@ export function TgStars({ stars, size = 14, className = '', onChange }: Props) {
       {POSITIONS.map(n => (
         <span
           key={n}
-          className="flex items-center self-stretch px-px"
+          className="flex items-center justify-center self-stretch px-px [@media(pointer:coarse)]:min-w-[28px]"
           onPointerMove={e => { if (e.pointerType === 'mouse') setHover(valueAt(e, n)) }}
           onClick={e => commit(valueAt(e, n))}
         >
