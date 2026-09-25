@@ -11,6 +11,12 @@
 
 Last verified live: **2026-09-15**, against `api.screenscraper.fr/api2`.
 
+> **2026-09-25 — the scraper was rewritten from scratch.** §12–§15 describe the
+> first version (studio, `apply_match`, `apply_reviewed`, `scrape`), which is
+> gone. **§16 is the current design** and the complete API map it was built
+> from; §1–§11 (auth, limits, the credential leak, plain-text errors, system
+> ids, the ES-DE import) still hold.
+
 ---
 
 ## 1. What was verified live (not guessed)
@@ -899,3 +905,158 @@ box art, and nothing in this app plays one. Everything else they send is taken.
 Mirroring all of it is one download per image, so `all_media` defaults on but
 is a flag — twenty images a game across a thousand games is not something to
 spend a shared daily allowance on by accident.
+
+
+---
+
+## 16. The rewrite (2026-09-25) — the full API map and the current design
+
+### 16.1 Why
+
+Measured against the live database before the rewrite: 1,030 retro games, **45**
+ever matched, `provider_data` filled on **1**, `games.media` on **0**, age rating
+3 %, modes 2 %, series 4 %, `game_platforms.region/wheel_url/box_url` 0 %. The
+per-game Scrape button (`apply_match`) never wrote `provider_data` or extra
+media, and only about 11 of the ~25 fields their answer carries were mapped.
+Storage: the `game-media` bucket already held **596 MB of the Free plan's 1 GB**
+(537 MB ES-DE original PNGs, 52 MB ES-DE WebP covers, 13 MB ScreenScraper).
+
+### 16.2 The API, completely (verified)
+
+Sources: the official page (webapi2.php — much of it describes an OLD flat
+layout; real JSON wins where they disagree), five real captured responses
+(hash, crc, gameid and search lookups, 2023–2026, credentials redacted) and the
+parsers in ES-DE, Skyscraper, RomM, Batocera, Recalbox and artie.
+
+**Envelope.** `{header:{APIversion, dateTime, commandRequested, success, error}, response:{serveurs, ssuser, <payload>}}`.
+`header.commandRequested` echoes the full request URL — **credentials included**.
+Scalars are strings (`"0"`/`"1"` flags, ids as strings); list endpoints use numbers.
+Known JSON defects: trailing commas, unescaped backslashes in synopses (parsed leniently).
+
+**Endpoints.**
+
+| Endpoint | Use | Notes |
+|---|---|---|
+| `jeuInfos.php` | one game + the matched ROM + media | params below |
+| `jeuRecherche.php` | name search | `recherche` (≥ 4 letters after dropping "the" and a trailing `+`), `systemeid`; ≤ 30 results, full `jeu` shape minus `rom`/`roms`/`romid`/`cloneof`; no hit = `jeux:[{}]` |
+| `mediaJeu.php` | a game image | `systemeid`, `jeuid`, `media` (token), `maxwidth`, `maxheight`, `outputformat=png\|jpg`, `crc`/`md5`/`sha1` → `CRCOK`/`MD5OK`/`SHA1OK`/`NOMEDIA` |
+| `mediaVideoJeu.php`, `mediaManuelJeu.php` | video (mp4), manual (pdf) | same, **no resizing** |
+| `mediaSysteme.php`, `mediaGroup.php`, `mediaCompagnie.php` | system art, genre/mode/rating pictograms, publisher logos | resizable |
+| `systemesListe.php` | 250 systems with every naming convention | cached in `screenscraper_systems` |
+| `genresListe`, `regionsListe`, `languesListe`, `famillesListe`, `classificationsListe`, `mediasJeuListe` (50 types), `infosJeuListe`, `infosRomListe`, `nbJoueursListe`, `supportTypesListe`, `romTypesListe`, `userlevelsListe` | catalogues | six languages (`nom_fr/de/en/es/it/pt`) |
+| `ssuserInfos.php`, `ssinfraInfos.php` | account / server status | `ssuser` also rides along with every answer |
+| `botNote.php`, `botProposition.php` | **write** (rate, propose) | not used |
+
+Endpoints that do NOT exist (404): `modesListe`, `themesListe`, `stylesListe`,
+`classificationListe` (it has an s), `compagniesListe`, `jeuxListe`.
+
+**jeuInfos parameters.** `crc`, `md5`, `sha1`, `romtaille` (bytes), `systemeid`,
+`romtype` (`rom`/`iso`/`dossier`/`fichier`), `romnom` (a filename, never a path
+— a path is a 400), `serialnum`, `gameid`. A filename needs `systemeid` when no
+CRC is sent; `gameid` alone works and returns `roms[]` but no `rom`/`romid`/`cloneof`.
+A hash match wins over the name (the returned `rommd5` equals the one sent).
+
+**`response.jeu`.** `id`, `romid`, `notgame` (names then carry a `ZZZ(notgame):`
+prefix), `noms[{region,text}]` (`ss` = their canonical name), `systeme{id,text}`,
+`editeur{id,text}`, `developpeur{id,text}`, `joueurs{text}`, `note{text}` (/20),
+`topstaff`, `rotation`, `resolution`, `controles`, `couleurs`,
+`synopsis[{langue,text}]`, `classifications[{type,text}]` (SS, PEGI, ESRB, CERO,
+USK, VRC, Tectoy…), `dates[{region,text}]` (`YYYY` or `YYYY-MM-DD`), the group
+arrays `genres`/`modes`/`familles` (series)/`numeros`/`themes`/`styles`
+(`{id, nomcourt, principale, parentid, noms[{langue,text}]}`), `actions[]`
+(control mappings), `tips[]`, `sp2kcfg`, `hacks[]` (with their own synopses,
+media and a credentialed `downloadurl`), `medias[]`, `rom{…}`, `roms[]`.
+
+**`medias[]`.** `{type, parent, url, region, crc, md5, sha1, size, format}` +
+optional `support` (disc), `version`, bezel `posx/posy/posw/posh`. `parent` is
+`jeu` for the game's own files; `editeur`/`developpeur`/`genre`/`famille`/
+`region`/`joueurs`/`note`/`classification` are pictograms; `hack` belongs to a
+hack. The URL's `media` parameter is the **token** the file is asked for by:
+`box-2D(us)`, `support-2D(eu)[1]`, region-less `fanart`, `maps(1,0)`.
+
+**`rom` / `roms[]`.** `id`, `romfilename`, `romsize`, `romcrc`, `rommd5`,
+`romsha1`, `romserial`, `romtype`, `romsupporttype`, `romnumsupport`,
+`romtotalsupport`, `romcloneof`, flags `beta demo proto trad hack unl alt best
+netplay`, and `regions`/`langues` as parallel arrays (`regions_shortname[]`…).
+
+**Codes.** Regions (44): ae afr ame asi au bg br ca cl cn cus cz de dk eu fi fr
+gr hu il it jp kr kw mex mor nl no nz oce pe pl pt ru se sk sp ss tr tw uk us
+wor za (Spain is `sp`). Languages (21): cz da de en es fi fr hu it ja kr nl no
+pl pt ru sk sv tr tw zh — in practice de/en/es/fr/it/pt.
+
+**Errors** (plain text; a failed login is often HTTP **200**): 400 missing
+fields / bad hash / path in `romnom`; 401 closed to non-members (server CPU >
+60 %); 403 bad developer login; 404 not found; 423 fully closed; 426 software
+blacklisted; 429 thread or per-minute limit; 430 daily quota; 431 too many
+unrecognised ROMs today.
+
+**Account (measured).** Level 10, premium, **7 threads**, 100,000 requests/day,
+account-wide (the handheld's ES-DE scraping spends from the same counter);
+`maxrequestspermin = 1024 × (maxthreads + 1)`; resets at midnight CET.
+
+**Licence.** Media is CC BY-NC-SA 4.0 — the app credits ScreenScraper.fr.
+
+### 16.3 Storage — the constraint and the choice
+
+- Free plan: 1 GB storage, 5 GB egress, **no** image transformations (Pro only,
+  billed per source image), no Smart CDN. Over quota: a one-off grace period,
+  then **every request in the project returns 402** — tasks, food and training
+  too. So a budget check in code is required, not optional.
+- Edge functions: 2 s CPU per request, 150 s wall clock (free). WebP encoding in
+  WASM (jSquash) measured 0.1–0.9 s CPU per image in Node and needs `.wasm`
+  bundling that a Dashboard deploy cannot do — rejected for now. ScreenScraper
+  resizes for free (`maxwidth` + `outputformat`), so that is what Save uses.
+- Measured sizes: box art 162–734 KB PNG → 24–61 KB at 640 px; a transparent
+  logo 63 → 14 KB; a native-resolution pixel-art screenshot is 3–4 KB as PNG
+  and gets *bigger* as JPEG (hence "small originals stay PNG").
+- External stores were evaluated: Cloudflare R2 (10 GB free, free egress, but
+  proper public serving needs a Cloudflare-hosted domain), Backblaze B2 (public
+  buckets need payment history), ImageKit/Cloudinary (metered credits), GitHub
+  Pages/jsDelivr (their terms forbid media hosting). None beats "store little,
+  link the rest" for one user.
+- **The model:** per media type **Save** (resized copy, counted against the
+  budget), **Link** (nothing stored; the `screenscraper-media` proxy streams it
+  when viewed, browser-cached for a year) or **Skip**. Defaults save box
+  front/back, screenshot, title screen, fan art and the HD logo (≈ 285 MB worst
+  case for 1,100 games), link 3D box/spine/texture/cartridge/Steam grid/logos/
+  marquees/manual, skip composites/bezels/themes/pictograms/video.
+- **The ES-DE originals** (537 MB now; the full set measured at 2.5 GiB in
+  `docs/termux-widgets.md`) are the obvious reclaim — they are on the handheld's
+  SD card anyway. That is a change to the RP6 pipeline, not to this scraper, and
+  was left for the owner to decide.
+
+### 16.4 The credential problem, solved twice
+
+Every ScreenScraper URL carries all four credentials. The old version solved it
+by downloading and re-hosting everything it showed (costly: every preview a
+Storage object). The rewrite keeps that for **Save** and adds a proxy for
+everything else:
+
+- `screenscraper-media` takes `j` (game id), `s` (system id), `m` (their media
+  token), optional `w`/`f` (resize), `e` (video/manual) and `k` — an HMAC-SHA256
+  of `ssm1|<game>|<system>` keyed from the service-role key (hashed with a label
+  first), truncated to 32 base64url characters, compared in constant time.
+  `screenscraper-sync` issues it with every candidate (`media_sig`) and saves it
+  in `provider_data`, so the browser can build a URL for ANY file of that game
+  and nothing else. JWT verification is off (an `<img>` cannot send a header).
+- The function adds the credentials server-side, never follows a redirect with
+  them, passes through only file content types and a header whitelist, and maps
+  their plain-text answers to 404/503 without echoing them.
+
+### 16.5 Contract (`screenscraper-sync`)
+
+| Action | Body | Answer |
+|---|---|---|
+| `status` | — | account (level, premium, threads, used, max), `remaining_today`, `storage` (per category), library counts |
+| `storage` | — | `{ total, groups[] }` from `game_media_usage()` — no ScreenScraper request |
+| `search` | `name?`, `system?` (ES-DE folder or id), `rom?` `{filename,size,crc,md5,sha1,serial}`, `jeu_id?`, `use_name?`, `use_rom?` | `candidates[]` (normalized, signed), `outcomes[]` per lookup, `system`, `remaining_today` |
+| `candidate` | `jeu_id`, `matched_by?` | one candidate (all dumps) + `record` (their answer minus URLs) |
+| `apply` | `game_id`, `jeu_id`, `system?`, `rom?`, `fields{field: fill\|replace\|skip}`, `media[{type, token, mode: store\|on_demand}]`, `overrides{title_region, description_lang}`, `matched_by`, `prefs?`, `run_id?` | `result{outcome, written[], skipped[], media[], bytes_stored, remaining_today}` |
+| `find_batch` | `game_ids` (≤ 10) | per game: best match (filename lookup when possible, else name) or why not |
+| `apply_batch` | `items[{game_id, jeu_id, system, rom_filename, matched_by}]` (≤ 5) | per game results, saved defaults |
+| `undo` | `run_id` | restores prior values where unchanged since |
+
+The browser never sends a field value — only choices. The function refetches the
+entry (by ROM first when ROM info is known, so the answer carries this dump's
+`rom` block), refuses when a different entry comes back (`stale`), and applies
+the choices against the live row.

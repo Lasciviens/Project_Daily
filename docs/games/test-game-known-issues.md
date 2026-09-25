@@ -8,8 +8,9 @@ real-data audit, each adversarially verified.
 ## Follow-ups outside this page
 - **Console icons (owner, 2026-09-25):** the owner will supply small coloured console images later; until then the
   sidebar keeps the current drawn platform glyphs. Don't draw or source substitutes.
-- **ScreenScraper will be rewritten from scratch (owner, 2026-09-25):** the current `screenscraper-sync` flow and its
-  panel are considered broken; leave them untouched until that rewrite is scheduled.
+- **ScreenScraper was rewritten from scratch (2026-09-25):** the Scrape section (More → Scrape, sidebar → Scrape, the
+  detail's Scrape button) replaced the old studio; see CLAUDE.md → "ScreenScraper — the Scrape page". Needs migration
+  104 + both functions deployed (`screenscraper-media` with JWT verification off) before it works live.
 - **Theme:** the Game Library look is the new theme for the whole website, to be rolled out later.
 - **Site integration (owner decision 2026-09-25):** the Games page stays full-screen with its own chrome for now.
   The plan is to restyle the WHOLE website in this page's visual language later, rather than squeeze this page into
