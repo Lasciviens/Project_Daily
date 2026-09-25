@@ -63,10 +63,15 @@ export const TgShelfRow = memo(function TgShelfRow({ games, cols, selectedId, fo
   const firstId = games[0]?.id
 
   // New contents (a sort, a filter, another platform) start at the shelf's
-  // beginning. Before paint, so the old offset never flashes; the selected
-  // card's reveal (TgShelf, a parent effect) runs after this.
+  // beginning, not wherever the reused track was. Scroll snapping re-snaps to
+  // the card it was snapped to before — now somewhere mid-list — once layout
+  // has run, so the offset is reset again on the next frame, which also makes
+  // the first card the new snap target.
   useLayoutEffect(() => {
-    if (track) track.scrollLeft = 0
+    if (!track || track.scrollLeft === 0) return
+    track.scrollLeft = 0
+    const raf = requestAnimationFrame(() => { track.scrollLeft = 0 })
+    return () => cancelAnimationFrame(raf)
   }, [track, firstId])
 
   useEffect(() => {
