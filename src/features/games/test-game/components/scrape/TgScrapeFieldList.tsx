@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { SsField, SsLocalized } from '../../../scraper/ssTypes'
 import type { MediaMode } from '../../../scraper/ssMediaCatalog'
-import { FIELD_MEDIA } from '../../../scraper/ssPlan'
+import { FIELD_MEDIA, sameValue } from '../../../scraper/ssPlan'
 import { display, writes, type FieldChoice, type FieldRow } from './tgScrapeModel'
 import { TgSegmented } from './TgScrapeParts'
 
@@ -62,9 +62,18 @@ export function TgScrapeFieldList({ rows, choices, onChoice, mediaModeOf, names,
   readOnly: boolean
 }) {
   const [showAll, setShowAll] = useState(false)
-  const useful = rows.filter(r => !r.theirsEmpty)
-  const hidden = rows.length - useful.length
-  const shown = showAll ? rows : useful
+  const [showSame, setShowSame] = useState(false)
+  // A picked title/description variant is what gets compared, not the default.
+  const theirsOf = (r: FieldRow): unknown => {
+    if (r.field === 'title' && titleRegion) return names.find(n => n.key === titleRegion)?.text ?? r.theirs
+    if (r.field === 'description' && descLang) return synopses.find(s => s.key === descLang)?.text ?? r.theirs
+    return r.theirs
+  }
+  const isSame = (r: FieldRow) => !r.isImage && sameValue(r.current, theirsOf(r))
+  const offered = rows.filter(r => !r.theirsEmpty)
+  const same = offered.filter(isSame)
+  const nothing = rows.filter(r => r.theirsEmpty)
+  const shown = [...offered.filter(r => !isSame(r)), ...(showSame ? same : []), ...(showAll ? nothing : [])]
 
   return (
     <div className="flex flex-col divide-y divide-[var(--tg-border)]">
@@ -72,10 +81,9 @@ export function TgScrapeFieldList({ rows, choices, onChoice, mediaModeOf, names,
         const choice = choices[r.field] ?? 'keep'
         const mediaType = FIELD_MEDIA[r.field]
         const mode = mediaType ? mediaModeOf(mediaType) : undefined
-        const willWrite = writes(r, choice, mode)
-        let theirs: unknown = r.theirs
-        if (r.field === 'title' && titleRegion) theirs = names.find(n => n.key === titleRegion)?.text ?? r.theirs
-        if (r.field === 'description' && descLang) theirs = synopses.find(s => s.key === descLang)?.text ?? r.theirs
+        const rowSame = isSame(r)
+        const willWrite = !rowSame && writes({ ...r, same: false }, choice, mode)
+        const theirs = theirsOf(r)
         const options: { value: FieldChoice; label: string; disabled?: boolean; hint?: string }[] = [
           { value: 'keep', label: 'Keep' },
           r.currentEmpty ? { value: 'fill', label: 'Fill' } : { value: 'replace', label: 'Replace' },
@@ -89,7 +97,7 @@ export function TgScrapeFieldList({ rows, choices, onChoice, mediaModeOf, names,
               <div className="flex items-center gap-2">
                 <span className="text-[12.5px] font-semibold text-[var(--tg-text)]">{r.label}</span>
                 {willWrite && <span className="rounded bg-[var(--tg-green-soft)] px-1.5 text-[10.5px] font-semibold text-[var(--tg-green)]">will {r.currentEmpty ? 'fill' : 'replace'}</span>}
-                {r.same && <span className="text-[11px] tg-faint">same as yours</span>}
+                {rowSame && <span className="text-[11px] tg-faint">same as yours</span>}
               </div>
               <div className="mt-1 grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-2 gap-y-1">
                 <span className="text-[11px] uppercase tracking-[0.06em] tg-faint">Yours</span>
@@ -101,15 +109,22 @@ export function TgScrapeFieldList({ rows, choices, onChoice, mediaModeOf, names,
               {r.field === 'description' && <Variants list={synopses} value={descLang} onPick={onDescLang} label="Description language" />}
               {imageNote && <p className="mt-1 text-[11px] tg-faint">{imageNote}</p>}
             </div>
-            {!readOnly && !r.theirsEmpty && !r.same && (
+            {!readOnly && !r.theirsEmpty && !rowSame && (
               <TgSegmented size="sm" label={`${r.label}: what to do`} value={choice} options={options} onChange={c => onChoice(r.field, c)} />
             )}
           </div>
         )
       })}
-      {hidden > 0 && (
-        <button type="button" onClick={() => setShowAll(s => !s)} className="min-h-[44px] pt-2 text-left text-[12.5px] font-semibold text-[var(--tg-accent)]">
-          {showAll ? 'Hide fields they have nothing for' : `Show ${hidden} field${hidden === 1 ? '' : 's'} they have nothing for`}
+      {same.length > 0 && (
+        <button type="button" onClick={() => setShowSame(s => !s)} className="min-h-[44px] pt-2 text-left text-[12.5px] leading-snug">
+          <span className="tg-muted">Same as yours: {same.map(r => r.label).join(', ')} </span>
+          <span className="font-semibold text-[var(--tg-accent)]">{showSame ? 'Hide' : 'Show'}</span>
+        </button>
+      )}
+      {nothing.length > 0 && (
+        <button type="button" onClick={() => setShowAll(s => !s)} className="min-h-[44px] text-left text-[12.5px] leading-snug">
+          <span className="tg-muted">They have nothing for: {nothing.map(r => r.label).join(', ')} </span>
+          <span className="font-semibold text-[var(--tg-accent)]">{showAll ? 'Hide' : 'Show'}</span>
         </button>
       )}
     </div>

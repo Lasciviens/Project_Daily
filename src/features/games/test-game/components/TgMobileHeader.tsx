@@ -108,7 +108,7 @@ export function TgMobileHeader({ platforms, genres, statusCounts, header, onRand
         )}
       </div>
 
-      {section === 'advanced' && header.tabs.length > 0 && (
+      {(section === 'advanced' || section === 'scrape') && header.tabs.length > 0 && (
         <div className={`tg-scroll-x flex gap-2 pb-2 ${GUTTER} ${SCROLL_GUTTER}`}>
           {header.tabs.map(t => {
             const active = t.key === header.activeTab

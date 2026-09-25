@@ -33,7 +33,7 @@ export function TgSegmented<T extends string>({ value, options, onChange, label,
 }) {
   const h = size === 'sm' ? 'min-h-[32px] px-2.5 text-[12px] [@media(pointer:coarse)]:min-h-[40px]' : 'min-h-[36px] px-3 text-[13px] [@media(pointer:coarse)]:min-h-[44px]'
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 rounded-[10px] border border-[var(--tg-border)] bg-[var(--tg-panel-2)] p-0.5">
+    <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 self-start justify-self-start rounded-[10px] border border-[var(--tg-border)] bg-[var(--tg-panel-2)] p-0.5">
       {options.map(o => {
         const on = o.value === value
         return (

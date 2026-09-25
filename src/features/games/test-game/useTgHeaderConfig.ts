@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchGamesNeedingReview } from '../api/gamesApi'
-import { useTestGameStore, type AdvancedTab } from './testGameStore'
+import { useTestGameStore, type AdvancedTab, type ScrapeMode } from './testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, STATUS_TABS, STATUS_TEXT,
   platformCounts, platformInfo, platformLabels,
@@ -39,6 +39,8 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
   const setStatus = useTestGameStore(s => s.setStatus)
   const setScopePlatform = useTestGameStore(s => s.setScopePlatform)
   const setAdvancedTab = useTestGameStore(s => s.setAdvancedTab)
+  const scrapeMode = useTestGameStore(s => s.scrapeMode)
+  const setScrapeMode = useTestGameStore(s => s.setScrapeMode)
 
   // The "Needs review" pill's count, as the current page's Review tab shows
   // it. Same key and query as useGamesNeedingReview, so the tab itself reuses
@@ -95,7 +97,11 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       return { title: 'Analytics', subtitle: 'Your library in numbers', logo: 'analytics', tabs: [], activeTab: null }
     }
     if (section === 'scrape') {
-      return { title: 'Scrape', subtitle: 'Find a game on ScreenScraper and choose what to save', logo: 'scrape', tabs: [], activeTab: null }
+      return {
+        title: 'Scrape', subtitle: 'Find a game on ScreenScraper and choose what to save', logo: 'scrape',
+        tabs: [{ key: 'search', label: 'One game' }, { key: 'batch', label: 'Many games' }],
+        activeTab: scrapeMode, onTab: (k) => setScrapeMode(k as ScrapeMode),
+      }
     }
     return {
       title: 'Advanced',
@@ -108,5 +114,5 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       onTab: (k) => setAdvancedTab(k as AdvancedTab),
     }
   }, [section, platform, sCounts, statuses, fixedStatus, games, scopePlatform, visibleCount,
-      advancedTab, reviewCount, setStatus, setScopePlatform, setAdvancedTab])
+      advancedTab, reviewCount, setStatus, setScopePlatform, setAdvancedTab, scrapeMode, setScrapeMode])
 }

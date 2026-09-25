@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Settings2 } from 'lucide-react'
 import type { TgGame } from '../../testGameModel'
-import { useTestGameStore, type ScrapeMode } from '../../testGameStore'
+import { useTestGameStore } from '../../testGameStore'
 import { useTgBreakpoint } from '../../useTgBreakpoint'
 import type { SsCandidate } from '../../../scraper/ssTypes'
 import { useMutationWithFeedback } from '../../../../../shared/hooks/useMutationWithFeedback'
 import { searchScreenScraper, type SearchResponse } from '../../../scraper/ssApi'
+import { modeCounts } from '../../../scraper/ssPlan'
 import { useScrapePrefs } from '../../../scraper/useScrape'
 import { formForGame, formProblem, formToRom, type SearchForm } from './tgScrapeModel'
 import { TgScrapeTarget } from './TgScrapeTarget'
@@ -32,6 +33,7 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
   const setTarget = useTestGameStore(s => s.setScrapeTarget)
   const mode = useTestGameStore(s => s.scrapeMode)
   const setMode = useTestGameStore(s => s.setScrapeMode)
+  const [formOpen, setFormOpen] = useState(true)
   const { prefs } = useScrapePrefs()
 
   const retro = useMemo(() => games.filter(g => g.library === 'retro'), [games])
@@ -53,6 +55,9 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
     }),
     onSuccess: (r) => {
       setResults(r)
+      // Phone and narrow screens fold the form into one line once there are
+      // results to read; a wide screen has room for both.
+      if (!wide) setFormOpen(false)
       // One exact hit on a wide screen opens straight away; on a phone the
       // list stays in front so the choice is still yours.
       setPicked(wide && r.candidates.length === 1 ? r.candidates[0] : null)
@@ -68,6 +73,7 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
     setForm(next)
     setResults(null)
     setPicked(null)
+    setFormOpen(true)
   }
   const { mutate: runSearch, isPending: searching } = search
   useEffect(() => {
@@ -79,19 +85,13 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
 
   const doSearch = () => { if (!formProblem(form)) runSearch(form) }
 
+  const counts = modeCounts(prefs)
   const toolbar = (
     <div className="flex items-center justify-between gap-3">
-      <div role="tablist" aria-label="Scrape mode" className="flex gap-1.5">
-        {(['search', 'batch'] as ScrapeMode[]).map(m => (
-          <button
-            key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
-            className={`tg-tab min-h-[40px] ${mode === m ? 'is-active' : 'bg-[var(--tg-panel-2)]'}`}
-          >
-            {m === 'search' ? 'One game' : 'Many games'}
-          </button>
-        ))}
-      </div>
-      <button type="button" onClick={() => setSettingsOpen(true)} className="tg-btn tg-btn-secondary !min-h-[40px] !px-3 !text-[13px]">
+      <p className="min-w-0 text-[12px] leading-snug tg-muted">
+        Defaults: {counts.store} image types saved · {counts.on_demand} linked · {counts.skip} skipped{prefs.snapshot ? ' · full record' : ''}
+      </p>
+      <button type="button" onClick={() => setSettingsOpen(true)} className="tg-btn tg-btn-secondary !min-h-[40px] shrink-0 !px-3 !text-[13px]">
         <Settings2 aria-hidden className="h-4 w-4" strokeWidth={2} />
         What to save
       </button>
@@ -127,7 +127,7 @@ export function TgScrapeView({ games, loading, layout }: { games: TgGame[]; load
       <TgScrapeTarget games={retro} target={target} loading={loading} onPick={(id) => setTarget(id)} />
       <TgScrapeSearchForm
         form={form} onChange={setForm} onSearch={doSearch} searching={searching}
-        hasTarget={!!target}
+        hasTarget={!!target} open={formOpen || wide} onOpen={() => setFormOpen(true)}
       />
       <TgScrapeResults
         response={results} searching={searching} error={search.error?.message ?? null}

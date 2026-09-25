@@ -42,12 +42,15 @@ function Toggle({ on, onChange, children }: { on: boolean; onChange: (v: boolean
  * ScreenScraper id — any mix, all sent at once and merged. Each part can be
  * switched off, so "with or without ROM info" is one tap.
  */
-export function TgScrapeSearchForm({ form, onChange, onSearch, searching, hasTarget }: {
+export function TgScrapeSearchForm({ form, onChange, onSearch, searching, hasTarget, open = true, onOpen }: {
   form: SearchForm
   onChange: (f: SearchForm) => void
   onSearch: () => void
   searching: boolean
   hasTarget: boolean
+  /** Folded to one summary line (phone, once results are showing). */
+  open?: boolean
+  onOpen?: () => void
 }) {
   const systems = useSsSystems()
   const list = useMemo(() => systems.data ?? [], [systems.data])
@@ -64,6 +67,22 @@ export function TgScrapeSearchForm({ form, onChange, onSearch, searching, hasTar
   const folderOption = form.system && !/^\d+$/.test(form.system)
     ? { value: form.system, label: resolved ? `${resolved.name ?? form.system} (${form.system})` : `${form.system} (not in their list)` }
     : null
+
+  if (!open) {
+    const parts = [
+      form.useName && form.name.trim() ? `“${form.name.trim()}”` : null,
+      form.system ? (resolved?.name ?? form.system) : 'any system',
+      form.useRom && filled ? `${filled} ROM field${filled === 1 ? '' : 's'}` : null,
+      form.jeuId ? `id ${form.jeuId}` : null,
+    ].filter(Boolean)
+    return (
+      <div className="tg-panel flex items-center gap-3 px-4 py-2.5">
+        <Search aria-hidden className="h-4 w-4 shrink-0 tg-muted" strokeWidth={2.2} />
+        <p className="min-w-0 flex-1 truncate text-[13px]"><span className="tg-muted">Searched </span>{parts.join(' · ')}</p>
+        <button type="button" onClick={onOpen} className="tg-btn tg-btn-secondary !min-h-[40px] shrink-0 !px-3 !text-[13px]">Edit search</button>
+      </div>
+    )
+  }
 
   return (
     <form

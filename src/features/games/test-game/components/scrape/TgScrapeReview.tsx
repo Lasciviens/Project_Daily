@@ -4,6 +4,7 @@ import type { TgGame } from '../../testGameModel'
 import type { SsCandidate, SsField, SsMediaChoice, SsPrefs } from '../../../scraper/ssTypes'
 import type { MediaMode } from '../../../scraper/ssMediaCatalog'
 import { ssGamePage, type ApplyResult } from '../../../scraper/ssApi'
+import { withOverrides } from '../../../scraper/ssRules'
 import { useApplyScrape } from '../../../scraper/useScrape'
 import {
   applySummary, candidateLine, choiceToPolicy, fieldRows, formToRom, initialChoice, mediaRows, summaryText,
@@ -27,7 +28,11 @@ export function TgScrapeReview({ game, candidate, prefs, form, onBack }: {
   form: SearchForm
   onBack?: () => void
 }) {
-  const rows = useMemo(() => (game ? fieldRows(game, candidate) : []), [game, candidate])
+  const [titleRegion, setTitleRegion] = useState<string | null>(null)
+  const [descLang, setDescLang] = useState<string | null>(null)
+  // Compared with the picked title/description variant, as it will be saved.
+  const effective = useMemo(() => withOverrides(candidate, { titleRegion, descriptionLang: descLang }), [candidate, titleRegion, descLang])
+  const rows = useMemo(() => (game ? fieldRows(game, effective) : []), [game, effective])
   const mRows = useMemo(() => mediaRows(candidate, prefs), [candidate, prefs])
 
   const [choices, setChoices] = useState<Partial<Record<SsField, FieldChoice>>>(
@@ -35,8 +40,6 @@ export function TgScrapeReview({ game, candidate, prefs, form, onBack }: {
   )
   const [modes, setModes] = useState<Record<string, MediaMode>>(() => Object.fromEntries(mRows.map(r => [r.type, r.mode])))
   const [tokens, setTokens] = useState<Record<string, string>>(() => Object.fromEntries(mRows.map(r => [r.type, r.chosen.token])))
-  const [titleRegion, setTitleRegion] = useState<string | null>(null)
-  const [descLang, setDescLang] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState(prefs.snapshot)
   const [applied, setApplied] = useState<{ runId: string; result: ApplyResult } | null>(null)
   const apply = useApplyScrape()
@@ -122,11 +125,11 @@ export function TgScrapeReview({ game, candidate, prefs, form, onBack }: {
       <TgSsAttribution className="px-1" />
 
       {game && (
-        <div className="sticky bottom-0 z-[2] -mx-1 rounded-[16px] border border-[var(--tg-border-strong)] bg-[var(--tg-panel)] p-3 shadow-[shadow:var(--tg-menu-shadow)]">
-          <p className="mb-2 text-center text-[12px] tabular-nums text-[var(--tg-text-2)]">
+        <div className="sticky bottom-0 z-[2] -mx-1 flex flex-col gap-2 rounded-[16px] border border-[var(--tg-border-strong)] bg-[var(--tg-panel)] p-3 shadow-[shadow:var(--tg-menu-shadow)] sm:flex-row sm:items-center sm:gap-4">
+          <p className="text-center text-[12px] tabular-nums text-[var(--tg-text-2)] sm:flex-1 sm:text-left">
             {summaryText(summary)}{snapshot ? ' · full record' : ''}
           </p>
-          <button type="button" onClick={save} disabled={apply.isPending || nothing} className="tg-btn tg-btn-primary w-full">
+          <button type="button" onClick={save} disabled={apply.isPending || nothing} className="tg-btn tg-btn-primary w-full sm:w-auto sm:max-w-[60%]">
             <Wand2 aria-hidden className={`h-4 w-4 ${apply.isPending ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
             {apply.isPending ? 'Saving…' : `Save to ${game.title.length > 28 ? `${game.title.slice(0, 27)}…` : game.title}`}
           </button>

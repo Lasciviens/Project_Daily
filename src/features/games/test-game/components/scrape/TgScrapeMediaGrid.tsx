@@ -41,7 +41,23 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
     <div className="flex flex-col gap-5">
       {groupMediaRows(rows).map(g => (
         <div key={g.key}>
-          <h3 className="mb-2 text-[12px] font-semibold text-[var(--tg-text-2)]">{g.label}</h3>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h3 className="text-[12px] font-semibold text-[var(--tg-text-2)]">{g.label}</h3>
+            {!readOnly && g.rows.length > 1 && (
+              <span className="flex items-center gap-0.5 text-[11.5px]">
+                <span className="mr-1 tg-faint">All:</span>
+                {(['store', 'on_demand', 'skip'] as MediaMode[]).map(m => (
+                  <button
+                    key={m} type="button"
+                    onClick={() => g.rows.forEach(r => onMode(r.type, m === 'store' && !r.canStore ? 'on_demand' : m))}
+                    className="min-h-[32px] rounded-md px-1.5 font-semibold text-[var(--tg-accent)] [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(pointer:coarse)]:min-h-[40px]"
+                  >
+                    {m === 'store' ? 'Save' : m === 'on_demand' ? 'Link' : 'Skip'}
+                  </button>
+                ))}
+              </span>
+            )}
+          </div>
           <ul className="grid grid-cols-1 gap-2.5 min-[480px]:grid-cols-2 2xl:grid-cols-3">
             {g.rows.map(r => {
               const entry = entryOf(r)
