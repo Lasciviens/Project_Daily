@@ -15,8 +15,9 @@ const DEFAULT_SORT: TgSort = 'title'
 const SORT_OPTIONS = (Object.keys(SORT_LABEL) as TgSort[]).map(s => ({ value: s, label: SORT_LABEL[s] }))
 const ICON = 'h-4 w-4'
 // The design's pills sit on the panel colour (the phone's use the softer panel-2).
-// Below lg they turn icon-only and tighten so the tablet row never overflows.
-const PILL = '!bg-[var(--tg-panel)] max-lg:!px-2.5 lg:min-w-[104px]'
+// Below lg they turn icon-only and tighten so the tablet row never overflows
+// (not even a landscape phone's, with 44px touch targets and notch insets).
+const PILL = '!bg-[var(--tg-panel)] max-lg:!gap-1.5 max-lg:!px-2 lg:min-w-[104px]'
 
 /**
  * Search, filters, view switch and account — across the main and detail
@@ -104,7 +105,7 @@ export function TgTopBar({
         )}
       </div>
 
-      {showViews && <TgTopBarViews className="ml-2 shrink-0 lg:ml-4" />}
+      {showViews && <TgTopBarViews className="ml-1.5 shrink-0 lg:ml-4" />}
       <TgUserMenu className="-mr-1 ml-1 lg:ml-2.5" />
     </div>
   )
