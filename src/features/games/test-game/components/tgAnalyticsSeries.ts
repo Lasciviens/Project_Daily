@@ -11,6 +11,8 @@ export interface TgaColumn {
   key: string
   /** Axis tick ('' leaves the tick blank). */
   tick: string
+  /** A second axis line — the year under months, the month under days — shown where it changes. */
+  group?: string
   /** Tooltip and table heading — "September 2026", "12 Sep 2026", "4.5 stars". */
   full: string
   count: number
@@ -44,21 +46,14 @@ export function completionSeries(games: TgGame[], period: TgaWindow, today: numb
     for (let i = 29; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
       const key = `${monthKey(d.getFullYear(), d.getMonth())}-${String(d.getDate()).padStart(2, '0')}`
-      columns.push({ key, tick: `${d.getDate()} ${MONTH[d.getMonth()]}`, full: `${d.getDate()} ${MONTH[d.getMonth()]} ${d.getFullYear()}`, count: 0 })
+      columns.push({ key, tick: String(d.getDate()), group: MONTH[d.getMonth()], full: `${d.getDate()} ${MONTH[d.getMonth()]} ${d.getFullYear()}`, count: 0 })
     }
   } else {
     const months = period === 'all' ? 24 : period === '12m' ? 12 : now.getMonth() + 1
     for (let i = months - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
       const y = d.getFullYear(), m = d.getMonth()
-      // The year rides on January and on the first column, so the axis says where it starts.
-      const withYear = m === 0 || i === months - 1
-      columns.push({
-        key: monthKey(y, m),
-        tick: withYear ? `${MONTH[m]} ’${String(y).slice(2)}` : MONTH[m],
-        full: `${MONTH_LONG[m]} ${y}`,
-        count: 0,
-      })
+      columns.push({ key: monthKey(y, m), tick: MONTH[m], group: String(y), full: `${MONTH_LONG[m]} ${y}`, count: 0 })
     }
   }
   for (const c of columns) index.set(c.key, c)
@@ -110,4 +105,27 @@ export function ratingSeries(games: TgGame[]): { columns: TgaColumn[]; rated: nu
       count: counts.get(s) ?? 0,
     }))
   return { columns, rated: all.length, median }
+}
+
+/** Room one axis label needs, in px — a three-letter month at 11px plus air. */
+const TICK_ROOM = 34
+
+/**
+ * Which columns carry an axis label at this plot width, and what each says.
+ * Counted back from the newest column so the current month is always
+ * labelled; the second line (year or month) appears on the first label and
+ * wherever it changes, so "Jan" is never ambiguous about its year.
+ */
+export function axisTicks(columns: TgaColumn[], plotWidth: number, all: boolean): Map<string, { line1: string; line2?: string }> {
+  const n = columns.length
+  const step = all ? 1 : Math.max(1, Math.ceil((n * TICK_ROOM) / Math.max(TICK_ROOM, plotWidth)))
+  const out = new Map<string, { line1: string; line2?: string }>()
+  let lastGroup: string | undefined
+  columns.forEach((c, i) => {
+    if (!c.tick || (n - 1 - i) % step !== 0) return
+    const line2 = c.group && c.group !== lastGroup ? c.group : undefined
+    lastGroup = c.group ?? lastGroup
+    out.set(c.key, { line1: c.tick, line2 })
+  })
+  return out
 }

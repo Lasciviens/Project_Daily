@@ -114,6 +114,7 @@ export function shelfVars(layout: ShelfLayout): Record<string, string> {
     '--tg-half-gap': `${layout.gap / 2}px`,
     '--tg-row-h': `${layout.rowHeight}px`,
     '--tg-text-inset': `${textInset(layout)}px`,
+    '--tg-text-overhang': `${Math.max(0, Math.min(12, Math.floor(layout.gap / 2) - 2))}px`,
   }
 }
 

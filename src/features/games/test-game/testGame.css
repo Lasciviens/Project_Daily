@@ -386,7 +386,7 @@
   content-visibility: auto; contain-intrinsic-size: auto 150px auto 250px;
 }
 .tg-cell.is-selected { content-visibility: visible; }
-.tg-cover-grid { --tg-cover-aspect: 10 / 13; }
+.tg-cover-grid { --tg-cover-aspect: 10 / 13; --tg-text-overhang: 8px; }
 
 .tg-card {
   position: relative; flex-shrink: 0; scroll-snap-align: start; text-align: left; outline: none;
@@ -397,8 +397,12 @@
   height: var(--tg-cover-h, auto); aspect-ratio: var(--tg-cover-aspect, auto);
 }
 /* The title starts at the cover's left edge, not the wider slot's; like the
-   design, the meta line may run a little past the cover's right edge. */
-.tg-card-text { display: block; padding-inline-start: var(--tg-text-inset, 4.5%); }
+   design, the text may run a little past the cover's right edge — into the
+   gap (--tg-text-overhang, always less than the slot's half-gap reach). */
+.tg-card-text {
+  display: block; padding-inline-start: var(--tg-text-inset, 4.5%);
+  margin-inline-end: calc(var(--tg-text-overhang, 0px) * -1);
+}
 .tg-cover-frame {
   position: relative; display: block; max-width: 100%; max-height: 100%;
   border-radius: 4px; box-shadow: var(--tg-cover-shadow);
