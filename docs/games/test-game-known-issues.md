@@ -6,6 +6,9 @@ fix round (PR #491). Items move to "Fixed" as follow-up PRs land. Findings come 
 real-data audit, each adversarially verified.
 
 ## Follow-ups outside this page
+- **Site integration (owner decision 2026-09-25):** the Games page stays full-screen with its own chrome for now.
+  The plan is to restyle the WHOLE website in this page's visual language later, rather than squeeze this page into
+  the current shell. Don't wrap it in `<Layout>` in the meantime.
 - The Advanced tabs reuse the current page's components verbatim, and three of them show a FAILED fetch as
   empty data (Tiers: "No games", Needs review: "Nothing needs attention", Classic library: "0 games"); the old
   Stats panel renders nothing at all on a failed fetch. Pre-existing on `/games`; to fix when those
