@@ -36,7 +36,7 @@ export function TgAnalyticsView() {
   if (lib.isLoading || (counts.all === 0 && lib.providersLoading)) {
     return <div className={ROOT}><TgAnalyticsSkeleton /></div>
   }
-  if (counts.all === 0) return <TgEmptyState kind="library" />
+  if (counts.all === 0) return <div className="h-full pb-4 pt-2"><TgEmptyState kind="library" /></div>
 
   const windowed = d.start != null
   const caption = windowed
