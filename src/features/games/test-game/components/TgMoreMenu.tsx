@@ -92,7 +92,8 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
           <div className="tg-menu-sep" role="separator" />
           {isSteam && <Item icon={<Award aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openProvider(game)}>Achievements & store page</Item>}
           {isPsn && <Item icon={<Trophy aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openProvider(game)}>Trophies</Item>}
-          <Item icon={<Info aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openFull(game.id)}>Manage platforms…</Item>
+          {/* Platform add/edit/delete still lives in the classic modal — retro rows only (Steam/PSN have none). */}
+          {game.library === 'retro' && <Item icon={<Info aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => actions.openFull(game.id)}>Manage platforms…</Item>}
 
           <div className="tg-menu-sep" role="separator" />
           <Item icon={<Trash2 aria-hidden className={ICON} strokeWidth={1.9} />} danger onClick={() => setConfirmDelete(true)}>Delete game…</Item>
