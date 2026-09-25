@@ -20,8 +20,8 @@ import { WishesPage } from '../features/wishes/pages/WishesPage'
 import { DeveloperPage } from '../features/developer/pages/DeveloperPage'
 import { logError } from '../shared/utils/logError'
 
-// ── Test-Game, loaded on demand ─────────────────────────────────────────────
-// A standalone experiment reached from one link, so its ~100 kB of JS and its
+// ── Games (the redesigned page), loaded on demand ───────────────────────────
+// A full-screen page outside the app shell, so its ~150 kB of JS and its
 // stylesheet stay out of every other route's first download.
 //
 // A lazy chunk can fail to load after a deploy: skipWaiting + clientsClaim
@@ -93,11 +93,12 @@ export function Router() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Test-Game: the Games page rebuilt on the new design. Outside
-            <Layout> on purpose — it draws its own sidebar, top bar and phone
-            tab bar, exactly as the design does — but behind the same guard. */}
+        {/* Games: rebuilt on the "Game Library" design. Outside <Layout> on
+            purpose — it draws its own sidebar, top bar and phone tab bar —
+            but behind the same guard. The previous page lives on at
+            /games-legacy; /test-game (its name while under test) redirects. */}
         <Route
-          path="/test-game"
+          path="/games"
           element={
             <SessionGuard>
               <Suspense fallback={<div aria-busy="true" className="min-h-[100dvh] bg-canvas" />}>
@@ -106,6 +107,7 @@ export function Router() {
             </SessionGuard>
           }
         />
+        <Route path="/test-game" element={<Navigate to="/games" replace />} />
 
         <Route
           element={
@@ -127,7 +129,7 @@ export function Router() {
           <Route path="/media" element={<MediaPage />} />
           <Route path="/work"     element={<WorkPage />} />
           <Route path="/training"  element={<TrainingPage />} />
-          <Route path="/games"     element={<GamesPage />} />
+          <Route path="/games-legacy" element={<GamesPage />} />
           <Route path="/games-demo" element={<GamesLibraryDemoPage />} />
           <Route path="/games-cover-demo" element={<GamesCoverDemoPage />} />
           <Route path="/projects"  element={<ProjectsPage />} />

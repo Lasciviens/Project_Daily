@@ -80,7 +80,7 @@ export const useTestGameStore = create<TgState>()(
       scopePlatform: ALL_PLATFORMS,
       status: 'all',
       genre: null,
-      sort: 'title',
+      sort: 'recent',
       view: 'shelf',
       search: '',
       selectedId: null,
@@ -93,8 +93,12 @@ export const useTestGameStore = create<TgState>()(
       // Changing section resets the per-section narrowing: a "Playing" tab
       // carried into Completed, or a platform chip carried into Wishlist,
       // would silently show an empty view.
+      // "Library" in the nav means the WHOLE library: it drops a platform or
+      // genre picked elsewhere (an Analytics row, a sidebar shelf), which
+      // otherwise lingered as a filter the user had to find and clear.
       setSection: (section) => set(s => ({
         section, status: 'all', scopePlatform: ALL_PLATFORMS, ...(s.section !== section && LEAVE_SHELF),
+        ...(section === 'library' && { platform: ALL_PLATFORMS, genre: null, ...(s.platform !== ALL_PLATFORMS && LEAVE_SHELF) }),
       })),
       setPlatform: (platform) => set(s => ({
         platform, section: 'library', status: 'all',
@@ -127,6 +131,14 @@ export const useTestGameStore = create<TgState>()(
     }),
     {
       name: 'test-game-ui-v1',
+      // v1: Last played became the default sort. A saved "Title" was only
+      // ever the old default, so it moves over once; any other choice stays.
+      version: 1,
+      migrate: (persisted, version) => {
+        const p = (persisted ?? {}) as Partial<TgState>
+        if (version < 1 && (p.sort == null || p.sort === 'title')) p.sort = 'recent'
+        return p as TgState
+      },
       partialize: (s) => ({
         section: s.section, platform: s.platform, sort: s.sort, view: s.view,
         advancedTab: s.advancedTab, detailCollapsed: s.detailCollapsed,
