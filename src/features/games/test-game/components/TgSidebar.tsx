@@ -21,10 +21,9 @@ const NAV: { key: TgSection; label: string; icon: ComponentType<{ className?: st
   { key: 'analytics', label: 'Analytics', icon: ChartColumn },
 ]
 
-// The design's bold 20px near-white (near-black in light) glyphs; the active
-// row keeps the nav's own active colour. `!` beats testGame.css's 18px rule.
-const NAV_ICON = 'tg-nav-icon !h-5 !w-5 !opacity-100'
-const navIcon = (active: boolean) => `${NAV_ICON} ${active ? '' : 'text-[var(--tg-text)]'}`
+// The design's bold near-white (near-black in light) glyphs; the active row
+// keeps the nav's own active colour.
+const navIcon = (active: boolean) => `tg-nav-icon ${active ? '' : 'text-[var(--tg-text)]'}`
 
 // Fades the list's bottom edge while more rows sit below it: on a touch
 // tablet the rows grow to 44px and the last platforms slip out of view, and

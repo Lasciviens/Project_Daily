@@ -9,12 +9,14 @@ interface Props {
   title: string
   /** Optional larger copy per thumbnail URL for the lightbox (Steam's `path_full`). */
   fullSize?: Readonly<Record<string, string>>
+  /** Lay the thumbnails out but request nothing yet (the selection is still moving). */
+  defer?: boolean
 }
 
 const RETRY_MS = 1200
 
 /** Three 16:9 thumbnails with a chevron, as drawn; a click opens the lightbox. */
-export function TgScreenshotStrip({ images, title, fullSize }: Props) {
+export function TgScreenshotStrip({ images, title, fullSize, defer = false }: Props) {
   const trackRef = useRef<HTMLDivElement>(null)
   const [, bump] = useReducer((n: number) => n + 1, 0)
   const [retried, setRetried] = useState<ReadonlySet<string>>(() => new Set())
@@ -65,7 +67,7 @@ export function TgScreenshotStrip({ images, title, fullSize }: Props) {
             // Three per view as drawn; two larger ones where the screen is tall.
             className="tg-thumb aspect-video w-[calc((100%_-_20px)/3)] shrink-0 snap-start [@media(min-height:1000px)]:w-[calc((100%_-_10px)/2)]"
           >
-            <img
+            {!defer && <img
               key={retried.has(url) ? `${url}#retry` : url}
               src={url}
               alt=""
@@ -74,7 +76,7 @@ export function TgScreenshotStrip({ images, title, fullSize }: Props) {
               draggable={false}
               onError={() => onError(url)}
               className="h-full w-full object-cover transition-transform duration-200 [@media(hover:hover)]:hover:scale-[1.04]"
-            />
+            />}
           </button>
         ))}
       </div>

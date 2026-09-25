@@ -56,7 +56,7 @@ export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, w
         <span title={game.title} className="mt-2 block truncate text-[12px] font-medium leading-[18px] text-[var(--tg-text)]">
           {game.title}
         </span>
-        <span className="mt-1 flex items-center justify-between gap-2 text-[12px] leading-4">
+        <span className="mt-1 flex items-center justify-between gap-1.5 text-[12px] leading-4">
           <span data-status={game.play_status} className="flex min-w-0 items-center gap-1.5">
             <TgStatusIcon status={game.play_status} />
             <span className="tg-status-text truncate font-medium">{statusLabel(game.play_status)}</span>

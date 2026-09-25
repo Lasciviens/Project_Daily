@@ -8,6 +8,7 @@ import { TgDetailDescription } from './TgDetailDescription'
 import { TgDetailActions } from './TgDetailActions'
 import { TgScreenshotStrip } from './TgScreenshotStrip'
 import { useSteamExtras } from './useSteamExtras'
+import { useStableValue } from './useStableValue'
 
 interface Props {
   game: TgGame | null
@@ -23,6 +24,10 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null)
   const extras = useSteamExtras(game?.steamAppId ?? null)
   const gameId = game?.id ?? null
+  // Arrowing along the shelf passes a game every few frames; screenshots (often
+  // full-size ES-DE originals) load only for the one the user stops on. The
+  // hero debounces the same way (TgDetailHero).
+  const settledId = useStableValue(gameId, 250)
 
   // A new selection starts at the top, not at the old game's scroll depth.
   useEffect(() => { bodyRef.current?.scrollTo({ top: 0 }) }, [gameId])
@@ -61,7 +66,7 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
         <div className="flex flex-col gap-3.5 px-5 pb-2 pt-4 [@media(min-height:1000px)]:gap-5 [@media(min-height:1000px)]:pt-5">
           <TgDetailInfo game={game} extras={extras} />
           {description && <TgDetailDescription key={`text-${game.id}`} text={description} />}
-          <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} />
+          <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} defer={settledId !== game.id} />
         </div>
         {/* Softens content scrolling under the pinned footer; over padding when nothing scrolls. */}
         <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-2 h-2 bg-gradient-to-t from-[var(--tg-panel)] to-transparent" />
