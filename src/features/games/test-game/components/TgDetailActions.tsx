@@ -14,8 +14,10 @@ export function TgDetailActions({ game, actions, variant }: { game: TgGame; acti
 
   function play() {
     if (appId != null) {
-      window.location.href = `steam://rungameid/${appId}`
+      // Status first: the protocol hand-off can stall the page behind an
+      // "Open Steam?" prompt, and the write should not wait on it.
       if (status === 'backlog' || status === 'wishlist') setStatus('playing')
+      window.location.href = `steam://rungameid/${appId}`
       return
     }
     setStatus('playing')
