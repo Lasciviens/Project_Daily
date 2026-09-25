@@ -31,16 +31,18 @@ const GAP_PER_SLOT = 0.4
 /** Title/meta inset per cover height: a 0.7 case centred in its 0.78 slot. */
 const CASE_ASPECT = 0.7
 const MIN_ROWS = 2
+/** Extra headroom per cover height a shelf may take to fill the view evenly. */
+const MAX_SLACK = 0.12
 
 export interface ShelfLayout {
   /** Cases per shelf: the case is a row-major grid of this many columns. */
   cols: number
-  /** Shelves that fit the visible height (at least two); empty ones fill it. */
+  /** Shelves it takes to fill the visible height; spare, empty ones fill it. */
   rows: number
   slotWidth: number
   coverHeight: number
   gap: number
-  /** Height of one shelf: the visible shelves split the height evenly. */
+  /** Height of one shelf: cover + chrome, or an even split of the view when close. */
   rowHeight: number
   /** False until the container has been measured once. */
   measured: boolean
@@ -59,16 +61,18 @@ export function smoothScroll(): ScrollBehavior {
  * Pure: the bookcase for a `width` × `height` view. The case scrolls
  * vertically; nothing scrolls sideways.
  *
- * The visible height splits into a whole number of shelves (two or more) so
- * the view always ends on a plank, and the covers take that shelf height
- * (within MIN_COVER…MAX_COVER). Columns come from the width: when the width is
- * the limit the covers shrink a little rather than drop a column; otherwise
- * the spare width goes between the cases, like a real bookcase.
+ * Covers are sized so a whole number of shelves (two or more) would fill the
+ * height, within MIN_COVER…MAX_COVER. Columns come from the width: when the
+ * width is the limit the covers shrink a little rather than drop a column;
+ * otherwise the spare width goes between the cases, like a real bookcase.
+ * A shelf stays tight around its covers (lamps just above them, like the
+ * design) unless an even split of the view is only a little taller — then the
+ * view ends exactly on a plank.
  */
 export function shelfGeometry(width: number, height: number): ShelfLayout {
   const inner = Math.max(0, width - 2 * SHELF_SIDE)
-  const rows = Math.max(MIN_ROWS, Math.floor(height / (PREF_COVER + CHROME)))
-  let cover = clamp(Math.floor(height / rows) - CHROME, MIN_COVER, MAX_COVER)
+  const fit = Math.max(MIN_ROWS, Math.floor(height / (PREF_COVER + CHROME)))
+  let cover = clamp(Math.floor(height / fit) - CHROME, MIN_COVER, MAX_COVER)
 
   let slot = Math.round(cover * SLOT_PER_COVER)
   const gapTarget = Math.round(slot * GAP_PER_SLOT)
@@ -83,7 +87,10 @@ export function shelfGeometry(width: number, height: number): ShelfLayout {
   }
 
   // Short views keep full-size shelves and scroll — covers never squash.
-  const rowHeight = Math.max(cover + CHROME, Math.floor(height / rows))
+  const tight = cover + CHROME
+  const even = Math.floor(height / fit)
+  const rowHeight = even >= tight && even - tight <= Math.round(cover * MAX_SLACK) ? even : tight
+  const rows = Math.max(MIN_ROWS, Math.ceil(height / rowHeight))
   return { cols, rows, slotWidth: slot, coverHeight: cover, gap, rowHeight, measured: true }
 }
 
