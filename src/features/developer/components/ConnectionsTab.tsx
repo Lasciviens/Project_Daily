@@ -6,7 +6,9 @@ import { exchangeCalendarCode, disconnectCalendar } from '../../calendar/api/cal
 import { GoogleTasksSyncButtons } from '../../todo/components/GoogleTasksSyncButtons'
 import { StravaWidget } from '../../training/components/StravaWidget'
 import { useStravaStatus } from '../../training/hooks/useTrainingSessions'
-import { usePsnStatus, useConnectPsn, useDisconnectPsn } from '../../games/hooks/usePlayStation'
+import { usePsnStatus, useDisconnectPsn, usePsnProfile } from '../../games/hooks/usePlayStation'
+import { PsnNpssoForm } from '../../games/components/PsnNpssoForm'
+import { isPsnReauthRequired } from '../../games/api/psnApi'
 import { useSteamProfile } from '../../games/hooks/useSteam'
 import { GOOGLE_SCOPES } from '../../calendar/googleScopes'
 
@@ -28,16 +30,22 @@ import { GOOGLE_SCOPES } from '../../calendar/googleScopes'
 //      read-only status readout, never a button that pretends to connect.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Status = 'connected' | 'disconnected' | 'unknown'
+// 'expired' is its own state, distinct from both: a credential IS stored, so
+// "Not connected" would be wrong, but the provider no longer honours it, so
+// "Connected" is a lie. Only the integrations whose credential the provider
+// can revoke behind our back (PlayStation today) ever report it.
+type Status = 'connected' | 'disconnected' | 'expired' | 'unknown'
 
 const DOT: Record<Status, string> = {
   connected: 'bg-green-500',
   disconnected: 'bg-ink-300',
+  expired: 'bg-amber-500',
   unknown: 'bg-amber-400',
 }
 const STATUS_TEXT: Record<Status, string> = {
   connected: 'Connected',
   disconnected: 'Not connected',
+  expired: 'Session expired',
   unknown: 'Checking…',
 }
 
@@ -145,15 +153,21 @@ function StravaCard() {
 
 function PlayStationCard() {
   const status = usePsnStatus()
-  const connect = useConnectPsn()
   const disconnect = useDisconnectPsn()
-  const [npsso, setNpsso] = useState('')
-
-  const connected = !!status.data?.connected
+  // `status` only proves a psn_tokens ROW exists — it never asked Sony whether
+  // that session still works. A dead one therefore read as "connected" here
+  // and offered nothing but Disconnect, so the one action the user actually
+  // needed (paste a fresh token) was unreachable from the page that owns
+  // connections. The profile query is the first call that touches Sony, so it
+  // is what distinguishes a live session from a stored one.
+  const hasRow = !!status.data?.connected
+  const profile = usePsnProfile(hasRow)
+  const expired = isPsnReauthRequired(profile.error)
+  const connected = hasRow && !expired
 
   return (
     <ConnectionCard icon="🎮" name="PlayStation" scope="Playtime library · trophies · PS Plus provenance"
-      status={status.isLoading ? 'unknown' : connected ? 'connected' : 'disconnected'}
+      status={status.isLoading ? 'unknown' : connected ? 'connected' : expired ? 'expired' : 'disconnected'}
       footer="Sony has no official API, so this uses the community npsso token flow. Sony's login now has a reCAPTCHA that blocks scripted refresh — expect to paste a fresh token every month or two.">
       {connected ? (
         <div className="flex items-center gap-3 flex-wrap">
@@ -169,18 +183,14 @@ function PlayStationCard() {
         </div>
       ) : (
         <div>
-          <ol className="text-xs text-ink-600 space-y-1 mb-2 list-decimal list-inside">
-            <li>Log into <a href="https://my.playstation.com" target="_blank" rel="noreferrer" className="text-accent-600 underline">my.playstation.com</a> in this browser.</li>
-            <li>Open <a href="https://ca.account.sony.com/api/v1/ssocookie" target="_blank" rel="noreferrer" className="text-accent-600 underline">the ssocookie endpoint</a> — it returns <code className="text-[11px] bg-ink-100 px-1 rounded">{'{"npsso":"…"}'}</code>.</li>
-            <li>Paste the value between the quotes below.</li>
-          </ol>
-          <textarea value={npsso} onChange={e => setNpsso(e.target.value)} rows={2}
-            placeholder="Paste your npsso token here…"
-            className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none" />
-          <button onClick={() => connect.mutate(npsso.trim())} disabled={!npsso.trim() || connect.isPending}
-            className="mt-2 min-h-[44px] px-4 text-sm font-semibold rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors disabled:opacity-40">
-            {connect.isPending ? 'Connecting…' : '🔌 Connect'}
-          </button>
+          {expired && (
+            <p className="text-xs text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5 mb-2">
+              Sony stopped accepting the stored session
+              {profile.error instanceof Error && profile.error.message ? ` (“${profile.error.message}”)` : ''}.
+              Paste a fresh token to restore it — the old one is replaced, nothing else changes.
+            </p>
+          )}
+          <PsnNpssoForm />
         </div>
       )}
     </ConnectionCard>

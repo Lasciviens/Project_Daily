@@ -586,6 +586,24 @@ Settings menu, Strava inside the Training tab, PlayStation inside the Games tab 
 connected?" had no single answer and reconnecting meant remembering which page happened to own
 it. Moved on explicit user request.
 
+**One narrow exception (2026-09-25, user's own call): RE-authenticating an
+already-configured integration may also be offered at the point of failure.**
+When PlayStation's stored session expires, the npsso paste form renders inside
+the Games tab's expired panel as well as in Connections. This serves the rule's
+purpose rather than defeating it — the rule exists so "is X connected?" has one
+answer and reconnecting isn't a hunt across pages; recovery in place is not a
+second status widget. It is bounded: the form is ONE shared component
+(`PsnNpssoForm`), and first-time **connect** and **disconnect** stay in
+Connections only. Extend this to another integration only if its credential can
+also be revoked by the provider behind our back.
+
+`ConnectionCard`'s `Status` therefore has a fourth value, **`expired`**: a
+credential IS stored, so "Not connected" would be wrong, but the provider no
+longer honours it, so "Connected" is a lie. Before this, PlayStation's card
+read "Connected" off the mere existence of a `psn_tokens` row and offered
+nothing but Disconnect — the one action actually needed (paste a fresh token)
+was unreachable from the page that owns connections.
+
 Two kinds of integration sit side by side there and are labelled differently, deliberately:
 - **user-authorized** (Google, Strava, PlayStation) — a real per-user token; connect and revoke
   from here.
