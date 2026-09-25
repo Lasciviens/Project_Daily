@@ -4,7 +4,10 @@
 // full schema rationale (why game_platforms stayed a real table, why
 // systems/emulators/genres/series collapsed to plain columns, etc.).
 
-export type PlayStatus = 'playing' | 'completed' | 'wishlist' | 'backlog' | 'dropped'
+/** 'hidden' (migration 102) keeps a non-game — a launcher, a streaming app —
+ *  out of the library grid. It is a STATUS, not a separate flag, which means a
+ *  row holds either a play status or 'hidden', never both. */
+export type PlayStatus = 'playing' | 'completed' | 'wishlist' | 'backlog' | 'dropped' | 'hidden'
 export type Tier = 'S' | 'A' | 'B' | 'C' | 'D' | 'F'
 export type ExternalSource = 'screenscraper' | 'esde' | 'manual' | 'steam' | 'psn'
 /** Which library a row belongs to (migration 096). The Retro Games tab shows

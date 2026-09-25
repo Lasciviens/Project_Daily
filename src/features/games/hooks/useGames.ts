@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import {
@@ -169,6 +170,26 @@ export function useSetPrimaryVariant() {
  * what `importProviderGames` writes. A game that has not been imported simply
  * has no row, and the modal says so rather than inventing one.
  */
+/** Every imported row of one provider library, keyed by the provider's own id.
+ *
+ *  Shares ONE query key with `useLibraryEntry`, so a tab that needs the whole
+ *  map and a modal that needs a single row cost one request between them. This
+ *  is also what lets the grid render from OUR table while the provider's API
+ *  is still being reached. */
+export function useLibraryGames(library: GameLibrary) {
+  const q = useQuery({
+    queryKey: ['games', 'library', library],
+    queryFn: () => fetchLibraryGames(library),
+    staleTime: 60_000,
+  })
+  const byRef = useMemo(() => {
+    const m = new Map<string, Game>()
+    for (const g of q.data ?? []) if (g.external_ref) m.set(g.external_ref, g)
+    return m
+  }, [q.data])
+  return { games: q.data ?? [], byRef, isLoading: q.isLoading }
+}
+
 export function useLibraryEntry(library: GameLibrary, externalRef: string | null | undefined) {
   const q = useQuery({
     queryKey: ['games', 'library', library],

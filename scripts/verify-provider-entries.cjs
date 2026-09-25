@@ -48,14 +48,31 @@ ok(P.steamKind('tool'), 'not_game', 'a tool')
 // Most of a large library has never had its store page fetched.
 ok(P.steamKind(null), 'unknown', 'an app whose store page was never fetched is unclassified')
 
-// ── hideNonGames ────────────────────────────────────────────────────────────
+// ── isHiddenEntry / visibleEntries / countHidden ────────────────────────────
 const rows = [
-  { id: 'a', kind: 'game' }, { id: 'b', kind: 'not_game' }, { id: 'c', kind: 'unknown' },
+  { id: 'a', cat: 'ps5_native_game' },
+  { id: 'b', cat: 'tv_app' },
+  { id: 'c', cat: null },
 ]
-const kindOf = (r) => r.kind
-ok(P.hideNonGames(rows, kindOf).map(r => r.id), ['a', 'c'],
-  'unknown is KEPT — the toggle removes what is known not to be a game, never what is simply unclassified')
-ok(P.countNonGames(rows, kindOf), 1, 'and the label can say how many it would remove')
-ok(P.hideNonGames([], kindOf), [], 'nothing to filter')
+const kindOf = r => P.psnKind(r.cat)
+// No stored status anywhere: the provider's own type is the only signal.
+const autoHidden = r => P.isHiddenEntry(kindOf(r), undefined)
+
+ok(P.visibleEntries(rows, autoHidden, false).map(r => r.id), ['a', 'c'],
+  'unknown is KEPT — hiding removes what is known not to be a game, never what is simply unclassified')
+ok(P.visibleEntries(rows, autoHidden, true).map(r => r.id), ['a', 'b', 'c'],
+  'Show hidden puts everything back')
+ok(P.countHidden(rows, autoHidden), 1, 'and the label can say how many are hidden')
+ok(P.visibleEntries([], autoHidden, false), [], 'nothing to filter')
+
+// An explicit status always beats the provider's own classification, BOTH ways.
+ok(P.isHiddenEntry('game', 'hidden'), true,
+  'an explicit hide wins over a provider that insists this is a game')
+ok(P.isHiddenEntry('not_game', 'backlog'), false,
+  'a real status un-hides an app the user has deliberately taken an interest in')
+ok(P.isHiddenEntry('not_game', undefined), true, 'no status: the provider decides')
+ok(P.isHiddenEntry('not_game', null), true, 'a null status is no status')
+ok(P.isHiddenEntry('unknown', undefined), false, 'unclassified stays visible')
+ok(P.isHiddenEntry('unknown', 'hidden'), true, 'unclassified can still be hidden by hand')
 
 console.log(`✅ ${n} assertions passed`)
