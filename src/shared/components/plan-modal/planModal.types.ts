@@ -163,4 +163,10 @@ export interface UnifiedPlanModalProps {
 
   /** Fires after a successful save, before close — for caller-side follow-up. */
   onSaved?: (result: PlanResult) => void
+
+  /** The row being edited is still loading by id (PlanEntityModals): the
+   *  shell shows a skeleton and Save stays disabled. */
+  loading?: boolean
+  /** The row couldn't be loaded: the shell shows this message (+ retry). */
+  loadError?: { message: string; onRetry?: () => void }
 }

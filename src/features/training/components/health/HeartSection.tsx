@@ -6,6 +6,8 @@ import { BarLineChart } from './BarLineChart'
 import { rangeForAnchor, labelForAnchor } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { HEART_EXTRA_METRICS } from './miniMetrics'
+import { useChartColors } from '../../../../shared/ui'
+import { HeadlineStat, SectionCard, SideStat } from './sectionKit'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -14,6 +16,7 @@ function fmtDay(dateStr: string): string {
 export function HeartSection({ range }: { range: HealthRange }) {
   const today = todayStr()
   const { anchor, setAnchor, period, setPeriod } = range
+  const c = useChartColors()
 
   // The mini-metric cards read the SAME window the rest of the page is on
   // (they used to be pinned to the last 7 days ending today, so they sat
@@ -47,47 +50,28 @@ export function HeartSection({ range }: { range: HealthRange }) {
     : hrDaily.map(r => ({ label: fmtDay(r.date), date: r.date, avg: Math.round(r.avg) }))
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
-            ❤️ Heart Rate {isDay
-              ? (anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`)
-              : period === 'week' ? '· Weekly Average' : '· Monthly Average'}
-          </p>
-          <p className="text-2xl sm:text-3xl font-bold text-ink-900 leading-tight">
-            {isLoading ? '…'
-              : isDay ? (dayRange ? `${Math.round(dayRange.min)}–${Math.round(dayRange.max)}` : '—')
-              : (avgBpm != null ? Math.round(avgBpm) : '—')}
-            <span className="text-sm font-normal text-ink-400"> bpm{!isDay && avgBpm != null ? ' avg' : ''}</span>
-          </p>
-        </div>
-        <div className="flex gap-4 text-center">
-          {!isDay && spanMin != null && spanMax != null && (
-            <div>
-              <p className="text-lg font-bold text-ink-800">{Math.round(spanMin)}–{Math.round(spanMax)}</p>
-              <p className="text-[10px] text-ink-400">range</p>
-            </div>
-          )}
-          {resting != null && (
-            <div>
-              <p className="text-lg font-bold text-ink-800">{Math.round(resting)}</p>
-              <p className="text-[10px] text-ink-400">{isDay ? 'resting' : 'avg resting'}</p>
-            </div>
-          )}
-          {hrv != null && (
-            <div>
-              <p className="text-lg font-bold text-ink-800">{Math.round(hrv)}</p>
-              <p className="text-[10px] text-ink-400">{isDay ? 'HRV ms' : 'avg HRV'}</p>
-            </div>
-          )}
+    <SectionCard>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <HeadlineStat
+          label={<>Heart rate {isDay
+            ? (anchor === today ? 'today' : `· ${labelForAnchor('day', anchor)}`)
+            : period === 'week' ? '· weekly average' : '· monthly average'}</>}
+          value={isLoading ? '…'
+            : isDay ? (dayRange ? `${Math.round(dayRange.min)}–${Math.round(dayRange.max)}` : '—')
+            : (avgBpm != null ? Math.round(avgBpm) : '—')}
+          unit={`bpm${!isDay && avgBpm != null ? ' avg' : ''}`}
+        />
+        <div className="flex gap-4">
+          {!isDay && spanMin != null && spanMax != null && <SideStat value={`${Math.round(spanMin)}–${Math.round(spanMax)}`} label="range" />}
+          {resting != null && <SideStat value={Math.round(resting)} label={isDay ? 'resting' : 'avg resting'} />}
+          {hrv != null && <SideStat value={Math.round(hrv)} label={isDay ? 'HRV ms' : 'avg HRV'} />}
         </div>
       </div>
 
       <BarLineChart
         data={chartData}
         dataKey="avg"
-        color="#e11d48"
+        color={c.series[3]}
         unit="bpm"
         tooltipLabel="Avg heart rate"
         height={160}
@@ -98,7 +82,7 @@ export function HeartSection({ range }: { range: HealthRange }) {
         } : undefined}
       />
 
-      <MetricMiniGrid title="Cardio Extras" metrics={HEART_EXTRA_METRICS} window={miniWindow} />
-    </div>
+      <MetricMiniGrid title="Cardio extras" metrics={HEART_EXTRA_METRICS} window={miniWindow} />
+    </SectionCard>
   )
 }

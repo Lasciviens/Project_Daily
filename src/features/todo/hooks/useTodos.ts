@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
   fetchAllTasks,
@@ -9,6 +9,7 @@ import {
   fetchWorkTasks,
   fetchOpenTrainingSessionTasks,
   fetchTaskById,
+  fetchTasksByIds,
   fetchSubtasks,
   createTask,
   updateTask,
@@ -18,44 +19,44 @@ import {
 } from '../api/tasksApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { pullGoogleTasks } from '../api/googleTasksSync'
-import { supabase } from '../../../integrations/supabase/client'
-import { updateTimeBlock } from '../../daily/api/scheduleApi'
-import { useCalendarStore } from '../../../app/store'
+import { updateTimeBlock, fetchTimeBlockByTaskId, fetchCalendarLinkedTaskIds } from '../../daily/api/scheduleApi'
+import { toast, useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
 import type { CreateTaskInput, UpdateTaskInput, Task } from '../types'
 
 // Aggregated overview of every active task (+ recently done) — the Daily "Tasks"
 // tab groups these into Overdue / Today / Upcoming / No date / Done.
 export function useAllTasks() {
   return useQuery({
-    queryKey: ['tasks', 'all'],
+    queryKey: qk.tasks.list(),
     queryFn: fetchAllTasks,
-    staleTime: 30_000,
+    staleTime: STALE.live,
   })
 }
 
 export function useTasksBySection(section: string, enabled = true) {
   return useQuery({
-    queryKey: ['tasks', 'section', section],
+    queryKey: qk.tasks.section(section),
     queryFn: () => fetchTasksBySection(section),
-    staleTime: 30_000,
+    staleTime: STALE.live,
     enabled,
   })
 }
 
 export function useOpenTrainingSessionTasks() {
   return useQuery({
-    queryKey: ['tasks', 'training-session-open'],
+    queryKey: qk.tasks.trainingOpen(),
     queryFn: fetchOpenTrainingSessionTasks,
-    staleTime: 30_000,
+    staleTime: STALE.live,
   })
 }
 
 export function useTasksForDay(date: Date, section: string) {
   const dateStr = format(date, 'yyyy-MM-dd')
   return useQuery({
-    queryKey: ['tasks', 'day', dateStr, section],
+    queryKey: qk.tasks.day(dateStr, section),
     queryFn: () => fetchTasksForDay(dateStr, section),
   })
 }
@@ -64,7 +65,7 @@ export function useTasksByWeek(weekStart: Date, weekEnd: Date) {
   const startStr = format(weekStart, 'yyyy-MM-dd')
   const endStr   = format(weekEnd,   'yyyy-MM-dd')
   return useQuery({
-    queryKey: ['tasks', 'week', startStr, endStr],
+    queryKey: qk.tasks.week(startStr, endStr),
     queryFn: () => fetchTasksByWeek(startStr, endStr),
   })
 }
@@ -73,7 +74,7 @@ export function useTasksByMonth(monthStart: Date, monthEnd: Date) {
   const startStr = format(monthStart, 'yyyy-MM-dd')
   const endStr   = format(monthEnd,   'yyyy-MM-dd')
   return useQuery({
-    queryKey: ['tasks', 'month', startStr, endStr],
+    queryKey: qk.tasks.month(startStr, endStr),
     queryFn: () => fetchTasksByMonth(startStr, endStr),
   })
 }
@@ -95,9 +96,13 @@ async function drainBestEffort(token: string | null, context: Record<string, unk
   }
 }
 
+// Every task mutation below is built on useMutationWithFeedback: errors are
+// always toasted + logged, success is silent. Callers must not add their own
+// toast.error — use withProgress() for per-call loading/success copy.
+
 export function useCreateTask() {
-  const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'create_task',
     // `skipGoogleTasks` is set by the plan modal when this task will also be
     // represented as a linked Google Calendar EVENT (via its time block).
     // Without it the same task shows up on Google Calendar twice — once as a
@@ -114,13 +119,15 @@ export function useCreateTask() {
       const googleTaskError = googleSyncEnabled ? await drainBestEffort(token, { taskId: task.id }) : null
       return { task, googleTaskError }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    // The task itself saved; only the Google copy is pending (the outbox retries).
+    onSuccess: ({ googleTaskError }) => { if (googleTaskError) toast.warning(`Google Tasks sync failed: ${googleTaskError}`) },
+    invalidates: [qk.tasks.all],
   })
 }
 
 export function useUpdateTask() {
-  const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'update_task',
     mutationFn: async ({ id, patch }: { id: string; patch: UpdateTaskInput }) => {
       const task = await updateTask(id, patch)
       // Whether this edit actually touched a Google-synced field (and
@@ -142,54 +149,45 @@ export function useUpdateTask() {
       // instead of a second, inconsistent "log and forget" path for the
       // same remote event.
       if (patch.title !== undefined && token) {
-        const { data: linked } = await supabase
-          .from('time_blocks')
-          .select('id')
-          .eq('task_id', id)
-          .maybeSingle()
-        if (linked?.id) {
-          try { await updateTimeBlock(linked.id, { title: task.title }) }
-          catch (err) { logError(`Calendar event title sync failed: ${(err as Error).message}`, { taskId: id }) }
+        try {
+          const linked = await fetchTimeBlockByTaskId(id)
+          if (linked?.id) await updateTimeBlock(linked.id, { title: task.title })
+        } catch (err) {
+          logError(`Calendar event title sync failed: ${(err as Error).message}`, { taskId: id })
         }
       }
       return task
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] })
-      // A task edit can move/retitle a linked schedule block — keep schedule
-      // views in sync (the plan modal syncs the block itself).
-      qc.invalidateQueries({ queryKey: ['schedule'] })
-      qc.invalidateQueries({ queryKey: ['calendar'] })
-    },
+    // A task edit can move/retitle a linked schedule block — keep schedule
+    // views in sync (the plan modal syncs the block itself).
+    invalidates: ['taskGraph'],
   })
 }
 
 export function useToggleTask() {
-  const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'toggle_task',
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
       const task = await toggleTaskDone(id, isDone)
       const token = useCalendarStore.getState().accessToken
       if (token) await drainBestEffort(token, { taskId: id })
       return task
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    invalidates: [qk.tasks.all],
   })
 }
 
 export function useSwapTaskOrder() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
-    action:     'swap_task_order',
-    mutationFn: ({ id1, id2 }: { id1: string; id2: string }) => swapTaskOrder(id1, id2),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['tasks'] }),
-    onError:    () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    action:      'swap_task_order',
+    mutationFn:  ({ id1, id2 }: { id1: string; id2: string }) => swapTaskOrder(id1, id2),
+    invalidates: [qk.tasks.all],
   })
 }
 
 export function useDeleteTask() {
-  const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'delete_task',
     mutationFn: async (taskOrId: string | Task) => {
       const id = typeof taskOrId === 'string' ? taskOrId : taskOrId.id
       // A hard delete's outbox 'delete' row (if the task was google_sync_enabled)
@@ -199,38 +197,43 @@ export function useDeleteTask() {
       const token = useCalendarStore.getState().accessToken
       if (token) await drainBestEffort(token, { taskId: id })
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] })
-      qc.invalidateQueries({ queryKey: ['schedule'] })
-      qc.invalidateQueries({ queryKey: ['calendar'] })
-    },
+    invalidates: ['taskGraph'],
   })
 }
 
-// Parent-title lookup for ToDoItem's "↳ Subtask of …" chip — one row, cheap,
-// react-query-cached by id so re-rendering the same parent across a list
-// costs one request, not one per child.
-export function useTaskById(id: string | null) {
+// One task by id — entity popups re-read through this, and ToDoItem's
+// "↳ Subtask of …" chip uses it (cached by id, so a parent shared by many
+// rows costs one request). The only by-id key is qk.tasks.byId ('by-id').
+export function useTaskById(id: string | null | undefined) {
   return useQuery({
-    queryKey: ['tasks', 'by-id', id],
+    queryKey: qk.tasks.byId(id ?? ''),
     queryFn: () => fetchTaskById(id as string),
     enabled: !!id,
-    staleTime: 30_000,
+    staleTime: STALE.live,
+  })
+}
+
+/** Several tasks by id in one request (e.g. the day agenda's linked-task details). */
+export function useTasksByIds(ids: readonly string[]) {
+  return useQuery({
+    queryKey: qk.tasks.byIds(ids),
+    queryFn: () => fetchTasksByIds(ids),
+    enabled: ids.length > 0,
+    staleTime: STALE.live,
   })
 }
 
 // Direct children for ToDoItem's inline "N subtasks" expand.
 export function useSubtasks(parentTaskId: string, enabled = true) {
   return useQuery({
-    queryKey: ['tasks', 'subtasks', parentTaskId],
+    queryKey: qk.tasks.subtasks(parentTaskId),
     queryFn: () => fetchSubtasks(parentTaskId),
     enabled,
-    staleTime: 30_000,
+    staleTime: STALE.live,
   })
 }
 
 export function useSetParentTask() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'set_parent_task',
     mutationFn: async ({ id, parentTaskId }: { id: string; parentTaskId: string | null }) => {
@@ -244,13 +247,13 @@ export function useSetParentTask() {
       if (token) await drainBestEffort(token, { taskId: id })
       return task
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    invalidates: [qk.tasks.all],
   })
 }
 
 export function useWorkTasks() {
   return useQuery({
-    queryKey: ['tasks', 'work'],
+    queryKey: qk.tasks.work(),
     queryFn: fetchWorkTasks,
   })
 }
@@ -261,7 +264,6 @@ export function useWorkTasks() {
 // before 20/08/2026 (CLAUDE.md's "known side effect" of the old To-Do
 // drawer's removal); wired up via GoogleTasksSyncButtons.
 export function useSyncFromGoogleTasks() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'sync_from_google_tasks',
     mutationFn: async () => {
@@ -271,8 +273,8 @@ export function useSyncFromGoogleTasks() {
       return imported
     },
     successMessage: (count: number) =>
-      count > 0 ? `Synced ${count} task${count === 1 ? '' : 's'} from Google ✓` : 'Google Tasks already up to date',
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+      count > 0 ? `Synced ${count} task${count === 1 ? '' : 's'} from Google` : 'Google Tasks already up to date',
+    invalidates: [qk.tasks.all, qk.googleTaskLists.all],
   })
 }
 
@@ -296,7 +298,6 @@ export function useSyncFromGoogleTasks() {
 // "task duplicated as both a Calendar event and a Task" bug that flag exists
 // to prevent.
 export function usePushToGoogleTasks() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'push_to_google_tasks',
     mutationFn: async (tasks: Task[]) => {
@@ -306,14 +307,7 @@ export function usePushToGoogleTasks() {
       const notYetSynced = tasks.filter(t =>
         !t.google_task_id && t.status !== 'done' && t.status !== 'cancelled')
 
-      const { data: linkedBlocks } = notYetSynced.length
-        ? await supabase
-            .from('time_blocks')
-            .select('task_id')
-            .not('google_calendar_event_id', 'is', null)
-            .in('task_id', notYetSynced.map(t => t.id))
-        : { data: [] }
-      const calendarLinkedIds = new Set((linkedBlocks ?? []).map(b => b.task_id))
+      const calendarLinkedIds = await fetchCalendarLinkedTaskIds(notYetSynced.map(t => t.id))
       const candidates = notYetSynced.filter(t => !calendarLinkedIds.has(t.id))
 
       for (const t of candidates) {
@@ -330,8 +324,8 @@ export function usePushToGoogleTasks() {
     },
     successMessage: (r: { pushed: number; failed: number }) =>
       r.pushed === 0 && r.failed === 0 ? 'All tasks already in Google Tasks'
-      : r.failed > 0 ? `Pushed ${r.pushed}, ${r.failed} failed ⚠`
-      : `Pushed ${r.pushed} task${r.pushed === 1 ? '' : 's'} to Google ✓`,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+      : r.failed > 0 ? `Pushed ${r.pushed}, ${r.failed} failed`
+      : `Pushed ${r.pushed} task${r.pushed === 1 ? '' : 's'} to Google`,
+    invalidates: [qk.tasks.all],
   })
 }

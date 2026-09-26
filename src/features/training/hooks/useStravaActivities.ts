@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchStravaActivities } from '../api/hevyApi'
+import { qk, STALE } from '../../../shared/query'
+import { fetchStravaActivities } from '../api/trainingApi'
 
 export function useStravaActivities(opts: {
   limit?: number
   type?: string
-} = {}) {
+} = {}, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: ['strava', 'activities', opts],
+    queryKey: qk.strava.activities(opts),
     queryFn:  () => fetchStravaActivities(opts),
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
+    enabled,
   })
 }

@@ -1,117 +1,66 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { supabase } from '../../../integrations/supabase/client'
+import { Clapperboard, Film, Tv } from 'lucide-react'
+import { useEntityModal } from '../../../shared/modals'
+import { Skeleton, EmptyState } from '../../../shared/ui'
 import { posterUrl } from '../../../integrations/tmdb/client'
-import { haptic } from '../../../shared/utils/haptics'
+import { useRecentlyWatched, type RecentlyWatchedItem } from '../../media/hooks/useRecentlyWatched'
+import { useWidgetState } from '../hooks/useWidgetState'
+import { WidgetShell } from './WidgetShell'
+import { GlanceTile } from './GlanceTile'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
-interface RecentItem {
-  id:          string
-  type:        'movie' | 'tv'
-  title:       string
-  poster:      string | null
-  watched_at:  string
+function openMedia(modal: ReturnType<typeof useEntityModal>, item: RecentlyWatchedItem) {
+  if (item.tmdbId != null) modal.open({ kind: 'media', tmdbId: item.tmdbId, mediaType: item.type })
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rows<T>(res: { data: T[] | null }): any[] { return res.data ?? [] }
-
-async function fetchRecentlyWatched(): Promise<RecentItem[]> {
-  const [movies, episodes] = await Promise.all([
-    supabase
-      .from('user_movie_entries')
-      .select('id, watched_at, movie:movies(title, poster_path)')
-      .not('watched_at', 'is', null)
-      .order('watched_at', { ascending: false })
-      .limit(4),
-    supabase
-      .from('user_tv_episodes')
-      .select('id, watched_at, tv_entry_id, tv_entry:user_tv_entries(tv_series(title, poster_path))')
-      .not('watched_at', 'is', null)
-      .order('watched_at', { ascending: false })
-      .limit(12),
-  ])
-
-  const movieItems: RecentItem[] = rows(movies).map(m => ({
-    id:         m.id,
-    type:       'movie' as const,
-    title:      m.movie?.title ?? 'Unknown',
-    poster:     m.movie?.poster_path ?? null,
-    watched_at: m.watched_at,
-  }))
-
-  // One row per series — keep only the most recently watched episode of each.
-  const seenSeries = new Set<string>()
-  const episodeItems: RecentItem[] = []
-  for (const e of rows(episodes)) {
-    if (seenSeries.has(e.tv_entry_id)) continue
-    seenSeries.add(e.tv_entry_id)
-    episodeItems.push({
-      id:         e.id,
-      type:       'tv' as const,
-      title:      e.tv_entry?.tv_series?.title ?? 'Unknown',
-      poster:     e.tv_entry?.tv_series?.poster_path ?? null,
-      watched_at: e.watched_at,
-    })
-  }
-
-  return [...movieItems, ...episodeItems]
-    .sort((a, b) => new Date(b.watched_at).getTime() - new Date(a.watched_at).getTime())
-    .slice(0, 6)
-}
-
+/** Last watched titles; each poster opens that title's popup. */
 export function RecentMediaWidget() {
-  const { data, isLoading } = useQuery({
-    queryKey:  ['recent-media', 'watched'],
-    queryFn:   fetchRecentlyWatched,
-    staleTime: 5 * 60_000,
-  })
-  // Reference widget — collapsed by default on a phone (desktop always shows).
-  const [collapsed, setCollapsed] = useState(true)
-
-  if (isLoading) return null
-  if (!data || data.length === 0) return null
+  const ws = useWidgetState('recentMedia', { mobileCollapsed: true })
+  const { data = [], isLoading } = useRecentlyWatched({ enabled: !ws.collapsed })
+  const modal = useEntityModal()
 
   return (
-    <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center min-w-0">
-          <button
-            type="button"
-            onClick={() => { haptic('light'); setCollapsed(c => !c) }}
-            aria-label={collapsed ? 'Expand' : 'Collapse'}
-            className="sm:hidden text-ink-400 hover:text-ink-700 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
-          >
-            {collapsed ? '▶' : '▼'}
-          </button>
-          <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide truncate">Recently Watched</h3>
-        </div>
-        <Link to="/media" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
-      </div>
-      {/* grid-cols-3 on mobile — 6 columns at ~390px squeezed posters down to
-          ~60px with 9px titles, too cramped to read; 6 columns is kept from
-          sm: up where there's actual room for it. Plain wrapper toggles mobile
-          visibility so the inner grid's display type is untouched. */}
-      <div className={collapsed ? 'hidden sm:block' : undefined}>
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-        {data.map(item => (
-          <Link key={item.id} to="/media" className="flex flex-col group press-feedback">
-            <div className="relative aspect-[2/3] rounded overflow-hidden bg-ink-100">
-              <img
-                src={posterUrl(item.poster, 'w154')}
-                alt={item.title}
-                className="w-full h-full object-cover group-hover:brightness-90 transition-all duration-150"
-                loading="lazy"
-              />
-              <span className={`absolute top-1 right-1 text-[8px] font-bold px-1 rounded ${item.type === 'movie' ? 'bg-purple-500 text-white' : 'bg-blue-500 text-white'}`}>
-                {item.type === 'movie' ? '🎬' : '📺'}
+    <WidgetShell title="Recently watched" icon={<Clapperboard />} ws={ws} to="/media">
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="aspect-[2/3] w-full" rounded="rounded-md" />)}</div>
+      ) : data.length === 0 ? (
+        <EmptyState title="Nothing watched yet" description="Mark a film or an episode as watched in Media." className="py-4" />
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          {data.map(item => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => openMedia(modal, item)}
+              disabled={item.tmdbId == null}
+              className="group flex min-w-0 flex-col text-left press-feedback"
+            >
+              <span className="relative block aspect-[2/3] overflow-hidden rounded-md bg-surface-2">
+                <img src={posterUrl(item.poster, 'w154')} alt="" loading="lazy" className="h-full w-full object-cover transition-[filter] duration-150 group-hover:brightness-90" />
+                <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded bg-scrim/60 text-white">
+                  {item.type === 'movie' ? <Film aria-label="Film" className="h-3 w-3" /> : <Tv aria-label="Series" className="h-3 w-3" />}
+                </span>
               </span>
-            </div>
-            <p className="text-[10px] sm:text-[9px] text-ink-600 truncate mt-0.5 leading-tight">{item.title}</p>
-          </Link>
-        ))}
-      </div>
-      </div>
-    </div>
+              <span className="mt-1 truncate text-meta text-fg-2">{item.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </WidgetShell>
+  )
+}
+
+export function RecentMediaTile() {
+  const { data = [], isLoading } = useRecentlyWatched()
+  const modal = useEntityModal()
+  const latest = data[0]
+  return (
+    <GlanceTile
+      label="Watched"
+      icon={<Clapperboard />}
+      loading={isLoading}
+      value={latest ? latest.title : 'Nothing yet'}
+      hint={latest ? fmtDateEnGB(new Date(latest.watched_at), { day: 'numeric', month: 'short' }) : 'Open Media'}
+      {...(latest?.tmdbId != null ? { onClick: () => openMedia(modal, latest) } : { to: '/media' })}
+    />
   )
 }

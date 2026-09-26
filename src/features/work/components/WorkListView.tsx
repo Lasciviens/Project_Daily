@@ -1,8 +1,8 @@
+import { Check, RotateCcw, Trash2, Zap } from 'lucide-react'
 import type { Task, TaskStatus } from '../../todo/types'
-import {
-  BOARD_COLUMNS, OVERDUE_COLOR, PRIORITY_META, STATUS_CYCLE,
-  dueLabel, isCompletedToday, isOverdue,
-} from './workMeta'
+import { EmptyState, TonePill, cx } from '../../../shared/ui'
+import { STATUS_CYCLE, isCompletedToday, isOverdue, taskStatusMeta } from './workMeta'
+import { DueChip, PriorityMark, WaitingChip } from './WorkTaskBits'
 
 interface Props {
   tasks: Task[]                 // already search/priority-filtered by the page
@@ -16,11 +16,7 @@ interface Props {
 const STATUS_RANK: Record<string, number> = { in_progress: 1, waiting: 2, open: 3, done: 4 }
 const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 }
 
-function statusMeta(task: Task) {
-  if (isOverdue(task)) return { label: 'Overdue', color: OVERDUE_COLOR }
-  const col = BOARD_COLUMNS.find(c => c.id === task.status)
-  return col ? { label: col.label, color: col.color } : { label: task.status, color: '#94A3B8' }
-}
+const ACTION = 'grid place-items-center rounded-control min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] transition-colors [&_svg]:h-3.5 [&_svg]:w-3.5'
 
 // Dense triage view: one row per task, overdue first, then by activity/priority.
 // Click the status dot to cycle status; click the row to edit.
@@ -43,100 +39,94 @@ export default function WorkListView({
     })
 
   if (rows.length === 0) {
-    return (
-      <div className="text-center py-14 border border-dashed border-ink-200 rounded-2xl text-ink-400 text-sm">
-        No tasks match
-      </div>
-    )
+    return <EmptyState bordered title="No tasks match" description="Clear the search or priority filter to see everything." className="max-w-xl" />
   }
 
   return (
-    <div className="rounded-2xl border border-ink-200 bg-cream-50 overflow-hidden divide-y divide-ink-50">
+    <ul className="card max-w-5xl divide-y divide-line overflow-hidden">
       {rows.map(task => {
         const isDone  = task.status === 'done'
-        const meta    = statusMeta(task)
-        const due     = dueLabel(task)
-        const prio    = PRIORITY_META[task.priority]
+        const meta    = taskStatusMeta(task)
         const focused = focusedTaskIds.includes(task.id)
 
         return (
-          <div
+          <li
             key={task.id}
             onClick={() => onEdit(task)}
-            className="group flex items-center gap-2.5 px-3 min-h-[48px] py-1.5 cursor-pointer hover:bg-cream-50 transition-colors"
+            className="group flex min-h-[48px] cursor-pointer items-center gap-2.5 px-2 py-1 transition-colors sm:px-3 [@media(hover:hover)]:hover:bg-surface-hover"
           >
             {/* Status cycle button */}
             <button
+              type="button"
               onClick={e => {
                 e.stopPropagation()
                 const idx  = STATUS_CYCLE.indexOf(task.status)
                 const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
                 onStatusChange(task.id, next)
               }}
+              aria-label={`${meta.label} — advance status`}
               title={`${meta.label} — click to advance`}
-              className="min-w-[44px] min-h-[44px] md:min-w-[24px] md:min-h-[24px] flex items-center justify-center flex-shrink-0"
+              className="grid min-h-[44px] min-w-[44px] shrink-0 place-items-center md:min-h-[28px] md:min-w-[28px]"
             >
-              <span className="w-3 h-3 rounded-full border-2 block" style={{ borderColor: meta.color, backgroundColor: isDone ? meta.color : 'transparent' }} />
+              <span
+                data-tone={meta.tone}
+                className={cx('block h-3 w-3 rounded-full border-2 border-[rgb(var(--tone))]', isDone && 'bg-[rgb(var(--tone))]')}
+              />
             </button>
 
-            <span className={`text-[10px] leading-none flex-shrink-0 ${prio.cls}`} title={`${prio.label} priority`}>{prio.icon}</span>
+            <PriorityMark task={task} />
 
-            <span className={`text-sm flex-1 min-w-0 truncate ${isDone ? 'line-through text-ink-400' : 'text-ink-800'}`}>
-              {focused && <span className="text-accent-500 mr-1">⚡</span>}
+            <span className={cx('min-w-0 flex-1 truncate text-body', isDone ? 'text-fg-faint line-through' : 'text-fg')}>
+              {focused && <Zap aria-label="Focused" className="-mt-0.5 mr-1 inline h-3.5 w-3.5 fill-current text-accent-600" />}
               {task.title}
             </span>
 
             {task.status === 'waiting' && task.waiting_for && (
-              <span className="hidden sm:inline text-[10px] bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded-full flex-shrink-0 max-w-[140px] truncate">
-                ⏳ {task.waiting_for}
-              </span>
+              <WaitingChip text={task.waiting_for} className="hidden sm:inline-flex" />
             )}
 
-            <span
-              className="hidden md:inline text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0"
-              style={{ backgroundColor: meta.color + '1A', color: meta.color }}
-            >
-              {meta.label}
-            </span>
+            <TonePill tone={meta.tone} className="hidden shrink-0 md:inline-flex">{meta.label}</TonePill>
 
-            {due && !isDone && (
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${due.urgent ? 'bg-red-50 text-red-600' : 'bg-ink-100 text-ink-500'}`}>
-                {due.text}
-              </span>
-            )}
+            <DueChip task={task} />
 
-            {/* Hover actions */}
+            {/* Row actions: always visible on touch, hover-reveal with a mouse */}
             <div
-              className="flex items-center gap-0.5 flex-shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+              className="flex shrink-0 items-center gap-0.5 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
               onClick={e => e.stopPropagation()}
             >
               <button
+                type="button"
                 onClick={() => onStatusChange(task.id, isDone ? 'open' : 'done')}
+                aria-label={isDone ? 'Reopen' : 'Mark done'}
                 title={isDone ? 'Reopen' : 'Mark done'}
-                className="min-h-[44px] min-w-[44px] md:min-h-[26px] md:min-w-[26px] flex items-center justify-center rounded-md text-[11px] text-emerald-600 hover:bg-emerald-50 transition-colors"
+                data-tone="success"
+                className={cx(ACTION, 'tone-text [@media(hover:hover)]:hover:bg-success-soft')}
               >
-                {isDone ? '↩' : '✓'}
+                {isDone ? <RotateCcw /> : <Check />}
               </button>
               <button
+                type="button"
                 onClick={() => onFocus(task)}
+                aria-label={focused ? 'Remove focus' : 'Focus'}
+                aria-pressed={focused}
                 title={focused ? 'Remove focus' : 'Focus'}
-                className={`min-h-[44px] min-w-[44px] md:min-h-[26px] md:min-w-[26px] flex items-center justify-center rounded-md text-[11px] transition-colors ${
-                  focused ? 'text-accent-500 bg-accent-50' : 'text-ink-400 hover:bg-ink-100'
-                }`}
+                className={cx(ACTION, focused ? 'bg-accent-50 text-accent-600' : 'text-fg-faint [@media(hover:hover)]:hover:bg-surface-hover')}
               >
-                ⚡
+                <Zap />
               </button>
               <button
+                type="button"
                 onClick={() => onDelete(task.id)}
+                aria-label="Delete"
                 title="Delete"
-                className="min-h-[44px] min-w-[44px] md:min-h-[26px] md:min-w-[26px] flex items-center justify-center rounded-md text-[11px] text-ink-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                className={cx(ACTION, 'text-fg-faint [@media(hover:hover)]:hover:bg-danger-soft [@media(hover:hover)]:hover:text-danger')}
               >
-                ×
+                <Trash2 />
               </button>
             </div>
-          </div>
+          </li>
         )
       })}
-    </div>
+    </ul>
   )
 }

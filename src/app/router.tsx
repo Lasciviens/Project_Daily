@@ -2,11 +2,10 @@ import { Suspense } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { SessionGuard } from '../security/sessionGuard'
 import { ErrorBoundary } from '../shared/components/ErrorBoundary'
-import { Layout } from './layout'
+import { AppShell } from './shell/AppShell'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import { HomePage } from '../features/home/pages/HomePage'
-import { PersonalLayout } from '../features/personal/components/PersonalLayout'
 import { DailyPage } from '../features/daily/pages/DailyPage'
 import { ShopPage } from '../features/shop/pages/ShopPage'
 import { RecipesPage } from '../features/recipes/pages/RecipesPage'
@@ -33,7 +32,7 @@ export function Router() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Games: the "Game Library" design. Outside <Layout> on purpose — it
+        {/* Games: the "Game Library" design. Outside <AppShell> on purpose — it
             draws its own sidebar, top bar and phone tab bar — but behind the
             same guard. The old page's addresses (/games-legacy, the two demo
             pages, /test-game from its time under test) redirect here. */}
@@ -59,19 +58,16 @@ export function Router() {
         <Route
           element={
             <SessionGuard>
-              <Layout />
+              <AppShell />
             </SessionGuard>
           }
         >
           <Route index element={<Navigate to="/home" replace />} />
           <Route path="/home"  element={<HomePage />} />
 
-          {/* Personal nav group — shared tab bar (Daily/Shop/Recipes) via PersonalLayout */}
-          <Route element={<PersonalLayout />}>
-            <Route path="/daily"    element={<DailyPage />} />
-            <Route path="/shop"     element={<ShopPage />} />
-            <Route path="/recipes"  element={<RecipesPage />} />
-          </Route>
+          <Route path="/daily"    element={<DailyPage />} />
+          <Route path="/shop"     element={<ShopPage />} />
+          <Route path="/recipes"  element={<RecipesPage />} />
 
           <Route path="/media" element={<MediaPage />} />
           <Route path="/work"     element={<WorkPage />} />

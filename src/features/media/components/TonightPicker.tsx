@@ -1,11 +1,13 @@
 import { useState } from 'react'
+import { Dices, Film, Shuffle, Tv } from 'lucide-react'
+import { Button, Card, CardHeader, IconButton, SegmentedControl } from '../../../shared/ui'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { haptic } from '../../../shared/utils/haptics'
 import {
   useTrendingMovies, useTrendingTV,
   usePopularMovies, usePopularTV,
 } from '../hooks/useTMDB'
-import type { UserMovieEntry, UserTVEntry } from '../types'
+import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
 
 type Source = 'mylist' | 'trending' | 'popular'
 
@@ -20,7 +22,7 @@ interface Candidate {
 interface Props {
   movieEntries: UserMovieEntry[]
   tvEntries:    UserTVEntry[]
-  onOpenDetail: (id: number, type: 'movie' | 'tv') => void
+  onOpenDetail: (id: number, type: MediaType) => void
 }
 
 // buildPool() creates fresh Candidate objects every call, so comparing by
@@ -32,52 +34,43 @@ function pickRandom(arr: Candidate[], exclude?: Candidate): Candidate {
 }
 
 function PickRow({ type, pick, shaking, onRoll, onOpenDetail }: {
-  type:         'movie' | 'tv'
+  type:         MediaType
   pick:         Candidate | null
   shaking:      boolean
   onRoll:       () => void
-  onOpenDetail: (id: number, type: 'movie' | 'tv') => void
+  onOpenDetail: (id: number, type: MediaType) => void
 }) {
   if (pick) {
     return (
-      <div className="flex items-center gap-2">
-        <img
-          src={posterUrl(pick.poster_path, 'w92')}
-          alt={pick.title}
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button"
           onClick={() => { haptic('light'); onOpenDetail(pick.id, type) }}
-          className={`press-feedback w-9 h-[52px] rounded object-cover cursor-pointer flex-shrink-0 hover:opacity-90 ${shaking ? 'animate-[wiggle_0.3s_ease-in-out]' : ''}`}
-        />
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-semibold text-ink-900 truncate leading-tight">{pick.title}</p>
-          {pick.status && (
-            <p className="text-[9px] text-ink-400 capitalize mt-0.5">{pick.status}</p>
-          )}
+          aria-label={`Open ${pick.title}`}
+          className={`press-feedback shrink-0 rounded-md ${shaking ? 'animate-[wiggle_0.3s_ease-in-out]' : ''}`}
+        >
+          <img src={posterUrl(pick.poster_path, 'w92')} alt="" className="h-[54px] w-9 rounded-md bg-surface-2 object-cover" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-body font-semibold text-fg">{pick.title}</p>
+          {pick.status && <p className="text-meta capitalize text-fg-muted">{pick.status}</p>}
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={() => { haptic('light'); onOpenDetail(pick.id, type) }}
-            className="press-feedback text-[11px] font-medium px-3 min-h-[44px] rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors"
-          >
-            View
-          </button>
-          <button
-            onClick={() => { haptic('light'); onRoll() }}
-            aria-label="Re-roll"
-            className="press-feedback text-base min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-ink-200 text-ink-500 hover:bg-ink-50 transition-colors"
-          >
-            ↺
-          </button>
-        </div>
+        <Button size="sm" variant="primary" onClick={() => { haptic('light'); onOpenDetail(pick.id, type) }}>View</Button>
+        <IconButton label="Pick another" bordered onClick={() => { haptic('light'); onRoll() }}>
+          <Shuffle />
+        </IconButton>
       </div>
     )
   }
 
   return (
     <button
+      type="button"
       onClick={() => { haptic('light'); onRoll() }}
-      className="press-feedback w-full flex items-center justify-center gap-1.5 min-h-[44px] rounded-lg border border-dashed border-ink-300 text-xs text-ink-500 hover:bg-ink-50 hover:border-accent-400 hover:text-accent-600 transition-colors"
+      className="press-feedback flex min-h-[44px] w-full items-center justify-center gap-2 rounded-row border border-dashed border-line-strong text-body font-medium text-fg-2 transition-colors hover:border-accent-500 hover:text-accent-600"
     >
-      {type === 'movie' ? '🎬 Random Movie' : '📺 Random Series'}
+      {type === 'movie' ? <Film aria-hidden className="h-4 w-4" /> : <Tv aria-hidden className="h-4 w-4" />}
+      {type === 'movie' ? 'Random movie' : 'Random series'}
     </button>
   )
 }
@@ -143,49 +136,23 @@ export function TonightPicker({ movieEntries, tvEntries, onOpenDetail }: Props) 
   }
 
   return (
-    <div className="rounded-xl border border-ink-200 bg-cream-50 p-3">
-      {/* Header + source selector */}
-      <div className="flex items-center justify-between mb-2.5">
-        <h3 className="text-[10px] font-bold uppercase tracking-wider text-ink-400">🎲 What to Watch?</h3>
-        <div className="flex gap-0.5">
-          {(['mylist', 'trending', 'popular'] as Source[]).map(s => (
-            // 44px tap wrapper; the visible chip inside stays compact.
-            <button
-              key={s}
-              onClick={() => { haptic('light'); setSource(s); setMoviePick(null); setTvPick(null) }}
-              aria-pressed={source === s}
-              className="press-feedback flex min-h-[44px] items-center px-1"
-            >
-              <span
-                className={[
-                  'text-[10px] font-medium px-2 py-1 rounded transition-colors',
-                  source === s ? 'bg-accent-500 text-white' : 'text-ink-400',
-                ].join(' ')}
-              >
-                {s === 'mylist' ? 'My List' : s === 'trending' ? 'Trending' : 'Popular'}
-              </span>
-            </button>
-          ))}
-        </div>
+    <Card>
+      <CardHeader title="What to watch?" icon={<Dices />} />
+      <SegmentedControl<Source>
+        value={source}
+        onChange={s => { haptic('light'); setSource(s); setMoviePick(null); setTvPick(null) }}
+        size="sm"
+        fullWidth
+        options={[
+          { value: 'mylist', label: 'My list' },
+          { value: 'trending', label: 'Trending' },
+          { value: 'popular', label: 'Popular' },
+        ]}
+      />
+      <div className="mt-3 space-y-2">
+        <PickRow type="movie" pick={moviePick} shaking={shaking === 'movie'} onRoll={() => roll('movie')} onOpenDetail={onOpenDetail} />
+        <PickRow type="tv" pick={tvPick} shaking={shaking === 'tv'} onRoll={() => roll('tv')} onOpenDetail={onOpenDetail} />
       </div>
-
-      {/* Movie + Series rows */}
-      <div className="space-y-2">
-        <PickRow
-          type="movie"
-          pick={moviePick}
-          shaking={shaking === 'movie'}
-          onRoll={() => roll('movie')}
-          onOpenDetail={onOpenDetail}
-        />
-        <PickRow
-          type="tv"
-          pick={tvPick}
-          shaking={shaking === 'tv'}
-          onRoll={() => roll('tv')}
-          onOpenDetail={onOpenDetail}
-        />
-      </div>
-    </div>
+    </Card>
   )
 }

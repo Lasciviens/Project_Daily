@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
 import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
-import { useTgSheetDrag } from './useTgSheetDrag'
+import { useSheetDrag } from '../../../../shared/hooks/useSheetDrag'
 
 // The phone's bottom sheet (filters, More). `tg-portal` sits on the Dialog
 // root because Headless UI mounts it on <body>, outside `.tg-root`, where the
@@ -21,7 +21,7 @@ export function TgMobileSheet({
   // Android Back / the iOS edge swipe closes the sheet instead of leaving the page.
   useHistoryDismiss(open, onClose)
   // Drag the handle/title down (or the body, from its top) to close.
-  const { setPanelEl, setBodyEl, backdropRef, handleProps } = useTgSheetDrag(open, onClose)
+  const { setPanelEl, setBodyEl, backdropRef, handleProps } = useSheetDrag(open, onClose)
 
   return (
     <Dialog open={open} onClose={onClose} className="tg-portal relative z-[60]">

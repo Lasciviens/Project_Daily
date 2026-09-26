@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useTrendingMovies, useTrendingTV } from '../hooks/useTMDB'
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w1280'
+// Low enough that text on the card stays readable in both themes.
+const OPACITY = 0.12
 const ROTATE_MS = 30000
 const FADE_MS = 1500
 
@@ -27,6 +29,7 @@ export function MediaBackdrop() {
 
   useEffect(() => {
     if (backdrops.length < 2) return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
 
     timerRef.current = setInterval(() => {
       setNextIdx(prev => {
@@ -39,7 +42,6 @@ export function MediaBackdrop() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backdrops.length])
 
   // After fade completes, make next the current
@@ -59,15 +61,15 @@ export function MediaBackdrop() {
   const nextSrc    = nextIdx !== null ? `${TMDB_IMG}${backdrops[nextIdx]}` : null
 
   return (
-    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-[inherit]">
       {/* Current image */}
       <img
         key={currentSrc}
         src={currentSrc}
         alt=""
         aria-hidden="true"
-        className="absolute inset-0 w-full h-full object-cover opacity-[0.12]"
-        style={{ transition: `opacity ${FADE_MS}ms ease-in-out` }}
+        className="absolute inset-0 h-full w-full object-cover"
+        style={{ opacity: OPACITY, transition: `opacity ${FADE_MS}ms ease-in-out` }}
       />
 
       {/* Next image — fades in on top, then becomes current */}
@@ -79,7 +81,7 @@ export function MediaBackdrop() {
           aria-hidden="true"
           className="absolute inset-0 w-full h-full object-cover"
           style={{
-            opacity: fading ? 0.12 : 0,
+            opacity: fading ? OPACITY : 0,
             transition: fading ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
           }}
         />

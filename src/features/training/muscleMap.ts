@@ -1,5 +1,6 @@
 import type { Slug } from 'react-muscle-highlighter'
 import type { ExperienceLevel } from './types.athlete'
+import type { Tone } from '../../shared/ui/Tone'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Muscle mapping + a volume-based, evidence-anchored coloring model.
@@ -119,17 +120,19 @@ export const MUSCLE_LANDMARKS: Record<string, Landmarks> = {
 }
 
 // ── Diverging bands ─────────────────────────────────────────────────────────
-export interface BandMeta { idx: number; label: string; color: string; desc: string }
+// `tone` is the band's semantic status (chips, pills); SVG fills and swatches
+// resolve it to a colour through useBandColors (components/muscleBandColors.ts).
+export interface BandMeta { idx: number; label: string; tone: Tone; desc: string }
 export const BANDS_META: BandMeta[] = [
-  { idx: 0, label: 'Not trained',       color: '#4b5563', desc: 'No working sets for this muscle in the period.' },
+  { idx: 0, label: 'Not trained',       tone: 'neutral', desc: 'No working sets for this muscle in the period.' },
   // Labels softened to conditional language per the science review: a low
   // 30-day average can just be a deload, and "over MRV" depends on unmeasured
   // recovery/effort — so neither asserts loss or wasted work as fact.
-  { idx: 1, label: 'Below maintenance', color: '#3b82f6', desc: 'Probably not enough to build or hold this muscle over time. (A low number can also just reflect a recent light/rest week — check the trend.)' },
-  { idx: 2, label: 'Maintenance',       color: '#14b8a6', desc: 'Enough to maintain, but below the minimum that reliably drives growth (MEV).' },
-  { idx: 3, label: 'Optimal growth',    color: '#22c55e', desc: 'Inside the productive hypertrophy range (MEV–MAV) — the sweet spot.' },
-  { idx: 4, label: 'High',              color: '#f59e0b', desc: 'Above the typical adaptive range (MAV) — near the usual recoverable ceiling.' },
-  { idx: 5, label: 'Over MRV',          color: '#ef4444', desc: 'More than typical recovery guidelines suggest. Whether it is actually "too much" depends on your effort, sleep and recovery — none of which this measures. If you are recovering fine, no need to cut.' },
+  { idx: 1, label: 'Below maintenance', tone: 'info', desc: 'Probably not enough to build or hold this muscle over time. (A low number can also just reflect a recent light/rest week — check the trend.)' },
+  { idx: 2, label: 'Maintenance',       tone: 'info', desc: 'Enough to maintain, but below the minimum that reliably drives growth (MEV).' },
+  { idx: 3, label: 'Optimal growth',    tone: 'success', desc: 'Inside the productive hypertrophy range (MEV–MAV) — the sweet spot.' },
+  { idx: 4, label: 'High',              tone: 'warn', desc: 'Above the typical adaptive range (MAV) — near the usual recoverable ceiling.' },
+  { idx: 5, label: 'Over MRV',          tone: 'danger', desc: 'More than typical recovery guidelines suggest. Whether it is actually "too much" depends on your effort, sleep and recovery — none of which this measures. If you are recovering fine, no need to cut.' },
 ]
 
 // `landmarksOverride` lets a caller that already scaled the landmarks for
@@ -150,10 +153,6 @@ export function bandForWeeklySets(slug: string, weeklySets: number, landmarksOve
   if (weeklySets <= L.mrv) return 4
   return 5
 }
-
-// Colour for a muscle, selection-aware: full band colour, or grey when a
-// selection is active and this muscle isn't in it.
-export const UNTRAINED_COLOR = BANDS_META[0].color
 
 // Which mapped slugs are visible on each body side (some show on both).
 export const SIDE_SLUGS: Record<'front' | 'back', ReadonlySet<Slug>> = {

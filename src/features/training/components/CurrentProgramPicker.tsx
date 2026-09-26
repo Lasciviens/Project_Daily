@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { nowMs } from '../dateFormat'
+import { Button } from '../../../shared/ui'
 import { useHevyRoutines } from '../hooks/useHevyRoutines'
 import { useCurrentProgramRoutines, useSetCurrentProgramRoutines } from '../hooks/useAthleteProfile'
 
@@ -22,82 +24,77 @@ export function CurrentProgramPicker() {
   const { data: current = [], isLoading: loadingCurrent } = useCurrentProgramRoutines()
   const save = useSetCurrentProgramRoutines()
 
-  const [checked, setChecked] = useState<Set<string> | null>(null)
+  // null = untouched: the selection is derived from the saved program, or
+  // from the recency hint when nothing is saved. Once the athlete ticks a box
+  // their draft wins over any background refetch.
+  const [draft, setDraft] = useState<Set<string> | null>(null)
   const isLoading = loadingRoutines || loadingCurrent
-
-  // Seed the local checked-set once real data has loaded — from the saved
-  // selection if one exists, otherwise from the recency hint (routines
-  // updated in the last RECENT_DAYS days), never re-seeded on a background
-  // refetch once the athlete has started ticking boxes.
-  useEffect(() => {
-    if (checked !== null || isLoading) return
-    if (current.length > 0) {
-      setChecked(new Set(current.map(c => c.routine_id)))
-    } else {
-      const cutoff = Date.now() - RECENT_DAYS * 86_400_000
-      const suggested = routines.filter(r => new Date(r.hevy_updated_at).getTime() >= cutoff).map(r => r.id)
-      setChecked(new Set(suggested))
-    }
-  }, [checked, isLoading, current, routines])
+  const checked = useMemo(() => {
+    if (draft) return draft
+    if (current.length > 0) return new Set(current.map(c => c.routine_id))
+    const cutoff = nowMs() - RECENT_DAYS * 86_400_000
+    return new Set(routines.filter(r => new Date(r.hevy_updated_at).getTime() >= cutoff).map(r => r.id))
+  }, [draft, current, routines])
 
   const savedIds = new Set(current.map(c => c.routine_id))
-  const isDirty = checked != null && (
+  const isDirty = (
     checked.size !== savedIds.size || [...checked].some(id => !savedIds.has(id))
   )
 
   function toggle(id: string) {
-    setChecked(prev => {
-      const next = new Set(prev ?? [])
+    setDraft(() => {
+      const next = new Set(checked)
       if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }
 
-  if (isLoading || checked === null) {
-    return <p className="text-xs text-ink-400">Loading routines…</p>
+  if (isLoading) {
+    return <p className="text-meta text-fg-muted">Loading routines…</p>
   }
 
   if (routines.length === 0) {
-    return <p className="text-xs text-ink-400">No Hevy routines synced yet — sync from the Routines tab first.</p>
+    return <p className="text-meta text-fg-muted">No Hevy routines synced yet — sync from the Routines tab first.</p>
   }
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs text-ink-500">
+      <p className="text-meta text-fg-muted">
         Which routines are your current program? The Progress tab only judges exercises trained under these — never
         guessed from recent activity alone, so a vacation or a skipped week never makes it look like your program
         changed. Check more than one for a split (e.g. Upper + Lower).
       </p>
       <ul className="flex flex-col gap-1.5">
         {routines.map(r => {
-          const recentlyUsed = Date.now() - new Date(r.hevy_updated_at).getTime() < RECENT_DAYS * 86_400_000
+          const recentlyUsed = nowMs() - new Date(r.hevy_updated_at).getTime() < RECENT_DAYS * 86_400_000
           const wasSuggested = savedIds.size === 0 && recentlyUsed
           return (
-            <li key={r.id} className="flex items-center gap-2.5 rounded-lg border border-ink-200 px-3 py-2.5 min-h-[44px]">
+            <li key={r.id}>
+              <label className="row cursor-pointer border border-line">
               <input
                 type="checkbox"
                 checked={checked.has(r.id)}
                 onChange={() => toggle(r.id)}
-                className="w-[18px] h-[18px] accent-accent-500 shrink-0"
+                className="h-[18px] w-[18px] shrink-0 accent-accent-500"
               />
-              <span className="flex-1 text-sm text-ink-800">{r.title}</span>
+              <span className="flex-1 text-body text-fg">{r.title}</span>
               {wasSuggested && checked.has(r.id) && (
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-accent-600 border border-accent-300 rounded-full px-2 py-0.5 shrink-0">
-                  Suggested
-                </span>
+                <span className="chip shrink-0 border-accent-200 bg-accent-50 text-accent-700">Suggested</span>
               )}
+              </label>
             </li>
           )
         })}
       </ul>
-      <button
-        type="button"
-        onClick={() => save.mutate([...checked])}
-        disabled={!isDirty || save.isPending}
-        className="self-start min-h-[44px] px-4 rounded-xl bg-accent-500 text-white text-sm font-semibold hover:bg-accent-600 disabled:opacity-50 transition-colors"
+      <Button
+        variant="primary"
+        className="self-start"
+        loading={save.isPending}
+        disabled={!isDirty}
+        onClick={() => save.mutate([...checked], { onSuccess: () => setDraft(null) })}
       >
         Save current program
-      </button>
+      </Button>
     </div>
   )
 }

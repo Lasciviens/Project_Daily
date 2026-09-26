@@ -5,6 +5,9 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import type { HealthRange } from './sectionTypes'
 import { rangeForAnchor, labelForAnchor } from './dateNav'
 import { compactAxisTick } from './axisFormat'
+import { useChartColors } from '../../../../shared/ui'
+import { TOOLTIP_BOX } from '../chartKit'
+import { HeadlineStat, SectionCard } from './sectionKit'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -13,6 +16,7 @@ function fmtDay(dateStr: string): string {
 export function EnergySection({ range }: { range: HealthRange }) {
   const today = todayStr()
   const { anchor, setAnchor, period, setPeriod } = range
+  const c = useChartColors()
 
   const isDay = period === 'day'
   // Measured values only — no synthetic top-up for a Watch-off hour (e.g. the
@@ -68,15 +72,15 @@ export function EnergySection({ range }: { range: HealthRange }) {
     if (!active || !payload?.length) return null
     const date: string | undefined = payload[0]?.payload?.date
     return (
-      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
-        <p className="text-ink-400 font-medium">{label}</p>
+      <div className={TOOLTIP_BOX}>
+        <p className="font-medium text-fg-muted">{label}</p>
         {payload.map((p: { dataKey?: string; name?: string; color?: string; value?: number }) => (
           <p key={p.dataKey} style={{ color: p.color }} className="font-semibold">
             {p.value} kcal {p.name}
           </p>
         ))}
         {period !== 'day' && date && (
-          <button type="button" onClick={() => goToDay(date)} className="text-accent-600 underline text-xs py-1.5 flex items-center min-h-[44px]">
+          <button type="button" onClick={() => goToDay(date)} className="flex min-h-[44px] items-center py-1.5 text-meta font-semibold text-accent-600">
             Go to this day →
           </button>
         )}
@@ -108,32 +112,30 @@ export function EnergySection({ range }: { range: HealthRange }) {
   const headBasal = isDay ? basalToday : avgBasal
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
-            🔥 Energy {isDay
-              ? (anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`)
-              : period === 'week' ? '· Weekly Average' : '· Monthly Average'}
-          </p>
-          <p className="text-2xl sm:text-3xl font-bold text-ink-900 leading-tight">
-            {isLoading ? '…' : (headActive + headBasal).toLocaleString('en-GB')} <span className="text-sm font-normal text-ink-400">kcal{!isDay && ' /day'}</span>
-          </p>
-        </div>
+    <SectionCard>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <HeadlineStat
+          label={<>Energy {isDay
+            ? (anchor === today ? 'today' : `· ${labelForAnchor('day', anchor)}`)
+            : period === 'week' ? '· weekly average' : '· monthly average'}</>}
+          value={isLoading ? '…' : (headActive + headBasal).toLocaleString('en-GB')}
+          unit={`kcal${!isDay ? ' /day' : ''}`}
+        />
         <div className="flex gap-4 text-center">
           <div>
-            <p className="text-lg font-bold text-rose-500">{headActive}</p>
-            <p className="text-[10px] text-ink-400">{isDay ? 'active' : 'avg active'}</p>
+            <p className="text-lead font-bold tabular-nums" style={{ color: c.series[3] }}>{headActive}</p>
+            <p className="text-micro font-normal text-fg-muted">{isDay ? 'active' : 'avg active'}</p>
           </div>
           <div>
-            <p className="text-lg font-bold text-ink-500">{headBasal}</p>
-            <p className="text-[10px] text-ink-400">{isDay ? 'basal' : 'avg basal'}</p>
+            <p className="text-lead font-bold tabular-nums text-fg-2">{headBasal}</p>
+            <p className="text-micro font-normal text-fg-muted">{isDay ? 'basal' : 'avg basal'}</p>
             {/* Only on a real, incomplete day — never on a period average
                 (where "hours covered" has no single meaning) and never on a
                 fully-measured day (nothing to warn about). */}
             {isDay && !isLoading && basalHoursCovered > 0 && basalHoursCovered < 24 && (
               <p
-                className="text-[10px] font-medium text-amber-600"
+                data-tone="warn"
+                className="tone-text text-micro font-medium"
                 title={`Basal energy is only recorded for ${basalHoursCovered} of 24 hours on this day — the rest has no measurement (typically the Watch off the wrist). The figure above is the measured hours only, never an estimate.`}
               >
                 {basalHoursCovered}/24 h measured
@@ -146,27 +148,26 @@ export function EnergySection({ range }: { range: HealthRange }) {
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={c.grid} />
+            <XAxis dataKey="label" tick={{ fontSize: 9, fill: c.axis }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 9, fill: c.axis }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
             <Tooltip cursor={false} content={EnergyTooltipContent} wrapperStyle={{ pointerEvents: 'auto' }} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Legend wrapperStyle={{ fontSize: 11, color: c.axis }} />
             {/* maxBarSize: with a single day of data one stacked bar would
                 otherwise span the whole plot area and read as a solid slab. */}
             <Bar
-              dataKey="basal" name="Basal" stackId="e" fill="#94a3b8" radius={[0, 0, 0, 0]} activeBar={false}
+              dataKey="basal" name="Basal" stackId="e" fill={c.series[5]} radius={[0, 0, 0, 0]} activeBar={false}
               maxBarSize={28}
               cursor={period !== 'day' ? 'pointer' : 'default'}
             />
             <Bar
-              dataKey="active" name="Active" stackId="e" fill="#f43f5e" radius={[3, 3, 0, 0]} activeBar={false}
+              dataKey="active" name="Active" stackId="e" fill={c.series[3]} radius={[3, 3, 0, 0]} activeBar={false}
               maxBarSize={28}
               cursor={period !== 'day' ? 'pointer' : 'default'}
             />
           </BarChart>
         </ResponsiveContainer>
       </div>
-
-    </div>
+    </SectionCard>
   )
 }

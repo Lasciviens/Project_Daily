@@ -1,56 +1,38 @@
 import { haptic } from '../../../shared/utils/haptics'
+import { TonePill, type Tone } from '../../../shared/ui'
 
 interface Props<T extends string> {
   value:   T
   options: readonly T[]
+  tones:   Record<T, Tone>
   labels?: Partial<Record<T, string>>
-  colors?: Partial<Record<T, string>>
   onCycle: (next: T) => void
 }
 
-const DEFAULT_PHASE_COLORS: Record<string, string> = {
-  pending:     'bg-ink-100 text-ink-500',
-  in_progress: 'bg-accent-50 text-accent-700',
-  done:        'bg-emerald-50 text-emerald-700',
-}
+const labelOf = <T extends string>(v: T, labels?: Partial<Record<T, string>>) => labels?.[v] ?? v.replace('_', ' ')
 
-const DEFAULT_PROJECT_COLORS: Record<string, string> = {
-  active:    'bg-emerald-50 text-emerald-700',
-  on_hold:   'bg-accent-50 text-accent-700',
-  completed: 'bg-blue-50 text-blue-700',
-  archived:  'bg-ink-100 text-ink-400',
-}
+/** A status pill that advances to the next status on tap. */
+export function StatusCycleChip<T extends string>({ value, options, tones, labels, onCycle }: Props<T>) {
+  const idx = options.indexOf(value)
+  const next = idx === -1 ? null : options[(idx + 1) % options.length]
 
-export const PHASE_STATUS_COLORS   = DEFAULT_PHASE_COLORS
-export const PROJECT_STATUS_COLORS = DEFAULT_PROJECT_COLORS
-
-export function StatusCycleChip<T extends string>({ value, options, labels, colors, onCycle }: Props<T>) {
   function handleClick(e: React.MouseEvent) {
     e.stopPropagation()
-    const idx = options.indexOf(value)
-    if (idx === -1) return
+    if (!next) return
     haptic('light')
-    const next = options[(idx + 1) % options.length]
     onCycle(next)
   }
 
-  const colorMap  = colors ?? (DEFAULT_PHASE_COLORS as Partial<Record<T, string>>)
-  const colorCls  = colorMap[value] ?? 'bg-ink-100 text-ink-500'
-  const label     = labels?.[value] ?? value.replace('_', ' ')
-  const idx       = options.indexOf(value)
-  const nextLabel = idx !== -1 ? (labels?.[options[(idx + 1) % options.length]] ?? options[(idx + 1) % options.length].replace('_', ' ')) : ''
-
-  // Compact coloured pill inside a transparent 44px tap target on mobile; the
-  // pill itself stays small so it never balloons into a big coloured block.
+  // The pill stays compact; the transparent button around it is the 44px target on touch.
   return (
     <button
+      type="button"
       onClick={handleClick}
-      title={nextLabel ? `Next: ${nextLabel}` : undefined}
-      className="flex items-center justify-center flex-shrink-0 cursor-pointer min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0"
+      title={next ? `Next: ${labelOf(next, labels)}` : undefined}
+      aria-label={`Status: ${labelOf(value, labels)}${next ? ` — change to ${labelOf(next, labels)}` : ''}`}
+      className="flex shrink-0 items-center justify-center transition-opacity hover:opacity-80 [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px]"
     >
-      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium capitalize whitespace-nowrap hover:opacity-80 transition-opacity ${colorCls}`}>
-        {label}
-      </span>
+      <TonePill tone={tones[value] ?? 'neutral'} className="capitalize">{labelOf(value, labels)}</TonePill>
     </button>
   )
 }

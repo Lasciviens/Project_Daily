@@ -6,6 +6,8 @@ import { computeWeeklySetsPerMuscleTrend } from '../progressAggregate'
 import { lastCompleteWeek } from '../trainingInsights'
 import { fmtWeekRange } from '../dateFormat'
 import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, bandForWeeklySets, BANDS_META } from '../muscleMap'
+import { Card, CardHeader, Skeleton, TonePill, useChartColors } from '../../../shared/ui'
+import { useTooltipStyle } from './chartKit'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Weekly Sets per Muscle — the sports-scientist review's top-priority "what
@@ -43,20 +45,20 @@ interface MuscleCardData {
 function MuscleSparkline({ card, experienceLevel }: { card: MuscleCardData; experienceLevel: string | null | undefined }) {
   const { label, weekly, scaled, latest, band } = card
   const chartData = weekly.map(w => ({ ...w }))
+  const c = useChartColors()
+  const tip = useTooltipStyle()
 
   return (
-    <div className="border border-ink-200 rounded-xl p-2.5 flex flex-col gap-1.5 bg-cream-50">
+    <div className="flex flex-col gap-1.5 rounded-row border border-line bg-surface p-2.5">
       <div className="flex items-center justify-between gap-1">
-        <p className="text-xs font-semibold text-ink-800 truncate">{label}</p>
+        <p className="truncate text-meta font-semibold text-fg">{label}</p>
         {latest != null && (
-          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: `${BANDS_META[band].color}22`, color: BANDS_META[band].color }}>
-            {latest}/wk
-          </span>
+          <TonePill tone={BANDS_META[band].tone} className="shrink-0 tabular-nums">{latest}/wk</TonePill>
         )}
       </div>
 
       {chartData.length === 0 ? (
-        <p className="text-[10px] text-ink-300 py-4 text-center">No sets logged</p>
+        <p className="py-4 text-center text-micro font-normal text-fg-muted">No sets logged</p>
       ) : (
         <div style={{ height: 56 }}>
           <ResponsiveContainer width="100%" height="100%">
@@ -75,22 +77,23 @@ function MuscleSparkline({ card, experienceLevel }: { card: MuscleCardData; expe
                 formatter={(v: any) => [`${v} sets`, label]}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts labelFormatter's props type is awkward to import cleanly.
                 labelFormatter={(weekStart: any) => fmtWeekRange(weekStart)}
-                contentStyle={{ fontSize: 10, borderRadius: 6, padding: '2px 6px' }}
+                contentStyle={{ ...tip.contentStyle, fontSize: 10, padding: '2px 6px' }}
+                labelStyle={tip.labelStyle}
               />
               {scaled && (
                 <>
-                  <ReferenceArea y1={scaled.mev} y2={scaled.mav} fill="#22c55e" fillOpacity={0.14} strokeWidth={0} />
-                  <ReferenceLine y={scaled.mrv} stroke="rgb(var(--ink-400))" strokeDasharray="2 2" strokeOpacity={0.6} />
+                  <ReferenceArea y1={scaled.mev} y2={scaled.mav} fill={c.success} fillOpacity={0.14} strokeWidth={0} />
+                  <ReferenceLine y={scaled.mrv} stroke={c.axis} strokeDasharray="2 2" strokeOpacity={0.6} />
                 </>
               )}
-              <Line dataKey="sets" stroke="#0ea5e9" strokeWidth={1.75} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
+              <Line dataKey="sets" stroke={c.series[0]} strokeWidth={1.75} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
       )}
 
       {scaled && (
-        <p className="text-[9px] text-ink-300 leading-tight">
+        <p className="text-micro font-normal leading-tight text-fg-faint">
           MEV–MAV {scaled.mev}–{scaled.mav} · MRV {scaled.mrv}{experienceLevel ? ' (adj.)' : ''}
         </p>
       )}
@@ -120,17 +123,17 @@ export function WeeklySetsPerMuscleChart() {
     })
   }, [data, templateMuscles, profile])
 
-  if (isLoading) return <div className="h-40 rounded-2xl bg-cream-200 animate-pulse" />
+  if (isLoading) return <Skeleton rounded="rounded-card" className="h-40" />
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">🎯 Weekly Sets per Muscle</p>
+    <Card className="flex flex-col gap-3">
+      <CardHeader variant="label" title="Weekly sets per muscle" className="!mb-0" />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {cards.map(card => <MuscleSparkline key={card.slug} card={card} experienceLevel={profile?.experience_level} />)}
       </div>
 
-      <div className="flex flex-col gap-1 text-[11px] text-ink-400">
+      <div className="flex max-w-3xl flex-col gap-1 text-meta text-fg-muted">
         <p>
           Hard working sets per week — each exercise credits its primary muscle 1 set and each secondary muscle half a set, a reasonable convention
           (RP framework), not a measured contribution.
@@ -140,8 +143,8 @@ export function WeeklySetsPerMuscleChart() {
           {profile?.experience_level ? ', adjusted ±15% for your experience level' : ''} — an unvalidated adjustment on top of an already-heuristic baseline.
           MRV isn&apos;t coloured as a warning: going over it isn&apos;t asserted harmful, since effort, sleep and recovery (all unmeasured here) decide that.
         </p>
-        <p className="text-ink-300">Sets don&apos;t capture effort, tempo or range of motion, none of which are logged. Read the trend, not any single week.</p>
+        <p>Sets don&apos;t capture effort, tempo or range of motion, none of which are logged. Read the trend, not any single week.</p>
       </div>
-    </div>
+    </Card>
   )
 }

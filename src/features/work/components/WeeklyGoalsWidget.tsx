@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { toast } from '../../../app/store'
+import { Plus, X } from 'lucide-react'
+import { Button } from '../../../shared/ui'
+import { fmtMonthShort } from '../../../shared/utils/enGBDate'
 import {
   useWeeklyGoals,
   useCreateWeeklyGoal,
@@ -23,19 +25,18 @@ function formatWeekRange(mondayStr: string): string {
   const sunday = new Date(monday)
   sunday.setDate(monday.getDate() + 6)
   const dayFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric' })
-  const monthFmt = new Intl.DateTimeFormat('en-GB', { month: 'short' })
   const startDay = dayFmt.format(monday)
   const endDay = dayFmt.format(sunday)
-  const endMonth = monthFmt.format(sunday)
+  const endMonth = fmtMonthShort(sunday)
   // If same month show "16–22 Jun", else "30 Jun – 6 Jul"
   if (monday.getMonth() === sunday.getMonth()) {
     return `${startDay}–${endDay} ${endMonth}`
   }
-  return `${startDay} ${monthFmt.format(monday)} – ${endDay} ${endMonth}`
+  return `${startDay} ${fmtMonthShort(monday)} – ${endDay} ${endMonth}`
 }
 
-// bare = no own header label — rendered inside WorkSidebar's RailSection
-export default function WeeklyGoalsWidget({ bare }: { bare?: boolean } = {}) {
+// Rendered inside WorkSidebar's rail card (no chrome of its own).
+export default function WeeklyGoalsWidget() {
   const weekStart = getMondayOfWeek(new Date())
   const { data: goals = [] } = useWeeklyGoals(weekStart)
   const createGoal = useCreateWeeklyGoal()
@@ -50,103 +51,60 @@ export default function WeeklyGoalsWidget({ bare }: { bare?: boolean } = {}) {
     if (showAdd) inputRef.current?.focus()
   }, [showAdd])
 
-  async function handleCreate() {
+  function handleCreate() {
     const title = newTitle.trim()
-    if (!title) { setShowAdd(false); return }
     setNewTitle('')
     setShowAdd(false)
-    try {
-      await createGoal.mutateAsync({ weekStart, title })
-    } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to add goal')
-    }
-  }
-
-  async function handleToggle(id: string, done: boolean) {
-    try {
-      await toggleGoal.mutateAsync({ id, done: !done })
-    } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to update goal')
-    }
-  }
-
-  async function handleDelete(id: string) {
-    try {
-      await deleteGoal.mutateAsync(id)
-    } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to delete goal')
-    }
+    if (title) createGoal.mutate({ weekStart, title })
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        {!bare && (
-          <span className="text-[10px] font-semibold tracking-widest uppercase text-ink-400">
-            This Week
-          </span>
-        )}
-        <span className="text-xs text-ink-400 ml-auto">{formatWeekRange(weekStart)}</span>
-      </div>
+    <div className="flex flex-col gap-1">
+      <span className="self-end text-meta tabular-nums text-fg-muted">{formatWeekRange(weekStart)}</span>
 
-      {/* Goal list */}
-      <ul className="flex flex-col gap-0.5">
+      <ul className="flex flex-col">
         {goals.map(goal => (
-          <li
-            key={goal.id}
-            className="group flex items-center gap-2 rounded-lg px-1 hover:bg-cream-50 transition"
-          >
-            <label className="flex items-center gap-2 flex-1 min-h-[44px] cursor-pointer">
+          <li key={goal.id} className="group flex items-center gap-1 rounded-row pl-1 transition-colors [@media(hover:hover)]:hover:bg-surface-hover">
+            <label className="flex min-h-[44px] flex-1 cursor-pointer items-center gap-2.5">
               <input
                 type="checkbox"
                 checked={goal.done}
-                onChange={() => handleToggle(goal.id, goal.done)}
-                className="w-4 h-4 rounded border-ink-300 accent-accent-600 cursor-pointer flex-shrink-0"
+                onChange={() => toggleGoal.mutate({ id: goal.id, done: !goal.done })}
+                className="h-4 w-4 shrink-0 cursor-pointer rounded accent-accent-500"
               />
-              <span
-                className={`text-sm flex-1 ${
-                  goal.done ? 'line-through text-ink-300' : 'text-ink-800'
-                }`}
-              >
+              <span className={goal.done ? 'flex-1 text-body text-fg-faint line-through' : 'flex-1 text-body text-fg'}>
                 {goal.title}
               </span>
             </label>
             <button
-              onClick={() => handleDelete(goal.id)}
-              aria-label="Delete goal"
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-300 hover:text-ink-600 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition text-base leading-none"
+              type="button"
+              onClick={() => deleteGoal.mutate(goal.id)}
+              aria-label={`Delete goal ${goal.title}`}
+              className="grid min-h-[44px] min-w-[44px] place-items-center rounded-control text-fg-faint transition-opacity focus-visible:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:hover:text-danger"
             >
-              ×
+              <X className="h-3.5 w-3.5" />
             </button>
           </li>
         ))}
       </ul>
 
-      {/* Add input */}
       {showAdd ? (
-        <div className="flex items-center gap-2 mt-1">
-          <input
-            ref={inputRef}
-            type="text"
-            value={newTitle}
-            onChange={e => setNewTitle(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') handleCreate()
-              if (e.key === 'Escape') { setShowAdd(false); setNewTitle('') }
-            }}
-            onBlur={handleCreate}
-            placeholder="New goal…"
-            className="flex-1 min-h-[44px] bg-cream-50 rounded-xl px-3 text-sm text-ink-900 placeholder:text-ink-300 outline-none focus:ring-1 focus:ring-ink-200 transition"
-          />
-        </div>
+        <input
+          ref={inputRef}
+          type="text"
+          value={newTitle}
+          onChange={e => setNewTitle(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') handleCreate()
+            if (e.key === 'Escape') { setShowAdd(false); setNewTitle('') }
+          }}
+          onBlur={handleCreate}
+          placeholder="New goal…"
+          aria-label="New goal"
+          className="input mt-1"
+        />
       ) : (
-        <button
-          onClick={() => setShowAdd(true)}
-          className="min-h-[44px] text-left text-sm text-ink-400 hover:text-ink-600 transition px-1"
-        >
-          + Add goal
-        </button>
+        <Button variant="ghost" size="sm" icon={<Plus />} onClick={() => setShowAdd(true)} className="self-start">Add goal</Button>
       )}
     </div>
   )

@@ -4,6 +4,8 @@ import {
   type DragEndEvent, type DragStartEvent, type DragOverEvent,
 } from '@dnd-kit/core'
 import type { Task, TaskStatus } from '../../todo/types'
+import { ChevronDown, Plus } from 'lucide-react'
+import { cx } from '../../../shared/ui'
 import WorkTaskCard from './WorkTaskCard'
 import { BOARD_COLUMNS, isCompletedToday, isOverdue, sortTasks, type BoardStatus, type StatusMeta } from './workMeta'
 
@@ -34,35 +36,37 @@ function BoardColumn({
   return (
     <div
       ref={setNodeRef}
-      className={[
-        'rounded-2xl border flex flex-col lg:flex-1 lg:min-w-0 lg:min-h-0 transition-colors',
-        isDropTarget ? 'border-transparent' : 'border-ink-200 bg-cream-50/70',
-      ].join(' ')}
-      style={isDropTarget ? { backgroundColor: col.color + '14', outline: `2px dashed ${col.color}`, outlineOffset: '-2px' } : undefined}
+      data-tone={col.tone}
+      className={cx(
+        'flex min-w-0 flex-col rounded-card border transition-colors',
+        isDropTarget
+          ? 'border-dashed border-[rgb(var(--tone))] bg-[rgb(var(--tone-soft))]'
+          : 'border-line bg-surface-2/60',
+      )}
     >
-      {/* Column header — tap collapses on mobile only */}
+      {/* Column header — tap collapses on phones only */}
       <button
         type="button"
         onClick={onToggleCollapse}
-        className="flex items-center justify-between px-3 py-2 min-h-[44px] lg:cursor-default"
+        aria-expanded={!collapsed}
+        className="flex min-h-[44px] items-center justify-between gap-2 px-3 py-2 lg:cursor-default"
       >
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: col.color }} />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-ink-600">{col.label}</span>
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: col.color }}>
-            {colTasks.length}
-          </span>
-        </div>
-        <span className="text-ink-300 text-[10px] lg:hidden">{collapsed ? '▶' : '▼'}</span>
+        <span className="flex items-center gap-2">
+          <span className="tone-dot" aria-hidden />
+          <span className="section-label">{col.label}</span>
+          <span className="count-badge">{colTasks.length}</span>
+        </span>
+        <ChevronDown aria-hidden className={cx('h-4 w-4 text-fg-faint transition-transform lg:hidden', collapsed && '-rotate-90')} />
       </button>
 
-      {/* Column body — independent scroll on desktop */}
-      <div className={[
+      {/* Column body — capped with its own scroll from lg, so a long column
+          never pushes the other three off screen. */}
+      <div className={cx(
         collapsed ? 'hidden lg:flex' : 'flex',
-        'flex-col gap-1.5 px-2 pb-2 lg:flex-1 lg:min-h-0 lg:overflow-y-auto',
-      ].join(' ')}>
+        'flex-col gap-2 px-2 pb-2 lg:max-h-[max(24rem,calc(100dvh-22rem))] lg:overflow-y-auto',
+      )}>
         {colTasks.length === 0 && (
-          <p className="text-[11px] text-ink-300 py-1.5 pl-1">
+          <p className="py-1.5 pl-1 text-meta text-fg-faint">
             {isDoneCol ? 'Nothing completed today' : isDropTarget ? 'Drop here' : 'No tasks'}
           </p>
         )}
@@ -70,7 +74,7 @@ function BoardColumn({
           <WorkTaskCard
             key={task.id}
             task={task}
-            accentColor={col.color}
+            accentTone={col.tone}
             onStatusChange={onStatusChange}
             onDelete={onDelete}
             onEdit={onEdit}
@@ -81,10 +85,11 @@ function BoardColumn({
         ))}
         {!isDoneCol && (
           <button
+            type="button"
             onClick={onAddTask}
-            className="min-h-[44px] lg:min-h-[36px] flex items-center justify-center gap-1 rounded-xl border border-dashed border-ink-300 text-[11px] text-ink-400 hover:border-accent-400 hover:text-accent-500 hover:bg-accent-50 transition-colors"
+            className="flex min-h-[44px] items-center justify-center gap-1 rounded-row border border-dashed border-line-strong text-meta font-medium text-fg-muted transition-colors lg:min-h-[36px] [@media(hover:hover)]:hover:border-accent-500 [@media(hover:hover)]:hover:bg-accent-50 [@media(hover:hover)]:hover:text-accent-600"
           >
-            + Add
+            <Plus aria-hidden className="h-3.5 w-3.5" /> Add task
           </button>
         )}
       </div>
@@ -155,7 +160,9 @@ export default function WorkBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={() => { setDraggingId(null); setDragOverCol(null) }}
     >
-      <div className="flex flex-col lg:flex-row gap-2 lg:gap-3 lg:h-full lg:min-h-0">
+      {/* Explicit 4-column kanban from lg, each column capped so cards keep a
+          readable width on a wide monitor; stacked sections below lg. */}
+      <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[repeat(4,minmax(0,22rem))] lg:items-start lg:gap-3">
         {BOARD_COLUMNS.map(col => (
           <BoardColumn
             key={col.id}

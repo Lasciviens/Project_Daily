@@ -1,14 +1,15 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { CalendarPlus, Check, Clapperboard, Pause, Tv } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMovies } from '../../../media/hooks/useMovies'
 import { useTVSeries } from '../../../media/hooks/useTVSeries'
 import { useNextEpisode } from '../../../media/hooks/useNextEpisode'
-import { markEpisodeWatched } from '../../../media/api/watchedEpisodesApi'
-import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
+import { useMarkEpisodeWatched } from '../../../media/hooks/useWatchedEpisodes'
+import { useEntityModal } from '../../../../shared/modals'
+import { Button, TonePill } from '../../../../shared/ui'
 import { posterUrl } from '../../../../integrations/tmdb/client'
-import { toast } from '../../../../app/store'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Watch next v2 — driven by ACTUAL watched-episode rows (useNextEpisode),
@@ -23,7 +24,6 @@ const pad = (n: number) => String(n).padStart(2, '0')
 export function WatchNextCard({ date }: { date: string }) {
   const { data: movies = [] } = useMovies()
   const { data: tv = [] } = useTVSeries()
-  const qc = useQueryClient()
 
   // Currently-watching shows first, paused after (still resumable).
   const shows = useMemo(
@@ -38,25 +38,15 @@ export function WatchNextCard({ date }: { date: string }) {
     entry?.tv_series?.tmdb_id ?? null,
     entry?.tv_series?.number_of_episodes ?? null,
   )
-  const [planOpen, setPlanOpen] = useState(false)
+  const modal = useEntityModal()
 
-  const markWatched = useMutation({
-    mutationFn: async () => {
-      const n = next.data
-      if (!entry || !n || n.caughtUp || n.season == null || n.episode == null) return false
-      await markEpisodeWatched(entry.id, n.season, n.episode, date)
-      return true
-    },
-    onSuccess: (written) => {
-      if (!written) return // guard no-op (refetch race) — don't claim success
-      toast.success('Marked watched ✓')
-      qc.invalidateQueries({ queryKey: ['next-episode'] })
-      qc.invalidateQueries({ queryKey: ['watched-episodes'] })
-      qc.invalidateQueries({ queryKey: ['tv'] })
-      qc.invalidateQueries({ queryKey: ['schedule'] })
-    },
-    onError: (e) => toast.error((e as Error).message ?? 'Failed'),
-  })
+  const markEpisode = useMarkEpisodeWatched({ successMessage: 'Marked watched' })
+  function markNextWatched() {
+    const n = next.data
+    // Guard a refetch race: never claim success for a no-op write.
+    if (!entry || !n || n.caughtUp || n.season == null || n.episode == null) return
+    markEpisode.mutate({ tvEntryId: entry.id, episodes: [{ season: n.season, episode: n.episode }], watchedOn: date })
+  }
 
   // Movie fallback when there is no series in progress at all.
   const movieFallback = useMemo(() => {
@@ -68,21 +58,47 @@ export function WatchNextCard({ date }: { date: string }) {
   const n = next.data
   const series = entry?.tv_series
 
+  function planNext() {
+    if (!entry || !series || !n || n.caughtUp || n.season == null || n.episode == null) return
+    modal.open({
+      kind: 'time-block',
+      config: { heading: 'Plan episode' },
+      defaults: {
+        title:    `${series.title} · S${pad(n.season)}E${pad(n.episode)}`,
+        date,
+        duration: 45,
+        category: 'media',
+        color:    'blue',
+      },
+      source: {
+        sourceType: 'tv_episode',
+        sourceId: entry.id,
+        taskSourceType: 'tv_series',
+        episodeInfo: { seasonNumber: n.season, episodeNumber: n.episode },
+      },
+    })
+  }
+
+  const poster = 'h-20 w-14 shrink-0 rounded-control border border-line object-cover'
+  const posterEmpty = 'grid h-20 w-14 shrink-0 place-items-center rounded-control bg-surface-2 text-fg-faint'
+
   return (
     <Cell>
-      <CellHeader icon="🎬" title="Watch next" action={<CellLink to="/media">Browse →</CellLink>} />
+      <CellHeader icon={<Clapperboard />} title="Watch next" action={<CellLink to="/media">Browse</CellLink>} />
 
       {/* Show switcher — one chip per in-progress series */}
       {shows.length > 1 && (
-        <div className="flex gap-1 overflow-x-auto scrollbar-none pb-0.5">
+        <div className="scroll-x flex gap-1.5 pb-0.5">
           {shows.map(s => (
-            <button key={s.id} onClick={() => setSelectedId(s.id)}
-              className={`shrink-0 text-[10px] px-2.5 rounded-full border transition-colors min-h-[44px] ${
-                s.id === entry?.id
-                  ? 'bg-accent-500 text-white border-accent-500'
-                  : 'text-ink-500 border-ink-200 hover:border-accent-300'
-              }`}>
-              {s.tv_series.title}{s.status === 'paused' ? ' ⏸' : ''}
+            <button
+              key={s.id}
+              type="button"
+              aria-pressed={s.id === entry?.id}
+              onClick={() => setSelectedId(s.id)}
+              className="pill-tab shrink-0"
+            >
+              {s.tv_series.title}
+              {s.status === 'paused' && <Pause className="h-3 w-3" aria-label="Paused" />}
             </button>
           ))}
         </div>
@@ -91,93 +107,61 @@ export function WatchNextCard({ date }: { date: string }) {
       {entry && series ? (
         <div className="flex items-start gap-3">
           {series.poster_path ? (
-            <img src={posterUrl(series.poster_path, 'w154')} alt={series.title}
-              className="w-14 h-20 object-cover rounded-lg shrink-0 border border-ink-100" />
+            <img src={posterUrl(series.poster_path, 'w154')} alt="" className={poster} />
           ) : (
-            <div className="w-14 h-20 rounded-lg bg-cream-200 flex items-center justify-center text-2xl shrink-0">📺</div>
+            <div className={posterEmpty}><Tv className="h-5 w-5" aria-hidden /></div>
           )}
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-800 truncate">{series.title}</p>
+            <p className="truncate text-ui font-semibold text-fg">{series.title}</p>
             {next.isLoading ? (
-              <p className="text-[11px] text-ink-500 mt-0.5">Finding next episode…</p>
+              <p className="mt-0.5 text-meta text-fg-muted">Finding next episode…</p>
             ) : n?.caughtUp ? (
-              <p className="text-[11px] text-green-600 mt-0.5">All caught up ✓ ({n.watchedCount} watched)</p>
+              <p data-tone="success" className="tone-text mt-0.5 text-meta">All caught up ({n.watchedCount} watched)</p>
             ) : n ? (
               <>
-                <p className="text-xs text-ink-700 mt-0.5">
-                  Next: <strong>S{pad(n.season!)}·E{pad(n.episode!)}</strong>
-                  {n.episodeTitle && <span className="text-ink-500"> — {n.episodeTitle}</span>}
+                <p className="mt-0.5 text-body text-fg-2">
+                  Next: <strong className="tabular-nums">S{pad(n.season!)}·E{pad(n.episode!)}</strong>
+                  {n.episodeTitle && <span className="text-fg-muted"> — {n.episodeTitle}</span>}
                 </p>
-                <p className="text-[10px] text-ink-500 mt-0.5">
+                <p className="mt-0.5 text-meta tabular-nums text-fg-muted">
                   {n.watchedCount}{n.totalEpisodes ? `/${n.totalEpisodes}` : ''} watched
                   {n.lastWatched && ` · last S${pad(n.lastWatched.season)}·E${pad(n.lastWatched.episode)}`}
                 </p>
                 {n.airDate && !n.released && (
-                  <p className="text-[10px] text-amber-600 mt-0.5">
-                    Airs {new Date(n.airDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                  </p>
+                  <TonePill tone="warn" className="mt-1">
+                    Airs {fmtDateEnGB(new Date(n.airDate), { day: 'numeric', month: 'short' })}
+                  </TonePill>
                 )}
-                <div className="flex gap-1.5 mt-1.5">
-                  <button
-                    onClick={() => markWatched.mutate()}
-                    disabled={markWatched.isPending || !n.released}
-                    className="text-[11px] px-3 rounded-lg border border-green-300 text-green-700 hover:bg-green-50 transition-colors disabled:opacity-40 min-h-[44px]"
-                  >
-                    ✓ Watched
-                  </button>
-                  <button
-                    onClick={() => setPlanOpen(true)}
-                    disabled={!n.released}
-                    className="text-[11px] px-3 rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-40 min-h-[44px]"
-                  >
-                    📅 Plan
-                  </button>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Button size="sm" icon={<Check />} onClick={markNextWatched} disabled={!n.released} loading={markEpisode.isPending}>
+                    Watched
+                  </Button>
+                  <Button size="sm" variant="ghost" icon={<CalendarPlus />} onClick={planNext} disabled={!n.released}>
+                    Plan
+                  </Button>
                 </div>
               </>
             ) : null}
           </div>
         </div>
       ) : movieFallback ? (
-        <Link to="/media" className="flex items-center gap-3 group">
+        <Link to="/media" className="group flex items-center gap-3">
           {movieFallback.poster ? (
-            <img src={posterUrl(movieFallback.poster, 'w154')} alt={movieFallback.title}
-              className="w-14 h-20 object-cover rounded-lg shrink-0 border border-ink-100" />
+            <img src={posterUrl(movieFallback.poster, 'w154')} alt="" className={poster} />
           ) : (
-            <div className="w-14 h-20 rounded-lg bg-cream-200 flex items-center justify-center text-2xl shrink-0">🎬</div>
+            <div className={posterEmpty}><Clapperboard className="h-5 w-5" aria-hidden /></div>
           )}
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wide text-ink-500">Movie</p>
-            <p className="text-sm font-semibold text-ink-800 group-hover:text-accent-700 transition-colors line-clamp-2">
+            <p className="section-label">Movie</p>
+            <p className="line-clamp-2 text-ui font-semibold text-fg transition-colors group-hover:text-accent-600">
               {movieFallback.title}
             </p>
           </div>
         </Link>
       ) : (
-        <Link to="/media" className="text-xs text-accent-600 hover:text-accent-700 min-h-[44px] flex items-center">
-          Nothing in progress — find something →
+        <Link to="/media" className="flex min-h-[44px] items-center text-body text-fg-muted hover:text-accent-600">
+          Nothing in progress — find something
         </Link>
-      )}
-
-      {entry && series && n && !n.caughtUp && n.season != null && n.episode != null && (
-        <UnifiedPlanModal
-          open={planOpen}
-          onClose={() => setPlanOpen(false)}
-          mode="schedule"
-          config={{ heading: 'Plan episode' }}
-          defaults={{
-            title:    `📺 ${series.title} · S${pad(n.season)}E${pad(n.episode)}`,
-            date,
-            duration: 45,
-            category: 'media',
-            color:    'blue',
-          }}
-          source={{
-            sourceType: 'tv_episode',
-            sourceId: entry.id,
-            taskSourceType: 'tv_series',
-            episodeInfo: { seasonNumber: n.season, episodeNumber: n.episode },
-          }}
-        />
       )}
     </Cell>
   )

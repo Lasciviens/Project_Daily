@@ -40,7 +40,8 @@ export async function createScheduleBlock(input: CreateScheduleBlockInput): Prom
   const { data, error } = await supabase.from('schedule_blocks').insert(row).select().single()
   if (!error) return data
   if (error.code !== 'PGRST204' && error.code !== '42703') throw error
-  const { effective_from: _drop, ...withoutColumn } = row
+  const withoutColumn = { ...row }
+  delete withoutColumn.effective_from
   const retry = await supabase.from('schedule_blocks').insert(withoutColumn).select().single()
   if (retry.error) throw retry.error
   return retry.data
@@ -73,6 +74,42 @@ export async function fetchTimeBlocks(dateStr: string): Promise<TimeBlock[]> {
     .order('start_time', { ascending: true, nullsFirst: false })
   if (error) throw error
   return data ?? []
+}
+
+export async function fetchTimeBlock(id: string): Promise<TimeBlock | null> {
+  const { data, error } = await supabase.from('time_blocks').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// At most one block per task (partial unique index, migration 077).
+export async function fetchTimeBlockByTaskId(taskId: string): Promise<TimeBlock | null> {
+  const { data, error } = await supabase.from('time_blocks').select('*').eq('task_id', taskId).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// Always a fresh read (never cached): the calendar-link protocol decides
+// "create an event or not" off this value. `.single()` on purpose — a missing
+// row is an error there, not "no event yet".
+export async function fetchTimeBlockCalendarEventId(id: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('time_blocks').select('google_calendar_event_id').eq('id', id).single()
+  if (error) throw error
+  return data?.google_calendar_event_id ?? null
+}
+
+// Which of these tasks already own a Google Calendar event through their
+// linked block (those must never also become Google Tasks).
+export async function fetchCalendarLinkedTaskIds(taskIds: string[]): Promise<Set<string>> {
+  if (!taskIds.length) return new Set()
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('task_id')
+    .not('google_calendar_event_id', 'is', null)
+    .in('task_id', taskIds)
+  if (error) throw error
+  return new Set((data ?? []).map(b => b.task_id as string))
 }
 
 // All training-category blocks within a date range (inclusive) — used by the
@@ -157,7 +194,8 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
       // `{...patch}` write below, abandoning tracking of a link nothing
       // can now act on). Reported as 'unknown', not 'not_linked' — we
       // genuinely don't know the remote event's fate.
-      const { google_calendar_event_id: _drop, ...rest } = patch
+      const rest = { ...patch }
+      delete rest.google_calendar_event_id
       const { error } = await supabase.from('time_blocks')
         .update({ ...rest, updated_at: new Date().toISOString() })
         .eq('id', id)
@@ -167,7 +205,7 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
     try {
       await deleteCalendarEvent(token, 'primary', before!.google_calendar_event_id!)
     } catch (err) {
-      if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`)
+      if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`, { cause: err })
       // Confirmed 404 = already gone remotely — proceed to clear locally too.
     }
     const { error } = await supabase

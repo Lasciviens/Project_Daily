@@ -1,10 +1,11 @@
+import { ShoppingCart, X } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
+import { Button, IconButton, SectionLabel } from '../../../../shared/ui'
 import { useShopItems, useUpdateShopItem } from '../../../shop/hooks/useShop'
 import type { ShopItem } from '../../../shop/types'
+import { REGION_FLAG } from '../../../shop/shopMeta'
 
-const REGION_FLAG: Record<string, string> = { TR: '🇹🇷', NO: '🇳🇴' }
-
-// 🛒 Purchases planned for the viewed day (shop_items.planned_date) — mark
+// Purchases planned for the viewed day (shop_items.planned_date) — mark
 // bought or push by a day right here; plus a hint of the top wishlist items
 // so an empty day still shows what could be planned.
 export function ShopCard({ date }: { date: string }) {
@@ -20,51 +21,48 @@ export function ShopCard({ date }: { date: string }) {
 
   return (
     <Cell>
-      <CellHeader icon="🛒" title="Shopping" action={<CellLink to="/shop">Open →</CellLink>} />
+      <CellHeader icon={<ShoppingCart />} title="Shopping" action={<CellLink to="/shop">Open</CellLink>} />
 
       {planned.length > 0 ? (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-1">
           {planned.map((i: ShopItem) => (
-            <li key={i.id} className="flex items-center gap-2">
+            <li key={i.id} className="flex items-center gap-1">
               <button
+                type="button"
                 onClick={() => update.mutate({ id: i.id, patch: { status: 'bought' } })}
-                title="Mark bought"
-                className="w-11 h-11 grid place-items-center shrink-0 rounded-md hover:bg-green-50 transition-colors group"
-              ><span className="w-4 h-4 rounded border-2 border-ink-300 group-hover:border-green-500 group-hover:bg-green-100 transition-colors" /></button>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-ink-800 truncate leading-snug">
+                aria-label={`Mark ${i.title} bought`}
+                className="group grid h-11 w-11 shrink-0 place-items-center rounded-control hover:bg-success-soft"
+              >
+                <span className="h-4 w-4 rounded-[5px] border-2 border-line-strong transition-colors group-hover:border-success" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-body font-medium leading-snug text-fg">
                   {i.region && <span className="mr-1">{REGION_FLAG[i.region]}</span>}{i.title}
                 </p>
-                {i.price != null && <p className="text-[10px] text-ink-500">{i.price}</p>}
+                {i.price != null && <p className="text-meta tabular-nums text-fg-muted">{i.price}</p>}
               </div>
-              <button
-                onClick={() => update.mutate({ id: i.id, patch: { planned_date: null } })}
-                title="Remove from this day"
-                className="text-ink-500 hover:text-red-500 text-[11px] min-w-[44px] min-h-[44px] shrink-0"
-              >✕</button>
+              <IconButton label="Remove from this day" onClick={() => update.mutate({ id: i.id, patch: { planned_date: null } })} className="shrink-0 hover:text-danger">
+                <X />
+              </IconButton>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-ink-500">Nothing planned to buy this day.</p>
+        <p className="text-body text-fg-muted">Nothing planned to buy this day.</p>
       )}
 
       {unplanned.length > 0 && (
-        <div className="border-t border-ink-100 pt-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500 mb-1">Top wishlist</p>
+        <div className="border-t border-line pt-2">
+          <SectionLabel className="mb-1">Top wishlist</SectionLabel>
           <ul className="flex flex-col gap-1">
             {unplanned.map((i: ShopItem) => (
               <li key={i.id} className="flex items-center gap-2">
-                <p className="text-xs text-ink-600 truncate flex-1">
+                <p className="flex-1 truncate text-body text-fg-2">
                   {i.region && <span className="mr-1">{REGION_FLAG[i.region]}</span>}{i.title}
                 </p>
-                <button
-                  onClick={() => update.mutate({ id: i.id, patch: { planned_date: date } })}
-                  className="text-[10px] px-2 rounded border border-ink-200 text-ink-500 hover:border-accent-300 hover:text-accent-700 transition-colors shrink-0 min-h-[44px]"
-                  title="Plan to buy this day"
-                >
-                  → this day
-                </button>
+                <Button size="sm" variant="ghost" onClick={() => update.mutate({ id: i.id, patch: { planned_date: date } })} className="shrink-0">
+                  Plan this day
+                </Button>
               </li>
             ))}
           </ul>

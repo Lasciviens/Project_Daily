@@ -19,25 +19,25 @@ export function ListRow({
   onClick,
   className = '',
 }: ListRowProps) {
-  const base = `flex items-center gap-2 min-h-[44px] ${className}`
+  const base = `row ${onClick ? 'row-interactive' : ''} ${className}`
 
   const content = (
     <>
       {leading != null && <span className="shrink-0">{leading}</span>}
       <span className="flex-1 min-w-0">
-        <span className="block truncate text-sm text-ink-900">{title}</span>
+        <span className="block truncate text-body font-medium text-fg">{title}</span>
         {subtitle != null && (
-          <span className="block truncate text-xs text-ink-500">{subtitle}</span>
+          <span className="block truncate text-meta text-fg-muted">{subtitle}</span>
         )}
       </span>
-      {meta != null && <span className="shrink-0 text-xs text-ink-400">{meta}</span>}
+      {meta != null && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{meta}</span>}
       {trailing != null && <span className="shrink-0">{trailing}</span>}
     </>
   )
 
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className={`${base} w-full text-left press-feedback`}>
+      <button type="button" onClick={onClick} className={`${base} w-full text-left`}>
         {content}
       </button>
     )

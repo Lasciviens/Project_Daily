@@ -87,6 +87,20 @@ export async function fetchFoodLogRange(fromDate: string, toDate: string): Promi
   }))
 }
 
+// One diary row by id with its display title resolved — what the edit popup
+// loads, so it never saves back a stale row a list handed over.
+export async function fetchFoodLogEntry(id: string): Promise<LoggedFood | null> {
+  const { data, error } = await supabase
+    .from('food_log_entries')
+    .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const { ingredient, recipe, ...row } = data as unknown as FoodLogEntry & { ingredient: { name: string } | null; recipe: { title: string } | null }
+  return { ...row, title: ingredient?.name ?? recipe?.title ?? row.custom_title ?? '—' }
+}
+
 // A distinct food the user has eaten before, ready to re-log in one tap with
 // its ORIGINAL snapshot macros (the whole point of unifying the log paths — a
 // recent chip must carry real macros, not a macro-less title). Sourced from the

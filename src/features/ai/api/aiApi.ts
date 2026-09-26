@@ -139,7 +139,6 @@ async function buildContext(): Promise<string> {
       .order('created_at', { ascending: false }).limit(12),
   ])
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const get = <T>(i: number): T[] => {
     const r = results[i]
     return r.status === 'fulfilled' ? ((r.value as { data: T[] | null }).data ?? []) : []
@@ -179,7 +178,6 @@ async function buildContext(): Promise<string> {
 
   if (todayTasks.length) {
     lines.push(`\nTODAY'S TASKS (${todayTasks.length}):`)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const t of todayTasks) {
       const mark = t.status === 'done' ? '[done]' : '[open]'
       lines.push(`  ${mark} [id:${t.id}] ${t.title} — ${t.priority} priority, ${t.domain}${t.description ? ` | notes: ${t.description}` : ''}`)
@@ -190,13 +188,11 @@ async function buildContext(): Promise<string> {
 
   if (weekTasks.length) {
     lines.push(`\nTHIS WEEK (${weekTasks.length}):`)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const t of weekTasks) lines.push(`  [id:${t.id}] ${t.title} (${t.domain})`)
   }
 
   if (inbox.length) {
     lines.push(`\nINBOX (${inbox.length}):`)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const t of inbox) lines.push(`  [id:${t.id}] ${t.title}`)
   }
 
@@ -223,13 +219,11 @@ async function buildContext(): Promise<string> {
 
   if (workTasks.length) {
     lines.push(`\nWORK TASKS (${workTasks.length}):`)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const t of workTasks) lines.push(`  [id:${t.id}] ${t.title} — ${t.section}`)
   }
 
   if (schedule.length) {
     lines.push("\nTODAY'S SCHEDULE:")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const b of schedule) {
       const h = b.start_time ? b.start_time.slice(0, 5) : '?'
       lines.push(`  [id:${b.id}] ${h} — ${b.title} (${b.duration_minutes}min)`)
@@ -238,19 +232,16 @@ async function buildContext(): Promise<string> {
 
   if (movies.length) {
     lines.push('\nMOVIE LIBRARY:')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const m of movies) lines.push(`  [${m.status}] [entry_id:${m.id}] ${m.movie?.title}`)
   }
 
   if (tv.length) {
     lines.push('\nTV SERIES:')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const s of tv) lines.push(`  [${s.status}] [entry_id:${s.id}] ${s.tv_series?.title} — S${s.current_season}E${s.current_episode}`)
   }
 
   if (training.length) {
     lines.push('\nRECENT WORKOUTS (Hevy):')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const s of training) {
       const dur = (s.start_time && s.end_time)
         ? ` (${Math.round((new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 60000)}min)`

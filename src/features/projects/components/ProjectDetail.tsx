@@ -1,54 +1,19 @@
 import { useState } from 'react'
-import { InlineText } from './InlineText'
-import { InlineTextArea } from './InlineTextArea'
-import { StatusCycleChip, PROJECT_STATUS_COLORS } from './StatusCycleChip'
+import { ChevronLeft, Plus } from 'lucide-react'
+import { useEntityModal } from '../../../shared/modals'
+import { Button, SegmentedControl, Skeleton } from '../../../shared/ui'
 import { PhaseCard } from './PhaseCard'
-import { ProjectItemModal } from './ProjectItemModal'
+import { ProjectBoard } from './ProjectBoard'
+import { ProjectHeaderCard } from './ProjectHeaderCard'
 import { ProjectNotesCard } from './ProjectNotesCard'
 import { ProjectActivityFeed } from './ProjectActivityFeed'
-import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
+import { ITEM_TYPE_LABEL, ITEM_TYPE_ORDER } from '../projectTones'
 import {
-  usePhases, useItems,
-  useUpdateProject, useDeleteProject,
+  usePhases, useItems, useUpdateProject,
   useCreatePhase, useUpdatePhase, useDeletePhase,
   useUpdateItem, useDeleteItem,
 } from '../hooks/useProjects'
-import { haptic } from '../../../shared/utils/haptics'
-import type { Project, ProjectStatus, ItemType, ItemStatus, ProjectItem } from '../types'
-
-const PROJECT_STATUSES: ProjectStatus[] = ['active', 'on_hold', 'completed', 'archived']
-
-const COLOR_DOT: Record<string, string> = {
-  slate: 'bg-slate-400', blue: 'bg-blue-400', violet: 'bg-violet-400',
-  emerald: 'bg-emerald-400', amber: 'bg-amber-400', rose: 'bg-rose-400',
-}
-const COLORS = ['slate', 'blue', 'violet', 'emerald', 'amber', 'rose'] as const
-
-const TYPE_FILTERS: Array<{ type: ItemType; label: string; cls: string }> = [
-  { type: 'update',      label: 'update',  cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { type: 'improvement', label: 'improve', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { type: 'ui_request',  label: 'UI',      cls: 'bg-violet-50 text-violet-700 border-violet-200' },
-  { type: 'bug',         label: 'bug',     cls: 'bg-red-50 text-red-700 border-red-200' },
-  { type: 'wishlist',    label: 'wish',    cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-]
-
-const TYPE_BADGE: Record<ItemType, string> = {
-  update:      'bg-blue-50 text-blue-700 border-blue-200',
-  improvement: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  ui_request:  'bg-violet-50 text-violet-700 border-violet-200',
-  bug:         'bg-red-50 text-red-700 border-red-200',
-  wishlist:    'bg-amber-50 text-amber-700 border-amber-200',
-}
-const TYPE_LABEL: Record<ItemType, string> = {
-  update: 'update', improvement: 'improve', ui_request: 'UI', bug: 'bug', wishlist: 'wish',
-}
-const PRIORITY_DOT = { low: 'bg-ink-300', medium: 'bg-accent-400', high: 'bg-red-400' } as const
-
-const BOARD_COLUMNS: Array<{ key: ItemStatus; label: string; accent: string }> = [
-  { key: 'open',        label: 'To do',       accent: 'text-ink-500' },
-  { key: 'in_progress', label: 'In progress', accent: 'text-accent-600' },
-  { key: 'done',        label: 'Done',        accent: 'text-emerald-600' },
-]
+import type { Project, ItemType } from '../types'
 
 interface Props {
   project:  Project
@@ -59,190 +24,63 @@ interface Props {
 export function ProjectDetail({ project, onBack, onDelete }: Props) {
   const [typeFilter, setTypeFilter] = useState<ItemType | null>(null)
   const [view, setView] = useState<'phases' | 'board'>('phases')
-  const [itemModal, setItemModal] = useState<{ phaseId?: string; item?: ProjectItem } | null>(null)
-  const [draggingId,  setDraggingId]  = useState<string | null>(null)
-  const [dragOverCol, setDragOverCol] = useState<ItemStatus | null>(null)
-  const [confirmDel,  setConfirmDel]  = useState(false)
+  const modal = useEntityModal()
 
   const { data: phases = [], isLoading: phasesLoading } = usePhases(project.id)
-  const { data: allItems = [] }                          = useItems(project.id)
+  const { data: allItems = [] } = useItems(project.id)
 
   const updateProject = useUpdateProject()
-  const deleteProject = useDeleteProject()
   const createPhase   = useCreatePhase(project.id)
   const updatePhase   = useUpdatePhase(project.id)
   const deletePhase   = useDeletePhase(project.id)
   const updateItem    = useUpdateItem(project.id)
   const deleteItem    = useDeleteItem(project.id)
 
-  const total     = allItems.length
-  const doneCount = allItems.filter(i => i.status === 'done').length
-  const wipCount  = allItems.filter(i => i.status === 'in_progress').length
-  const pct       = total > 0 ? Math.round((doneCount / total) * 100) : 0
-
-  const phaseName = (id: string) => phases.find(p => p.id === id)?.name ?? '—'
-
-  async function handleDeleteProject() {
-    await deleteProject.mutateAsync(project.id)
-    onDelete()
-  }
-
-  function handleAddPhase() { createPhase.mutate({ project_id: project.id, name: 'New phase' }) }
-
-  function moveItem(item: ProjectItem, dir: -1 | 1) {
-    const order: ItemStatus[] = ['open', 'in_progress', 'done']
-    const idx = order.indexOf(item.status as ItemStatus)
-    const next = order[Math.min(order.length - 1, Math.max(0, (idx === -1 ? 0 : idx) + dir))]
-    if (next !== item.status) updateItem.mutate({ id: item.id, patch: { status: next } })
-  }
-
-  function handleDrop(e: React.DragEvent<HTMLDivElement>, status: ItemStatus) {
-    e.preventDefault()
-    const itemId = e.dataTransfer.getData('itemId')
-    setDragOverCol(null)
-    setDraggingId(null)
-    if (itemId) updateItem.mutate({ id: itemId, patch: { status } })
-  }
+  const typeCounts = ITEM_TYPE_ORDER.map(type => ({ type, count: allItems.filter(i => i.type === type).length }))
+    .filter(t => t.count > 0)
 
   return (
-    <div className="flex flex-col gap-4 max-w-6xl">
-      {/* Back */}
-      <button
-        type="button"
-        onClick={onBack}
-        className="self-start min-h-[44px] -ml-1 px-2 inline-flex items-center gap-1 text-sm text-ink-700 hover:text-ink-900 transition-colors"
-      >
-        ← Projects
-      </button>
+    <div className="flex flex-col gap-4">
+      <Button variant="ghost" size="sm" icon={<ChevronLeft />} onClick={onBack} className="-ml-3 self-start">
+        Projects
+      </Button>
 
-      {/* Header card */}
-      <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <span className={`w-3 h-3 rounded-full shrink-0 ${COLOR_DOT[project.color] ?? 'bg-ink-300'}`} />
-          <InlineText
-            value={project.name}
-            onSave={name => updateProject.mutate({ id: project.id, patch: { name } })}
-            className="text-base font-bold text-ink-900 flex-1 min-w-0 truncate"
-            inputClass="text-base font-bold text-ink-900 flex-1 min-w-0 max-w-[16rem]"
-          />
-          <StatusCycleChip
-            value={project.status}
-            options={PROJECT_STATUSES}
-            colors={PROJECT_STATUS_COLORS as Partial<Record<ProjectStatus, string>>}
-            onCycle={status => updateProject.mutate({ id: project.id, patch: { status } })}
-          />
-          <button
-            onClick={() => setConfirmDel(true)}
-            disabled={deleteProject.isPending}
-            className="min-w-[44px] min-h-[44px] ml-auto flex items-center justify-center text-ink-500 hover:text-red-400 transition-colors disabled:opacity-40"
-            title="Delete project"
-            aria-label={`Delete project ${project.name}`}
-          >
-            ✕
-          </button>
-          <ConfirmDialog
-            open={confirmDel}
-            onClose={() => setConfirmDel(false)}
-            onConfirm={() => { void handleDeleteProject() }}
-            title={`Delete "${project.name}"?`}
-            message="This will remove all its phases and items."
-            confirmLabel="Delete project"
-          />
-        </div>
+      {/* Main column (header, view, phases/board) + a notes/activity rail from lg. */}
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,64rem)_24rem]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <ProjectHeaderCard project={project} items={allItems} onDeleted={onDelete} />
 
-        <InlineTextArea
-          value={project.description}
-          onSave={description => updateProject.mutate({ id: project.id, patch: { description } })}
-          placeholder="Add a description…"
-        />
-
-        {/* Overall progress */}
-        <div className="flex flex-col gap-1.5">
-          <div className="h-2 rounded-full bg-ink-100 overflow-hidden">
-            <div className="h-full bg-emerald-400 transition-all duration-300" style={{ width: `${pct}%` }} />
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-ink-500">
-            <span>{total > 0 ? `${doneCount}/${total} done` : 'No items yet'}</span>
-            <span className="flex items-center gap-2">
-              {wipCount > 0 && <span className="text-accent-600 font-medium">{wipCount} in progress</span>}
-              {total > 0 && <span className="font-semibold text-ink-700">{pct}%</span>}
-            </span>
-          </div>
-        </div>
-
-        {/* Color picker */}
-        <div className="flex gap-1">
-          {COLORS.map(c => (
-            <button
-              key={c}
-              onClick={() => { haptic('light'); updateProject.mutate({ id: project.id, patch: { color: c } }) }}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center lg:min-w-0 lg:min-h-0 lg:w-6 lg:h-6"
-              title={c}
-            >
-              <span className={`w-4 h-4 rounded-full ${COLOR_DOT[c]} transition-transform hover:scale-110 ${
-                project.color === c ? 'ring-2 ring-offset-1 ring-ink-400' : ''
-              }`} />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Main content: item list/board (left) + notes/activity sidebar (right) —
-          equal-width columns on large screens, stacked on mobile/narrow. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div className="flex flex-col gap-4">
-          {/* View toggle + type filter */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex gap-0.5 p-0.5 bg-cream-50 border border-ink-200 rounded-lg">
-              {(['phases', 'board'] as const).map(v => (
-                <button
-                  key={v}
-                  onClick={() => setView(v)}
-                  className={`px-3 min-h-[44px] rounded-md text-xs font-semibold transition-colors ${
-                    view === v ? 'bg-ink-950 text-white' : 'text-ink-600 hover:text-ink-900'
-                  }`}
-                >
-                  {v === 'phases' ? 'Phases' : 'Board'}
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedControl<'phases' | 'board'>
+              value={view}
+              onChange={setView}
+              options={[{ value: 'phases', label: 'Phases' }, { value: 'board', label: 'Board' }]}
+            />
+            {view === 'phases' && typeCounts.length > 0 && (
+              <div role="group" aria-label="Filter by type" className="scroll-x flex w-full gap-1 sm:w-auto">
+                <button type="button" aria-pressed={typeFilter === null} onClick={() => setTypeFilter(null)} className="pill-tab shrink-0">
+                  All
                 </button>
-              ))}
-            </div>
-
-            {view === 'phases' && total > 0 && (
-              <div className="flex items-center gap-1.5 w-full sm:w-auto flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible">
-                <button
-                  onClick={() => setTypeFilter(null)}
-                  className={`flex-shrink-0 whitespace-nowrap text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
-                    typeFilter === null ? 'bg-ink-800 text-white border-ink-800' : 'bg-cream-50 text-ink-500 border-ink-200 hover:border-ink-400'
-                  }`}
-                >
-                  all
-                </button>
-                {TYPE_FILTERS.map(f => {
-                  const count = allItems.filter(i => i.type === f.type).length
-                  if (count === 0) return null
-                  return (
-                    <button
-                      key={f.type}
-                      onClick={() => setTypeFilter(t => t === f.type ? null : f.type)}
-                      className={`flex-shrink-0 whitespace-nowrap text-[10px] px-2 min-h-[44px] rounded border transition-colors ${
-                        typeFilter === f.type ? f.cls + ' font-semibold' : 'bg-cream-50 text-ink-500 border-ink-200 hover:border-ink-400'
-                      }`}
-                    >
-                      {f.label} {count}
-                    </button>
-                  )
-                })}
+                {typeCounts.map(({ type, count }) => (
+                  <button
+                    key={type}
+                    type="button"
+                    aria-pressed={typeFilter === type}
+                    onClick={() => setTypeFilter(t => (t === type ? null : type))}
+                    className="pill-tab shrink-0 capitalize"
+                  >
+                    {ITEM_TYPE_LABEL[type]} <span className="count-badge">{count}</span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
-          {/* ─── Phases view — matrix layout: phases flow side-by-side, each
-              sized to its own content (collapsed/expanded independently)
-              rather than stacking full-width down the page. ─── */}
-          {view === 'phases' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+          {view === 'phases' ? (
+            // Phases flow side by side, each sized to its own content.
+            <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2">
               {phasesLoading ? (
-                [1, 2].map(i => <div key={i} className="h-12 bg-cream-50/50 rounded-xl animate-pulse" />)
+                [1, 2].map(i => <Skeleton key={i} rounded="rounded-card" className="h-14" />)
               ) : (
                 <>
                   {phases.map(phase => (
@@ -253,100 +91,34 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                       typeFilter={typeFilter}
                       onUpdatePhase={patch => updatePhase.mutate({ id: phase.id, patch })}
                       onDeletePhase={() => deletePhase.mutate(phase.id)}
-                      onAddItem={() => setItemModal({ phaseId: phase.id })}
+                      onAddItem={() => modal.open({ kind: 'project-item', projectId: project.id, phaseId: phase.id })}
                       onUpdateItem={(itemId, patch) => updateItem.mutate({ id: itemId, patch })}
                       onDeleteItem={itemId => deleteItem.mutate(itemId)}
-                      onEditItem={item => setItemModal({ item })}
+                      onEditItem={item => modal.open({ kind: 'project-item', projectId: project.id, id: item.id })}
                     />
                   ))}
                   <button
-                    onClick={handleAddPhase}
+                    type="button"
+                    onClick={() => createPhase.mutate({ project_id: project.id, name: 'New phase' })}
                     disabled={createPhase.isPending}
-                    className="w-full text-xs text-ink-500 hover:text-accent-600 min-h-[44px] py-2 rounded-xl border border-dashed border-ink-300 hover:border-accent-300 bg-cream-50/40 transition-colors"
+                    className="flex min-h-[48px] w-full items-center justify-center gap-1.5 rounded-card border border-dashed border-line-strong text-body font-medium text-fg-muted transition-colors hover:border-accent-500 hover:text-accent-600 disabled:opacity-50"
                   >
-                    + Add phase
+                    <Plus aria-hidden className="h-4 w-4" /> Add phase
                   </button>
                 </>
               )}
             </div>
+          ) : (
+            <ProjectBoard
+              projectId={project.id}
+              items={allItems}
+              phases={phases}
+              onMove={(id, status) => updateItem.mutate({ id, patch: { status } })}
+            />
           )}
-
-          {/* ─── Board view — horizontal snap-scroll on mobile (peeks the next
-              column), true 3-col grid from sm up ─── */}
-          {view === 'board' && (
-            <div className="flex sm:grid sm:grid-cols-3 gap-3 items-start overflow-x-auto snap-x snap-mandatory sm:overflow-visible pb-1">
-              {BOARD_COLUMNS.map((col, colIdx) => {
-                const items = allItems.filter(i => i.status === col.key)
-                const isDropTarget = dragOverCol === col.key
-                return (
-                  <div
-                    key={col.key}
-                    onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverCol(col.key) }}
-                    onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null) }}
-                    onDrop={e => handleDrop(e, col.key)}
-                    className={`snap-start shrink-0 w-[78%] sm:w-auto border rounded-2xl p-2.5 flex flex-col gap-2 min-h-[80px] transition-colors ${
-                      isDropTarget ? 'border-accent-400 border-dashed bg-accent-50/60' : 'bg-cream-50/60 border-ink-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between px-1">
-                      <span className={`text-[11px] font-bold uppercase tracking-wide ${col.accent}`}>{col.label}</span>
-                      <span className="text-[11px] text-ink-500">{items.length}</span>
-                    </div>
-                    {items.length === 0 && <p className="text-[11px] text-ink-500 px-1 py-2">{isDropTarget ? 'Drop here' : 'Empty'}</p>}
-                    {items.map(item => (
-                      <div
-                        key={item.id}
-                        draggable
-                        onDragStart={e => { e.dataTransfer.setData('itemId', item.id); e.dataTransfer.effectAllowed = 'move'; setDraggingId(item.id) }}
-                        onDragEnd={() => setDraggingId(null)}
-                        className={`bg-cream-50 border border-ink-100 rounded-xl p-2.5 flex flex-col gap-1.5 shadow-card cursor-grab select-none transition-opacity ${
-                          draggingId === item.id ? 'opacity-30' : ''
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setItemModal({ item })}
-                          className={`text-sm leading-snug text-left hover:bg-ink-50 rounded px-0.5 -mx-0.5 transition-colors ${item.status === 'done' ? 'line-through text-ink-400' : 'text-ink-800'}`}
-                        >
-                          {item.title}
-                        </button>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${TYPE_BADGE[item.type]}`}>{TYPE_LABEL[item.type]}</span>
-                          <span className={`w-2 h-2 rounded-full ${PRIORITY_DOT[item.priority]}`} title={`priority: ${item.priority}`} />
-                          <span className="text-[10px] text-ink-500 truncate">{phaseName(item.phase_id)}</span>
-                          <div className="ml-auto flex items-center gap-0.5">
-                            {colIdx > 0 && (
-                              <button onClick={() => { haptic('light'); moveItem(item, -1) }} className="min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:w-6 lg:h-6 flex items-center justify-center flex-shrink-0" title="Move left">
-                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-ink-100 text-ink-500 text-xs active:bg-ink-200 lg:bg-transparent lg:hover:text-ink-700">←</span>
-                              </button>
-                            )}
-                            {colIdx < BOARD_COLUMNS.length - 1 && (
-                              <button onClick={() => { haptic('light'); moveItem(item, 1) }} className="min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:w-6 lg:h-6 flex items-center justify-center flex-shrink-0" title="Move right">
-                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-ink-100 text-ink-500 text-xs active:bg-ink-200 lg:bg-transparent lg:hover:text-accent-600">→</span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-          {view === 'board' && (() => {
-            const cancelledCount = allItems.filter(i => i.status === 'cancelled').length
-            // Board columns are open/in_progress/done only (arrow nav cycles through
-            // just those three) — cancelled items are real but intentionally hidden
-            // here rather than silently missing; they're still visible in Phases view.
-            return cancelledCount > 0 ? (
-              <p className="text-[11px] text-ink-500 mt-2">{cancelledCount} cancelled item{cancelledCount === 1 ? '' : 's'} hidden from board — see Phases view</p>
-            ) : null
-          })()}
         </div>
 
-        {/* Right rail: per-project notes + recent activity */}
-        <div className="flex flex-col gap-4">
+        <aside className="flex flex-col gap-4">
           <ProjectNotesCard
             notes={project.notes}
             onSave={notes => updateProject.mutateAsync({ id: project.id, patch: { notes } })}
@@ -356,20 +128,8 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
             itemIds={allItems.map(i => i.id)}
             phaseIds={phases.map(p => p.id)}
           />
-        </div>
+        </aside>
       </div>
-
-      {/* Add / edit item modal */}
-      {itemModal && (
-        <ProjectItemModal
-          open
-          onClose={() => setItemModal(null)}
-          projectId={project.id}
-          phases={phases}
-          defaultPhaseId={itemModal.phaseId}
-          item={itemModal.item}
-        />
-      )}
     </div>
   )
 }

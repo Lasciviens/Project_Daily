@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { applyTheme as applyAccentTheme } from '../shared/components/ThemeSwitcher'
+import { applyAccent, DEFAULT_ACCENT, resolveAccent, type AccentName } from '../shared/theme/accent'
 
 interface UIState {
   isDevRequestsOpen: boolean
@@ -139,34 +139,54 @@ export const useCalendarStore = create<CalendarState>()(
 export type ThemePreference = 'light' | 'dark' | 'system'
 
 interface ThemeState {
-  theme:    ThemePreference
-  setTheme: (theme: ThemePreference) => void
+  theme:     ThemePreference
+  accent:    AccentName
+  setTheme:  (theme: ThemePreference) => void
+  setAccent: (accent: AccentName) => void
 }
 
-function applyTheme(theme: ThemePreference) {
+function applyTheme(theme: ThemePreference, accent: AccentName) {
   const dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.classList.toggle('dark', dark)
-  // Re-apply the user's picked accent color for whichever mode we just
-  // switched to — applyAccentTheme reads document.documentElement's .dark
-  // class itself, so calling it AFTER the toggle above picks the right
-  // light/dark variant. Without this, switching Light/Dark mid-session left
-  // accent's inline-style variables stuck on whatever mode was active when
-  // the page first loaded, until the next full reload.
-  applyAccentTheme(localStorage.getItem('accent-theme') ?? 'orange')
+  // The accent's light and dark variants are inline styles on <html>, so they
+  // must be re-applied AFTER the .dark toggle, or the old mode's accent sticks.
+  applyAccent(accent)
 }
 
 // Storage key matches the inline script in index.html, which stamps .dark
 // on <html> before first paint (reading the same persisted value) so the
 // page never flashes the wrong theme for a frame while React boots.
+// version 1 (2026-09-26): the accent moved in here from its own
+// 'accent-theme' key, and everyone starts on the new default (blue) once —
+// the whole site was re-themed around it.
 export const useThemeStore = create<ThemeState>()(
   persist(
-    (set) => ({
-      theme: 'system',
-      setTheme: (theme) => { applyTheme(theme); set({ theme }) },
+    (set, get) => ({
+      theme:  'system',
+      accent: DEFAULT_ACCENT,
+      setTheme:  (theme)  => { applyTheme(theme, get().accent); set({ theme }) },
+      setAccent: (accent) => { applyAccent(accent); set({ accent }) },
     }),
-    { name: 'theme-preference' }
+    {
+      name: 'theme-preference',
+      version: 1,
+      migrate: (persisted) => {
+        const old = (persisted ?? {}) as Partial<ThemeState>
+        try { localStorage.removeItem('accent-theme') } catch { /* private mode */ }
+        return { theme: old.theme ?? 'system', accent: DEFAULT_ACCENT } as ThemeState
+      },
+      onRehydrateStorage: () => (state) => {
+        if (state) state.accent = resolveAccent(state.accent)
+      },
+    }
   )
 )
+
+/** Applies the persisted theme + accent once on boot (the inline script only stamps .dark). */
+export function applyStoredTheme() {
+  const { theme, accent } = useThemeStore.getState()
+  applyTheme(theme, accent)
+}
 
 // The inline script only fires once, on load — this keeps the DOM in sync
 // if the OS-level preference flips while the tab stays open (e.g. macOS's
@@ -174,6 +194,7 @@ export const useThemeStore = create<ThemeState>()(
 // explicit light/dark choice.
 if (typeof window !== 'undefined') {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (useThemeStore.getState().theme === 'system') applyTheme('system')
+    const { theme, accent } = useThemeStore.getState()
+    if (theme === 'system') applyTheme('system', accent)
   })
 }

@@ -1,17 +1,15 @@
 import { useMemo, useState } from 'react'
-import { EmptyState } from '../../../shared/components/EmptyState'
+import { AlertTriangle, Brain, Plus } from 'lucide-react'
+import { entityModal } from '../../../shared/modals'
+import { Button, EmptyState, Skeleton } from '../../../shared/ui'
 import { useMemories, useCreateMemory, useDeleteMemory } from '../../ai/hooks/useMemory'
 import { MemoryRow } from './MemoryRow'
-import { MemoryEditSheet } from './MemoryEditSheet'
-import { KIND_BADGE, KIND_LABEL, KINDS } from './memoryMeta'
+import { KIND_LABEL, KINDS } from './memoryMeta'
 import type { AiMemory } from '../../ai/api/memoryApi'
 
-// Durable ai_memory rows (migration 064) — until now write-only from chat
-// (the `save_memory` tool) and read-only via db_query, with no UI anywhere.
-// This tab is the first place the user can see, correct or delete what's been
-// remembered, and the only path that ever produces a `source: 'user'` row.
-
-const fieldCls = 'min-h-[44px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 text-ink-800'
+// Durable ai_memory rows (migration 064). The one place to see, correct or
+// delete what has been remembered, and the only path that ever writes a
+// `source: 'user'` row (chat's save_memory writes 'ai').
 
 function QuickAdd() {
   const create = useCreateMemory()
@@ -29,106 +27,85 @@ function QuickAdd() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-1.5 mb-3">
-      <select value={kind} onChange={e => setKind(e.target.value as AiMemory['kind'])} className={`${fieldCls} sm:w-32`}>
+    <form onSubmit={handleSubmit} className="card mb-4 flex flex-col gap-2 p-3 sm:flex-row">
+      <select value={kind} onChange={e => setKind(e.target.value as AiMemory['kind'])} aria-label="Kind" className="select sm:w-36">
         {KINDS.map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
       </select>
-      <input
-        value={title} onChange={e => setTitle(e.target.value)}
-        placeholder="Title"
-        className={`${fieldCls} sm:flex-1`}
-      />
-      <input
-        value={content} onChange={e => setContent(e.target.value)}
-        placeholder="What should the AI remember?"
-        className={`${fieldCls} sm:flex-[2]`}
-      />
-      <button
-        type="submit"
-        disabled={create.isPending || !title.trim() || !content.trim()}
-        className="min-h-[44px] px-4 rounded-lg text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 whitespace-nowrap"
-      >
-        + Add
-      </button>
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" aria-label="Title" className="input sm:flex-1" />
+      <input value={content} onChange={e => setContent(e.target.value)} placeholder="What should the AI remember?" aria-label="Content" className="input sm:flex-[2]" />
+      <Button type="submit" variant="primary" icon={<Plus />} loading={create.isPending} disabled={!title.trim() || !content.trim()}>
+        Add memory
+      </Button>
     </form>
   )
 }
 
 export function MemoryTab() {
-  const { data: memories = [], isLoading, error } = useMemories()
+  const { data: memories = [], isLoading, error, refetch } = useMemories()
   const deleteMemory = useDeleteMemory()
   const [kindFilter, setKindFilter] = useState<AiMemory['kind'] | 'all'>('all')
-  const [editing, setEditing] = useState<AiMemory | null>(null)
 
   const filtered = useMemo(
     () => kindFilter === 'all' ? memories : memories.filter(m => m.kind === kindFilter),
     [memories, kindFilter],
   )
 
+  async function handleDelete(memory: AiMemory) {
+    if (await entityModal.confirm({ title: `Delete "${memory.title}"?`, confirmLabel: 'Delete', destructive: true })) deleteMemory.mutate(memory.id)
+  }
+
   return (
-    <>
+    <div className="max-w-4xl">
       <QuickAdd />
 
-      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-        <button
-          onClick={() => setKindFilter('all')}
-          className={`text-[11px] px-2.5 min-h-[44px] rounded border font-medium transition-colors ${
-            kindFilter === 'all' ? 'bg-accent-500 text-white border-accent-500' : 'bg-ink-50 text-ink-600 border-ink-200'
-          }`}
-        >
-          All {memories.length}
+      <div className="scroll-x -mx-4 mb-3 flex gap-1 px-4 sm:mx-0 sm:px-0" role="tablist" aria-label="Filter by kind">
+        <button type="button" role="tab" aria-selected={kindFilter === 'all'} onClick={() => setKindFilter('all')} className="pill-tab">
+          All <span className="count-badge">{memories.length}</span>
         </button>
         {KINDS.map(k => {
           const count = memories.filter(m => m.kind === k).length
           if (count === 0) return null
           return (
-            <button
-              key={k}
-              onClick={() => setKindFilter(f => f === k ? 'all' : k)}
-              className={`text-[11px] px-2.5 min-h-[44px] rounded border transition-colors ${
-                kindFilter === k ? KIND_BADGE[k] + ' font-semibold' : 'bg-ink-50 text-ink-600 border-ink-200'
-              }`}
-            >
-              {KIND_LABEL[k]} {count}
+            <button key={k} type="button" role="tab" aria-selected={kindFilter === k} onClick={() => setKindFilter(f => f === k ? 'all' : k)} className="pill-tab">
+              {KIND_LABEL[k]} <span className="count-badge">{count}</span>
             </button>
           )
         })}
       </div>
 
-      {isLoading && (
+      {isLoading ? (
         <div className="flex flex-col gap-2">
-          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-16 rounded-xl bg-cream-200 animate-pulse" />)}
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-row" className="h-20" />)}
         </div>
-      )}
-
-      {error && (
-        <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl p-3">⚠ {(error as Error).message}</div>
-      )}
-
-      {!isLoading && !error && filtered.length === 0 && (
+      ) : error ? (
         <EmptyState
-          icon="🧠"
-          title="Nothing remembered yet"
-          description={
-            memories.length === 0
-              ? "Durable facts and summaries the AI has been asked to remember. Nothing here yet — ask it to remember something in chat, or add one above."
-              : 'No memories match this filter.'
-          }
+          bordered
+          icon={<AlertTriangle />}
+          title="Couldn't load memories"
+          description={(error as Error).message}
+          action={<Button size="sm" onClick={() => { void refetch() }}>Try again</Button>}
         />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          bordered
+          icon={<Brain />}
+          title={memories.length === 0 ? 'Nothing remembered yet' : 'No memories of this kind'}
+          description={memories.length === 0
+            ? 'Durable facts and summaries the AI has been asked to remember. Ask it to remember something in chat, or add one above.'
+            : undefined}
+        />
+      ) : (
+        <ul className="card divide-y divide-line overflow-hidden">
+          {filtered.map(memory => (
+            <MemoryRow
+              key={memory.id}
+              memory={memory}
+              onEdit={() => entityModal.open({ kind: 'memory', id: memory.id })}
+              onDelete={() => { void handleDelete(memory) }}
+            />
+          ))}
+        </ul>
       )}
-
-      <div className="flex flex-col gap-2">
-        {filtered.map(memory => (
-          <MemoryRow
-            key={memory.id}
-            memory={memory}
-            onEdit={() => setEditing(memory)}
-            onDelete={() => { if (confirm(`Delete "${memory.title}"?`)) deleteMemory.mutate(memory.id) }}
-          />
-        ))}
-      </div>
-
-      <MemoryEditSheet key={editing?.id ?? 'none'} memory={editing} onClose={() => setEditing(null)} />
-    </>
+    </div>
   )
 }

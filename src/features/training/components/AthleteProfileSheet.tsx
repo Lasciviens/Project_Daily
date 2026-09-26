@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { Sheet } from '../../../shared/components/Sheet'
-import { SegmentedControl } from '../../../shared/components/SegmentedControl'
+import { Minus, Plus } from 'lucide-react'
+import { ModalShell } from '../../../shared/modals'
+import { IconButton, SegmentedControl } from '../../../shared/ui'
 import { useAthleteProfile, useUpsertAthleteProfile } from '../hooks/useAthleteProfile'
 import type { Equipment, ExperienceLevel, TrainingGoal } from '../types.athlete'
 import { LimitationsList } from './LimitationsList'
@@ -36,7 +37,7 @@ const EQUIPMENT_OPTIONS: { value: Equipment; label: string }[] = [
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">{label}</p>
+      <p className="field-label">{label}</p>
       {children}
     </div>
   )
@@ -45,12 +46,11 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function DaysStepper({ value, onChange }: { value: number | null; onChange: (v: number) => void }) {
   const v = value ?? 3
   const set = (n: number) => onChange(Math.min(7, Math.max(1, n)))
-  const btn = 'w-11 h-11 min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:border-accent-300 flex items-center justify-center leading-none disabled:opacity-40 transition-colors'
   return (
     <div className="flex items-center gap-2">
-      <button type="button" onClick={() => set(v - 1)} disabled={v <= 1} className={btn}>−</button>
-      <span className="w-20 text-center text-sm font-semibold text-ink-900 tabular-nums">{v} {v === 1 ? 'day' : 'days'}</span>
-      <button type="button" onClick={() => set(v + 1)} disabled={v >= 7} className={btn}>+</button>
+      <IconButton label="Fewer days" bordered onClick={() => set(v - 1)} disabled={v <= 1} className="disabled:opacity-40"><Minus /></IconButton>
+      <span className="w-20 text-center text-ui font-semibold tabular-nums text-fg">{v} {v === 1 ? 'day' : 'days'}</span>
+      <IconButton label="More days" bordered onClick={() => set(v + 1)} disabled={v >= 7} className="disabled:opacity-40"><Plus /></IconButton>
     </div>
   )
 }
@@ -76,8 +76,8 @@ export function AthleteProfileSheet({ open, onClose }: Props) {
   const notes = notesDraft ?? profile?.notes ?? ''
 
   return (
-    <Sheet open={open} onClose={onClose} title="🏋️ Training profile" size="md">
-      <div className="flex flex-col gap-5 p-5">
+    <ModalShell open={open} onClose={onClose} title="Training profile" size="md">
+      <div className="flex flex-col gap-5">
         <Field label="Goal">
           <SegmentedControl<TrainingGoal>
             value={profile?.goal ?? ('' as TrainingGoal)}
@@ -124,23 +124,23 @@ export function AthleteProfileSheet({ open, onClose }: Props) {
             }}
             rows={3}
             placeholder='e.g. "shoulder flares up above 70% on overhead work"'
-            className="w-full min-h-[44px] rounded-xl border border-ink-200 bg-canvas px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
+            className="input w-full py-2"
           />
         </Field>
 
-        <div className="border-t border-ink-100 pt-4">
+        <div className="border-t border-line pt-4">
           <LimitationsList />
         </div>
 
-        <div className="border-t border-ink-100 pt-4">
+        <div className="border-t border-line pt-4">
           <MusclePreferencesList />
         </div>
 
-        <div className="border-t border-ink-100 pt-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Current program</p>
+        <div className="border-t border-line pt-4">
+          <p className="field-label">Current program</p>
           <CurrentProgramPicker />
         </div>
       </div>
-    </Sheet>
+    </ModalShell>
   )
 }

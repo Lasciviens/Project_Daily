@@ -8,7 +8,7 @@
 //  silently does nothing would be worse than no control at all).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { FieldLabel, TextField, Time24Field, DurationField, CategorySelect, RecurrenceField } from './fields'
+import { FieldLabel, Required, TextField, Time24Field, DurationField, CategorySelect, RecurrenceField } from './fields'
 import { shiftTime, RECURRING_EDIT_OPTIONS, hasValidRecurrenceSelection } from './planModal.config'
 import type { PlanForm } from './planForm'
 
@@ -36,9 +36,9 @@ export function RecurringTab({ form, patch, extra }: Props) {
   const showZeroDaysWarning = form.recurrence === 'weekly' && !hasValidRecurrenceSelection('weekly', form.weeklyDays)
 
   return (
-    <div className="px-5 py-4 flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <div>
-        <FieldLabel>Title <span className="text-red-400">*</span></FieldLabel>
+        <FieldLabel>Title<Required /></FieldLabel>
         <TextField value={form.title} onChange={v => patch({ title: v })} placeholder="What repeats?" autoFocus />
       </div>
 
@@ -52,7 +52,7 @@ export function RecurringTab({ form, patch, extra }: Props) {
           options={RECURRING_EDIT_OPTIONS}
         />
         {showZeroDaysWarning && (
-          <p className="mt-1.5 text-[11px] text-red-500">Pick at least one day.</p>
+          <p className="mt-1.5 text-meta text-danger">Pick at least one day.</p>
         )}
       </div>
 
@@ -70,7 +70,7 @@ export function RecurringTab({ form, patch, extra }: Props) {
           duration={form.duration} customMin={form.customMin}
           onPreset={v => patch({ duration: v })} onCustom={v => patch({ customMin: v })}
         />
-        <p className="mt-1.5 text-[11px] text-ink-400">Crossing midnight is fine — end time wraps to the next day.</p>
+        <p className="mt-1.5 text-meta text-fg-muted">Crossing midnight is fine — end time wraps to the next day.</p>
       </div>
 
       <div>

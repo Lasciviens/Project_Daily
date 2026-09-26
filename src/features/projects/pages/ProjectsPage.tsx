@@ -1,89 +1,80 @@
 import { useState } from 'react'
+import { FolderKanban, Plus } from 'lucide-react'
+import { Button, EmptyState, PageContainer, PageHeader, Skeleton } from '../../../shared/ui'
 import { useProjects, useProjectStats, useCreateProject } from '../hooks/useProjects'
 import { ProjectCard } from '../components/ProjectCard'
 import { ProjectDetail } from '../components/ProjectDetail'
 
+const GRID = 'grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start items-start gap-3 sm:gap-4'
+
 export function ProjectsPage() {
-  const { data: projects = [], isLoading } = useProjects()
-  const { data: stats = {} }               = useProjectStats()
-  const createProject                      = useCreateProject()
+  const { data: projects = [], isLoading, isError, refetch } = useProjects()
+  const { data: stats = {} } = useProjectStats()
+  const createProject = useCreateProject()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const selected = projects.find(p => p.id === selectedId) ?? null
   const activeCount = projects.filter(p => p.status === 'active').length
 
   async function handleNew() {
-    const p = await createProject.mutateAsync({ name: 'New project' })
-    setSelectedId(p.id)
+    try {
+      const p = await createProject.mutateAsync({ name: 'New project' })
+      setSelectedId(p.id)
+    } catch { /* the hook already toasted */ }
   }
 
-  // ─── Detail view ──────────────────────────────────────────────────────────
   if (selected) {
     return (
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+      <PageContainer>
         <ProjectDetail
           key={selected.id}
           project={selected}
           onBack={() => setSelectedId(null)}
           onDelete={() => setSelectedId(null)}
         />
-      </div>
+      </PageContainer>
     )
   }
 
-  // ─── Grid (landing) ───────────────────────────────────────────────────────
+  const newButton = (
+    <Button variant="primary" icon={<Plus />} onClick={handleNew} loading={createProject.isPending}>New project</Button>
+  )
+
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-      <div className="flex items-center gap-3 flex-wrap mb-5">
-        <h1 className="text-lg font-bold text-ink-900">Projects</h1>
-        {projects.length > 0 && (
-          <span className="text-xs font-medium text-ink-600 bg-cream-50/70 px-2 py-0.5 rounded-full border border-ink-200">
-            {activeCount} active · {projects.length} total
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={handleNew}
-          disabled={createProject.isPending}
-          className="ml-auto min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-        >
-          <span className="text-base leading-none">+</span>
-          <span>New Project</span>
-        </button>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Projects"
+        subtitle={projects.length > 0 ? `${activeCount} active · ${projects.length} total` : undefined}
+        actions={projects.length > 0 ? newButton : undefined}
+      />
 
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-5xl">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-32 rounded-2xl bg-cream-50/40 animate-pulse" />
-          ))}
+        <div className={GRID}>
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-32" />)}
         </div>
+      ) : isError ? (
+        <EmptyState
+          className="max-w-md"
+          bordered
+          title="Couldn't load your projects"
+          action={<Button size="sm" onClick={() => { void refetch() }}>Try again</Button>}
+        />
       ) : projects.length === 0 ? (
-        <div className="max-w-md bg-cream-50 border border-dashed border-ink-200 rounded-2xl text-center py-14 px-6">
-          <p className="text-3xl mb-2">🗂️</p>
-          <p className="text-ink-700 font-semibold text-sm">No projects yet</p>
-          <p className="text-ink-500 text-xs mt-1 mb-4">Create your first project to start tracking phases and items.</p>
-          <button
-            type="button"
-            onClick={handleNew}
-            disabled={createProject.isPending}
-            className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors disabled:opacity-50"
-          >
-            + New Project
-          </button>
-        </div>
+        <EmptyState
+          className="max-w-md"
+          bordered
+          icon={<FolderKanban />}
+          title="No projects yet"
+          description="Create your first project to start tracking phases and items."
+          action={newButton}
+        />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-5xl items-start">
+        <div className={GRID}>
           {projects.map(p => (
-            <ProjectCard
-              key={p.id}
-              project={p}
-              stat={stats[p.id]}
-              onOpen={() => setSelectedId(p.id)}
-            />
+            <ProjectCard key={p.id} project={p} stat={stats[p.id]} onOpen={() => setSelectedId(p.id)} />
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

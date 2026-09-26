@@ -1,61 +1,36 @@
-import { NavLink, Outlet } from 'react-router-dom'
-import { useUIStore } from '../../../app/store'
+import { Link, useLocation } from 'react-router-dom'
+import { cx } from '../../../shared/ui'
 
-// Shared scroll shell for the Daily / Food / Shop routes (unchanged deep links).
-// NAV GROUPING changed (Nav in app/layout.tsx): Personal is now Daily ALONE;
-// Food is its own top-level entry that also holds Shop. So the in-header tab
-// group below switches Food ↔ Shop (used by RecipesPage + ShopPage); Daily
-// renders no group tabs (it's standalone now).
+// Food ↔ Shop switch, embedded in the first header row of RecipesPage and
+// ShopPage (same spot on both, no extra row). Both routes light the one
+// "Food" nav entry (src/app/navigation.ts).
+//
+// There used to be a PersonalLayout route wrapper here with its own
+// full-height scroller; it broke re-tap-to-top and Back scroll restore (both
+// target <main>). The pages now scroll in <main> like every other route, and
+// Shop sizes itself via the registry's `fullHeight` flag.
 const TABS = [
   { to: '/recipes', label: 'Food' },
-  { to: '/shop',    label: 'Shop' },
+  { to: '/shop', label: 'Shop' },
 ]
 
-// Embedded INSIDE each Food/Shop page's own header row (far right) — same spot
-// on both, no separate bar row. (Was PersonalTabs / Daily·Shop·Food.)
 export function FoodTabs() {
+  const { pathname } = useLocation()
   return (
-    <div className="inline-flex items-center gap-0.5 bg-cream-100 rounded-xl p-1">
-      {TABS.map(tab => (
-        <NavLink
-          key={tab.to}
-          to={tab.to}
-          className={({ isActive }) => [
-            'px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors min-h-[44px] flex items-center whitespace-nowrap',
-            isActive ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-700',
-          ].join(' ')}
-        >
-          {tab.label}
-        </NavLink>
-      ))}
-    </div>
-  )
-}
-
-export function PersonalLayout() {
-  // The STANDARD for the Personal tabs: they render INSIDE each page's own
-  // first header row, far right (Daily, Shop and Recipes all do this) — the
-  // old standalone bar here cost a whole row and pushed page headings down
-  // one line ("Recipes başlığı neden bir satır aşağıda"). Same spot on every
-  // page, no layout jump between them.
-  //
-  // h-full (not a vh/dvh calc) so this resolves against <main>'s own
-  // computed flex height, which already accounts for the mobile bottom tab
-  // bar's reserved padding — a hardcoded vh subtraction here would ignore
-  // that reservation and run this content's tail under the fixed tab bar.
-  // This inner div is the ACTUAL scroll container for /daily,/shop,/recipes
-  // (the app's <main> never scrolls on these routes), so it must feed the same
-  // hide-on-scroll header the rest of the app drives from <main>. Without this
-  // the top header stayed permanently pinned on the whole Personal group.
-  const reportScroll = useUIStore(s => s.reportScroll)
-  return (
-    <div className="h-full flex flex-col">
-      {/* overflow-y-auto (not hidden): Daily/Recipes are plain page-flow content
-          that need the wrapper to scroll; Shop manages its own fixed h-full
-          two-pane layout internally and fits exactly, so this never double-scrolls. */}
-      <div className="flex-1 min-h-0 overflow-y-auto" onScroll={e => reportScroll((e.target as HTMLElement).scrollTop)}>
-        <Outlet />
-      </div>
-    </div>
+    <nav aria-label="Food sections" className="seg shrink-0">
+      {TABS.map(tab => {
+        const active = pathname === tab.to
+        return (
+          <Link
+            key={tab.to}
+            to={tab.to}
+            aria-current={active ? 'page' : undefined}
+            className={cx('seg-btn inline-flex items-center justify-center [@media(pointer:coarse)]:min-h-[44px]', active ? 'is-active' : '[@media(hover:hover)]:hover:text-fg')}
+          >
+            {tab.label}
+          </Link>
+        )
+      })}
+    </nav>
   )
 }

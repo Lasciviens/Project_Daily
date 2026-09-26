@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
-import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
+import { useMemo, useState, type ReactNode } from 'react'
+import { Camera, ChevronRight, Globe, Minus, Pencil, Plus, Save, Search, Star, X } from 'lucide-react'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { entityModal } from '../../../shared/modals/useEntityModal'
+import { Button, IconButton } from '../../../shared/ui'
+import { cx } from '../../../shared/ui/cx'
+import { useIngredientLibrary, useCreateIngredientLibraryItem, useUpsertExternalFood } from '../hooks/useIngredientLibrary'
 import {
   useAddFoodLogEntries, useRecentFoods, useFoodFavorites, useAddFoodFavorite, useRemoveFoodFavorite, useHideRecentFood,
 } from '../hooks/useFoodLog'
-import { useQueryClient } from '@tanstack/react-query'
 import { useRecipes, useCreateRecipe } from '../hooks/useRecipes'
 import { ingredientSnapshot, recipeSnapshot, type RecentFood } from '../api/foodLogApi'
-import { upsertExternalFood } from '../api/ingredientLibraryApi'
 import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
@@ -20,18 +22,18 @@ import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { toast } from '../../../app/store'
 import type { IngredientLibraryItem, FoodLogEntryInput, MealSlot, RecipeWithIngredients } from '../types'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  LOG FOOD — full-screen, calm, visual (2026-07-21 redesign, user brief:
 //  "baştan sona mükemmel bir UI/UX; basit, sade, şık; tam ekran; görselli").
 //
-//  Structure (fixed rows, only the middle scrolls — nothing ever jumps):
-//    HEADER  one row: ✕ · title+date · slot DROPDOWN (was a 5-pill row)
-//    SEARCH  one row: big input with 📷 / 🌐 inline
-//    BODY    (scroll) idle → Recents photo-grid + Saved-meals strip
-//                     typing → clean result rows (+ create row)
-//    BASKET  (own scroll, appears when items exist) — compact editable rows
-//    FOOTER  one row: totals + remaining · Log button
+//  Structure (ModalShell, full screen on phones — only the middle scrolls):
+//    HEADER  title + date · slot dropdown
+//    SEARCH  sticky at the top of the body: input with scan / online inline
+//    BODY    idle → Favourites + Recents photo grids + Saved-meals strip
+//            typing → clean result rows (+ create row)
+//    FOOTER  basket (own scroll, appears when items exist) + totals · Log
 //
 //  Saves into food_log_entries (macros snapshotted at log time). A brand-new
 //  food is added to the library inline ONCE and is a 3-tap food forever after.
@@ -48,26 +50,30 @@ function slotForNow(): MealSlot {
 interface BasketItem { ingredient: IngredientLibraryItem; grams: number }
 
 interface Props {
-  open:          boolean
+  /** Controlled callers pass it; the `food-log` entity modal omits it. */
+  open?:         boolean
   onClose:       () => void
   date:          string
   defaultSlot?:  MealSlot
   defaultQuery?: string
-  onEditRecipe?: (r: RecipeWithIngredients) => void   // ✎ on a saved meal → open its editor
+  /** ✎ on a saved meal. Defaults to the shared `recipe` editor popup. */
+  onEditRecipe?: (r: RecipeWithIngredients) => void
 }
 
-export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, onEditRecipe }: Props) {
+const openRecipeEditor = (r: RecipeWithIngredients) => entityModal.open({ kind: 'recipe', id: r.id })
+
+export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQuery, onEditRecipe = openRecipeEditor }: Props) {
   const { data: library = [] } = useIngredientLibrary()
   const { data: recents = [] } = useRecentFoods()
   const { data: favorites = [] } = useFoodFavorites()
   const { data: recipes = [] } = useRecipes()
   const createIngredient = useCreateIngredientLibraryItem()
+  const upsertExternal = useUpsertExternalFood()
   const createRecipe = useCreateRecipe()
   const addEntries = useAddFoodLogEntries()
   const addFavorite = useAddFoodFavorite()
   const removeFavorite = useRemoveFoodFavorite()
   const hideRecent = useHideRecentFood()
-  const qc = useQueryClient()
   const { data: nut } = useDayNutrition(date)
   const { targets } = useDayTargets()
 
@@ -137,7 +143,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
       toast.dismiss(tid)
       if (!p) { toast.error('Product not found in Open Food Facts'); return }
       const existing = library.find(i => i.name.toLowerCase() === p.name.toLowerCase())
-      if (existing) { addToBasket(existing); toast.success(`${p.name} — already in your library ✓`); return }
+      if (existing) { addToBasket(existing); toast.success(`${p.name} — already in your library`); return }
       prefillFromProduct(p)
       toast.success(`Found: ${p.name} — review & add`)
     } catch {
@@ -153,7 +159,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
       library_ingredient_id: r.library_ingredient_id, recipe_id: r.recipe_id, custom_title: r.custom_title,
       quantity: r.quantity, unit: r.unit,
       calories: r.calories, protein_g: r.protein_g, carbs_g: r.carbs_g, fat_g: r.fat_g, fiber_g: r.fiber_g, sugar_g: r.sugar_g,
-    }], { onSuccess: () => toast.success(`${r.title ?? 'Food'} logged ✓`) })
+    }])
   }
 
   function logRecipe(rec: RecipeWithIngredients, servingsEaten: number) {
@@ -216,19 +222,13 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
       serving_label: nServLabel || null, serving_grams: num(nServGrams),
     }
     try {
-      let created
-      if (scanMeta) {
-        created = await upsertExternalFood({ ...input, source: scanMeta.source, source_ref: scanMeta.source_ref, image_url: scanMeta.image_url })
-        qc.invalidateQueries({ queryKey: ['recipe-ingredient-library'] })
-      } else {
-        created = await createIngredient.mutateAsync(input)
-      }
+      const created = scanMeta
+        ? await upsertExternal.mutateAsync({ ...input, source: scanMeta.source, source_ref: scanMeta.source_ref, image_url: scanMeta.image_url })
+        : await createIngredient.mutateAsync(input)
       addToBasket(created)
       setShowNew(false); setScanMeta(null)
       setNName(''); setNKcal(''); setNProt(''); setNCarb(''); setNFat(''); setNFiber(''); setNSugar(''); setNServLabel(''); setNServGrams('')
-    } catch (e) {
-      toast.error((e as Error).message ?? 'Could not save the ingredient')
-    }
+    } catch { return }   // the hook already toasted + logged
   }
 
   async function handleSave() {
@@ -245,7 +245,7 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
       await addEntries.mutateAsync(entries)
       setBasket([])
       onClose()
-    } catch { /* useMutationWithFeedback already toasts; this just avoids an unhandled rejection */ }
+    } catch { return }   // the hook already toasted + logged
   }
 
   async function handleSaveMeal() {
@@ -257,7 +257,6 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
       return { calories: a.calories + (s.calories ?? 0), protein_g: a.protein_g + (s.protein_g ?? 0), carbs_g: a.carbs_g + (s.carbs_g ?? 0), fat_g: a.fat_g + (s.fat_g ?? 0), fiber_g: a.fiber_g + (s.fiber_g ?? 0), sugar_g: a.sugar_g + (s.sugar_g ?? 0) }
     }, { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0 })
     const per = (v: number) => r1(v / servingsN)
-    const tid = toast.loading('Saving meal…')
     try {
       await createRecipe.mutateAsync({
         title: mealName.trim(), servings: servingsN, macro_mode: 'manual',
@@ -265,355 +264,316 @@ export function FoodLogModal({ open, onClose, date, defaultSlot, defaultQuery, o
         is_temp: !saveToLibrary,
         ingredients: basket.map(it => ({ name: it.ingredient.name, quantity: it.grams, unit: 'g', note: null, library_ingredient_id: it.ingredient.id })),
       })
-      qc.invalidateQueries({ queryKey: ['recipes'] })
-      toast.dismiss(tid)
-      toast.success(saveToLibrary
-        ? `Saved "${mealName.trim()}" to library ✓`
-        : `Saved "${mealName.trim()}" ✓ — log it anytime from Saved meals`)
       setMealName(''); setMealServings('1'); setSaveMealOpen(false); setSaveToLibrary(false)
-    } catch (e) { toast.dismiss(tid); toast.error((e as Error).message ?? 'Failed') }
+    } catch { return }
   }
 
-  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
-  const inputCls = 'min-h-[44px] px-3 text-sm border border-ink-200 rounded-xl bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
+  const dateLabel = fmtDateEnGB(new Date(date + 'T00:00:00'), { weekday: 'short', day: 'numeric', month: 'short' })
   const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.prot)
   const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal)
+  const addingIngredient = createIngredient.isPending || upsertExternal.isPending
+
+  const sectionToggle = (isOpen: boolean, onToggle: () => void, label: ReactNode) => (
+    <button type="button" onClick={onToggle} aria-expanded={isOpen}
+      className="mb-2 flex min-h-[32px] items-center gap-1.5 section-label hover:text-fg-2">
+      <ChevronRight className={cx('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-90')} aria-hidden />
+      {label}
+    </button>
+  )
 
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-[60]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/40 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-stretch sm:items-center justify-center sm:p-4">
-        {/* FULL-SCREEN on phones; a tall fixed-height sheet on desktop. The
-            panel is a flex COLUMN of fixed bands — only the body scrolls. */}
-        {/* Safe-area: on true full-screen (phone) the panel must pad its top
-            for the iOS PWA notch/status bar (edge-to-edge mode) — without it
-            the header row sits under the clock. */}
-        <DialogPanel
-          transition
-          style={{ paddingTop: 'env(safe-area-inset-top)' }}
-          className="w-full h-full sm:h-[min(780px,94vh)] sm:max-w-2xl sm:rounded-3xl bg-cream-50 sm:border border-ink-200 sm:shadow-card-hover flex flex-col overflow-hidden transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-6 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-
-          {/* ── HEADER — one calm row ── */}
-          <div className="shrink-0 h-14 px-2 sm:px-3 flex items-center gap-1 border-b border-ink-100">
-            <button type="button" onClick={onClose} aria-label="Close"
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-ink-400 hover:text-ink-700 hover:bg-ink-100 text-xl leading-none">×</button>
-            <div className="flex-1 min-w-0 px-1">
-              <p className="text-[15px] font-bold text-ink-900 leading-tight">Log food</p>
-              <p className="text-[11px] text-ink-400 leading-tight">{dateLabel}</p>
-            </div>
-            <SlotSelect value={slot} onChange={setSlot} />
-          </div>
-
-          {/* ── SEARCH — one row, tools inline ── */}
-          <div className="shrink-0 px-4 pt-3 pb-2">
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300 pointer-events-none">🔍</span>
-              <input
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Search food…"
-                className="w-full min-h-[48px] pl-10 pr-24 text-sm border border-ink-200 rounded-2xl bg-cream-100/70 focus:bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 transition-colors"
-              />
-              <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex gap-0.5">
-                <button type="button" onClick={() => setScanOpen(true)} disabled={scanning}
-                  className="min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-lg text-ink-400 hover:text-ink-700 hover:bg-ink-100 disabled:opacity-50"
-                  title="Scan barcode" aria-label="Scan barcode">📷</button>
-                <button type="button" onClick={() => setOnlineOpen(o => !o)}
-                  className={`min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-lg ${onlineOpen ? 'bg-accent-100 text-accent-700' : 'text-ink-400 hover:text-ink-700 hover:bg-ink-100'}`}
-                  title="Search online" aria-label="Search online">🌐</button>
-              </div>
-            </div>
-          </div>
-
-          {/* ── BODY — the only scrolling band ── */}
-          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 flex flex-col gap-4">
-
-            {onlineOpen && (
-              <div className="rounded-2xl border border-accent-200 bg-accent-50/40 p-3">
-                <OnlineFoodSearch initialQuery={query} onPick={prefillFromProduct} />
-              </div>
-            )}
-
-            {portionRecipe && (
-              <MealPortionPicker
-                recipe={portionRecipe}
-                busy={addEntries.isPending}
-                onCancel={() => setPortionRecipe(null)}
-                onLog={servingsEaten => logRecipe(portionRecipe, servingsEaten)}
-              />
-            )}
-
-            {showNew && (
-              <div className="rounded-2xl border border-accent-200 bg-accent-50/40 p-3.5 flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  {scanMeta?.image_url && <FoodThumb name={nName} imageUrl={scanMeta.image_url} size={36} />}
-                  <p className="text-xs font-semibold text-accent-700">New ingredient · per 100g (one-time — reusable forever)</p>
-                </div>
-                <input value={nName} onChange={e => setNName(e.target.value)} placeholder="Name" className={inputCls} />
-                <div className="grid grid-cols-3 gap-1.5">
-                  <input value={nKcal}  onChange={e => setNKcal(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="kcal" className={inputCls} />
-                  <input value={nProt}  onChange={e => setNProt(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="Protein" className={inputCls} />
-                  <input value={nCarb}  onChange={e => setNCarb(sanitizeDecimal(e.target.value))}  inputMode="decimal" placeholder="Carbs" className={inputCls} />
-                  <input value={nFat}   onChange={e => setNFat(sanitizeDecimal(e.target.value))}   inputMode="decimal" placeholder="Fat" className={inputCls} />
-                  <input value={nFiber} onChange={e => setNFiber(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Fiber" className={inputCls} />
-                  <input value={nSugar} onChange={e => setNSugar(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Sugar" className={inputCls} />
-                </div>
-                {(() => {
-                  const num = (s: string) => (s === '' ? null : Number(s))
-                  const check = checkMacroConsistency(num(nKcal), num(nProt), num(nCarb), num(nFat))
-                  return check?.inconsistent ? (
-                    <div className="flex items-center gap-1.5 text-[11px] text-orange-700">
-                      <MacroWarningBadge result={check} />
-                      <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
-                    </div>
-                  ) : null
-                })()}
-                <div className="grid grid-cols-2 gap-1.5">
-                  <input value={nServLabel} onChange={e => setNServLabel(e.target.value)} placeholder="Portion label (1 scoop)" className={inputCls} />
-                  <input value={nServGrams} onChange={e => setNServGrams(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams" className={inputCls} />
-                </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => { setShowNew(false); setScanMeta(null) }}
-                    className="min-h-[44px] px-3 rounded-xl text-xs text-ink-500 hover:bg-ink-100">Cancel</button>
-                  <button type="button" onClick={handleNewIngredient} disabled={createIngredient.isPending || !nName.trim()}
-                    className="flex-1 min-h-[44px] rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
-                    {createIngredient.isPending ? 'Adding…' : 'Add to meal'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {q ? (
-              /* ── SEARCHING → clean result rows ── */
-              <div className="flex flex-col">
-                {matches.map(ing => {
-                  const macroCheck = checkMacroConsistency(ing.calories, ing.protein_g, ing.carbs_g, ing.fat_g)
-                  // A DIV, not a button — MacroWarningBadge is itself a
-                  // Popover button, and a <button> can't nest another one.
-                  return (
-                  <div key={ing.id} className="flex items-center gap-3 min-h-[56px] px-1 rounded-xl hover:bg-cream-100 transition-colors">
-                    <button type="button" onClick={() => addToBasket(ing)} className="flex items-center gap-3 flex-1 min-w-0 text-left active:opacity-70">
-                      <FoodThumb name={ing.name} group={ing.food_group} imageUrl={ing.image_url} size={40} />
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-sm font-medium text-ink-800 truncate">{ing.name}</span>
-                        <span className="block text-[11px] text-ink-400">
-                          {ing.calories != null && `${Math.round(ing.calories)} kcal · 100g`}
-                          {ing.serving_label && ` · ${ing.serving_label}`}
-                        </span>
-                      </span>
-                      {/* Was left outside this button in an earlier pass (only
-                          to keep the badge from nesting inside it) — a real
-                          regression, since this "+" is the row's own visual
-                          add-affordance and tapping it did nothing. It only
-                          ever needed to move out from between the button and
-                          the badge below, not out of the button entirely. */}
-                      <span className="min-w-[36px] min-h-[36px] rounded-full bg-accent-50 text-accent-600 grid place-items-center text-lg shrink-0">+</span>
-                    </button>
-                    <MacroWarningBadge result={macroCheck} />
-                  </div>
-                  )
-                })}
-                {savedMeals.length > 0 && matches.length === 0 && savedMeals.map(r => (
-                  <button key={r.id} type="button" onClick={() => setPortionRecipe(r)}
-                    className="flex items-center gap-3 min-h-[56px] px-1 rounded-xl hover:bg-cream-100 transition-colors text-left">
-                    <FoodThumb name={r.title} imageUrl={r.image_url} size={40} />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-medium text-ink-800 truncate">🍲 {r.title}</span>
-                      <span className="block text-[11px] text-ink-400">{r.calories != null && `${Math.round(r.calories)} kcal / portion`}</span>
-                    </span>
-                    <span className="text-[11px] text-accent-600 shrink-0">portion →</span>
-                  </button>
-                ))}
-                <button type="button" onClick={() => { setShowNew(true); setNName(query.trim()) }}
-                  className="flex items-center gap-3 min-h-[52px] px-1 rounded-xl hover:bg-accent-50/60 transition-colors text-left">
-                  <span className="w-10 h-10 rounded-lg border border-dashed border-accent-300 grid place-items-center text-accent-500 text-lg shrink-0">＋</span>
-                  <span className="text-sm text-accent-700">Create “{query.trim()}”…</span>
-                </button>
-              </div>
-            ) : (
-              /* ── IDLE → favourites + recents grids + saved meals strip ── */
-              <>
-                {/* Favourites first — a pinned shortcut list, so it always
-                    leads even though it's a separate section from Recent. */}
-                {favoriteTiles.length > 0 && (
-                  <section>
-                    <button type="button" onClick={() => setFavoritesOpen(v => !v)}
-                      className="flex items-center gap-1.5 min-h-[28px] mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400 hover:text-ink-600">
-                      <span className={`inline-block transition-transform ${favoritesOpen ? 'rotate-90' : ''}`}>›</span>
-                      ★ Favourites ({favoriteTiles.length})
-                    </button>
-                    {favoritesOpen && (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {favoriteTiles.map(({ r, lib }) => (
-                          <FoodTile key={r.key} title={r.title} group={lib?.food_group} imageUrl={lib?.image_url}
-                            calories={r.calories} sizeClass="w-9 h-9 sm:w-11 sm:h-11"
-                            isFavorite onAdd={() => addRecent(r)}
-                            onToggleFavorite={() => removeFavorite.mutate(r.key)} />
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                )}
-
-                {recentTiles.length > 0 && (
-                  <section>
-                    <button type="button" onClick={() => setRecentOpen(v => !v)}
-                      className="flex items-center gap-1.5 min-h-[28px] mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400 hover:text-ink-600">
-                      <span className={`inline-block transition-transform ${recentOpen ? 'rotate-90' : ''}`}>›</span>
-                      Recent
-                    </button>
-                    {recentOpen && (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {recentTiles.map(({ r, lib }) => (
-                          <FoodTile key={r.key} title={r.title} group={lib?.food_group} imageUrl={lib?.image_url}
-                            calories={r.calories} sizeClass="w-9 h-9 sm:w-11 sm:h-11"
-                            isFavorite={favoriteKeys.has(r.key)} onAdd={() => addRecent(r)}
-                            onToggleFavorite={() => favoriteKeys.has(r.key) ? removeFavorite.mutate(r.key) : addFavorite.mutate(r)}
-                            onHide={() => hideRecent.mutate(r.key)} />
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                )}
-
-                {savedMeals.length > 0 && (
-                  <section>
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Saved meals</p>
-                    <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1 pb-1 snap-x">
-                      {savedMeals.map(r => {
-                        // Hover (desktop) / the ✎ editor (mobile) reveals the meal's
-                        // ingredients — a temp meal is one named unit, not N loose rows.
-                        const contents = r.ingredients?.map(i => i.name).filter(Boolean).join(', ') || undefined
-                        return (
-                        <div key={r.id} className="relative snap-start shrink-0 w-36">
-                          <button type="button" onClick={() => setPortionRecipe(r)} title={contents}
-                            className={`w-full rounded-2xl border p-2.5 flex flex-col items-start gap-1 text-left transition-colors press-feedback ${
-                              portionRecipe?.id === r.id ? 'border-accent-400 bg-accent-50/60' : 'border-ink-100 bg-cream-100/50 hover:border-accent-300'
-                            }`}>
-                            <FoodThumb name={r.title} imageUrl={r.image_url} size={36} />
-                            <span className="text-[12px] font-medium text-ink-800 leading-tight line-clamp-2 pr-5">{r.title}</span>
-                            <span className="text-[10px] text-ink-400 tabular-nums">
-                              {r.calories != null && `${Math.round(r.calories)} kcal`}{r.servings > 1 && ` · ${r.servings} portions`}
-                            </span>
-                          </button>
-                          {onEditRecipe && (
-                            <button type="button" aria-label={`Edit ${r.title}`}
-                              onClick={() => { onEditRecipe(r); onClose() }}
-                              className="absolute top-1 right-1 w-6 h-6 rounded-full bg-cream-50/90 border border-ink-200 text-ink-500 hover:text-accent-600 flex items-center justify-center text-[11px] leading-none">✎</button>
-                          )}
-                        </div>
-                        )
-                      })}
-                    </div>
-                  </section>
-                )}
-
-                {favoriteTiles.length === 0 && recentTiles.length === 0 && savedMeals.length === 0 && (
-                  <div className="flex-1 grid place-items-center text-center py-10">
-                    <div>
-                      <p className="text-3xl mb-2">🍽️</p>
-                      <p className="text-sm text-ink-500">Search a food above, scan a barcode,</p>
-                      <p className="text-sm text-ink-500">or create your first ingredient.</p>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* ── BASKET — appears with items; its own scroll, body stays put ── */}
+    <ModalShell
+      open={open}
+      onClose={onClose}
+      title="Log food"
+      subtitle={dateLabel}
+      headerActions={<SlotSelect value={slot} onChange={setSlot} />}
+      size="lg"
+      mobile="fullscreen"
+      panelClassName="sm:!h-[min(780px,88dvh)]"
+      bodyClassName="flex flex-col gap-4 px-4 pb-4"
+      footer={
+        <div className="flex flex-col gap-2">
           {basket.length > 0 && (
-            <div className="shrink-0 border-t border-ink-100 bg-cream-100/40">
-              <div className="max-h-56 overflow-y-auto px-4 py-2 flex flex-col gap-0.5">
-                <div className="flex items-center justify-between min-h-[28px] gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 shrink-0">This meal · {basket.length}</p>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {basket.length > 1 && (
-                      <label className="flex items-center gap-1 text-[10px] text-ink-500 cursor-pointer select-none"
-                        title="Log these items as one compact line in the day view — tap it later to see each item's own details.">
-                        <input type="checkbox" checked={asMeal} onChange={e => setAsMeal(e.target.checked)} className="accent-accent-500 w-3.5 h-3.5" />
-                        As meal
-                      </label>
-                    )}
-                    <button type="button" onClick={() => setSaveMealOpen(v => !v)}
-                      className="text-[11px] text-ink-400 hover:text-accent-600 min-h-[28px] px-1">💾 Save as meal</button>
-                  </div>
-                </div>
-                {basket.map((it, i) => {
-                  const s = ingredientSnapshot(it.ingredient, it.grams)
-                  const sg = it.ingredient.serving_grams
-                  const count = sg ? Math.max(1, Math.round(it.grams / sg)) : 1
-                  return (
-                    <div key={`${it.ingredient.id}-${i}`} className="flex items-center gap-2 min-h-[48px]">
-                      <FoodThumb name={it.ingredient.name} group={it.ingredient.food_group} imageUrl={it.ingredient.image_url} size={32} />
-                      <span className="text-sm text-ink-800 flex-1 min-w-0 truncate">{it.ingredient.name}</span>
-                      {it.ingredient.serving_label && sg != null && (
-                        <div className="flex items-center shrink-0">
-                          <button type="button" aria-label="one less" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}
-                            className="min-w-[32px] min-h-[32px] rounded-lg text-ink-400 hover:bg-ink-100 leading-none">−</button>
-                          <span className="text-[10px] text-ink-500 tabular-nums w-12 text-center">{count}×{it.ingredient.serving_label.replace(/^1\s*/, '')}</span>
-                          <button type="button" aria-label="one more" onClick={() => setGrams(i, String((count + 1) * sg))}
-                            className="min-w-[32px] min-h-[32px] rounded-lg text-ink-400 hover:bg-ink-100 leading-none">+</button>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-1 shrink-0">
-                        <input value={it.grams || ''} onChange={e => setGrams(i, e.target.value)} inputMode="decimal"
-                          className="w-14 min-h-[36px] px-1.5 text-sm text-right border border-ink-200 rounded-lg bg-cream-50 tabular-nums" />
-                        <span className="text-[10px] text-ink-400">g</span>
-                      </div>
-                      <span className="text-[11px] text-ink-500 tabular-nums w-14 text-right shrink-0">{Math.round(s.calories ?? 0)} kcal</span>
-                      <button type="button" onClick={() => setBasket(b => b.filter((_, j) => j !== i))}
-                        aria-label={`Remove ${it.ingredient.name}`}
-                        className="min-w-[32px] min-h-[32px] rounded-lg flex items-center justify-center text-ink-300 hover:text-red-500 hover:bg-red-50 shrink-0">×</button>
-                    </div>
-                  )
-                })}
-                {saveMealOpen && (
-                  <div className="flex items-center gap-1.5 pt-1.5 pb-1 border-t border-ink-100 mt-1">
-                    <input value={mealName} onChange={e => setMealName(e.target.value)} placeholder="Meal name…"
-                      className="flex-1 min-w-0 min-h-[40px] px-2.5 text-sm border border-ink-200 rounded-xl bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                    <input value={mealServings} onChange={e => setMealServings(sanitizeDecimal(e.target.value))} inputMode="decimal"
-                      title="How many portions this batch makes"
-                      className="w-12 min-h-[40px] px-1 text-sm text-center border border-ink-200 rounded-xl bg-cream-50 tabular-nums" />
-                    <span className="text-[10px] text-ink-400 shrink-0">portions</span>
-                    <label className="flex items-center gap-1 text-[10px] text-ink-500 shrink-0 cursor-pointer select-none"
-                      title="Add to your recipe Library. Off = a temp meal: reusable + editable, but hidden from the Library grid.">
-                      <input type="checkbox" checked={saveToLibrary} onChange={e => setSaveToLibrary(e.target.checked)} className="accent-accent-500 w-3.5 h-3.5" />
-                      Library
+            <div className="-mx-4 -mt-3 max-h-56 overflow-y-auto border-b border-line bg-surface-2 px-4 py-2 sm:-mx-5 sm:px-5">
+              <div className="flex min-h-[32px] items-center justify-between gap-2">
+                <p className="section-label shrink-0">This meal · {basket.length}</p>
+                <div className="flex shrink-0 items-center gap-2">
+                  {basket.length > 1 && (
+                    <label className="flex cursor-pointer select-none items-center gap-1.5 text-meta text-fg-muted"
+                      title="Log these items as one compact line in the day view — tap it later to see each item's own details.">
+                      <input type="checkbox" checked={asMeal} onChange={e => setAsMeal(e.target.checked)} className="h-4 w-4 accent-accent-500" />
+                      As meal
                     </label>
-                    <button type="button" onClick={handleSaveMeal} disabled={!mealName.trim() || createRecipe.isPending}
-                      className="shrink-0 min-h-[40px] px-3 rounded-xl text-xs font-semibold border border-accent-300 text-accent-700 bg-accent-50/50 hover:bg-accent-50 disabled:opacity-50">Save</button>
-                  </div>
-                )}
+                  )}
+                  <Button variant="ghost" size="sm" icon={<Save />} onClick={() => setSaveMealOpen(v => !v)} aria-expanded={saveMealOpen}>
+                    Save as meal
+                  </Button>
+                </div>
               </div>
+              {basket.map((it, i) => {
+                const snap = ingredientSnapshot(it.ingredient, it.grams)
+                const sg = it.ingredient.serving_grams
+                const count = sg ? Math.max(1, Math.round(it.grams / sg)) : 1
+                return (
+                  <div key={`${it.ingredient.id}-${i}`} className="flex min-h-[48px] items-center gap-2">
+                    <FoodThumb name={it.ingredient.name} group={it.ingredient.food_group} imageUrl={it.ingredient.image_url} size={32} />
+                    <span className="min-w-0 flex-1 truncate text-body text-fg">{it.ingredient.name}</span>
+                    {it.ingredient.serving_label && sg != null && (
+                      <div className="flex shrink-0 items-center">
+                        <IconButton label="One less" className="h-9 w-9" onClick={() => setGrams(i, String(Math.max(1, count - 1) * sg))}><Minus /></IconButton>
+                        <span className="w-12 text-center text-micro normal-case tracking-normal text-fg-muted tabular-nums">{count}×{it.ingredient.serving_label.replace(/^1\s*/, '')}</span>
+                        <IconButton label="One more" className="h-9 w-9" onClick={() => setGrams(i, String((count + 1) * sg))}><Plus /></IconButton>
+                      </div>
+                    )}
+                    <div className="flex shrink-0 items-center gap-1">
+                      <input value={it.grams || ''} onChange={e => setGrams(i, e.target.value)} inputMode="decimal" aria-label={`${it.ingredient.name} grams`}
+                        className="input w-16 px-1.5 text-right tabular-nums" />
+                      <span className="text-meta text-fg-muted">g</span>
+                    </div>
+                    <span className="w-14 shrink-0 text-right text-meta text-fg-muted tabular-nums">{Math.round(snap.calories ?? 0)} kcal</span>
+                    <IconButton label={`Remove ${it.ingredient.name}`} className="h-9 w-9 text-fg-faint hover:text-danger"
+                      onClick={() => setBasket(b => b.filter((_, j) => j !== i))}><X /></IconButton>
+                  </div>
+                )
+              })}
+              {saveMealOpen && (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 border-t border-line pb-1 pt-2">
+                  <input value={mealName} onChange={e => setMealName(e.target.value)} placeholder="Meal name…" aria-label="Meal name"
+                    className="input min-w-0 flex-1" />
+                  <input value={mealServings} onChange={e => setMealServings(sanitizeDecimal(e.target.value))} inputMode="decimal"
+                    aria-label="Portions this batch makes" title="How many portions this batch makes"
+                    className="input w-14 px-1 text-center tabular-nums" />
+                  <span className="shrink-0 text-meta text-fg-muted">portions</span>
+                  <label className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-meta text-fg-muted"
+                    title="Add to your recipe Library. Off = a temp meal: reusable and editable, but hidden from the Library grid.">
+                    <input type="checkbox" checked={saveToLibrary} onChange={e => setSaveToLibrary(e.target.checked)} className="h-4 w-4 accent-accent-500" />
+                    Library
+                  </label>
+                  <Button size="sm" onClick={handleSaveMeal} loading={createRecipe.isPending} disabled={!mealName.trim()}>Save</Button>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── FOOTER — one tight row ── */}
-          <div className="shrink-0 h-[68px] px-4 border-t border-ink-100 bg-cream-50 flex items-center gap-3"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-            <div className="flex-1 min-w-0 leading-tight">
-              <p className="text-sm text-ink-900 tabular-nums font-bold">
-                {Math.round(totals.kcal)} <span className="font-normal text-ink-400">kcal</span>
-                <span className="text-ink-300 font-normal"> · </span>
-                {Math.round(totals.prot)}<span className="font-normal text-ink-400">g protein</span>
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1 leading-tight">
+              <p className="text-ui font-bold text-fg tabular-nums">
+                {Math.round(totals.kcal)} <span className="font-normal text-fg-muted">kcal</span>
+                <span className="font-normal text-fg-faint"> · </span>
+                {Math.round(totals.prot)}<span className="font-normal text-fg-muted">g protein</span>
               </p>
               {(targets.protein > 0 || targets.calories > 0) && (
-                <p className="text-[11px] text-ink-400 tabular-nums truncate">
-                  after: <span className={protLeft < 0 ? 'text-red-500' : ''}>{protLeft >= 0 ? `${protLeft}g P left` : `${-protLeft}g P over`}</span>
+                <p className="truncate text-meta text-fg-muted tabular-nums">
+                  After: <span className={cx(protLeft < 0 && 'text-danger')}>{protLeft >= 0 ? `${protLeft}g protein left` : `${-protLeft}g protein over`}</span>
                   {' · '}
-                  <span className={kcalLeft < 0 ? 'text-red-500' : ''}>{kcalLeft >= 0 ? `${kcalLeft} kcal left` : `${-kcalLeft} over`}</span>
+                  <span className={cx(kcalLeft < 0 && 'text-danger')}>{kcalLeft >= 0 ? `${kcalLeft} kcal left` : `${-kcalLeft} kcal over`}</span>
                 </p>
               )}
             </div>
-            <button type="button" onClick={handleSave} disabled={basket.length === 0 || addEntries.isPending}
-              className="min-h-[48px] px-6 rounded-2xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-40 transition-colors shrink-0">
-              {addEntries.isPending ? 'Saving…' : basket.length > 0 ? `Log ${basket.length}` : 'Log'}
-            </button>
+            <Button variant="primary" onClick={handleSave} loading={addEntries.isPending} disabled={basket.length === 0} className="shrink-0 px-6">
+              {basket.length > 0 ? `Log ${basket.length}` : 'Log'}
+            </Button>
           </div>
-        </DialogPanel>
+        </div>
+      }
+    >
+      {/* Search — sticky so it never scrolls away from the results. */}
+      <div className="sticky top-0 z-[1] -mx-4 bg-surface px-4 pb-1 pt-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" aria-hidden />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search food…"
+            aria-label="Search food"
+            className="input min-h-[48px] pl-10 pr-24"
+          />
+          <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5">
+            <IconButton label="Scan barcode" onClick={() => setScanOpen(true)} disabled={scanning}><Camera /></IconButton>
+            <IconButton label="Search online" onClick={() => setOnlineOpen(o => !o)} aria-pressed={onlineOpen}
+              className={cx(onlineOpen && 'bg-accent-50 text-accent-700')}><Globe /></IconButton>
+          </div>
+        </div>
       </div>
+
+      {onlineOpen && (
+        <div className="rounded-card border border-accent-500/25 bg-accent-50 p-3">
+          <OnlineFoodSearch initialQuery={query} onPick={prefillFromProduct} />
+        </div>
+      )}
+
+      {portionRecipe && (
+        <MealPortionPicker
+          recipe={portionRecipe}
+          busy={addEntries.isPending}
+          onCancel={() => setPortionRecipe(null)}
+          onLog={servingsEaten => logRecipe(portionRecipe, servingsEaten)}
+        />
+      )}
+
+      {showNew && (
+        <div className="flex flex-col gap-2 rounded-card border border-accent-500/25 bg-accent-50 p-3.5">
+          <div className="flex items-center gap-2">
+            {scanMeta?.image_url && <FoodThumb name={nName} imageUrl={scanMeta.image_url} size={36} />}
+            <p className="text-meta font-semibold text-accent-700">New ingredient · per 100g (one-time — reusable forever)</p>
+          </div>
+          <input value={nName} onChange={e => setNName(e.target.value)} placeholder="Name" aria-label="Name" className="input" />
+          <div className="grid grid-cols-3 gap-1.5">
+            {[
+              { v: nKcal, set: setNKcal, ph: 'kcal' },
+              { v: nProt, set: setNProt, ph: 'Protein' },
+              { v: nCarb, set: setNCarb, ph: 'Carbs' },
+              { v: nFat, set: setNFat, ph: 'Fat' },
+              { v: nFiber, set: setNFiber, ph: 'Fiber' },
+              { v: nSugar, set: setNSugar, ph: 'Sugar' },
+            ].map(m => (
+              <input key={m.ph} value={m.v} onChange={e => m.set(sanitizeDecimal(e.target.value))} inputMode="decimal"
+                placeholder={m.ph} aria-label={m.ph} className="input tabular-nums" />
+            ))}
+          </div>
+          {(() => {
+            const num = (v: string) => (v === '' ? null : Number(v))
+            const check = checkMacroConsistency(num(nKcal), num(nProt), num(nCarb), num(nFat))
+            return check?.inconsistent ? (
+              <div data-tone="warn" className="tone-text flex items-center gap-1.5 text-meta">
+                <MacroWarningBadge result={check} />
+                <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
+              </div>
+            ) : null
+          })()}
+          <div className="grid grid-cols-2 gap-1.5">
+            <input value={nServLabel} onChange={e => setNServLabel(e.target.value)} placeholder="Portion label (1 scoop)" aria-label="Portion label" className="input" />
+            <input value={nServGrams} onChange={e => setNServGrams(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams" aria-label="Portion grams" className="input" />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => { setShowNew(false); setScanMeta(null) }}>Cancel</Button>
+            <Button variant="primary" block onClick={handleNewIngredient} loading={addingIngredient} disabled={!nName.trim()}>Add to meal</Button>
+          </div>
+        </div>
+      )}
+
+      {q ? (
+        <div className="flex flex-col">
+          {matches.map(ing => {
+            const macroCheck = checkMacroConsistency(ing.calories, ing.protein_g, ing.carbs_g, ing.fat_g)
+            // A div, not a button — MacroWarningBadge is itself a Popover
+            // button, and a <button> can't nest another one.
+            return (
+              <div key={ing.id} className="row row-interactive min-h-[56px] px-1">
+                <button type="button" onClick={() => addToBasket(ing)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  <FoodThumb name={ing.name} group={ing.food_group} imageUrl={ing.image_url} size={40} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-body font-medium text-fg">{ing.name}</span>
+                    <span className="block text-meta text-fg-muted">
+                      {ing.calories != null && `${Math.round(ing.calories)} kcal · 100g`}
+                      {ing.serving_label && ` · ${ing.serving_label}`}
+                    </span>
+                  </span>
+                  {/* The row's visual add affordance — inside the button so tapping it adds. */}
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-50 text-accent-600"><Plus className="h-4 w-4" aria-hidden /></span>
+                </button>
+                <MacroWarningBadge result={macroCheck} />
+              </div>
+            )
+          })}
+          {savedMeals.length > 0 && matches.length === 0 && savedMeals.map(r => (
+            <button key={r.id} type="button" onClick={() => setPortionRecipe(r)} className="row row-interactive min-h-[56px] px-1 text-left">
+              <FoodThumb name={r.title} imageUrl={r.image_url} size={40} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-body font-medium text-fg">{r.title}</span>
+                <span className="block text-meta text-fg-muted">{r.calories != null && `${Math.round(r.calories)} kcal / portion`}</span>
+              </span>
+              <span className="shrink-0 text-meta font-semibold text-accent-600">Portion</span>
+            </button>
+          ))}
+          <button type="button" onClick={() => { setShowNew(true); setNName(query.trim()) }} className="row row-interactive min-h-[52px] px-1 text-left">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-dashed border-accent-500/50 text-accent-600"><Plus className="h-4 w-4" aria-hidden /></span>
+            <span className="text-body text-accent-700">Create “{query.trim()}”…</span>
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Favourites first — a pinned shortcut list, so it always leads. */}
+          {favoriteTiles.length > 0 && (
+            <section>
+              {sectionToggle(favoritesOpen, () => setFavoritesOpen(v => !v), <><Star className="h-3.5 w-3.5" aria-hidden /> Favourites ({favoriteTiles.length})</>)}
+              {favoritesOpen && (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {favoriteTiles.map(({ r, lib }) => (
+                    <FoodTile key={r.key} title={r.title} group={lib?.food_group} imageUrl={lib?.image_url}
+                      calories={r.calories} sizeClass="w-9 h-9 sm:w-11 sm:h-11"
+                      isFavorite onAdd={() => addRecent(r)}
+                      onToggleFavorite={() => removeFavorite.mutate(r.key)} />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {recentTiles.length > 0 && (
+            <section>
+              {sectionToggle(recentOpen, () => setRecentOpen(v => !v), 'Recent')}
+              {recentOpen && (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {recentTiles.map(({ r, lib }) => (
+                    <FoodTile key={r.key} title={r.title} group={lib?.food_group} imageUrl={lib?.image_url}
+                      calories={r.calories} sizeClass="w-9 h-9 sm:w-11 sm:h-11"
+                      isFavorite={favoriteKeys.has(r.key)} onAdd={() => addRecent(r)}
+                      onToggleFavorite={() => favoriteKeys.has(r.key) ? removeFavorite.mutate(r.key) : addFavorite.mutate(r)}
+                      onHide={() => hideRecent.mutate(r.key)} />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {savedMeals.length > 0 && (
+            <section>
+              <p className="section-label mb-2">Saved meals</p>
+              {/* Full-bleed to the sheet edges, snapping at the body's 16px inset. */}
+              <div className="scroll-x -mx-4 flex snap-x scroll-px-4 gap-2 px-4 pb-1">
+                {savedMeals.map(r => {
+                  // Hover (desktop) / the ✎ editor (mobile) reveals the meal's
+                  // ingredients — a temp meal is one named unit, not N loose rows.
+                  const contents = r.ingredients?.map(i => i.name).filter(Boolean).join(', ') || undefined
+                  return (
+                    <div key={r.id} className="relative w-36 shrink-0 snap-start">
+                      <button type="button" onClick={() => setPortionRecipe(r)} title={contents}
+                        className={cx(
+                          'flex h-full w-full flex-col items-start gap-1 rounded-card border p-2.5 text-left transition-colors',
+                          portionRecipe?.id === r.id ? 'border-accent-500 bg-accent-50' : 'border-line bg-surface-2 hover:border-line-strong',
+                        )}>
+                        <FoodThumb name={r.title} imageUrl={r.image_url} size={36} />
+                        <span className="line-clamp-2 pr-5 text-meta font-medium leading-tight text-fg">{r.title}</span>
+                        <span className="text-micro normal-case tracking-normal text-fg-muted tabular-nums">
+                          {r.calories != null && `${Math.round(r.calories)} kcal`}{r.servings > 1 && ` · ${r.servings} portions`}
+                        </span>
+                      </button>
+                      {/* A deliberate 24px secondary action on a dense strip (see FoodTile). */}
+                      <button type="button" aria-label={`Edit ${r.title}`}
+                        onClick={() => { onEditRecipe(r); onClose() }}
+                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface text-fg-muted hover:text-accent-600"><Pencil aria-hidden className="h-3 w-3" /></button>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {favoriteTiles.length === 0 && recentTiles.length === 0 && savedMeals.length === 0 && (
+            <div className="grid flex-1 place-items-center py-10 text-center">
+              <div>
+                <p className="mb-2 text-3xl">🍽️</p>
+                <p className="text-body text-fg-muted">Search a food above, scan a barcode,</p>
+                <p className="text-body text-fg-muted">or create your first ingredient.</p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
       <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcode} />
-    </Dialog>
+    </ModalShell>
   )
 }

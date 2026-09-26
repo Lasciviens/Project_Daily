@@ -14,14 +14,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { FieldLabel } from './fields'
+import { choiceClass, ADD_SLOT_CLASS } from './fieldStyles'
 import { DateInput } from '../DateInput'
 import { seasonWindows, windowRangeLabel } from '../windowChips'
 import { todayStr } from './planModal.config'
-
-const CHIP_BASE = 'px-3 min-h-[44px] rounded-xl border text-sm font-medium transition-colors disabled:opacity-40'
-const CHIP_ON   = 'bg-accent-500 text-white border-accent-500'
-const CHIP_OFF  = 'border-ink-200 text-ink-600 hover:bg-cream-100'
 
 interface Props {
   startDate: string
@@ -42,7 +40,7 @@ export function TaskWindowField({ startDate, dueDate, onChange, locked }: Props)
         <FieldLabel>Window (optional)</FieldLabel>
         <button
           type="button" onClick={() => setOpen(true)} disabled={locked}
-          className="w-full min-h-[44px] bg-cream-50 border border-dashed border-ink-200 rounded-xl text-sm text-ink-400 hover:text-accent-600 hover:border-accent-300 transition-colors disabled:opacity-40"
+          className={ADD_SLOT_CLASS}
         >
           + Do it between two dates
         </button>
@@ -58,32 +56,33 @@ export function TaskWindowField({ startDate, dueDate, onChange, locked }: Props)
           <button
             key={w.label} type="button" disabled={locked}
             onClick={() => onChange({ startDate: w.start, dueDate: w.end })}
-            className={`${CHIP_BASE} ${matched?.label === w.label ? CHIP_ON : CHIP_OFF}`}
+            aria-pressed={matched?.label === w.label}
+            className={choiceClass(matched?.label === w.label)}
           >{w.label}</button>
         ))}
       </div>
 
       <div className="mt-3 flex flex-wrap items-end gap-2">
-        <label className="text-xs font-medium text-ink-500">
+        <label className="text-meta font-medium text-fg-muted">
           Start from
           <DateInput
             value={startDate}
             onChange={v => onChange({ startDate: v, dueDate })}
             aria-label="Start date"
-            className="mt-1 block min-h-[44px] w-full max-w-[9rem] rounded-xl border border-ink-200 bg-cream-50 px-3 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400"
+            className="input mt-1 block max-w-[9rem] tabular-nums"
           />
         </label>
         <button
           type="button" disabled={locked}
           onClick={() => { setOpen(false); onChange({ startDate: '', dueDate }) }}
-          className={`${CHIP_BASE} ${CHIP_OFF}`}
-        >✕ No window</button>
+          className={choiceClass(false)}
+        ><X className="h-3.5 w-3.5" aria-hidden /> No window</button>
       </div>
 
-      <p className="mt-2 text-xs text-ink-500">
+      <p className="mt-2 text-meta text-fg-muted">
         {startDate && dueDate
           ? `Open ${windowRangeLabel(startDate, dueDate)} — the due date stays the deadline.`
-          : 'Pick the earliest day you can start. The Due Date above stays the deadline.'}
+          : 'Pick the earliest day you can start. The due date above stays the deadline.'}
       </p>
     </div>
   )

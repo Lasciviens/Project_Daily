@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { BodyCompositionReport } from '../../api/bodyCompositionApi'
 import { BODY_COMP_FIELDS } from '../../bodyCompositionAggregate'
 import { fmtTrainingDateTime } from '../../dateFormat'
+import { ChevronDown } from 'lucide-react'
 
 // Every scan, every field — collapsed by default (Width Standard's "detail on
 // demand" rule: secondary/raw detail lives behind a tap, not permanent screen
@@ -20,30 +21,32 @@ export function BodyCompHistoryTable({ reports }: { reports: BodyCompositionRepo
     <div className="flex flex-col gap-2">
       <button
         type="button"
+        aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        className="min-h-[44px] text-left text-[11px] font-bold uppercase tracking-wider text-ink-400 hover:text-ink-600"
+        className="btn-ghost btn-sm gap-1 self-start px-2 text-meta"
       >
-        {open ? '▲ Hide' : '▼ Show'} all scans ({reports.length})
+        <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {open ? 'Hide' : 'Show'} all scans ({reports.length})
       </button>
       {open && (
         <div className="overflow-x-auto -mx-3 sm:mx-0">
-          <table className="w-full text-xs border-collapse">
+          <table className="w-full border-collapse text-meta">
             <thead>
-              <tr className="border-b border-ink-200">
-                <th className="text-left font-semibold text-ink-500 px-2 py-1.5 whitespace-nowrap sticky left-0 bg-cream-50">Date</th>
+              <tr className="border-b border-line-strong">
+                <th className="sticky left-0 whitespace-nowrap bg-surface px-2 py-1.5 text-left font-semibold text-fg-muted">Date</th>
                 {BODY_COMP_FIELDS.map(f => (
-                  <th key={f.key} className="text-right font-semibold text-ink-500 px-2 py-1.5 whitespace-nowrap">
-                    {f.icon} {f.label}{f.unit && ` (${f.unit})`}
+                  <th key={f.key} className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-fg-muted">
+                    {f.label}{f.unit && ` (${f.unit})`}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {sorted.map(r => (
-                <tr key={r.id} className="border-b border-ink-100 last:border-0">
-                  <td className="px-2 py-1.5 whitespace-nowrap text-ink-700 sticky left-0 bg-cream-50">{fmtTrainingDateTime(r.measured_at)}</td>
+                <tr key={r.id} className="border-b border-line last:border-0">
+                  <td className="sticky left-0 whitespace-nowrap bg-surface px-2 py-1.5 tabular-nums text-fg-2">{fmtTrainingDateTime(r.measured_at)}</td>
                   {BODY_COMP_FIELDS.map(f => (
-                    <td key={f.key} className="text-right px-2 py-1.5 whitespace-nowrap text-ink-700 tabular-nums">
+                    <td key={f.key} className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-fg-2">
                       {r[f.key].toFixed(f.decimals)}
                     </td>
                   ))}

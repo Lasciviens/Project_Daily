@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react'
+import { BarChart3, ChevronDown, Link2, NotebookPen, Target } from 'lucide-react'
 import type { Task } from '../../todo/types'
+import { cx } from '../../../shared/ui'
 import QuickNotesWidget from './QuickNotesWidget'
 import WeeklyGoalsWidget from './WeeklyGoalsWidget'
 import PinnedLinksWidget from './PinnedLinksWidget'
@@ -26,42 +28,47 @@ function usePersistedCollapse(key: string, defaultCollapsed = false) {
   return { collapsed, toggle }
 }
 
-function RailSection({ id, title, defaultCollapsed, children }: {
+function RailSection({ id, title, icon, defaultCollapsed, children }: {
   id: string
   title: string
+  icon: ReactNode
   defaultCollapsed?: boolean
   children: ReactNode
 }) {
   const { collapsed, toggle } = usePersistedCollapse(id, defaultCollapsed)
   return (
-    <div className="rounded-xl border border-ink-200 bg-cream-50 overflow-hidden">
+    <section className="card overflow-hidden">
       <button
         type="button"
         onClick={toggle}
-        className="w-full flex items-center justify-between px-3 py-2 min-h-[44px] hover:bg-cream-50 transition-colors"
+        aria-expanded={!collapsed}
+        className="flex min-h-[44px] w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors [@media(hover:hover)]:hover:bg-surface-hover"
       >
-        <span className="text-[10px] font-bold uppercase tracking-widest text-ink-500">{title}</span>
-        <span className="text-[10px] text-ink-300">{collapsed ? '▶' : '▼'}</span>
+        <span aria-hidden className="grid h-7 w-7 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600 [&_svg]:h-4 [&_svg]:w-4">{icon}</span>
+        <span className="flex-1 text-lead font-semibold text-fg">{title}</span>
+        <ChevronDown aria-hidden className={cx('h-4 w-4 text-fg-faint transition-transform', collapsed && '-rotate-90')} />
       </button>
-      {!collapsed && <div className="px-3 pb-3">{children}</div>}
-    </div>
+      {!collapsed && <div className="px-4 pb-4">{children}</div>}
+    </section>
   )
 }
 
+// Explicit steps so cards never jump: one column on phones, a 2/4-up row
+// under the board on tablets and laptops, one column in the 2xl side rail.
 export default function WorkSidebar({ tasks }: { tasks: Task[] }) {
   return (
-    <div className="flex flex-col gap-2.5">
-      <RailSection id="summary" title="📊 Today's Summary">
-        <EODSummaryWidget tasks={tasks} bare />
+    <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-1">
+      <RailSection id="summary" title="Today" icon={<BarChart3 />}>
+        <EODSummaryWidget tasks={tasks} />
       </RailSection>
-      <RailSection id="notes" title="📝 Notes">
-        <QuickNotesWidget bare />
+      <RailSection id="notes" title="Notes" icon={<NotebookPen />}>
+        <QuickNotesWidget />
       </RailSection>
-      <RailSection id="goals" title="🎯 This Week">
-        <WeeklyGoalsWidget bare />
+      <RailSection id="goals" title="This week" icon={<Target />}>
+        <WeeklyGoalsWidget />
       </RailSection>
-      <RailSection id="links" title="🔗 Pinned Links" defaultCollapsed>
-        <PinnedLinksWidget bare />
+      <RailSection id="links" title="Pinned links" icon={<Link2 />} defaultCollapsed>
+        <PinnedLinksWidget />
       </RailSection>
     </div>
   )

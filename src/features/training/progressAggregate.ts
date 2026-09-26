@@ -238,7 +238,7 @@ export function computeWeeklyVolumeTrend(
   // same number for the same week.
   const weeks = [...byWeek.keys()].sort()
   const out: WeeklyVolumePoint[] = []
-  let cursor = new Date(weeks[0] + 'T00:00:00')
+  const cursor = new Date(weeks[0] + 'T00:00:00')
   const last = new Date(weeks[weeks.length - 1] + 'T00:00:00')
   while (cursor <= last) {
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
@@ -283,7 +283,7 @@ export function computeConsistencyByWeek(sets: ProgressSetRow[]): ConsistencyWee
   // stop the scan at.
   const mondays = [...workoutsByMonday.keys()].sort()
   const out: ConsistencyWeek[] = []
-  let cursor = new Date(mondays[0] + 'T00:00:00')
+  const cursor = new Date(mondays[0] + 'T00:00:00')
   const last = new Date(mondays[mondays.length - 1] + 'T00:00:00')
   while (cursor <= last) {
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`

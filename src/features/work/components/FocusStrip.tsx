@@ -1,5 +1,7 @@
+import { Check, X, Zap } from 'lucide-react'
 import type { Task } from '../../todo/types'
-import { PRIORITY_META, dueLabel } from './workMeta'
+import { Button, IconButton } from '../../../shared/ui'
+import { DueChip, PriorityMark, WaitingChip } from './WorkTaskBits'
 
 interface Props {
   tasks:        Task[]
@@ -9,69 +11,52 @@ interface Props {
 }
 
 // The "what am I doing right now" zone — focused tasks as a horizontal
-// snap-scroll strip (replaces the old paged 2-card hero).
+// snap-scroll strip of fixed-width cards (never stretched to the row width).
 export default function FocusStrip({ tasks, onMarkDone, onClearFocus, onEdit }: Props) {
   if (tasks.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-ink-200 bg-cream-50/60 px-4 py-2.5 flex items-center gap-2 text-ink-400 text-xs">
-        <span className="text-sm">⚡</span>
-        <span>No focus — hit ⚡ on any task to pin it here</span>
-      </div>
+      <p className="flex w-fit items-center gap-2 rounded-row border border-dashed border-line px-3 py-2.5 text-meta text-fg-muted">
+        <Zap aria-hidden className="h-3.5 w-3.5 text-fg-faint" />
+        No focus yet — tap the bolt on any task to pin it here
+      </p>
     )
   }
 
   return (
-    <div className="flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x pb-1 snap-x snap-mandatory">
-      {tasks.map(task => {
-        const due  = dueLabel(task)
-        const prio = PRIORITY_META[task.priority]
-        return (
-          <div
-            key={task.id}
-            className="snap-start flex-shrink-0 w-[280px] sm:w-[320px] rounded-xl border border-accent-200 bg-gradient-to-br from-accent-50 to-cream-50 px-3.5 py-2.5 flex flex-col gap-1.5"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-accent-500">⚡ Focus</span>
-              <button
-                onClick={() => onClearFocus(task.id)}
-                title="Remove focus"
-                className="text-[10px] text-ink-300 hover:text-red-400 transition-colors min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center md:inline px-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => onEdit(task)}
-              className="text-left text-sm font-bold text-ink-900 leading-snug hover:text-accent-700 transition-colors truncate"
-              title={task.title}
-            >
-              {task.title}
-            </button>
-
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className={`text-[10px] leading-none ${prio.cls}`}>{prio.icon} {prio.label}</span>
-              {due && (
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${due.urgent ? 'bg-red-50 text-red-600' : 'bg-ink-100 text-ink-500'}`}>
-                  {due.text}
-                </span>
-              )}
-              {task.waiting_for && (
-                <span className="text-[10px] bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded-full truncate max-w-[130px]">
-                  ⏳ {task.waiting_for}
-                </span>
-              )}
-              <button
-                onClick={() => onMarkDone(task.id)}
-                className="ml-auto min-h-[44px] md:min-h-[30px] px-3 rounded-lg bg-accent-500 text-white text-xs font-semibold hover:bg-accent-600 transition-colors"
-              >
-                ✓ Done
-              </button>
-            </div>
+    <div className="scroll-x -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 px-4 pb-1 sm:mx-0 sm:scroll-px-0 sm:px-0">
+      {tasks.map(task => (
+        <article
+          key={task.id}
+          className="card flex w-[17.5rem] shrink-0 snap-start flex-col gap-2 border-accent-500/30 p-3.5 sm:w-[20rem]"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1 text-micro font-semibold uppercase tracking-[0.09em] text-accent-600">
+              <Zap aria-hidden className="h-3 w-3 fill-current" /> Focus
+            </span>
+            <IconButton label="Remove focus" onClick={() => onClearFocus(task.id)} className="-my-1.5 -mr-1.5">
+              <X />
+            </IconButton>
           </div>
-        )
-      })}
+
+          <button
+            type="button"
+            onClick={() => onEdit(task)}
+            title={task.title}
+            className="truncate text-left text-ui font-semibold text-fg transition-colors [@media(hover:hover)]:hover:text-accent-600"
+          >
+            {task.title}
+          </button>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <PriorityMark task={task} withLabel />
+            <DueChip task={task} />
+            {task.waiting_for && <WaitingChip text={task.waiting_for} />}
+            <Button variant="primary" size="sm" icon={<Check />} onClick={() => onMarkDone(task.id)} className="ml-auto">
+              Done
+            </Button>
+          </div>
+        </article>
+      ))}
     </div>
   )
 }

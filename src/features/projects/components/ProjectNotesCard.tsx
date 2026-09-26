@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Card, CardHeader } from '../../../shared/ui'
 
 type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved'
 
@@ -21,7 +22,6 @@ export function ProjectNotesCard({ notes, onSave }: { notes: string | null; onSa
     } catch {
       setStatus('pending')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onSave])
 
   useEffect(() => {
@@ -41,22 +41,23 @@ export function ProjectNotesCard({ notes, onSave }: { notes: string | null; onSa
 
   const statusLabel =
     status === 'saving'  ? 'Saving…' :
-    status === 'saved'   ? 'Saved ✓' :
+    status === 'saved'   ? 'Saved' :
     status === 'pending' ? 'Not saved' : ''
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-ink-400">Notes</span>
-        <span className="text-xs text-ink-300 transition-opacity duration-300" aria-live="polite">{statusLabel}</span>
-      </div>
+    <Card>
+      <CardHeader
+        title="Notes"
+        variant="label"
+        action={statusLabel ? <span className="text-meta text-fg-muted" aria-live="polite">{statusLabel}</span> : undefined}
+      />
       <textarea
         value={content}
         onChange={e => setContent(e.target.value)}
         placeholder="Jot down anything about this project…"
-        className="w-full min-h-[160px] bg-cream-50 rounded-xl p-3 text-sm text-ink-900 placeholder:text-ink-300 resize-none outline-none focus:ring-1 focus:ring-ink-200 transition"
+        className="input min-h-[160px] w-full resize-y py-2"
         aria-label="Project notes"
       />
-    </div>
+    </Card>
   )
 }

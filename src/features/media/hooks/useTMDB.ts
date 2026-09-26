@@ -1,222 +1,159 @@
 import { useQuery } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
 import {
   searchMovies, searchTV,
   getTrendingMovies, getTrendingTV,
   getPopularMovies, getPopularTV,
-  getMovieDetails, getTVDetails,
   getMovieFull, getTVFull,
   getUpcomingMovies, getUpcomingTV,
   getSimilarMovies, getSimilarTV,
   getNorwegianMovies, getNorwegianTV,
   getNorwegianTopRatedMovies, getNorwegianTopRatedTV,
   getSeasonDetails,
-  getMovieGenres, getTVGenres,
-  discoverMovies, discoverTV,
 } from '../api/tmdbApi'
+
+const key = qk.media.tmdbQuery
 
 export function useSearchMovies(query: string) {
   return useQuery({
-    queryKey: ['tmdb', 'search', 'movie', query],
+    queryKey: key('search', 'movie', query),
     queryFn:  () => searchMovies(query).then(r => r.results),
     enabled:  query.trim().length > 1,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   })
 }
 
 export function useSearchTV(query: string) {
   return useQuery({
-    queryKey: ['tmdb', 'search', 'tv', query],
+    queryKey: key('search', 'tv', query),
     queryFn:  () => searchTV(query).then(r => r.results),
     enabled:  query.trim().length > 1,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   })
 }
 
-// Discovery data cached 24hrs — manual refresh only
-export function useTrendingMovies(window: 'day' | 'week', refetchInterval?: number | false) {
+// Discovery lists are cached for a day — refreshed only by an explicit tap.
+export function useTrendingMovies(window: 'day' | 'week') {
   return useQuery({
-    queryKey: ['tmdb', 'trending', 'movie', window],
+    queryKey: key('trending', 'movie', window),
     queryFn:  () => getTrendingMovies(window).then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
+    staleTime: STALE.day,
   })
 }
 
-export function useTrendingTV(window: 'day' | 'week', refetchInterval?: number | false) {
+export function useTrendingTV(window: 'day' | 'week') {
   return useQuery({
-    queryKey: ['tmdb', 'trending', 'tv', window],
+    queryKey: key('trending', 'tv', window),
     queryFn:  () => getTrendingTV(window).then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
+    staleTime: STALE.day,
   })
 }
 
-export function usePopularMovies(refetchInterval?: number | false) {
+export function usePopularMovies() {
   return useQuery({
-    queryKey: ['tmdb', 'popular', 'movie'],
+    queryKey: key('popular', 'movie'),
     queryFn:  () => getPopularMovies().then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
+    staleTime: STALE.day,
   })
 }
 
-export function usePopularTV(refetchInterval?: number | false) {
+export function usePopularTV() {
   return useQuery({
-    queryKey: ['tmdb', 'popular', 'tv'],
+    queryKey: key('popular', 'tv'),
     queryFn:  () => getPopularTV().then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
-  })
-}
-
-export function useMovieDetails(tmdbId: number | null) {
-  return useQuery({
-    queryKey: ['tmdb', 'detail', 'movie', tmdbId],
-    queryFn:  () => getMovieDetails(tmdbId!),
-    enabled:  tmdbId !== null,
-    staleTime: 30 * 60_000,
-  })
-}
-
-export function useTVDetails(tmdbId: number | null) {
-  return useQuery({
-    queryKey: ['tmdb', 'detail', 'tv', tmdbId],
-    queryFn:  () => getTVDetails(tmdbId!),
-    enabled:  tmdbId !== null,
-    staleTime: 30 * 60_000,
+    staleTime: STALE.day,
   })
 }
 
 export function useMovieFull(tmdbId: number | null) {
   return useQuery({
-    queryKey: ['tmdb', 'full', 'movie', tmdbId],
+    queryKey: key('full', 'movie', tmdbId),
     queryFn:  () => getMovieFull(tmdbId!),
     enabled:  tmdbId !== null,
-    staleTime: 30 * 60_000,
+    staleTime: STALE.hour,
   })
 }
 
 export function useTVFull(tmdbId: number | null) {
   return useQuery({
-    queryKey: ['tmdb', 'full', 'tv', tmdbId],
+    queryKey: key('full', 'tv', tmdbId),
     queryFn:  () => getTVFull(tmdbId!),
     enabled:  tmdbId !== null,
-    staleTime: 30 * 60_000,
+    staleTime: STALE.hour,
   })
 }
 
-export function useUpcomingMovies(refetchInterval?: number | false) {
+export function useUpcomingMovies() {
   return useQuery({
-    queryKey: ['tmdb', 'upcoming', 'movie'],
+    queryKey: key('upcoming', 'movie'),
     queryFn:  () => getUpcomingMovies().then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
+    staleTime: STALE.day,
   })
 }
 
-export function useUpcomingTV(refetchInterval?: number | false) {
+export function useUpcomingTV() {
   return useQuery({
-    queryKey: ['tmdb', 'upcoming', 'tv'],
+    queryKey: key('upcoming', 'tv'),
     queryFn:  () => getUpcomingTV().then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
+    staleTime: STALE.day,
   })
 }
 
-export function useNorwegianMovies(refetchInterval?: number | false) {
+export function useNorwegianMovies() {
   return useQuery({
-    queryKey: ['tmdb', 'norwegian', 'movie'],
+    queryKey: key('norwegian', 'movie'),
     queryFn:  () => getNorwegianMovies().then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
+    staleTime: STALE.day,
   })
 }
 
-export function useNorwegianTV(refetchInterval?: number | false) {
+export function useNorwegianTV() {
   return useQuery({
-    queryKey: ['tmdb', 'norwegian', 'tv'],
+    queryKey: key('norwegian', 'tv'),
     queryFn:  () => getNorwegianTV().then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
+    staleTime: STALE.day,
   })
 }
 
-export function useNorwegianTopRatedMovies(refetchInterval?: number | false) {
+export function useNorwegianTopRatedMovies() {
   return useQuery({
-    queryKey: ['tmdb', 'norwegian', 'movie', 'top-rated'],
+    queryKey: key('norwegian', 'movie', 'top-rated'),
     queryFn:  () => getNorwegianTopRatedMovies().then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
+    staleTime: STALE.day,
   })
 }
 
-export function useNorwegianTopRatedTV(refetchInterval?: number | false) {
+export function useNorwegianTopRatedTV() {
   return useQuery({
-    queryKey: ['tmdb', 'norwegian', 'tv', 'top-rated'],
+    queryKey: key('norwegian', 'tv', 'top-rated'),
     queryFn:  () => getNorwegianTopRatedTV().then(r => r.results),
-    staleTime: 24 * 60 * 60_000,
-    refetchInterval,
+    staleTime: STALE.day,
   })
 }
 
 export function useSeasonDetails(tvId: number | null, season: number | null) {
   return useQuery({
-    queryKey: ['tmdb', 'season', tvId, season],
+    queryKey: key('season', tvId, season),
     queryFn:  () => getSeasonDetails(tvId!, season!),
     enabled:  tvId !== null && season !== null && season > 0,
-    staleTime: 60 * 60_000,
+    staleTime: STALE.hour,
   })
 }
 
-// Similar content — very stable, cache 24hrs
 export function useSimilarMovies(tmdbId: number | null) {
   return useQuery({
-    queryKey: ['tmdb', 'similar', 'movie', tmdbId],
+    queryKey: key('similar', 'movie', tmdbId),
     queryFn:  () => getSimilarMovies(tmdbId!).then(r => r.results.slice(0, 12)),
     enabled:  tmdbId !== null,
-    staleTime: 24 * 60 * 60_000,
+    staleTime: STALE.day,
   })
 }
 
 export function useSimilarTV(tmdbId: number | null) {
   return useQuery({
-    queryKey: ['tmdb', 'similar', 'tv', tmdbId],
+    queryKey: key('similar', 'tv', tmdbId),
     queryFn:  () => getSimilarTV(tmdbId!).then(r => r.results.slice(0, 12)),
     enabled:  tmdbId !== null,
-    staleTime: 24 * 60 * 60_000,
-  })
-}
-
-export function useMovieGenres() {
-  return useQuery({
-    queryKey: ['tmdb', 'genres', 'movie'],
-    queryFn: () => getMovieGenres().then(r => r.genres),
-    staleTime: 24 * 60 * 60_000,
-  })
-}
-
-export function useTVGenres() {
-  return useQuery({
-    queryKey: ['tmdb', 'genres', 'tv'],
-    queryFn: () => getTVGenres().then(r => r.genres),
-    staleTime: 24 * 60 * 60_000,
-  })
-}
-
-export function useDiscoverMovies(params: Record<string, string>, enabled: boolean) {
-  return useQuery({
-    queryKey: ['tmdb', 'discover', 'movie', params],
-    queryFn: () => discoverMovies(params).then(r => r.results),
-    enabled,
-    staleTime: 10 * 60_000,
-  })
-}
-
-export function useDiscoverTV(params: Record<string, string>, enabled: boolean) {
-  return useQuery({
-    queryKey: ['tmdb', 'discover', 'tv', params],
-    queryFn: () => discoverTV(params).then(r => r.results),
-    enabled,
-    staleTime: 10 * 60_000,
+    staleTime: STALE.day,
   })
 }

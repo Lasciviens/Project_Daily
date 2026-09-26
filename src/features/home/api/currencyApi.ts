@@ -87,47 +87,6 @@ function pairChange(base: string, quote: string, rNow: Record<string, number>, r
 
 // ─── Exported functions ───────────────────────────────────────────────────────
 
-export interface CurrencyTrendPoint {
-  pair:      string
-  now:       number
-  weekAgo:   number
-  changePct: number   // % change of the cross-rate (or gold price) over the past 7 days
-}
-
-function daysAgoISO(n: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
-}
-
-// Weekly trend for NOK/TRY, EUR/USD, and gold — used by the daily AI briefing
-// (a once-a-day call, so the extra historical fetch is negligible against the
-// OXR free-tier quota).
-export async function fetchCurrencyWeekTrend(): Promise<CurrencyTrendPoint[]> {
-  const [today, weekAgo] = await Promise.all([
-    fetchLatest(),
-    fetchHistorical(daysAgoISO(7)),
-  ])
-
-  const rNow:  Record<string, number> = { ...today.rates,   USD: 1 }
-  const rPrev: Record<string, number> = { ...weekAgo.rates, USD: 1 }
-
-  const points: CurrencyTrendPoint[] = [['NOK', 'TRY'], ['EUR', 'USD']].map(([base, quote]) => {
-    const now  = (rNow[quote]  ?? 1) / (rNow[base]  ?? 1)
-    const prev = (rPrev[quote] ?? 1) / (rPrev[base] ?? 1)
-    const changePct = prev !== 0 ? ((now - prev) / prev) * 100 : 0
-    return { pair: `${base}/${quote}`, now, weekAgo: prev, changePct }
-  })
-
-  if (rNow.XAU && rPrev.XAU) {
-    const now  = 1 / rNow.XAU
-    const prev = 1 / rPrev.XAU
-    points.push({ pair: 'Gold (USD/oz)', now, weekAgo: prev, changePct: prev !== 0 ? ((now - prev) / prev) * 100 : 0 })
-  }
-
-  return points
-}
-
 export async function fetchCurrencyData(): Promise<CurrencyData> {
   const [today, yesterday] = await Promise.all([
     fetchLatest(),

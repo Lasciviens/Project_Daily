@@ -15,35 +15,30 @@ export interface BodyCompFieldMeta {
   label: string
   unit: string
   decimals: number
-  icon: string
-  color: string
+  /** Index into useChartColors().series for this metric's trend line. */
+  series: number
 }
 
-// One persistent colour per field (reused whether it's the featured trend
-// chart or a stat-grid accent dot) — never reassigned when the picker
-// switches, since each trend chart only ever shows ONE series at a time (no
-// legend, no adjacent-pair identity problem to validate). Weight/Body Fat/
-// BMI/Lean Mass reuse the exact hues BodySection already uses for the SAME
-// metric name read from Apple Health — same metric identity, different
-// source, never shown side by side, so reusing the hue aids recognition
-// rather than risking confusion. visceral_fat_index deliberately does NOT
-// get a red/alarm colour — this table stores the report's numbers, never the
-// device's own risk judgment (see the migration's own header comment).
+// One persistent categorical colour per field, never reassigned when the
+// picker switches (each chart shows one series at a time). Weight/Body fat/BMI
+// match the series BodySection uses for the same metric from Apple Health.
+// visceral_fat_index deliberately gets no alarm colour — this table stores the
+// report's numbers, never the device's own risk judgment.
 export const BODY_COMP_FIELDS: BodyCompFieldMeta[] = [
-  { key: 'weight_kg',               label: 'Weight',            unit: 'kg',   decimals: 1, icon: '⚖️', color: '#7c3aed' },
-  { key: 'body_fat_percent',        label: 'Body Fat',          unit: '%',    decimals: 1, icon: '📏', color: '#f59e0b' },
-  { key: 'body_fat_mass_kg',        label: 'Fat Mass',          unit: 'kg',   decimals: 1, icon: '🧈', color: '#ea580c' },
-  { key: 'lean_body_mass_kg',       label: 'Lean Mass',         unit: 'kg',   decimals: 1, icon: '💪', color: '#16a34a' },
-  { key: 'body_water_percent',      label: 'Body Water',        unit: '%',    decimals: 1, icon: '💧', color: '#0891b2' },
-  { key: 'protein_percent',         label: 'Protein',           unit: '%',    decimals: 1, icon: '🥚', color: '#db2777' },
-  { key: 'muscle_percent',          label: 'Muscle',             unit: '%',    decimals: 1, icon: '🏋️', color: '#059669' },
-  { key: 'skeletal_muscle_percent', label: 'Skeletal Muscle',   unit: '%',    decimals: 1, icon: '🦴', color: '#0d9488' },
-  { key: 'skeletal_muscle_index',   label: 'Skeletal Muscle Index', unit: '', decimals: 1, icon: '📊', color: '#4f46e5' },
-  { key: 'bmi',                     label: 'BMI',                unit: '',    decimals: 1, icon: '📐', color: '#0ea5e9' },
-  { key: 'visceral_fat_index',      label: 'Visceral Fat Index', unit: '',    decimals: 0, icon: '🎯', color: '#a16207' },
-  { key: 'subcutaneous_fat_kg',     label: 'Subcutaneous Fat',   unit: 'kg',  decimals: 1, icon: '🧊', color: '#d97706' },
-  { key: 'bmr_kcal',                label: 'BMR',                unit: 'kcal', decimals: 0, icon: '🔥', color: '#2563eb' },
-  { key: 'body_score',              label: 'Body Score',         unit: '/100', decimals: 0, icon: '🏆', color: '#7c2d12' },
+  { key: 'weight_kg',               label: 'Weight',            unit: 'kg',   decimals: 1, series: 1 },
+  { key: 'body_fat_percent',        label: 'Body fat',          unit: '%',    decimals: 1, series: 2 },
+  { key: 'body_fat_mass_kg',        label: 'Fat mass',          unit: 'kg',   decimals: 1, series: 3 },
+  { key: 'lean_body_mass_kg',       label: 'Lean mass',         unit: 'kg',   decimals: 1, series: 4 },
+  { key: 'body_water_percent',      label: 'Body water',        unit: '%',    decimals: 1, series: 0 },
+  { key: 'protein_percent',         label: 'Protein',           unit: '%',    decimals: 1, series: 5 },
+  { key: 'muscle_percent',          label: 'Muscle',             unit: '%',    decimals: 1, series: 0 },
+  { key: 'skeletal_muscle_percent', label: 'Skeletal muscle',   unit: '%',    decimals: 1, series: 1 },
+  { key: 'skeletal_muscle_index',   label: 'Skeletal muscle index', unit: '', decimals: 1, series: 2 },
+  { key: 'bmi',                     label: 'BMI',                unit: '',    decimals: 1, series: 0 },
+  { key: 'visceral_fat_index',      label: 'Visceral fat index', unit: '',    decimals: 0, series: 4 },
+  { key: 'subcutaneous_fat_kg',     label: 'Subcutaneous fat',   unit: 'kg',  decimals: 1, series: 5 },
+  { key: 'bmr_kcal',                label: 'BMR',                unit: 'kcal', decimals: 0, series: 0 },
+  { key: 'body_score',              label: 'Body score',         unit: '/100', decimals: 0, series: 1 },
 ]
 
 export function fieldMeta(key: BodyCompFieldKey): BodyCompFieldMeta {

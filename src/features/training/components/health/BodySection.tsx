@@ -6,9 +6,12 @@ import { MetricMiniGrid } from './MetricMiniGrid'
 import { BODY_EXTRA_METRICS } from './miniMetrics'
 import { BodyCompositionPanel } from './BodyCompositionPanel'
 import type { HealthRange } from './sectionTypes'
+import { useChartColors } from '../../../../shared/ui'
+import { SectionCard } from './sectionKit'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 function fmtDay(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
 }
 
 // Whole calendar days between two 'yyyy-MM-dd' strings (b - a). Local-time
@@ -22,7 +25,6 @@ function daysBetween(a: string, b: string): number {
 
 interface MiniChartProps {
   title: string
-  icon: string
   unit: string
   color: string
   series: { date: string; value: number }[]
@@ -44,23 +46,24 @@ interface MiniChartProps {
 // just say plainly when the number on screen isn't from today.
 const STALE_AFTER_DAYS = 3
 
-function BodyMiniChart({ title, icon, unit, color, series, decimals = 1, viewedDate }: MiniChartProps) {
+function BodyMiniChart({ title, unit, color, series, decimals = 1, viewedDate }: MiniChartProps) {
   const chartData = series.map(d => ({ label: fmtDay(d.date), value: Math.round(d.value * 10 ** decimals) / 10 ** decimals }))
   const latestPoint = series[series.length - 1]
   const latest = latestPoint?.value
   const staleDays = latestPoint ? daysBetween(latestPoint.date, viewedDate) : null
 
   return (
-    <div className="flex-1 min-w-[220px] flex flex-col gap-2">
+    <div className="flex min-w-[220px] flex-1 flex-col gap-2">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">{icon} {title}</p>
+        <p className="section-label">{title}</p>
         <div className="text-right">
-          <p className="text-sm font-bold text-ink-900">
-            {latest != null ? latest.toFixed(decimals) : '—'} <span className="text-[10px] font-normal text-ink-400">{unit}</span>
+          <p className="text-body font-bold tabular-nums text-fg">
+            {latest != null ? latest.toFixed(decimals) : '—'} <span className="text-micro font-normal text-fg-muted">{unit}</span>
           </p>
           {staleDays != null && staleDays >= STALE_AFTER_DAYS && (
             <p
-              className="text-[10px] font-medium text-amber-600"
+              data-tone="warn"
+              className="tone-text text-micro font-medium"
               title={`The last ${title.toLowerCase()} reading is from ${fmtDay(latestPoint!.date)} — ${staleDays} days before the day you're viewing. Nothing newer has synced.`}
             >
               {staleDays}d old
@@ -69,7 +72,7 @@ function BodyMiniChart({ title, icon, unit, color, series, decimals = 1, viewedD
         </div>
       </div>
       {chartData.length === 0 ? (
-        <p className="text-xs text-ink-300 py-6 text-center">No data yet.</p>
+        <p className="py-6 text-center text-body text-fg-muted">No data yet.</p>
       ) : (
         <BarLineChart data={chartData} dataKey="value" color={color} unit={unit} tooltipLabel={title} />
       )}
@@ -99,19 +102,20 @@ export function BodySection({ range }: { range: HealthRange }) {
   const weight = computeDailySeries('weight_body_mass', weightPoints)
   const fat = computeDailySeries('body_fat_percentage', fatPoints)
   const bmi = computeDailySeries('body_mass_index', bmiPoints)
+  const c = useChartColors()
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-4">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">⚖️ Body (last 90 days)</p>
+    <SectionCard className="gap-4">
+      <p className="section-label">Body (last 90 days)</p>
       <div className="flex flex-wrap gap-5">
-        <BodyMiniChart title="Weight" icon="⚖️" unit="kg" color="#7c3aed" series={weight} decimals={1} viewedDate={dateStr} />
-        <BodyMiniChart title="Body Fat" icon="📏" unit="%" color="#f59e0b" series={fat} decimals={1} viewedDate={dateStr} />
-        <BodyMiniChart title="BMI" icon="📐" unit="" color="#0ea5e9" series={bmi} decimals={1} viewedDate={dateStr} />
+        <BodyMiniChart title="Weight" unit="kg" color={c.series[1]} series={weight} decimals={1} viewedDate={dateStr} />
+        <BodyMiniChart title="Body fat" unit="%" color={c.series[2]} series={fat} decimals={1} viewedDate={dateStr} />
+        <BodyMiniChart title="BMI" unit="" color={c.series[0]} series={bmi} decimals={1} viewedDate={dateStr} />
       </div>
 
-      <MetricMiniGrid title="Lifestyle & Environment" metrics={BODY_EXTRA_METRICS} window={miniWindow} />
+      <MetricMiniGrid title="Lifestyle & environment" metrics={BODY_EXTRA_METRICS} window={miniWindow} />
 
       <BodyCompositionPanel />
-    </div>
+    </SectionCard>
   )
 }

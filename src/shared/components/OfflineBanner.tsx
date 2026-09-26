@@ -25,10 +25,11 @@ export function OfflineBanner() {
   return (
     <div
       role="status"
-      className="fixed left-1/2 -translate-x-1/2 z-[9998] top-[calc(env(safe-area-inset-top)+0.5rem)] flex items-center gap-2 rounded-full bg-ink-800 px-3.5 py-2 text-xs font-medium text-white shadow-lg"
+      data-tone="danger"
+      className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-toast flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-line-strong bg-surface px-3.5 py-2 text-meta font-medium text-fg shadow-menu"
     >
-      <span className="h-2 w-2 rounded-full bg-red-400" />
-      You’re offline — changes won’t save until you reconnect
+      <span className="tone-dot" aria-hidden />
+      You're offline — changes won't save until you reconnect
     </div>
   )
 }

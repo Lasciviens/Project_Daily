@@ -15,7 +15,13 @@ export function InlineText({ value, onSave, placeholder, className = '', inputCl
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
-  useEffect(() => { if (!editing) setDraft(value) }, [value, editing])
+
+  // The draft is seeded when editing starts, so it always reflects the latest value.
+  function startEditing() {
+    if (disabled) return
+    setDraft(value)
+    setEditing(true)
+  }
 
   function commit() {
     setEditing(false)
@@ -27,11 +33,14 @@ export function InlineText({ value, onSave, placeholder, className = '', inputCl
   if (!editing) {
     return (
       <span
-        onClick={e => { e.stopPropagation(); if (!disabled) setEditing(true) }}
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        onClick={e => { e.stopPropagation(); startEditing() }}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); startEditing() } }}
         title="Click to edit"
-        className={`cursor-text rounded px-0.5 hover:bg-ink-100 transition-colors duration-100 ${className}`}
+        className={`cursor-text rounded-md px-0.5 transition-colors duration-100 hover:bg-surface-hover ${className}`}
       >
-        {value || <span className="text-ink-500">{placeholder}</span>}
+        {value || <span className="text-fg-faint">{placeholder}</span>}
       </span>
     )
   }
@@ -42,11 +51,14 @@ export function InlineText({ value, onSave, placeholder, className = '', inputCl
       value={draft}
       onChange={e => setDraft(e.target.value)}
       onBlur={commit}
+      onClick={e => e.stopPropagation()}
       onKeyDown={e => {
+        // Keys stay here: a parent row may toggle on Enter.
+        e.stopPropagation()
         if (e.key === 'Enter')  { e.preventDefault(); commit() }
         if (e.key === 'Escape') { setEditing(false); setDraft(value) }
       }}
-      className={`rounded px-0.5 outline-none border-b border-accent-400 bg-transparent ${inputClass}`}
+      className={`rounded-md border-b border-accent-500 bg-transparent px-0.5 outline-none ${inputClass}`}
     />
   )
 }
