@@ -55,7 +55,7 @@ export function ModalShell({
   const depth = useModalDepth()
   const close = () => { if (dismissible) onClose() }
   useHistoryDismiss(open, close)
-  const drag = useSheetDrag(open && mobile === 'sheet' && dismissible, close)
+  const { setPanelEl, setBodyEl, backdropRef, handleProps } = useSheetDrag(open && mobile === 'sheet' && dismissible, close)
   const z: CSSProperties = { zIndex: layer === 'confirm' ? 'var(--z-confirm)' as unknown as number : `calc(var(--z-modal) + ${depth * 10})` as unknown as number }
   const full = mobile === 'fullscreen'
 
@@ -68,13 +68,13 @@ export function ModalShell({
   return (
     <Dialog open={open} onClose={close} className="relative" style={z}>
       <DialogBackdrop
-        ref={drag.backdropRef}
+        ref={backdropRef}
         transition
         className="fixed inset-0 bg-scrim/45 backdrop-blur-[2px] transition duration-200 data-[closed]:opacity-0 dark:bg-scrim/70"
       />
       <div className={cx('fixed inset-0 flex justify-center', full ? 'items-stretch sm:items-center sm:p-4' : 'items-end sm:items-center sm:p-4')}>
         <DialogPanel
-          ref={drag.setPanelEl}
+          ref={setPanelEl}
           transition
           className={cx(
             'relative flex w-full flex-col overflow-hidden border border-line bg-surface shadow-menu',
@@ -85,7 +85,7 @@ export function ModalShell({
           )}
         >
           {!full && (
-            <div {...drag.handleProps} className="flex shrink-0 justify-center pb-1 pt-2 sm:hidden">
+            <div {...handleProps} className="flex shrink-0 justify-center pb-1 pt-2 sm:hidden">
               <span className="h-1 w-10 rounded-full bg-line-strong" />
             </div>
           )}
@@ -97,7 +97,7 @@ export function ModalShell({
             </div>
           ) : title != null && (
             <header
-              {...(full ? {} : drag.handleProps)}
+              {...(full ? {} : handleProps)}
               className={cx('flex shrink-0 items-center gap-3 border-b border-line px-4 py-2.5 sm:px-5', full && 'pt-[calc(0.625rem+env(safe-area-inset-top))] sm:pt-2.5')}
             >
               <div className="min-w-0 flex-1">
@@ -109,7 +109,7 @@ export function ModalShell({
             </header>
           )}
 
-          <div ref={drag.setBodyEl} className={cx('scroll-y min-h-0 flex-1 overflow-y-auto', bodyClassName)}>{children}</div>
+          <div ref={setBodyEl} className={cx('scroll-y min-h-0 flex-1 overflow-y-auto', bodyClassName)}>{children}</div>
 
           {footer != null && (
             <footer className="shrink-0 border-t border-line bg-surface px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:pb-3">
