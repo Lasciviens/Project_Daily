@@ -1,9 +1,14 @@
-import { History, Hourglass } from 'lucide-react'
+import { useState } from 'react'
+import { History, Hourglass, Rocket } from 'lucide-react'
 import { formatPlaytime } from '../../api/playtimeFormat'
-import { formatDay, platformInfo } from '../testGameModel'
+import { formatDay, type TgGame } from '../testGameModel'
 import type { TgaPlayed } from './tgAnalyticsModel'
+import { fmtHours } from './tgAnalyticsData'
+import { plural } from './tgAnalyticsFormat'
+import { playedSubline } from './tgAnalyticsPlay'
 import { TgCover } from './TgCover'
 import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
+import { TgSegmented } from './scrape/TgScrapeParts'
 import { openGameFromAnalytics } from './tgAnalyticsOpen'
 
 const PRESS = 'rounded-[10px] text-left transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:none)]:active:bg-[var(--tg-hover)]'
@@ -20,36 +25,58 @@ const RECENT_GRID = [
 
 const hours = (seconds: number | null) => (seconds ? formatPlaytime(seconds / 60) : '—')
 
-/** The eight games with the most recorded time, with a thin bar for their share of the leader. */
-export function TgAnalyticsMostPlayed({ items }: { items: TgaPlayed[] }) {
-  const top = items[0]?.seconds ?? 1
+type Rank = 'time' | 'launches'
+const RANKS: { value: Rank; label: string }[] = [{ value: 'time', label: 'Play time' }, { value: 'launches', label: 'Launches' }]
+
+interface Launched { game: TgGame; launches: number; seconds: number | null; last: string | null }
+interface Line { game: TgGame; last: string | null; amount: number; value: string }
+
+function Row({ line, rank, top, mode }: { line: Line; rank: number; top: number; mode: Rank }) {
+  const { game, last, amount, value } = line
+  const sub = playedSubline(game, last, fmtHours, mode)
   return (
-    <TgAnalyticsCard label="Most played" meta={items.length ? 'lifetime play time' : undefined}>
-      {items.length ? (
-        <ol className="flex flex-col">
-          {items.map(({ game, seconds, last }, i) => (
-            <li key={game.id}>
-              <button type="button" onClick={() => openGameFromAnalytics(game.id)} aria-label={`${game.title}, ${hours(seconds)}. Open details`}
-                className={`${PRESS} -mx-2 grid w-[calc(100%+1rem)] grid-cols-[1.1rem_32px_minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1`}>
-              <span className="text-right text-[12px] font-semibold tabular-nums text-[var(--tg-faint)]">{i + 1}</span>
-              <span className={`${FRAME} h-11 w-8 rounded-[5px]`}>
-                <TgCover game={game} mode="contain" />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-[13px] font-medium text-[var(--tg-text)]">{game.title}</span>
-                <span className="mt-0.5 block truncate text-[11.5px] text-[var(--tg-muted)]">
-                  {platformInfo(game.platformKey).short}
-                  {last && <> · last played {formatDay(last)}</>}
-                </span>
-                <span aria-hidden className="mt-1 block h-[3px] rounded-full bg-[var(--tg-accent)] opacity-80" style={{ width: `max(4px, ${((seconds ?? 0) / top) * 100}%)` }} />
-              </span>
-              <span className="self-start pt-px text-right text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{hours(seconds)}</span>
-              </button>
-            </li>
-          ))}
+    <li>
+      <button type="button" onClick={() => openGameFromAnalytics(game.id)} aria-label={`${game.title}, ${value}. Open details`}
+        className={`${PRESS} -mx-2 grid w-[calc(100%+1rem)] grid-cols-[1.1rem_32px_minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1`}>
+        <span className="text-right text-[12px] font-semibold tabular-nums text-[var(--tg-faint)]">{rank}</span>
+        <span className={`${FRAME} h-11 w-8 rounded-[5px]`}>
+          <TgCover game={game} mode="contain" />
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-medium text-[var(--tg-text)]">{game.title}</span>
+          <span className="mt-0.5 block truncate text-[11.5px] text-[var(--tg-muted)]" title={sub}>{sub}</span>
+          <span aria-hidden className="mt-1 block h-[3px] rounded-full bg-[var(--tg-accent)] opacity-80" style={{ width: `max(4px, ${(amount / top) * 100}%)` }} />
+        </span>
+        <span className="self-start whitespace-nowrap pt-px text-right text-[13px] font-semibold tabular-nums text-[var(--tg-text)]">{value}</span>
+      </button>
+    </li>
+  )
+}
+
+/**
+ * The games with the most recorded time — or, switched, the most launches
+ * (ES-DE and PlayStation count them; Steam doesn't). A thin bar under each
+ * title is its share of the leader.
+ */
+export function TgAnalyticsMostPlayed({ items, launched }: { items: TgaPlayed[]; launched: Launched[] }) {
+  const [mode, setMode] = useState<Rank>('time')
+  const lines: Line[] = mode === 'time'
+    ? items.map(x => ({ game: x.game, last: x.last, amount: x.seconds ?? 0, value: hours(x.seconds) }))
+    : launched.map(x => ({ game: x.game, last: x.last, amount: x.launches, value: plural(x.launches, 'launch', 'launches') }))
+  const top = lines[0]?.amount || 1
+  const any = items.length > 0 || launched.length > 0
+
+  return (
+    <TgAnalyticsCard label="Most played" meta={lines.length ? (mode === 'time' ? 'lifetime play time' : 'lifetime launches') : undefined}>
+      {any && <TgSegmented size="sm" label="Rank games by" value={mode} options={RANKS} onChange={setMode} />}
+      {lines.length ? (
+        <ol className="mt-3 flex flex-col">
+          {lines.map((line, i) => <Row key={line.game.id} line={line} rank={i + 1} top={top} mode={mode} />)}
         </ol>
+      ) : mode === 'launches' ? (
+        <TgAnalyticsEmpty icon={Rocket} className="mt-3" title="No launches recorded" hint="ES-DE and PlayStation count them, Steam doesn’t." />
       ) : (
-        <TgAnalyticsEmpty icon={Hourglass} title="No play time recorded" hint="ES-DE, Steam and PlayStation report hours here after their next sync." />
+        <TgAnalyticsEmpty icon={Hourglass} className={any ? 'mt-3' : ''} title="No play time recorded" hint="ES-DE, Steam and PlayStation report hours here after their next sync." />
       )}
     </TgAnalyticsCard>
   )
