@@ -339,12 +339,18 @@ export function splitPlatforms(counts: PlatformCount[], max = 8): { shown: Platf
 
 export type StatusCounts = Record<TgStatusFilter, number>
 
+/**
+ * A row's status as every view files it: no status at all is the import
+ * default nobody changed — Backlog, as Analytics and the status menu treat it.
+ */
+export const effectiveStatus = (g: Pick<Game, 'play_status'>): PlayStatus => g.play_status || 'backlog'
+
 export function statusCounts(games: TgGame[]): StatusCounts {
   const c: StatusCounts = { all: 0, playing: 0, completed: 0, backlog: 0, wishlist: 0, dropped: 0, hidden: 0 }
   for (const g of games) {
     if (g.hidden) { c.hidden++; continue }
     c.all++
-    const s = g.play_status as TgStatusFilter
+    const s = effectiveStatus(g) as TgStatusFilter
     if (s in c && s !== 'all' && s !== 'hidden') c[s]++
   }
   return c
@@ -441,7 +447,7 @@ export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'statuses'>):
   if (o.section === 'queue') {
     gs = gs.filter(g => g.play_order != null)
   } else if (fixed) {
-    gs = gs.filter(g => !g.hidden && g.play_status === fixed)
+    gs = gs.filter(g => !g.hidden && effectiveStatus(g) === fixed)
     if (o.scopePlatform && o.scopePlatform !== ALL_PLATFORMS) gs = gs.filter(g => g.platformKey === o.scopePlatform)
   } else if (o.platform === OTHER_PLATFORMS) {
     const keys = new Set(o.otherKeys ?? [])
@@ -472,7 +478,7 @@ export function applyStatus(games: TgGame[], status: TgStatusFilter | readonly T
   const picked = new Set<TgStatusFilter>(typeof status === 'string' ? [status] : status)
   picked.delete('all')
   if (picked.size === 0) return games.filter(g => !g.hidden)
-  return games.filter(g => (g.hidden ? picked.has('hidden') : picked.has(g.play_status as TgStatusFilter)))
+  return games.filter(g => (g.hidden ? picked.has('hidden') : picked.has(effectiveStatus(g) as TgStatusFilter)))
 }
 
 /** A multi-select filter's button text: "All Genres" / "Action" / "3 genres". */

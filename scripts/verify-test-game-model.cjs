@@ -414,4 +414,10 @@ ok([qi.finished.map(g => g.id), qi.toPlay, qi.basis], [['q2', 'q3'], 1, 3], 'fin
 ok(qi.forecastSeconds, 7200, 'forecast = still-to-play × the median of completed play time (3,600 · 7,200 · 10,800 → 7,200)')
 ok(M.queueInsights(M.deriveGames([game({ id: 'x', play_order: 1 }), game({ play_status: 'completed', play_seconds: 60 })])).forecastSeconds, null, 'fewer than 3 completed games: no forecast')
 
+// ── No status files as Backlog everywhere (counts, the tab, the section) ──
+const ns = M.deriveGames([game({ id: 'n0', play_status: null }), game({ id: 'n1', play_status: 'backlog' }), game({ id: 'n2', play_status: 'playing' })])
+ok(M.statusCounts(ns).backlog, 2, 'a game with no status counts as Backlog')
+ok(M.applyStatus(ns, 'backlog').map(g => g.id), ['n0', 'n1'], 'the Backlog tab lists it')
+ok(M.scopeGames(ns, { section: 'backlog', platform: M.ALL_PLATFORMS, search: '' }).map(g => g.id), ['n0', 'n1'], 'and so does the Backlog section')
+
 console.log(`verify-test-game-model: ${n} assertions passed`)
