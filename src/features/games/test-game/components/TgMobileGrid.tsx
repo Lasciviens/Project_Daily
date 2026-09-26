@@ -7,10 +7,11 @@ import { CardMetaLine } from './TgGameCard'
 import { TgCover } from './TgCover'
 import { TgStatusIcon } from './TgStatusIcon'
 import { cardsForDepth, recalledDepth } from './tgScrollMemory'
-import { gameCardLabel, statusLabel } from './TgStatusMeta'
+import { cardStatus, gameCardLabel } from './TgStatusMeta'
 
 const MobileCard = memo(function MobileCard({ game, onSelect, meta }: { game: TgGame; onSelect: (id: string) => void; meta: string }) {
   const stars = starsFromRating(game.rating)
+  const st = cardStatus(game)
   return (
     <button
       type="button"
@@ -31,9 +32,9 @@ const MobileCard = memo(function MobileCard({ game, onSelect, meta }: { game: Tg
       </div>
       <CardMetaLine game={game} meta={meta} />
       <div className="mt-1 flex items-center justify-between gap-2 text-[11px] leading-[1.3]">
-        <span data-status={game.play_status} className="flex min-w-0 items-center gap-1.5">
-          <TgStatusIcon status={game.play_status} size={12} />
-          <span className="tg-status-text truncate font-medium">{statusLabel(game.play_status)}</span>
+        <span data-status={st.status} className="flex min-w-0 items-center gap-1.5">
+          <TgStatusIcon status={st.status} size={12} />
+          <span className="tg-status-text truncate font-medium">{st.label}</span>
         </span>
         {stars != null && (
           <span className="flex shrink-0 items-center gap-1 font-medium tabular-nums text-[var(--tg-text-2)]">

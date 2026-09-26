@@ -9,7 +9,7 @@ import { useTestGameStore } from '../testGameStore'
 import { TgCover } from './TgCover'
 import { TgStars } from './TgStars'
 import { TgStatusIcon } from './TgStatusIcon'
-import { statusLabel } from './TgStatusMeta'
+import { cardStatus } from './TgStatusMeta'
 import { useScrollReset } from './useScrollReset'
 import { useRevealCard } from './useShelfLayout'
 import { gridStep, stepOrigin } from './tgGridNav'
@@ -30,6 +30,7 @@ const Row = memo(function Row({ game, selected, focusable, onSelect }: { game: T
   const seconds = playSeconds(game)
   const stars = starsFromRating(game.rating)
   const launches = playCount(game)
+  const st = cardStatus(game)
   return (
     // Off-screen rows skip layout and paint; the 2px padding holds the focus
     // ring (offset 0) inside the paint containment that comes with it.
@@ -51,9 +52,9 @@ const Row = memo(function Row({ game, selected, focusable, onSelect }: { game: T
           <span className="block truncate text-[13px] font-semibold text-[var(--tg-text)]">{game.title}</span>
           <span className="block truncate text-[12px] text-[var(--tg-muted)]">{subtitleParts(game).join(' · ')}</span>
         </span>
-        <span data-status={game.play_status} className="flex min-w-0 items-center gap-2 text-[12.5px]">
-          <TgStatusIcon status={game.play_status} />
-          <span className="tg-status-text truncate font-medium">{statusLabel(game.play_status)}</span>
+        <span data-status={st.status} className="flex min-w-0 items-center gap-2 text-[12.5px]">
+          <TgStatusIcon status={st.status} />
+          <span className="tg-status-text truncate font-medium">{st.label}</span>
         </span>
         {/* Unrated rows get a dash: five empty stars per row were most of the list's DOM. */}
         {stars == null

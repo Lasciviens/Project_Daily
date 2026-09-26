@@ -3,7 +3,7 @@ import { extraVariants, formatStars, starsFromRating, type TgGame } from '../tes
 import { TgCover } from './TgCover'
 import { TgStarIcon } from './TgStars'
 import { TgStatusIcon } from './TgStatusIcon'
-import { gameCardLabel, statusLabel } from './TgStatusMeta'
+import { cardStatus, gameCardLabel } from './TgStatusMeta'
 
 interface Props {
   game: TgGame
@@ -34,6 +34,7 @@ interface Props {
  */
 export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, width, coverHeight, tabIndex, coverAlign = 'bottom', meta }: Props) {
   const stars = starsFromRating(game.rating)
+  const st = cardStatus(game)
   const size = width == null && coverHeight == null ? undefined : ({
     ...(width != null && { '--tg-card-w': `${width}px` }),
     ...(coverHeight != null && { '--tg-cover-h': `${coverHeight}px` }),
@@ -62,9 +63,9 @@ export const TgGameCard = memo(function TgGameCard({ game, selected, onSelect, w
         </span>
         {meta != null && <CardMetaLine game={game} meta={meta} />}
         <span className="mt-1 flex items-center justify-between gap-1.5 text-[12px] leading-4">
-          <span data-status={game.play_status} className="flex min-w-0 items-center gap-1.5">
-            <TgStatusIcon status={game.play_status} />
-            <span className="tg-status-text truncate font-medium">{statusLabel(game.play_status)}</span>
+          <span data-status={st.status} className="flex min-w-0 items-center gap-1.5">
+            <TgStatusIcon status={st.status} />
+            <span className="tg-status-text truncate font-medium">{st.label}</span>
           </span>
           {stars != null && (
             <span className="flex shrink-0 items-center gap-1 font-medium tabular-nums text-[var(--tg-text-2)]">
