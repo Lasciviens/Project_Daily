@@ -1,6 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import type { FoodLogEntry, FoodLogEntryInput, IngredientLibraryItem, Recipe } from '../types'
+import { WEIGHT_UNITS } from './recipesApi'
 
 // The food DIARY (food_log_entries, migration 053) — what was actually eaten.
 // Distinct from recipe_meal_plans (the plan). Macros are snapshotted here at
@@ -265,5 +266,56 @@ export function recipeSnapshot(recipe: Recipe, servings: number) {
     fat_g:     times(recipe.fat_g),
     fiber_g:   times(recipe.fiber_g),
     sugar_g:   times(recipe.sugar_g),
+  }
+}
+
+const MACROS = ['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g'] as const
+
+/**
+ * Recalculates eaten diary rows from their source after the source changed —
+ * a library item's per-100g values, or a recipe's per-serving totals — so past
+ * days always show what their ingredients add up to (user decision 2026-09-26:
+ * totals are derived, never frozen). Custom rows and planned rows are left
+ * alone. Migration 106's triggers do the same inside the database for every
+ * writer; this is the web app's copy for before it is applied.
+ */
+export async function refreshEatenEntries({ libraryId, recipeIds = [] }: { libraryId?: string; recipeIds?: string[] }): Promise<void> {
+  const filters: string[] = []
+  if (libraryId) filters.push(`library_ingredient_id.eq.${libraryId}`)
+  if (recipeIds.length) filters.push(`recipe_id.in.(${recipeIds.join(',')})`)
+  if (!filters.length) return
+
+  const { data: rows, error } = await supabase
+    .from('food_log_entries')
+    .select('id, quantity, unit, library_ingredient_id, recipe_id, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g')
+    .eq('status', 'eaten')
+    .or(filters.join(','))
+  if (error) throw error
+  if (!rows?.length) return
+
+  const libIds = [...new Set(rows.map(r => r.library_ingredient_id).filter((x): x is string => !!x))]
+  const recIds = [...new Set(rows.map(r => r.recipe_id).filter((x): x is string => !!x))]
+  const [libRes, recRes] = await Promise.all([
+    libIds.length ? supabase.from('recipe_ingredient_library').select('*').in('id', libIds) : Promise.resolve({ data: [], error: null }),
+    recIds.length ? supabase.from('recipes').select('*').in('id', recIds) : Promise.resolve({ data: [], error: null }),
+  ])
+  if (libRes.error) throw libRes.error
+  if (recRes.error) throw recRes.error
+  const libs = new Map((libRes.data ?? []).map(l => [l.id, l as IngredientLibraryItem]))
+  const recs = new Map((recRes.data ?? []).map(r => [r.id, r as Recipe]))
+
+  for (const row of rows) {
+    if (row.quantity == null) continue
+    let next: Record<(typeof MACROS)[number], number | null> | null = null
+    if (row.recipe_id) {
+      const recipe = recs.get(row.recipe_id)
+      if (recipe && recipe.calories != null) next = recipeSnapshot(recipe, row.quantity)
+    } else if (row.library_ingredient_id && WEIGHT_UNITS.has((row.unit ?? 'g').trim().toLowerCase())) {
+      const lib = libs.get(row.library_ingredient_id)
+      if (lib) next = ingredientSnapshot(lib, row.quantity)
+    }
+    if (!next || MACROS.every(m => (row[m] ?? null) === next![m])) continue
+    const { error: upError } = await supabase.from('food_log_entries').update(next).eq('id', row.id)
+    if (upError) throw upError
   }
 }

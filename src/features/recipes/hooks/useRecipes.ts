@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import { fetchRecipes, createRecipe, updateRecipe, deleteRecipe, incrementTimesCooked } from '../api/recipesApi'
+import { refreshEatenEntries } from '../api/foodLogApi'
 import type { RecipeInput, RecipeWithIngredients } from '../types'
 
 export function useRecipes() {
@@ -41,8 +42,12 @@ export function useUpdateRecipe() {
   return useMutationWithFeedback({
     action:     'update_recipe',
     successMessage: 'Recipe saved',
-    mutationFn: ({ id, input }: { id: string; input: RecipeInput }) => updateRecipe(id, input),
-    invalidates: ['recipes'],
+    // Eaten rows of this recipe follow its new totals (past days included).
+    mutationFn: async ({ id, input }: { id: string; input: RecipeInput }) => {
+      await updateRecipe(id, input)
+      await refreshEatenEntries({ recipeIds: [id] })
+    },
+    invalidates: ['recipes', 'nutrition'],
   })
 }
 
