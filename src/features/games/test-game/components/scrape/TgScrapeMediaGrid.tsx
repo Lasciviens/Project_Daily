@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { ExternalLink, FileText, Film } from 'lucide-react'
+import { ExternalLink, FileText, Film, Play } from 'lucide-react'
 import type { SsCandidate, SsMediaEntry } from '../../../scraper/ssTypes'
 import type { MediaMode } from '../../../scraper/ssMediaCatalog'
 import { refOf, ssMediaUrl } from '../../../scraper/ssApi'
 import { TgLightbox } from '../TgLightbox'
+import { TgVideoPlayer } from '../TgVideoPlayer'
 import { MODE_HINT, MODE_LABEL, estimateStored, formatBytes, groupMediaRows, type MediaRow } from './tgScrapeModel'
 import { TgSegmented, TgSsMedia } from './TgScrapeParts'
 
@@ -33,6 +34,7 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
   readOnly: boolean
 }) {
   const [zoom, setZoom] = useState<number | null>(null)
+  const [video, setVideo] = useState<{ src: string; label: string } | null>(null)
   const ref = refOf(candidate)
   const imageRows = rows.filter(r => r.info.kind === 'image')
   const entryOf = (r: MediaRow) => r.entries.find(e => e.token === tokens[r.type]) ?? r.chosen
@@ -86,6 +88,15 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
                     >
                       <TgSsMedia candidate={candidate} entry={entry} width={200} className="h-full w-full" />
                     </button>
+                  ) : r.info.kind === 'video' && ssMediaUrl(refOf(candidate), entry) ? (
+                    <button
+                      type="button" aria-label={`Play ${r.info.label}`}
+                      onClick={() => { const u = ssMediaUrl(refOf(candidate), entry); if (u) setVideo({ src: u, label: r.info.label }) }}
+                      className="relative grid h-[72px] w-[72px] shrink-0 place-items-center rounded-lg bg-[var(--tg-panel-2)] text-[var(--tg-accent)]"
+                    >
+                      <Film className="h-7 w-7" strokeWidth={1.6} aria-hidden />
+                      <span className="absolute bottom-1.5 right-1.5 grid h-6 w-6 place-items-center rounded-full bg-[var(--tg-accent)] text-[var(--tg-on-accent)]"><Play className="h-3 w-3 fill-current" aria-hidden /></span>
+                    </button>
                   ) : (
                     <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-lg bg-[var(--tg-panel-2)] text-[var(--tg-accent)]">
                       {r.info.kind === 'pdf' ? <FileText className="h-7 w-7" strokeWidth={1.6} aria-hidden /> : <Film className="h-7 w-7" strokeWidth={1.6} aria-hidden />}
@@ -134,6 +145,7 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
         </div>
       ))}
       <TgLightbox images={zoomUrls} index={zoom} onClose={() => setZoom(null)} onIndex={setZoom} />
+      <TgVideoPlayer src={video?.src ?? null} title={`${candidate.title ?? 'Game'} · ${video?.label ?? 'Video'}`} onClose={() => setVideo(null)} />
     </div>
   )
 }
