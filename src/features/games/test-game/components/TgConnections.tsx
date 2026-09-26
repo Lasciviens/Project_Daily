@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { usePsnProfile, usePsnStatus } from '../../hooks/usePlayStation'
 import { useSteamProfile } from '../../hooks/useSteam'
 import { psnLine, steamLine, type TgConnLine } from './tgConnections'
+import { psnFacts, steamFacts } from './tgConnectionFacts'
 
 // PlayStation + Steam status under the profile (owner request 2026-09-25).
 // Status and renewing only: first-time connect and disconnect stay in
@@ -11,7 +12,7 @@ import { psnLine, steamLine, type TgConnLine } from './tgConnections'
 // Mount it only while its menu or sheet is open — these hooks fetch on mount,
 // and the page itself never needs them.
 
-function Row({ name, line, action }: { name: string; line: TgConnLine; action?: ReactNode }) {
+function Row({ name, line, facts = [], action }: { name: string; line: TgConnLine; facts?: string[]; action?: ReactNode }) {
   return (
     <div className="tg-conn-row" data-tone={line.tone}>
       <span className="tg-conn-dot" aria-hidden />
@@ -21,6 +22,11 @@ function Row({ name, line, action }: { name: string; line: TgConnLine; action?: 
           <span className="tg-conn-text text-[12.5px] font-medium">{line.text}</span>
         </div>
         {line.detail && <p className="mt-0.5 text-[12px] leading-snug text-[var(--tg-muted)] [overflow-wrap:anywhere]">{line.detail}</p>}
+        {facts.length > 0 && (
+          <ul className="mt-1 flex flex-wrap gap-1" aria-label={`${name} profile`}>
+            {facts.map(f => <li key={f} className="rounded-md bg-[var(--tg-panel-2)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--tg-text-2)]">{f}</li>)}
+          </ul>
+        )}
         {action && <div className="mt-1.5 flex flex-wrap gap-1.5">{action}</div>}
       </div>
     </div>
@@ -52,8 +58,8 @@ export function TgConnections({ inMenu = false, onRenewPsn }: { inMenu?: boolean
 
   return (
     <div className="flex flex-col gap-1">
-      <Row name="PlayStation" line={psn} action={psnAction} />
-      <Row name="Steam" line={st} action={st.needsSetup ? setup('steam-setup') : undefined} />
+      <Row name="PlayStation" line={psn} facts={psn.tone === 'bad' ? [] : psnFacts(profile.data)} action={psnAction} />
+      <Row name="Steam" line={st} facts={st.tone === 'ok' ? steamFacts(steam.data) : []} action={st.needsSetup ? setup('steam-setup') : undefined} />
     </div>
   )
 }
