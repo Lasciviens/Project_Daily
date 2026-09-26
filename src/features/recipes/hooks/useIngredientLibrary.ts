@@ -6,6 +6,7 @@ import {
   upsertExternalFood,
 } from '../api/ingredientLibraryApi'
 import { recomputeRecipesUsingIngredient } from '../api/recipesApi'
+import { refreshEatenEntries } from '../api/foodLogApi'
 import type { CreateIngredientLibraryItemInput } from '../types'
 
 export function useIngredientLibrary() {
@@ -36,11 +37,12 @@ export function useUpsertExternalFood() {
 export function useUpdateIngredientLibraryItem() {
   return useMutationWithFeedback({
     action:     'update_ingredient_library_item',
-    // Recipes store computed macros, so a macro edit must recompute the ones
-    // built from this ingredient — otherwise their totals never change.
+    // Totals are derived: a macro edit recalculates the recipes built from this
+    // ingredient and every eaten diary row that uses it or those recipes.
     mutationFn: async ({ id, input }: { id: string; input: CreateIngredientLibraryItemInput }) => {
       const item = await updateIngredientLibraryItem(id, input)
-      await recomputeRecipesUsingIngredient(id)
+      const recipeIds = await recomputeRecipesUsingIngredient(id)
+      await refreshEatenEntries({ libraryId: id, recipeIds })
       return item
     },
     invalidates: ['recipes', 'nutrition', qk.ingredients.all],
@@ -51,6 +53,6 @@ export function useDeleteIngredientLibraryItem() {
   return useMutationWithFeedback({
     action:      'delete_ingredient_library_item',
     mutationFn:  (id: string) => deleteIngredientLibraryItem(id),
-    invalidates: [qk.ingredients.all],
+    invalidates: [qk.ingredients.all, 'recipes', 'nutrition'],
   })
 }

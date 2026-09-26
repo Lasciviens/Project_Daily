@@ -127,10 +127,15 @@ export async function eatPlannedEntry(entry: MealPlanEntry): Promise<void> {
   let quantity: number | null = null
   let unit: string | null = null
   if (entry.recipe_id) {
-    const { data } = await supabase.from('recipes').select('*').eq('id', entry.recipe_id).maybeSingle()
-    if (data) { snap = recipeSnapshot(data as Recipe, entry.servings || 1); quantity = entry.servings || 1; unit = 'serving' }
+    // A failed read must stop here: flipping with null quantity would leave a
+    // permanent 0 kcal row nothing ever recalculates.
+    const { data, error } = await supabase.from('recipes').select('*').eq('id', entry.recipe_id).maybeSingle()
+    if (error) throw error
+    quantity = entry.servings || 1; unit = 'serving'
+    if (data) snap = recipeSnapshot(data as Recipe, quantity)
   } else if (entry.library_ingredient_id) {
-    const { data } = await supabase.from('recipe_ingredient_library').select('*').eq('id', entry.library_ingredient_id).maybeSingle()
+    const { data, error } = await supabase.from('recipe_ingredient_library').select('*').eq('id', entry.library_ingredient_id).maybeSingle()
+    if (error) throw error
     const grams = entry.ingredient_quantity ?? 0
     const unitOk = WEIGHT_UNITS.has((entry.ingredient_unit ?? 'g').trim().toLowerCase())
     // REAL BUG, fixed: this used to snapshot `ingredientSnapshot(data, grams)`

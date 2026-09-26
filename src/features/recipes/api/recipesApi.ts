@@ -226,21 +226,22 @@ export async function updateRecipe(id: string, input: RecipeInput): Promise<void
  * manual recipes whose ingredients are all library-linked by weight — only the
  * logger's old "Save meal" made those, since links are only editable in
  * 'from_ingredients' mode — which are switched to 'from_ingredients'). Without this, recipe and planned-meal
- * calories kept the old numbers forever. Eaten diary rows are snapshots and are
- * deliberately left alone. Returns how many recipes were updated.
+ * calories kept the old numbers forever. Returns the ids of the recipes updated,
+ * so their eaten diary rows can be recalculated too. Migration 106's triggers do
+ * the same in the database; this keeps the web app correct before it is applied.
  */
-export async function recomputeRecipesUsingIngredient(libraryId: string): Promise<number> {
+export async function recomputeRecipesUsingIngredient(libraryId: string): Promise<string[]> {
   const { data: links, error: linkError } = await supabase
     .from('recipe_ingredients').select('recipe_id').eq('library_ingredient_id', libraryId)
   if (linkError) throw linkError
   const ids = [...new Set((links ?? []).map(l => l.recipe_id as string))]
-  if (!ids.length) return 0
+  if (!ids.length) return []
 
   const { data: recipes, error } = await supabase
     .from('recipes').select('*, ingredients:recipe_ingredients(*)').in('id', ids)
   if (error) throw error
 
-  let updated = 0
+  const updated: string[] = []
   for (const r of (recipes ?? []) as RecipeWithIngredients[]) {
     const computable = r.macro_mode === 'from_ingredients'
       || (r.macro_mode === 'manual' && canComputeFromIngredients(r.ingredients))
@@ -258,7 +259,7 @@ export async function recomputeRecipesUsingIngredient(libraryId: string): Promis
       ;({ error: upError } = await supabase.from('recipes').update(row).eq('id', r.id))
     }
     if (upError) throw upError
-    updated++
+    updated.push(r.id)
   }
   return updated
 }

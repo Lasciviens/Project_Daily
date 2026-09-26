@@ -98,10 +98,10 @@ export const toast = {
   warning: (msg: string) => useToastStore.getState().show(msg, 'warning'),
   dismiss: (id: string)  => useToastStore.getState().dismiss(id),
   // Undo snackbar — show after a destructive action instead of a blocking
-  // confirm dialog. onUndo runs if the user taps "Geri al" before it expires.
+  // confirm dialog. onUndo runs if the user taps "Undo" before it expires.
   undo: (msg: string, onUndo: () => void, durationMs = 6000) => {
     const id = useToastStore.getState().show(msg, 'info', durationMs, {
-      label: 'Geri al',
+      label: 'Undo',
       onClick: () => { onUndo(); useToastStore.getState().dismiss(id) },
     })
     return id

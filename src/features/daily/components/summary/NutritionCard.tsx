@@ -9,33 +9,15 @@ import { useDayNutrition } from '../../hooks/useDayNutrition'
 import { useDayTargets } from '../../hooks/useDayTargets'
 import { useEntityModal } from '../../../../shared/modals/useEntityModal'
 import { useNutritionCoach } from '../../hooks/useNutritionCoach'
-import { useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
+import { useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
 import { MACRO_COLOR } from '../../../recipes/macroColors'
-import { useRecentFoods, useAddFoodLogEntries, useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
+import { useRecentFoods, useAddFoodLogEntries, useRemoveFoodLogEntries } from '../../../recipes/hooks/useFoodLog'
+import { parseQuickAdd, sortForSlot, usualForSlot } from '../../../recipes/foodSearch'
 import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrary'
-import { ingredientSnapshot, type RecentFood } from '../../../recipes/api/foodLogApi'
-import type { MealSlot, FoodLogEntryInput } from '../../../recipes/types'
+import { ingredientSnapshot, recentToEntry, type RecentFood } from '../../../recipes/api/foodLogApi'
+import type { MealSlot } from '../../../recipes/types'
 import type { DayMeal } from '../../api/dayNutritionApi'
-
-// Re-log a previously-eaten food into a given slot, carrying its ORIGINAL
-// snapshot macros forward (no re-computation — that's the diary contract).
-function reLogEntry(r: RecentFood, date: string, slot: MealSlot): FoodLogEntryInput {
-  return {
-    date, meal_slot: slot,
-    library_ingredient_id: r.library_ingredient_id,
-    recipe_id:             r.recipe_id,
-    custom_title:          r.custom_title,
-    quantity:              r.quantity,
-    unit:                  r.unit,
-    calories:              r.calories,
-    protein_g:             r.protein_g,
-    carbs_g:               r.carbs_g,
-    fat_g:                 r.fat_g,
-    fiber_g:               r.fiber_g,
-    sugar_g:               r.sugar_g,
-  }
-}
 
 // Slot icons + "now" highlighting folded in from the old separate Meals card —
 // this card now presents nutrition AND the meal timeline as one widget.
@@ -59,8 +41,8 @@ function currentSlot(): MealSlot {
 function CalorieRing({ consumed, target }: { consumed: number; target: number }) {
   const pct = target > 0 ? Math.min(consumed / target, 1) : 0
   const R = 30, C = 2 * Math.PI * R
-  const remaining = Math.max(target - consumed, 0)
   const over = consumed > target
+  const remaining = Math.abs(target - consumed)
   return (
     <div className="relative h-[80px] w-[80px] shrink-0">
       <svg viewBox="0 0 72 72" className="h-full w-full -rotate-90" aria-hidden>
@@ -92,18 +74,25 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
   const { data: recent = [] } = useRecentFoods()
   const { data: library = [] } = useIngredientLibrary()
   const addEntries = useAddFoodLogEntries()
-  const delMeal = useDeleteQuickMeal()
-  const delLog  = useDeleteFoodLogEntry()
+  const remove  = useRemoveFoodLogEntries()
   const eatPlan = useEatPlannedEntry()
 
   function reset() { setAdding(false); setText('') }
+  const slotRecent = sortForSlot(recent, slot)
+  const usual = usualForSlot(recent, slot)
   const openLogger = (query?: string) => modal.open({ kind: 'food-log', date, slot, query: query || undefined })
 
-  // Free text → log the matching library ingredient (default portion), else
-  // hand off to the full logger so a new food gets real macros once.
+  // Free text → "kebab 700" logs a one-off line with 700 kcal; a library
+  // match logs that ingredient (default portion); anything else opens the
+  // full logger prefilled.
   function save(title: string) {
     const t = title.trim()
     if (!t) return
+    const quick = parseQuickAdd(t)
+    if (quick.kcal != null) {
+      addEntries.mutate([{ date, meal_slot: slot, custom_title: quick.title, calories: quick.kcal }], { onSuccess: reset })
+      return
+    }
     const lc = t.toLowerCase()
     // Auto-log ONLY on an exact or start-of-name match; a loose substring match
     // silently logged the wrong food ("egg" → "eggplant").
@@ -118,7 +107,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
   }
 
   function reLog(r: RecentFood) {
-    addEntries.mutate([reLogEntry(r, date, slot)], { onSuccess: reset })
+    addEntries.mutate([recentToEntry(r, date, slot)], { onSuccess: reset })
   }
 
   function edit(meal: DayMeal) {
@@ -156,23 +145,24 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
                   a 393px phone, and both editors this row opens carry Delete. */}
               <button
                 type="button"
-                onClick={() => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)}
+                onClick={() => remove.mutate({ ids: [meal.id], label: meal.title })}
                 className={cx(iconBtn, 'hidden hover:text-danger sm:grid')}
                 aria-label={`Remove ${meal.title}`}
               ><X className="h-4 w-4" aria-hidden /></button>
             </div>
           ))}
         </div>
-      ) : (
+      ) : null}
+      {(meals.length === 0 || adding) ? (
         <>
           <div className="flex min-h-[44px] items-center gap-2">
-            {slotLabel}
+            {meals.length === 0 ? slotLabel : <span className="w-[5.75rem] shrink-0" />}
             {adding ? (
               <input
                 autoFocus value={text} onChange={e => setText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') save(text); if (e.key === 'Escape') reset() }}
                 onBlur={() => { if (!text.trim()) reset() }}
-                placeholder="Type a food…"
+                placeholder="Type a food, or “kebab 700”…"
                 aria-label={`Add to ${label}`}
                 className="input min-w-0 flex-1"
               />
@@ -182,6 +172,14 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
                 <Plus className="h-3.5 w-3.5" aria-hidden /> Add
               </button>
             )}
+            {!adding && meals.length === 0 && usual.length > 0 && (
+              <button type="button" disabled={addEntries.isPending}
+                onClick={() => addEntries.mutate(usual.map(r => recentToEntry(r, date, slot)))}
+                title={usual.map(r => r.title).join(', ')}
+                className="chip min-h-[44px] max-w-[11rem] shrink-0 truncate px-2.5 text-meta hover:bg-surface-hover disabled:opacity-50">
+                Log usual ({usual.length})
+              </button>
+            )}
             {adding && (
               <button type="button" onClick={() => { openLogger(text.trim()); reset() }}
                 className={iconBtn} aria-label="Build a meal (ingredients, grams, macros)">
@@ -189,9 +187,9 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
               </button>
             )}
           </div>
-          {adding && recent.length > 0 && (
+          {adding && slotRecent.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1 pl-[6.25rem]">
-              {recent.slice(0, 5).map(r => (
+              {slotRecent.slice(0, 5).map(r => (
                 <button key={r.key} type="button" onMouseDown={e => e.preventDefault()} onClick={() => reLog(r)}
                   className="chip min-h-[44px] px-2.5 hover:bg-surface-hover">
                   {r.title}{r.protein_g != null && r.protein_g > 0 && <span className="text-fg-muted"> · {Math.round(r.protein_g)}p</span>}
@@ -200,6 +198,15 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
             </div>
           )}
         </>
+      ) : (
+        // A filled slot can still take one more item without the full logger.
+        <div className="flex min-h-[36px] items-center gap-2">
+          <span className="w-[5.75rem] shrink-0" />
+          <button type="button" onClick={() => setAdding(true)} aria-label={`Add more to ${label}`}
+            className="flex min-h-[36px] items-center gap-1 text-meta text-fg-faint transition-colors hover:text-accent-600">
+            <Plus className="h-3 w-3" aria-hidden /> Add more
+          </button>
+        </div>
       )}
     </li>
   )
@@ -309,6 +316,13 @@ export function NutritionCard({ date }: { date: string }) {
             <button type="button" onClick={() => setExpanded(true)} className={cx(footBtn, '-ml-2.5 flex items-center gap-1')} aria-expanded={false}>
               Meal slots <ChevronDown className="h-3.5 w-3.5" aria-hidden />
             </button>
+            <button
+              type="button"
+              onClick={() => copyYesterday.mutate({ date, filledSlots })}
+              disabled={copyYesterday.isPending}
+              className={cx(footBtn, 'flex items-center gap-1')}
+              title="Log the same meals as yesterday"
+            ><Copy className="h-3.5 w-3.5" aria-hidden /> Same as yesterday</button>
             <button type="button" onClick={openGoals} className={cx(footBtn, 'flex items-center gap-1')}>
               <Target className="h-3.5 w-3.5" aria-hidden /> Goals
             </button>

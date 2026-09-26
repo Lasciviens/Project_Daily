@@ -38,9 +38,16 @@ export function MealPlanWeek() {
   const { data: entries = [] } = useMealPlan(fromStr, toStr)     // the PLAN
   const { data: logged = [] }  = useFoodLogRange(fromStr, toStr) // the DIARY (eaten)
 
-  function entryFor(dateStr: string, slot: MealSlot): MealPlanEntry | null {
-    return entries.find(e => e.date === dateStr && e.meal_slot === slot) ?? null
+  // Every planned row for a slot — several are legal since migration 061.
+  function plannedFor(dateStr: string, slot: MealSlot): { entry: MealPlanEntry; label: string }[] {
+    return entries
+      .filter(e => e.date === dateStr && e.meal_slot === slot)
+      .map(entry => ({ entry, label: planLabelOf(entry) }))
+      .filter((p): p is { entry: MealPlanEntry; label: string } => !!p.label)
   }
+  // Eaten kcal per day — the week's real intake at a glance.
+  const kcalByDay = new Map<string, number>()
+  for (const l of logged) kcalByDay.set(l.date, (kcalByDay.get(l.date) ?? 0) + (l.calories ?? 0))
   const eatenBy = new Map<string, LoggedFood[]>()
   for (const l of logged) {
     const k = `${l.date}|${l.meal_slot}`
@@ -92,6 +99,9 @@ export function MealPlanWeek() {
                 )}>
                 <div className="text-micro font-semibold uppercase opacity-80">{format(day, 'EEE')}</div>
                 <div className="text-ui font-bold leading-tight tabular-nums">{format(day, 'd')}</div>
+                {kcalByDay.get(format(day, 'yyyy-MM-dd')) ? (
+                  <div className="text-micro tabular-nums opacity-80">{Math.round(kcalByDay.get(format(day, 'yyyy-MM-dd'))!)}</div>
+                ) : null}
               </button>
             )
           })}
@@ -99,9 +109,8 @@ export function MealPlanWeek() {
         <div className="flex flex-col gap-3 stagger-in">
           {SLOTS.map(slot => {
             const dateStr = format(days[dayIdx], 'yyyy-MM-dd')
-            const entry = entryFor(dateStr, slot)
+            const planned = plannedFor(dateStr, slot)
             const eaten = eatenBy.get(`${dateStr}|${slot}`) ?? []
-            const planLabel = planLabelOf(entry)
             return (
               <Card key={slot} padded={false} className="overflow-hidden">
                 <header className="flex items-center gap-2 border-b border-line py-1 pl-4 pr-2">
@@ -110,17 +119,17 @@ export function MealPlanWeek() {
                     <Plus aria-hidden className="h-4 w-4" />Add
                   </button>
                 </header>
-                {planLabel || eaten.length > 0 ? (
+                {planned.length > 0 || eaten.length > 0 ? (
                   <ul className="divide-y divide-line">
-                    {planLabel && entry && (
-                      <li className="flex items-center gap-1 pl-4 pr-2 text-body">
+                    {planned.map(({ entry, label: planLabel }) => (
+                      <li key={entry.id} className="flex items-center gap-1 pl-4 pr-2 text-body">
                         <button type="button" onClick={() => openPlan(dateStr, slot, entry)} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 text-left">
                           <ClipboardList aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
                           <span className="min-w-0 flex-1 truncate italic text-fg-muted">{planLabel}</span>
                         </button>
                         <IconButton label="Mark eaten" onClick={() => eat.mutate(entry)} disabled={eat.isPending} className="text-success disabled:opacity-50"><Check /></IconButton>
                       </li>
-                    )}
+                    ))}
                     {eaten.map(l => (
                       <li key={l.id}>
                         <button type="button" onClick={() => openEaten(l)} className="flex min-h-[44px] w-full items-center gap-2 px-4 text-left text-body transition-colors hover:bg-surface-hover">
@@ -151,6 +160,9 @@ export function MealPlanWeek() {
               <div key={day.toISOString()} className={cx('rounded-row py-1.5 text-center', isToday(day) && 'bg-accent-50')}>
                 <p className="section-label">{format(day, 'EEE')}</p>
                 <p className={cx('text-ui font-bold tabular-nums', isToday(day) ? 'text-accent-600' : 'text-fg')}>{format(day, 'd')}</p>
+                <p className="text-micro normal-case tracking-normal tabular-nums text-fg-muted">
+                  {kcalByDay.get(format(day, 'yyyy-MM-dd')) ? `${Math.round(kcalByDay.get(format(day, 'yyyy-MM-dd'))!)} kcal` : '—'}
+                </p>
               </div>
             ))}
 
@@ -159,10 +171,9 @@ export function MealPlanWeek() {
                 <div className="flex items-center text-meta font-semibold text-fg-muted">{SLOT_LABEL[slot]}</div>
                 {days.map(day => {
                   const dateStr = format(day, 'yyyy-MM-dd')
-                  const entry = entryFor(dateStr, slot)
+                  const planned = plannedFor(dateStr, slot)
                   const eaten = eatenBy.get(`${dateStr}|${slot}`) ?? []
-                  const planLabel = planLabelOf(entry)
-                  const filled = !!planLabel || eaten.length > 0
+                  const filled = planned.length > 0 || eaten.length > 0
                   // A div (not a button) so plan / eaten / add are separate controls.
                   return (
                     <div key={`${slot}-${dateStr}`}
@@ -175,8 +186,8 @@ export function MealPlanWeek() {
                       ) : (
                         <>
                           <div className="flex flex-1 flex-col gap-0.5 p-1">
-                            {planLabel && entry && (
-                              <div className="flex items-start gap-0.5 rounded-md transition-colors hover:bg-surface-hover">
+                            {planned.map(({ entry, label: planLabel }) => (
+                              <div key={entry.id} className="flex items-start gap-0.5 rounded-md transition-colors hover:bg-surface-hover">
                                 <button type="button" onClick={() => openPlan(dateStr, slot, entry)} className="min-w-0 flex-1 px-1 py-0.5 text-left">
                                   <span className="line-clamp-2 text-meta font-medium leading-tight text-fg-2">{planLabel}</span>
                                 </button>
@@ -186,7 +197,7 @@ export function MealPlanWeek() {
                                   <Check aria-hidden className="h-3.5 w-3.5" />
                                 </button>
                               </div>
-                            )}
+                            ))}
                             {eaten.map(l => (
                               <button key={l.id} type="button" onClick={() => openEaten(l)}
                                 className="flex items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-success-soft">

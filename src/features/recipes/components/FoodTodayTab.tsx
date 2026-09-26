@@ -1,11 +1,14 @@
 import { useState, type ReactNode } from 'react'
-import { Brain, Check, ChevronRight, Plus, Settings2, X } from 'lucide-react'
+import { Brain, Check, ChevronRight, Copy, Plus, Settings2, X } from 'lucide-react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { useNutritionCoach } from '../../daily/hooks/useNutritionCoach'
-import { useDeleteFoodLogEntry } from '../hooks/useFoodLog'
-import { useDeleteQuickMeal } from '../../daily/hooks/useQuickMeals'
+import { useRemoveFoodLogEntries, useRecentFoods, useAddFoodLogEntries } from '../hooks/useFoodLog'
+import { recentToEntry } from '../api/foodLogApi'
+import { usualForSlot } from '../foodSearch'
+import { useCopyYesterdayMeals } from '../../daily/hooks/useQuickMeals'
+import { WeeklyNutritionCard } from './WeeklyNutritionCard'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
@@ -53,8 +56,8 @@ function Ring({ consumed, target, size, stroke, color, label, sizeClass }: {
   const R = (size - stroke) / 2 - 1
   const C = 2 * Math.PI * R
   const pct = target > 0 ? Math.min(consumed / target, 1) : 0
-  const remaining = Math.max(Math.round(target - consumed), 0)
   const over = consumed > target
+  const remaining = Math.abs(Math.round(target - consumed))
   const c = size / 2
   return (
     <div className={cx('relative shrink-0', sizeClass)}>
@@ -88,8 +91,10 @@ export function FoodTodayTab({ date }: { date: string }) {
   const { targets, update } = useDayTargets()
   const modal = useEntityModal()
   const coach = useNutritionCoach(date, targets)
-  const delLog  = useDeleteFoodLogEntry()
-  const delMeal = useDeleteQuickMeal()
+  const remove  = useRemoveFoodLogEntries()
+  const copyYesterday = useCopyYesterdayMeals()
+  const { data: recent = [] } = useRecentFoods()
+  const addEntries = useAddFoodLogEntries()
   const eatPlan = useEatPlannedEntry()
   const [coachOpen, setCoachOpen] = useState(false)   // phone-only collapse
   // "As meal" groups expanded to their individual items (collapsed by default).
@@ -135,7 +140,7 @@ export function FoodTodayTab({ date }: { date: string }) {
         modal.open({ kind: 'food-log-edit', entryId: meal.id, date })
       }
     }
-    const onDelete = () => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)
+    const onDelete = () => remove.mutate({ ids: [meal.id], label: name })
     const macroLine = [
       qty,
       meal.calories > 0 && `${meal.calories} kcal`,
@@ -196,14 +201,18 @@ export function FoodTodayTab({ date }: { date: string }) {
     ].filter(Boolean).join(' · ')
     return (
       <li key={group.groupId}>
+        <div className="flex items-center pr-2 transition-colors hover:bg-surface-hover">
         <button type="button" onClick={() => toggleGroup(group.groupId)} aria-expanded={expanded}
-          className="flex min-h-[44px] w-full items-center gap-2 px-4 py-1 text-left text-body transition-colors hover:bg-surface-hover">
+          className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 py-1 pl-4 text-left text-body">
           <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-90')} />
           <span className="min-w-0 flex-1 truncate text-fg">{group.title}</span>
           <span className="count-badge shrink-0">{group.items.length} items</span>
           <span className="hidden shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:inline">{totals}</span>
           <span className="shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{group.calories} kcal</span>
         </button>
+        <IconButton label={`Remove the whole meal (${group.items.length} items)`} className="text-fg-faint hover:!text-danger"
+          onClick={() => remove.mutate({ ids: group.items.map(m => m.id), label: `${group.items.length} items` })}><X /></IconButton>
+        </div>
         {!expanded && <p className="-mt-1 pb-2 pl-10 pr-4 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{totals}</p>}
         {expanded && (
           <ul className="divide-y divide-line border-t border-line">
@@ -257,6 +266,8 @@ export function FoodTodayTab({ date }: { date: string }) {
         <Card className="!py-3">
           <WaterTracker date={date} />
         </Card>
+
+        <WeeklyNutritionCard date={date} />
 
         {/* Coach — collapsible on phones so the meal slots stay reachable. */}
         <Card>
@@ -339,10 +350,25 @@ export function FoodTodayTab({ date }: { date: string }) {
                   {groupDayMeals(meals).map(row => row.kind === 'group' ? groupHeaderLine(row) : mealLine(row.meal, false))}
                 </ul>
               ) : (
-                <button type="button" onClick={() => openLog(slot)}
-                  className="flex min-h-[44px] w-full items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
-                  Add something
-                </button>
+                <div className="flex items-center pr-2">
+                  <button type="button" onClick={() => openLog(slot)}
+                    className="flex min-h-[44px] flex-1 items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
+                    Add something
+                  </button>
+                  {usualForSlot(recent, slot).length > 0 && (
+                    <button type="button" disabled={addEntries.isPending}
+                      onClick={() => addEntries.mutate(usualForSlot(recent, slot).map(r => recentToEntry(r, date, slot)))}
+                      title={usualForSlot(recent, slot).map(r => r.title).join(', ')}
+                      className="btn-ghost btn-sm !px-2.5 text-accent-600">
+                      Log usual ({usualForSlot(recent, slot).length})
+                    </button>
+                  )}
+                  <button type="button" disabled={copyYesterday.isPending}
+                    onClick={() => copyYesterday.mutate({ date, filledSlots: new Set(bySlot.keys()), slots: [slot] })}
+                    className="btn-ghost btn-sm gap-1 !px-2.5 text-fg-muted" title={`Log the same ${label.toLowerCase()} as the day before`}>
+                    <Copy aria-hidden className="h-3.5 w-3.5" />Same as yesterday
+                  </button>
+                </div>
               )}
             </Card>
           )

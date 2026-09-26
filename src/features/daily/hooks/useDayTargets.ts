@@ -4,6 +4,7 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { qk, STALE } from '../../../shared/query'
 import { fetchDayTargets, upsertDayTargets, fetchDayTargetProfiles, DAY_TARGETS_DEFAULTS } from '../api/dayTargetsApi'
 import type { DayTargets, NutritionGoal, DayTargetProfiles } from '../api/dayTargetsApi'
+import { toast } from '../../../app/store'
 
 export type { DayTargets, NutritionGoal, DayTargetProfiles }
 
@@ -28,7 +29,7 @@ const PROFILES_QK = qk.dayTargets.profiles
 
 export function useDayTargets() {
   const qc = useQueryClient()
-  const { data } = useQuery({
+  const { data, isPlaceholderData } = useQuery({
     queryKey: QK,
     queryFn:  fetchDayTargets,
     staleTime: STALE.default,
@@ -67,11 +68,14 @@ export function useDayTargets() {
     invalidates: [QK, PROFILES_QK],
   })
 
+  // Until the real row has loaded, `targets` are the placeholder defaults —
+  // spreading them into a write would overwrite the saved goals.
   const update = useCallback((patch: Partial<DayTargets>) => {
+    if (isPlaceholderData) { toast.warning('Your goals are still loading — try again in a moment'); return }
     mutation.mutate({ ...targets, ...patch })
-  }, [targets, mutation])
+  }, [targets, mutation, isPlaceholderData])
 
-  return { targets, update, isSaving: mutation.isPending }
+  return { targets, update, isSaving: mutation.isPending, isLoaded: !isPlaceholderData }
 }
 
 // One saved {calories, protein, water} set per goal (migration 088) — the

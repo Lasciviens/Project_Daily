@@ -18,8 +18,8 @@ export interface DayMeal {
   fiber_g:   number
   sugar_g:   number
   /** 'plan' = a status='planned' row (intent, macros computed live); 'log' = a
-      status='eaten' row (what was actually eaten, macros snapshotted at log
-      time). Both live in food_log_entries since migration 061. */
+      status='eaten' row (what was actually eaten; totals derived from its
+      source, migration 106). Both live in food_log_entries since migration 061. */
   source:    'plan' | 'log'
   /** For plan rows only — the raw entry so the Daily ✎ can edit it in place. */
   planEntry?: MealPlanEntry
@@ -228,11 +228,11 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   // since the two `select()` calls below use different column lists and are
   // cast to UnifiedRow[] downstream regardless.
   let uni: { data: unknown; error: unknown } =
-    await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date)
+    await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date).order('created_at', { ascending: true })
   if (uni.error && isMissingMealGroup(uni.error)) {
     // migration 087 not applied yet — retry without meal_group_id; every
     // row then reads as ungrouped (today's behaviour), never a hard error.
-    uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT_BASE).eq('date', date)
+    uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT_BASE).eq('date', date).order('created_at', { ascending: true })
   }
   let allMeals: DayMeal[]
   if (!uni.error) {

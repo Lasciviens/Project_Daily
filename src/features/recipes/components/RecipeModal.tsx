@@ -10,6 +10,7 @@ import { canComputeFromIngredients, sumMacros } from '../api/recipesApi'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
+import { DecimalInput } from './foodLogKit'
 
 interface Props {
   /** Controlled callers pass it; the `recipe` entity modal omits it (always open). */
@@ -291,7 +292,7 @@ export function RecipeModal({ open = true, onClose, recipe }: Props) {
             {ingredients.map((row, i) => (
               <div key={i} className="flex flex-col gap-1">
                 <div className="flex items-center gap-1.5">
-                  <input value={row.quantity ?? ''} onChange={e => setRow(i, { quantity: numOrNull(e.target.value) })} placeholder="Qty" aria-label="Quantity" inputMode="decimal"
+                  <DecimalInput value={row.quantity} onValue={v => setRow(i, { quantity: v })} placeholder="Qty" aria-label="Quantity"
                     className="input w-14 px-2 text-center tabular-nums" />
                   <input value={row.unit ?? ''} onChange={e => setRow(i, { unit: e.target.value })} placeholder="Unit" aria-label="Unit"
                     className="input w-16 px-2" />
