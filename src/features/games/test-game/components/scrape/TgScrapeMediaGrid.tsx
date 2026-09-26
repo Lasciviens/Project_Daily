@@ -145,7 +145,7 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
         </div>
       ))}
       <TgLightbox images={zoomUrls} index={zoom} onClose={() => setZoom(null)} onIndex={setZoom} />
-      <TgVideoPlayer src={video?.src ?? null} title={`${candidate.title ?? 'Game'} · ${video?.label ?? 'Video'}`} onClose={() => setVideo(null)} />
+      <TgVideoPlayer src={video?.src ?? null} title={`${String(candidate.values.title ?? candidate.names[0]?.text ?? 'Game')} · ${video?.label ?? 'Video'}`} onClose={() => setVideo(null)} />
     </div>
   )
 }
