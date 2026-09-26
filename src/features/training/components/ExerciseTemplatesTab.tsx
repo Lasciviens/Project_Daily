@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import { ExerciseThumb, ExerciseGifPicker } from '../exerciseMedia'
 import type { HevyExerciseTemplate } from '../types.hevy'
+import { ChevronDown, Dumbbell } from 'lucide-react'
+import { EmptyState, Skeleton } from '../../../shared/ui'
 
 // Friendly labels for Hevy's CustomExerciseType enum. Anything not listed
 // falls back to a humanized version (snake_case → "Title Case") so raw values
@@ -30,37 +32,28 @@ function humanizeType(type: string): string {
 
 function TypeChip({ type }: { type: string }) {
   return (
-    <span className="inline-block text-[10px] font-semibold bg-ink-100 text-ink-500 rounded-full px-2 py-0.5 shrink-0 whitespace-nowrap">
-      {humanizeType(type)}
-    </span>
+    <span className="chip shrink-0">{humanizeType(type)}</span>
   )
 }
 
 function TemplateCard({ t }: { t: HevyExerciseTemplate }) {
   const muscles = t.secondary_muscle_groups ?? []
   return (
-    <div className="flex flex-col gap-2 p-3.5 bg-cream-50 border border-ink-100 rounded-xl hover:border-accent-300 hover:shadow-sm transition-all">
+    <div className="card flex flex-col gap-2 p-3.5">
       <div className="flex items-start gap-2.5">
         <ExerciseThumb title={t.title} templateId={t.id} size={64} />
         <div className="flex-1 min-w-0 flex items-start justify-between gap-2">
-          <span className="text-sm font-semibold text-ink-800 leading-snug">{t.title}</span>
+          <span className="text-body font-semibold leading-snug text-fg">{t.title}</span>
           <TypeChip type={t.type} />
         </div>
       </div>
       <ExerciseGifPicker templateId={t.id} title={t.title} />
       <div className="flex flex-wrap items-center gap-1">
         {t.primary_muscle_group && (
-          <span className="text-[10px] font-medium bg-accent-100 text-accent-700 rounded-full px-2 py-0.5 capitalize">
-            {t.primary_muscle_group}
-          </span>
+          <span className="chip border-transparent bg-surface-hover font-semibold capitalize text-fg">{t.primary_muscle_group}</span>
         )}
         {muscles.map(m => (
-          <span
-            key={m}
-            className="text-[10px] bg-cream-100 text-ink-500 border border-ink-200 rounded-full px-2 py-0.5 capitalize"
-          >
-            {m}
-          </span>
+          <span key={m} className="chip capitalize text-fg-muted">{m}</span>
         ))}
       </div>
     </div>
@@ -72,22 +65,21 @@ function MuscleGroup({ name, templates, forceOpen }: { name: string; templates: 
   const isOpen = forceOpen || open
 
   return (
-    <div className="border border-ink-200 rounded-xl overflow-hidden">
+    <div className="card overflow-hidden">
       <button
         type="button"
+        aria-expanded={isOpen}
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-3 py-2 min-h-[44px] bg-cream-50 hover:bg-cream-100 transition-colors"
+        className="flex min-h-[44px] w-full items-center justify-between px-4 py-2 transition-colors hover:bg-surface-hover"
       >
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-ink-800 capitalize">{name}</span>
-          <span className="text-xs font-semibold bg-ink-200 text-ink-600 rounded-full px-2 py-0.5">
-            {templates.length}
-          </span>
+          <span className="text-body font-semibold capitalize text-fg">{name}</span>
+          <span className="count-badge">{templates.length}</span>
         </div>
-        <span className="text-ink-400 text-xs">{isOpen ? '▲' : '▼'}</span>
+        <ChevronDown aria-hidden className={`h-4 w-4 text-fg-faint transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {isOpen && (
-        <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 bg-cream-50 border-t border-ink-100">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,22rem))] justify-start gap-2.5 border-t border-line bg-surface-2 p-2.5">
           {templates.map(t => (
             <TemplateCard key={t.id} t={t} />
           ))}
@@ -127,21 +119,21 @@ export function ExerciseTemplatesTab() {
         value={search}
         onChange={e => setSearch(e.target.value)}
         placeholder="Search exercises…"
-        className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-4 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
+        aria-label="Search exercises"
+        className="input w-full max-w-md"
       />
 
       {isLoading ? (
         <div className="space-y-2">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-12 rounded-xl bg-cream-200 animate-pulse" />
-          ))}
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-12" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-ink-200 rounded-xl">
-          <p className="text-ink-400 text-sm">
-            {search ? 'No exercises match your search' : 'No templates yet — sync your Hevy data first'}
-          </p>
-        </div>
+        <EmptyState
+          bordered
+          icon={<Dumbbell />}
+          title={search ? 'No exercises match your search' : 'No exercise templates yet'}
+          description={search ? undefined : 'Sync your Hevy data first.'}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {grouped.map(([name, list]) => (

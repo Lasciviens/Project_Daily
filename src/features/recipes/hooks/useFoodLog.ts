@@ -39,8 +39,7 @@ export function useRecentFoods() {
 /** One diary row by id (the edit popup's source of truth). */
 export function useFoodLogEntry(id: string | null | undefined) {
   return useQuery({
-    // TODO(qk): move to a qk.foodLog.entry(id) builder.
-    queryKey: [...qk.foodLog.all, 'entry', id ?? ''] as const,
+    queryKey: qk.foodLog.entry(id ?? ''),
     queryFn:  () => fetchFoodLogEntry(id!),
     enabled:  !!id,
     staleTime: STALE.live,

@@ -40,7 +40,8 @@ export async function createScheduleBlock(input: CreateScheduleBlockInput): Prom
   const { data, error } = await supabase.from('schedule_blocks').insert(row).select().single()
   if (!error) return data
   if (error.code !== 'PGRST204' && error.code !== '42703') throw error
-  const { effective_from: _drop, ...withoutColumn } = row
+  const withoutColumn = { ...row }
+  delete withoutColumn.effective_from
   const retry = await supabase.from('schedule_blocks').insert(withoutColumn).select().single()
   if (retry.error) throw retry.error
   return retry.data
@@ -193,7 +194,8 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
       // `{...patch}` write below, abandoning tracking of a link nothing
       // can now act on). Reported as 'unknown', not 'not_linked' — we
       // genuinely don't know the remote event's fate.
-      const { google_calendar_event_id: _drop, ...rest } = patch
+      const rest = { ...patch }
+      delete rest.google_calendar_event_id
       const { error } = await supabase.from('time_blocks')
         .update({ ...rest, updated_at: new Date().toISOString() })
         .eq('id', id)
@@ -203,7 +205,7 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
     try {
       await deleteCalendarEvent(token, 'primary', before!.google_calendar_event_id!)
     } catch (err) {
-      if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`)
+      if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`, { cause: err })
       // Confirmed 404 = already gone remotely — proceed to clear locally too.
     }
     const { error } = await supabase

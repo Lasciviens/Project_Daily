@@ -1,19 +1,19 @@
 import { useCallback, useMemo, useState } from 'react'
 import { format } from 'date-fns'
+import { AlertTriangle, Check, PanelRightClose, PanelRightOpen, Plus, Zap } from 'lucide-react'
 import { useWorkTasks, useUpdateTask, useDeleteTask, useToggleTask, useCreateTask } from '../../todo/hooks/useTodos'
 import { useEntityModal } from '../../../shared/modals'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
-import { Sheet } from '../../../shared/components/Sheet'
-import { SegmentedControl } from '../../../shared/components/SegmentedControl'
+import { Button, IconButton, PageContainer, PageHeader, Skeleton, TonePill, cx } from '../../../shared/ui'
 import WorkBoard from '../components/WorkBoard'
 import WorkListView from '../components/WorkListView'
-import WorkTaskCard from '../components/WorkTaskCard'
 import FocusStrip from '../components/FocusStrip'
+import OverdueStrip from '../components/OverdueStrip'
 import WorkSidebar from '../components/WorkSidebar'
-import { isOverdue, isCompletedToday, matchesSearch, sortTasks, OVERDUE_COLOR } from '../components/workMeta'
-import type { Task, TaskStatus, TaskPriority } from '../../todo/types'
-
-type ViewMode = 'board' | 'list'
+import WorkToolbar, { type PrioFilter, type ViewMode } from '../components/WorkToolbar'
+import { isOverdue, isCompletedToday, matchesSearch, sortTasks } from '../components/workMeta'
+import { STATUS_TONE } from '../../todo/taskTones'
+import type { Task, TaskStatus } from '../../todo/types'
 
 function usePersisted<T extends string>(key: string, initial: T): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -34,19 +34,16 @@ export function WorkPage() {
   const createTask = useCreateTask()
 
   const modal = useEntityModal()
-  const openNew  = useCallback(() => modal.open({ kind: 'task', config: { heading: 'New Task' }, defaults: { domain: 'work', section: 'today' } }), [modal])
-  const openEdit = useCallback((task: Task) => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit Task' } }), [modal])
-  const [search,    setSearch]   = useState('')
-  const [prioFilter, setPrioFilter] = useState<'all' | TaskPriority>('all')
-  const [filterOpen, setFilterOpen] = useState(false)
-  const [quickTitle, setQuickTitle] = useState('')
+  const openNew  = useCallback(() => modal.open({ kind: 'task', config: { heading: 'New task' }, defaults: { domain: 'work', section: 'today' } }), [modal])
+  const openEdit = useCallback((task: Task) => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit task' } }), [modal])
 
-  const filtersActive = search.trim() !== '' || prioFilter !== 'all'
-  const [overdueOpen, setOverdueOpen] = useState(true)
-  const [view, setView]         = usePersisted<ViewMode>('work_view', 'board')
-  const [rail, setRail]         = usePersisted<'open' | 'closed'>('work_rail', 'open')
+  const [search, setSearch]         = useState('')
+  const [prioFilter, setPrioFilter] = useState<PrioFilter>('all')
+  const [view, setView]             = usePersisted<ViewMode>('work_view', 'board')
+  const [rail, setRail]             = usePersisted<'open' | 'closed'>('work_rail', 'open')
 
   const focusedTasks = tasks.filter(t => t.is_focused)
+  const focusedIds = focusedTasks.map(t => t.id)
 
   const filtered = useMemo(() => tasks.filter(t =>
     matchesSearch(t, search) && (prioFilter === 'all' || t.priority === prioFilter)
@@ -57,8 +54,8 @@ export function WorkPage() {
     [filtered]
   )
 
-  const doneToday = tasks.filter(t => t.status === 'done' && isCompletedToday(t)).length
-  const wip       = tasks.filter(t => t.status === 'in_progress').length
+  const doneToday    = tasks.filter(t => t.status === 'done' && isCompletedToday(t)).length
+  const wip          = tasks.filter(t => t.status === 'in_progress').length
   const overdueCount = tasks.filter(isOverdue).length
 
   const toggleFocus = useCallback((task: Task) => {
@@ -77,14 +74,14 @@ export function WorkPage() {
       status,
       ...(waitingFor !== undefined ? { waiting_for: waitingFor } : {}),
       ...(status === 'done' || status === 'cancelled' ? { is_focused: false } : {}),
-    } }), { loading: 'Updating…', success: 'Updated ✓' })
+    } }), { loading: 'Updating…', success: 'Updated' })
   }, [updateTask])
 
   const handleMarkDone = useCallback(async (id: string) => {
     await withProgress(async () => {
       await toggleTask.mutateAsync({ id, isDone: true })
       await updateTask.mutateAsync({ id, patch: { is_focused: false } })
-    }, { loading: 'Marking done…', success: 'Done! ✓' })
+    }, { loading: 'Marking done…', success: 'Marked done' })
   }, [toggleTask, updateTask])
 
   const handleDelete = useCallback(async (id: string) => {
@@ -92,269 +89,75 @@ export function WorkPage() {
     await withProgress(() => deleteTask.mutateAsync(id), { loading: 'Deleting…', success: 'Deleted' })
   }, [deleteTask, modal])
 
-  function handleQuickAdd(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter' || !quickTitle.trim()) return
-    const title = quickTitle.trim()
-    setQuickTitle('')
+  const handleQuickAdd = useCallback((title: string) => {
     createTask.mutate({ title, section: 'today', domain: 'work', priority: 'medium' })
-  }
-
-  if (isLoading) {
-    return (
-      <div className="p-6 space-y-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-14 rounded-xl bg-cream-200 animate-pulse" />
-        ))}
-      </div>
-    )
-  }
+  }, [createTask])
 
   const railOpen = rail === 'open'
+  const cardActions = { onStatusChange: handleStatusChange, onDelete: handleDelete, onEdit: openEdit, onFocus: toggleFocus }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* ── Command bar ── */}
-      <div className="flex items-center gap-3 flex-wrap px-4 sm:px-6 py-2.5 sm:py-3 border-b border-ink-100 bg-cream-50 sticky top-0 z-10">
-        <div className="flex items-baseline gap-3 min-w-0">
-          {/* Redundant on mobile — the bottom tab bar already labels Work. */}
-          <h1 className="hidden sm:block text-xl font-bold text-ink-900">Work</h1>
-          <span className="hidden sm:inline text-xs text-ink-400">{format(new Date(), 'EEE, d MMM')}</span>
-        </div>
-
-        {/* Day stats */}
-        <div className="flex items-center gap-1.5 text-[11px] font-medium">
-          <span className="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">✓ {doneToday}</span>
-          <span className="px-2 py-1 rounded-full bg-accent-50 text-accent-700">⚡ {wip}</span>
-          {overdueCount > 0 && (
-            <span className="px-2 py-1 rounded-full bg-red-50 text-red-600">⚠ {overdueCount}</span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 ml-auto">
-          <button
-            onClick={openNew}
-            className="flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-white px-4 rounded-xl text-sm font-semibold transition-colors duration-150 min-h-[44px]"
-          >
-            <span className="text-lg leading-none">+</span>
-            <span className="hidden sm:inline">New task</span>
-          </button>
-          <button
-            onClick={() => setRail(railOpen ? 'closed' : 'open')}
-            title={railOpen ? 'Hide side panel' : 'Show side panel'}
-            className="hidden lg:flex items-center justify-center min-h-[44px] min-w-[44px] rounded-xl border border-ink-200 text-ink-400 hover:text-ink-700 hover:border-ink-400 transition-colors"
-          >
-            {railOpen ? '⇥' : '⇤'}
-          </button>
-        </div>
-      </div>
-
-      <div className={`flex-1 min-h-0 lg:grid ${railOpen ? 'lg:grid-cols-[minmax(0,1fr)_340px]' : 'lg:grid-cols-[minmax(0,1fr)_44px]'}`}>
-        {/* ── Main column ── */}
-        <div className="flex flex-col min-h-0 overflow-y-auto lg:overflow-hidden">
-          <div className="px-4 sm:px-6 pt-3 pb-2 space-y-2">
-            <FocusStrip
-              tasks={focusedTasks}
-              onMarkDone={handleMarkDone}
-              onClearFocus={clearFocus}
-              onEdit={openEdit}
-            />
-
-            {/* Overdue alert strip */}
-            {overdueTasks.length > 0 && (
-              <div className="rounded-2xl border" style={{ borderColor: OVERDUE_COLOR + '55', backgroundColor: OVERDUE_COLOR + '0D' }}>
-                <button
-                  type="button"
-                  onClick={() => setOverdueOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-3 py-2 min-h-[44px]"
-                >
-                  <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: OVERDUE_COLOR }}>
-                    ⚠ Overdue · {overdueTasks.length}
-                  </span>
-                  <span className="text-[10px]" style={{ color: OVERDUE_COLOR }}>{overdueOpen ? '▼' : '▶'}</span>
-                </button>
-                {overdueOpen && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5 px-2 pb-2">
-                    {overdueTasks.map(task => (
-                      <WorkTaskCard
-                        key={task.id}
-                        task={task}
-                        accentColor={OVERDUE_COLOR}
-                        onStatusChange={handleStatusChange}
-                        onDelete={handleDelete}
-                        onEdit={openEdit}
-                        onFocus={toggleFocus}
-                        isFocused={task.is_focused}
-                      />
-                    ))}
-                  </div>
+    <PageContainer width="full" className="pt-0 sm:pt-0">
+      {/* Sticky command bar: stays put while the board scrolls in <main>. */}
+      <div className="sticky top-0 z-10 -mx-4 mb-4 bg-canvas/85 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <PageHeader
+          className="mb-0"
+          title={<span className="hidden sm:inline">Work</span>}
+          subtitle={<span className="hidden sm:inline">{format(new Date(), 'EEEE d MMMM')}</span>}
+          actions={
+            <>
+              <span className="flex items-center gap-1.5" aria-label="Today at a glance">
+                <TonePill tone={STATUS_TONE.done} className="tabular-nums"><Check aria-hidden className="h-3 w-3" />{doneToday} done</TonePill>
+                <TonePill tone={STATUS_TONE.in_progress} className="tabular-nums"><Zap aria-hidden className="h-3 w-3" />{wip} active</TonePill>
+                {overdueCount > 0 && (
+                  <TonePill tone="danger" className="tabular-nums"><AlertTriangle aria-hidden className="h-3 w-3" />{overdueCount} overdue</TonePill>
                 )}
-              </div>
-            )}
-
-            {/* Board controls: view toggle + filters. Quick-add sits on its own
-                full-width row below so the two inputs no longer fight for space;
-                search + priority collapse into a filter sheet on mobile. */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="flex gap-0.5 p-0.5 bg-cream-50 border border-ink-200 rounded-lg">
-                  {(['board', 'list'] as ViewMode[]).map(v => (
-                    <button
-                      key={v}
-                      onClick={() => setView(v)}
-                      className={`px-3 min-h-[44px] rounded-md text-xs font-semibold capitalize transition-colors ${
-                        view === v ? 'bg-ink-950 text-white' : 'text-ink-500 hover:text-ink-900'
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Desktop: inline search + priority (intact). */}
-                <input
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="🔍 Search…"
-                  className="hidden sm:block flex-1 min-w-[120px] max-w-[200px] text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300"
-                />
-                <select
-                  value={prioFilter}
-                  onChange={e => setPrioFilter(e.target.value as 'all' | TaskPriority)}
-                  className="hidden sm:block min-h-[44px] text-xs border border-ink-200 rounded-xl px-2 bg-cream-50 text-ink-700"
-                >
-                  <option value="all">All priorities</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-
-                {/* Mobile: single filter trigger (search + priority live in the sheet). */}
-                <button
-                  type="button"
-                  onClick={() => setFilterOpen(true)}
-                  aria-label="Filter tasks"
-                  className="press-feedback sm:hidden ml-auto relative flex items-center justify-center min-h-[44px] min-w-[44px] rounded-xl border border-ink-200 bg-cream-50 text-ink-600 hover:text-ink-900 transition-colors"
-                >
-                  <span aria-hidden className="text-base">🔍</span>
-                  {filtersActive && (
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent-500" />
-                  )}
-                </button>
-              </div>
-
-              {/* Quick add — its own full-width row (capped on desktop). */}
-              <input
-                value={quickTitle}
-                onChange={e => setQuickTitle(e.target.value)}
-                onKeyDown={handleQuickAdd}
-                placeholder="Quick add task… (Enter)"
-                disabled={createTask.isPending}
-                className="w-full sm:max-w-md text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300 disabled:opacity-50"
-              />
-            </div>
-          </div>
-
-          {/* Board / List */}
-          <div className={`px-4 sm:px-6 pb-4 lg:flex-1 lg:min-h-0 ${view === 'board' ? 'lg:overflow-hidden' : 'lg:overflow-y-auto'}`}>
-            {view === 'board' ? (
-              <WorkBoard
-                tasks={filtered}
-                focusedTaskIds={focusedTasks.map(t => t.id)}
-                onStatusChange={handleStatusChange}
-                onDelete={handleDelete}
-                onEdit={openEdit}
-                onFocus={toggleFocus}
-                onAddTask={openNew}
-              />
-            ) : (
-              <WorkListView
-                tasks={filtered}
-                focusedTaskIds={focusedTasks.map(t => t.id)}
-                onStatusChange={handleStatusChange}
-                onDelete={handleDelete}
-                onEdit={openEdit}
-                onFocus={toggleFocus}
-              />
-            )}
-          </div>
-
-          {/* Mobile: rail below content */}
-          <div className="lg:hidden px-4 pb-4">
-            <WorkSidebar tasks={tasks} />
-          </div>
-        </div>
-
-        {/* ── Desktop rail ── */}
-        {railOpen ? (
-          <aside className="hidden lg:block overflow-y-auto border-l border-ink-100 bg-cream-50/60 p-3">
-            <WorkSidebar tasks={tasks} />
-          </aside>
-        ) : (
-          <aside className="hidden lg:flex items-start justify-center border-l border-ink-100 bg-cream-50/60 pt-3">
-            <button
-              onClick={() => setRail('open')}
-              title="Show side panel"
-              className="min-h-[44px] min-w-[36px] flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors"
-            >
-              ⇤
-            </button>
-          </aside>
-        )}
+              </span>
+              <Button variant="primary" icon={<Plus />} onClick={openNew} className="ml-auto sm:ml-0">New task</Button>
+              <IconButton
+                label={railOpen ? 'Hide side panel' : 'Show side panel'}
+                bordered
+                onClick={() => setRail(railOpen ? 'closed' : 'open')}
+                className="hidden 2xl:grid"
+              >
+                {railOpen ? <PanelRightClose /> : <PanelRightOpen />}
+              </IconButton>
+            </>
+          }
+        />
       </div>
 
-      {/* Mobile filter sheet — search + priority (inline on desktop). */}
-      <Sheet
-        open={filterOpen}
-        onClose={() => setFilterOpen(false)}
-        title="Filter tasks"
-        size="sm"
-        footer={
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => { setSearch(''); setPrioFilter('all') }}
-              disabled={!filtersActive}
-              className="press-feedback min-h-[44px] px-4 rounded-xl text-sm font-medium text-ink-500 hover:text-ink-900 disabled:opacity-40"
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterOpen(false)}
-              className="press-feedback min-h-[44px] px-5 rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors"
-            >
-              Done
-            </button>
-          </div>
-        }
-      >
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-ink-500 mb-1.5">Search</label>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search tasks…"
-              className="w-full text-sm px-3 min-h-[44px] rounded-xl border border-ink-200 bg-cream-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-300"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-ink-500 mb-1.5">Priority</label>
-            <SegmentedControl<'all' | TaskPriority>
-              fullWidth
-              size="sm"
-              value={prioFilter}
-              onChange={setPrioFilter}
-              options={[
-                { value: 'all',    label: 'All' },
-                { value: 'high',   label: 'High' },
-                { value: 'medium', label: 'Med' },
-                { value: 'low',    label: 'Low' },
-              ]}
-            />
-          </div>
+      {isLoading ? (
+        <div className="grid max-w-[91rem] gap-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-64" />)}
         </div>
-      </Sheet>
-    </div>
+      ) : (
+        // Rail beside the board only on wide monitors; below 2xl it stacks
+        // under the board so the four columns keep a usable width.
+        <div className={cx('grid items-start gap-5', railOpen && '2xl:grid-cols-[minmax(0,91rem)_20rem]')}>
+          <div className="flex min-w-0 flex-col gap-4">
+            <FocusStrip tasks={focusedTasks} onMarkDone={handleMarkDone} onClearFocus={clearFocus} onEdit={openEdit} />
+            <OverdueStrip tasks={overdueTasks} {...cardActions} />
+            <WorkToolbar
+              view={view}
+              onViewChange={setView}
+              search={search}
+              onSearchChange={setSearch}
+              prio={prioFilter}
+              onPrioChange={setPrioFilter}
+              onQuickAdd={handleQuickAdd}
+              quickAddBusy={createTask.isPending}
+            />
+            {view === 'board'
+              ? <WorkBoard tasks={filtered} focusedTaskIds={focusedIds} onAddTask={openNew} {...cardActions} />
+              : <WorkListView tasks={filtered} focusedTaskIds={focusedIds} {...cardActions} />}
+          </div>
+
+          <aside className={cx('min-w-0 max-w-[91rem]', !railOpen && '2xl:hidden')}>
+            <WorkSidebar tasks={tasks} />
+          </aside>
+        </div>
+      )}
+    </PageContainer>
   )
 }

@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { CalendarClock, Film, Tv } from 'lucide-react'
+import { CollapsibleCard } from './CollapsibleCard'
 import { posterUrl } from '../../../integrations/tmdb/client'
-import type { UserMovieEntry, UserTVEntry } from '../types'
+import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
 
 interface Props {
   movieEntries: UserMovieEntry[]
   tvEntries:    UserTVEntry[]
-  onOpenDetail: (id: number, type: 'movie' | 'tv') => void
+  onOpenDetail: (id: number, type: MediaType) => void
 }
 
 interface UpcomingItem {
@@ -28,8 +29,6 @@ function formatDate(date: Date): string {
 }
 
 export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props) {
-  const [open, setOpen] = useState(false)
-
   const today = new Date()
 
   // Upcoming movies with future release dates. Status-filtered (real bug:
@@ -74,56 +73,43 @@ export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props
   const items = [...upcomingMovies, ...upcomingTV].sort((a, b) => a.daysAway - b.daysAway)
 
   return (
-    <div className="mb-6">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 mb-3 w-full text-left group min-h-[44px]"
-      >
-        <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">
-          📅 Coming Soon
-        </span>
-        {items.length > 0 && (
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-accent-100 text-accent-600">
-            {items.length}
-          </span>
-        )}
-        <span className={`ml-auto text-ink-400 text-xs transition-transform duration-150 ${open ? 'rotate-0' : '-rotate-90'}`}>
-          ▾
-        </span>
-      </button>
-
-      {open && (
-        items.length === 0 ? (
-          <p className="text-xs text-ink-400 px-1">
-            No upcoming releases in your library. Add movies or TV series with future release dates.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {items.map(item => (
-              <div
-                key={item.id}
+    <CollapsibleCard
+      title="Coming soon"
+      icon={<CalendarClock />}
+      badge={items.length > 0 ? <span className="count-badge">{items.length}</span> : undefined}
+    >
+      {items.length === 0 ? (
+        <p className="text-body text-fg-muted">
+          No upcoming releases in your library. Add movies or series with a future release date.
+        </p>
+      ) : (
+        <ul className="-mx-2 space-y-0.5">
+          {items.map(item => (
+            <li key={item.id}>
+              <button
+                type="button"
                 onClick={() => onOpenDetail(item.tmdbId, item.type)}
-                className="flex items-center gap-3 p-2.5 min-h-[60px] rounded-lg border border-ink-100 hover:border-accent-200 hover:bg-accent-50/30 cursor-pointer transition-colors duration-150"
+                className="row row-interactive w-full py-1.5 text-left"
               >
-                <img
-                  src={posterUrl(item.poster, 'w92')}
-                  alt={item.title}
-                  className="w-9 h-14 object-cover rounded-md flex-shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-ink-800 truncate">{item.title}</p>
-                  <p className="text-[10px] text-ink-400">{item.type === 'movie' ? '🎬' : '📺'} {item.dateLabel}</p>
-                </div>
-                <div className="flex-shrink-0 text-right">
-                  <span className={`text-xs font-bold ${item.daysAway <= 7 ? 'text-accent-600' : 'text-ink-500'}`}>
-                    {item.daysAway === 0 ? 'Today!' : item.daysAway === 1 ? 'Tomorrow' : `${item.daysAway}d`}
+                <img src={posterUrl(item.poster, 'w92')} alt="" className="h-14 w-9 shrink-0 rounded-md bg-surface-2 object-cover" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-body font-medium text-fg">{item.title}</span>
+                  <span className="flex items-center gap-1 text-meta text-fg-muted tabular-nums">
+                    {item.type === 'movie' ? <Film aria-hidden className="h-3 w-3" /> : <Tv aria-hidden className="h-3 w-3" />}
+                    {item.dateLabel}
                   </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )
+                </span>
+                <span
+                  data-tone={item.daysAway <= 7 ? 'warn' : undefined}
+                  className={`shrink-0 text-meta font-semibold tabular-nums ${item.daysAway <= 7 ? 'tone-text' : 'text-fg-muted'}`}
+                >
+                  {item.daysAway <= 0 ? 'Today' : item.daysAway === 1 ? 'Tomorrow' : `${item.daysAway}d`}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+    </CollapsibleCard>
   )
 }

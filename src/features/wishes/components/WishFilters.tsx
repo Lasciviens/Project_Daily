@@ -18,7 +18,7 @@ export function WishFilters({ kind, status, onKind, onStatus }: {
         onChange={onKind}
         size="sm"
         options={[
-          { value: 'all', label: 'All' }, { value: 'thing', label: 'Things' }, { value: 'place', label: '📍 Places' },
+          { value: 'all', label: 'All' }, { value: 'thing', label: 'Things' }, { value: 'place', label: 'Places' },
         ]}
       />
       <SegmentedControl<StatusFilter>

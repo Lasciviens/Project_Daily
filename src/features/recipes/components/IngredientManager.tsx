@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from 'react'
+import { ChevronDown, Pencil, Plus, ScanBarcode, Search, X } from 'lucide-react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem, useUpdateIngredientLibraryItem, useDeleteIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { toast } from '../../../app/store'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
-import { ConfirmDialog } from './ConfirmDialog'
+import { entityModal } from '../../../shared/modals/useEntityModal'
+import { Button, Card, EmptyState, IconButton, SkeletonText, cx } from '../../../shared/ui'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
 import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
@@ -41,7 +43,6 @@ export function IngredientManager() {
   const [scanOpen, setScanOpen] = useState(false)
   const [onlineOpen, setOnlineOpen] = useState(false)
   const [meta, setMeta] = useState<{ source: string; source_ref: string; image_url: string | null } | null>(null)
-  const [toDelete, setToDelete] = useState<IngredientLibraryItem | null>(null)
   // Mobile-only disclosure: expanded, the 11-field form eats ~400px and pushes
   // "Your foods" — the list you came for — off the bottom of a 852px screen.
   // Always expanded from sm: (see the `sm:flex` on the fields wrapper below).
@@ -124,151 +125,151 @@ export function IngredientManager() {
       if (editingId) await update.mutateAsync({ id: editingId, input })
       else await create.mutateAsync(input)
       return true
-    }, { loading: editingId ? 'Saving…' : 'Adding…', success: editingId ? 'Saved ✓' : 'Added ✓' })
+    }, { loading: editingId ? 'Saving…' : 'Adding…', success: editingId ? 'Saved' : 'Added' })
     if (ok) reset()
   }
 
-  const inputCls = 'min-h-[44px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
-  const pill = (active: boolean) => `press-feedback text-[11px] px-3 min-h-[44px] rounded-full border transition-colors ${active ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'}`
+  async function handleDelete(ing: IngredientLibraryItem) {
+    const confirmed = await entityModal.confirm({ title: `Delete "${ing.name}"?`, message: 'This removes it from your food library.', confirmLabel: 'Delete', destructive: true })
+    if (!confirmed) return
+    void withProgress(() => remove.mutateAsync(ing.id), { loading: 'Deleting…', success: 'Deleted' })
+  }
+
   const busy = create.isPending || update.isPending
+  const formTitle = editingId ? 'Edit ingredient' : 'New ingredient'
+  const consistency = checkMacroConsistency(
+    f.kcal === '' ? null : Number(f.kcal), f.prot === '' ? null : Number(f.prot),
+    f.carb === '' ? null : Number(f.carb), f.fat === '' ? null : Number(f.fat),
+  )
+  const macroField = (k: 'kcal' | 'prot' | 'carb' | 'fat' | 'fiber' | 'sugar', label: string) => (
+    <input value={f[k]} onChange={e => set(k, sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder={label} aria-label={label} className="input" />
+  )
 
   return (
-    <div className="flex flex-col gap-4 max-w-3xl">
-      {/* Add / edit form */}
-      <div ref={formRef} className={`rounded-2xl border p-4 flex flex-col gap-2 ${editingId ? 'border-accent-300 bg-accent-50/40' : 'border-ink-200 bg-cream-50'}`}>
-        <div className="flex items-center justify-between gap-2">
-          {/* Below sm the title doubles as the disclosure toggle; 📷 / 🔎 stay
-              visible either way — they're the fast paths and both open the
-              form themselves once a product is picked. */}
+    <div className="grid grid-cols-1 items-start gap-3 sm:gap-4 xl:grid-cols-[minmax(0,26rem)_minmax(0,46rem)]">
+      {/* Add / edit form — sticky beside the list on wide screens */}
+      <div ref={formRef} className="scroll-mt-4 xl:sticky xl:top-4">
+      <Card className={cx('flex flex-col gap-3', editingId && '!border-accent-500/50')}>
+        <div className="-my-1 flex items-center gap-2">
+          {/* On phones the title is the disclosure toggle; scan and search stay
+              visible either way and open the form once a product is picked. */}
           <button type="button" onClick={() => setFormOpen(o => !o)} aria-expanded={formOpen}
-            className="sm:hidden flex items-center gap-1.5 flex-1 min-w-0 min-h-[44px] text-left">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-ink-500 truncate">{editingId ? '✎ Edit ingredient' : '➕ New ingredient'}</span>
-            <span className="text-ink-400 text-[11px] shrink-0">{formOpen ? '▴' : '▾'}</span>
+            className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left sm:hidden">
+            <span className="section-label truncate">{formTitle}</span>
+            <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', formOpen && 'rotate-180')} />
           </button>
-          <p className="hidden sm:block text-[11px] font-bold uppercase tracking-wider text-ink-400">{editingId ? '✎ Edit ingredient · per 100g' : '➕ New ingredient · macros per 100g'}</p>
-          <div className="flex items-center gap-1.5">
-            {!editingId && (
-              <>
-                <button type="button" onClick={() => setScanOpen(true)} title="Scan a barcode"
-                  className="press-feedback min-w-[44px] min-h-[44px] px-1.5 rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-400 text-base">📷</button>
-                <button type="button" onClick={() => setOnlineOpen(o => !o)} title="Search online (no barcode)"
-                  className={`press-feedback min-w-[44px] min-h-[44px] px-1.5 rounded-lg border text-base ${onlineOpen ? 'border-accent-400 bg-accent-50 text-accent-700' : 'border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-400'}`}>🔎</button>
-              </>
-            )}
-            {editingId && <button type="button" onClick={reset} className="text-[11px] text-ink-500 hover:text-ink-700 min-h-[44px] px-2">Cancel</button>}
+          <div className="hidden min-w-0 flex-1 sm:block">
+            <p className="section-label">{formTitle}</p>
+            <p className="text-meta text-fg-muted">Macros per 100g</p>
           </div>
+          {!editingId ? (
+            <>
+              <IconButton label="Scan a barcode" bordered onClick={() => setScanOpen(true)}><ScanBarcode /></IconButton>
+              <IconButton label="Search online" bordered aria-pressed={onlineOpen} onClick={() => setOnlineOpen(o => !o)}
+                className={onlineOpen ? '!border-accent-500 !bg-accent-50 !text-accent-600' : undefined}><Search /></IconButton>
+            </>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={reset}>Cancel</Button>
+          )}
         </div>
         {onlineOpen && !editingId && (
-          <div className="rounded-xl border border-accent-200 bg-accent-50/40 p-2.5">
+          <div className="rounded-row border border-line bg-surface-2 p-2.5">
             <OnlineFoodSearch initialQuery={f.name} onPick={prefillFromProduct} />
           </div>
         )}
-        <div className={`${formOpen ? 'flex' : 'hidden'} sm:flex flex-col gap-2`}>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-            <input value={f.name} onChange={e => set('name', e.target.value)} placeholder="Name (e.g. chicken breast)" className={`${inputCls} col-span-2 sm:col-span-1`} />
-            <input value={f.kcal} onChange={e => set('kcal', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Calories" className={inputCls} />
-            <input value={f.prot} onChange={e => set('prot', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Protein g" className={inputCls} />
-            <input value={f.carb} onChange={e => set('carb', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Carbs g" className={inputCls} />
-            <input value={f.fat} onChange={e => set('fat', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Fat g" className={inputCls} />
-            <input value={f.fiber} onChange={e => set('fiber', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Fiber g" className={inputCls} />
-            <input value={f.sugar} onChange={e => set('sugar', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="Sugar g" className={inputCls} />
+        <div className={cx(formOpen ? 'flex' : 'hidden', 'flex-col gap-2 sm:flex')}>
+          <input value={f.name} onChange={e => set('name', e.target.value)} placeholder="Name (e.g. chicken breast)" aria-label="Name" className="input" />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2">
+            {macroField('kcal', 'Calories')}
+            {macroField('prot', 'Protein g')}
+            {macroField('carb', 'Carbs g')}
+            {macroField('fat', 'Fat g')}
+            {macroField('fiber', 'Fiber g')}
+            {macroField('sugar', 'Sugar g')}
           </div>
-          {(() => {
-            const num = (s: string) => (s === '' ? null : Number(s))
-            const check = checkMacroConsistency(num(f.kcal), num(f.prot), num(f.carb), num(f.fat))
-            return check?.inconsistent ? (
-              <div className="flex items-center gap-1.5 text-[11px] text-orange-700">
-                <MacroWarningBadge result={check} />
-                <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
-              </div>
-            ) : null
-          })()}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-            <input value={f.servLabel} onChange={e => set('servLabel', e.target.value)} placeholder="Portion (1 scoop)" className={inputCls} />
-            <input value={f.servGrams} onChange={e => set('servGrams', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams (30)" className={inputCls} />
-            <input value={f.unit} onChange={e => set('unit', e.target.value)} placeholder="Unit (g)" className={inputCls} />
-            <select value={f.group} onChange={e => set('group', e.target.value)} className={inputCls}>
+          {consistency?.inconsistent && (
+            <div className="flex items-center gap-2 text-meta text-warn">
+              <MacroWarningBadge result={consistency} />
+              <span>Calories don't match protein, carbs and fat — {consistency.deltaPct}% off. Tap the badge for details.</span>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
+            <input value={f.servLabel} onChange={e => set('servLabel', e.target.value)} placeholder="Portion (1 scoop)" aria-label="Portion name" className="input" />
+            <input value={f.servGrams} onChange={e => set('servGrams', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams (30)" aria-label="Portion grams" className="input" />
+            <input value={f.unit} onChange={e => set('unit', e.target.value)} placeholder="Unit (g)" aria-label="Unit" className="input" />
+            <select value={f.group} onChange={e => set('group', e.target.value)} aria-label="Category" className="select">
               <option value="">Category…</option>
               {FOOD_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
-          <button type="button" onClick={handleSave} disabled={busy || !f.name.trim()}
-            className="self-start min-h-[44px] px-4 rounded-xl text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50 transition-colors">
-            {busy ? 'Saving…' : editingId ? 'Save changes' : 'Add ingredient'}
-          </button>
+          <Button variant="primary" icon={editingId ? undefined : <Plus />} onClick={handleSave} loading={busy} disabled={!f.name.trim()} className="self-start">
+            {editingId ? 'Save changes' : 'Add ingredient'}
+          </Button>
         </div>
+      </Card>
       </div>
 
       <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcode} />
 
-      {/* Category filter pills */}
-      {(presentGroups.ordered.length > 0 || presentGroups.hasOther) && (
-        <div className="flex flex-wrap gap-1.5">
-          <button className={pill(catFilter === null)} onClick={() => setCatFilter(null)}>All</button>
-          {presentGroups.ordered.map(g => (
-            <button key={g} className={pill(catFilter === g)} onClick={() => setCatFilter(g)}>{g}</button>
-          ))}
-          {presentGroups.hasOther && <button className={pill(catFilter === '__other')} onClick={() => setCatFilter('__other')}>Other</button>}
-        </div>
-      )}
-
-      {/* List */}
-      <div className="rounded-2xl border border-ink-200 bg-cream-50 overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-ink-100 flex items-center gap-3">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400 flex-1">🧺 Your foods · {filtered.length}{catFilter || q ? ` / ${library.length}` : ''}</p>
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search…"
-            className="min-h-[44px] px-2.5 text-xs border border-ink-200 rounded-lg bg-cream-50 w-32 sm:w-40" />
-        </div>
-        {isLoading ? (
-          <p className="text-xs text-ink-400 p-4">Loading…</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-xs text-ink-400 p-4">{q || catFilter ? 'No match.' : 'Nothing yet — add your basics above (chicken, rice, oats, whey…).'}</p>
-        ) : (
-          <ul className="divide-y divide-ink-50">
-            {filtered.slice(0, 300).map(ing => {
-              const macroCheck = checkMacroConsistency(ing.calories, ing.protein_g, ing.carbs_g, ing.fat_g)
-              return (
-              <li key={ing.id} className="flex items-center gap-2 px-4 py-1.5 min-h-[44px] text-xs">
-                <div className="flex-1 min-w-0">
-                  <span className="font-medium text-ink-800 truncate block">{ing.name}</span>
-                  {(ing.food_group || ing.serving_label) && (
-                    <span className="flex flex-wrap items-center gap-1 mt-0.5">
-                      {ing.food_group && <span className="text-[9px] text-ink-400 bg-ink-100/60 rounded px-1">{ing.food_group}</span>}
-                      {ing.serving_label && ing.serving_grams != null && (
-                        <span className="text-[9px] text-ink-400 border border-ink-100 rounded-full px-1">{ing.serving_label} {Math.round(ing.serving_grams)}g</span>
-                      )}
-                    </span>
-                  )}
-                </div>
-                <MacroWarningBadge result={macroCheck} />
-                <span className="text-ink-500 tabular-nums shrink-0 w-14 text-right">{ing.calories ?? '—'}kcal</span>
-                <span className="text-ink-500 tabular-nums shrink-0 w-10 text-right">{ing.protein_g ?? '—'}P</span>
-                <span className="text-ink-400 tabular-nums shrink-0 w-10 text-right hidden sm:block">{ing.carbs_g ?? '—'}C</span>
-                <span className="text-ink-400 tabular-nums shrink-0 w-10 text-right hidden sm:block">{ing.fat_g ?? '—'}F</span>
-                <button onClick={() => startEdit(ing)} aria-label={`Edit ${ing.name}`}
-                  className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-500 hover:text-accent-600 shrink-0">✎</button>
-                <button onClick={() => setToDelete(ing)} aria-label={`Delete ${ing.name}`}
-                  className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-500 hover:text-red-500 shrink-0">×</button>
-              </li>
-              )
-            })}
-          </ul>
+      <div className="flex min-w-0 flex-col gap-3">
+        {(presentGroups.ordered.length > 0 || presentGroups.hasOther) && (
+          <div role="tablist" aria-label="Food group" className="scroll-x -mx-1 flex gap-1.5 px-1">
+            <button type="button" role="tab" aria-selected={catFilter === null} className="pill-tab shrink-0" onClick={() => setCatFilter(null)}>All</button>
+            {presentGroups.ordered.map(g => (
+              <button key={g} type="button" role="tab" aria-selected={catFilter === g} className="pill-tab shrink-0" onClick={() => setCatFilter(g)}>{g}</button>
+            ))}
+            {presentGroups.hasOther && <button type="button" role="tab" aria-selected={catFilter === '__other'} className="pill-tab shrink-0" onClick={() => setCatFilter('__other')}>Other</button>}
+          </div>
         )}
-        {filtered.length > 300 && <p className="text-[10px] text-ink-400 px-4 py-2">Showing first 300 — search or filter to narrow.</p>}
-      </div>
-      <p className="text-[11px] text-ink-400">Per-100g is the source of truth; portion presets are one-tap conveniences. Logged meals snapshot their macros — editing a food later never rewrites your history. Nutrition data: Matvaretabellen (Mattilsynet), NLOD.</p>
 
-      <ConfirmDialog
-        open={!!toDelete}
-        title={toDelete ? `Delete "${toDelete.name}"?` : ''}
-        message="This removes it from your food library."
-        onConfirm={() => {
-          if (!toDelete) return
-          const id = toDelete.id
-          void withProgress(() => remove.mutateAsync(id), { loading: 'Deleting…', success: 'Deleted ✓' })
-        }}
-        onClose={() => setToDelete(null)}
-      />
+        <Card padded={false} className="overflow-hidden">
+          <header className="flex items-center gap-3 border-b border-line px-4 py-2.5">
+            <p className="section-label flex-1">Your foods <span className="count-badge ml-1 normal-case tracking-normal">{filtered.length}{catFilter || q ? ` / ${library.length}` : ''}</span></p>
+            <label className="relative w-36 sm:w-48">
+              <span className="sr-only">Search your foods</span>
+              <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-faint" />
+              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search" className="input pl-8" />
+            </label>
+          </header>
+          {isLoading ? (
+            <div className="p-4"><SkeletonText lines={5} /></div>
+          ) : filtered.length === 0 ? (
+            <EmptyState title={q || catFilter ? 'No match' : 'No foods yet'}
+              description={q || catFilter ? undefined : 'Add your basics (chicken, rice, oats, whey…) with the form.'} />
+          ) : (
+            <ul className="divide-y divide-line">
+              {filtered.slice(0, 300).map(ing => {
+                const macroCheck = checkMacroConsistency(ing.calories, ing.protein_g, ing.carbs_g, ing.fat_g)
+                const num = 'hidden w-12 shrink-0 text-right text-meta tabular-nums text-fg-muted sm:block'
+                return (
+                  <li key={ing.id} className="flex min-h-[48px] items-center gap-2 py-1 pl-4 pr-2 text-body">
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-fg">{ing.name}</span>
+                      {(ing.food_group || ing.serving_label) && (
+                        <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                          {ing.food_group && <span className="chip">{ing.food_group}</span>}
+                          {ing.serving_label && ing.serving_grams != null && (
+                            <span className="chip tabular-nums">{ing.serving_label} {Math.round(ing.serving_grams)}g</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    <MacroWarningBadge result={macroCheck} />
+                    <span className="w-16 shrink-0 text-right text-meta font-medium tabular-nums text-fg-2">{ing.calories ?? '—'} kcal</span>
+                    <span className="w-12 shrink-0 text-right text-meta tabular-nums text-fg-muted">{ing.protein_g ?? '—'}g P</span>
+                    <span className={num}>{ing.carbs_g ?? '—'}g C</span>
+                    <span className={num}>{ing.fat_g ?? '—'}g F</span>
+                    <IconButton label={`Edit ${ing.name}`} onClick={() => startEdit(ing)}><Pencil /></IconButton>
+                    <IconButton label={`Delete ${ing.name}`} onClick={() => handleDelete(ing)} className="text-fg-faint hover:!text-danger"><X /></IconButton>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {filtered.length > 300 && <p className="border-t border-line px-4 py-2 text-meta text-fg-muted">Showing the first 300 — search or filter to narrow.</p>}
+        </Card>
+        <p className="max-w-2xl text-meta text-fg-muted">Per-100g is the source of truth; portion presets are one-tap conveniences. Logged meals snapshot their macros — editing a food later never rewrites your history. Nutrition data: Matvaretabellen (Mattilsynet), NLOD.</p>
+      </div>
     </div>
   )
 }

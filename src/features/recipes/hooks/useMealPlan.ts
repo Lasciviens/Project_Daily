@@ -6,8 +6,7 @@ import type { CreateMealPlanEntryInput, MealPlanEntry } from '../types'
 
 export function useMealPlan(weekStart: string, weekEnd: string) {
   return useQuery({
-    // TODO(qk): move to a qk.mealPlan.week(from, to) builder.
-    queryKey:  [...qk.mealPlan.all, weekStart, weekEnd] as const,
+    queryKey:  qk.mealPlan.week(weekStart, weekEnd),
     queryFn:   () => fetchMealPlan(weekStart, weekEnd),
     staleTime: STALE.live,
   })
@@ -16,8 +15,7 @@ export function useMealPlan(weekStart: string, weekEnd: string) {
 /** One planned row by id — what the plan popup edits. */
 export function useMealPlanEntry(id: string | null | undefined) {
   return useQuery({
-    // TODO(qk): move to a qk.mealPlan.entry(id) builder.
-    queryKey:  [...qk.mealPlan.all, 'entry', id ?? ''] as const,
+    queryKey:  qk.mealPlan.entry(id ?? ''),
     queryFn:   () => fetchMealPlanEntry(id!),
     enabled:   !!id,
     staleTime: STALE.live,

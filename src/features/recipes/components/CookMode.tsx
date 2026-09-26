@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, ListChecks } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, ListChecks } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { cx } from '../../../shared/ui/cx'
 import type { RecipeWithIngredients } from '../types'
@@ -91,7 +91,7 @@ export function CookMode({ recipe, steps, onClose }: Props) {
                     className={cx('flex min-h-[44px] w-full items-center gap-2 rounded-row px-2 text-left text-body transition-colors', checked ? 'opacity-40' : 'hover:bg-white/10')}
                   >
                     <span className={cx('flex h-4 w-4 shrink-0 items-center justify-center rounded border-2', checked ? 'border-accent-500 bg-accent-500' : 'border-white/40')}>
-                      {checked && <span className="text-[9px] font-bold leading-none text-on-accent">✓</span>}
+                      {checked && <Check aria-hidden strokeWidth={3} className="h-3 w-3 text-on-accent" />}
                     </span>
                     <span className={checked ? 'line-through' : ''}>
                       {ing.quantity != null && <span className="mr-1 font-semibold tabular-nums">{ing.quantity}{ing.unit ?? ''}</span>}

@@ -2,12 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import { fetchStravaStatus } from '../api/trainingApi'
-import { syncStravaActivities, disconnectStrava } from '../api/stravaApi'
+import { syncStravaActivities, disconnectStrava, exchangeStravaCode } from '../api/stravaApi'
 
 export function useStravaStatus() {
   return useQuery({
-    // TODO(qk): move to a qk.training.stravaStatus() builder.
-    queryKey: [...qk.training.all, 'strava-status'] as const,
+    queryKey: qk.training.stravaStatus(),
     queryFn:  fetchStravaStatus,
     staleTime: STALE.hour,
   })
@@ -38,5 +37,14 @@ export function useDisconnectStrava() {
   })
 }
 
-/** Refresh target for StravaWidget's OAuth-callback connect. */
-export const STRAVA_INVALIDATE = STRAVA_TARGETS
+/** Finishes the OAuth redirect: exchanges Strava's ?code= for tokens. */
+export function useConnectStrava() {
+  return useMutationWithFeedback({
+    action:         'connect_strava',
+    loadingMessage: 'Connecting to Strava…',
+    successMessage: (r: Awaited<ReturnType<typeof exchangeStravaCode>>) => `Connected as ${r.athlete_name ?? 'Strava athlete'}`,
+    errorFallback:  'Strava connection failed',
+    mutationFn:     (code: string) => exchangeStravaCode(code),
+    invalidates:    STRAVA_TARGETS,
+  })
+}

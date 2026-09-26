@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useHevyRoutines, useDeleteHevyRoutineLocal } from '../hooks/useHevyRoutines'
-import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { CalendarPlus, ChevronDown, ClipboardList, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Button, Card, EmptyState, IconButton, Skeleton, TonePill } from '../../../shared/ui'
+import { SET_TYPE_META } from '../setTypeMeta'
 import { entityModal } from '../../../shared/modals'
 import { NewRoutineModal, EditRoutineModal } from './RoutineModals'
 import { ExerciseThumb } from '../exerciseMedia'
@@ -20,50 +22,23 @@ function setLabel(s: HevyRoutineSet): string {
   return parts.join('×') || '—'
 }
 
-const SET_TYPE_COLOR: Record<HevyRoutineSet['type'], string> = {
-  warmup:  'bg-accent-100 text-accent-700',
-  normal:  'bg-ink-100 text-ink-600',
-  dropset: 'bg-blue-100 text-blue-700',
-  failure: 'bg-red-100 text-red-700',
-}
-
 function SetChip({ s }: { s: HevyRoutineSet }) {
-  return (
-    <span
-      className={`inline-flex items-center text-[11px] font-medium rounded-full px-2 py-0.5 ${SET_TYPE_COLOR[s.type] ?? SET_TYPE_COLOR.normal}`}
-    >
-      {setLabel(s)}
-    </span>
-  )
+  if (s.type === 'normal' || !SET_TYPE_META[s.type]) return <span className="chip tabular-nums">{setLabel(s)}</span>
+  const meta = SET_TYPE_META[s.type]
+  return <TonePill tone={meta.tone} className="tabular-nums"><span className="sr-only">{meta.label}: </span>{setLabel(s)}</TonePill>
 }
 
 // ─── Routine Card ─────────────────────────────────────────────────────────────
 
-const ACCENT_BORDERS = [
-  'border-l-accent-500',
-  'border-l-blue-400',
-  'border-l-green-400',
-  'border-l-purple-400',
-  'border-l-pink-400',
-]
-
-interface RoutineCardProps {
-  routine: HevyRoutine
-  index:   number
-  onEdit:  (r: HevyRoutine) => void
-}
-
 const EXERCISES_PREVIEW = 5
 
-function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
+function RoutineCard({ routine, onEdit }: { routine: HevyRoutine; onEdit: (r: HevyRoutine) => void }) {
   const [expanded, setExpanded] = useState(false)
   const [showAllExercises, setShowAllExercises] = useState(false)
-  const [planOpen,  setPlanOpen]  = useState(false)
   const deleteMutation = useDeleteHevyRoutineLocal()
 
   const exerciseCount = routine.exercises?.length ?? 0
   const setCount      = routine.exercises?.reduce((acc, ex) => acc + (ex.sets?.length ?? 0), 0) ?? 0
-  const accentBorder  = ACCENT_BORDERS[index % ACCENT_BORDERS.length]
 
   async function handleDelete() {
     const ok = await entityModal.confirm({ title: `Delete "${routine.title}"?`, message: 'This removes it from your local data and cannot be undone.', confirmLabel: 'Delete', destructive: true })
@@ -71,93 +46,70 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
     deleteMutation.mutate(routine.id)
   }
 
+  function plan() {
+    entityModal.open({
+      kind: 'time-block',
+      config: { heading: 'Plan routine' },
+      defaults: { title: routine.title, category: 'training', color: 'accent', alsoCreateTask: true },
+      source: { sourceType: 'training_session', sourceId: routine.id, taskSourceType: 'training_session' },
+    })
+  }
+
   return (
-    <div className={`border border-ink-200 border-l-4 ${accentBorder} rounded-xl overflow-hidden bg-cream-50`}>
-      {/* Card header */}
-      <div className="flex items-start gap-3 px-3 py-2.5">
+    <Card padded={false} className="overflow-hidden">
+      <div className="flex items-start gap-2 py-2 pl-4 pr-2">
         <button
           type="button"
+          aria-expanded={expanded}
           onClick={() => setExpanded(o => !o)}
-          className="flex-1 flex flex-col items-start gap-1 min-w-0 text-left"
+          className="flex min-h-[44px] min-w-0 flex-1 flex-col items-start justify-center gap-1 text-left"
         >
-          <span className="font-bold text-base text-ink-900 leading-tight">{routine.title}</span>
-          <div className="flex items-center gap-2 flex-wrap">
-            {routine.folder?.title && (
-              <span className="text-[11px] font-semibold bg-accent-100 text-accent-700 rounded-full px-2 py-0.5">
-                {routine.folder.title}
-              </span>
-            )}
-            <span className="text-xs text-ink-500">
+          <span className="text-lead font-semibold leading-tight text-fg">{routine.title}</span>
+          <span className="flex flex-wrap items-center gap-2">
+            {routine.folder?.title && <span className="chip">{routine.folder.title}</span>}
+            <span className="text-meta tabular-nums text-fg-muted">
               {exerciseCount} exercise{exerciseCount !== 1 ? 's' : ''} · {setCount} sets
             </span>
-          </div>
+          </span>
         </button>
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => setPlanOpen(true)}
-            className="min-h-[44px] px-3 text-xs font-semibold border border-accent-400 text-accent-600 rounded-lg hover:bg-accent-50 transition-colors"
-          >
-            Plan
-          </button>
-          <button
-            type="button"
-            onClick={() => onEdit(routine)}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-500 hover:text-ink-800 hover:bg-cream-50 rounded-lg transition-colors text-sm"
-            title="Edit routine"
-          >
-            ✎
-          </button>
-          <button
-            type="button"
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button size="sm" icon={<CalendarPlus />} onClick={plan}>Plan</Button>
+          <IconButton label="Edit routine" onClick={() => onEdit(routine)}><Pencil /></IconButton>
+          <IconButton
+            label="Delete from local data"
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors text-sm disabled:opacity-50"
-            title="Delete from local data"
+            className="hover:!bg-danger-soft hover:!text-danger disabled:opacity-50"
           >
-            🗑
-          </button>
-          <button
-            type="button"
-            onClick={() => setExpanded(o => !o)}
-            className="min-h-[44px] min-w-[36px] flex items-center justify-center text-ink-400 text-xs"
-          >
-            {expanded ? '▲' : '▼'}
-          </button>
+            <Trash2 />
+          </IconButton>
+          <IconButton label={expanded ? 'Collapse' : 'Expand'} onClick={() => setExpanded(o => !o)}>
+            <ChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          </IconButton>
         </div>
       </div>
 
-      {/* Expanded exercises */}
       {expanded && (
-        <div className="border-t border-ink-100 bg-cream-50 px-3 py-2 flex flex-col gap-2">
+        <div className="flex flex-col gap-2 border-t border-line px-3 py-3">
           {exerciseCount === 0 ? (
-            <p className="text-xs text-ink-400 italic">No exercises</p>
+            <p className="text-meta italic text-fg-muted">No exercises</p>
           ) : (
             <>
-              {/* One bordered row per exercise (was a plain text list that
-                  read as one undifferentiated block): order number, animated
-                  demo GIF (tap to enlarge — same ExerciseThumb as the
-                  Exercises catalog), title, set chips, notes. */}
               {(routine.exercises ?? [])
                 .slice(0, showAllExercises ? undefined : EXERCISES_PREVIEW)
                 .map((ex, exIdx) => (
-                  <div key={ex.id} className="flex items-start gap-2.5 rounded-lg border border-ink-100 bg-cream-100/60 px-2.5 py-2">
+                  <div key={ex.id} className="flex items-start gap-2.5 rounded-row border border-line bg-surface-2 px-2.5 py-2">
                     <ExerciseThumb title={ex.title} templateId={ex.exercise_template_id} size={52} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-ink-800 leading-snug">
-                        <span className="text-ink-400 font-semibold mr-1">{exIdx + 1}.</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-body font-semibold leading-snug text-fg">
+                        <span className="mr-1 tabular-nums text-fg-faint">{exIdx + 1}.</span>
                         {ex.title}
                       </p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {(ex.sets ?? []).map((s, i) => (
-                          <SetChip key={s.id ?? i} s={s} />
-                        ))}
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {(ex.sets ?? []).map((s, i) => <SetChip key={s.id ?? i} s={s} />)}
                       </div>
-                      {ex.notes && (
-                        <p className="text-xs text-ink-400 italic mt-1">{ex.notes}</p>
-                      )}
+                      {ex.notes && <p className="mt-1 text-meta italic text-fg-muted">{ex.notes}</p>}
                     </div>
                   </div>
                 ))}
@@ -165,27 +117,17 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
                 <button
                   type="button"
                   onClick={() => setShowAllExercises(o => !o)}
-                  className="text-xs text-accent-600 hover:text-accent-700 font-medium text-left min-h-[44px] flex items-center"
+                  className="flex min-h-[44px] items-center gap-1 text-left text-meta font-semibold text-accent-600"
                 >
-                  {showAllExercises
-                    ? '▲ Show less'
-                    : `▼ Show all ${exerciseCount} exercises`}
+                  <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${showAllExercises ? 'rotate-180' : ''}`} />
+                  {showAllExercises ? 'Show less' : `Show all ${exerciseCount} exercises`}
                 </button>
               )}
             </>
           )}
         </div>
       )}
-
-      <UnifiedPlanModal
-        open={planOpen}
-        onClose={() => setPlanOpen(false)}
-        mode="schedule"
-        config={{ heading: 'Plan routine' }}
-        defaults={{ title: routine.title, category: 'training', color: 'accent', alsoCreateTask: true }}
-        source={{ sourceType: 'training_session', sourceId: routine.id, taskSourceType: 'training_session' }}
-      />
-    </div>
+    </Card>
   )
 }
 
@@ -198,43 +140,27 @@ export function RoutinesTab() {
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-16 rounded-xl bg-cream-200 animate-pulse" />
-        ))}
+      <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-[72px]" />)}
       </div>
     )
   }
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2 sm:mb-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-bold text-ink-900">Routines</h3>
-          <p className="text-xs text-ink-400">{routines.length} routine{routines.length !== 1 ? 's' : ''}</p>
+          <h3 className="text-lead font-semibold text-fg">Routines</h3>
+          <p className="text-meta tabular-nums text-fg-muted">{routines.length} routine{routines.length !== 1 ? 's' : ''}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setNewOpen(true)}
-          className="min-h-[44px] px-4 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center gap-1.5"
-        >
-          <span className="text-base leading-none">+</span>
-          <span>New Routine</span>
-        </button>
+        <Button variant="primary" icon={<Plus />} onClick={() => setNewOpen(true)}>New routine</Button>
       </div>
 
       {routines.length === 0 ? (
-        <div className="text-center py-14 border border-dashed border-ink-200 rounded-xl">
-          <p className="text-2xl mb-2">📋</p>
-          <p className="text-ink-600 font-medium text-sm">No routines yet</p>
-          <p className="text-ink-400 text-xs mt-1">Sync from Hevy or create one here</p>
-        </div>
+        <EmptyState bordered icon={<ClipboardList />} title="No routines yet" description="Sync from Hevy or create one here." />
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
-          {routines.map((r, i) => (
-            <RoutineCard key={r.id} routine={r} index={i} onEdit={setEditingRoutine} />
-          ))}
+        <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
+          {routines.map(r => <RoutineCard key={r.id} routine={r} onEdit={setEditingRoutine} />)}
         </div>
       )}
 

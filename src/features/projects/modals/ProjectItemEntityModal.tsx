@@ -1,6 +1,5 @@
 import type { EntityModalProps } from '../../../shared/modals/types'
-import { EntityModalPending } from '../../recipes/modals/entityModalLoad'
-import { useFirstLoaded } from '../../recipes/modals/useFirstLoaded'
+import { EntityModalPending, useFirstLoaded } from '../../../shared/modals'
 import { usePhases, useItems } from '../hooks/useProjects'
 import { ProjectItemModal } from '../components/ProjectItemModal'
 

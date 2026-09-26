@@ -1,7 +1,7 @@
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { RecipeDetail } from '../components/RecipeDetail'
 import { useRecipe } from '../hooks/useRecipes'
-import { EntityModalPending } from './entityModalLoad'
+import { EntityModalPending } from '../../../shared/modals/EntityModalPending'
 
 /**
  * `recipe-view`: read, scale, log and cook a recipe. Unlike an editor this

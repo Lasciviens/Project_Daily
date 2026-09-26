@@ -1,4 +1,6 @@
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { HeartPulse, Map as MapIcon } from 'lucide-react'
+import { ModalShell } from '../../../../shared/modals'
+import { useChartColors } from '../../../../shared/ui'
 import { BarLineChart } from './BarLineChart'
 import type { HealthWorkout } from '../../api/healthApi'
 
@@ -35,10 +37,10 @@ function fmtDuration(seconds: number | null): string {
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl bg-cream-100/60 px-3 py-2 flex flex-col gap-0.5 min-w-[5rem]">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">{label}</span>
-      <span className="text-base font-bold text-ink-900 leading-none tabular-nums">{value}</span>
-      {sub && <span className="text-[10px] text-ink-400">{sub}</span>}
+    <div className="flex min-w-[5rem] flex-col gap-0.5 rounded-row bg-surface-2 px-3 py-2">
+      <span className="section-label">{label}</span>
+      <span className="text-lead font-bold leading-none tabular-nums text-fg">{value}</span>
+      {sub && <span className="text-micro font-normal text-fg-muted">{sub}</span>}
     </div>
   )
 }
@@ -46,6 +48,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 // Normalised SVG polyline of the GPS route (no map tiles — CSP blocks external
 // hosts anyway, and a shape is enough to recognise the run). lat north-up.
 function RouteMap({ route }: { route: Raw[] }) {
+  const c = useChartColors()
   const pts = route
     .map(p => ({ lat: Number(p?.latitude), lon: Number(p?.longitude) }))
     .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon))
@@ -61,18 +64,19 @@ function RouteMap({ route }: { route: Raw[] }) {
   const sy = (lat: number) => PAD + (1 - (lat - minLat) / latRange) * (H - 2 * PAD)
   const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.lon).toFixed(1)},${sy(p.lat).toFixed(1)}`).join(' ')
   return (
-    <div className="rounded-xl border border-ink-100 bg-cream-50 p-2">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400 mb-1 px-1">🗺️ Route</p>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" aria-hidden="true">
-        <path d={d} fill="none" stroke="rgb(var(--accent-500))" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={sx(pts[0].lon)} cy={sy(pts[0].lat)} r={4} fill="#22c55e" />
-        <circle cx={sx(pts[pts.length - 1].lon)} cy={sy(pts[pts.length - 1].lat)} r={4} fill="#ef4444" />
+    <div className="rounded-row border border-line bg-surface p-2">
+      <p className="section-label mb-1 flex items-center gap-1 px-1"><MapIcon className="h-3.5 w-3.5" aria-hidden /> Route</p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" aria-hidden="true">
+        <path d={d} fill="none" stroke={c.series[0]} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={sx(pts[0].lon)} cy={sy(pts[0].lat)} r={4} fill={c.success} />
+        <circle cx={sx(pts[pts.length - 1].lon)} cy={sy(pts[pts.length - 1].lat)} r={4} fill={c.danger} />
       </svg>
     </div>
   )
 }
 
 export function HealthWorkoutDetail({ workout, onClose }: { workout: HealthWorkout; onClose: () => void }) {
+  const c = useChartColors()
   const raw: Raw = workout.raw ?? {}
 
   // kcal (HAE sends energy in kcal despite our column being named *_kj).
@@ -109,24 +113,17 @@ export function HealthWorkoutDetail({ workout, onClose }: { workout: HealthWorko
     : null
 
   return (
-    <Dialog open onClose={onClose} className="relative z-[60]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          <div className="h-1 bg-accent-500" />
-          <div className="p-4 sm:p-5 flex flex-col gap-4">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-lg font-bold text-ink-900 truncate">{workout.name}</h2>
-                <p className="text-xs text-ink-400">
-                  {workout.start_time && new Date(workout.start_time).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
-                  {' · '}{hhmm(workout.start_time)}–{hhmm(workout.end_time)}
-                  {raw.location && ` · ${raw.location}`}
-                </p>
-              </div>
-              <button onClick={onClose} aria-label="Close" className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-lg leading-none shrink-0">×</button>
-            </div>
+    <ModalShell
+      onClose={onClose}
+      size="md"
+      title={workout.name}
+      subtitle={<>
+        {workout.start_time && new Date(workout.start_time).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+        {' · '}{hhmm(workout.start_time)}–{hhmm(workout.end_time)}
+        {raw.location && ` · ${raw.location}`}
+      </>}
+    >
+          <div className="flex flex-col gap-4">
 
             {/* Stat chips (only render what exists) */}
             <div className="flex flex-wrap gap-2">
@@ -148,16 +145,14 @@ export function HealthWorkoutDetail({ workout, onClose }: { workout: HealthWorko
             {/* HR curve */}
             {hrSeries.length > 1 && (
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400 mb-1">❤️ Heart rate</p>
-                <BarLineChart data={hrSeries} dataKey="avg" rangeKey="range" color="#e11d48" unit="bpm" tooltipLabel="Avg HR" height={160} />
+                <p className="section-label mb-1 flex items-center gap-1"><HeartPulse className="h-3.5 w-3.5" aria-hidden /> Heart rate</p>
+                <BarLineChart data={hrSeries} dataKey="avg" rangeKey="range" color={c.series[3]} unit="bpm" tooltipLabel="Avg HR" height={160} />
               </div>
             )}
 
             {/* GPS route */}
             {Array.isArray(raw.route) && <RouteMap route={raw.route} />}
           </div>
-        </DialogPanel>
-      </div>
-    </Dialog>
+    </ModalShell>
   )
 }

@@ -46,6 +46,6 @@ export async function ensureLinkedCalendarEventRemoved(eventId: string): Promise
   try {
     await deleteCalendarEvent(token, 'primary', eventId)
   } catch (err) {
-    if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`)
+    if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`, { cause: err })
   }
 }

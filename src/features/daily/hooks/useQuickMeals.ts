@@ -1,4 +1,3 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { deleteMealPlanEntry } from '../../recipes/api/mealPlanApi'
 import { fetchFoodLog, addFoodLogEntries } from '../../recipes/api/foodLogApi'
@@ -16,11 +15,10 @@ import { shiftDateStr } from '../../../shared/utils/dateUtils'
 // Deletes an existing PLANNED entry (recipe_meal_plans) — diary rows are
 // deleted via useDeleteFoodLogEntry instead.
 export function useDeleteQuickMeal() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
-    action:     'delete_meal_entry',
-    mutationFn: (id: string) => deleteMealPlanEntry(id),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['meal-plan'] }),
+    action:      'delete_meal_entry',
+    mutationFn:  (id: string) => deleteMealPlanEntry(id),
+    invalidates: ['nutrition'],
   })
 }
 
@@ -28,10 +26,9 @@ export function useDeleteQuickMeal() {
 // today (a slot with anything logged is left alone — copy never overwrites).
 // Each copied row carries yesterday's snapshot macros forward.
 export function useCopyYesterdayMeals() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'copy_yesterday_meals',
-    successMessage: 'Copied from yesterday ✓',
+    successMessage: 'Copied from yesterday',
     mutationFn: async ({ date, filledSlots }: { date: string; filledSlots: Set<string> }) => {
       const yesterday = shiftDateStr(date, -1)
       const prev = await fetchFoodLog(yesterday)
@@ -54,9 +51,6 @@ export function useCopyYesterdayMeals() {
       }))
       await addFoodLogEntries(entries)
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['food-log'] })
-      qc.invalidateQueries({ queryKey: ['meal-plan'] })
-    },
+    invalidates: ['nutrition'],
   })
 }

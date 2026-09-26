@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Camera, ChevronRight, Globe, Minus, Plus, Save, Search, Star, X } from 'lucide-react'
+import { Camera, ChevronRight, Globe, Minus, Pencil, Plus, Save, Search, Star, X } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
 import { Button, IconButton } from '../../../shared/ui'
@@ -551,7 +551,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                       {/* A deliberate 24px secondary action on a dense strip (see FoodTile). */}
                       <button type="button" aria-label={`Edit ${r.title}`}
                         onClick={() => { onEditRecipe(r); onClose() }}
-                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface text-[11px] leading-none text-fg-muted hover:text-accent-600">✎</button>
+                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface text-fg-muted hover:text-accent-600"><Pencil aria-hidden className="h-3 w-3" /></button>
                     </div>
                   )
                 })}

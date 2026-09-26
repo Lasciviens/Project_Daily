@@ -6,6 +6,8 @@ import {
 } from 'date-fns'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
+import { DateNav } from '../../../shared/components/DateNav'
+import { Card, TonePill, cx } from '../../../shared/ui'
 
 interface Props {
   onDayClick?:    (date: Date) => void
@@ -51,95 +53,63 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
   const openCount = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
 
   return (
-    <div className="card p-5">
-      {/* Month nav */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">
-          {format(viewDate, 'MMMM yyyy')}
-        </h2>
-        <div className="flex items-center gap-0.5">
-          <button
-            onClick={() => setViewDate(p => subMonths(p, 1))}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 rounded transition-colors duration-150 text-sm"
-          >
-            ‹
-          </button>
-          <button
-            onClick={() => setViewDate(new Date())}
-            className="min-h-[44px] px-2 text-[10px] text-accent-600 hover:bg-accent-50 rounded transition-colors duration-150 font-medium"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => setViewDate(p => addMonths(p, 1))}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 rounded transition-colors duration-150 text-sm"
-          >
-            ›
-          </button>
-        </div>
+    <Card>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <DateNav
+          label={format(viewDate, 'MMMM yyyy')}
+          onPrev={() => setViewDate(p => subMonths(p, 1))}
+          onNext={() => setViewDate(p => addMonths(p, 1))}
+          onToday={() => setViewDate(new Date())}
+          isToday={isSameMonth(viewDate, new Date())}
+          labelClassName="min-w-[120px] text-lead font-semibold text-fg"
+        />
+        {openCount > 0 && <TonePill tone="accent">{openCount} open</TonePill>}
       </div>
 
-      {/* Day-of-week headers */}
-      <div className="grid grid-cols-7 mb-1">
+      <div className="mb-1 grid grid-cols-7">
         {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => (
-          <div key={i} className="text-center text-[9px] font-semibold text-ink-400 py-1">
-            {label}
-          </div>
+          <div key={i} className="py-1 text-center text-micro font-semibold text-fg-faint">{label}</div>
         ))}
       </div>
 
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-y-0.5">
+      <div className="grid grid-cols-7 gap-0.5">
         {days.map(day => {
-          const inMonth  = isSameMonth(day, viewDate)
-          const current  = isToday(day)
-          const selected = highlightDate ? isSameDay(day, highlightDate) : false
+          const inMonth     = isSameMonth(day, viewDate)
+          const current     = isToday(day)
+          const selected    = highlightDate ? isSameDay(day, highlightDate) : false
           const hasTasks    = hasTasksOnDay(day) && inMonth
           const hasCalEvent = inMonth && (calDates?.has(format(day, 'yyyy-MM-dd')) ?? false)
-          const clickable = !!onDayClick && inMonth
+          const clickable   = !!onDayClick && inMonth
 
           return (
             <button
               key={day.toISOString()}
+              type="button"
               onClick={() => clickable && onDayClick?.(day)}
               disabled={!clickable}
-              className={`relative flex flex-col items-center justify-center aspect-square rounded-md font-medium transition-colors duration-150 ${big ? 'text-sm' : 'text-xs'} ${
-                current
-                  ? 'bg-accent-500 text-white'
-                  : selected
-                  ? 'bg-accent-100 text-accent-700 ring-2 ring-accent-400'
-                  : inMonth && clickable
-                  ? 'text-ink-700 hover:bg-cream-200 cursor-pointer'
-                  : inMonth
-                  ? 'text-ink-700'
-                  : 'text-ink-300 cursor-default'
-              }`}
+              aria-pressed={selected}
+              aria-label={format(day, 'EEEE d MMMM')}
+              className={cx(
+                'relative flex aspect-square min-h-[40px] flex-col items-center justify-center rounded-control font-medium tabular-nums transition-colors duration-150',
+                big ? 'text-ui' : 'text-body',
+                current ? 'bg-accent-500 text-on-accent'
+                  : selected ? 'bg-accent-50 text-accent-700 ring-2 ring-inset ring-accent-500'
+                  : inMonth && clickable ? 'text-fg-2 hover:bg-surface-hover'
+                  : inMonth ? 'text-fg-2'
+                  : 'cursor-default text-fg-faint opacity-50',
+              )}
             >
               {format(day, 'd')}
-              {/* Task dot (accent) and/or calendar dot (green) */}
               {(hasTasks || hasCalEvent) && (
-                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                  {hasTasks && (
-                    <span className={`w-1 h-1 rounded-full ${
-                      current ? 'bg-accent-200' : selected ? 'bg-accent-500' : 'bg-accent-400'
-                    }`} />
-                  )}
-                  {hasCalEvent && (
-                    <span className={`w-1 h-1 rounded-full ${current ? 'bg-green-200' : 'bg-green-400'}`} />
-                  )}
+                <span className="absolute bottom-1 left-1/2 flex -translate-x-1/2 gap-0.5">
+                  {hasTasks && <span className={cx('h-1 w-1 rounded-full', current ? 'bg-on-accent/80' : 'bg-accent-500')} />}
+                  {hasCalEvent && <span data-tone="info" className={cx('tone-dot !h-1 !w-1', current && 'opacity-80')} />}
                 </span>
               )}
             </button>
           )
         })}
       </div>
-
-      {/* Summary */}
-      {openCount > 0 && (
-        <p className="mt-3 pt-3 border-t border-ink-100 text-xs text-ink-400">
-          {openCount} open task{openCount !== 1 ? 's' : ''} this month
-        </p>
-      )}
-    </div>
+    </Card>
   )
 }

@@ -1,6 +1,5 @@
 import { useState } from 'react'
 
-// TODO: move to src/shared/modals/ — PlanEntityModals has an identical private copy.
 /**
  * The first loaded value, frozen for the popup's lifetime: a background
  * refetch (window focus, a save elsewhere) must never re-seed a form under

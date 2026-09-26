@@ -5,7 +5,7 @@ import { ExerciseThumb } from '../exerciseMedia'
 import { formatDurationBetween as fmtDuration } from '../../../shared/utils/formatDuration'
 import { fmtTrainingDateTime as fmtDateTime } from '../dateFormat'
 import type { HevySet } from '../types.hevy'
-import type { Tone } from '../../../shared/ui'
+import { SET_TYPE_META } from '../setTypeMeta'
 
 interface Props {
   /** null = closed (controlled callers); the `hevy-workout` entity modal always passes an id. */
@@ -13,19 +13,12 @@ interface Props {
   onClose: () => void
 }
 
-const SET_TYPE: Record<HevySet['type'], { label: string; name: string; tone: Tone }> = {
-  warmup:  { label: 'W', name: 'Warm-up', tone: 'neutral' },
-  normal:  { label: 'N', name: 'Normal',  tone: 'accent' },
-  dropset: { label: 'D', name: 'Drop set', tone: 'info' },
-  failure: { label: 'F', name: 'Failure', tone: 'danger' },
-}
-
 function SetTypeBadge({ type }: { type: HevySet['type'] }) {
-  const cfg = SET_TYPE[type] ?? SET_TYPE.normal
+  const cfg = SET_TYPE_META[type] ?? SET_TYPE_META.normal
   return (
-    <span data-tone={cfg.tone} title={cfg.name} aria-label={cfg.name}
-      className="inline-flex h-5 w-5 items-center justify-center rounded bg-[rgb(var(--tone-soft))] text-[10px] font-bold text-[rgb(var(--tone))]">
-      {cfg.label}
+    <span data-tone={cfg.tone} title={cfg.label} aria-label={cfg.label}
+      className="tone-soft tone-text inline-flex h-5 w-5 items-center justify-center rounded text-micro font-bold">
+      {cfg.short}
     </span>
   )
 }

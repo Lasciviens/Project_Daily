@@ -4,36 +4,14 @@ import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useStravaStatus } from '../hooks/useTrainingSessions'
 import { formatDurationSeconds as formatDuration } from '../../../shared/utils/formatDuration'
 import type { StravaActivity } from '../types.hevy'
+import { Activity, Gauge, Heart, MapPin, Mountain, Timer } from 'lucide-react'
+import { Card, EmptyState, Skeleton, StatTile } from '../../../shared/ui'
+import { STRAVA_ORANGE, STRAVA_TYPE_LABEL } from '../stravaMeta'
+import { StravaTypeIcon } from './StravaIcons'
 
 type ActivityType = 'all' | 'run' | 'cycling' | 'walk' | 'swim' | 'other'
 
-const TYPE_FILTERS: { key: ActivityType; label: string; icon: string }[] = [
-  { key: 'all',     label: 'All',     icon: ''   },
-  { key: 'run',     label: 'Run',     icon: '🏃' },
-  { key: 'cycling', label: 'Cycling', icon: '🚴' },
-  { key: 'walk',    label: 'Walk',    icon: '🚶' },
-  { key: 'swim',    label: 'Swim',    icon: '🏊' },
-  { key: 'other',   label: 'Other',   icon: '💪' },
-]
-
-const TYPE_ICON: Record<string, string> = {
-  run:     '🏃',
-  cycling: '🚴',
-  walk:    '🚶',
-  swim:    '🏊',
-  yoga:    '🧘',
-  other:   '💪',
-}
-
-const TYPE_COLOR: Record<string, string> = {
-  run:     'bg-green-50 text-green-700 border-green-100',
-  cycling: 'bg-blue-50 text-blue-700 border-blue-100',
-  walk:    'bg-teal-50 text-teal-700 border-teal-100',
-  swim:    'bg-cyan-50 text-cyan-700 border-cyan-100',
-  yoga:    'bg-pink-50 text-pink-700 border-pink-100',
-  other:   'bg-ink-50 text-ink-600 border-ink-100',
-}
-
+const TYPE_FILTERS: ActivityType[] = ['all', 'run', 'cycling', 'walk', 'swim', 'other']
 
 function formatPace(secPerKm: number): string {
   const m = Math.floor(secPerKm / 60)
@@ -46,57 +24,39 @@ function formatDate(iso: string): string {
 }
 
 function ActivityCard({ activity }: { activity: StravaActivity }) {
-  const icon  = TYPE_ICON[activity.type]  ?? '💪'
-  const color = TYPE_COLOR[activity.type] ?? 'bg-ink-50 text-ink-600 border-ink-100'
+  const stats: { icon: typeof Timer; label: string; text: string }[] = []
+  if (activity.duration_seconds != null) stats.push({ icon: Timer, label: 'Duration', text: formatDuration(activity.duration_seconds) })
+  if (activity.distance_meters != null) stats.push({ icon: MapPin, label: 'Distance', text: `${(activity.distance_meters / 1000).toFixed(1)} km` })
+  if (activity.avg_pace_sec_per_km != null) stats.push({ icon: Gauge, label: 'Pace', text: formatPace(activity.avg_pace_sec_per_km) })
+  if (activity.avg_heart_rate != null) stats.push({ icon: Heart, label: 'Average heart rate', text: `${activity.avg_heart_rate} bpm` })
+  if (activity.elevation_gain_m != null && activity.elevation_gain_m > 0) stats.push({ icon: Mountain, label: 'Elevation gain', text: `${activity.elevation_gain_m} m` })
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-xl border border-ink-100 bg-cream-50 hover:border-ink-200 hover:shadow-sm transition-shadow duration-150">
-      <div className={`w-9 h-9 flex-shrink-0 rounded-lg border flex items-center justify-center text-lg ${color}`}>
-        {icon}
-      </div>
+    <Card padded={false} className="flex items-start gap-3 p-3">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-control bg-surface-2 text-fg-2">
+        <StravaTypeIcon type={activity.type} />
+      </span>
 
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-medium text-ink-800 leading-snug truncate">{activity.title}</p>
-          <span className="text-[10px] text-[#FC4C02] font-medium flex-shrink-0">Strava</span>
+          <p className="truncate text-body font-semibold leading-snug text-fg">{activity.title}</p>
+          <span className="shrink-0 text-micro font-semibold" style={{ color: STRAVA_ORANGE }}>Strava</span>
         </div>
+        {activity.start_date && <p className="mt-0.5 text-meta tabular-nums text-fg-muted">{formatDate(activity.start_date)}</p>}
 
-        {activity.start_date && (
-          <p className="text-xs text-ink-400 mt-0.5">{formatDate(activity.start_date)}</p>
+        {stats.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
+            {stats.map(({ icon: Icon, label, text }) => (
+              <span key={label} className="inline-flex items-center gap-1" title={label}>
+                <Icon className="h-3.5 w-3.5 text-fg-faint" aria-label={label} />{text}
+              </span>
+            ))}
+          </div>
         )}
 
-        <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-ink-500">
-          {activity.duration_seconds != null && (
-            <span>⏱ {formatDuration(activity.duration_seconds)}</span>
-          )}
-          {activity.distance_meters != null && (
-            <span>📍 {(activity.distance_meters / 1000).toFixed(1)} km</span>
-          )}
-          {activity.avg_pace_sec_per_km != null && (
-            <span>⚡ {formatPace(activity.avg_pace_sec_per_km)}</span>
-          )}
-          {activity.avg_heart_rate != null && (
-            <span>❤️ {activity.avg_heart_rate} bpm</span>
-          )}
-          {activity.elevation_gain_m != null && activity.elevation_gain_m > 0 && (
-            <span>⛰ {activity.elevation_gain_m} m</span>
-          )}
-        </div>
-
-        {activity.notes && (
-          <p className="mt-1.5 text-xs text-ink-400 italic">{activity.notes}</p>
-        )}
+        {activity.notes && <p className="mt-1.5 text-meta italic text-fg-muted">{activity.notes}</p>}
       </div>
-    </div>
-  )
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="max-w-[10rem] flex-1 min-w-[7rem] p-3 rounded-xl border border-ink-100 bg-cream-50">
-      <p className="text-lg font-semibold text-ink-800 leading-none">{value}</p>
-      <p className="mt-1 text-xs text-ink-400">{label}</p>
-    </div>
+    </Card>
   )
 }
 
@@ -113,50 +73,48 @@ export function StravaTab() {
   const totalDurationSec = activities.reduce((sum, a) => sum + (a.duration_seconds ?? 0), 0)
 
   return (
-    <div className="space-y-3 sm:space-y-5">
+    <div className="space-y-4">
       {/* Stats strip */}
       {activities.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <StatCard label="Activities" value={String(activities.length)} />
-          <StatCard label="Distance" value={`${totalDistanceKm.toFixed(1)} km`} />
-          <StatCard label="Duration" value={formatDuration(totalDurationSec)} />
+        <div className="grid max-w-xl grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+          <StatTile label="Activities" value={activities.length} />
+          <StatTile label="Distance" value={totalDistanceKm.toFixed(1)} unit="km" />
+          <StatTile label="Duration" value={formatDuration(totalDurationSec)} />
         </div>
       )}
 
       {/* Type filter pills */}
-      <div className="flex gap-1.5 flex-wrap">
-        {TYPE_FILTERS.map(f => (
+      <div role="tablist" aria-label="Activity type" className="scroll-x -mx-1 flex gap-1 px-1">
+        {TYPE_FILTERS.map(t => (
           <button
-            key={f.key}
-            onClick={() => setFilterType(f.key)}
-            className={`inline-flex items-center min-h-[44px] px-3 rounded-full border text-xs font-medium transition-colors duration-150 ${
-              filterType === f.key
-                ? 'bg-accent-500 border-accent-500 text-white'
-                : 'border-ink-200 text-ink-500 hover:border-accent-400'
-            }`}
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={filterType === t}
+            onClick={() => setFilterType(t)}
+            className="pill-tab shrink-0 gap-1.5"
           >
-            {f.icon ? `${f.icon} ` : ''}{f.label}
+            {t !== 'all' && <StravaTypeIcon type={t} className="h-3.5 w-3.5" />}
+            {t === 'all' ? 'All' : STRAVA_TYPE_LABEL[t]}
           </button>
         ))}
       </div>
 
       {/* Activity list */}
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-start">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-16 rounded-xl bg-cream-200 animate-pulse" />
-          ))}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,24rem))] items-start justify-start gap-2">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-20" />)}
         </div>
       ) : activities.length === 0 ? (
-        <div className="text-center py-10 border border-dashed border-ink-200 rounded-xl">
-          <p className="text-ink-400 text-sm mb-1">No Strava activities yet</p>
-          <p className="text-ink-300 text-xs">
-            {status?.connected ? 'Sync from ' : 'Connect Strava in '}
-            <Link to="/developer?tab=connections" className="text-accent-600 underline">Developer → Connections</Link>.
-          </p>
-        </div>
+        <EmptyState
+          bordered
+          icon={<Activity />}
+          title="No Strava activities yet"
+          description={status?.connected ? 'Sync from Developer → Connections.' : 'Connect Strava in Developer → Connections.'}
+          action={<Link to="/developer?tab=connections" className="text-meta font-semibold text-accent-600">Open Connections</Link>}
+        />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-start">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,24rem))] items-start justify-start gap-2">
           {activities.map(a => (
             <ActivityCard key={a.id} activity={a} />
           ))}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChefHat, Flame, Minus, Plus, ShoppingBag, UtensilsCrossed, ExternalLink } from 'lucide-react'
+import { Check, ChefHat, Flame, Minus, Plus, ShoppingBag, UtensilsCrossed, ExternalLink } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
@@ -249,7 +249,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                       className={cx('row row-interactive w-full px-1.5 text-left text-body', checked && 'opacity-50')}
                     >
                       <span className={cx('flex h-4 w-4 shrink-0 items-center justify-center rounded border-2', checked ? 'border-accent-500 bg-accent-500' : 'border-line-strong')}>
-                        {checked && <span className="text-[9px] font-bold leading-none text-on-accent">✓</span>}
+                        {checked && <Check aria-hidden strokeWidth={3} className="h-3 w-3 text-on-accent" />}
                       </span>
                       <span className={cx('min-w-[3rem] font-medium text-fg tabular-nums', checked && 'line-through')}>
                         {scaledQty(ing.quantity, factor)} {ing.unit ?? ''}

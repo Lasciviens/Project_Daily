@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { format, getDay, isToday, subDays } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import {
+  AlertTriangle, CalendarDays, CornerDownRight, Moon, MoreHorizontal, Plus, RefreshCw, Repeat, StickyNote, Trash2,
+} from 'lucide-react'
+import {
   useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock,
   useDeleteScheduleBlock,
 } from '../hooks/useSchedule'
@@ -10,6 +13,8 @@ import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { useEntityModal } from '../../../shared/modals'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
 import { useCalendarStore, toast } from '../../../app/store'
+import { qk } from '../../../shared/query'
+import { Button, IconButton, cx } from '../../../shared/ui'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } from './dayAgendaProjection'
 import type { CalendarEvent } from '../../calendar/types'
@@ -26,7 +31,7 @@ import type { CalendarEvent } from '../../calendar/types'
 //
 //  Migration 077 click-routing (no more Task/Schedule tab dichotomy): a row
 //  tap opens the ONE modal in the mode that matches what was actually
-//  clicked — a calendar event opens EditCalendarEventModal (unchanged), a
+//  clicked — a calendar event opens EditCalendarEventModal, a
 //  recurring template opens UnifiedPlanModal in 'recurring' mode, a
 //  task-linked one-off block opens the Task itself (mode='task' — the
 //  Schedule section lives inside it now), and a standalone one-off block
@@ -44,13 +49,15 @@ import type { CalendarEvent } from '../../calendar/types'
 
 const NIGHT_END = 6 // hours before this belong to the night, not the morning
 
+// time_blocks/schedule_blocks.color is a user-picked tag; each maps onto a
+// tone so both themes work. Google Calendar rows use the success edge.
 const COLOR_EDGE: Record<string, string> = {
-  blue:   'border-l-blue-400',
-  green:  'border-l-green-400',
-  orange: 'border-l-orange-400',
-  purple: 'border-l-purple-400',
+  blue:   'border-l-info',
+  green:  'border-l-success',
+  orange: 'border-l-warn',
+  purple: 'border-l-highlight',
   accent: 'border-l-accent-500',
-  red:    'border-l-red-400',
+  red:    'border-l-danger',
 }
 
 function hourToTimeStr(h: number): string {
@@ -99,8 +106,8 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   async function handleCalRefresh() {
     const tid = toast.loading('Syncing calendar…')
     try {
-      await qc.refetchQueries({ queryKey: ['calendar', 'day', dateStr] })
-      toast.dismiss(tid); toast.success('Calendar synced ✓')
+      await qc.refetchQueries({ queryKey: qk.calendar.dayAll(dateStr) })
+      toast.dismiss(tid); toast.success('Calendar synced')
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Sync failed')
     }
@@ -216,7 +223,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     // The editor loads the row by id itself (loading + not-found states in
     // its own shell), so a tap never silently does nothing.
     if (block.taskId) {
-      modal.open({ kind: 'task', id: block.taskId, config: { heading: 'Edit Task' } })
+      modal.open({ kind: 'task', id: block.taskId, config: { heading: 'Edit task' } })
       return
     }
     modal.open({ kind: 'time-block', id: block.canonicalId, config: { heading: 'Edit block' } })
@@ -255,65 +262,73 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
     // the agenda; it stops propagation so it never also opens the editor.
     // A spillover row (the tail of yesterday's block) is still clickable —
     // it edits the SAME canonical block yesterday's own row would.
+    const overlaps = overlappingIds.has(block.id)
+    const quickBtn = 'min-h-[44px] rounded-control border border-line px-2 text-meta font-medium text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg'
     return (
       <div
         onClick={() => isCal ? setEditEvent(block.calendarEvent!) : openEditor(block)}
-        className={`group rounded-md border-l-2 ${block.edgeClass} px-2.5 py-1.5 cursor-pointer transition-colors ${
-          isActive || isSelected ? 'bg-cream-100' : 'hover:bg-cream-100/70'
-        } ${isPast ? 'opacity-50' : ''} ${overlappingIds.has(block.id) ? 'ring-1 ring-red-300' : ''}`}
+        className={cx(
+          'group cursor-pointer rounded-control border-l-2 px-2.5 py-1.5 transition-colors duration-150',
+          block.edgeClass,
+          isActive || isSelected ? 'bg-surface-2' : 'hover:bg-surface-hover',
+          isPast && 'opacity-50',
+          overlaps && 'ring-1 ring-inset ring-danger/40',
+        )}
       >
-        {/* The whole row is the tap target (onClick above), so it must clear
-            44px: the wrapper's py-1.5 adds 12px to this 32px line = 44 exactly,
-            which keeps the agenda dense instead of padding every row to 56. */}
-        <div className="flex items-center gap-2.5 min-h-[32px]">
-          <div className="w-[86px] shrink-0 text-[11px] tabular-nums leading-tight">
+        {/* The whole row is the tap target: py-1.5 + this 32px line = 44px. */}
+        <div className="flex min-h-[32px] items-center gap-2.5">
+          <div className="w-[86px] shrink-0 text-meta leading-tight tabular-nums">
             {block.allDay || block.startHour < 0 ? (
-              <span className="text-ink-500">{block.allDay ? 'All day' : 'No time'}</span>
+              <span className="text-fg-muted">{block.allDay ? 'All day' : 'No time'}</span>
             ) : (
               <>
-                <span className="font-semibold text-ink-800">{hourToTimeStr(block.startHour)}</span>
-                <span className="text-ink-500">–{hourToTimeStr(block.endHour)}</span>
-                <span className="block text-[10px] text-ink-500">{formatDurationMinutes(durationMins)}</span>
+                <span className="font-semibold text-fg">{hourToTimeStr(block.startHour)}</span>
+                <span className="text-fg-muted">–{hourToTimeStr(block.endHour)}</span>
+                <span className="block text-micro text-fg-muted">{formatDurationMinutes(durationMins)}</span>
               </>
             )}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-ink-800 truncate leading-snug">
-              {block.spillover && <span className="mr-1 text-[9px] font-normal text-ink-400" title="Continued from yesterday">↳</span>}
-              {block.title}
-              {isRecurring && <span className="ml-1.5 text-[9px] font-normal text-ink-500" title="Recurring">⟳</span>}
-              {isCal && <span className="ml-1.5 text-[9px] font-normal text-green-600" title="Google Calendar">◈</span>}
-              {taskNotes && <span className="ml-1 text-[9px] opacity-40">📝</span>}
-              {overlappingIds.has(block.id) && <span className="ml-1 text-[10px] text-red-500" title="Overlaps another block">⚠</span>}
-              {isActive && <span className="ml-1.5 text-[9px] font-medium text-accent-600">now</span>}
+          <div className="min-w-0 flex-1">
+            <p className="flex min-w-0 items-center gap-1.5 text-body font-semibold leading-snug text-fg">
+              {block.spillover && <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-fg-faint" aria-label="Continued from yesterday" />}
+              <span className="truncate">{block.title}</span>
+              {isRecurring && <Repeat className="h-3 w-3 shrink-0 text-fg-muted" aria-label="Recurring" />}
+              {isCal && <CalendarDays data-tone="success" className="tone-text h-3 w-3 shrink-0" aria-label="Google Calendar" />}
+              {taskNotes && <StickyNote className="h-3 w-3 shrink-0 text-fg-faint" aria-label="Has notes" />}
+              {overlaps && <AlertTriangle data-tone="danger" className="tone-text h-3.5 w-3.5 shrink-0" aria-label="Overlaps another block" />}
+              {isActive && <span className="shrink-0 text-micro font-semibold text-accent-600">now</span>}
             </p>
             {isSelected && taskNotes && (
-              <p className="text-[10px] text-ink-500 mt-0.5 line-clamp-2">{taskNotes}</p>
+              <p className="mt-0.5 line-clamp-2 text-meta text-fg-muted">{taskNotes}</p>
             )}
           </div>
           {!isCal && (
-            <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+            <div className="flex shrink-0 items-center gap-1" onClick={e => e.stopPropagation()}>
               {isSelected && block.kind === 'block' && !block.spillover && block.startHour >= 0 && (
-                <button onClick={postpone30m} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+30m</button>
+                <button type="button" onClick={postpone30m} className={quickBtn}>+30m</button>
               )}
               {isSelected && block.kind === 'block' && !block.spillover && (
-                <button onClick={postpone1d} className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:border-accent-300">+1d</button>
+                <button type="button" onClick={postpone1d} className={quickBtn}>+1d</button>
               )}
               {isSelected && (
                 <button
+                  type="button"
+                  aria-label="Delete block"
                   onClick={() => {
                     if (isRecurring) deleteScheduleBlock.mutate(block.canonicalId)
                     else deleteBlock.mutate({ id: block.canonicalId, dateStr: block.dateStr })
                     setSelectedId(null)
                   }}
-                  className="text-[10px] px-2 min-h-[44px] rounded border border-ink-200 text-ink-500 hover:text-red-500 hover:border-red-300"
-                >✕</button>
+                  className={cx(quickBtn, 'hover:text-danger')}
+                ><Trash2 className="h-3.5 w-3.5" aria-hidden /></button>
               )}
               <button
+                type="button"
                 onClick={() => setSelectedId(isSelected ? null : block.id)}
-                title={isSelected ? 'Hide quick actions' : 'Quick actions (postpone/delete)'}
-                className="w-[28px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700"
-              >⋯</button>
+                aria-label={isSelected ? 'Hide quick actions' : 'Quick actions'}
+                aria-expanded={isSelected}
+                className="grid min-h-[44px] w-[32px] place-items-center rounded-control text-fg-faint hover:bg-surface-hover hover:text-fg"
+              ><MoreHorizontal className="h-4 w-4" aria-hidden /></button>
             </div>
           )}
         </div>
@@ -326,64 +341,54 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
 
   function renderNowMarker() {
     return (
-      <div className="flex items-center gap-1.5 px-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-        <span className="text-[10px] font-semibold text-red-500 shrink-0">{hourToTimeStr(nowHour)}</span>
-        <div className="flex-1 border-t border-red-300" />
+      <div className="flex items-center gap-1.5 px-1" data-tone="danger">
+        <span className="tone-dot !h-1.5 !w-1.5" aria-hidden />
+        <span className="tone-text shrink-0 text-micro font-semibold tabular-nums">{hourToTimeStr(nowHour)}</span>
+        <div className="flex-1 border-t border-danger/40" />
       </div>
     )
   }
 
   // Where the now-marker slots into the day list
   const nowIndex = today ? day.findIndex(b => b.startHour > nowHour) : -1
+  const groupLabel = 'flex items-center gap-1.5 px-1 pt-1 section-label'
 
   return (
-    <div className={bare ? 'p-4 sm:p-5' : 'card p-4'}>
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 mb-3">
+    <div className={bare ? 'p-4 sm:p-5' : 'card p-4 sm:p-5'}>
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">Schedule</h2>
+          <h2 className="section-label">Schedule</h2>
           {nextBlock && (
-            <p className="text-[10px] text-ink-500 mt-0.5 truncate">
-              Next: <span className="font-semibold text-ink-700">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
+            <p className="mt-0.5 truncate text-meta text-fg-muted">
+              Next: <span className="font-semibold text-fg-2">{nextBlock.title}</span> at {hourToTimeStr(nextBlock.startHour)}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-1.5">
           {totalBookedMin > 0 && (
-            <span className="text-[10px] text-ink-500">{formatDurationMinutes(totalBookedMin)} planned</span>
+            <span className="text-meta tabular-nums text-fg-muted">{formatDurationMinutes(totalBookedMin)} planned</span>
           )}
           {calToken && (
-            <button
-              onClick={handleCalRefresh} disabled={calFetching} title="Sync Google Calendar"
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
-            >
-              <span className={calFetching ? 'animate-spin inline-block' : ''}>↻</span>
-            </button>
+            <IconButton label="Sync Google Calendar" onClick={handleCalRefresh} disabled={calFetching}>
+              <RefreshCw className={cx(calFetching && 'animate-spin')} />
+            </IconButton>
           )}
-          <button
-            onClick={() => openAdd()}
-            className="bg-accent-500 text-white hover:bg-accent-600 min-h-[44px] px-4 rounded-full text-xs font-semibold transition-colors"
-          >
-            + Add
-          </button>
+          <Button variant="primary" size="sm" icon={<Plus />} onClick={() => openAdd()}>Add</Button>
         </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        {/* All-day calendar events */}
         {allDayEvents.map(b => <div key={b.id}>{renderRow(b)}</div>)}
 
-        {/* 🌙 Night — anything before 06:00 is the night, not the morning */}
+        {/* Anything before 06:00 is the night, not the morning */}
         {night.length > 0 && (
           <>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500 px-1 pt-1">🌙 Night</p>
+            <p className={groupLabel}><Moon className="h-3 w-3" aria-hidden /> Night</p>
             {night.map(b => <div key={b.id}>{renderRow(b)}</div>)}
-            <div className="border-t border-ink-100 my-0.5" />
+            <div className="my-0.5 border-t border-line" />
           </>
         )}
 
-        {/* Day blocks with the now marker between them */}
         {day.map((b, i) => (
           <div key={b.id} className="flex flex-col gap-1.5">
             {today && nowIndex === i && renderNowMarker()}
@@ -392,23 +397,21 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         ))}
         {today && nowIndex === -1 && day.length > 0 && nowHour > day[day.length - 1].endHour && renderNowMarker()}
 
-        {/* Unscheduled (no start time) */}
         {unscheduled.length > 0 && (
           <>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-500 px-1 pt-1">No time set</p>
+            <p className={groupLabel}>No time set</p>
             {unscheduled.map(b => <div key={b.id}>{renderRow(b)}</div>)}
           </>
         )}
 
         {/* Empty day — quick-add chips instead of a giant empty grid */}
         {timed.length === 0 && unscheduled.length === 0 && allDayEvents.length === 0 && (
-          <div className="text-center py-5">
-            <p className="text-sm text-ink-500 mb-2.5">Nothing scheduled</p>
-            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+          <div className="py-5 text-center">
+            <p className="mb-2.5 text-body text-fg-muted">Nothing scheduled</p>
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
               {[['Morning', '09:00'], ['Afternoon', '13:00'], ['Evening', '19:00']].map(([label, t]) => (
-                <button key={t} onClick={() => openAdd(t)}
-                  className="text-[11px] px-3 rounded-lg border border-ink-200 text-ink-500 hover:border-accent-300 hover:text-accent-700 transition-colors min-h-[44px]">
-                  + {label} {t}
+                <button key={t} type="button" onClick={() => openAdd(t)} className="chip min-h-[44px]">
+                  <Plus className="h-3.5 w-3.5" aria-hidden /> {label} <span className="tabular-nums text-fg-muted">{t}</span>
                 </button>
               ))}
             </div>
@@ -416,7 +419,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
         )}
       </div>
 
-      {editEvent && <EditCalendarEventModal mode="edit" event={editEvent} onClose={() => setEditEvent(null)} />}
+      {editEvent && <EditCalendarEventModal event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
   )
 }

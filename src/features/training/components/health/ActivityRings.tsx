@@ -3,10 +3,12 @@ import { computeDailySeries } from '../../healthAggregate'
 
 // Inspired by Apple Health's activity rings (Move/Exercise/Stand) — own
 // palette, own goal defaults (no per-user goal setting exists yet).
+// Apple's Move/Exercise/Stand ring colours are identity data users know by
+// colour (THEME.md §2.5), so they stay literal in both themes.
 const RINGS = [
-  { key: 'active_energy',       label: 'Move',     unit: 'kcal', goal: 500, color: '#f43f5e', icon: '🔥' },
-  { key: 'apple_exercise_time', label: 'Exercise',  unit: 'min',  goal: 30,  color: '#22c55e', icon: '⚡' },
-  { key: 'apple_stand_hour',    label: 'Stand',     unit: 'hr',   goal: 12,  color: '#38bdf8', icon: '🧍' },
+  { key: 'active_energy',       label: 'Move',     unit: 'kcal', goal: 500, color: '#f43f5e' },
+  { key: 'apple_exercise_time', label: 'Exercise',  unit: 'min',  goal: 30,  color: '#22c55e' },
+  { key: 'apple_stand_hour',    label: 'Stand',     unit: 'hr',   goal: 12,  color: '#38bdf8' },
 ] as const
 
 // Takes the day being viewed rather than hardcoding today: the rings are
@@ -51,11 +53,11 @@ export function ActivityRings({ dateStr }: { dateStr: string }) {
   const gap = 3
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex items-center gap-4 sm:gap-5 flex-wrap">
+    <div className="card flex w-fit max-w-full flex-wrap items-center gap-4 p-4 sm:gap-5 sm:p-5">
       {/* Ring shrinks on a phone (viewBox keeps the geometry; only the rendered
           box size changes) so it doesn't dominate the mobile viewport. */}
       <div className="relative shrink-0 w-[132px] h-[132px] sm:w-[176px] sm:h-[176px]">
-        {loading && <div className="absolute inset-0 rounded-full bg-cream-100 animate-pulse" />}
+        {loading && <div className="skeleton absolute inset-0 !rounded-full" />}
         <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full">
           {RINGS.map((ring, i) => {
             const r = center - strokeWidth / 2 - i * (strokeWidth + gap)
@@ -75,12 +77,11 @@ export function ActivityRings({ dateStr }: { dateStr: string }) {
       <div className="flex flex-col gap-2.5 min-w-[140px]">
         {RINGS.map((ring, i) => (
           <div key={ring.key} className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: ring.color }} />
-            <span className="text-sm">{ring.icon}</span>
-            <span className="text-xs text-ink-500 flex-1">{ring.label}</span>
-            <span className="text-sm font-bold text-ink-900">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: ring.color }} />
+            <span className="flex-1 text-meta text-fg-muted">{ring.label}</span>
+            <span className="text-body font-bold tabular-nums text-fg">
               {Math.round(values[i])}
-              <span className="text-[10px] font-normal text-ink-400">/{ring.goal} {ring.unit}</span>
+              <span className="text-micro font-normal text-fg-muted">/{ring.goal} {ring.unit}</span>
             </span>
           </div>
         ))}

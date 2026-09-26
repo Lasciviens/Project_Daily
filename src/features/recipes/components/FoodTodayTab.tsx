@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Brain, Check, ChevronRight, Plus, Settings2, X } from 'lucide-react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
@@ -8,21 +9,16 @@ import { useDeleteQuickMeal } from '../../daily/hooks/useQuickMeals'
 import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
-import { FoodLogModal } from './FoodLogModal'
-import { EditFoodLogModal } from './EditFoodLogModal'
-import { AssignMealModal } from './AssignMealModal'
+import { Card, CardHeader, IconButton, TonePill, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
-import type { MealSlot, MealPlanEntry } from '../types'
+import { MACRO_COLOR } from '../macroColors'
+import type { MealSlot } from '../types'
 import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/dayNutritionApi'
 
-// `DayMeal.title` bakes the amount straight into the string ("Chicken ·
-// 150g") — fine for a single flowing line, but the desktop grid wants the
-// name and the amount in two SEPARATE aligned columns ("Gramaj yapışık
-// olmasın" — the amount shouldn't read glued to the name). Split on the
-// same " · " separator both `unifiedToMeal` branches already use, but only
-// treat the tail as a quantity if it looks like one (starts with a digit) —
-// a food name that legitimately contains " · " itself must not get chopped
-// into two garbled halves.
+// `DayMeal.title` bakes the amount into the string ("Chicken · 150g"); the
+// desktop grid wants name and amount in separate aligned columns. Only a tail
+// that starts with a digit is a quantity — a food name that itself contains
+// " · " must not be chopped in two.
 function splitTitleQty(title: string): { name: string; qty: string | null } {
   const idx = title.lastIndexOf(' · ')
   if (idx === -1) return { name: title, qty: null }
@@ -32,11 +28,9 @@ function splitTitleQty(title: string): { name: string; qty: string | null } {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Food · Today — the FULL-SIZE nutrition surface. Two columns on wide screens
-//  (summary + coach left · meal slots right, so the right isn't empty). Small
-//  calorie + protein rings, macro chips (fiber inline w/ a green dot next to
-//  fat), a Goals popup, and — the key flow — a ✓ on a PLANNED row
-//  confirms it as EATEN so it starts counting toward the day.
+//  Food · Today — the full nutrition surface. Summary + water + coach on the
+//  left, meal slots on the right (xl+). A check on a PLANNED row confirms it as
+//  EATEN so it starts counting toward the day.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SLOTS: { slot: MealSlot; label: string; icon: string }[] = [
@@ -47,9 +41,8 @@ const SLOTS: { slot: MealSlot; label: string; icon: string }[] = [
   { slot: 'supplement', label: 'Supplement', icon: '💊' },
 ]
 
-// `size` is the SVG coordinate/geometry basis; `sizeClass` sets the DISPLAYED
-// box (responsive so the ring can shrink on a phone) — the viewBox scales the
-// stroke proportionally, so geometry stays correct at any rendered size.
+// `size` is the SVG geometry basis; `sizeClass` sets the displayed box so the
+// ring can shrink on a phone (the viewBox scales the stroke with it).
 function Ring({ consumed, target, size, stroke, color, label, sizeClass }: {
   consumed: number; target: number; size: number; stroke: number; color: string; label: string; sizeClass: string
 }) {
@@ -58,21 +51,33 @@ function Ring({ consumed, target, size, stroke, color, label, sizeClass }: {
   const pct = target > 0 ? Math.min(consumed / target, 1) : 0
   const remaining = Math.max(Math.round(target - consumed), 0)
   const over = consumed > target
-  const cx = size / 2
+  const c = size / 2
   return (
-    <div className={`relative shrink-0 ${sizeClass}`}>
-      <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full -rotate-90">
-        <circle cx={cx} cy={cx} r={R} fill="none" stroke="rgb(var(--ink-100))" strokeWidth={stroke} />
-        <circle cx={cx} cy={cx} r={R} fill="none" stroke={over ? '#f87171' : color}
-          strokeWidth={stroke} strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct)} />
+    <div className={cx('relative shrink-0', sizeClass)}>
+      <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full -rotate-90" aria-hidden>
+        <circle cx={c} cy={c} r={R} fill="none" strokeWidth={stroke} style={{ stroke: 'rgb(var(--cream-100))' }} />
+        <circle cx={c} cy={c} r={R} fill="none" strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={C} strokeDashoffset={C * (1 - pct)}
+          style={{ stroke: over ? 'rgb(var(--danger))' : color }} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`font-bold text-ink-900 leading-none tabular-nums ${size > 100 ? 'text-xl sm:text-2xl' : 'text-sm sm:text-base'}`}>{remaining}</span>
-        <span className="text-[9px] text-ink-400 mt-0.5">{over ? 'over' : label}</span>
+        <span className={cx('font-bold leading-none tabular-nums text-fg', size > 100 ? 'text-title sm:text-kpi' : 'text-ui sm:text-lead')}>{remaining}</span>
+        <span className={cx('mt-0.5 text-micro leading-none', over ? 'text-danger' : 'text-fg-muted')}>{over ? 'over' : label}</span>
       </div>
     </div>
   )
 }
+
+function MacroFigure({ color, children }: { color: string; children: ReactNode }) {
+  return (
+    <span className="flex items-center gap-1">
+      <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+      {children}
+    </span>
+  )
+}
+
+const PLANNED_PILL = <TonePill tone="neutral" className="shrink-0">Planned</TonePill>
 
 export function FoodTodayTab({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
@@ -82,20 +87,16 @@ export function FoodTodayTab({ date }: { date: string }) {
   const delLog  = useDeleteFoodLogEntry()
   const delMeal = useDeleteQuickMeal()
   const eatPlan = useEatPlannedEntry()
-  const [logSlot, setLogSlot] = useState<MealSlot | null>(null)
-  const [editMeal, setEditMeal] = useState<DayMeal | null>(null)
-  const [planMeal, setPlanMeal] = useState<MealPlanEntry | null>(null)
-  const [coachOpen, setCoachOpen] = useState(false)   // mobile-only collapse
+  const [coachOpen, setCoachOpen] = useState(false)   // phone-only collapse
+  // "As meal" groups expanded to their individual items (collapsed by default).
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  // Goals live in the shared `day-targets` popup (draft → Save, per-goal
-  // profiles). The Coach card's "Apply" buttons below stay one deliberate tap
-  // that writes immediately — the popup covers the card while it's open.
+  // Goals live in the shared `day-targets` popup (draft → Save). The Coach's
+  // "Apply" buttons stay one deliberate tap that writes immediately.
   const openGoals = () => modal.open({ kind: 'day-targets', date })
+  const openLog = (slot: MealSlot) => modal.open({ kind: 'food-log', date, slot })
   function applyProtein(g: number) { update({ protein: g }) }
   function applyCalories(kcal: number, adjustDate: string) { update({ calories: kcal, lastCalorieAdjust: adjustDate }) }
-  // Which "As meal" groups are expanded to their individual items — collapsed
-  // (just the compact summary row) by default for every group.
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   function toggleGroup(id: string) {
     setExpandedGroups(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
   }
@@ -105,108 +106,103 @@ export function FoodTodayTab({ date }: { date: string }) {
   const proteinLeft = Math.round(targets.protein - protein)
   const proteinHit  = targets.protein > 0 && proteinLeft <= 0
 
-  // One-line status shown in the collapsed (mobile) Coach header.
+  // One-line status in the collapsed (phone) Coach header.
   const coachSummary =
-    coach.weightKg == null ? 'Set up →'
+    coach.weightKg == null ? 'Set up'
     : coach.calorieAdvice ? `${coach.calorieAdvice.delta > 0 ? '+' : ''}${coach.calorieAdvice.delta} kcal suggested`
     : coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? `Suggest ${coach.proteinForGoal}g protein`
-    : coach.onTrack ? '✓ On track'
-    : '✓ Looking good'
+    : 'On track'
 
   const bySlot = new Map<string, DayMeal[]>()
   for (const m of nut?.meals ?? []) {
     const arr = bySlot.get(m.meal_slot) ?? []; arr.push(m); bySlot.set(m.meal_slot, arr)
   }
 
-  // One row for a single logged/planned item — used both standalone and as
-  // an indented item inside an expanded "As meal" group. Two markups
-  // (mobile stacked vs. desktop grid) rather than one responsive grid whose
-  // column COUNT would need to change per breakpoint out from under the
-  // same fixed set of children.
+  // One logged/planned item, standalone or indented inside an expanded group.
+  // Two markups (stacked phone vs aligned desktop grid) because the column
+  // count would otherwise change under one fixed set of children.
   function mealLine(meal: DayMeal, indent: boolean) {
     const planned = meal.source === 'plan'
     const { name, qty } = splitTitleQty(meal.title)
-    const onOpen = () => planned ? setPlanMeal(meal.planEntry ?? null) : setEditMeal(meal)
+    const onOpen = () => {
+      if (planned) {
+        if (meal.planEntry) modal.open({ kind: 'meal-plan', date, slot: meal.planEntry.meal_slot, entryId: meal.planEntry.id })
+      } else {
+        modal.open({ kind: 'food-log-edit', entryId: meal.id, date })
+      }
+    }
     const onDelete = () => meal.source === 'log' ? delLog.mutate({ id: meal.id, date }) : delMeal.mutate(meal.id)
     const macroLine = [
       qty,
       meal.calories > 0 && `${meal.calories} kcal`,
-      meal.protein_g > 0 && `${meal.protein_g}p`,
-      meal.carbs_g > 0 && `${meal.carbs_g}c`,
-      meal.fat_g > 0 && `${meal.fat_g}f`,
-      meal.fiber_g > 0 && `${meal.fiber_g}fib`,
+      meal.protein_g > 0 && `${meal.protein_g}g protein`,
+      meal.carbs_g > 0 && `${meal.carbs_g}g carbs`,
+      meal.fat_g > 0 && `${meal.fat_g}g fat`,
+      meal.fiber_g > 0 && `${meal.fiber_g}g fiber`,
     ].filter(Boolean).join(' · ')
+    const nameBtn = (
+      <button type="button" onClick={onOpen} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left transition-colors hover:text-accent-600">
+        <span className={cx('truncate', planned ? 'italic text-fg-muted' : 'text-fg')}>{name}</span>
+        {planned && PLANNED_PILL}
+      </button>
+    )
+    const eatBtn = planned && meal.planEntry ? (
+      <IconButton label={`Mark ${name} eaten`} onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
+        className="text-success disabled:opacity-50"><Check /></IconButton>
+    ) : null
+    const delBtn = (
+      <IconButton label={`Remove ${name}`} onClick={onDelete} className="text-fg-faint hover:!text-danger"><X /></IconButton>
+    )
+    const num = 'text-meta tabular-nums text-right text-fg-muted'
     return (
-      <li key={meal.id} className={indent ? 'bg-cream-100/40' : ''}>
-        {/* Mobile — name+kcal+actions, then a small macro line underneath */}
-        <div className="sm:hidden">
-          <div className={`flex items-center gap-1.5 min-h-[44px] py-1 text-sm ${indent ? 'pl-9 pr-4' : 'px-4'}`}>
-            <button type="button" onClick={onOpen} className="flex-1 min-w-0 text-left hover:text-accent-700 transition-colors flex items-center gap-1.5">
-              <span className={`truncate ${planned ? 'text-ink-400 italic' : 'text-ink-800'}`}>{name}</span>
-              {planned && <span className="text-[9px] uppercase tracking-wide text-ink-500 border border-ink-200 rounded px-1 shrink-0">planned</span>}
-            </button>
-            {planned && meal.planEntry && (
-              <button onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
-                aria-label={`Mark ${name} eaten`} title="I ate this — count it"
-                className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
-            )}
-            <button onClick={onDelete} aria-label={`Remove ${name}`}
-              className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 shrink-0">✕</button>
+      <li key={meal.id} className={indent ? 'bg-surface-2/60' : undefined}>
+        {/* Narrow card: name + actions, macro line underneath */}
+        <div className="@[40rem]:hidden">
+          <div className={cx('flex items-center gap-1 text-body', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
+            {nameBtn}{eatBtn}{delBtn}
           </div>
-          {macroLine && <p className={`text-[11px] text-ink-400 tabular-nums pb-1 -mt-1 ${indent ? 'pl-9' : 'px-4'}`}>{macroLine}</p>}
+          {macroLine && <p className={cx('-mt-1.5 pb-2 text-meta tabular-nums text-fg-muted', indent ? 'pl-9 pr-4' : 'px-4')}>{macroLine}</p>}
         </div>
 
-        {/* Desktop — every macro in its own aligned column, never crammed
-            into the name (the reported "gramaj yapışık" complaint). */}
-        <div className={`hidden sm:grid grid-cols-[minmax(0,1fr)_3.5rem_3rem_2.5rem_2.5rem_2.5rem_2.5rem_auto_auto] items-center gap-x-2 min-h-[44px] py-1 text-sm ${indent ? 'pl-9 pr-4' : 'px-4'}`}>
-          <button type="button" onClick={onOpen} className="min-w-0 text-left hover:text-accent-700 transition-colors flex items-center gap-1.5">
-            <span className={`truncate ${planned ? 'text-ink-400 italic' : 'text-ink-800'}`}>{name}</span>
-            {planned && <span className="text-[9px] uppercase tracking-wide text-ink-500 border border-ink-200 rounded px-1 shrink-0">planned</span>}
-          </button>
-          <span className="text-[11px] text-ink-400 tabular-nums text-right">{qty ?? ''}</span>
-          <span className={`text-xs tabular-nums text-right ${planned ? 'text-ink-400' : 'text-ink-500'}`}>{meal.calories > 0 ? meal.calories : ''}</span>
-          <span className="text-[11px] text-ink-400 tabular-nums text-right">{meal.protein_g > 0 ? `${meal.protein_g}p` : ''}</span>
-          <span className="text-[11px] text-ink-400 tabular-nums text-right">{meal.carbs_g > 0 ? `${meal.carbs_g}c` : ''}</span>
-          <span className="text-[11px] text-ink-400 tabular-nums text-right">{meal.fat_g > 0 ? `${meal.fat_g}f` : ''}</span>
-          <span className="text-[11px] text-ink-400 tabular-nums text-right">{meal.fiber_g > 0 ? `${meal.fiber_g}fib` : ''}</span>
-          {planned && meal.planEntry ? (
-            <button onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
-              aria-label={`Mark ${name} eaten`} title="I ate this — count it"
-              className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
-          ) : <span />}
-          <button onClick={onDelete} aria-label={`Remove ${name}`}
-            className="press-feedback min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 shrink-0">✕</button>
+        {/* Wide card: every macro in its own aligned column */}
+        <div className={cx('hidden items-center gap-x-2 text-body @[40rem]:grid @[40rem]:grid-cols-[minmax(0,1fr)_3.5rem_3rem_3rem_3rem_3rem_3rem_2.75rem_2.75rem]', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
+          {nameBtn}
+          <span className={num}>{qty ?? ''}</span>
+          <span className={cx(num, !planned && 'font-medium text-fg-2')}>{meal.calories > 0 ? meal.calories : ''}</span>
+          <span className={num}>{meal.protein_g > 0 ? `${meal.protein_g}g` : ''}</span>
+          <span className={num}>{meal.carbs_g > 0 ? `${meal.carbs_g}g` : ''}</span>
+          <span className={num}>{meal.fat_g > 0 ? `${meal.fat_g}g` : ''}</span>
+          <span className={num}>{meal.fiber_g > 0 ? `${meal.fiber_g}g` : ''}</span>
+          {eatBtn ?? <span />}
+          {delBtn}
         </div>
       </li>
     )
   }
 
-  // A compact "As meal" group header — several individually-logged items
-  // collapsed into ONE row; tapping it expands to each item's own mealLine.
+  // Several individually logged items collapsed into ONE row; tap to expand.
   function groupHeaderLine(group: MealGroupRow) {
     const expanded = expandedGroups.has(group.groupId)
     const totals = [
       `${group.calories} kcal`,
-      group.protein_g > 0 && `${group.protein_g}p`,
-      group.carbs_g > 0 && `${group.carbs_g}c`,
-      group.fat_g > 0 && `${group.fat_g}f`,
-      group.fiber_g > 0 && `${group.fiber_g}fib`,
+      group.protein_g > 0 && `${group.protein_g}g protein`,
+      group.carbs_g > 0 && `${group.carbs_g}g carbs`,
+      group.fat_g > 0 && `${group.fat_g}g fat`,
+      group.fiber_g > 0 && `${group.fiber_g}g fiber`,
     ].filter(Boolean).join(' · ')
     return (
       <li key={group.groupId}>
-        <button type="button" onClick={() => toggleGroup(group.groupId)}
-          className="w-full flex items-center gap-1.5 min-h-[44px] px-4 py-1 text-sm hover:bg-cream-100/60 transition-colors text-left">
-          <span className={`inline-block shrink-0 text-ink-400 transition-transform ${expanded ? 'rotate-90' : ''}`}>›</span>
-          <span className="flex-1 min-w-0 truncate text-ink-800">{group.title}</span>
-          <span className="text-[9px] uppercase tracking-wide text-ink-400 border border-ink-200 rounded px-1 shrink-0">{group.items.length} items</span>
-          <span className="hidden sm:inline text-xs text-ink-500 tabular-nums shrink-0">{totals}</span>
-          <span className="sm:hidden text-xs text-ink-500 tabular-nums shrink-0">{group.calories} kcal</span>
+        <button type="button" onClick={() => toggleGroup(group.groupId)} aria-expanded={expanded}
+          className="flex min-h-[44px] w-full items-center gap-2 px-4 py-1 text-left text-body transition-colors hover:bg-surface-hover">
+          <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-90')} />
+          <span className="min-w-0 flex-1 truncate text-fg">{group.title}</span>
+          <span className="count-badge shrink-0">{group.items.length} items</span>
+          <span className="hidden shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:inline">{totals}</span>
+          <span className="shrink-0 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{group.calories} kcal</span>
         </button>
-        {!expanded && (
-          <p className="sm:hidden text-[11px] text-ink-400 tabular-nums px-4 pl-9 pb-1 -mt-1">{totals}</p>
-        )}
+        {!expanded && <p className="-mt-1 pb-2 pl-10 pr-4 text-meta tabular-nums text-fg-muted @[40rem]:hidden">{totals}</p>}
         {expanded && (
-          <ul className="divide-y divide-ink-50 border-t border-ink-50">
+          <ul className="divide-y divide-line border-t border-line">
             {group.items.map(m => mealLine(m, true))}
           </ul>
         )}
@@ -214,145 +210,129 @@ export function FoodTodayTab({ date }: { date: string }) {
     )
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Day navigation now lives in the header banner (RecipesPage). */}
+  const coachAction = 'flex min-h-[44px] items-center justify-between gap-2 rounded-row border border-line bg-surface px-3 py-1.5 text-left transition-colors hover:bg-surface-hover'
 
-      {/* Two columns on xl+: summary+goals+coach (left, wider) · meal slots
-          (right, narrower). Nutrition & Goals stack same-width in the left col. */}
-      <div className="flex flex-col xl:flex-row xl:items-start gap-4">
-        <div className="flex flex-col gap-4 w-full xl:w-[34rem] xl:shrink-0">
-          {/* Hero — calorie + protein rings + macro chips */}
-          <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden relative">
-            <div className="h-1 bg-accent-500" />
-            {/* ⚙ Goals — bottom-right corner of the nutrition widget. */}
-            <button onClick={openGoals} title="Goals" aria-label="Nutrition goals"
-              className="press-feedback absolute bottom-2 right-2 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center text-base transition-colors text-ink-400 hover:text-accent-600 hover:bg-cream-100/90 bg-cream-50/70">⚙</button>
-            <div className="p-4 sm:p-6 flex items-center gap-4 sm:gap-5 flex-wrap">
-              <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color="rgb(var(--accent-500))" label="kcal left" sizeClass="w-[108px] h-[108px] sm:w-[134px] sm:h-[134px]" />
-              {/* Small, tasteful protein ring — "kalan protein" as a graphic. */}
-              <Ring consumed={protein} target={targets.protein} size={92} stroke={9} color="#60a5fa" label="prot left" sizeClass="w-[76px] h-[76px] sm:w-[92px] sm:h-[92px]" />
-              <div className="flex-1 min-w-[160px]">
-                <p className="text-sm text-ink-700">
-                  <strong className="text-lg text-ink-900 tabular-nums">{consumed}</strong>
-                  <span className="text-ink-400"> / {targets.calories} kcal</span>
-                </p>
-                <p className="text-[11px] mt-0.5 tabular-nums">
-                  {proteinHit
-                    ? <span className="text-green-600 font-medium">✓ Protein hit{proteinLeft < 0 ? ` (+${-proteinLeft}g)` : ''}</span>
-                    : <span className="text-ink-500"><strong className="text-ink-700">{protein}g</strong> / {targets.protein}g protein · {proteinLeft}g left</span>}
-                </p>
-                {nut && nut.calories > 0 && (
-                  <div className="mt-2.5">
-                    {/* ONE macro row. The bar's own legend printed the same split
-                        as percentages directly above these grams (~40px of pure
-                        duplication on a phone), so it's suppressed here and the
-                        colour dots move onto the gram figures. Full macro names,
-                        never P/C/F. `pr-12` clears the ⚙ Goals button's 44px box. */}
-                    <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false} />
-                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-1.5 pr-12 text-[11px] tabular-nums text-ink-600">
-                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 shrink-0 rounded-full bg-blue-400" />{nut.protein_g}g protein</span>
-                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 shrink-0 rounded-full bg-orange-400" />{nut.carbs_g}g carbs</span>
-                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 shrink-0 rounded-full bg-rose-400" />{nut.fat_g}g fat</span>
-                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 shrink-0 rounded-full bg-green-500" />{nut.fiber_g}g fiber</span>
-                      {nut.sugar_g > 0 && <span className="text-ink-500">{nut.sugar_g}g sugar</span>}
-                    </div>
-                  </div>
-                )}
-              </div>
+  return (
+    <div className="grid grid-cols-1 items-start gap-3 sm:gap-4 xl:grid-cols-[minmax(0,30rem)_minmax(0,1fr)]">
+      {/* Left: summary, water, coach */}
+      <div className="flex min-w-0 flex-col gap-3 sm:gap-4">
+        <Card>
+          <CardHeader title="Nutrition" variant="label"
+            action={<IconButton label="Nutrition goals" onClick={openGoals} className="-my-2 -mr-2"><Settings2 /></IconButton>} />
+          <div className="flex flex-wrap items-center gap-4 sm:gap-5">
+            <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color="rgb(var(--accent-500))"
+              label="kcal left" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" />
+            <Ring consumed={protein} target={targets.protein} size={92} stroke={9} color={MACRO_COLOR.protein}
+              label="protein left" sizeClass="h-[76px] w-[76px] sm:h-[88px] sm:w-[88px]" />
+            <div className="min-w-[10rem] flex-1">
+              <p className="text-body text-fg-muted tabular-nums">
+                <strong className="text-title font-bold text-fg">{consumed}</strong> / {targets.calories} kcal
+              </p>
+              <p className="mt-0.5 text-meta tabular-nums">
+                {proteinHit
+                  ? <span className="inline-flex items-center gap-1 font-medium text-success"><Check aria-hidden className="h-3.5 w-3.5" />Protein hit{proteinLeft < 0 ? ` (+${-proteinLeft}g)` : ''}</span>
+                  : <span className="text-fg-muted"><strong className="font-semibold text-fg-2">{protein}g</strong> / {targets.protein}g protein · {proteinLeft}g left</span>}
+              </p>
             </div>
           </div>
+          {nut && nut.calories > 0 && (
+            <div className="mt-4 border-t border-line pt-3">
+              {/* The gram figures carry the colour key, so the bar's own % legend is off. */}
+              <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false} />
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
+                <MacroFigure color={MACRO_COLOR.protein}>{nut.protein_g}g protein</MacroFigure>
+                <MacroFigure color={MACRO_COLOR.carbs}>{nut.carbs_g}g carbs</MacroFigure>
+                <MacroFigure color={MACRO_COLOR.fat}>{nut.fat_g}g fat</MacroFigure>
+                <MacroFigure color={MACRO_COLOR.fiber}>{nut.fiber_g}g fiber</MacroFigure>
+                {nut.sugar_g > 0 && <span className="text-fg-muted">{nut.sugar_g}g sugar</span>}
+              </div>
+            </div>
+          )}
+        </Card>
 
-          {/* Hydration — its own card under the nutrition hero. */}
-          <div className="rounded-2xl border border-ink-200 bg-cream-50 px-4 py-3">
-            <WaterTracker date={date} />
-          </div>
+        <Card className="!py-3">
+          <WaterTracker date={date} />
+        </Card>
 
-          {/* Coach — always visible; collapsible on mobile (summary + expand)
-              so the meal slots below stay reachable. Expanded by default on sm+. */}
-          <div className="rounded-2xl border border-accent-200 bg-accent-50/40 px-4 py-2.5 sm:py-3 flex flex-col gap-1.5 text-xs">
-            <button type="button" onClick={() => setCoachOpen(o => !o)}
-              className="sm:hidden flex items-center justify-between gap-2 min-h-[44px] -my-1 text-left">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-accent-700">🧠 Coach</span>
-              <span className="flex items-center gap-1.5 text-ink-500 tabular-nums">
-                <span className="truncate max-w-[11rem]">{coachSummary}</span>
-                <span className="text-ink-400">{coachOpen ? '▴' : '▾'}</span>
-              </span>
-            </button>
-            <p className="hidden sm:block text-[11px] font-semibold uppercase tracking-wide text-accent-700">🧠 Coach</p>
-            <div className={`${coachOpen ? 'flex' : 'hidden'} sm:flex flex-col gap-1.5`}>
+        {/* Coach — collapsible on phones so the meal slots stay reachable. */}
+        <Card>
+          <button type="button" onClick={() => setCoachOpen(o => !o)} aria-expanded={coachOpen}
+            className="-my-2 flex min-h-[44px] w-full items-center gap-2.5 text-left sm:hidden">
+            <span aria-hidden className="grid h-7 w-7 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600"><Brain className="h-4 w-4" /></span>
+            <span className="section-label flex-1">Coach</span>
+            <span className="truncate text-meta tabular-nums text-fg-muted">{coachSummary}</span>
+            <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', coachOpen && 'rotate-90')} />
+          </button>
+          <CardHeader title="Coach" variant="label" icon={<Brain />} className="hidden sm:flex" />
+          <div className={cx(coachOpen ? 'mt-3 flex' : 'hidden', 'flex-col gap-2 text-body sm:mt-0 sm:flex')}>
             {coach.weightKg == null ? (
-              <p className="text-ink-500">Add a bodyweight in <strong className="text-ink-700">Training → Body</strong> (or sync Apple Health) to unlock protein &amp; calorie coaching from your real weight trend.</p>
+              <p className="text-fg-muted">Add a bodyweight in <strong className="font-semibold text-fg-2">Training → Body</strong> (or sync Apple Health) to unlock protein and calorie coaching from your real weight trend.</p>
             ) : (
               <>
                 {coach.calorieAdvice ? (
-                  <button
-                    onClick={() => applyCalories(Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), formatLocalDate(new Date()))}
-                    className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
-                    <span className="text-ink-600"><strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong><span className="text-ink-400"> · {coach.calorieAdvice.reason}</span></span>
-                    <span className="text-accent-600 font-semibold shrink-0">Apply</span>
+                  <button type="button" className={coachAction}
+                    onClick={() => applyCalories(Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), formatLocalDate(new Date()))}>
+                    <span className="text-fg-2"><strong className="font-semibold text-fg tabular-nums">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong><span className="text-fg-muted"> · {coach.calorieAdvice.reason}</span></span>
+                    <span className="shrink-0 font-semibold text-accent-600">Apply</span>
                   </button>
                 ) : coach.onTrack ? (
-                  <p className="text-green-600">✓ {coach.onTrack}</p>
+                  <p className="flex items-center gap-1.5 text-success"><Check aria-hidden className="h-4 w-4 shrink-0" />{coach.onTrack}</p>
                 ) : coach.atFloor ? (
-                  <p className="text-ink-500">At your calorie floor (~{coach.calorieFloor}) but not losing — take a diet break rather than cutting lower.</p>
+                  <p className="text-fg-muted">At your calorie floor (~{coach.calorieFloor}) but not losing — take a diet break rather than cutting lower.</p>
                 ) : !coach.consistent ? (
-                  <p className="text-ink-400">Logged {coach.loggedDays7}/7 days — log {Math.max(1, 4 - coach.loggedDays7)} more to unlock the calorie nudge.</p>
+                  <p className="text-fg-muted">Logged {coach.loggedDays7}/7 days — log {Math.max(1, 4 - coach.loggedDays7)} more to unlock the calorie nudge.</p>
                 ) : !coach.weighInsOk ? (
-                  <p className="text-ink-400">Weigh in more often ({coach.weighIns} readings) — a couple of weeks lets me read your trend.</p>
+                  <p className="text-fg-muted">Weigh in more often ({coach.weighIns} readings) — a couple of weeks lets me read your trend.</p>
                 ) : coach.inCooldown ? (
-                  <p className="text-ink-400">Calorie adjusted recently — hold {coach.cooldownDaysLeft} more day{coach.cooldownDaysLeft === 1 ? '' : 's'} so the trend can catch up.</p>
+                  <p className="text-fg-muted">Calorie adjusted recently — hold {coach.cooldownDaysLeft} more day{coach.cooldownDaysLeft === 1 ? '' : 's'} so the trend can catch up.</p>
                 ) : null}
                 {coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? (
-                  <button
-                    onClick={() => applyProtein(coach.proteinForGoal!)}
-                    className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
-                    <span className="text-ink-600">Suggested <strong className="text-accent-700">{coach.proteinForGoal}g</strong> protein <span className="text-ink-400">· {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span></span>
-                    <span className="text-accent-600 font-semibold shrink-0">Apply</span>
+                  <button type="button" className={coachAction} onClick={() => applyProtein(coach.proteinForGoal!)}>
+                    <span className="text-fg-2">Suggested <strong className="font-semibold text-fg tabular-nums">{coach.proteinForGoal}g</strong> protein <span className="text-fg-muted">· {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span></span>
+                    <span className="shrink-0 font-semibold text-accent-600">Apply</span>
                   </button>
                 ) : coach.proteinForGoal != null ? (
-                  <p className="text-green-600">✓ Protein target on point ({(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg)</p>
+                  <p className="flex items-center gap-1.5 text-success"><Check aria-hidden className="h-4 w-4 shrink-0" />Protein target on point ({(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg)</p>
                 ) : null}
                 {coach.proteinPerMealG != null && (
-                  <p className="text-ink-400">💪 ≈{coach.proteinPerMealG}g protein per meal spreads it best{coach.fatFloorG != null ? ` · keep fat ≥ ~${coach.fatFloorG}g/day on a cut` : ''}</p>
+                  <p className="text-meta text-fg-muted">About {coach.proteinPerMealG}g protein per meal spreads it best{coach.fatFloorG != null ? ` · keep fat ≥ ~${coach.fatFloorG}g/day on a cut` : ''}</p>
                 )}
               </>
             )}
-            </div>
           </div>
-        </div>
-
-        {/* Meal slots — fill the right column on wide screens. Cascade in on mobile. */}
-        <div className="flex-1 min-w-0 grid grid-cols-1 2xl:grid-cols-2 gap-2.5 content-start stagger-in">
-          {SLOTS.map(({ slot, label, icon }) => {
-            const meals = bySlot.get(slot) ?? []
-            const kcal = meals.filter(m => m.source === 'log').reduce((a, m) => a + m.calories, 0)
-            return (
-              <div key={slot} className="rounded-2xl border border-ink-200 bg-cream-50 overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ink-100">
-                  <span className="text-base leading-none">{icon}</span>
-                  <span className="text-sm font-semibold text-ink-800 flex-1">{label}</span>
-                  {kcal > 0 && <span className="text-xs text-ink-400 tabular-nums">{kcal} kcal</span>}
-                  <button onClick={() => setLogSlot(slot)}
-                    className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[44px] px-2.5 rounded-lg transition-colors">+ Log</button>
-                </div>
-                {meals.length > 0 ? (
-                  <ul className="divide-y divide-ink-50">
-                    {groupDayMeals(meals).map(row => row.kind === 'group' ? groupHeaderLine(row) : mealLine(row.meal, false))}
-                  </ul>
-                ) : (
-                  <button onClick={() => setLogSlot(slot)}
-                    className="w-full flex items-center text-left px-4 min-h-[44px] text-xs text-ink-400 hover:text-accent-600 transition-colors">+ Add something</button>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        </Card>
       </div>
 
-      {logSlot && <FoodLogModal open onClose={() => setLogSlot(null)} date={date} defaultSlot={logSlot} />}
-      {editMeal && <EditFoodLogModal meal={editMeal} date={date} onClose={() => setEditMeal(null)} />}
-      {planMeal && <AssignMealModal open onClose={() => setPlanMeal(null)} date={date} mealSlot={planMeal.meal_slot} existing={planMeal} />}
+      {/* Right: meal slots */}
+      <div className="grid min-w-0 grid-cols-1 content-start gap-3 stagger-in sm:gap-4">
+        {SLOTS.map(({ slot, label, icon }) => {
+          const meals = bySlot.get(slot) ?? []
+          const kcal = meals.filter(m => m.source === 'log').reduce((a, m) => a + m.calories, 0)
+          return (
+            <Card key={slot} padded={false} className="@container overflow-hidden">
+              <header className="flex items-center gap-2 border-b border-line py-1 pl-4 pr-2">
+                <span aria-hidden className="text-base leading-none">{icon}</span>
+                <h3 className="flex-1 text-ui font-semibold text-fg">{label}</h3>
+                {kcal > 0 && <span className="text-meta tabular-nums text-fg-muted">{kcal} kcal</span>}
+                <button type="button" onClick={() => openLog(slot)}
+                  className="btn-ghost btn-sm gap-1 !px-2.5 text-accent-600">
+                  <Plus aria-hidden className="h-4 w-4" />Log
+                </button>
+              </header>
+              {meals.length > 0 ? (
+                <ul className="divide-y divide-line">
+                  {groupDayMeals(meals).map(row => row.kind === 'group' ? groupHeaderLine(row) : mealLine(row.meal, false))}
+                </ul>
+              ) : (
+                <button type="button" onClick={() => openLog(slot)}
+                  className="flex min-h-[44px] w-full items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
+                  Add something
+                </button>
+              )}
+            </Card>
+          )
+        })}
+      </div>
     </div>
   )
 }

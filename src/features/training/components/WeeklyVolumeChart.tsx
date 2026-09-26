@@ -5,6 +5,9 @@ import { computeWeeklyVolumeTrend, rollingAverage } from '../progressAggregate'
 import { lastCompleteWeek } from '../trainingInsights'
 import { fmtWeekRange } from '../dateFormat'
 import { compactAxisTick } from './health/axisFormat'
+import { Skeleton, useChartColors } from '../../../shared/ui'
+import { TOOLTIP_BOX } from './chartKit'
+import { ChartCard, ChartEmpty, ChartNote } from './ChartCard'
 
 // Weekly total tonnage (Σ weight×reps, warm-ups excluded, weight-based
 // exercise types only) with a 4-week rolling average — a strength-coach +
@@ -25,10 +28,10 @@ function VolumeTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
   const weekStart = payload[0]?.payload?.weekStart
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
+    <div className={TOOLTIP_BOX}>
       {/* A single date is ambiguous for a WEEKLY value — is it the start, the
           end, the day it was logged? Always show the full Mon-Sun range. */}
-      <p className="text-ink-400 font-medium">{weekStart ? fmtWeekRange(weekStart) : ''}</p>
+      <p className="font-medium text-fg-muted">{weekStart ? fmtWeekRange(weekStart) : ''}</p>
       {payload.map((p: { dataKey: string; value: number; color: string }) => (
         <p key={p.dataKey} style={{ color: p.color }} className="font-semibold">
           {p.dataKey === 'avg4wk' ? '4-week rolling average: ' : 'That week: '}{p.value.toLocaleString('en-GB')} kg
@@ -40,6 +43,7 @@ function VolumeTooltip({ active, payload }: any) {
 
 export function WeeklyVolumeChart() {
   const { data, isLoading } = useTrainingHistory()
+  const c = useChartColors()
 
   const chartData = useMemo(() => {
     if (!data) return []
@@ -53,36 +57,34 @@ export function WeeklyVolumeChart() {
     return weeks.map((w, i) => ({ label: fmtWeek(w.weekStart), weekStart: w.weekStart, tonnage: w.tonnageKg, avg4wk: avg[i] ?? undefined }))
   }, [data])
 
-  if (isLoading) return <div className="h-40 rounded-2xl bg-cream-200 animate-pulse" />
+  if (isLoading) return <Skeleton rounded="rounded-card" className="h-40" />
   if (chartData.length === 0) {
     return (
-      <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300 mb-2">🏋️ Weekly Training Volume</p>
-        <p className="text-xs text-ink-300 py-6 text-center">No weight-based sets logged in the last 6 months yet.</p>
-      </div>
+      <ChartCard title="Weekly training volume">
+        <ChartEmpty>No weight-based sets logged in the last 6 months yet.</ChartEmpty>
+      </ChartCard>
     )
   }
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-2">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">🏋️ Weekly Training Volume</p>
+    <ChartCard title="Weekly training volume">
       <div style={{ height: 140 }}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={Math.ceil(chartData.length / 8)} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={c.grid} />
+            <XAxis dataKey="label" tick={{ fontSize: 9, fill: c.axis }} axisLine={false} tickLine={false} interval={Math.ceil(chartData.length / 8)} />
+            <YAxis tick={{ fontSize: 9, fill: c.axis }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
             <Tooltip cursor={false} content={VolumeTooltip} />
-            <Bar dataKey="tonnage" name="Weekly volume" fill="#7c3aed" fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={12} />
-            <Line dataKey="avg4wk" name="4-week avg" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
+            <Bar dataKey="tonnage" name="Weekly volume" fill={c.series[1]} fillOpacity={0.3} radius={[3, 3, 0, 0]} barSize={12} />
+            <Line dataKey="avg4wk" name="4-week avg" stroke={c.series[1]} strokeWidth={2} dot={false} connectNulls />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      <p className="text-[11px] text-ink-400">
+      <ChartNote>
         Total weight lifted per week (Σ weight × reps, warm-ups excluded), with a 4-week rolling average. This is a training <em>input</em>, not a
         stimulus or outcome — it conflates load and reps freely (100kg×5 and 50kg×10 tally the same) and shifts when your exercise mix changes.
         Read the trend over months, not week to week.
-      </p>
-    </div>
+      </ChartNote>
+    </ChartCard>
   )
 }

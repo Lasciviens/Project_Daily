@@ -1,17 +1,17 @@
 import { useMovieFull, useTVFull } from '../hooks/useTMDB'
 import { MediaDetailBody } from './MediaDetailBody'
 import { ModalShell } from '../../../shared/modals/ModalShell'
-import { Skeleton as Bone } from '../../../shared/ui'
+import { Button, Skeleton as Bone } from '../../../shared/ui'
 import { posterUrl } from '../../../integrations/tmdb/client'
-import type { UserMovieEntry, UserTVEntry } from '../types'
+import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
 
 interface Props {
-  tmdbId: number | null
-  mediaType: 'movie' | 'tv'
+  tmdbId: number
+  mediaType: MediaType
   userEntry?: UserMovieEntry | UserTVEntry | null
   onClose: () => void
   onAdded?: () => void
-  onOpenDetail?: (id: number, type: 'movie' | 'tv') => void
+  onOpenDetail?: (id: number, type: MediaType) => void
 }
 
 function Skeleton() {
@@ -29,20 +29,13 @@ function Skeleton() {
 }
 
 export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdded, onOpenDetail }: Props) {
-  const { data: movieFull, isLoading: movieLoading } = useMovieFull(mediaType === 'movie' ? tmdbId : null)
-  const { data: tvFull,    isLoading: tvLoading    } = useTVFull(mediaType === 'tv' ? tmdbId : null)
+  const movieQ = useMovieFull(mediaType === 'movie' ? tmdbId : null)
+  const tvQ    = useTVFull(mediaType === 'tv' ? tmdbId : null)
+  const query = mediaType === 'movie' ? movieQ : tvQ
+  const detail = query.data
 
-  const detail  = mediaType === 'movie' ? movieFull : tvFull
-  const loading = mediaType === 'movie' ? movieLoading : tvLoading
-
-  const title = detail
-    ? (mediaType === 'movie' ? (detail as typeof movieFull)!.title : (detail as typeof tvFull)!.name)
-    : ''
-  const year = detail
-    ? (mediaType === 'movie'
-        ? (detail as typeof movieFull)!.release_date?.slice(0, 4)
-        : (detail as typeof tvFull)!.first_air_date?.slice(0, 4))
-    : ''
+  const title = movieQ.data?.title ?? tvQ.data?.name ?? ''
+  const year = (movieQ.data?.release_date ?? tvQ.data?.first_air_date)?.slice(0, 4) ?? ''
 
   const backdrop = detail?.backdrop_path
     ? `https://image.tmdb.org/t/p/w780${detail.backdrop_path}`
@@ -52,7 +45,6 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
   // its close button over it. Phones: bottom sheet; sm+: centered dialog.
   return (
     <ModalShell
-      open={tmdbId !== null}
       onClose={onClose}
       size="lg"
       bodyClassName=""
@@ -75,7 +67,12 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
         </div>
       }
     >
-      {loading || !detail ? (
+      {query.isError ? (
+        <div className="flex flex-col items-start gap-3 p-5">
+          <p className="text-body text-fg-2">Couldn't load this title from TMDB.</p>
+          <Button size="sm" onClick={() => { void query.refetch() }}>Try again</Button>
+        </div>
+      ) : !detail ? (
         <Skeleton />
       ) : (
         <MediaDetailBody

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { qk, STALE } from '../../../shared/query'
-import { fetchStravaActivities } from '../api/hevyApi'
+import { fetchStravaActivities } from '../api/trainingApi'
 
 export function useStravaActivities(opts: {
   limit?: number

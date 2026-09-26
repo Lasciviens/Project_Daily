@@ -33,7 +33,7 @@ export const NEWS_FEEDS: NewsFeed[] = [
 export const FEED_CATEGORIES = [
   { key: 'no'    as FeedCategory, label: '🇳🇴 NO' },
   { key: 'tr'    as FeedCategory, label: '🇹🇷 TR' },
-  { key: 'world' as FeedCategory, label: '🌐 World' },
+  { key: 'world' as FeedCategory, label: 'World' },
 ]
 
 // ─── RSS image helpers ────────────────────────────────────────────────────────

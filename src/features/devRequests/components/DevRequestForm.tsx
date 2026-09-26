@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useCreateDevRequest, useUpdateDevRequest } from '../hooks/useDevRequests'
-import { PAGE_OPTIONS, pageOptionFor } from './devRequestMeta'
+import { PAGE_CHOICES, pageOptionFor } from './devRequestMeta'
 import type { DevRequest, DevRequestCategory, DevRequestPriority, DevRequestEffort } from '../types'
 import { Button, cx } from '../../../shared/ui'
 
@@ -76,7 +76,7 @@ export function DevRequestForm({ request, currentPage = '', onDone }: {
           {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <select value={page} onChange={e => setPage(e.target.value)} aria-label="Page" className="select">
-          {PAGE_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+          {PAGE_CHOICES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           <option value="other">other</option>
         </select>
         <select value={effort} onChange={e => setEffort(e.target.value as DevRequestEffort | '')} aria-label="Effort" className="select">

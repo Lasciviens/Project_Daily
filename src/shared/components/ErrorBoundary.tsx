@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { AlertTriangle, RotateCcw } from 'lucide-react'
 import { logError } from '../utils/logError'
+import { Button } from '../ui/Button'
 
 // A render-time throw anywhere below this boundary used to take the WHOLE app
 // to a blank white page — React unmounts the entire tree when nothing catches.
@@ -41,17 +43,15 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children
 
     return (
-      <div className="max-w-xl rounded-xl border border-red-200 bg-red-50 p-4 dark:bg-red-500/10 dark:border-red-500/30">
-        <p className="text-sm font-semibold text-red-700 dark:text-red-400">
+      <div role="alert" data-tone="danger" className="max-w-xl rounded-card border border-danger/30 bg-danger-soft p-4">
+        <p className="flex items-center gap-2 text-ui font-semibold text-danger">
+          <AlertTriangle aria-hidden className="h-4 w-4 shrink-0" />
           {this.props.label ? `${this.props.label} — something broke here` : 'Something broke here'}
         </p>
-        <p className="text-xs text-red-600/90 dark:text-red-400/80 mt-1 break-words">{error.message}</p>
-        <button
-          onClick={() => this.setState({ error: null })}
-          className="mt-3 min-h-[44px] px-3 text-sm rounded-lg border border-red-300 bg-cream-50 text-red-700 hover:border-red-400 transition-colors dark:bg-transparent dark:text-red-400"
-        >
+        <p className="mt-1 break-words text-meta text-fg-2">{error.message}</p>
+        <Button size="sm" icon={<RotateCcw />} onClick={() => this.setState({ error: null })} className="mt-3">
           Try again
-        </button>
+        </Button>
       </div>
     )
   }

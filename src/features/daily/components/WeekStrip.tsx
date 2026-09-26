@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { cx } from '../../../shared/ui'
 import { addDays, addWeeks, format, startOfWeek, isToday, isSameDay, getISOWeek } from 'date-fns'
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
@@ -35,50 +37,57 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
     return tasks.filter(t => t.due_date === s && t.status !== 'done' && t.status !== 'cancelled').length
   }
 
-  const chevron = 'min-w-[28px] min-h-[44px] flex items-center justify-center rounded-lg text-ink-400 hover:text-ink-700 hover:bg-cream-100 transition-colors text-sm'
+  const chevron = 'grid min-h-[44px] min-w-[32px] place-items-center rounded-control text-fg-faint transition-colors duration-150 hover:bg-surface-hover hover:text-fg'
 
   return (
-    <div className="flex items-center gap-1 px-2 sm:px-3 py-1.5 border-b border-ink-100">
-      <button onClick={() => setNav({ key: viewKey, offset: offset - 1 })} className={chevron} aria-label="Previous week">‹</button>
+    <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 sm:px-3">
+      <button type="button" onClick={() => setNav({ key: viewKey, offset: offset - 1 })} className={chevron} aria-label="Previous week">
+        <ChevronLeft className="h-4 w-4" aria-hidden />
+      </button>
 
-      <div className="grid grid-cols-7 gap-1 flex-1 max-w-[25rem]">
+      <div className="grid max-w-[25rem] flex-1 grid-cols-7 gap-1">
         {days.map(d => {
           const viewed = isSameDay(d, viewDate)
           const today  = isToday(d)
           const count  = openCount(d)
+          const hasCal = calDates?.has(format(d, 'yyyy-MM-dd')) ?? false
           return (
             <button
               key={d.toISOString()}
+              type="button"
               onClick={() => onDayClick(d)}
-              className={`flex flex-col items-center justify-center min-h-[48px] rounded-lg px-1 py-1 transition-colors ${
-                viewed ? 'bg-accent-500 text-white'
-                : today ? 'ring-1 ring-accent-400 hover:bg-cream-100'
-                : 'hover:bg-cream-100'
-              }`}
+              aria-pressed={viewed}
+              aria-label={format(d, 'EEEE d MMMM')}
+              className={cx(
+                'flex min-h-[48px] flex-col items-center justify-center rounded-control px-1 py-1 transition-colors duration-150',
+                viewed ? 'bg-accent-500 text-on-accent'
+                  : today ? 'ring-1 ring-inset ring-accent-500/60 hover:bg-surface-hover'
+                  : 'hover:bg-surface-hover',
+              )}
             >
-              <span className={`text-[10px] font-semibold uppercase leading-none ${viewed ? 'text-accent-100' : 'text-ink-400'}`}>
+              <span className={cx('text-micro font-semibold uppercase leading-none', viewed ? 'opacity-80' : 'text-fg-faint')}>
                 {format(d, 'EEE')}
               </span>
-              <span className={`text-sm font-bold leading-tight ${viewed ? 'text-white' : 'text-ink-800'}`}>
+              <span className={cx('text-ui font-bold leading-tight tabular-nums', !viewed && 'text-fg')}>
                 {format(d, 'd')}
               </span>
-              <span className="flex items-center gap-0.5 min-h-[10px] leading-none">
+              <span className="flex min-h-[10px] items-center gap-0.5 leading-none">
                 {count > 0 && (
-                  <span className={`text-[9px] font-semibold px-1 rounded-sm ${viewed ? 'bg-accent-600 text-white' : 'bg-accent-100 text-accent-700'}`}>
+                  <span className={cx('rounded-sm px-1 text-micro font-semibold leading-none tabular-nums', viewed ? 'bg-accent-700 text-on-accent' : 'bg-accent-50 text-accent-700')}>
                     {count}
                   </span>
                 )}
-                {(calDates?.has(format(d, 'yyyy-MM-dd')) ?? false) && (
-                  <span className={`w-1 h-1 rounded-full ${viewed ? 'bg-green-200' : 'bg-green-400'}`} />
-                )}
+                {hasCal && <span data-tone="info" className={cx('tone-dot !h-1 !w-1', viewed && 'opacity-80')} aria-hidden />}
               </span>
             </button>
           )
         })}
       </div>
 
-      <button onClick={() => setNav({ key: viewKey, offset: offset + 1 })} className={chevron} aria-label="Next week">›</button>
-      <span className="ml-auto text-[10px] font-semibold text-ink-400 whitespace-nowrap pr-1 hidden sm:block">
+      <button type="button" onClick={() => setNav({ key: viewKey, offset: offset + 1 })} className={chevron} aria-label="Next week">
+        <ChevronRight className="h-4 w-4" aria-hidden />
+      </button>
+      <span className="ml-auto hidden whitespace-nowrap pr-1 text-micro font-semibold tabular-nums text-fg-faint sm:block">
         Wk {getISOWeek(weekStart)}
       </span>
     </div>

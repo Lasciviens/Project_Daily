@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
 import { fetchWatchedEpisodes } from '../api/watchedEpisodesApi'
 import { getSeasonDetails } from '../api/tmdbApi'
 
@@ -77,9 +78,9 @@ export function useNextEpisode(
   totalEpisodes: number | null,
 ) {
   return useQuery({
-    queryKey: ['next-episode', tvEntryId],
+    queryKey: qk.media.nextEpisode(tvEntryId ?? ''),
     queryFn:  () => computeNextEpisode(tvEntryId!, tmdbId!, totalEpisodes ?? null),
     enabled:  !!tvEntryId && !!tmdbId,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   })
 }

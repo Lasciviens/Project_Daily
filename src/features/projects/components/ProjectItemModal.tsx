@@ -52,10 +52,9 @@ export function ProjectItemModal({ open = true, onClose, projectId, phases, defa
   const updateItem = useUpdateItem(projectId)
   const saving = createItem.isPending || updateItem.isPending
 
-
   async function handleSave() {
     const trimmed = title.trim()
-    if (!trimmed) { toast.error('Title is required'); return }
+    if (!trimmed) return
     if (!phaseId) { toast.error('Phase is required'); return }
 
     // The item hooks toast + log failures themselves; this adds the per-call copy.
@@ -91,7 +90,7 @@ export function ProjectItemModal({ open = true, onClose, projectId, phases, defa
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave} loading={saving}>{isEdit ? 'Save item' : 'Create item'}</Button>
+          <Button variant="primary" onClick={handleSave} loading={saving} disabled={!title.trim()}>{isEdit ? 'Save item' : 'Create item'}</Button>
         </div>
       }
     >

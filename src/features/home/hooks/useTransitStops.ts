@@ -1,31 +1,19 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../../../integrations/supabase/client'
-import { requireUser } from '../../../shared/utils/requireUser'
-import { toast } from '../../../app/store'
+import { useQuery } from '@tanstack/react-query'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
+import {
+  fetchTransitStops, insertTransitStop, updateTransitStop, deleteTransitStop, setDefaultTransitStop,
+  type UserTransitStop, type TransitStopPatch,
+} from '../api/transitStoreApi'
 import type { StopResult } from '../api/ruterApi'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export type { UserTransitStop }
 
-export interface UserTransitStop {
-  id:               string
-  stop_id:          string        // NSR:StopPlace:... for transit stops, or a
-                                   // provider address id for an address favorite
-  stop_name:        string
-  stop_locality:    string | null
-  label:            string | null
-  is_default:       boolean
-  sort_order:       number
-  quay_id?:         string | null
-  quay_description?: string | null
-  lat?:             number | null   // set only for address favorites
-  lon?:             number | null
-}
-
-// Thrown by addStop when the exact same (stop, direction) is already saved —
-// callers should offer to update the existing favorite instead of just
-// surfacing a raw "duplicate key" database error (a real bug this replaces:
-// the unique index didn't even cover the quay before migration 049, so saving
-// a second direction of the same stop was outright impossible).
+/**
+ * Thrown by addStop when the exact same (stop, direction) is already saved, so
+ * the caller can offer to update that favourite instead of surfacing a raw
+ * "duplicate key" error. Raised before any write, so no error toast fires.
+ */
 export class DuplicateStopError extends Error {
   existing: UserTransitStop
   constructor(existing: UserTransitStop) {
@@ -35,111 +23,54 @@ export class DuplicateStopError extends Error {
   }
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
+const INVALIDATES = [qk.transit.stops()]
 
-export function useTransitStops(): {
-  stops:      UserTransitStop[]
-  isLoading:  boolean
-  addStop:    (stop: StopResult, quayId?: string, quayDescription?: string, label?: string) => Promise<void>
-  updateStop: (id: string, patch: { label?: string | null; quayId?: string | null; quayDescription?: string | null }) => Promise<void>
-  removeStop: (id: string) => Promise<void>
-  setDefault: (id: string) => Promise<void>
-} {
-  const qc = useQueryClient()
-
+export function useTransitStops() {
   const { data: stops = [], isLoading } = useQuery({
-    queryKey: ['transit', 'stops'],
-    queryFn: async (): Promise<UserTransitStop[]> => {
-      const { data, error } = await supabase
-        .from('user_transit_stops')
-        .select('*')
-        .order('sort_order', { ascending: true })
-      if (error) throw error
-      return data as UserTransitStop[]
-    },
+    queryKey: qk.transit.stops(),
+    queryFn:  fetchTransitStops,
+    staleTime: STALE.default,
   })
 
-  async function addStop(stop: StopResult, quayId?: string, quayDescription?: string, label?: string): Promise<void> {
-    const user = await requireUser()
+  const add = useMutationWithFeedback({
+    action: 'add_transit_stop', successMessage: 'Stop saved',
+    mutationFn: insertTransitStop, invalidates: INVALIDATES,
+  })
+  const update = useMutationWithFeedback({
+    action: 'update_transit_stop', successMessage: 'Stop updated',
+    mutationFn: ({ id, patch }: { id: string; patch: TransitStopPatch }) => updateTransitStop(id, patch),
+    invalidates: INVALIDATES,
+  })
+  const remove = useMutationWithFeedback({
+    action: 'remove_transit_stop', successMessage: 'Stop removed',
+    mutationFn: ({ id, promoteId }: { id: string; promoteId: string | null }) => deleteTransitStop(id, promoteId),
+    invalidates: INVALIDATES,
+  })
+  const makeDefault = useMutationWithFeedback({
+    action: 'set_default_transit_stop',
+    mutationFn: setDefaultTransitStop, invalidates: INVALIDATES,
+  })
 
-    // Same stop + same direction (quay) already saved? Surface it as a typed
-    // conflict instead of letting the DB's unique-index violation bubble up
-    // as a raw "duplicate key value violates unique constraint" message.
+  // Errors are toasted by the mutations; these reject only so a caller can stop its flow.
+  async function addStop(stop: StopResult, quayId?: string, quayDescription?: string, label?: string): Promise<void> {
     const normalizedQuay = quayId ?? null
     const existing = stops.find(s => s.stop_id === stop.id && (s.quay_id ?? null) === normalizedQuay)
     if (existing) throw new DuplicateStopError(existing)
-
-    const isFirst = stops.length === 0
-    const isAddress = !stop.id.startsWith('NSR:')
-    const { error } = await supabase.from('user_transit_stops').insert({
-      user_id:          user.id,
-      stop_id:          stop.id,
-      stop_name:        stop.name,
-      stop_locality:    stop.locality ?? null,
-      label:            label ?? null,
-      is_default:       isFirst,
-      sort_order:       stops.length,
-      quay_id:          normalizedQuay,
-      quay_description: quayDescription ?? null,
-      lat:              isAddress ? stop.lat ?? null : null,
-      lon:              isAddress ? stop.lon ?? null : null,
+    await add.mutateAsync({
+      stop, quayId: normalizedQuay, quayDescription: quayDescription ?? null, label: label ?? null,
+      isDefault: stops.length === 0, sortOrder: stops.length,
     })
-    if (error) throw error
-    await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })
   }
 
-  // Used to apply a saved favorite's new label/direction after the user
-  // confirms overwriting an existing one (see DuplicateStopError above).
-  async function updateStop(id: string, patch: { label?: string | null; quayId?: string | null; quayDescription?: string | null }): Promise<void> {
-    const { error } = await supabase
-      .from('user_transit_stops')
-      .update({
-        ...(patch.label       !== undefined ? { label: patch.label } : {}),
-        ...(patch.quayId      !== undefined ? { quay_id: patch.quayId } : {}),
-        ...(patch.quayDescription !== undefined ? { quay_description: patch.quayDescription } : {}),
-      })
-      .eq('id', id)
-    if (error) throw error
-    await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })
-  }
+  const updateStop = (id: string, patch: TransitStopPatch) => update.mutateAsync({ id, patch })
 
-  async function removeStop(id: string): Promise<void> {
+  function removeStop(id: string) {
     const target = stops.find(s => s.id === id)
-
-    const { error } = await supabase.from('user_transit_stops').delete().eq('id', id)
-    if (error) throw error
-
-    // If the removed stop was default, promote the first remaining stop
-    if (target?.is_default) {
-      const remaining = stops.filter(s => s.id !== id)
-      if (remaining.length > 0) {
-        const { error: promoteError } = await supabase
-          .from('user_transit_stops')
-          .update({ is_default: true })
-          .eq('id', remaining[0].id)
-        if (promoteError) toast.error('Failed to update default stop')
-      }
-    }
-
-    await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })
+    const promoteId = target?.is_default ? stops.find(s => s.id !== id)?.id ?? null : null
+    return remove.mutateAsync({ id, promoteId })
   }
 
-  async function setDefault(id: string): Promise<void> {
-    // Two-step: clear all, then set the chosen one — avoids unique constraint issues
-    const { error: clearError } = await supabase
-      .from('user_transit_stops')
-      .update({ is_default: false })
-      .neq('id', id)
-    if (clearError) throw clearError
-
-    const { error: setError } = await supabase
-      .from('user_transit_stops')
-      .update({ is_default: true })
-      .eq('id', id)
-    if (setError) throw setError
-
-    await qc.invalidateQueries({ queryKey: ['transit', 'stops'] })
-  }
+  const setDefault = (id: string) => makeDefault.mutateAsync(id)
 
   return { stops, isLoading, addStop, updateStop, removeStop, setDefault }
 }

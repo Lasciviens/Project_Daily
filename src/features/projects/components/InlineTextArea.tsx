@@ -13,7 +13,11 @@ export function InlineTextArea({ value, onSave, placeholder, className = '' }: P
   const ref = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { if (editing) ref.current?.focus() }, [editing])
-  useEffect(() => { if (!editing) setDraft(value ?? '') }, [value, editing])
+
+  function startEditing() {
+    setDraft(value ?? '')
+    setEditing(true)
+  }
 
   function commit() {
     setEditing(false)
@@ -24,10 +28,13 @@ export function InlineTextArea({ value, onSave, placeholder, className = '' }: P
   if (!editing) {
     return (
       <p
-        onClick={() => setEditing(true)}
-        className={`cursor-text text-xs text-ink-500 hover:bg-ink-100 rounded px-0.5 min-h-[18px] ${className}`}
+        role="button"
+        tabIndex={0}
+        onClick={startEditing}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); startEditing() } }}
+        className={`min-h-[20px] cursor-text rounded-md px-0.5 text-body text-fg-2 transition-colors hover:bg-surface-hover ${className}`}
       >
-        {value || <span className="text-ink-500">{placeholder}</span>}
+        {value || <span className="text-fg-faint">{placeholder}</span>}
       </p>
     )
   }
@@ -42,7 +49,7 @@ export function InlineTextArea({ value, onSave, placeholder, className = '' }: P
       onKeyDown={e => {
         if (e.key === 'Escape') { setEditing(false); setDraft(value ?? '') }
       }}
-      className={`w-full text-xs border border-accent-300 rounded px-1 py-0.5 outline-none resize-none bg-cream-50 ${className}`}
+      className={`input w-full resize-none py-1.5 ${className}`}
     />
   )
 }

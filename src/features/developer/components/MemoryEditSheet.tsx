@@ -1,26 +1,25 @@
 import { useState } from 'react'
-import { ModalShell } from '../../../shared/modals/ModalShell'
+import { ModalShell } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
 import { useUpdateMemory } from '../../ai/hooks/useMemory'
 import { KIND_LABEL, KINDS } from './memoryMeta'
 import type { AiMemory } from '../../ai/api/memoryApi'
 
 interface Props {
-  memory: AiMemory | null   // null = closed
+  memory: AiMemory
   onClose: () => void
 }
 
 export function MemoryEditSheet({ memory, onClose }: Props) {
   const update = useUpdateMemory()
-  // Keyed remount (key={memory?.id} at the call site) is what keeps this
-  // form's local state in sync with whichever row was tapped — same pattern
-  // WishSheet uses to survive a background refetch mid-edit.
-  const [kind, setKind] = useState<AiMemory['kind']>(memory?.kind ?? 'note')
-  const [title, setTitle] = useState(memory?.title ?? '')
-  const [content, setContent] = useState(memory?.content ?? '')
+  // Seeded once per mount: the entity adapter keeps the first loaded row, so a
+  // background refetch can't overwrite what is being typed.
+  const [kind, setKind] = useState<AiMemory['kind']>(memory.kind)
+  const [title, setTitle] = useState(memory.title)
+  const [content, setContent] = useState(memory.content)
 
   function handleSave() {
-    if (!memory || !title.trim() || !content.trim()) return
+    if (!title.trim() || !content.trim()) return
     update.mutate(
       { id: memory.id, patch: { kind, title: title.trim(), content: content.trim() } },
       { onSuccess: onClose },
@@ -31,7 +30,6 @@ export function MemoryEditSheet({ memory, onClose }: Props) {
 
   return (
     <ModalShell
-      open={!!memory}
       onClose={onClose}
       title="Edit memory"
       size="sm"

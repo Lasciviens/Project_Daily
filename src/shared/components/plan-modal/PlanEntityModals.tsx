@@ -14,27 +14,13 @@
 //  a standalone block is exactly how a second task used to get minted.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState } from 'react'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { UnifiedPlanModal } from './UnifiedPlanModal'
 import { useTaskById } from '../../../features/todo/hooks/useTodos'
 import { useTimeBlock, useScheduleBlock } from '../../../features/daily/hooks/useSchedule'
 import type { EntityModalProps } from '../../modals/types'
 import type { PlanResult } from './planModal.types'
-
-/**
- * The first loaded value, frozen for the popup's lifetime: a background
- * refetch (window focus, a save elsewhere) must never re-seed the form under
- * the user's fingers. The editor re-reads on its next open anyway.
- */
-function useFirstLoaded<T>(value: T | null | undefined): T | undefined {
-  const [snap, setSnap] = useState<T | undefined>(undefined)
-  if (snap === undefined && value != null) {
-    setSnap(value)
-    return value
-  }
-  return snap
-}
+import { useFirstLoaded } from '../../modals/useFirstLoaded'
 
 type LoadState = { loading?: boolean; loadError?: { message: string; onRetry?: () => void } }
 

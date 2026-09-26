@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import { format, startOfWeek, endOfWeek } from 'date-fns'
 import { useDayData } from '../hooks/useDayData'
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
-import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { useEntityModal } from '../../../shared/modals'
+import { Skeleton, ToneDot, TonePill, cx } from '../../../shared/ui'
 import { completedWithinLast24h } from '../../todo/taskRules'
 import { useOpenWishes } from '../../wishes/hooks/useWishes'
 import { wishPeriodLabel } from '../../wishes/wishRules'
@@ -38,14 +40,15 @@ function OpenWishesRow({ wishes }: { wishes: WishItem[] }) {
   return (
     <Link
       to="/wishes"
-      className="mb-3 flex min-h-[44px] items-center gap-2 rounded-xl border border-accent-100 bg-accent-50/50 px-3 text-sm text-ink-600 transition-colors duration-150 hover:bg-accent-50"
+      className="mb-3 flex min-h-[44px] items-center gap-2 rounded-row border border-line bg-surface-2 px-3 text-body text-fg-2 transition-colors duration-150 hover:bg-surface-hover"
     >
+      <ToneDot tone="highlight" />
       <span className="truncate">{lead}</span>
-      <span className="text-ink-400">·</span>
-      <span className="shrink-0 tabular-nums">
+      <span className="text-fg-faint" aria-hidden>·</span>
+      <span className="shrink-0 tabular-nums text-fg-muted">
         {wishes.length} {wishes.length === 1 ? 'thing' : 'things'}
       </span>
-      <span className="ml-auto shrink-0 text-ink-400" aria-hidden>→</span>
+      <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-fg-faint" aria-hidden />
     </Link>
   )
 }
@@ -56,7 +59,7 @@ function OpenWishesRow({ wishes }: { wishes: WishItem[] }) {
 export function DayView({ date }: Props) {
   const { tasks, isLoading, section } = useDayData(date)
   const { data: openWishes = [] } = useOpenWishes()
-  const [modalOpen, setModalOpen] = useState(false)
+  const modal = useEntityModal()
   const [showWeek, setShowWeek] = useState(false)
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -67,116 +70,93 @@ export function DayView({ date }: Props) {
 
   const openTasks      = tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
   const doneTasks      = tasks.filter(t => t.status === 'done' && completedWithinLast24h(t.updated_at))
-  // Cancelled tasks used to just vanish (every other view filters status !==
-  // 'cancelled' out of open/active counts) — that's right for counts, but a
-  // task the user explicitly cancelled should still be visible as "cancelled"
-  // somewhere rather than looking identical to a silent delete. Same 24h
-  // window as Done so this doesn't accumulate forever.
+  // A cancelled task stays visible (same 24h window as Done) so it doesn't
+  // look identical to a silent delete; counts elsewhere still exclude it.
   const cancelledTasks = tasks.filter(t => t.status === 'cancelled' && completedWithinLast24h(t.updated_at))
 
+  const addTask = () => {
+    const day = format(date, 'yyyy-MM-dd')
+    modal.open({ kind: 'task', config: { heading: 'New task' }, defaults: { section, date: day, dueDate: day } })
+  }
+
   return (
-    <>
-      <div className="p-4 sm:p-5">
-        <OpenWishesRow wishes={openWishes} />
+    <div className="p-4 sm:p-5">
+      <OpenWishesRow wishes={openWishes} />
 
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500">Tasks</h2>
-          <div className="flex items-center gap-2">
-            {doneTasks.length > 0 && (
-              <span className="text-[11px] text-ink-400">
-                {doneTasks.length} done
-              </span>
-            )}
-            {openTasks.length > 0 && (
-              <span className="bg-accent-50 text-accent-600 text-[11px] font-semibold px-2 py-0.5 rounded-full">
-                {openTasks.length} open
-              </span>
-            )}
-            {openTasks.length === 0 && doneTasks.length === 0 && !isLoading && (
-              <span className="text-[11px] text-ink-500">no tasks</span>
-            )}
-          </div>
+      <div className="mb-2 flex min-h-[28px] items-center justify-between gap-2">
+        <h2 className="section-label">Tasks</h2>
+        <div className="flex items-center gap-2">
+          {doneTasks.length > 0 && <span className="text-meta tabular-nums text-fg-muted">{doneTasks.length} done</span>}
+          {openTasks.length > 0 && <TonePill tone="accent">{openTasks.length} open</TonePill>}
         </div>
-
-        {isLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-8 bg-cream-200 rounded-lg animate-pulse" />
-            ))}
-          </div>
-        ) : (
-          <div>
-            {openTasks.length === 0 && doneTasks.length === 0 && (
-              <div className="py-4 text-center">
-                <p className="text-sm text-ink-400">No tasks for this day</p>
-                <p className="text-xs text-ink-500 mt-0.5">Click below to add one</p>
-              </div>
-            )}
-            {openTasks.length === 0 && doneTasks.length > 0 && (
-              <div className="py-3 text-center">
-                <p className="text-sm text-accent-600 font-medium">All done!</p>
-              </div>
-            )}
-
-            {openTasks.map(task => <ToDoItem key={task.id} task={task} />)}
-
-            <button
-              onClick={() => setModalOpen(true)}
-              className="mt-1 w-full text-left text-sm text-ink-400 hover:text-accent-600 transition-colors duration-150 min-h-[44px] flex items-center gap-1.5 px-0"
-            >
-              <span className="text-base leading-none font-light">+</span>
-              Add task
-            </button>
-
-            {doneTasks.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-ink-100">
-                <p className="text-[11px] uppercase tracking-wider text-ink-400 font-medium mb-1 px-3">Done</p>
-                <div className="opacity-50">
-                  {doneTasks.map(task => <ToDoItem key={task.id} task={task} />)}
-                </div>
-              </div>
-            )}
-
-            {cancelledTasks.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-ink-100">
-                <p className="text-[11px] uppercase tracking-wider text-ink-400 font-medium mb-1 px-3">Cancelled</p>
-                <div className="opacity-50">
-                  {cancelledTasks.map(task => <ToDoItem key={task.id} task={task} />)}
-                </div>
-              </div>
-            )}
-
-          </div>
-        )}
-
-        {/* Undated this-week tasks (relocated from the old WeekWidget column) */}
-        {floating.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-ink-100">
-            <button
-              onClick={() => setShowWeek(s => !s)}
-              className="w-full flex items-center justify-between text-left min-h-[44px]"
-            >
-              <span className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold">This week — no date</span>
-              <span className="text-[10px] text-ink-400">{floating.length} {showWeek ? '▴' : '▾'}</span>
-            </button>
-            {showWeek && (
-              <div className="mt-1">
-                {floating.slice(0, 6).map(t => <ToDoItem key={t.id} task={t} />)}
-                {floating.length > 6 && <p className="text-xs text-ink-400 mt-1">+{floating.length - 6} more</p>}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      <UnifiedPlanModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        mode="task"
-        config={{ heading: 'New Task' }}
-        defaults={{ section, date: format(date, 'yyyy-MM-dd'), dueDate: format(date, 'yyyy-MM-dd') }}
-      />
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-10" rounded="rounded-row" />)}
+        </div>
+      ) : (
+        <div>
+          {openTasks.length === 0 && doneTasks.length === 0 && (
+            <p className="py-3 text-body text-fg-muted">No tasks for this day.</p>
+          )}
+          {openTasks.length === 0 && doneTasks.length > 0 && (
+            <p className="flex items-center gap-2 py-3 text-body font-medium text-fg-2">
+              <ToneDot tone="success" /> All done
+            </p>
+          )}
 
-    </>
+          {openTasks.map(task => <ToDoItem key={task.id} task={task} />)}
+
+          <button
+            type="button"
+            onClick={addTask}
+            className="mt-1 flex min-h-[44px] w-full items-center gap-2 rounded-row px-2 text-left text-body font-medium text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-accent-600"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            Add task
+          </button>
+
+          <TaskGroup label="Done" tasks={doneTasks} />
+          <TaskGroup label="Cancelled" tasks={cancelledTasks} />
+        </div>
+      )}
+
+      {/* Undated this-week tasks (relocated from the old WeekWidget column) */}
+      {floating.length > 0 && (
+        <div className="mt-3 border-t border-line pt-2">
+          <button
+            type="button"
+            onClick={() => setShowWeek(s => !s)}
+            aria-expanded={showWeek}
+            className="flex min-h-[44px] w-full items-center justify-between rounded-row text-left"
+          >
+            <span className="section-label">This week — no date</span>
+            <span className="flex items-center gap-1 text-meta tabular-nums text-fg-muted">
+              {floating.length}
+              <ChevronDown className={cx('h-4 w-4 transition-transform duration-150', showWeek && 'rotate-180')} aria-hidden />
+            </span>
+          </button>
+          {showWeek && (
+            <div className="mt-1">
+              {floating.slice(0, 6).map(t => <ToDoItem key={t.id} task={t} />)}
+              {floating.length > 6 && <p className="mt-1 text-meta text-fg-muted">+{floating.length - 6} more</p>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TaskGroup({ label, tasks }: { label: string; tasks: Task[] }) {
+  if (tasks.length === 0) return null
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <p className="section-label mb-1 px-3">{label}</p>
+      <div className="opacity-60">
+        {tasks.map(task => <ToDoItem key={task.id} task={task} />)}
+      </div>
+    </div>
   )
 }

@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
+import { Activity, Flame, Footprints, HeartPulse, Moon, Scale, type LucideIcon } from 'lucide-react'
 import type { Period } from './PeriodToggle'
 
 export type SectionId = 'overview' | 'steps' | 'energy' | 'heart' | 'sleep' | 'body'
@@ -23,11 +24,11 @@ export interface HealthRange {
   setPeriod: Dispatch<SetStateAction<Period>>
 }
 
-export const SECTIONS: { id: SectionId; label: string; icon: string }[] = [
-  { id: 'overview', label: 'Overview', icon: '⭕' },
-  { id: 'steps',    label: 'Steps',    icon: '🚶' },
-  { id: 'energy',   label: 'Energy',   icon: '🔥' },
-  { id: 'heart',    label: 'Heart',    icon: '❤️' },
-  { id: 'sleep',    label: 'Sleep',    icon: '😴' },
-  { id: 'body',     label: 'Body',     icon: '⚖️' },
+export const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
+  { id: 'overview', label: 'Overview', icon: Activity },
+  { id: 'steps',    label: 'Steps',    icon: Footprints },
+  { id: 'energy',   label: 'Energy',   icon: Flame },
+  { id: 'heart',    label: 'Heart',    icon: HeartPulse },
+  { id: 'sleep',    label: 'Sleep',    icon: Moon },
+  { id: 'body',     label: 'Body',     icon: Scale },
 ]

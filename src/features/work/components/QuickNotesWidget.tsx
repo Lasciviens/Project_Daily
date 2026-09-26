@@ -1,93 +1,71 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useWorkNote, useUpsertWorkNote } from '../hooks/useWork'
 
 type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved'
 
-// bare = no own header label — rendered inside WorkSidebar's RailSection
-export default function QuickNotesWidget({ bare }: { bare?: boolean } = {}) {
-  const { data: note } = useWorkNote()
+const STATUS_LABEL: Record<SaveStatus, string> = { idle: '', pending: 'Not saved', saving: 'Saving…', saved: 'Saved' }
+
+// Autosaving scratchpad (rendered inside WorkSidebar's rail card). The save
+// is debounced from the change handler, and a pending edit is flushed on
+// unmount. Failures are toasted + logged by the mutation hook.
+export default function QuickNotesWidget() {
+  const { data: note, isError } = useWorkNote()
   const upsert = useUpsertWorkNote()
 
   const [content, setContent] = useState('')
   const [status, setStatus] = useState<SaveStatus>('idle')
+  const [initialized, setInitialized] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingRef = useRef(false)
-  const initializedRef = useRef(false)
+  const pendingRef = useRef<string | null>(null)
+  const upsertRef = useRef(upsert)
+  useEffect(() => { upsertRef.current = upsert })
 
-  // Populate once the note loads
-  useEffect(() => {
-    if (note !== undefined && !initializedRef.current) {
-      initializedRef.current = true
-      setContent(note?.content ?? '')
-    }
-  }, [note])
+  // Seed once the note loads (render-time adjust, not an effect).
+  if (note !== undefined && !initialized) {
+    setInitialized(true)
+    setContent(note?.content ?? '')
+  }
 
-  const save = useCallback(async (text: string) => {
+  async function save(text: string) {
+    pendingRef.current = null
     setStatus('saving')
-    pendingRef.current = false
     try {
-      await upsert.mutateAsync(text)
+      await upsertRef.current.mutateAsync(text)
       setStatus('saved')
     } catch {
       setStatus('pending')
     }
-  }, [upsert])
+  }
 
-  // Debounced auto-save
-  useEffect(() => {
-    if (!initializedRef.current) return
-    if (content === (note?.content ?? '')) {
+  function handleChange(text: string) {
+    setContent(text)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (text === (note?.content ?? '')) {
+      pendingRef.current = null
       setStatus('idle')
       return
     }
-    pendingRef.current = true
+    pendingRef.current = text
     setStatus('pending')
+    debounceRef.current = setTimeout(() => { void save(text) }, 1500)
+  }
+
+  useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      save(content)
-    }, 1500)
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content])
-
-  // Save immediately on unmount if pending
-  useEffect(() => {
-    return () => {
-      if (pendingRef.current) {
-        if (debounceRef.current) clearTimeout(debounceRef.current)
-        // Fire-and-forget — unmount can't await
-        upsert.mutate(content)
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content])
-
-  const statusLabel =
-    status === 'saving' ? 'Saving…' :
-    status === 'saved'  ? 'Saved ✓' :
-    status === 'pending' ? 'Not saved' :
-    ''
+    // Fire-and-forget: an unmount can't await.
+    if (pendingRef.current !== null) upsertRef.current.mutate(pendingRef.current)
+  }, [])
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        {!bare && (
-          <span className="text-[10px] font-semibold tracking-widest uppercase text-ink-400">
-            Notes
-          </span>
-        )}
-        <span className="text-xs text-ink-300 transition-opacity duration-300 ml-auto" aria-live="polite">
-          {statusLabel}
-        </span>
-      </div>
+    <div className="flex flex-col gap-1.5">
+      <span className="min-h-4 self-end text-meta text-fg-muted" aria-live="polite">{STATUS_LABEL[status]}</span>
       <textarea
         value={content}
-        onChange={e => setContent(e.target.value)}
+        onChange={e => handleChange(e.target.value)}
+        disabled={!initialized && !isError}
         placeholder="Jot something down…"
-        className="w-full min-h-[120px] bg-cream-50 rounded-xl p-3 text-sm text-ink-900 placeholder:text-ink-300 resize-none outline-none focus:ring-1 focus:ring-ink-200 transition"
         aria-label="Work notes"
+        className="input min-h-[8rem] resize-y"
       />
     </div>
   )

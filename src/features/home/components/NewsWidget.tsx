@@ -1,108 +1,81 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { fetchNews, NEWS_FEEDS, FEED_CATEGORIES, type FeedCategory, type NewsItem } from '../api/newsApi'
+import { Newspaper } from 'lucide-react'
+import { Button, SegmentedControl, Skeleton } from '../../../shared/ui'
+import { NEWS_FEEDS, FEED_CATEGORIES, type FeedCategory, type NewsItem } from '../api/newsApi'
+import { useNews } from '../hooks/useNews'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 
-// ─── Component ────────────────────────────────────────────────────────────────
+const VISIBLE = 8
+
+function NewsRow({ item, source }: { item: NewsItem; source: string }) {
+  return (
+    <li>
+      <a href={item.link} target="_blank" rel="noopener noreferrer" className="group -mx-2 flex gap-3 rounded-row p-2 transition-colors duration-100 hover:bg-surface-hover">
+        {/* Source initials sit behind the image and show when it is absent or fails. */}
+        <div className="relative h-14 w-[72px] shrink-0 overflow-hidden rounded-md bg-surface-2">
+          <span aria-hidden className="absolute inset-0 flex select-none items-center justify-center text-micro font-semibold text-fg-faint">
+            {source.slice(0, 3).toUpperCase()}
+          </span>
+          {item.thumbnail && (
+            <img
+              src={item.thumbnail}
+              alt=""
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              className="absolute inset-0 h-full w-full object-cover"
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-body font-semibold text-fg transition-colors duration-150 group-hover:text-accent-600">{item.title}</p>
+          {item.excerpt && <p className="mt-0.5 line-clamp-1 text-meta text-fg-muted">{item.excerpt}</p>}
+          <p className="mt-0.5 text-micro tabular-nums text-fg-muted">
+            {new Date(item.pubDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          </p>
+        </div>
+      </a>
+    </li>
+  )
+}
 
 export function NewsWidget() {
-  // Mobile audit: 2026-06-15 — thumbnail w-20 h-16 flex-shrink-0 verified no clip; absolute initials fallback OK; category tabs raised to min-h-[44px] min-w-[40px]; title text flex-1 min-w-0 prevents overflow
   const [category, setCategory] = useState<FeedCategory>('no')
-  // News updates infrequently — 15m is the right default
-  const ws = useWidgetState('news', { collapsed: false, intervalMs: 15 * 60_000 }, true)
-
-  const activeFeed = NEWS_FEEDS.find(f => f.category === category) ?? NEWS_FEEDS[0]
-
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey:        ['news', activeFeed.key],
-    queryFn:         () => fetchNews(activeFeed.key),
-    staleTime:       ws.intervalMs,
-    refetchInterval: !ws.collapsed && ws.syncActive ? ws.intervalMs : false,
-    enabled:         !ws.collapsed,
-  })
-
-  const categoryTabs = (
-    <div className="flex gap-1">
-      {FEED_CATEGORIES.map(c => (
-        <button
-          key={c.key}
-          onClick={() => setCategory(c.key)}
-          className={`text-[10px] px-2 py-1 rounded font-medium transition-colors duration-150 min-h-[44px] min-w-[40px] ${
-            category === c.key
-              ? 'bg-accent-500 text-white'
-              : 'text-ink-400 hover:bg-ink-100'
-          }`}
-        >
-          {c.label}
-        </button>
-      ))}
-    </div>
-  )
+  const ws = useWidgetState('news', { mobileCollapsed: true })
+  const feed = NEWS_FEEDS.find(f => f.category === category) ?? NEWS_FEEDS[0]
+  const { data, isLoading, error, refetch, isFetching } = useNews(feed.key, { enabled: !ws.collapsed })
 
   return (
-    <WidgetShell
-      title="News"
-      ws={ws}
-      headerRight={categoryTabs}
-      onManualSync={() => { refetch(); ws.markSynced() }}
-    >
+    <WidgetShell title="News" icon={<Newspaper />} ws={ws} onRefresh={() => refetch()} refreshing={isFetching}>
+      <div className="mb-3">
+        <SegmentedControl<FeedCategory>
+          size="sm"
+          value={category}
+          onChange={setCategory}
+          options={FEED_CATEGORIES.map(c => ({ value: c.key, label: c.label }))}
+        />
+      </div>
       {isLoading && (
-        <div className="space-y-2.5">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-4 rounded bg-cream-200 animate-pulse" style={{ width: `${85 - i * 12}%` }} />
+        <div className="space-y-3">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="flex gap-3">
+              <Skeleton className="h-14 w-[72px] shrink-0" rounded="rounded-md" />
+              <div className="flex-1 space-y-2"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3 w-2/3" /></div>
+            </div>
           ))}
         </div>
       )}
-      {error     && (
-        <div className="text-ink-400 text-sm">
-          Feed unavailable — {(error as Error).message}
+      {error && !data && (
+        <div className="flex flex-wrap items-center gap-2 text-body text-fg-muted">
+          <span>Feed unavailable — {(error as Error).message}</span>
+          <Button size="sm" onClick={() => refetch()}>Retry</Button>
         </div>
       )}
-      {data && (
-        <ul className="space-y-4">
-          {data.slice(0, 8).map((item: NewsItem, i: number) => (
-            <li key={i}>
-              <a
-                href={item.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex gap-3"
-              >
-                {/* Source initials sit behind the image; shown when image is absent or fails */}
-                <div className="w-20 h-16 rounded-md flex-shrink-0 bg-ink-100 overflow-hidden relative">
-                  <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-ink-400 select-none">
-                    {activeFeed.label.slice(0, 3).toUpperCase()}
-                  </span>
-                  {item.thumbnail && (
-                    <img
-                      src={item.thumbnail}
-                      alt=""
-                      referrerPolicy="no-referrer"
-                      className="absolute inset-0 w-full h-full object-cover"
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[15px] font-semibold text-ink-900 group-hover:text-accent-600 leading-snug line-clamp-2 transition-colors duration-150">
-                    {item.title}
-                  </div>
-                  {item.excerpt && (
-                    <div className="text-xs text-ink-500 mt-0.5 line-clamp-2 leading-snug">
-                      {item.excerpt}
-                    </div>
-                  )}
-                  <div className="text-[11px] text-ink-400 mt-1">
-                    {new Date(item.pubDate).toLocaleDateString('en-GB', {
-                      day: 'numeric', month: 'short',
-                      hour: '2-digit', minute: '2-digit',
-                    })}
-                  </div>
-                </div>
-              </a>
-            </li>
-          ))}
+      {data && data.length === 0 && <p className="text-body text-fg-muted">No headlines in this feed right now.</p>}
+      {data && data.length > 0 && (
+        <ul className="space-y-1">
+          {data.slice(0, VISIBLE).map(item => <NewsRow key={item.link} item={item} source={feed.label} />)}
         </ul>
       )}
     </WidgetShell>

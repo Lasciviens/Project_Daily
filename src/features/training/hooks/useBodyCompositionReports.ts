@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
 import { fetchBodyCompositionReports } from '../api/bodyCompositionApi'
 
 // Whole history, not a windowed fetch — scans are sparse (at most one a day
@@ -7,8 +8,8 @@ import { fetchBodyCompositionReports } from '../api/bodyCompositionApi'
 // serves every window without a re-query per toggle.
 export function useBodyCompositionReports() {
   return useQuery({
-    queryKey: ['body-composition-reports'],
+    queryKey: qk.training.bodyComposition,
     queryFn:  fetchBodyCompositionReports,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 }

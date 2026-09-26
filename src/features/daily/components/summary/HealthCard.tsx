@@ -1,3 +1,4 @@
+import { Flame, Footprints, Heart, HeartPulse, Moon, Scale } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { useHealthMetricSeries } from '../../../training/hooks/useHealthExport'
 import {
@@ -15,19 +16,18 @@ import { shiftDateStr } from '../../../../shared/utils/dateUtils'
 
 const round = (n: number, d = 0) => { const p = 10 ** d; return Math.round(n * p) / p }
 
-function Panel({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {
+function Panel({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
   return (
     // Fixed-width snap panels — the strip scrolls; each panel is content-sized.
-    // No border (the board surface owns borders) — a soft tint is enough.
-    <div className="snap-start shrink-0 w-[150px] rounded-lg bg-cream-100/60 p-3 flex flex-col gap-1">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">{icon} {label}</p>
+    <div className="flex w-[150px] shrink-0 snap-start flex-col gap-1 rounded-row bg-surface-2 p-3">
+      <p className="flex items-center gap-1.5 section-label [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{label}</p>
       {children}
     </div>
   )
 }
-const Big = ({ children }: { children: React.ReactNode }) => <p className="text-xl font-bold text-ink-900 leading-none tabular-nums">{children}</p>
-const Sub = ({ children }: { children: React.ReactNode }) => <p className="text-[11px] text-ink-500">{children}</p>
-const Empty = () => <p className="text-[11px] text-ink-500 py-1">No data</p>
+const Big = ({ children }: { children: React.ReactNode }) => <p className="text-title font-bold leading-none tabular-nums text-fg">{children}</p>
+const Sub = ({ children }: { children: React.ReactNode }) => <p className="text-meta text-fg-muted">{children}</p>
+const Empty = () => <p className="py-1 text-meta text-fg-muted">No data</p>
 import { useDragScroll } from '../../../../shared/hooks/useDragScroll'
 
 export function HealthCard({ date }: { date: string }) {
@@ -52,23 +52,23 @@ export function HealthCard({ date }: { date: string }) {
 
   return (
     <Cell>
-      <CellHeader icon="❤️" title="Health" action={<CellLink to="/training">Details →</CellLink>} />
+      <CellHeader icon={<HeartPulse />} title="Health" action={<CellLink to="/training">Details</CellLink>} />
 
       {/* Swipeable strip — snap + edge fade signals there's more to the side */}
-      <div {...drag} className={`flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory -mx-1 px-1 pb-1 ${drag.className}`}>
-        <Panel icon="😴" label="Sleep">
+      <div {...drag} className={`-mx-1 flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory px-1 pb-1 ${drag.className}`}>
+        <Panel icon={<Moon aria-hidden />} label="Sleep">
           {sleep ? (<><Big>{fmtHrs(sleep.total)}</Big><Sub>slept</Sub></>) : <Empty />}
         </Panel>
-        <Panel icon="🚶" label="Steps">
+        <Panel icon={<Footprints aria-hidden />} label="Steps">
           {steps != null ? (<><Big>{round(steps).toLocaleString('en-GB')}</Big><Sub>steps today</Sub></>) : <Empty />}
         </Panel>
-        <Panel icon="🔥" label="Energy">
+        <Panel icon={<Flame aria-hidden />} label="Energy">
           {energy != null ? (<><Big>{round(energy)}</Big><Sub>active kcal</Sub></>) : <Empty />}
         </Panel>
-        <Panel icon="❤️" label="Heart">
+        <Panel icon={<Heart aria-hidden />} label="Heart">
           {hr ? (<><Big>{round(hr.avg)}</Big><Sub>avg · {round(hr.min)}–{round(hr.max)} bpm</Sub></>) : <Empty />}
         </Panel>
-        <Panel icon="⚖️" label="Weight">
+        <Panel icon={<Scale aria-hidden />} label="Weight">
           {weight ? (<><Big>{round(weight.value, 1)}</Big><Sub>kg · {new Date(weight.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</Sub></>) : <Empty />}
         </Panel>
       </div>

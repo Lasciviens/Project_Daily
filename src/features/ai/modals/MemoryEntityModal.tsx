@@ -1,10 +1,8 @@
-import type { EntityModalProps } from '../../../shared/modals/types'
-import { EntityModalPending } from '../../recipes/modals/entityModalLoad'
-import { useFirstLoaded } from '../../recipes/modals/useFirstLoaded'
+import { EntityModalPending, useFirstLoaded, type EntityModalProps } from '../../../shared/modals'
 import { MemoryEditSheet } from '../../developer/components/MemoryEditSheet'
 import { useMemories } from '../hooks/useMemory'
 
-/** `memory`: edit one saved AI memory, read from the ['ai-memory'] list by id. */
+/** `memory`: edit one saved AI memory, read from the ai-memory list by id. */
 export function MemoryEntityModal({ request, onClose }: EntityModalProps<'memory'>) {
   const query = useMemories()
   const memory = useFirstLoaded(query.data?.find(m => m.id === request.id))

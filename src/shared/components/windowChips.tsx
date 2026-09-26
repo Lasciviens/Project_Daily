@@ -78,9 +78,9 @@ export function windowRangeLabel(start: string | null, end: string | null): stri
     : `${day(start!)} – ${day(end!)}`
 }
 
-const CHIP_BASE = 'px-3 min-h-[44px] rounded-xl border text-sm font-medium transition-colors'
-const CHIP_ON   = 'bg-accent-500 text-white border-accent-500'
-const CHIP_OFF  = 'border-ink-200 text-ink-600 hover:bg-cream-50'
+const CHIP_BASE = 'min-h-[44px] rounded-full border px-3.5 text-body font-medium transition-colors duration-150'
+const CHIP_ON   = 'border-accent-500 bg-accent-500 text-on-accent'
+const CHIP_OFF  = 'border-line bg-surface text-fg-2 hover:bg-surface-hover'
 
 interface WindowValue {
   start: string | null
@@ -114,41 +114,41 @@ export function WindowChips({ value, onChange, className }: {
           type="button"
           onClick={() => setPickerOpen(o => !o)}
           className={`${CHIP_BASE} ${isCustom ? CHIP_ON : CHIP_OFF}`}
-        >📅 Pick dates…</button>
+        >Pick dates…</button>
         {hasValue && (
           <button
             type="button"
             onClick={() => { setPickerOpen(false); onChange({ start: null, end: null, label: null }) }}
             className={`${CHIP_BASE} ${CHIP_OFF}`}
-          >✕ No period</button>
+          >No period</button>
         )}
       </div>
 
       {showPicker && (
         <div className="mt-3 flex flex-wrap items-end gap-3">
-          <label className="text-xs font-medium text-ink-500">
+          <label className="field-label">
             From
             <DateInput
               value={value.start ?? ''}
               onChange={v => onChange({ start: v || null, end: value.end, label: null })}
               aria-label="Period start"
-              className="mt-1 block min-h-[44px] w-full max-w-[9rem] rounded-xl border border-ink-200 bg-cream-50 px-3 text-sm text-ink-900"
+              className="input mt-1 block w-full max-w-[9rem]"
             />
           </label>
-          <label className="text-xs font-medium text-ink-500">
+          <label className="field-label">
             To
             <DateInput
               value={value.end ?? ''}
               onChange={v => onChange({ start: value.start, end: v || null, label: null })}
               aria-label="Period end"
-              className="mt-1 block min-h-[44px] w-full max-w-[9rem] rounded-xl border border-ink-200 bg-cream-50 px-3 text-sm text-ink-900"
+              className="input mt-1 block w-full max-w-[9rem]"
             />
           </label>
         </div>
       )}
 
       {hasValue && (
-        <p className="mt-2 text-xs text-ink-500">
+        <p className="mt-2 text-meta text-fg-muted">
           {value.label ?? windowRangeLabel(value.start, value.end)}
           <span className="ml-1">· a reminder period, not a deadline</span>
         </p>

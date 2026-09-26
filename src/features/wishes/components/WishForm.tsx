@@ -19,12 +19,12 @@ export interface WishDraft {
   period_label: string | null
 }
 
-const FIELD = 'min-h-[44px] w-full max-w-md rounded-xl border border-ink-200 bg-canvas px-3 text-sm text-ink-900 placeholder:text-ink-400'
+const FIELD = 'input w-full max-w-md'
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-ink-500">{label}</span>
+      <span className="field-label">{label}</span>
       {children}
     </label>
   )
@@ -37,7 +37,7 @@ interface Props {
 
 export function WishForm({ draft, onChange }: Props) {
   return (
-    <div className="flex flex-col gap-4 p-5">
+    <div className="flex flex-col gap-4">
       <Field label="Wish">
         <input value={draft.title} onChange={e => onChange({ title: e.target.value })} className={FIELD} />
       </Field>
@@ -47,7 +47,7 @@ export function WishForm({ draft, onChange }: Props) {
           value={draft.kind}
           onChange={kind => onChange({ kind })}
           size="sm"
-          options={[{ value: 'thing', label: 'Thing' }, { value: 'place', label: '📍 Place' }]}
+          options={[{ value: 'thing', label: 'Thing' }, { value: 'place', label: 'Place' }]}
         />
       </Field>
 
@@ -70,7 +70,7 @@ export function WishForm({ draft, onChange }: Props) {
       </Field>
 
       <Field label="Notes">
-        <textarea value={draft.notes} onChange={e => onChange({ notes: e.target.value })} rows={3} className={`${FIELD} py-2`} />
+        <textarea value={draft.notes} onChange={e => onChange({ notes: e.target.value })} rows={3} className={`${FIELD} min-h-[88px] resize-y py-2`} />
       </Field>
 
       <Field label="Link">

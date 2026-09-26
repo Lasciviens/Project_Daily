@@ -4,10 +4,11 @@ import { computeDailySeries } from '../../healthAggregate'
 import { getAggregationType } from '../../healthMetrics'
 import { BarLineChart } from './BarLineChart'
 import type { Period } from './PeriodToggle'
+import { ChevronDown } from 'lucide-react'
+import { useChartColors } from '../../../../shared/ui'
 
 export interface MiniMetricConfig {
   metric: string
-  icon: string
   title: string
   unit: string
   decimals: number
@@ -68,8 +69,9 @@ function fmtDay(dateStr: string): string {
 }
 
 export function MetricMiniCard({ config, window }: { config: MiniMetricConfig; window: MiniMetricWindow }) {
-  const { metric, icon, title, unit, decimals, description, showTodayCount, showTodayTimes } = config
+  const { metric, title, unit, decimals, description, showTodayCount, showTodayTimes } = config
   const [open, setOpen] = useState(false)
+  const c = useChartColors()
   const { data: points = [] } = useHealthMetricSeries(metric, window.from, window.to)
   const series = computeDailySeries(metric, points)
   const { value, windowLabel, days, latestDate } = summarize(metric, series, window)
@@ -90,7 +92,7 @@ export function MetricMiniCard({ config, window }: { config: MiniMetricConfig; w
   const canExpand = chartData.length > 1
 
   return (
-    <div className="bg-cream-50 border border-ink-100 rounded-xl flex flex-col">
+    <div className="flex flex-col rounded-row border border-line bg-surface">
       {/* The whole header is the expand target when there's a trend to show,
           which keeps the tap area well past 44px without a separate control
           crowding a card this small. */}
@@ -99,45 +101,46 @@ export function MetricMiniCard({ config, window }: { config: MiniMetricConfig; w
         onClick={() => canExpand && setOpen(o => !o)}
         aria-expanded={canExpand ? open : undefined}
         disabled={!canExpand}
-        className={`p-3 flex flex-col gap-1.5 text-left min-h-[44px] rounded-xl ${canExpand ? 'cursor-pointer active:scale-[0.99] transition-transform' : 'cursor-default'}`}
+        className={`flex min-h-[44px] flex-col gap-1.5 rounded-row p-3 text-left ${canExpand ? 'cursor-pointer transition-transform active:scale-[0.99]' : 'cursor-default'}`}
       >
         {/* Stacked below sm: in the 2-column phone grid the title wraps to two
             lines while the window badge stays pinned to line 1, leaving a
             ragged notch. Side-by-side from sm, where the title fits one line. */}
         <div className="flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-1">
-          <p className="text-[11.5px] font-bold uppercase tracking-wide text-ink-400 leading-tight">{icon} {title}</p>
-          <span className="text-[10.5px] text-ink-300 shrink-0">
+          <p className="section-label leading-tight">{title}</p>
+          <span className="shrink-0 text-micro font-normal text-fg-faint">
             {windowLabel}{days != null && days > 0 ? ` · ${days}d` : ''}
           </span>
         </div>
-        <p className="text-[19.5px] font-bold text-ink-900 leading-tight">
+        <p className="text-head font-bold leading-tight tabular-nums text-fg">
           {value != null ? value.toFixed(decimals) : '—'}
           {/* No stray unit next to an em dash when the metric has no data. */}
-          {value != null && <span className="text-[11.5px] font-normal text-ink-400 ml-1">{displayUnit}</span>}
+          {value != null && <span className="ml-1 text-meta font-normal text-fg-muted">{displayUnit}</span>}
         </p>
         {latestDate && latestDate !== window.to && (
-          <p className="text-[10.5px] text-ink-300">from {fmtDay(latestDate)}</p>
+          <p className="text-micro font-normal text-fg-faint">from {fmtDay(latestDate)}</p>
         )}
         {dayCount != null && dayCount > 0 && (
-          <p className="text-[11.5px] font-semibold text-accent-600">{dayCount}× that day</p>
+          <p className="text-meta font-semibold text-fg-2">{dayCount}× that day</p>
         )}
         {dayTimes != null && dayTimes.length > 0 && (
-          <p className="text-[10.5px] text-ink-400">{dayTimes.join(', ')}</p>
+          <p className="text-micro font-normal tabular-nums text-fg-muted">{dayTimes.join(', ')}</p>
         )}
-        <p className="text-[10.5px] text-ink-300 leading-snug">{description}</p>
+        <p className="text-micro font-normal leading-snug text-fg-muted">{description}</p>
         {canExpand && (
-          <span className="text-[10.5px] font-semibold text-accent-600">
-            {open ? '▲ Hide history' : `▼ History (${chartData.length} days)`}
+          <span className="flex items-center gap-1 text-micro font-semibold text-accent-600">
+            <ChevronDown aria-hidden className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+            {open ? 'Hide history' : `History (${chartData.length} days)`}
           </span>
         )}
       </button>
       {open && canExpand && (
-        <div className="px-3 pb-3 -mt-1 flex flex-col gap-1">
-          <BarLineChart data={chartData} dataKey="value" color="#6366f1" unit={displayUnit} tooltipLabel={title} />
+        <div className="-mt-1 flex flex-col gap-1 px-3 pb-3">
+          <BarLineChart data={chartData} dataKey="value" color={c.series[1]} unit={displayUnit} tooltipLabel={title} />
           {value != null && (
-            <p className="text-[10.5px] text-ink-400">
+            <p className="text-micro font-normal text-fg-muted">
               {windowLabel} over {fmtDay(window.from)} – {fmtDay(window.to)}:{' '}
-              <span className="font-semibold text-ink-700">{value.toFixed(decimals)} {displayUnit}</span>
+              <span className="font-semibold tabular-nums text-fg-2">{value.toFixed(decimals)} {displayUnit}</span>
             </p>
           )}
         </div>

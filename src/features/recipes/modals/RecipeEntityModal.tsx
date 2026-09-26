@@ -1,8 +1,8 @@
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { RecipeModal } from '../components/RecipeModal'
 import { useRecipe } from '../hooks/useRecipes'
-import { EntityModalPending } from './entityModalLoad'
-import { useFirstLoaded } from './useFirstLoaded'
+import { EntityModalPending } from '../../../shared/modals/EntityModalPending'
+import { useFirstLoaded } from '../../../shared/modals/useFirstLoaded'
 
 /** `recipe`: the recipe editor — create without `id`, edit by id. */
 export function RecipeEntityModal({ request, onClose }: EntityModalProps<'recipe'>) {

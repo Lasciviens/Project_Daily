@@ -1,34 +1,24 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
 import { fetchHevyPRs, triggerInitialHevySync } from '../api/hevyApi'
-import { toast } from '../../../app/store'
-import { logError } from '../../../shared/utils/logError'
-
-// ─── Queries ──────────────────────────────────────────────────────────────────
 
 export function useHevyPRs() {
   return useQuery({
-    queryKey: ['hevy', 'prs'],
+    queryKey: qk.hevy.prs(),
     queryFn:  fetchHevyPRs,
-    staleTime: 10 * 60_000,
+    staleTime: STALE.long,
   })
 }
 
-// ─── Mutations ────────────────────────────────────────────────────────────────
-
+// Same server-side task clean-up as the incremental sync, so the same
+// invalidation (it used to refresh only ['hevy']).
 export function useInitialHevySync() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: triggerInitialHevySync,
-    onMutate: () => toast.loading('Syncing all Hevy data…'),
-    onSuccess: (result, _, tid) => {
-      toast.dismiss(tid as string)
-      toast.success(`Synced ${result.workouts} workouts`)
-      qc.invalidateQueries({ queryKey: ['hevy'] })
-    },
-    onError: (e, _, tid) => {
-      toast.dismiss(tid as string)
-      logError(`Initial Hevy sync failed: ${(e as Error).message}`)
-      toast.error((e as Error).message ?? 'Failed')
-    },
+  return useMutationWithFeedback({
+    action:         'hevy_initial_sync',
+    loadingMessage: 'Syncing all Hevy data…',
+    successMessage: (r: Awaited<ReturnType<typeof triggerInitialHevySync>>) => `Synced ${r.workouts} workouts`,
+    mutationFn:     triggerInitialHevySync,
+    invalidates:    [qk.hevy.all, 'taskGraph'],
   })
 }

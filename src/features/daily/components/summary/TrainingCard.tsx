@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react'
+import { Dumbbell, Plus } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { useTimeBlocks } from '../../hooks/useSchedule'
 import { useHevyWorkouts } from '../../../training/hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../../../training/hooks/useHevyRoutines'
-import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
+import { useEntityModal } from '../../../../shared/modals'
+import { ToneDot, TonePill } from '../../../../shared/ui'
 import { formatLocalDate } from '../../../../shared/utils/dateUtils'
 import type { HevyRoutine } from '../../../training/types.hevy'
 
@@ -15,8 +17,8 @@ export function TrainingCard({ date }: { date: string }) {
   const { data: recent = [] } = useHevyWorkouts({ limit: 30 })
   const { data: routines = [] } = useHevyRoutines()
 
+  const modal = useEntityModal()
   const [showPicker, setShowPicker] = useState(false)
-  const [planning, setPlanning] = useState<HevyRoutine | null>(null)
 
   const planned = blocks.filter(b => b.category === 'training')
   const loggedToday = useMemo(
@@ -24,73 +26,69 @@ export function TrainingCard({ date }: { date: string }) {
     [recent, date],
   )
 
+  const planRoutine = (r: HevyRoutine) => modal.open({
+    kind: 'time-block',
+    config: { heading: 'Plan routine' },
+    defaults: { title: r.title, date, category: 'training', color: 'accent', alsoCreateTask: true },
+    source: { sourceType: 'training_session', sourceId: r.id, taskSourceType: 'training_session' },
+    onSaved: () => setShowPicker(false),
+  })
+
   return (
     <Cell>
-      <CellHeader icon="💪" title="Training" action={<CellLink to="/training">Open →</CellLink>} />
+      <CellHeader icon={<Dumbbell />} title="Training" action={<CellLink to="/training">Open</CellLink>} />
 
       {loggedToday.length > 0 ? (
-        <div className="flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-1.5">
           {loggedToday.map(w => (
-            <div key={w.id} className="flex items-center gap-2 text-sm">
-              <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-              <span className="text-ink-800 flex-1 truncate">{w.title || 'Workout'}</span>
-              <span className="text-[11px] text-green-600 font-medium shrink-0">Done ✓</span>
-            </div>
+            <li key={w.id} className="flex items-center gap-2 text-body">
+              <ToneDot tone="success" />
+              <span className="flex-1 truncate text-fg">{w.title || 'Workout'}</span>
+              <TonePill tone="success">Done</TonePill>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : planned.length > 0 ? (
         <div className="flex flex-col gap-1.5">
           {planned.map(b => (
-            <div key={b.id} className="flex items-center gap-2 text-sm">
-              <span className="w-2 h-2 rounded-full bg-accent-500 shrink-0" />
-              <span className="text-ink-800 flex-1 truncate">{b.title}</span>
-              {b.start_time && <span className="text-[11px] text-ink-500 shrink-0">{b.start_time.slice(0, 5)}</span>}
+            <div key={b.id} className="flex items-center gap-2 text-body">
+              <ToneDot tone="accent" />
+              <span className="flex-1 truncate text-fg">{b.title}</span>
+              {b.start_time && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{b.start_time.slice(0, 5)}</span>}
             </div>
           ))}
-          <p className="text-[11px] text-ink-500 mt-0.5">Planned — not logged yet</p>
+          <p className="mt-0.5 text-meta text-fg-muted">Planned — not logged yet</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-1.5 py-0.5">
-          <p className="text-sm text-ink-500">Rest day — nothing planned.</p>
+        <div className="flex flex-col gap-1.5">
+          <p className="text-body text-fg-muted">Rest day — nothing planned.</p>
           {!showPicker ? (
             <button
+              type="button"
               onClick={() => setShowPicker(true)}
-              className="text-xs text-accent-600 hover:text-accent-700 text-left min-h-[44px]"
+              className="flex min-h-[44px] items-center gap-1.5 text-left text-body font-medium text-accent-600 hover:text-accent-700"
             >
-              + Plan a routine for this day
+              <Plus className="h-4 w-4" aria-hidden /> Plan a routine for this day
             </button>
           ) : routines.length === 0 ? (
-            <p className="text-xs text-ink-500">No Hevy routines yet — create one in Training.</p>
+            <p className="text-body text-fg-muted">No Hevy routines yet — create one in Training.</p>
           ) : (
-            <ul className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+            <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
               {routines.map(r => (
                 <li key={r.id}>
                   <button
-                    onClick={() => setPlanning(r)}
-                    className="w-full flex items-center gap-2 text-left text-xs px-2.5 rounded-lg border border-ink-200 hover:border-accent-300 transition-colors min-h-[44px]"
+                    type="button"
+                    onClick={() => planRoutine(r)}
+                    className="row row-interactive w-full border border-line text-left"
                   >
-                    <span className="text-ink-800 font-medium flex-1 truncate">{r.title}</span>
-                    <span className="text-ink-500 shrink-0">
-                      {r.exercises?.length ?? 0} ex
-                    </span>
+                    <span className="flex-1 truncate text-body font-medium text-fg">{r.title}</span>
+                    <span className="shrink-0 text-meta tabular-nums text-fg-muted">{r.exercises?.length ?? 0} ex</span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
         </div>
-      )}
-
-      {planning && (
-        <UnifiedPlanModal
-          open
-          onClose={() => setPlanning(null)}
-          mode="schedule"
-          config={{ heading: 'Plan routine' }}
-          defaults={{ title: planning.title, date, category: 'training', color: 'accent', alsoCreateTask: true }}
-          source={{ sourceType: 'training_session', sourceId: planning.id, taskSourceType: 'training_session' }}
-          onSaved={() => { setPlanning(null); setShowPicker(false) }}
-        />
       )}
     </Cell>
   )

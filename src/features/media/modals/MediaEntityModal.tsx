@@ -21,6 +21,8 @@ export function MediaEntityModal({ request, onClose }: EntityModalProps<'media'>
       mediaType={mediaType}
       userEntry={userEntry ?? null}
       onClose={onClose}
+      // Adding or removing finishes the task this popup was opened for.
+      onAdded={onClose}
       onOpenDetail={(id, type) => entityModal.open({ kind: 'media', tmdbId: id, mediaType: type })}
     />
   )

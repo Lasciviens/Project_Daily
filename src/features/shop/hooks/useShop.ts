@@ -1,70 +1,61 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
 import {
-  fetchShopCategories, createShopCategory, deleteShopCategory,
+  fetchShopCategories, createShopCategory,
   fetchShopItems, createShopItem, updateShopItem, deleteShopItem,
 } from '../api/shopApi'
 import type { CreateShopCategoryInput, CreateShopItemInput, UpdateShopItemInput } from '../types'
 
 export function useShopCategories() {
   return useQuery({
-    queryKey:  ['shop', 'categories'],
+    queryKey:  qk.shop.categories(),
     queryFn:   fetchShopCategories,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 }
 
+// Silent on success: the add-item flow creates categories as steps of one
+// save and reports the whole save once.
 export function useCreateShopCategory() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (input: CreateShopCategoryInput) => createShopCategory(input),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['shop', 'categories'] }),
-  })
-}
-
-export function useDeleteShopCategory() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => deleteShopCategory(id),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['shop'] }),
+  return useMutationWithFeedback({
+    action:      'create_shop_category',
+    mutationFn:  (input: CreateShopCategoryInput) => createShopCategory(input),
+    invalidates: [qk.shop.categories()],
   })
 }
 
 export function useShopItems() {
   return useQuery({
-    queryKey:  ['shop', 'items'],
+    queryKey:  qk.shop.items(),
     queryFn:   fetchShopItems,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   })
 }
 
 export function useCreateShopItem() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (input: CreateShopItemInput) => createShopItem(input),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['shop', 'items'] }),
+  return useMutationWithFeedback({
+    action:         'create_shop_item',
+    successMessage: 'Added to wishlist',
+    mutationFn:     (input: CreateShopItemInput) => createShopItem(input),
+    invalidates:    [qk.shop.items()],
   })
 }
 
+// Silent on success: callers pass their own contextual message ("Marked bought").
 export function useUpdateShopItem() {
-  const qc = useQueryClient()
-  // Feedback-hook migration (CLAUDE.md known-gap rule): errors always toast +
-  // logError; success stays silent — call sites add their own contextual
-  // success toast where one is wanted (ShopItemCard) and must NOT add error
-  // handling anymore.
   return useMutationWithFeedback({
-    action:     'update_shop_item',
-    mutationFn: ({ id, patch }: { id: string; patch: UpdateShopItemInput }) => updateShopItem(id, patch),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['shop', 'items'] }),
+    action:      'update_shop_item',
+    mutationFn:  ({ id, patch }: { id: string; patch: UpdateShopItemInput }) => updateShopItem(id, patch),
+    invalidates: [qk.shop.items()],
   })
 }
 
 export function useDeleteShopItem() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
-    action:     'delete_shop_item',
+    action:         'delete_shop_item',
     successMessage: 'Deleted',
-    mutationFn: (id: string) => deleteShopItem(id),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['shop', 'items'] }),
+    mutationFn:     (id: string) => deleteShopItem(id),
+    invalidates:    [qk.shop.items()],
   })
 }

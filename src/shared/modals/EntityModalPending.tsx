@@ -1,11 +1,10 @@
 import type { UseQueryResult } from '@tanstack/react-query'
-import { ModalShell, type ModalSize } from '../../../shared/modals/ModalShell'
-import { Button, SkeletonText } from '../../../shared/ui'
+import { ModalShell, type ModalSize } from './ModalShell'
+import { Button, SkeletonText } from '../ui'
 
 // Shared loading pieces for entity-modal adapters (THEME.md §9): the popup
 // loads its row by id, shows its own chrome with a skeleton while loading,
 // and an honest error (with retry) when the row can't be read or is gone.
-// TODO: move next to ModalShell (src/shared/modals/).
 
 /** Renders the popup chrome while `query` has not produced a row yet. */
 export function EntityModalPending({ query, what, title, size = 'md', onClose }: {

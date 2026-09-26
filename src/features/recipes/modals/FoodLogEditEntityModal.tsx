@@ -1,8 +1,8 @@
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { EditFoodLogModal, type EditableFoodEntry } from '../components/EditFoodLogModal'
 import { useFoodLogEntry } from '../hooks/useFoodLog'
-import { EntityModalPending } from './entityModalLoad'
-import { useFirstLoaded } from './useFirstLoaded'
+import { EntityModalPending } from '../../../shared/modals/EntityModalPending'
+import { useFirstLoaded } from '../../../shared/modals/useFirstLoaded'
 import type { LoggedFood } from '../api/foodLogApi'
 
 function toEditable(row: LoggedFood): EditableFoodEntry {

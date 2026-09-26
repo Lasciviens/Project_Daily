@@ -1,13 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logError } from '../../../shared/utils/logError'
-import {
-  fetchHevyWorkouts,
-  fetchHevyWorkoutDetail,
-  triggerIncrementalHevySync,
-} from '../api/hevyApi'
-import { toast } from '../../../app/store'
-
-// ─── Queries ──────────────────────────────────────────────────────────────────
+import { useQuery } from '@tanstack/react-query'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
+import { fetchHevyWorkouts, fetchHevyWorkoutDetail, triggerIncrementalHevySync, callHevyApi } from '../api/hevyApi'
 
 export function useHevyWorkouts(opts: {
   limit?: number
@@ -16,39 +10,39 @@ export function useHevyWorkouts(opts: {
   to?: string
 } = {}) {
   return useQuery({
-    queryKey: ['hevy', 'workouts', opts],
+    queryKey: qk.hevy.workouts(opts),
     queryFn:  () => fetchHevyWorkouts(opts),
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 }
 
 export function useHevyWorkoutDetail(id: string | null) {
   return useQuery({
-    queryKey: ['hevy', 'workout', id],
+    queryKey: qk.hevy.workout(id ?? ''),
     queryFn:  () => fetchHevyWorkoutDetail(id!),
     enabled:  !!id,
-    staleTime: 10 * 60_000,
+    staleTime: STALE.long,
   })
 }
 
-// ─── Mutations ────────────────────────────────────────────────────────────────
-
+// A synced workout logged from a routine deletes its matching training-session
+// task (and its linked block) server-side, so task and schedule views refresh
+// too — for both the incremental and the full sync.
 export function useIncrementalHevySync() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: triggerIncrementalHevySync,
-    onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ['hevy'] })
-      // A synced workout logged from a routine deletes its matching
-      // training-session task + linked block server-side (_shared/hevySync),
-      // so refresh task + schedule views too.
-      qc.invalidateQueries({ queryKey: ['tasks'] })
-      qc.invalidateQueries({ queryKey: ['schedule'] })
-      toast.success(`Synced: +${result.updated} updated, ${result.deleted} deleted`)
-    },
-    onError: (e) => {
-      logError(`Incremental Hevy sync failed: ${(e as Error).message}`)
-      toast.error((e as Error).message ?? 'Failed')
-    },
+  return useMutationWithFeedback({
+    action:         'hevy_incremental_sync',
+    successMessage: (r: Awaited<ReturnType<typeof triggerIncrementalHevySync>>) => `Synced: +${r.updated} updated, ${r.deleted} deleted`,
+    mutationFn:     triggerIncrementalHevySync,
+    invalidates:    [qk.hevy.all, 'taskGraph'],
+  })
+}
+
+export function useLogHevyWorkout() {
+  return useMutationWithFeedback({
+    action:         'create_workout',
+    loadingMessage: 'Saving workout…',
+    successMessage: 'Workout logged',
+    mutationFn:     (payload: unknown) => callHevyApi('create_workout', payload),
+    invalidates:    [qk.hevy.all],
   })
 }

@@ -1,62 +1,73 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { FolderKanban } from 'lucide-react'
+import { Skeleton, EmptyState } from '../../../shared/ui'
 import { useProjects, useProjectStats } from '../../projects/hooks/useProjects'
-import { haptic } from '../../../shared/utils/haptics'
+import type { Project } from '../../projects/types'
+import { PROJECT_COLOR } from '../../projects/projectTones'
+import { useWidgetState } from '../hooks/useWidgetState'
+import { WidgetShell } from './WidgetShell'
+import { GlanceTile } from './GlanceTile'
 
-const COLOR_DOT: Record<string, string> = {
-  slate: 'bg-slate-400', blue: 'bg-blue-400', violet: 'bg-violet-400',
-  emerald: 'bg-emerald-400', amber: 'bg-amber-400', rose: 'bg-rose-400',
+const SHOWN = 4
+
+type Stats = Record<string, { total?: number; done?: number } | undefined>
+const pctOf = (stats: Stats, id: string) => {
+  const s = stats[id]
+  return s?.total ? Math.round(((s.done ?? 0) / s.total) * 100) : null
+}
+
+function useActiveProjects(enabled: boolean) {
+  const { data: projects = [], isLoading } = useProjects({ enabled })
+  const { data: stats = {} } = useProjectStats({ enabled })
+  return { active: projects.filter((p: Project) => p.status === 'active'), stats: stats as Stats, isLoading }
 }
 
 export function ProjectsHomeWidget() {
-  const { data: projects = [], isLoading } = useProjects()
-  const { data: stats = {} }               = useProjectStats()
-  // Reference widget — collapsed by default on a phone so Home leads with the
-  // actionable cards. Desktop ignores this (body is always `sm:block`).
-  const [collapsed, setCollapsed] = useState(true)
-
-  if (isLoading) return null
-
-  const active = projects.filter(p => p.status === 'active').slice(0, 4)
-  if (active.length === 0) return null
-
+  const ws = useWidgetState('projects', { mobileCollapsed: true })
+  const { active, stats, isLoading } = useActiveProjects(!ws.collapsed)
   return (
-    <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center min-w-0">
-          <button
-            type="button"
-            onClick={() => { haptic('light'); setCollapsed(c => !c) }}
-            aria-label={collapsed ? 'Expand' : 'Collapse'}
-            className="sm:hidden text-ink-400 hover:text-ink-700 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
-          >
-            {collapsed ? '▶' : '▼'}
-          </button>
-          <h3 className="text-xs font-semibold text-ink-400 uppercase tracking-wide truncate">Active Projects</h3>
-        </div>
-        <Link to="/projects" className="text-xs text-accent-600 hover:text-accent-700">Open →</Link>
-      </div>
+    <WidgetShell title="Active projects" icon={<FolderKanban />} ws={ws} to="/projects">
+      {isLoading ? (
+        <div className="space-y-3">{[0, 1, 2].map(i => <Skeleton key={i} className="h-8 w-full" />)}</div>
+      ) : active.length === 0 ? (
+        <EmptyState title="No active projects" className="py-4" />
+      ) : (
+        <ul className="space-y-1">
+          {active.slice(0, SHOWN).map(p => {
+            const pct = pctOf(stats, p.id)
+            return (
+              <li key={p.id}>
+                <Link to="/projects" className="-mx-2 block rounded-row px-2 py-1.5 transition-colors duration-100 hover:bg-surface-hover">
+                  <span className="mb-1 flex items-center gap-2">
+                    <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: PROJECT_COLOR[p.color] }} />
+                    <span className="min-w-0 flex-1 truncate text-body text-fg-2">{p.name}</span>
+                    <span className="shrink-0 text-micro tabular-nums text-fg-muted">{pct == null ? '—' : `${pct}%`}</span>
+                  </span>
+                  <span className="block h-1 overflow-hidden rounded-full bg-surface-2">
+                    <span className="block h-full bg-success transition-[width] duration-300" style={{ width: `${pct ?? 0}%` }} />
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </WidgetShell>
+  )
+}
 
-      <div className={`space-y-2.5 ${collapsed ? 'hidden sm:block' : ''}`}>
-        {active.map(p => {
-          const s = stats[p.id]
-          const total = s?.total ?? 0
-          const done  = s?.done ?? 0
-          const pct   = total > 0 ? Math.round((done / total) * 100) : 0
-          return (
-            <Link key={p.id} to="/projects" className="block group">
-              <div className="flex items-center gap-2 mb-1">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${COLOR_DOT[p.color] ?? 'bg-ink-300'}`} />
-                <span className="text-sm text-ink-700 truncate flex-1 group-hover:text-accent-600 transition-colors">{p.name}</span>
-                <span className="text-[11px] text-ink-400 shrink-0">{total > 0 ? `${pct}%` : '—'}</span>
-              </div>
-              <div className="h-1 rounded-full bg-ink-100 overflow-hidden">
-                <div className="h-full bg-emerald-400 transition-all duration-300" style={{ width: `${pct}%` }} />
-              </div>
-            </Link>
-          )
-        })}
-      </div>
-    </div>
+export function ProjectsTile() {
+  const { active, stats, isLoading } = useActiveProjects(true)
+  const top = active[0]
+  const pct = top ? pctOf(stats, top.id) : null
+  return (
+    <GlanceTile
+      label="Projects"
+      icon={<FolderKanban />}
+      to="/projects"
+      loading={isLoading}
+      value={<>{active.length}<span className="ml-1 text-meta font-medium text-fg-muted">active</span></>}
+      hint={top ? `${top.name}${pct != null ? ` · ${pct}%` : ''}` : 'None active'}
+    />
   )
 }

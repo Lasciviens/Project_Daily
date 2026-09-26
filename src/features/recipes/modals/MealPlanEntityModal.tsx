@@ -1,8 +1,8 @@
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { AssignMealModal } from '../components/AssignMealModal'
 import { useMealPlanEntry } from '../hooks/useMealPlan'
-import { EntityModalPending } from './entityModalLoad'
-import { useFirstLoaded } from './useFirstLoaded'
+import { EntityModalPending } from '../../../shared/modals/EntityModalPending'
+import { useFirstLoaded } from '../../../shared/modals/useFirstLoaded'
 
 /** `meal-plan`: plan a meal into a slot, or edit a planned row loaded by id. */
 export function MealPlanEntityModal({ request, onClose }: EntityModalProps<'meal-plan'>) {

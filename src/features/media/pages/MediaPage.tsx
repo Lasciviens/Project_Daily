@@ -2,137 +2,70 @@ import { useState } from 'react'
 import { MediaBackdrop } from '../components/MediaBackdrop'
 import { MediaSearch } from '../components/MediaSearch'
 import { DiscoveryTabs } from '../components/DiscoveryTabs'
-import { MediaDetailModal } from '../components/MediaDetailModal'
 import { TonightPicker } from '../components/TonightPicker'
 import { MediaStats } from '../components/MediaStats'
 import { ReleaseCalendar } from '../components/ReleaseCalendar'
 import { CompactLibraryStrip } from '../components/CompactLibraryStrip'
 import { useMovies } from '../hooks/useMovies'
 import { useTVSeries } from '../hooks/useTVSeries'
-import type { UserMovieEntry, UserTVEntry } from '../types'
+import { useEntityModal } from '../../../shared/modals'
+import { PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
+import type { MediaType } from '../types'
 
 type Tab = 'movies' | 'tv'
 
-interface DetailState { tmdbId: number; type: 'movie' | 'tv' }
-
 export function MediaPage() {
-  const [tab,    setTab]    = useState<Tab>('movies')
-  const [detail, setDetail] = useState<DetailState | null>(null)
+  const [tab, setTab] = useState<Tab>('movies')
+  const modal = useEntityModal()
 
   const { data: movieEntries = [], isLoading: moviesLoading } = useMovies()
-  const { data: tvEntries    = [], isLoading: tvLoading      } = useTVSeries()
+  const { data: tvEntries = [], isLoading: tvLoading } = useTVSeries()
 
-  function openDetail(id: number, type: 'movie' | 'tv') {
-    setDetail({ tmdbId: id, type })
-  }
-
-  const userEntry: UserMovieEntry | UserTVEntry | null | undefined = detail
-    ? detail.type === 'movie'
-      ? movieEntries.find(e => e.movie.tmdb_id === detail.tmdbId)
-      : tvEntries.find(e => e.tv_series.tmdb_id === detail.tmdbId)
-    : null
-
+  const openDetail = (tmdbId: number, mediaType: MediaType) => modal.open({ kind: 'media', tmdbId, mediaType })
   const hasLibrary = movieEntries.length > 0 || tvEntries.length > 0
 
+  const sideWidgets = (
+    <>
+      <TonightPicker movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
+      <ReleaseCalendar movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
+      {hasLibrary && <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} />}
+    </>
+  )
+
   return (
-    <div className="w-full px-4 sm:px-6 py-4 sm:py-6">
-      <div className="flex gap-4 items-start">
+    <PageContainer width="full">
+      <PageHeader
+        title="Media"
+        actions={
+          <SegmentedControl<Tab>
+            value={tab}
+            onChange={setTab}
+            options={[{ value: 'movies', label: 'Movies' }, { value: 'tv', label: 'TV series' }]}
+          />
+        }
+      />
 
-        {/* ── Main content ── */}
-        <div className="flex-1 min-w-0 lg:max-w-[calc(100%-22rem)] stagger-in">
-
-          {/* Top section with scoped backdrop */}
-          <div className="relative overflow-hidden rounded-xl mb-3 sm:mb-4 p-3 sm:p-4 bg-cream-50/40">
+      <div className="flex items-start gap-5">
+        <div className="stagger-in flex min-w-0 flex-1 flex-col gap-5">
+          {/* The rotating backdrop is scoped to the search + library card only. */}
+          <section className="card relative p-4 sm:p-5">
             <MediaBackdrop />
-            <div className="relative z-10">
-              {/* Redundant on mobile — the bottom tab bar already labels Media. */}
-              <h1 className="hidden sm:block text-lg font-semibold text-ink-900 mb-4">Media</h1>
-
-              <div className="mb-3 sm:mb-4">
-                <MediaSearch onSelectResult={(id, type) => openDetail(id, type)} />
-              </div>
-
-              {/* Movies / TV Series tab */}
-              <div className="flex gap-1 bg-cream-100 rounded-lg p-1 w-full sm:w-fit mb-4">
-                {(['movies', 'tv'] as Tab[]).map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t)}
-                    className={`flex-1 sm:flex-none px-4 min-h-[44px] rounded-md text-sm font-medium transition-colors duration-150 ${
-                      tab === t
-                        ? 'bg-cream-50 text-ink-900 shadow-sm'
-                        : 'text-ink-500 hover:text-ink-700'
-                    }`}
-                  >
-                    {t === 'movies' ? 'Movies' : 'TV Series'}
-                  </button>
-                ))}
-              </div>
-
-              {/* Compact library strip */}
+            <div className="relative z-10 flex flex-col gap-4">
+              <MediaSearch mediaType={tab === 'movies' ? 'movie' : 'tv'} onSelectResult={openDetail} />
               {!moviesLoading && !tvLoading && hasLibrary && (
-                <CompactLibraryStrip
-                  tab={tab}
-                  movieEntries={movieEntries}
-                  tvEntries={tvEntries}
-                  onOpenDetail={openDetail}
-                />
+                <CompactLibraryStrip tab={tab} movieEntries={movieEntries} tvEntries={tvEntries} onOpenDetail={openDetail} />
               )}
             </div>
-          </div>
+          </section>
 
-          {/* Discovery tabs */}
-          <DiscoveryTabs
-            mediaType={tab === 'movies' ? 'movie' : 'tv'}
-            onOpenDetail={openDetail}
-          />
+          <DiscoveryTabs mediaType={tab === 'movies' ? 'movie' : 'tv'} onOpenDetail={openDetail} />
         </div>
 
-        {/* ── Right sidebar ── */}
-        <aside className="hidden lg:flex flex-col gap-4 w-80 flex-shrink-0 sticky top-20">
-          <TonightPicker
-            movieEntries={movieEntries}
-            tvEntries={tvEntries}
-            onOpenDetail={openDetail}
-          />
-          <ReleaseCalendar
-            movieEntries={movieEntries}
-            tvEntries={tvEntries}
-            onOpenDetail={openDetail}
-          />
-          {hasLibrary && (
-            <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} />
-          )}
-        </aside>
+        <aside className="sticky top-4 hidden w-80 shrink-0 flex-col gap-4 lg:flex">{sideWidgets}</aside>
       </div>
 
-      {/* ── Mobile-only sidebar widgets (below main content on <lg) ── */}
-      <div className="lg:hidden mt-4 flex flex-col gap-4">
-        <TonightPicker
-          movieEntries={movieEntries}
-          tvEntries={tvEntries}
-          onOpenDetail={openDetail}
-        />
-        <ReleaseCalendar
-          movieEntries={movieEntries}
-          tvEntries={tvEntries}
-          onOpenDetail={openDetail}
-        />
-        {hasLibrary && (
-          <MediaStats movieEntries={movieEntries} tvEntries={tvEntries} />
-        )}
-      </div>
-
-      {detail && (
-        <MediaDetailModal
-          tmdbId={detail.tmdbId}
-          mediaType={detail.type}
-          userEntry={userEntry}
-          onClose={() => setDetail(null)}
-          onAdded={() => setDetail(null)}
-          onOpenDetail={openDetail}
-        />
-      )}
-    </div>
+      {/* Below the main column on narrower screens; two columns from sm. */}
+      <div className="mt-5 grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:hidden">{sideWidgets}</div>
+    </PageContainer>
   )
 }

@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { ChevronRight, Search, UtensilsCrossed } from 'lucide-react'
 import { isToday, format } from 'date-fns'
 import { useTimeBlocks } from '../hooks/useSchedule'
 import { useDayData } from '../hooks/useDayData'
 import { useUIStore } from '../../../app/store'
-import { FoodLogModal } from '../../recipes/components/FoodLogModal'
+import { useEntityModal } from '../../../shared/modals'
+import { Button, SectionLabel } from '../../../shared/ui'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 
@@ -16,11 +17,11 @@ import { formatLocalDate } from '../../../shared/utils/dateUtils'
 //  (narrow screens have no gap to fill — the hero just goes full width).
 // ─────────────────────────────────────────────────────────────────────────────
 
-function StatTile({ value, label }: { value: number | string; label: string }) {
+function RailStat({ value, label }: { value: number | string; label: string }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg bg-cream-50 border border-ink-100 py-2">
-      <span className="text-lg font-bold text-ink-900 leading-none tabular-nums">{value}</span>
-      <span className="text-[10px] text-ink-400 mt-0.5">{label}</span>
+    <div className="flex flex-col items-center justify-center rounded-row border border-line bg-surface py-2">
+      <span className="text-lead font-bold leading-none tabular-nums text-fg">{value}</span>
+      <span className="mt-1 text-micro text-fg-muted">{label}</span>
     </div>
   )
 }
@@ -28,17 +29,14 @@ function StatTile({ value, label }: { value: number | string; label: string }) {
 export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: () => void }) {
   const dateStr = formatLocalDate(date)
   const openCommandBar = useUIStore(s => s.openCommandBar)
+  const modal = useEntityModal()
   const { data: blocks = [] } = useTimeBlocks(dateStr)
   const { tasks } = useDayData(date)
-  const [logOpen, setLogOpen] = useState(false)
 
   const today = isToday(date)
 
-  // Next scheduled block: on today, the next one starting at/after now; on any
-  // other day, simply the first block of the day.
-  // Recomputed every render on purpose (no memo): the page re-renders each
-  // minute via the header clock, and a memo keyed on [blocks] kept showing a
-  // block long after it had started.
+  // Recomputed every render on purpose (no memo): a memo keyed on [blocks]
+  // kept showing a block long after it had started.
   const timedBlocks = blocks.filter(b => b.start_time).sort((a, b) => (a.start_time! < b.start_time! ? -1 : 1))
   const nowHM = format(new Date(), 'HH:mm:ss')
   const nextBlock = today
@@ -46,76 +44,64 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
     : (timedBlocks[0] ?? null)
 
   const openTaskList = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled')
-  const openTasks = openTaskList.length
   const doneTasks = tasks.filter(t => t.status === 'done').length
   const plannedMin = blocks.reduce((a, b) => a + (b.duration_minutes ?? 0), 0)
   const plannedH = Math.round((plannedMin / 60) * 10) / 10
 
-  const actionBtn = 'flex items-center gap-2 rounded-lg border border-ink-200 bg-cream-50 px-3 min-h-[44px] text-xs font-medium text-ink-700 hover:border-accent-300 hover:text-accent-700 transition-colors'
-
   return (
-    <aside className="hidden xl:flex flex-col gap-4 rounded-2xl border border-ink-200 bg-ink-100/40 p-4">
-      {/* Quick actions */}
+    <aside className="hidden flex-col gap-5 rounded-card border border-line bg-surface-2 p-4 xl:flex">
       <div>
-        <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400 mb-2">Quick actions</p>
+        <SectionLabel className="mb-2">Quick actions</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => setLogOpen(true)} className={actionBtn}>🍽️ <span>Log food</span></button>
-          <button onClick={openCommandBar} className={actionBtn}>🔍 <span>Search ⌘K</span></button>
+          <Button size="sm" icon={<UtensilsCrossed />} onClick={() => modal.open({ kind: 'food-log', date: dateStr })}>Log food</Button>
+          <Button size="sm" icon={<Search />} onClick={openCommandBar}>Search</Button>
         </div>
       </div>
 
-      {/* Next up */}
       <div>
-        <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400 mb-2">{today ? 'Next up' : 'First up'}</p>
+        <SectionLabel className="mb-2">{today ? 'Next up' : 'First up'}</SectionLabel>
         {nextBlock ? (
-          <div className="rounded-lg bg-cream-50 border border-ink-100 px-3 py-2.5 flex items-center gap-3">
-            <span className="text-sm font-bold text-accent-600 tabular-nums shrink-0">{nextBlock.start_time?.slice(0, 5)}</span>
-            <span className="text-xs text-ink-700 truncate">{nextBlock.title}</span>
+          <div className="flex items-center gap-3 rounded-row border border-line bg-surface px-3 py-2.5">
+            <span className="shrink-0 text-ui font-bold tabular-nums text-accent-600">{nextBlock.start_time?.slice(0, 5)}</span>
+            <span className="truncate text-body text-fg-2">{nextBlock.title}</span>
           </div>
         ) : (
-          <p className="text-xs text-ink-400 px-1">{today ? 'Nothing more scheduled today.' : 'Nothing scheduled.'}</p>
+          <p className="px-1 text-body text-fg-muted">{today ? 'Nothing more scheduled today.' : 'Nothing scheduled.'}</p>
         )}
       </div>
 
-      {/* Day stats */}
       <div>
-        <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400 mb-2">This day</p>
+        <SectionLabel className="mb-2">This day</SectionLabel>
         <div className="grid grid-cols-3 gap-2">
-          <StatTile value={openTasks} label="open" />
-          <StatTile value={doneTasks} label="done" />
-          <StatTile value={`${plannedH}h`} label="planned" />
+          <RailStat value={openTaskList.length} label="open" />
+          <RailStat value={doneTasks} label="done" />
+          <RailStat value={`${plannedH}h`} label="planned" />
         </div>
       </div>
 
-      {/* Open tasks — the day's actionable list, visible without switching
-          tabs (was the "Jump to" nav grid, removed on user request: tasks are
-          worth this space, duplicate navigation wasn't). flex-1 makes this the
-          elastic block, so the rail always matches the hero's height instead
-          of ending short (equal-height aesthetics). */}
-      <div className="flex-1 min-h-0 flex flex-col">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400">Open tasks</p>
+      {/* flex-1: the elastic block, so the rail matches the hero's height. */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="mb-1 flex items-center justify-between">
+          <SectionLabel>Open tasks</SectionLabel>
           {onOpenTasks && (
-            <button onClick={onOpenTasks} className="text-[11px] text-accent-600 hover:text-accent-700 font-medium min-h-[44px] px-1.5">
-              All →
+            <button type="button" onClick={onOpenTasks} className="flex min-h-[44px] items-center gap-0.5 px-1.5 text-meta font-semibold text-accent-600 hover:text-accent-700">
+              All <ChevronRight className="h-3.5 w-3.5" aria-hidden />
             </button>
           )}
         </div>
         {openTaskList.length === 0 ? (
-          <p className="text-xs text-ink-400 px-1">Nothing open for this day.</p>
+          <p className="px-1 text-body text-fg-muted">Nothing open for this day.</p>
         ) : (
           <div className="flex flex-col gap-1 overflow-y-auto">
             {openTaskList.slice(0, 5).map(t => <ToDoItem key={t.id} task={t} />)}
             {openTaskList.length > 5 && (
-              <button onClick={onOpenTasks} className="text-[11px] text-ink-500 hover:text-ink-700 text-left px-1 min-h-[44px]">
-                +{openTaskList.length - 5} more…
+              <button type="button" onClick={onOpenTasks} className="min-h-[44px] px-1 text-left text-meta text-fg-muted hover:text-fg">
+                +{openTaskList.length - 5} more
               </button>
             )}
           </div>
         )}
       </div>
-
-      <FoodLogModal open={logOpen} onClose={() => setLogOpen(false)} date={dateStr} />
     </aside>
   )
 }

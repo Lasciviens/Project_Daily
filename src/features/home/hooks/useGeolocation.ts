@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
 
 export interface GeoPosition {
   lat:    number
@@ -29,9 +30,9 @@ async function requestPosition(): Promise<GeoPosition> {
 // degrades gracefully instead of breaking the widgets that depend on it.
 export function useGeolocation() {
   return useQuery({
-    queryKey:  ['geolocation'],
+    queryKey:  qk.external.geolocation(),
     queryFn:   requestPosition,
-    staleTime: Infinity,
+    staleTime: STALE.never,
     gcTime:    Infinity,
     retry:     false,
   })

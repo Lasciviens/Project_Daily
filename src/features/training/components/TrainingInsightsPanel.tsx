@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { nowMs } from '../dateFormat'
 import { useTrainingHistory, useBodyweightHistory } from '../hooks/useTrainingProgress'
 import { useAthleteProfile, useAthleteLimitations } from '../hooks/useAthleteProfile'
 import {
@@ -13,7 +14,15 @@ import {
   type Finding, type MuscleFindingInput, type RelativeStrengthFindingInput, type ExerciseTrendFindingInput,
 } from '../trainingInsights'
 import { buildTemplateMuscleMap, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, labelForSlug, limitedSlugsFromLimitations } from '../muscleMap'
-import { METRIC_META } from './ExerciseProgressChart'
+import { METRIC_META } from '../progressMetricMeta'
+import { Skeleton, ToneDot, TonePill, type Tone } from '../../../shared/ui'
+import { ChartCard } from './ChartCard'
+
+const TIER_META: Record<Finding['tier'], { label: string; tone: Tone }> = {
+  measured: { label: 'Measured', tone: 'info' },
+  evidence: { label: 'Evidence-based', tone: 'success' },
+  heuristic: { label: 'Heuristic', tone: 'warn' },
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Training Analysis — a sports-scientist agent review (2026-09-01), asked
@@ -76,7 +85,7 @@ export function TrainingInsightsPanel() {
     }))
     out.push(...computeMuscleFindings(muscleInputs, today))
 
-    const cutoff = new Date(Date.now() - REP_RANGE_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
+    const cutoff = new Date(nowMs() - REP_RANGE_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
     out.push(...computeRepRangeFindings(computeRepRangeDistribution(data.sets.filter(s => s.date >= cutoff))))
 
     const est1rmTemplates = data.templates.filter(t => metricKindForExerciseType(t.type) === 'est1rm')
@@ -96,21 +105,20 @@ export function TrainingInsightsPanel() {
     return out
   }, [data, anchors, profile, limitations, today])
 
-  if (isLoading) return <div className="h-40 rounded-2xl bg-cream-200 animate-pulse" />
+  if (isLoading) return <Skeleton rounded="rounded-card" className="h-40" />
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">🔍 Training Analysis</p>
-      <p className="text-xs text-ink-500 italic">What your own logged training says about itself — read this before the charts below.</p>
+    <ChartCard title="Training analysis" className="gap-3">
+      <p className="text-body text-fg-muted">What your own logged training says about itself — read this before the charts below.</p>
 
-      <div className="flex flex-col gap-1.5 text-[11px] text-ink-400 bg-cream-100 rounded-lg p-2.5">
-        <p><strong className="text-ink-600">This is arithmetic on your Hevy log, not medical or coaching advice.</strong> Every statement below names the numbers and sessions it came from — a claim with no numbers attached is a bug.</p>
-        <p><strong className="text-ink-600">What it can't see:</strong> effort (reps in reserve), technique, tempo, rest, nutrition, stress or recovery quality — the single biggest thing missing, and it moves real results more than anything counted here. A workout you did but didn&apos;t log doesn&apos;t exist to this page.</p>
-        <p><strong className="text-ink-600">Tiers:</strong> <span className="font-semibold text-sky-700">Measured</span> = arithmetic on your log · <span className="font-semibold text-emerald-700">Evidence-based</span> = backed by cited meta-analytic work · <span className="font-semibold text-amber-700">Heuristic</span> = a practitioner convention (e.g. MEV/MAV/MRV) with no trial support for the exact number. No readiness/fitness/injury-risk scores are computed, ever.</p>
+      <div className="flex max-w-3xl flex-col gap-1.5 rounded-row bg-surface-2 p-3 text-meta text-fg-muted">
+        <p><strong className="text-fg-2">This is arithmetic on your Hevy log, not medical or coaching advice.</strong> Every statement below names the numbers and sessions it came from — a claim with no numbers attached is a bug.</p>
+        <p><strong className="text-fg-2">What it can't see:</strong> effort (reps in reserve), technique, tempo, rest, nutrition, stress or recovery quality — the single biggest thing missing, and it moves real results more than anything counted here. A workout you did but didn&apos;t log doesn&apos;t exist to this page.</p>
+        <p><strong className="text-fg-2">Tiers:</strong> <TonePill tone="info">Measured</TonePill> = arithmetic on your log · <TonePill tone="success">Evidence-based</TonePill> = backed by cited meta-analytic work · <TonePill tone="warn">Heuristic</TonePill> = a practitioner convention (e.g. MEV/MAV/MRV) with no trial support for the exact number. No readiness/fitness/injury-risk scores are computed, ever.</p>
       </div>
 
       {findings === null ? null : findings.length === 0 && (
-        <p className="text-xs text-ink-400 py-2">
+        <p className="py-2 text-body text-fg-muted">
           Not enough logged history yet — this needs at least {MIN_COMPLETE_WEEKS} complete weeks of logged sessions. Keep logging and the findings appear on their own.
         </p>
       )}
@@ -126,34 +134,28 @@ export function TrainingInsightsPanel() {
         const groups = groupFindings(findings)
         return (
           <div className="flex flex-col gap-3">
-            <FindingGroupSection title="✅ What's working" findings={groups.working} />
-            <FindingGroupSection title="🔎 What to look at" findings={groups.attention} />
-            <FindingGroupSection title="❓ Can't assess yet" findings={groups.unassessable} />
+            <FindingGroupSection title="What's working" tone="success" findings={groups.working} />
+            <FindingGroupSection title="What to look at" tone="warn" findings={groups.attention} />
+            <FindingGroupSection title="Can't assess yet" tone="neutral" findings={groups.unassessable} />
           </div>
         )
       })()}
 
-      <p className="text-[10px] text-ink-300">Findings are generated by fixed rules, not a language model — the same log always produces the same text. For a conversational read on a specific day, use the Coach tab.</p>
-    </div>
+      <p className="text-meta text-fg-faint">Findings are generated by fixed rules, not a language model — the same log always produces the same text. For a conversational read on a specific day, use the Coach tab.</p>
+    </ChartCard>
   )
 }
 
-function FindingGroupSection({ title, findings }: { title: string; findings: Finding[] }) {
+function FindingGroupSection({ title, tone, findings }: { title: string; tone: Tone; findings: Finding[] }) {
   if (findings.length === 0) return null
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-[11px] font-bold text-ink-600">{title}</p>
+    <div className="flex max-w-3xl flex-col gap-2">
+      <p className="flex items-center gap-1.5 text-body font-semibold text-fg"><ToneDot tone={tone} />{title}</p>
       <ul className="flex flex-col gap-2">
         {findings.map(f => (
-          <li key={f.id} className="text-xs text-ink-700 flex items-start gap-2">
-            <span>
-              <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide mr-1.5 align-middle ${
-                f.tier === 'measured' ? 'bg-sky-100 text-sky-700' : f.tier === 'evidence' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-              }`}>
-                {f.tier === 'measured' ? 'Measured' : f.tier === 'evidence' ? 'Evidence-based' : 'Heuristic'}
-              </span>
-              {f.text}
-            </span>
+          <li key={f.id} className="text-body text-fg-2">
+            <TonePill tone={TIER_META[f.tier].tone} className="mr-1.5 align-middle">{TIER_META[f.tier].label}</TonePill>
+            {f.text}
           </li>
         ))}
       </ul>

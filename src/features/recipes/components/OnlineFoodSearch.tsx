@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Search } from 'lucide-react'
+import { Button } from '../../../shared/ui'
 import { toast } from '../../../app/store'
 import { searchFoodsByName, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { searchBrandedFoods, isKassalappEnabled } from '../api/kassalappApi'
@@ -47,53 +49,47 @@ export function OnlineFoodSearch({ initialQuery = '', onPick }: {
     } finally { setLoading(false) }
   }
 
-  const inputCls = 'min-h-[44px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
-
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-1.5">
         <input value={query} onChange={e => setQuery(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') run() }}
-          placeholder="Search online (e.g. chicken breast, gresham peanut butter)…"
-          className={`flex-1 min-w-0 ${inputCls}`} autoFocus />
-        <button type="button" onClick={run} disabled={loading || !query.trim()}
-          className="shrink-0 min-h-[44px] px-3 rounded-lg text-xs font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
-          {loading ? '…' : 'Search'}
-        </button>
+          placeholder="Search online (e.g. chicken breast, gresham peanut butter)"
+          aria-label="Search foods online"
+          className="input min-w-0 flex-1" autoFocus />
+        <Button variant="primary" icon={<Search />} onClick={run} loading={loading} disabled={!query.trim()} className="shrink-0">
+          Search
+        </Button>
       </div>
-      {loading && <p className="text-xs text-ink-400">Searching…</p>}
       {!loading && searched && results.length === 0 && (
-        <p className="text-xs text-ink-400">No results — try a broader/English name, or add it manually below.</p>
+        <p className="text-meta text-fg-muted">No results — try a broader or English name, or add it manually below.</p>
       )}
       {results.length > 0 && (
-        <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+        <div className="scroll-y flex max-h-64 flex-col gap-1 overflow-y-auto">
           {results.map((p, i) => {
             const macroCheck = checkMacroConsistency(p.calories, p.protein_g, p.carbs_g, p.fat_g)
-            // A DIV wrapper, not a button — the warning badge is itself a
-            // Popover button, and a <button> can never contain another
-            // <button> (invalid HTML, silently hoisted out by the parser).
-            // Same fix pattern as FoodTile's ★/✕ corner buttons.
+            // A div wrapper: the warning badge is itself a button, and a
+            // <button> can never contain another <button>.
             return (
             <div key={`${p.code}-${i}`}
-              className="press-feedback flex items-center gap-2 px-2.5 py-1.5 min-h-[44px] rounded-lg border border-ink-200 bg-cream-100 hover:border-accent-400 transition-colors">
-              <button type="button" onClick={() => onPick(p)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
-                {p.image_url && <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" onError={e => { e.currentTarget.style.display = 'none' }} />}
-                <span className="flex-1 min-w-0">
-                  <span className="text-sm text-ink-800 truncate block">{p.name}</span>
-                  <span className="text-[10px] text-ink-400">
-                    {p.brand ? `${p.brand} · ` : ''}{p.calories != null ? `${Math.round(p.calories)} kcal/100g` : 'no macros'}{p.protein_g != null ? ` · ${Math.round(p.protein_g)}g P` : ''}
+              className="flex min-h-[44px] items-center gap-2 rounded-row border border-line bg-surface px-2.5 py-1.5 transition-colors hover:border-accent-500/60">
+              <button type="button" onClick={() => onPick(p)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                {p.image_url && <img src={p.image_url} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover" onError={e => { e.currentTarget.style.display = 'none' }} />}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-body text-fg">{p.name}</span>
+                  <span className="text-meta text-fg-muted tabular-nums">
+                    {p.brand ? `${p.brand} · ` : ''}{p.calories != null ? `${Math.round(p.calories)} kcal/100g` : 'no macros'}{p.protein_g != null ? ` · ${Math.round(p.protein_g)}g protein` : ''}
                   </span>
                 </span>
               </button>
-              {/* Flags a source-data inconsistency BEFORE it's ever saved —
-                  the whole point of catching it here, not after the fact. */}
+              {/* Flags a source-data inconsistency before it's ever saved. */}
               <MacroWarningBadge result={macroCheck} />
             </div>
             )
           })}
         </div>
       )}
-      <p className="text-[10px] text-ink-300">Open Food Facts{isKassalappEnabled() ? ' + Kassalapp (Norwegian stores)' : ''} — a food with no macros is skipped. Review before saving.</p>
+      <p className="text-meta text-fg-muted">Open Food Facts{isKassalappEnabled() ? ' + Kassalapp (Norwegian stores)' : ''} — a food with no macros is skipped. Review before saving.</p>
     </div>
   )
 }
