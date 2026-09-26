@@ -1,4 +1,5 @@
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
+import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 
 interface Props {
   open: boolean
@@ -9,6 +10,8 @@ interface Props {
   danger?: boolean
   onConfirm: () => void
   onClose: () => void
+  /** A second, lesser action under the two main buttons (e.g. "Delete anyway"). */
+  secondary?: { label: string; onClick: () => void; danger?: boolean }
 }
 
 /**
@@ -16,7 +19,8 @@ interface Props {
  * carries `tg-portal` (else every --tg-* token is undefined there). z-50: over
  * the phone sheet and the overlay (both z-40).
  */
-export function TgConfirmDialog({ open, title, message, confirmLabel, danger, onConfirm, onClose }: Props) {
+export function TgConfirmDialog({ open, title, message, confirmLabel, danger, onConfirm, onClose, secondary }: Props) {
+  useHistoryDismiss(open, onClose)
   return (
     <Dialog open={open} onClose={onClose} className="tg-portal relative z-50">
       <DialogBackdrop transition className="fixed inset-0 bg-black/50 backdrop-blur-[2px] transition duration-200 data-[closed]:opacity-0" />
@@ -38,6 +42,15 @@ export function TgConfirmDialog({ open, title, message, confirmLabel, danger, on
             >
               {confirmLabel}
             </button>
+            {secondary && (
+              <button
+                type="button"
+                onClick={() => { secondary.onClick(); onClose() }}
+                className={`col-span-2 min-h-[44px] rounded-[12px] text-[13.5px] font-semibold ${secondary.danger ? 'text-[var(--tg-red)]' : 'text-[var(--tg-text-2)]'} [@media(hover:hover)]:hover:bg-[var(--tg-hover)]`}
+              >
+                {secondary.label}
+              </button>
+            )}
           </div>
         </DialogPanel>
       </div>

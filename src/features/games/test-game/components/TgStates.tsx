@@ -4,6 +4,7 @@ import { useTestGameStore } from '../testGameStore'
 import { useTgBreakpoint } from '../useTgBreakpoint'
 import { STATUS_TEXT, type TgSection } from '../testGameModel'
 import type { PlayStatus } from '../../types'
+import { useTgAddGame } from './tgAddGame'
 import {
   TgStatesGridSkeleton, TgStatesListSkeleton, TgStatesMobileSkeleton, TgStatesShelfSkeleton,
 } from './TgStatesSkeletons'
@@ -50,14 +51,14 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
   if (kind === 'library') {
     return (
       <StateCard icon={<LibraryBig {...ICON} />} title="Your library is empty" actions={<>
-        <button type="button" className="tg-btn tg-btn-primary" onClick={() => act().setAdvancedTab('tools')}>
+        <button type="button" className="tg-btn tg-btn-primary" onClick={() => useTgAddGame.getState().setOpen(true)}>
           <Plus size={17} strokeWidth={2} />Add a game
         </button>
         <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setAdvancedTab('steam')}>Open Steam</button>
         <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setAdvancedTab('playstation')}>Open PlayStation</button>
       </>}>
-        Add a game by hand in Advanced → Add &amp; random, or import your Steam and PlayStation
-        libraries from their tabs in Advanced.
+        Add a game by hand, or import your Steam and PlayStation libraries from their tabs in
+        Advanced.
       </StateCard>
     )
   }
@@ -123,6 +124,32 @@ function messageOf(error: unknown): string {
     return error.message
   }
   return 'Something went wrong while loading your games.'
+}
+
+/** A section's code didn't load (after the one reload lazyWithReload allows). */
+export function TgChunkFailed() {
+  return (
+    <StateCard icon={<TriangleAlert {...ICON} />} tone="danger" title="This part of the page couldn't be loaded" actions={
+      <button type="button" className="tg-btn tg-btn-primary" onClick={() => window.location.reload()}>Reload</button>
+    }>
+      Check your connection, then reload to get the latest version of the app.
+    </StateCard>
+  )
+}
+
+/**
+ * The same message for a dialog whose code didn't load. A dialog renders
+ * outside the page layout, so an in-flow card would land below the page —
+ * the click would seem to do nothing. This one floats above everything.
+ */
+export function TgChunkFailedDialog() {
+  return (
+    <div role="alert" className="tg-portal fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[90] mx-auto flex max-w-md flex-wrap items-center gap-3 rounded-2xl border border-[var(--tg-border-strong)] bg-[var(--tg-panel)] p-4 text-[var(--tg-text)] shadow-[shadow:var(--tg-menu-shadow)]">
+      <TriangleAlert aria-hidden size={20} strokeWidth={2} className="shrink-0 text-[var(--tg-red)]" />
+      <p className="min-w-0 flex-1 text-[13px] leading-snug">This window couldn't be loaded. Check your connection, then reload to get the latest version.</p>
+      <button type="button" className="tg-btn tg-btn-primary" onClick={() => window.location.reload()}>Reload</button>
+    </div>
+  )
 }
 
 export function TgErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {

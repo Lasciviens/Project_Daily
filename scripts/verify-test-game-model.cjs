@@ -314,4 +314,118 @@ ok(M.formatDay(null), '—', 'no date')
 ok(M.subtitleParts(lib.find(g => g.id === 'b')), ['PlayStation 2', 'Adventure', '2005'], 'platform · genre · year')
 ok(M.subtitleParts(lib.find(g => g.id === 'g'), 'Puzzle'), ['Steam', 'Puzzle'], 'a genre fallback fills a missing genre')
 
+// ── Reserved platform keys (a system string must not hijack a page shelf) ──
+ok(M.derivePlatformKey(game({ platforms: [plat('All', { is_primary_variant: true })] })), 'sys-all', 'a system called "All" gets its own key')
+ok(M.derivePlatformKey(game({ platforms: [plat('Steam', { is_primary_variant: true })] })), 'sys-steam', 'an ES-DE steam folder never joins the Steam library shelf')
+ok(M.derivePlatformKey(game({ library: 'steam' })), 'steam', 'the Steam library still files under steam')
+ok(M.platformInfo('sys-steam').short, 'Steam (ES-DE)', 'a reserved retro copy reads as its own platform')
+ok(M.derivePlatformKey(game({ platforms: [plat('PlayStation', { is_primary_variant: true })] })), 'psx', 'a retro "PlayStation" is still the first console')
+
+// ── Genres fold case-insensitively ──
+const gA = M.deriveGames([
+  game({ id: 'ga1', genres: ['Action', 'Platform'] }), game({ id: 'ga2', genres: ['ACTION'] }),
+  game({ id: 'ga3', genres: ['action ', 'Action'] }), game({ id: 'ga4', genres: ['RPG'], play_status: 'hidden' }),
+])
+ok(M.genreOptions(gA), [{ genre: 'Action', count: 3 }, { genre: 'Platform', count: 1 }], 'one genre per spelling, counted once per game, most common spelling shown')
+ok(M.foldGenres(gA, true).some(x => x.genre === 'RPG'), true, 'hidden rows count when asked (the Hidden view)')
+ok(M.scopeGames(gA, { section: 'library', platform: M.ALL_PLATFORMS, genres: ['action'], search: '' }).map(g => g.id).sort(), ['ga1', 'ga2', 'ga3'],
+  'the genre filter matches every spelling')
+
+// ── Last played order: real sessions first (the 5-minute rule) ──
+const rs = M.deriveGames([
+  game({ id: 'peek', title: 'Peek', library: 'steam', play_seconds: 10, last_played_at: '2026-09-20T10:00:00Z' }),
+  game({ id: 'real', title: 'Real', library: 'steam', play_seconds: 7200, last_played_at: '2026-08-01T10:00:00Z' }),
+  game({ id: 'nodur', title: 'No duration', library: 'playstation', play_seconds: null, last_played_at: '2026-07-01T10:00:00Z' }),
+  game({ id: 'never', title: 'Never' }),
+])
+ok(M.sortGames(rs, 'recent').map(g => g.id), ['real', 'nodur', 'peek', 'never'],
+  'a 10-second launch ranks below an older 2-hour session; an unknown duration counts; undated last')
+
+// ── Needs review: computed from the page's rows; a cover on screen counts ──
+const nr = M.deriveGames([
+  game({ id: 'nr1', title: 'B ok', genres: ['Action'], release_year: 1999, primary_cover_url: 'https://x/c.jpg', platforms: [plat('snes', { is_primary_variant: true })] }),
+  game({ id: 'nr2', title: 'A esde cover', genres: ['Action'], release_year: 1999, platforms: [plat('snes', { is_primary_variant: true, cover_url: 'https://x/esde.jpg' })] }),
+  game({ id: 'nr3', title: 'C bare', genres: [' '], platforms: [] }),
+  game({ id: 'nr4', title: 'D steam', library: 'steam', external_ref: '10' }),
+  game({ id: 'nr5', title: 'E hidden', play_status: 'hidden', platforms: [] }),
+  game({ id: 'nr6', title: 'F flagged', needs_review: true, genres: ['x'], release_year: 2000, primary_cover_url: 'https://x/f.jpg', platforms: [plat('nes')] }),
+])
+const byId = id => nr.find(g => g.id === id)
+ok(M.needsReviewReasons(byId('nr1')), [], 'a complete game needs nothing')
+ok(M.needsReviewReasons(byId('nr2')), [], 'an ES-DE cover counts as a cover')
+ok(M.needsReviewReasons(byId('nr3')), ['No cover art', 'No genres', 'No release year', 'No platform set'], 'every missing piece is named; a blank genre is none')
+ok(M.needsReviewReasons(byId('nr4')), [], 'Steam/PSN rows are not retro metadata to fix')
+ok(M.needsReviewReasons(byId('nr5')), [], 'a hidden game is not listed')
+ok(M.needsReviewReasons(byId('nr6')), ['Flagged for review', 'No primary platform chosen'], 'the flag and a missing primary')
+ok(M.needsReviewList(nr).map(x => x.game.id), ['nr3', 'nr6'], 'the list is title-ordered and only what needs work')
+
+// ── PlayStation apps (migration 105: Sony's category on the row) ──
+const psnApp = game({ id: 'papp', library: 'playstation', external_ref: 'CUSA1', provider_kind: 'ps5_media_app', play_status: 'playing' })
+const psnGame = game({ id: 'pgame', library: 'playstation', external_ref: 'PPSA1', provider_kind: 'ps5_native_game' })
+const psnOld = game({ id: 'pold', library: 'playstation', external_ref: 'CUSA2' })
+ok([M.isNotAGame(psnApp, null), M.isNotAGame(psnGame, null), M.isNotAGame(psnOld, null)], [true, false, false],
+  'an app by Sony’s category is not a game; a game or an unclassified row is')
+ok(M.deriveGames([psnApp])[0].hidden, true, 'an importer-promoted app (Playing, no dates) is hidden like a Steam tool')
+ok(M.deriveGames([{ ...psnApp, started_at: '2026-01-01T00:00:00Z' }])[0].hidden, false, 'a status the user chose keeps it visible')
+
+// ── Series sort, card meta, studios, series siblings ──
+const sr = M.deriveGames([
+  game({ id: 's3', title: 'Zelda: Link to the Past', series_name: 'Zelda', release_year: 1991, play_status: 'completed' }),
+  game({ id: 's1', title: 'Zelda', series_name: 'zelda', release_year: 1986 }),
+  game({ id: 'n1', title: 'Another game' }),
+  game({ id: 'm1', title: 'Metroid', series_name: 'Metroid', release_year: 1986, developer: 'Nintendo R&D1', publisher: 'Nintendo' }),
+  game({ id: 'm2', title: 'Super Metroid', series_name: 'Metroid', release_year: 1994, developer: 'Nintendo', publisher: 'NINTENDO' }),
+])
+ok(M.sortGames(sr, 'series').map(g => g.id), ['m1', 'm2', 's1', 's3', 'n1'], 'series sort: series together in release order, no series last')
+const pt = mins => `${mins}m`
+ok(M.cardMeta(sr[0], 'year-asc', pt), '1991', 'card meta follows the sort: year')
+ok(M.cardMeta(sr[2], 'recent', pt), 'No recorded play', 'card meta: no session is said plainly')
+ok(M.cardMeta(sr[0], 'series', pt), 'Zelda', 'card meta: the series under Series')
+ok(M.extraVariants(game({ platforms: [plat('snes'), plat('gc')] })), 1, '+N counts the other copies')
+ok(M.studioOptions(sr).slice(0, 2), [{ studio: 'Nintendo', count: 2 }, { studio: 'Nintendo R&D1', count: 1 }], 'studios fold case-insensitively and count a game once (developer and publisher)')
+ok(M.scopeGames(sr, { section: 'library', platform: M.ALL_PLATFORMS, studios: ['nintendo'], search: '' }).map(g => g.id).sort(), ['m1', 'm2'], 'the studio filter matches developer OR publisher')
+const sib = M.seriesSiblings(sr, sr.find(g => g.id === 's1'))
+ok([sib.series, sib.games.map(g => g.id), sib.completed], ['zelda', ['s1', 's3'], 1], 'series siblings: release order, completed count, case-insensitive series')
+ok(M.seriesSiblings(sr, sr.find(g => g.id === 'n1')), null, 'no series → no strip')
+
+// ── Arrow keys over rows of cards (bookcase, cover grid, list) ──
+const N = require('../src/features/games/test-game/components/tgGridNav.ts')
+ok(N.gridStep('ArrowRight', 2, 9, 4), 3, 'Right walks the list')
+ok(N.gridStep('ArrowLeft', 0, 9, 4), 0, 'Left stops at the first card')
+ok(N.gridStep('ArrowDown', 1, 9, 4), 5, 'Down moves one row')
+ok(N.gridStep('ArrowDown', 6, 9, 4), 9, 'Down from a full row onto the shorter last row lands on its last card')
+ok(N.gridStep('ArrowDown', 9, 9, 4), 9, 'Down on the last row stays')
+ok(N.gridStep('ArrowUp', 2, 9, 4), 2, 'Up on the first row stays')
+ok([N.gridStep('Home', 7, 9, 4), N.gridStep('End', 1, 9, 4)], [0, 9], 'Home / End jump to the ends')
+ok([N.gridStep('ArrowDown', 3, 9, 1), N.gridStep('ArrowRight', 3, 9, 1)], [4, null], 'a list (one column) ignores Left / Right')
+ok(N.gridStep('ArrowDown', -1, 9, 4), 4, 'nothing selected: moves from the first card')
+ok([N.gridStep('Enter', 1, 9, 4), N.gridStep('ArrowDown', 0, -1, 4)], [null, null], 'other keys and an empty list do nothing')
+
+// ── Queue insights: finished games still queued, a rough forecast ──
+const qi = M.queueInsights(M.deriveGames([
+  game({ id: 'q1', play_order: 1, play_status: 'playing' }),
+  game({ id: 'q2', play_order: 2, play_status: 'completed', play_seconds: 3600 }),
+  game({ id: 'q3', play_order: 3, play_status: 'dropped' }),
+  game({ id: 'q4', play_order: 4, play_status: 'hidden' }),
+  game({ id: 'c1', play_status: 'completed', play_seconds: 7200 }),
+  game({ id: 'c2', play_status: 'completed', play_seconds: 10800 }),
+]))
+ok([qi.finished.map(g => g.id), qi.toPlay, qi.basis], [['q2', 'q3'], 1, 3], 'finished = completed/dropped still queued; hidden rows take no place')
+ok(qi.forecastSeconds, 7200, 'forecast = still-to-play × the median of completed play time (3,600 · 7,200 · 10,800 → 7,200)')
+ok(M.queueInsights(M.deriveGames([game({ id: 'x', play_order: 1 }), game({ play_status: 'completed', play_seconds: 60 })])).forecastSeconds, null, 'fewer than 3 completed games: no forecast')
+
+// ── No status files as Backlog everywhere (counts, the tab, the section) ──
+const ns = M.deriveGames([game({ id: 'n0', play_status: null }), game({ id: 'n1', play_status: 'backlog' }), game({ id: 'n2', play_status: 'playing' })])
+ok(M.statusCounts(ns).backlog, 2, 'a game with no status counts as Backlog')
+ok(M.applyStatus(ns, 'backlog').map(g => g.id), ['n0', 'n1'], 'the Backlog tab lists it')
+ok(M.scopeGames(ns, { section: 'backlog', platform: M.ALL_PLATFORMS, search: '' }).map(g => g.id), ['n0', 'n1'], 'and so does the Backlog section')
+
+// ── Profile facts under the connections (no extra request) ──
+const CF = require('../src/features/games/test-game/components/tgConnectionFacts.ts')
+ok(CF.psnFacts({ profile: { isPlus: true }, summary: { trophyLevel: 312, progress: 40, tier: 3, earnedTrophies: { bronze: 900, silver: 200, gold: 50, platinum: 12 } } }),
+  ['Trophy level 312', 'PlayStation Plus', '12 platinum · 50 gold · 200 silver · 900 bronze'], 'PSN: level, PS Plus, trophies best first')
+ok(CF.psnFacts({ profile: null, summary: { trophyLevel: '', progress: 0, tier: 1, earnedTrophies: { bronze: 0, silver: 0, gold: 0, platinum: 0 } } }), [], 'PSN: nothing earned, nothing shown')
+ok(CF.steamFacts({ steamid: '1', personaname: 'x', avatarfull: '', personastate: 1, communityvisibilitystate: 3, timecreated: 1_350_000_000 }), ['Online', 'Member since 2012'], 'Steam: presence and account age')
+ok(CF.steamFacts({ steamid: '1', personaname: 'x', avatarfull: '', personastate: 1, communityvisibilitystate: 3, gameextrainfo: 'Hades' }), ['Playing Hades now'], 'Steam: the current game wins over presence')
+
 console.log(`verify-test-game-model: ${n} assertions passed`)

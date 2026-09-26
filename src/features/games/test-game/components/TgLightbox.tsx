@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { Dialog, DialogBackdrop, DialogPanel } from '@headlessui/react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 
 // White-on-black is the photo-overlay role (CLAUDE.md → Dark Mode): the
 // scrim is black in both themes, so its controls are not theme tokens.
@@ -36,6 +37,7 @@ export function TgLightbox({ images, index, onClose, onIndex }: Props) {
   const count = images.length
   const i = Math.min(index ?? lastIndex ?? 0, Math.max(0, count - 1))
   const open = index != null && count > 0
+  useHistoryDismiss(open, onClose)
   const many = count > 1
 
   function go(step: number) {

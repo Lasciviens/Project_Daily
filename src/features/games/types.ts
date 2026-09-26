@@ -102,6 +102,13 @@ export interface Game {
   /** Mirrored artwork, ScreenScraper media type → public Storage URL
    *  (migration 099). Optional: absent before 099 and `{}` for most rows. */
   media?:                Record<string, string> | null
+  /** The ScreenScraper game id this row was matched to (migration 104). */
+  ss_jeu_id?:            string | null
+  ss_scraped_at?:        string | null
+  /** Migration 105 — the provider's own classification (PlayStation `category`). */
+  provider_kind?: string | null
+  /** Migration 105 — the provider's first-played timestamp (PlayStation). */
+  first_played_at?: string | null
   esde_playcount:        number | null
   esde_last_played:      string | null
   esde_playtime_seconds: number | null
@@ -187,6 +194,6 @@ export interface GamePlatformInput {
   version_title?:     string | null
 }
 
-// The Stats panel's computed shape lives in gameStats.ts (GameStatsShape) —
-// it is derived from raw rows under the user's chosen window/library filters,
-// not a fetch result, so it belongs with the computation.
+// The stats shape Home's Games widget shows lives in gameStats.ts
+// (GameStatsShape) — derived from raw rows, not a fetch result, so it belongs
+// with the computation.

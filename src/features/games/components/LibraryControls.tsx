@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useSetPlayStatus, useUpdateGame } from '../hooks/useGames'
-import { STATUS_LABEL, STATUSES, TIER_COLOR, TIERS } from '../gamesMeta'
-import { formatPlaytime, playStatsOf } from '../gameStats'
-import type { Game, PlayStatus, Tier } from '../types'
+import { STATUS_LABEL, STATUSES } from '../gamesMeta'
+import { formatPlaytimeFromSeconds, playStatsOf } from '../gameStats'
+import type { Game, PlayStatus } from '../types'
 
-// The personal side of a game — status, tier, rating, flags, notes — for the
+// The personal side of a game — status, rating, flags, notes — for the
 // Steam and PlayStation modals.
 //
 // Those two tabs used to be pure passthroughs: you could read Sony's and
@@ -63,19 +63,6 @@ export function LibraryControls({ entry, notImportedHint }: {
 
       <div className="flex flex-wrap gap-4">
         <div>
-          <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">Tier</p>
-          <div className="flex flex-wrap gap-1">
-            {TIERS.map(t => (
-              <button key={t} type="button"
-                onClick={() => patch({ tier: (entry.tier === t ? null : t) as Tier | null })}
-                className={`min-w-[36px] min-h-[36px] text-xs font-bold rounded-lg border transition-colors ${
-                  entry.tier === t ? (TIER_COLOR[t] ?? 'bg-ink-200') + ' border-transparent' : 'bg-cream-50 text-ink-500 border-ink-200 hover:border-accent-300'
-                }`}>{t}</button>
-            ))}
-          </div>
-        </div>
-
-        <div>
           <p className="text-[11px] font-semibold text-ink-400 uppercase tracking-wide mb-1.5">My rating</p>
           <div className="flex flex-wrap gap-1">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(r => (
@@ -130,9 +117,9 @@ export function LibraryControls({ entry, notImportedHint }: {
           className="w-full text-sm px-3 py-2 rounded-lg border border-ink-200 bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400" />
       </div>
 
-      {formatPlaytime(play.seconds) && (
+      {formatPlaytimeFromSeconds(play.seconds) && (
         <p className="text-[11px] text-ink-400">
-          ⏱ Played {formatPlaytime(play.seconds)} in total{play.count != null ? ` · launched ${play.count}×` : ''}
+          ⏱ Played {formatPlaytimeFromSeconds(play.seconds)} in total{play.count != null ? ` · launched ${play.count}×` : ''}
         </p>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import {
   useGameDetail, useUpdateGame, useDeleteGame, useAddToQueue, useRemoveFromQueue,
@@ -7,12 +8,14 @@ import {
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { ScrapeGameButton } from './ScrapeGameButton'
-import { CoverImg, CoverBackdrop, TierBadge, RatingBadge, SystemChip } from './gameCardKit'
+import { useHistoryDismiss } from '../../../shared/hooks/useHistoryDismiss'
+import { useTestGameStore } from '../test-game/testGameStore'
+import { CoverImg, CoverBackdrop, RatingBadge, SystemChip } from './gameCardKit'
 import { systemMeta } from '../systemMeta'
-import { formatPlaytime, playStatsOf } from '../gameStats'
+import { formatPlaytimeFromSeconds, playStatsOf } from '../gameStats'
+import { dateInputToIso, diffPatch, isoToDateInput } from '../api/gameEdit'
 import {
-  STATUS_LABEL, TIER_COLOR, TIERS, STATUSES,
+  STATUS_LABEL, STATUSES,
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
 } from '../gamesMeta'
 import type { Game, GamePatch, GamePlatform, GamePlatformInput, PlayStatus } from '../types'
@@ -34,15 +37,6 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-// A date input wants "yyyy-MM-dd"; the column stores a full timestamp — this
-// truncates for the input and expands back to midnight-UTC on save. Good
-// enough for a "which day" fact; nobody needs hour precision on a play date.
-function isoToDateInput(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : ''
-}
-function dateInputToIso(v: string): string | null {
-  return v ? new Date(`${v}T00:00:00`).toISOString() : null
-}
 
 // ─── Quick status switch — a one-tap change, no "enter edit mode" detour ────
 
@@ -72,7 +66,7 @@ function StatusQuickBar({ game }: { game: Game }) {
 // ES-DE syncs against, which is the only way to tell two same-system variants
 // apart when their titles match.
 function PlatformDetails({ platform }: { platform: GamePlatform }) {
-  const playtime = formatPlaytime(platform.esde_playtime_seconds)
+  const playtime = formatPlaytimeFromSeconds(platform.esde_playtime_seconds)
   const bits: React.ReactNode[] = []
   // Every figure is labelled. An emoji alone does not say what the number is.
   if (platform.esde_playcount != null && platform.esde_playcount > 0) bits.push(<span key="pc">▶ Launched {platform.esde_playcount}×</span>)
@@ -202,7 +196,6 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
   const [fanartUrl, setFanartUrl]   = useState(game.fanart_url ?? '')
 
   const [status, setStatus]     = useState(game.play_status)
-  const [tier, setTier]         = useState(game.tier ?? '')
   const [rating, setRating]     = useState(game.rating?.toString() ?? '')
   const [iconic, setIconic]     = useState(game.is_iconic)
   const [coop, setCoop]         = useState(game.is_coop)
@@ -218,9 +211,11 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
     return arr.length ? arr : null
   }
 
-  function save() {
+  // The patch the form describes right now. The same builder runs once on
+  // open (`initial`), and Save sends only what differs — never the whole form.
+  function build(): GamePatch {
     const ratingNum = rating !== '' ? Number(rating) : null
-    onSave(game.id, {
+    return {
       title:        title.trim() || game.title,
       release_year: releaseYear.trim() ? Number(releaseYear) : null,
       publisher:    publisher.trim() || null,
@@ -236,7 +231,6 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
       screenshot_url:    screenshotUrl.trim() || null,
       fanart_url:        fanartUrl.trim() || null,
       play_status:  status,
-      tier:         (tier || null) as GamePatch['tier'],
       rating:       ratingNum != null && !isNaN(ratingNum) ? Math.min(10, Math.max(0, ratingNum)) : null,
       is_iconic:    iconic,
       is_coop:      coop,
@@ -246,7 +240,14 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
       play_notes:   notes.trim() || null,
       game_log:     gameLog.trim() || null,
       needs_review: needsReview,
-    })
+    }
+  }
+  const [initial] = useState(build)
+
+  function save() {
+    const patch = diffPatch(initial as Record<string, unknown>, build() as Record<string, unknown>) as GamePatch
+    if (!Object.keys(patch).length) { onCancel(); return }
+    onSave(game.id, patch)
   }
 
   return (
@@ -336,13 +337,6 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
             </select>
           </div>
           <div>
-            <label className={labelCls}>Tier</label>
-            <select value={tier} onChange={e => setTier(e.target.value)} className={fieldCls}>
-              <option value="">— None —</option>
-              {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
-            </select>
-          </div>
-          <div>
             <label className={labelCls}>My Rating (0–10)</label>
             <input type="number" min={0} max={10} step={0.5} value={rating} onChange={e => setRating(e.target.value)} placeholder="—" className={fieldCls} />
           </div>
@@ -407,10 +401,17 @@ interface Props {
   onClose: () => void
   /** Open straight into the edit form (the Test-Game page's "Edit" button). */
   initialEditing?: boolean
+  /** Extra classes on the dialog root — the Games page passes its own theme scope. */
+  className?: string
 }
 
-export function GameDetailModal({ gameId, onClose, initialEditing = false }: Props) {
-  const { data: game, isLoading } = useGameDetail(gameId)
+export function GameDetailModal({ gameId, onClose, initialEditing = false, className = '' }: Props) {
+  // Back (Android, the iOS edge swipe, the browser) closes this rather than leaving the page.
+  useHistoryDismiss(true, onClose)
+  // Opened straight into the form, it waits for a fresh read: a cached detail
+  // can predate a status/rating/scrape write made on the page since.
+  const { data: game, isLoading, isFetchedAfterMount } = useGameDetail(gameId, initialEditing ? { refetchOnMount: 'always' } : undefined)
+  const freshForEdit = isFetchedAfterMount
   const update = useUpdateGame()
   const del = useDeleteGame()
   const addToQueue = useAddToQueue()
@@ -441,6 +442,9 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false }: Pro
   // Cancel return to the page; opened as the full record, they only close the
   // form (/games).
   const finishEditing = initialEditing ? onClose : () => setEditing(false)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const openScrape = useTestGameStore(s => s.openScrape)
 
   function handleSave(id: string, patch: GamePatch) {
     update.mutate({ id, patch }, { onSuccess: finishEditing })
@@ -452,7 +456,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false }: Pro
 
   return (
     <>
-    <Dialog open onClose={onClose} className="relative z-40">
+    <Dialog open onClose={onClose} className={`relative z-40 ${className}`}>
       <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <DialogPanel transition className="w-full sm:max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto bg-cream-50 rounded-t-2xl sm:rounded-2xl border border-ink-200 shadow-2xl transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
@@ -480,7 +484,6 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false }: Pro
               <CoverBackdrop url={game.primary_cover_url} />
               <div className="relative flex-shrink-0 w-24 sm:w-28 rounded-xl overflow-hidden border border-ink-200 bg-ink-100 self-start shadow-md" style={{ aspectRatio: '3/4' }}>
                 <CoverImg url={game.primary_cover_url} title={game.title} />
-                <span className="absolute top-1 left-1"><TierBadge tier={game.tier} size="sm" /></span>
                 <span className="absolute top-1 right-1"><RatingBadge rating={game.rating} size="sm" /></span>
                 <span className="absolute inset-x-1 bottom-1 flex"><SystemChip game={game} size="sm" /></span>
               </div>
@@ -494,7 +497,6 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false }: Pro
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {game.tier && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TIER_COLOR[game.tier] ?? 'bg-ink-200'}`}>Tier {game.tier}</span>}
                   {game.is_iconic && <span className="text-sm">⭐</span>}
                   {game.is_coop && <span className="text-xs font-bold bg-cyan-500 text-white px-2 py-0.5 rounded-full">2P</span>}
                   {game.needs_review && <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Needs review</span>}
@@ -529,15 +531,18 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false }: Pro
                     {game.play_order != null ? `✕ Remove from Queue (#${game.play_order})` : '🎮 Add to Queue'}
                   </button>
                   <button onClick={() => setPlanOpen(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
-                  <ScrapeGameButton gameId={game.id} title={game.title} className="font-semibold" />
+                  <button onClick={() => { onClose(); openScrape(game.id); if (location.pathname !== '/games') navigate('/games') }} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors">✨ Scrape</button>
                   <button onClick={() => setConfirmDelete(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-red-100 text-ink-500 hover:text-red-600 transition-colors">🗑 Delete</button>
                 </div>
               </div>
             </div>
 
-            {editing && (
-              <EditPanel game={game} onSave={handleSave} onCancel={finishEditing} saving={update.isPending} />
-            )}
+            {editing && (initialEditing && !freshForEdit ? (
+              <div className="p-5 border-t border-ink-100"><div className="h-24 rounded-xl bg-cream-200 animate-pulse" aria-label="Loading the latest version" /></div>
+            ) : (
+              // Keyed: a form for another game never inherits this one's state.
+              <EditPanel key={game.id} game={game} onSave={handleSave} onCancel={finishEditing} saving={update.isPending} />
+            ))}
 
             <div className="p-5 space-y-5">
               <Section title="Platforms">
@@ -588,9 +593,9 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false }: Pro
                 <Section title={`Play Stats (${game.library === 'steam' ? 'Steam' : game.library === 'playstation' ? 'PlayStation' : 'ES-DE'})`}>
                   <div className="flex flex-wrap gap-3 text-xs text-ink-600">
                     {playStatsOf(game).count != null && <span className="font-semibold">▶ Launched {playStatsOf(game).count}×</span>}
-                    {/* formatPlaytime, not seconds/3600 — a 40-minute session used
+                    {/* formatPlaytimeFromSeconds, not seconds/3600 — a 40-minute session used
                         to print "0h", which reads as "never played". */}
-                    {formatPlaytime(playStatsOf(game).seconds) && <span className="font-semibold">⏱ Played {formatPlaytime(playStatsOf(game).seconds)} in total</span>}
+                    {formatPlaytimeFromSeconds(playStatsOf(game).seconds) && <span className="font-semibold">⏱ Played {formatPlaytimeFromSeconds(playStatsOf(game).seconds)} in total</span>}
                     {playStatsOf(game).last && <span>🕐 Last played {fmtDate(playStatsOf(game).last)}</span>}
                     {game.platforms.length > 1 && (
                       <InfoBubble label="Across variants?">Summed across every variant of this game. Each platform row below carries its own figures.</InfoBubble>

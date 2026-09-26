@@ -31,7 +31,8 @@ function detail(kind: TgaTile, game: TgGame): string {
     const h = hoursOf(game)
     if (h) parts.push(`${h} played`)
   } else {
-    parts.push(last ? `last played ${formatDay(last)}` : 'never played')
+    const h = hoursOf(game)
+    parts.push(last ? `last played ${formatDay(last)}` : h ? `${h} played` : 'no recorded play')
   }
   return parts.join(' · ')
 }
@@ -51,7 +52,7 @@ export function TgAnalyticsDrillList({ kind, games, onPick }: {
             onClick={() => onPick(game.id)}
             className="grid min-h-[52px] w-full grid-cols-[1.4rem_30px_minmax(0,1fr)_auto] items-center gap-x-3 rounded-[10px] px-2 py-1.5 text-left transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:none)]:active:bg-[var(--tg-hover)]"
           >
-            <span className="text-right text-[11.5px] font-semibold tabular-nums text-[var(--tg-faint)]">{i + 1}</span>
+            <span className="text-right text-[11.5px] font-semibold tabular-nums text-[var(--tg-muted)]">{i + 1}</span>
             <span className={`${FRAME} h-10 w-[30px] rounded-[4px]`}>
               <TgCover game={game} mode="contain" />
             </span>

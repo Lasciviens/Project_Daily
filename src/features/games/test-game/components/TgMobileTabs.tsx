@@ -5,7 +5,7 @@ import type { TgSection } from '../testGameModel'
 import { TgMobileGamepad } from './TgMobileGlyph'
 import { TgMobileMoreSheet } from './TgMobileMoreSheet'
 
-const MORE_SECTIONS: TgSection[] = ['completed', 'backlog', 'analytics', 'advanced']
+const MORE_SECTIONS: TgSection[] = ['completed', 'backlog', 'analytics', 'scrape', 'advanced']
 
 function TabButton({ label, active, onClick, children, opensSheet = false }: {
   label: string

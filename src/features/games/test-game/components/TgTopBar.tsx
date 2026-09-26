@@ -1,12 +1,13 @@
-import { ArrowUpDown, ListFilter, Tags } from 'lucide-react'
+import { ArrowUpDown, Building2, ListFilter, Tags } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import {
-  DEFAULT_SORT, SORT_LABEL, STATUS_FILTERS, STATUS_TEXT, multiLabel,
+  DEFAULT_SORT, SORT_LABEL, STATUS_FILTERS, STATUS_TEXT, genreKey, multiLabel,
   type StatusCounts, type TgSort, type TgStatusFilter,
 } from '../testGameModel'
 import type { PlayStatus } from '../../types'
 import { TgDropdown, type TgOption } from './TgDropdown'
 import { TgMultiDropdown } from './TgMultiDropdown'
+import { TgRandomButton } from './TgRandomButton'
 import { TgTopBarSearch } from './TgTopBarSearch'
 import { TgTopBarViews } from './TgTopBarViews'
 import { TgUserMenu } from './TgUserMenu'
@@ -25,8 +26,14 @@ const PILL = '!bg-[var(--tg-panel)] max-lg:!gap-1.5 max-lg:!px-2 lg:min-w-[104px
  * account menu on Analytics and Advanced).
  */
 export function TgTopBar({
-  genres, statusCounts, showStatus, showViews, showSearch = true, showGenre = true, showSort = true,
+  genres, studios = [], statusCounts, showStatus, showViews, showSearch = true, showGenre = true, showSort = true, onRandom, randomCount,
 }: {
+  /** How many games Random picks from (the tooltip says it). */
+  randomCount?: number
+  /** Developer/publisher options (the Studio filter). */
+  studios?: { studio: string; count: number }[]
+  /** Opens a random game from the visible list; absent when the list is empty. */
+  onRandom?: () => void
   genres: { genre: string; count: number }[]
   statusCounts: StatusCounts
   showStatus: boolean
@@ -39,6 +46,8 @@ export function TgTopBar({
   const setStatuses = useTestGameStore(s => s.setStatuses)
   const pickedGenres = useTestGameStore(s => s.genres)
   const setGenres = useTestGameStore(s => s.setGenres)
+  const pickedStudios = useTestGameStore(s => s.studios)
+  const setStudios = useTestGameStore(s => s.setStudios)
   const sort = useTestGameStore(s => s.sort)
   const setSort = useTestGameStore(s => s.setSort)
 
@@ -47,14 +56,17 @@ export function TgTopBar({
   }))
 
   // A genre picked on another platform stays selectable (at 0) so it can be cleared.
-  const missing = pickedGenres.filter(p => !genres.some(g => g.genre === p)).map(genre => ({ genre, count: 0 }))
+  const missing = pickedGenres.filter(p => !genres.some(g => genreKey(g.genre) === genreKey(p))).map(genre => ({ genre, count: 0 }))
   const genreOptions: TgOption<string>[] = [...genres, ...missing].map(g => ({ value: g.genre, label: g.genre, count: g.count }))
+  const missingStudios = pickedStudios.filter(p => !studios.some(x => genreKey(x.studio) === genreKey(p))).map(studio => ({ studio, count: 0 }))
+  const studioOpts: TgOption<string>[] = [...studios, ...missingStudios].map(x => ({ value: x.studio, label: x.studio, count: x.count }))
 
   return (
     // The top inset keeps an installed iPad PWA's status bar off the controls,
     // the right one a landscape phone's notch off the avatar.
     <div className="relative z-10 flex h-[calc(4rem+env(safe-area-inset-top))] shrink-0 items-center gap-1.5 pl-5 pr-[max(1.25rem,env(safe-area-inset-right))] pt-[env(safe-area-inset-top)] lg:gap-2.5 xl:pl-6 xl:pr-[max(1.5rem,env(safe-area-inset-right))]">
       {showSearch && <TgTopBarSearch className="min-w-[96px] max-w-[460px] flex-1" />}
+      {showSearch && <TgRandomButton onPick={onRandom} count={randomCount} className="-ml-0.5 lg:ml-0" />}
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:gap-2.5">
         {showStatus && (
@@ -81,6 +93,19 @@ export function TgTopBar({
             align="end"
             className={`${PILL} lg:max-w-[140px] xl:max-w-[180px]`}
             icon={<Tags className={ICON} strokeWidth={2} />}
+          />
+        )}
+        {showGenre && studioOpts.length > 0 && (
+          <TgMultiDropdown
+            values={pickedStudios}
+            options={studioOpts}
+            allLabel="All studios"
+            onChange={setStudios}
+            buttonLabel={multiLabel(pickedStudios, 'All Studios', 'studios')}
+            ariaLabel="Filter by developer or publisher"
+            align="end"
+            className={`${PILL} max-lg:hidden lg:max-w-[140px] xl:max-w-[180px]`}
+            icon={<Building2 className={ICON} strokeWidth={2} />}
           />
         )}
         {showSort && (

@@ -1,5 +1,5 @@
 import { CalendarX2 } from 'lucide-react'
-import { TGA_CARD, TGA_GRID, TGA_ORDER_RATINGS, TGA_SPAN_RECENT, TGA_SPAN_WIDE } from './tgAnalyticsFormat'
+import { TGA_CARD, TGA_GRID, TGA_SPAN_WIDE } from './tgAnalyticsFormat'
 
 const BONE = 'tg-skeleton rounded-md'
 
@@ -35,6 +35,8 @@ export function TgAnalyticsSkeleton() {
       <div className="flex gap-2">
         {[76, 118, 90, 104].map(w => <div key={w} className={`${BONE} h-[34px] rounded-full`} style={{ width: w }} />)}
       </div>
+      {/* The Overview · Play · Collection · Data health strip. */}
+      <div className={`${BONE} h-[48px] w-full rounded-[12px] @[34rem]:w-[27rem]`} />
       <div className="grid grid-cols-2 gap-3 @xl:grid-cols-3 @[62rem]:grid-cols-6 @[62rem]:gap-4">
         {Array.from({ length: 6 }, (_, i) => (
           <div key={i} className={`${TGA_CARD} p-4`}>
@@ -47,11 +49,8 @@ export function TgAnalyticsSkeleton() {
       <div className={TGA_GRID}>
         <CardBones chart className={TGA_SPAN_WIDE} />
         <CardBones rows={5} />
-        <CardBones chart className={TGA_ORDER_RATINGS} />
-        <CardBones rows={7} />
-        <CardBones rows={8} />
-        <CardBones rows={7} />
-        <CardBones rows={4} className={TGA_SPAN_RECENT} />
+        <CardBones rows={6} />
+        <CardBones rows={4} />
       </div>
     </div>
   )

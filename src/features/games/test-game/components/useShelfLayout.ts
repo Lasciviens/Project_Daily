@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 
 // Bookcase geometry for TgShelf (and its loading skeleton), plus the two small
 // DOM hooks the three game views share (element size, reveal the selected card).
@@ -124,19 +124,47 @@ export function shelfVars(layout: ShelfLayout): Record<string, string> {
  * that makes it disappear again.
  */
 export function useElementSize(el: HTMLElement | null, box: 'content' | 'border' = 'content'): ElementSize | null {
-  const [size, setSize] = useState<ElementSize | null>(null)
-  useEffect(() => {
-    if (!el) return
-    const ro = new ResizeObserver(([entry]) => {
-      const b = box === 'border' ? entry.borderBoxSize?.[0] : undefined
-      const w = Math.round(b ? b.inlineSize : box === 'border' ? el.offsetWidth : entry.contentRect.width)
-      const h = Math.round(b ? b.blockSize : box === 'border' ? el.offsetHeight : entry.contentRect.height)
-      setSize(prev => (prev && prev.w === w && prev.h === h ? prev : { w, h }))
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [el, box])
-  return size
+  const store = useMemo(() => (el ? sizeStore(el, box) : null), [el, box])
+  return useSyncExternalStore(store ? store.subscribe : noSubscribe, store ? store.get : noSize, noSize)
+}
+
+const noSubscribe = () => () => {}
+const noSize = () => null
+
+/**
+ * An element's size as an external store: read synchronously on first use —
+ * the element is mounted by then, so the shelf is laid out before the first
+ * paint instead of painting an empty frame and waiting for the observer —
+ * then kept current by a ResizeObserver.
+ */
+function sizeStore(el: HTMLElement, box: 'content' | 'border') {
+  let size: ElementSize | null = null
+  const set = (w: number, h: number) => {
+    w = Math.round(w); h = Math.round(h)
+    if (size && size.w === w && size.h === h) return false
+    size = { w, h }
+    return true
+  }
+  const read = () => {
+    if (box === 'border') return set(el.offsetWidth, el.offsetHeight)
+    const cs = getComputedStyle(el)
+    const px = (v: string) => parseFloat(v) || 0
+    return set(el.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight), el.clientHeight - px(cs.paddingTop) - px(cs.paddingBottom))
+  }
+  return {
+    get: () => { if (!size) read(); return size },
+    subscribe: (onChange: () => void) => {
+      const ro = new ResizeObserver(([entry]) => {
+        const b = box === 'border' ? entry.borderBoxSize?.[0] : undefined
+        const changed = b
+          ? set(b.inlineSize, b.blockSize)
+          : box === 'border' ? set(el.offsetWidth, el.offsetHeight) : set(entry.contentRect.width, entry.contentRect.height)
+        if (changed) onChange()
+      })
+      ro.observe(el)
+      return () => ro.disconnect()
+    },
+  }
 }
 
 /**

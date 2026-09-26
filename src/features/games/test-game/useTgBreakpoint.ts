@@ -7,7 +7,7 @@ import { useSyncExternalStore } from 'react'
 //
 //   mobile  < 768   phone header, 2-col grid, bottom tabs, full-screen detail
 //   tablet  768–1279 sidebar + content, detail slides in from the right
-//   desktop ≥ 1280  sidebar + content + permanent detail panel (the design)
+//   desktop ≥ 1280  sidebar + content, the same overlay detail (wider)
 //
 // A phone turned sideways (e.g. 852×393) is wide enough for "tablet" but has
 // no room for a sidebar plus a top bar under a notch — a touch screen shorter

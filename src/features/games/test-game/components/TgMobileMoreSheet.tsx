@@ -1,19 +1,18 @@
-import type { ComponentType } from 'react'
+import { useState, type ComponentType } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Monitor, Moon, SlidersHorizontal, Sun,
+  Archive, ArrowLeft, ChartColumn, CircleCheckBig, Plus, SlidersHorizontal, Wand2,
   type LucideProps,
 } from 'lucide-react'
-import { useThemeStore, type ThemePreference } from '../../../../app/store'
 import { useTestGameStore } from '../testGameStore'
 import type { TgSection } from '../testGameModel'
 import { TgMobileSheet } from './TgMobileSheet'
-
-const THEMES: { value: ThemePreference; label: string; Icon: ComponentType<LucideProps> }[] = [
-  { value: 'light', label: 'Light', Icon: Sun },
-  { value: 'dark', label: 'Dark', Icon: Moon },
-  { value: 'system', label: 'System', Icon: Monitor },
-]
+import { TgThemeSwitch } from './TgThemeSwitch'
+import { TgConnections } from './TgConnections'
+import { TgPsnRenewDialog } from './TgPsnRenewDialog'
+import { TgRefreshIcon } from './TgRefreshLibrary'
+import { useRefreshLibraryAction } from './useRefreshLibraryAction'
+import { useTgAddGame } from './tgAddGame'
 
 const ROW = 'flex w-full min-h-[48px] items-center gap-3 rounded-xl px-3 text-left text-[15px] font-medium transition-colors'
 // Hover only where a pointer can hover: on touch, :hover sticks to whatever was
@@ -24,19 +23,21 @@ const ROW_IDLE = 'active:bg-[var(--tg-hover)] [@media(hover:hover)]:hover:bg-[va
 export function TgMobileMoreSheet({ open, onClose, counts }: {
   open: boolean
   onClose: () => void
-  counts: { completed: number; backlog: number }
+  counts: { completed: number; backlog: number; review?: number }
 }) {
   const navigate = useNavigate()
   const section = useTestGameStore(s => s.section)
   const setSection = useTestGameStore(s => s.setSection)
-  const theme = useThemeStore(s => s.theme)
-  const setTheme = useThemeStore(s => s.setTheme)
+  const openAddGame = useTgAddGame(s => s.setOpen)
+  const [renewOpen, setRenewOpen] = useState(false)
+  const refresh = useRefreshLibraryAction()
 
   const items: { key: TgSection; label: string; Icon: ComponentType<LucideProps>; count?: number }[] = [
     { key: 'completed', label: 'Completed', Icon: CircleCheckBig, count: counts.completed },
     { key: 'backlog', label: 'Backlog', Icon: Archive, count: counts.backlog },
     { key: 'analytics', label: 'Analytics', Icon: ChartColumn },
-    { key: 'advanced', label: 'Advanced tools', Icon: SlidersHorizontal },
+    { key: 'scrape', label: 'Scrape (ScreenScraper)', Icon: Wand2 },
+    { key: 'advanced', label: 'Advanced tools', Icon: SlidersHorizontal, count: counts.review || undefined },
   ]
 
   function go(key: TgSection) {
@@ -81,42 +82,37 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
 
       <div className="my-3 h-px bg-[var(--tg-border)]" />
 
-      <h3 className="tg-section-label mb-2 px-1">Theme</h3>
-      <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-1 rounded-xl bg-[var(--tg-panel-2)] p-1">
-        {THEMES.map(({ value, label, Icon }) => {
-          const active = theme === value
-          return (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => setTheme(value)}
-              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-lg text-[14px] font-medium transition-colors ${
-                active
-                  ? 'bg-[var(--tg-panel)] text-[var(--tg-accent)] shadow-[shadow:var(--tg-shadow)]'
-                  : 'text-[var(--tg-muted)]'
-              }`}
-            >
-              <Icon size={16} strokeWidth={1.9} aria-hidden />
-              {label}
-            </button>
-          )
-        })}
-      </div>
+      <button
+        type="button"
+        onClick={() => { onClose(); openAddGame(true) }}
+        className={`${ROW} text-[var(--tg-text)] ${ROW_IDLE}`}
+      >
+        <Plus size={19} strokeWidth={1.8} aria-hidden className="shrink-0" />
+        Add game
+      </button>
 
       <div className="my-3 h-px bg-[var(--tg-border)]" />
 
-      {/* Both replace the sheet's own history entry, so Back from the
-          destination returns here instead of to a stale overlay entry. */}
-      <button
-        type="button"
-        onClick={() => navigate('/games-legacy', { replace: true })}
-        className={`${ROW} text-[var(--tg-text-2)] ${ROW_IDLE}`}
-      >
-        <History size={19} strokeWidth={1.8} aria-hidden className="shrink-0" />
-        Legacy Games page
+      <div className="flex items-center justify-between gap-3 px-1">
+        <h3 className="tg-section-label">Theme</h3>
+        <TgThemeSwitch />
+      </div>
+
+      <h3 className="tg-section-label mb-1 mt-4 px-1">Connections</h3>
+      {/* The sheet's body only mounts while it is open, so these fetch on open only. */}
+      <TgConnections onRenewPsn={() => setRenewOpen(true)} />
+      {/* Nested inside the sheet's dialog so Headless UI stacks it on top. */}
+      <TgPsnRenewDialog open={renewOpen} onClose={() => setRenewOpen(false)} />
+
+      <div className="my-3 h-px bg-[var(--tg-border)]" />
+
+      <button type="button" onClick={() => { void refresh.run() }} className={`${ROW} text-[var(--tg-text-2)] ${ROW_IDLE}`}>
+        <TgRefreshIcon busy={refresh.busy} size={19} />
+        Refresh library
       </button>
+
+      {/* Replaces the sheet's own history entry, so Back from Home returns
+          here instead of to a stale overlay entry. */}
       <button
         type="button"
         onClick={() => navigate('/home', { replace: true })}

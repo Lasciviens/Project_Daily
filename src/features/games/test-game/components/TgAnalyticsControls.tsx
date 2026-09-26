@@ -14,6 +14,8 @@ interface Props {
   providersLoading: boolean
   providerError: boolean
   onRetryProviders: () => void
+  /** The page's phone layout (a landscape phone too): always the two dropdowns — six pills filled its short screen. */
+  compact?: boolean
 }
 
 const COUNT = 'tg-tab-count inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-[color-mix(in_srgb,currentColor_12%,transparent)] px-1.5'
@@ -30,7 +32,7 @@ export function TgAnalyticsControls(p: Props) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="hidden flex-wrap items-center gap-x-5 gap-y-2.5 @[34rem]:flex">
+      <div className={`hidden flex-wrap items-center gap-x-5 gap-y-2.5 ${p.compact ? '' : '@[34rem]:flex'}`}>
         <div role="group" aria-label="Time period" className="flex flex-wrap gap-2">
           {TGA_WINDOWS.map(w => (
             <button
@@ -57,7 +59,7 @@ export function TgAnalyticsControls(p: Props) {
         )}
       </div>
 
-      <div className="flex gap-2.5 @[34rem]:hidden">
+      <div className={`flex gap-2.5 ${p.compact ? '' : '@[34rem]:hidden'}`}>
         <TgDropdown
           value={p.period} onChange={p.onPeriod} ariaLabel="Time period" fullWidth className="flex-1"
           buttonLabel={TGA_WINDOWS.find(w => w.key === p.period)?.label ?? ''}

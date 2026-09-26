@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useRemoveFromQueue, useReorderQueue } from '../../hooks/useGames'
+import { useRemoveFromQueue, useReorderQueue, useSetPlayStatus } from '../../hooks/useGames'
 import type { TgGame } from '../testGameModel'
-import { displayRanks, effectiveOrder, swapUpdates, withOrderOverrides } from './TgQueueViewOrder'
+import { displayRanks, effectiveOrder, moveUpdates, withOrderOverrides } from './TgQueueViewOrder'
+import { useQueueDrag } from './TgQueueViewDrag'
 import { TgQueueViewRow } from './TgQueueViewRow'
 
 interface Props {
@@ -14,12 +15,15 @@ interface Props {
   onSelect: (id: string) => void
   /** Tablet/desktop: fill the column and scroll inside it. The phone lets the page scroll. */
   fill: boolean
+  /** Plan a session in the calendar (the shell's planner). */
+  onPlan?: (game: TgGame) => void
 }
 
-export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props) {
+export function TgQueueView({ games, ranks, selectedId, onSelect, fill, onPlan }: Props) {
   const qc = useQueryClient()
   const { mutateAsync: reorder } = useReorderQueue()
   const { mutate: removeFromQueue } = useRemoveFromQueue()
+  const { mutate: setPlayStatus } = useSetPlayStatus()
   const [overrides, setOverrides] = useState<Record<string, number>>({})
   // Moves are written one after another: two parallel writes to the same row
   // can land in either order and leave two rows on one slot.
@@ -39,10 +43,10 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
     row?.scrollIntoView({ block: 'nearest' })
   }, [selectedId])
 
-  const move = useCallback((id: string, dir: -1 | 1) => {
-    const list = effectiveOrder(ordered, overrides)
-    const from = list.findIndex(g => g.id === id)
-    const updates = from === -1 ? null : swapUpdates(list, from, from + dir)
+  // Drag and drop and Move up / Move down share one write path. The overrides
+  // put the rows in their new order at once; the writes follow in the background.
+  const reorderTo = useCallback((from: number, to: number) => {
+    const updates = moveUpdates(effectiveOrder(ordered, overrides), from, to)
     if (!updates) return
     setOverrides(prev => ({ ...prev, ...Object.fromEntries(updates.map(u => [u.id, u.play_order])) }))
 
@@ -55,10 +59,10 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
         if (!w.failed) {
           try { await reorder(updates) } catch { w.failed = true } // toasted and logged by the hook
         }
-        // Refresh once, after the last queued move. `cancelRefetch: false` joins
-        // the refetch the mutation already started instead of restarting it; the
-        // overrides stay until it lands, so the rows never snap back.
-        if (w.queued === 1) await qc.invalidateQueries({ queryKey: ['games'] }, { cancelRefetch: false })
+        // Each write patches every cached read itself (useReorderQueue), so
+        // nothing is refetched per move. After a failure the rest were
+        // dropped: one full refresh, after the last queued move, shows the truth.
+        if (w.queued === 1 && w.failed) await qc.invalidateQueries({ queryKey: ['games'] }, { cancelRefetch: false })
       })
       .finally(() => {
         w.queued -= 1
@@ -66,13 +70,22 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
       })
   }, [ordered, overrides, reorder, qc])
 
+  const move = useCallback((id: string, dir: -1 | 1) => {
+    const from = ordered.findIndex(g => g.id === id)
+    if (from !== -1) reorderTo(from, from + dir)
+  }, [ordered, reorderTo])
+  const { dragId, onPointerDown } = useQueueDrag(listRef, reorderTo)
+
   const remove = useCallback((id: string) => removeFromQueue(id), [removeFromQueue])
+  // Through the status write that stamps started_at (not a bare update).
+  const play = useCallback((id: string) => setPlayStatus({ id, status: 'playing' }), [setPlayStatus])
 
   return (
     <ol
       ref={listRef}
       aria-label="Play queue"
-      className={`tg-panel space-y-1 p-1.5 sm:p-2 ${fill ? 'tg-scroll-y h-full' : ''}`}
+      // Capped: on a monitor a full-width row put a title ~1400px from its own buttons.
+      className={`tg-queue tg-panel w-full max-w-[72rem] space-y-1 p-1.5 sm:p-2 ${fill ? 'tg-scroll-y h-full' : ''} ${dragId ? 'is-dragging' : ''}`}
     >
       {ordered.map((g, i) => (
         <TgQueueViewRow
@@ -80,11 +93,15 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
           game={g}
           position={shownRanks.get(g.id) ?? i + 1}
           selected={g.id === selectedId}
+          dragging={g.id === dragId}
           canMoveUp={i > 0}
           canMoveDown={i < ordered.length - 1}
           onSelect={onSelect}
           onMove={move}
           onRemove={remove}
+          onDragStart={onPointerDown}
+          onPlay={play}
+          onPlan={onPlan}
         />
       ))}
     </ol>

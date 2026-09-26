@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState, type ComponentType, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Archive, ArrowLeft, History, ChartColumn, CircleCheckBig, Heart, SlidersHorizontal, SquarePlay,
+  Archive, ArrowLeft, ChartColumn, CircleCheckBig, Heart, Plus, SlidersHorizontal, SquarePlay, Wand2,
 } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import type { PlatformCount, TgSection } from '../testGameModel'
 import { GameLibraryMark } from './platformArt'
 import { TgSidebarItem } from './TgSidebarItem'
 import { TgSidebarPlatforms } from './TgSidebarPlatforms'
+import { useTgAddGame } from './tgAddGame'
 
-interface NavCounts { queue: number; wishlist: number; completed: number; backlog: number }
+interface NavCounts { queue: number; wishlist: number; completed: number; backlog: number; review?: number }
 
 // Library uses the logo's solid pad, as the design draws it; the rest are lucide.
 const NAV: { key: TgSection; label: string; icon: ComponentType<{ className?: string; strokeWidth?: number }>; count?: keyof NavCounts }[] = [
@@ -56,6 +57,7 @@ export function TgSidebar({ counts, platforms, others }: {
   const setSection = useTestGameStore(s => s.setSection)
   const navRef = useRef<HTMLElement>(null)
   const moreBelow = useMoreBelow(navRef)
+  const openAddGame = useTgAddGame(s => s.setOpen)
 
   return (
     <aside
@@ -95,15 +97,24 @@ export function TgSidebar({ counts, platforms, others }: {
 
       <div className="shrink-0 border-t border-[var(--tg-border)] px-2.5 pb-2.5 pt-1.5">
         <TgSidebarItem
+          icon={<Plus aria-hidden className={navIcon(false)} strokeWidth={2.2} />}
+          label="Add game"
+          active={false}
+          onClick={() => openAddGame(true)}
+        />
+        <TgSidebarItem
+          icon={<Wand2 aria-hidden className={navIcon(section === 'scrape')} strokeWidth={2.2} />}
+          label="Scrape"
+          active={section === 'scrape'}
+          onClick={() => setSection('scrape')}
+        />
+        <TgSidebarItem
           icon={<SlidersHorizontal aria-hidden className={navIcon(section === 'advanced')} strokeWidth={2.2} />}
           label="Advanced"
           active={section === 'advanced'}
           onClick={() => setSection('advanced')}
+          count={counts.review || undefined}
         />
-        <Link to="/games-legacy" className="mt-0.5 flex min-h-[30px] items-center gap-2 rounded-[10px] px-3 text-[12px] font-medium text-[var(--tg-muted)] transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:hover)]:hover:text-[var(--tg-text)] [@media(pointer:coarse)]:min-h-[44px]">
-          <History aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
-          Legacy Games page
-        </Link>
         <Link to="/home" className="mt-0.5 flex min-h-[30px] items-center gap-2 rounded-[10px] px-3 text-[12px] font-medium text-[var(--tg-muted)] transition-colors [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(hover:hover)]:hover:text-[var(--tg-text)] [@media(pointer:coarse)]:min-h-[44px]">
           <ArrowLeft aria-hidden className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
           Back to Lasci&apos;s Board

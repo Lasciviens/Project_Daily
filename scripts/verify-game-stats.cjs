@@ -4,7 +4,7 @@
 require('sucrase/register')
 const assert = require('assert')
 const {
-  formatPlaytime, formatPlaytimeShort, hasPlayData, computePlaytimeStats,
+  formatPlaytimeFromSeconds, formatPlaytimeShort, hasPlayData, computePlaytimeStats,
   isRealPlay, sortByRecentlyPlayed, MIN_REAL_PLAY_SECONDS, playStatsOf,
   withinWindow, STATS_WINDOWS, shouldAutoMarkPlaying, AUTO_PLAYING_SECONDS,
 } = require('../src/features/games/gameStats.ts')
@@ -12,18 +12,18 @@ const {
 let n = 0
 const ok = (actual, expected, what) => { assert.deepStrictEqual(actual, expected, what); n++ }
 
-// ── formatPlaytime ──────────────────────────────────────────────────────────
-ok(formatPlaytime(8040), '2h 14m', 'hours + minutes')
-ok(formatPlaytime(2700), '45m', 'under an hour keeps its minutes')
-ok(formatPlaytime(7200), '2h', 'a whole number of hours drops the 0m')
-ok(formatPlaytime(30), '<1m', 'under a minute is still real play time')
-ok(formatPlaytime(0), null, 'zero is no play time')
-ok(formatPlaytime(null), null, 'null')
-ok(formatPlaytime(undefined), null, 'undefined')
-ok(formatPlaytime(-5), null, 'a negative value is not play time')
-ok(formatPlaytime(NaN), null, 'NaN never reaches the UI as a string')
+// ── formatPlaytimeFromSeconds ──────────────────────────────────────────────────────────
+ok(formatPlaytimeFromSeconds(8040), '2h 14m', 'hours + minutes')
+ok(formatPlaytimeFromSeconds(2700), '45m', 'under an hour keeps its minutes')
+ok(formatPlaytimeFromSeconds(7200), '2h', 'a whole number of hours drops the 0m')
+ok(formatPlaytimeFromSeconds(30), '<1m', 'under a minute is still real play time')
+ok(formatPlaytimeFromSeconds(0), null, 'zero is no play time')
+ok(formatPlaytimeFromSeconds(null), null, 'null')
+ok(formatPlaytimeFromSeconds(undefined), null, 'undefined')
+ok(formatPlaytimeFromSeconds(-5), null, 'a negative value is not play time')
+ok(formatPlaytimeFromSeconds(NaN), null, 'NaN never reaches the UI as a string')
 // The bug this module exists for: the old Math.round(s/3600) printed "0h".
-assert.notStrictEqual(formatPlaytime(2400), '0h'); n++
+assert.notStrictEqual(formatPlaytimeFromSeconds(2400), '0h'); n++
 
 // ── formatPlaytimeShort ─────────────────────────────────────────────────────
 ok(formatPlaytimeShort(8040), '2h', 'short form truncates to hours')

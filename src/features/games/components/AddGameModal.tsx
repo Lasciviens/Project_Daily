@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useCreateGame } from '../hooks/useGames'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { STATUS_LABEL, STATUSES, TIERS } from '../gamesMeta'
-import type { PlayStatus, Tier } from '../types'
+import { useHistoryDismiss } from '../../../shared/hooks/useHistoryDismiss'
+import { STATUS_LABEL, STATUSES } from '../gamesMeta'
+import type { PlayStatus } from '../types'
 
 // Manual "add a game" flow — a genuinely NEW capability. The old RP5 site had
 // no add-game UI reachable from this app at all (games arrived via RP5's own
@@ -16,9 +17,15 @@ import type { PlayStatus, Tier } from '../types'
 const inputCls = 'w-full min-h-[44px] px-3 text-sm border border-ink-200 rounded-xl bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
 const labelCls = 'text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1 block'
 
-interface Props { open: boolean; onClose: () => void }
+interface Props {
+  open: boolean
+  onClose: () => void
+  /** Extra classes on the dialog root — the Games page passes its own theme scope. */
+  className?: string
+}
 
-export function AddGameModal({ open, onClose }: Props) {
+export function AddGameModal({ open, onClose, className = '' }: Props) {
+  useHistoryDismiss(open, onClose)
   const [title, setTitle]           = useState('')
   const [year, setYear]             = useState('')
   const [publisher, setPublisher]   = useState('')
@@ -28,7 +35,6 @@ export function AddGameModal({ open, onClose }: Props) {
   const [genres, setGenres]         = useState('')
   const [coverUrl, setCoverUrl]     = useState('')
   const [status, setStatus]         = useState<PlayStatus>('backlog')
-  const [tier, setTier]             = useState('')
   const [iconic, setIconic]         = useState(false)
   const [coop, setCoop]             = useState(false)
   const [system, setSystem]         = useState('')
@@ -37,7 +43,7 @@ export function AddGameModal({ open, onClose }: Props) {
 
   function reset() {
     setTitle(''); setYear(''); setPublisher(''); setDeveloper(''); setSeriesName('')
-    setDescription(''); setGenres(''); setCoverUrl(''); setStatus('backlog'); setTier('')
+    setDescription(''); setGenres(''); setCoverUrl(''); setStatus('backlog')
     setIconic(false); setCoop(false); setSystem(''); setEmulator('')
   }
 
@@ -54,7 +60,6 @@ export function AddGameModal({ open, onClose }: Props) {
         genres: genres.trim() ? genres.split(',').map(g => g.trim()).filter(Boolean) : null,
         primary_cover_url: coverUrl.trim() || null,
         play_status: status,
-        tier: (tier || null) as Tier | null,
         is_iconic: iconic,
         is_coop: coop,
         system: system.trim() || null,
@@ -66,7 +71,7 @@ export function AddGameModal({ open, onClose }: Props) {
   }
 
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-[60]">
+    <Dialog open={open} onClose={onClose} className={`relative z-[60] ${className}`}>
       <DialogBackdrop transition className="fixed inset-0 bg-ink-900/30 transition duration-200 data-[closed]:opacity-0" />
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
@@ -113,20 +118,11 @@ export function AddGameModal({ open, onClose }: Props) {
               <input value={coverUrl} onChange={e => setCoverUrl(e.target.value)} className={inputCls} />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className={labelCls}>Status</label>
-                <select value={status} onChange={e => setStatus(e.target.value as PlayStatus)} className={inputCls}>
-                  {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Tier</label>
-                <select value={tier} onChange={e => setTier(e.target.value)} className={inputCls}>
-                  <option value="">— None —</option>
-                  {TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
-                </select>
-              </div>
+            <div>
+              <label className={labelCls}>Status</label>
+              <select value={status} onChange={e => setStatus(e.target.value as PlayStatus)} className={inputCls}>
+                {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+              </select>
             </div>
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 cursor-pointer min-h-[32px]">

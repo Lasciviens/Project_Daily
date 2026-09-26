@@ -202,7 +202,7 @@ per-feature status here would just go stale.
 /#/work           → WorkPage
 /#/projects       → ProjectsPage
 /#/training       → TrainingPage
-/#/games          → GamesPage
+/#/games          → TestGamePage (the Game Library design; /#/games-legacy and /#/test-game redirect here)
 /#/developer      → DeveloperPage      (reached via the Settings ⚙ menu)
 ```
 

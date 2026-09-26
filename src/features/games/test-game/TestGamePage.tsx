@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import './testGame.css'
 import { useTestGameLibrary } from './useTestGameLibrary'
 import { useTestGameStore } from './testGameStore'
@@ -7,6 +7,7 @@ import { useTgHeaderConfig } from './useTgHeaderConfig'
 import { useTgLibraryView } from './useTgLibraryView'
 import type { TgGame } from './testGameModel'
 import type { TgActions } from './tgTypes'
+import { pickRandomId } from './components/tgRandom'
 import { TgSidebar } from './components/TgSidebar'
 import { TgTopBar } from './components/TgTopBar'
 import { TgHeader } from './components/TgHeader'
@@ -18,22 +19,37 @@ import { TgDetailOverlayBackdrop } from './components/TgDetailOverlayBackdrop'
 import { TgModals } from './components/TgModals'
 import { TgMobileHeader, TgBottomTabs, TgMobileGrid } from './components/TgMobile'
 import { TgQueueView } from './components/TgQueueView'
-import { TgAnalyticsView } from './components/TgAnalyticsView'
-import { TgAdvancedView } from './components/TgAdvancedView'
-import { TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderError } from './components/TgStates'
+import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
+import { recalledDepth, rememberDepth } from './components/tgScrollMemory'
+import { TgGamesContext, TgRanksContext } from './components/tgRanks'
+import { TgChunkFailed, TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderError } from './components/TgStates'
+import { TgAnalyticsSkeleton } from './components/TgAnalyticsStates'
+import { lazyWithReload } from '../../../shared/utils/lazyWithReload'
 
 // /#/test-game — the Games page rebuilt on the "Game Library" design. It lives
 // outside the app shell (its own sidebar, top bar and phone tab bar, as the
 // design draws them) and reads and writes the SAME tables through the SAME
 // hooks as /#/games. What the design has no place for yet lives under Advanced.
 
+// Analytics, Scrape and Advanced load on first visit: most sessions only
+// browse the shelves, and together they are the bulk of the page's code.
+const TgAnalyticsView = lazyWithReload('games-analytics', () => import('./components/TgAnalyticsView').then(m => m.TgAnalyticsView), TgChunkFailed)
+const TgScrapeView = lazyWithReload('games-scrape', () => import('./components/scrape/TgScrapeView').then(m => m.TgScrapeView), TgChunkFailed)
+const TgAdvancedView = lazyWithReload('games-advanced', () => import('./components/TgAdvancedView').then(m => m.TgAdvancedView), TgChunkFailed)
+
+const SECTION_FALLBACK = <div aria-busy="true" className="h-full" />
+
 export function TestGamePage() {
   const lib = useTestGameLibrary()
   const bp = useTgBreakpoint()
   const section = useTestGameStore(s => s.section)
   const pickedGenres = useTestGameStore(s => s.genres)
+  const pickedStudios = useTestGameStore(s => s.studios)
+  const libraryScope = useTestGameStore(s => s.libraryScope)
   const view = useTestGameStore(s => s.view)
   const search = useTestGameStore(s => s.search)
+  const statuses = useTestGameStore(s => s.statuses)
+  const sort = useTestGameStore(s => s.sort)
   const selectedId = useTestGameStore(s => s.selectedId)
   const detailOpen = useTestGameStore(s => s.detailOpen)
   const collapsed = useTestGameStore(s => s.detailCollapsed)
@@ -46,11 +62,12 @@ export function TestGamePage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [fullId, setFullId] = useState<string | null>(null)
   const [provider, setProvider] = useState<TgGame | null>(null)
+  const [planGame, setPlanGame] = useState<TgGame | null>(null)
   const pickRef = useRef<TgPickIntent>(null)
   const panelRef = useRef<HTMLElement>(null)
 
   const {
-    counts, shown, others, effectivePlatform, isGameSection, genres, statusCounts: sCounts, visible, ranks, navCounts,
+    counts, shown, others, effectivePlatform, effectiveScopePlatform, isGameSection, genres, studios, statusCounts: sCounts, shelfTotal, visible, ranks, navCounts,
   } = useTgLibraryView(lib)
 
   // Looked up in the whole library, not the current view: a status changed in
@@ -85,13 +102,14 @@ export function TestGamePage() {
     }
   }, [bp, detailOpen, collapsed])
 
-  const header = useTgHeaderConfig({ games: lib.games, platform: effectivePlatform, statusCounts: sCounts, visibleCount: visible.length })
+  const header = useTgHeaderConfig({ games: lib.games, platform: effectivePlatform, statusCounts: sCounts, visibleCount: visible.length, shelfTotal, scopePlatform: effectiveScopePlatform })
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const actions: TgActions = useMemo(() => ({
     openEdit: (id) => setEditId(id),
     openFull: (id) => setFullId(id),
     openProvider: (g) => setProvider(g),
+    planSession: (g) => setPlanGame(g),
   }), [])
   // Phone: a tap opens the full-screen sheet. Wider: an arrow key only walks
   // the selection (an open overlay follows it); a click opens the overlay and
@@ -118,11 +136,37 @@ export function TestGamePage() {
       requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }))
     }
   }, [bp, openDetail, select, activateGame, setDetailCollapsed])
+  // "Pick a random game" draws from exactly what the page shows (section,
+  // platform, status, genre and search all applied) and opens it.
+  const pickRandom = useCallback(() => {
+    const id = pickRandomId(visible, selectedId)
+    if (!id) return
+    // Always shown expanded: a pick that only moved the tucked tab showed nothing.
+    openDetail(id)
+  }, [visible, selectedId, openDetail])
+  const onRandom = isGameSection && visible.length > 0 ? pickRandom : undefined
   const closeModal = useCallback((which: 'edit' | 'full' | 'provider') => {
     if (which === 'edit') setEditId(null)
     else if (which === 'full') setFullId(null)
     else setProvider(null)
   }, [])
+
+  // What makes the list a different list. A change scrolls it back to the
+  // top (and remounts the phone grid's paging); a status edit or a refetch
+  // does not change it, so those keep the scroll position.
+  const listKey = [section, effectivePlatform, effectiveScopePlatform, statuses.join(','), pickedGenres.join(','), pickedStudios.join(','), libraryScope?.label ?? '', sort, search.trim()].join('|')
+
+  // Phone: every section shares one scroller. Each section's depth is kept,
+  // so Queue → Library returns to the same card; a new filter starts at the top.
+  const phoneScroll = useRef<HTMLDivElement>(null)
+  const lastList = useRef({ section, listKey })
+  useLayoutEffect(() => {
+    const el = phoneScroll.current
+    const prev = lastList.current
+    lastList.current = { section, listKey }
+    if (!el || (prev.section === section && prev.listKey === listKey)) return
+    el.scrollTo({ top: prev.section !== section ? recalledDepth(listKey) : 0 })
+  }, [section, listKey])
 
   // ── Content ───────────────────────────────────────────────────────────────
   function renderGames(layout: 'desktop' | 'mobile') {
@@ -132,21 +176,32 @@ export function TestGamePage() {
     // shelf, a queued PlayStation game): wait for them rather than say "empty".
     if (visible.length === 0 && lib.providersLoading) return <TgLoadingShelf />
     if (lib.games.length === 0) return <TgEmptyState kind="library" />
-    if (visible.length === 0) return <TgEmptyState kind={search || pickedGenres.length ? 'filtered' : section === 'queue' ? 'queue' : 'section'} />
+    if (visible.length === 0) return <TgEmptyState kind={search.trim() || pickedGenres.length || pickedStudios.length || libraryScope ? 'filtered' : section === 'queue' ? 'queue' : 'section'} />
     const selId = selected?.id ?? null
     if (section === 'queue') {
-      return <TgQueueView games={visible} ranks={ranks} selectedId={selId} onSelect={onSelect} fill={layout === 'desktop'} />
+      return <TgQueueView games={visible} ranks={ranks} selectedId={selId} onSelect={onSelect} fill={layout === 'desktop'} onPlan={actions.planSession} />
     }
-    if (layout === 'mobile') return <TgMobileGrid games={visible} onSelect={onSelect} />
-    if (view === 'grid') return <TgGridView games={visible} selectedId={selId} onSelect={onSelect} />
-    if (view === 'list') return <TgListView games={visible} selectedId={selId} onSelect={onSelect} />
-    return <TgShelf games={visible} selectedId={selId} onSelect={onSelect} />
+    if (layout === 'mobile') return <TgMobileGrid key={listKey} listKey={listKey} games={visible} onSelect={onSelect} />
+    if (view === 'grid') return <TgGridView games={visible} selectedId={selId} onSelect={onSelect} resetKey={listKey} />
+    if (view === 'list') return <TgListView games={visible} selectedId={selId} onSelect={onSelect} resetKey={listKey} />
+    return <TgShelf games={visible} selectedId={selId} onSelect={onSelect} resetKey={listKey} />
   }
 
   function renderSection(layout: 'desktop' | 'mobile') {
-    if (section === 'analytics') return <TgAnalyticsView />
+    if (section === 'analytics') {
+      return (
+        <ErrorBoundary label="Analytics" action="games_analytics">
+          <Suspense fallback={<div className="@container pb-4 pt-2"><TgAnalyticsSkeleton /></div>}><TgAnalyticsView lib={lib} /></Suspense>
+        </ErrorBoundary>
+      )
+    }
+    if (section === 'scrape') return <Suspense fallback={SECTION_FALLBACK}><TgScrapeView games={lib.games} loading={lib.isLoading} layout={layout} /></Suspense>
     if (section === 'advanced') {
-      return <TgAdvancedView onOpenDetail={actions.openFull} randomPool={visible} randomScope={{ platform: effectivePlatform, search, genres: pickedGenres }} />
+      return (
+        <Suspense fallback={SECTION_FALLBACK}>
+          <TgAdvancedView onOpenDetail={actions.openFull} games={lib.games} loading={lib.isLoading} error={lib.isError ? lib.error : null} onRetry={lib.refetch} />
+        </Suspense>
+      )
     }
     return renderGames(layout)
   }
@@ -156,11 +211,16 @@ export function TestGamePage() {
     : null
 
   return (
-    <>
+    <TgRanksContext.Provider value={ranks}>
+    <TgGamesContext.Provider value={lib.games}>
       {bp === 'mobile' ? (
         <div key="phone" className="tg-root h-[100dvh] flex flex-col overflow-hidden">
-          <TgMobileHeader platforms={counts} genres={genres} statusCounts={sCounts} header={header} />
-          <div className="flex-1 min-h-0 tg-scroll-y pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] pt-2 pb-[calc(76px+env(safe-area-inset-bottom))]">
+          <TgMobileHeader platforms={counts} genres={genres} studios={studios} statusCounts={sCounts} header={header} onRandom={onRandom} resultCount={visible.length} libraryGames={lib.games} />
+          <div
+            ref={phoneScroll}
+            onScroll={e => rememberDepth(listKey, e.currentTarget.scrollTop)}
+            className="flex-1 min-h-0 tg-scroll-y pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] pt-2 pb-[calc(76px+env(safe-area-inset-bottom))]"
+          >
             {providerError}
             {renderSection('mobile')}
           </div>
@@ -172,12 +232,12 @@ export function TestGamePage() {
           <div className="relative flex-1 min-w-0 flex flex-col">
             <TgDetailOverlayBackdrop selected={selected} games={lib.games} />
             <TgTopBar
-              genres={genres} statusCounts={sCounts} showStatus={section === 'library'}
+              genres={genres} studios={studios} statusCounts={sCounts} showStatus={section === 'library'}
               showViews={isGameSection && section !== 'queue'} showSort={isGameSection && section !== 'queue'}
-              showSearch={isGameSection} showGenre={isGameSection}
+              showSearch={isGameSection} showGenre={isGameSection} onRandom={onRandom} randomCount={visible.length}
             />
             <TgDetailOverlayHost
-              game={detailGame} actions={actions} scroll={!isGameSection} pickRef={pickRef} panelRef={panelRef}
+              game={detailGame} actions={actions} scroll={!isGameSection} pickRef={pickRef} panelRef={panelRef} reserve={section === 'queue'}
               header={<><TgHeader config={header} />{providerError}</>}
             >
               {renderSection('desktop')}
@@ -188,7 +248,9 @@ export function TestGamePage() {
       <TgModals
         bp={bp} actions={actions} sheetGame={collapsed ? null : detailGame} onCloseSheet={closeDetail}
         editId={editId} fullId={fullId} provider={provider} onClose={closeModal}
+        planGame={planGame} onClosePlan={() => setPlanGame(null)}
       />
-    </>
+    </TgGamesContext.Provider>
+    </TgRanksContext.Provider>
   )
 }

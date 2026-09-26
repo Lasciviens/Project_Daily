@@ -13,7 +13,9 @@ function rowsFor(game: TgGame, extras: SteamExtras): Row[] {
   const last = lastPlayedIso(game)
   const rows: Row[] = [
     { icon: Clock3, label: 'Playtime', value: seconds == null ? DASH : formatPlaytime(seconds / 60) },
-    { icon: CalendarDays, label: 'Last Played', value: last ? formatDay(last) : 'Never' },
+    // No date is "nothing recorded", not "never": ES-DE only counts what it
+    // launched, and old Steam games report hours with no last-played date.
+    { icon: CalendarDays, label: 'Last Played', value: last ? formatDay(last) : (seconds ?? 0) > 0 ? DASH : 'No recorded play' },
     { icon: UserRound, label: 'Developer', value: text(game.developer, extras.developer) },
     { icon: Building2, label: 'Publisher', value: text(game.publisher, extras.publisher) },
   ]

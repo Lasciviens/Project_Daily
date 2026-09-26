@@ -4,7 +4,9 @@ import {
   ALL_PLATFORMS, toggleValue, type TgSection, type TgSort, type TgStatusFilter, type TgView,
 } from './testGameModel'
 import type { PlayStatus } from '../types'
-import type { TgaLibrary, TgaWindow } from './components/tgAnalyticsModel'
+import type { TgaLibrary, TgaTab, TgaWindow } from './components/tgAnalyticsModel'
+import type { ApplyResult, FindResult, SearchResponse } from '../scraper/ssApi'
+import type { SearchForm } from './components/scrape/tgScrapeModel'
 
 // UI state for the Test-Game page. Its own store (not the app's useUIStore)
 // because the page is a self-contained experiment: nothing else in the app
@@ -16,7 +18,33 @@ import type { TgaLibrary, TgaWindow } from './components/tgAnalyticsModel'
 // the details are open — a reload starts with nothing picked and nothing
 // covering the games (a stale search restored on reload reads as missing games).
 
-export type AdvancedTab = 'classic' | 'tiers' | 'review' | 'scraper' | 'steam' | 'playstation' | 'queue' | 'tools'
+export type AdvancedTab = 'review' | 'steam' | 'playstation'
+
+const ADVANCED_KEYS: readonly AdvancedTab[] = ['review', 'steam', 'playstation']
+
+/** The Scrape page's two modes: one game at a time, or many. */
+export type ScrapeMode = 'search' | 'batch'
+
+/** The last search, remembered with the game and the exact form that made it
+ *  — so leaving and coming back costs no ScreenScraper request, and a save
+ *  always uses the search that found the result, not a later edit. */
+export interface ScrapeSearchState { targetId: string | null; form: SearchForm; response: SearchResponse }
+
+/** "Many games": everything found and saved this session (each lookup cost a
+ *  request, so it survives switching modes or opening a game). */
+export interface ScrapeBatchState {
+  filter: 'todo' | 'no_cover' | 'no_desc' | 'old' | 'all'
+  system: string
+  found: Record<string, FindResult>
+  ticked: Record<string, boolean>
+  saved: Record<string, ApplyResult>
+  runId: string | null
+  /** Games a lookup or save is running for — kept in the store, not the
+   *  component, so leaving the page mid-run neither loses the results nor
+   *  lets the same games be sent twice. */
+  inFlight: Record<string, 'find' | 'save'>
+}
+export const EMPTY_BATCH: ScrapeBatchState = { filter: 'todo', system: '', found: {}, ticked: {}, saved: {}, runId: null, inFlight: {} }
 
 /**
  * What a click or Enter on a game did to the tablet/desktop detail overlay:
@@ -36,6 +64,8 @@ interface TgState {
   statuses: PlayStatus[]
   /** Multi-select genre filter; a game matches ANY of them; empty = all genres. */
   genres: string[]
+  /** Multi-select studio filter (developer or publisher); empty = all. */
+  studios: string[]
   sort: TgSort
   view: TgView
   search: string
@@ -49,6 +79,19 @@ interface TgState {
    *  which remounts the view, doesn't reset them. */
   analyticsPeriod: TgaWindow
   analyticsLibrary: TgaLibrary
+  /** Which Analytics tab is open (persisted, like the view). */
+  analyticsTab: TgaTab
+  /** The Library narrowed to exactly the games behind an Analytics number
+   *  (not persisted; any navigation or Clear drops it). */
+  libraryScope: { ids: string[]; label: string } | null
+  /** The game the Scrape page is working on (not persisted). */
+  scrapeTargetId: string | null
+  scrapeMode: ScrapeMode
+  scrapeSearch: ScrapeSearchState | null
+  /** The result open in review (phone: the header shows Back + its title). */
+  scrapeReview: { jeuId: string; title: string } | null
+  scrapeSettingsOpen: boolean
+  scrapeBatch: ScrapeBatchState
 
   setSection: (s: TgSection) => void
   setPlatform: (p: string) => void
@@ -61,7 +104,9 @@ interface TgState {
   setGenres: (list: string[]) => void
   toggleStatus: (s: PlayStatus) => void
   toggleGenre: (g: string) => void
-  /** Drops every status and genre filter (not the search or the sort). */
+  toggleStudio: (studio: string) => void
+  setStudios: (list: string[]) => void
+  /** Drops every status, genre and studio filter and an Analytics hand-off (not the search or the sort). */
   clearFilters: () => void
   setSort: (s: TgSort) => void
   setView: (v: TgView) => void
@@ -77,6 +122,16 @@ interface TgState {
   setAdvancedTab: (t: AdvancedTab) => void
   setAnalyticsPeriod: (p: TgaWindow) => void
   setAnalyticsLibrary: (l: TgaLibrary) => void
+  setAnalyticsTab: (t: TgaTab) => void
+  setLibraryScope: (scope: { ids: string[]; label: string } | null) => void
+  /** Opens the Scrape page on a game (the detail's Scrape button, a batch row). */
+  openScrape: (gameId: string | null) => void
+  setScrapeTarget: (gameId: string | null) => void
+  setScrapeMode: (m: ScrapeMode) => void
+  setScrapeSearch: (s: ScrapeSearchState | null) => void
+  setScrapeReview: (r: { jeuId: string; title: string } | null) => void
+  setScrapeSettingsOpen: (open: boolean) => void
+  updateScrapeBatch: (patch: Partial<ScrapeBatchState> | ((b: ScrapeBatchState) => Partial<ScrapeBatchState>)) => void
 }
 
 // Moving to another section or platform is navigation, not filtering: the
@@ -91,15 +146,24 @@ export const useTestGameStore = create<TgState>()(
       scopePlatform: ALL_PLATFORMS,
       statuses: [],
       genres: [],
+      studios: [],
       sort: 'recent',
       view: 'shelf',
       search: '',
       selectedId: null,
       detailOpen: false,
       detailCollapsed: false,
-      advancedTab: 'classic',
+      advancedTab: 'review',
       analyticsPeriod: 'all',
       analyticsLibrary: 'all',
+      analyticsTab: 'overview',
+      libraryScope: null,
+      scrapeTargetId: null,
+      scrapeMode: 'search',
+      scrapeSearch: null,
+      scrapeReview: null,
+      scrapeSettingsOpen: false,
+      scrapeBatch: EMPTY_BATCH,
 
       // Changing section resets the per-section narrowing: a "Playing" tab
       // carried into Completed, or a platform chip carried into Wishlist,
@@ -107,12 +171,13 @@ export const useTestGameStore = create<TgState>()(
       // "Library" in the nav means the WHOLE library: it drops a platform or
       // genre picked elsewhere (an Analytics row, a sidebar shelf), which
       // otherwise lingered as a filter the user had to find and clear.
+      // Re-tapping the section you are on keeps an open ScreenScraper review.
       setSection: (section) => set(s => ({
-        section, statuses: [], scopePlatform: ALL_PLATFORMS, ...(s.section !== section && LEAVE_SHELF),
-        ...(section === 'library' && { platform: ALL_PLATFORMS, genres: [], ...(s.platform !== ALL_PLATFORMS && LEAVE_SHELF) }),
+        section, statuses: [], scopePlatform: ALL_PLATFORMS, libraryScope: null, ...(s.section !== section && { scrapeReview: null, ...LEAVE_SHELF }),
+        ...(section === 'library' && { platform: ALL_PLATFORMS, genres: [], studios: [], ...(s.platform !== ALL_PLATFORMS && LEAVE_SHELF) }),
       })),
       setPlatform: (platform) => set(s => ({
-        platform, section: 'library', statuses: [],
+        platform, section: 'library', statuses: [], libraryScope: null,
         ...((s.platform !== platform || s.section !== 'library') && LEAVE_SHELF),
       })),
       setScopePlatform: (scopePlatform) => set({ scopePlatform }),
@@ -122,7 +187,9 @@ export const useTestGameStore = create<TgState>()(
       setGenres: (genres) => set({ genres }),
       toggleStatus: (status) => set(s => ({ statuses: toggleValue(s.statuses, status) })),
       toggleGenre: (genre) => set(s => ({ genres: toggleValue(s.genres, genre) })),
-      clearFilters: () => set({ statuses: [], genres: [] }),
+      toggleStudio: (studio) => set(s => ({ studios: toggleValue(s.studios, studio) })),
+      setStudios: (studios) => set({ studios }),
+      clearFilters: () => set({ statuses: [], genres: [], studios: [], libraryScope: null }),
       setSort: (sort) => set({ sort }),
       setView: (view) => set({ view }),
       setSearch: (search) => set({ search }),
@@ -143,25 +210,46 @@ export const useTestGameStore = create<TgState>()(
       setDetailCollapsed: (detailCollapsed) => set({ detailCollapsed }),
       setAnalyticsPeriod: (analyticsPeriod) => set({ analyticsPeriod }),
       setAnalyticsLibrary: (analyticsLibrary) => set({ analyticsLibrary }),
+      setAnalyticsTab: (analyticsTab) => set({ analyticsTab }),
+      setLibraryScope: (libraryScope) => set({ libraryScope }),
+      openScrape: (scrapeTargetId) => set(s => ({
+        scrapeTargetId, scrapeMode: 'search', section: 'scrape', scrapeReview: null,
+        ...(s.section !== 'scrape' && LEAVE_SHELF),
+      })),
+      setScrapeTarget: (scrapeTargetId) => set(s => (s.scrapeTargetId === scrapeTargetId ? {} : { scrapeTargetId, scrapeReview: null })),
+      // Re-tapping the active mode tab is not a reason to drop the review.
+      setScrapeMode: (scrapeMode) => set(s => (s.scrapeMode === scrapeMode ? {} : { scrapeMode, scrapeReview: null })),
+      setScrapeSearch: (scrapeSearch) => set({ scrapeSearch }),
+      setScrapeReview: (scrapeReview) => set({ scrapeReview }),
+      setScrapeSettingsOpen: (scrapeSettingsOpen) => set({ scrapeSettingsOpen }),
+      updateScrapeBatch: (patch) => set(s => ({ scrapeBatch: { ...s.scrapeBatch, ...(typeof patch === 'function' ? patch(s.scrapeBatch) : patch) } })),
       setAdvancedTab: (advancedTab) => set(s => ({ advancedTab, section: 'advanced', ...(s.section !== 'advanced' && LEAVE_SHELF) })),
     }),
     {
       name: 'test-game-ui-v1',
       // v1: Last played became the default sort. A saved "Title" was only
       // ever the old default, so it moves over once; any other choice stays.
-      version: 1,
+      // v2: Classic library, Tiers, Queue editor and Add & random left
+      // Advanced; a saved one of those lands on Needs review.
+      // v3: ScreenScraper left Advanced for its own Scrape page.
+      version: 3,
       migrate: (persisted, version) => {
         const p = (persisted ?? {}) as Partial<TgState>
         if (version < 1 && (p.sort == null || p.sort === 'title')) p.sort = 'recent'
+        if (version < 3 && !ADVANCED_KEYS.includes(p.advancedTab as AdvancedTab)) {
+          // A saved ScreenScraper tab opens the page that replaced it.
+          if ((p.advancedTab as string) === 'scraper' && p.section === 'advanced') p.section = 'scrape'
+          p.advancedTab = 'review'
+        }
         return p as TgState
       },
       partialize: (s) => ({
         section: s.section, platform: s.platform, sort: s.sort, view: s.view,
-        advancedTab: s.advancedTab, detailCollapsed: s.detailCollapsed,
+        advancedTab: s.advancedTab, detailCollapsed: s.detailCollapsed, analyticsTab: s.analyticsTab,
       }),
       // Earlier versions persisted the selection; a reload must not bring it
       // (or open details) back.
-      merge: (persisted, current) => ({ ...current, ...(persisted as Partial<TgState>), selectedId: null, detailOpen: false }),
+      merge: (persisted, current) => ({ ...current, ...(persisted as Partial<TgState>), selectedId: null, detailOpen: false, scrapeReview: null }),
     },
   ),
 )

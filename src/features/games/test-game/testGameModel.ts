@@ -7,15 +7,16 @@
 // requires this file through sucrase without a live Supabase client.
 
 import type { Game, PlayStatus } from '../types'
-import { playStatsOf } from '../gameStats'
+import { isRealSession, playStatsOf } from '../gameStats'
+import { psnKind } from '../providerEntries'
 
 // ─── Page state vocabulary ───────────────────────────────────────────────────
 
 /** The sidebar's top section. `wishlist`/`completed`/`backlog` are status
  *  views across EVERY platform; `library` is scoped by the platform list. */
-export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'advanced'
+export type TgSection = 'library' | 'queue' | 'wishlist' | 'completed' | 'backlog' | 'analytics' | 'scrape' | 'advanced'
 export type TgView = 'shelf' | 'grid' | 'list'
-export type TgSort = 'title' | 'title-desc' | 'recent' | 'playtime' | 'rating' | 'year-desc' | 'year-asc' | 'added'
+export type TgSort = 'title' | 'title-desc' | 'recent' | 'playtime' | 'rating' | 'year-desc' | 'year-asc' | 'added' | 'series'
 export type TgStatusFilter = 'all' | PlayStatus
 
 export const ALL_PLATFORMS = 'all'
@@ -34,6 +35,7 @@ export const SORT_LABEL: Record<TgSort, string> = {
   'year-desc': 'Newest',
   'year-asc': 'Oldest',
   added: 'Recently added',
+  series: 'Series',
 }
 
 export const STATUS_SECTIONS: Partial<Record<TgSection, PlayStatus>> = {
@@ -120,6 +122,13 @@ export function platformInfo(key: string | null | undefined): PlatformInfo {
   if (!k || k === NO_PLATFORM) return { key: NO_PLATFORM, short: 'No platform', name: 'No platform', family: 'other', brand: '#64748b' }
   const spec = PLATFORMS[k]
   if (spec) return { key: k, ...spec }
+  if (k.startsWith(RESERVED_PREFIX)) {
+    // A retro copy filed under a reserved spelling: "Steam (ES-DE)", "ALL".
+    const base = k.slice(RESERVED_PREFIX.length)
+    const known = PLATFORMS[base]
+    const label = known ? `${known.short} (ES-DE)` : base.toUpperCase()
+    return { key: k, short: label, name: known ? `${known.name} (ES-DE)` : label, family: 'other', brand: '#64748b' }
+  }
   const label = k.toUpperCase()
   return { key: k, short: label, name: label, family: 'other', brand: '#64748b' }
 }
@@ -148,6 +157,10 @@ export function platformLabels(counts: PlatformCount[]): Map<string, string> {
 
 /** Lower-case, letters and digits only: "Wii U" → "wiiu", "PS-1" → "ps1". */
 const normSystem = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/** Keys a retro system string may never resolve to (see resolveSystemKey). */
+const RESERVED_KEYS: ReadonlySet<string> = new Set([ALL_PLATFORMS, OTHER_PLATFORMS, NO_PLATFORM, 'steam', 'playstation'])
+export const RESERVED_PREFIX = 'sys-'
 
 // Spellings no key, short label or full name covers. Genesis and Mega Drive
 // stay two platforms on purpose: they are two ES-DE folders (NA vs PAL sets).
@@ -189,7 +202,11 @@ const SYSTEM_ALIASES: ReadonlyMap<string, string> = (() => {
 export function resolveSystemKey(system: string | null | undefined): string {
   const n = normSystem(system ?? '')
   if (!n) return NO_PLATFORM
-  return SYSTEM_ALIASES.get(n) ?? n
+  const k = SYSTEM_ALIASES.get(n) ?? n
+  // A free-text system that happens to spell a page key ("All", "Others",
+  // "Unknown") or a provider library ("Steam" — ES-DE has a steam folder)
+  // must not hijack that shelf; it gets a key of its own.
+  return RESERVED_KEYS.has(k) ? RESERVED_PREFIX + k : k
 }
 
 // ─── Derived game rows ───────────────────────────────────────────────────────
@@ -227,6 +244,9 @@ export function steamAppIdOf(g: Game): number | null {
 
 /** A Steam row whose cached store type is known and is not a game. */
 export function isNotAGame(g: Game, steamType: string | null | undefined): boolean {
+  // PlayStation: Sony's own category, stored at import (migration 105) — an
+  // app or media title is not a game. Unknown/absent stays a game.
+  if (g.library === 'playstation') return psnKind(g.provider_kind) === 'not_game'
   if (g.library !== 'steam') return false
   const t = String(steamType ?? '').trim().toLowerCase()
   return !!t && t !== 'game'
@@ -319,26 +339,72 @@ export function splitPlatforms(counts: PlatformCount[], max = 8): { shown: Platf
 
 export type StatusCounts = Record<TgStatusFilter, number>
 
+/**
+ * A row's status as every view files it: no status at all is the import
+ * default nobody changed — Backlog, as Analytics and the status menu treat it.
+ */
+export const effectiveStatus = (g: Pick<Game, 'play_status'>): PlayStatus => g.play_status || 'backlog'
+
 export function statusCounts(games: TgGame[]): StatusCounts {
   const c: StatusCounts = { all: 0, playing: 0, completed: 0, backlog: 0, wishlist: 0, dropped: 0, hidden: 0 }
   for (const g of games) {
     if (g.hidden) { c.hidden++; continue }
     c.all++
-    const s = g.play_status as TgStatusFilter
+    const s = effectiveStatus(g) as TgStatusFilter
     if (s in c && s !== 'all' && s !== 'hidden') c[s]++
   }
   return c
 }
 
-export function genreOptions(games: TgGame[]): { genre: string; count: number }[] {
-  const m = new Map<string, number>()
+/** A genre's identity across sources: "Action", "action " and "ACTION" are one genre. */
+export const genreKey = (s: string) => s.trim().toLocaleLowerCase('en')
+
+/**
+ * Genres folded case-insensitively, each counted once per game and shown in
+ * its most common spelling. `hidden` rows count only when asked (the Hidden
+ * view lists its own genres).
+ */
+export function foldGenres(games: readonly TgGame[], includeHidden = false): { genre: string; count: number }[] {
+  return foldValues(games, g => g.genres ?? [], includeHidden).map(({ value, count }) => ({ genre: value, count }))
+}
+
+/**
+ * Developer and publisher as one "studio" facet (91% filled for retro), folded
+ * like genres; a game counts once per studio even when it is both.
+ */
+export function studioOptions(games: readonly TgGame[], includeHidden = false): { studio: string; count: number }[] {
+  return foldValues(games, g => [g.developer, g.publisher].filter((x): x is string => !!x), includeHidden)
+    .map(({ value, count }) => ({ studio: value, count }))
+}
+
+/** Case-insensitive value counts over a per-game list, most common spelling shown. */
+function foldValues(games: readonly TgGame[], pick: (g: TgGame) => readonly string[], includeHidden: boolean): { value: string; count: number }[] {
+  const counts = new Map<string, number>()
+  const spellings = new Map<string, Map<string, number>>()
   for (const g of games) {
-    if (g.hidden) continue
-    for (const x of new Set((g.genres ?? []).map(s => s.trim()).filter(Boolean))) m.set(x, (m.get(x) ?? 0) + 1)
+    if (g.hidden && !includeHidden) continue
+    const seen = new Set<string>()
+    for (const raw of pick(g)) {
+      const label = raw.trim()
+      if (!label) continue
+      const k = genreKey(label)
+      const sp = spellings.get(k) ?? new Map<string, number>()
+      sp.set(label, (sp.get(label) ?? 0) + 1)
+      spellings.set(k, sp)
+      if (seen.has(k)) continue
+      seen.add(k)
+      counts.set(k, (counts.get(k) ?? 0) + 1)
+    }
   }
-  return [...m.entries()]
-    .map(([genre, count]) => ({ genre, count }))
-    .sort((a, b) => b.count - a.count || a.genre.localeCompare(b.genre))
+  const labelOf = (k: string) => [...(spellings.get(k) ?? new Map<string, number>()).entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? k
+  return [...counts.entries()]
+    .map(([k, count]) => ({ value: labelOf(k), count }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+}
+
+export function genreOptions(games: TgGame[]): { genre: string; count: number }[] {
+  return foldGenres(games)
 }
 
 // ─── Filtering & sorting ─────────────────────────────────────────────────────
@@ -367,8 +433,12 @@ export interface FilterOptions {
   scopePlatform?: string
   /** Status filter: empty = every visible game (see applyStatus). */
   statuses: readonly PlayStatus[]
+  /** Studio filter (developer OR publisher): ANY picked studio; empty = all. */
+  studios?: readonly string[]
   /** Genre filter: a game matches ANY picked genre; empty = every genre. */
   genres?: readonly string[]
+  /** Library only: exactly these games (a hand-off from an Analytics number). */
+  ids?: ReadonlySet<string> | null
   search: string
 }
 
@@ -379,7 +449,7 @@ export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'statuses'>):
   if (o.section === 'queue') {
     gs = gs.filter(g => g.play_order != null)
   } else if (fixed) {
-    gs = gs.filter(g => !g.hidden && g.play_status === fixed)
+    gs = gs.filter(g => !g.hidden && effectiveStatus(g) === fixed)
     if (o.scopePlatform && o.scopePlatform !== ALL_PLATFORMS) gs = gs.filter(g => g.platformKey === o.scopePlatform)
   } else if (o.platform === OTHER_PLATFORMS) {
     const keys = new Set(o.otherKeys ?? [])
@@ -387,9 +457,17 @@ export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'statuses'>):
   } else if (o.platform && o.platform !== ALL_PLATFORMS) {
     gs = gs.filter(g => g.platformKey === o.platform)
   }
+  if (o.ids && o.section === 'library') {
+    const ids = o.ids
+    gs = gs.filter(g => ids.has(g.id))
+  }
   if (o.genres?.length) {
-    const want = new Set(o.genres)
-    gs = gs.filter(g => (g.genres ?? []).some(x => want.has(x.trim())))
+    const want = new Set(o.genres.map(genreKey))
+    gs = gs.filter(g => (g.genres ?? []).some(x => want.has(genreKey(x))))
+  }
+  if (o.studios?.length) {
+    const want = new Set(o.studios.map(genreKey))
+    gs = gs.filter(g => [g.developer, g.publisher].some(x => !!x && want.has(genreKey(x))))
   }
   if (o.search.trim()) gs = gs.filter(g => matchesSearch(g, o.search))
   return gs
@@ -406,7 +484,7 @@ export function applyStatus(games: TgGame[], status: TgStatusFilter | readonly T
   const picked = new Set<TgStatusFilter>(typeof status === 'string' ? [status] : status)
   picked.delete('all')
   if (picked.size === 0) return games.filter(g => !g.hidden)
-  return games.filter(g => (g.hidden ? picked.has('hidden') : picked.has(g.play_status as TgStatusFilter)))
+  return games.filter(g => (g.hidden ? picked.has('hidden') : picked.has(effectiveStatus(g) as TgStatusFilter)))
 }
 
 /** A multi-select filter's button text: "All Genres" / "Action" / "3 genres". */
@@ -427,6 +505,17 @@ const time = (iso: string | null | undefined) => {
   return Number.isFinite(t) ? t : -Infinity
 }
 
+// Real sessions by date, then sub-five-minute launches by date, then undated
+// (isRealSession — the rule Analytics' Recently played uses). A short launch is
+// pushed below every real session by a fixed offset larger than any epoch-ms
+// date; nothing is dropped.
+const SHORT_SESSION_OFFSET = 1e14
+function recentKey(g: Game): number {
+  const t = time(lastPlayedIso(g))
+  if (t === -Infinity) return t
+  return isRealSession(playSeconds(g)) ? t : t - SHORT_SESSION_OFFSET
+}
+
 /** Sorts by a precomputed key, so a comparator never re-derives play stats. */
 function sortByKey<T>(games: T[], key: (g: T) => number, dir: 1 | -1, tie: (a: T, b: T) => number): T[] {
   return games
@@ -440,12 +529,18 @@ export function sortGames<T extends Game>(games: T[], sort: TgSort): T[] {
   const gs = [...games]
   switch (sort) {
     case 'title-desc': return gs.sort((a, b) => byTitle(b, a))
-    case 'recent':     return sortByKey(gs, g => time(lastPlayedIso(g)), -1, byTitle)
+    case 'recent':     return sortByKey(gs, recentKey, -1, byTitle)
     case 'playtime':   return sortByKey(gs, g => playSeconds(g) ?? 0, -1, byTitle)
     case 'rating':     return gs.sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1) || byTitle(a, b))
     case 'year-desc':  return gs.sort((a, b) => (b.release_year ?? -Infinity) - (a.release_year ?? -Infinity) || byTitle(a, b))
     case 'year-asc':   return gs.sort((a, b) => (a.release_year ?? Infinity) - (b.release_year ?? Infinity) || byTitle(a, b))
     case 'added':      return gs.sort((a, b) => time(b.created_at) - time(a.created_at) || byTitle(a, b))
+    // A series together in release order; games without one after, by title.
+    case 'series':     return gs.sort((a, b) => {
+      const sa = a.series_name?.trim() ?? '', sb = b.series_name?.trim() ?? ''
+      if (!sa !== !sb) return sa ? -1 : 1
+      return collator.compare(sa, sb) || (a.release_year ?? Infinity) - (b.release_year ?? Infinity) || byTitle(a, b)
+    })
     default:           return gs.sort(byTitle)
   }
 }
@@ -474,6 +569,36 @@ export function queueRanks(games: TgGame[]): Map<string, number> {
   const ranks = new Map<string, number>()
   queueOrder(games.filter(g => !g.hidden)).forEach((g, i) => ranks.set(g.id, i + 1))
   return ranks
+}
+
+export interface QueueInsights {
+  /** Queued, visible games already Completed or Dropped — decisions that left them in the queue. */
+  finished: TgGame[]
+  /** Queued games still to play. */
+  toPlay: number
+  /** Rough play time for the rest of the queue: its length × the median play time of
+   *  your completed games (null with fewer than 3 of those to go on). */
+  forecastSeconds: number | null
+  /** How many completed games the median came from. */
+  basis: number
+}
+
+/**
+ * What the Play Queue can say about itself. The forecast is deliberately
+ * rough and labelled so: it knows nothing about the queued games' own length.
+ */
+export function queueInsights(games: readonly TgGame[]): QueueInsights {
+  const queued = games.filter(g => !g.hidden && g.play_order != null)
+  const finished = queued.filter(g => g.play_status === 'completed' || g.play_status === 'dropped')
+  const toPlay = queued.length - finished.length
+  const done = games
+    .filter(g => g.play_status === 'completed')
+    .map(g => playSeconds(g) ?? 0)
+    .filter(s => s > 0)
+    .sort((a, b) => a - b)
+  const mid = done.length >> 1
+  const median = done.length ? (done.length % 2 ? done[mid] : (done[mid - 1] + done[mid]) / 2) : 0
+  return { finished, toPlay, forecastSeconds: done.length >= 3 && toPlay > 0 ? median * toPlay : null, basis: done.length }
 }
 
 // ─── Shelf layout ────────────────────────────────────────────────────────────
@@ -594,6 +719,9 @@ const PSN_COVER_WIDTH = 440
  * goes first; the original stays right behind it for the error walk.
  */
 function psnSized(u: string): string | null {
+  // Cheap test first: `new URL` for every candidate of every card was a
+  // measurable share of a phone grid mount.
+  if (!u.includes(PSN_IMAGE_HOST)) return null
   let url: URL
   try { url = new URL(u) } catch { return null }
   if (url.hostname !== PSN_IMAGE_HOST || url.searchParams.has('w')) return null
@@ -601,8 +729,49 @@ function psnSized(u: string): string | null {
   return url.toString()
 }
 
+/**
+ * Why a retro game belongs in "Needs review" — empty when nothing is missing.
+ * Cover means any art the page can actually show (coverCandidates: ES-DE
+ * covers, ScreenScraper media, variant art), not only `primary_cover_url`,
+ * which flagged hundreds of games that have a cover on screen. Computed from
+ * the rows the page already holds — never a second library download.
+ */
+export function needsReviewReasons(g: TgGame): string[] {
+  if (g.library !== 'retro' || g.hidden) return []
+  const r: string[] = []
+  if (g.needs_review) r.push('Flagged for review')
+  if (coverCandidates(g).length === 0) r.push('No cover art')
+  if (!g.genres?.some(x => x.trim())) r.push('No genres')
+  if (!g.release_year) r.push('No release year')
+  if (g.platforms.length === 0) r.push('No platform set')
+  else if (!g.platforms.some(p => p.is_primary_variant)) r.push('No primary platform chosen')
+  return r
+}
+
+/** The Needs-review list in title order, each with its reasons and the cover to show. */
+export function needsReviewList(games: readonly TgGame[]): { game: TgGame; reasons: string[]; cover: string | null }[] {
+  return games
+    .map(game => ({ game, reasons: needsReviewReasons(game) }))
+    .filter(x => x.reasons.length > 0)
+    .sort((a, b) => collator.compare(a.game.title, b.game.title))
+    .map(x => ({ ...x, cover: coverCandidates(x.game)[0] ?? null }))
+}
+
+// Per derived row (whose identity is stable while its source row is — see
+// derivedCache): cards, the hero and Needs review all ask for the same lists.
+const coverMemo = new WeakMap<TgGame, string[]>()
+const heroMemo = new WeakMap<TgGame, string[]>()
+
 /** Box art, best first. The cover component walks this list on load errors. */
 export function coverCandidates(g: TgGame): string[] {
+  const hit = coverMemo.get(g)
+  if (hit) return hit
+  const list = buildCoverCandidates(g)
+  coverMemo.set(g, list)
+  return list
+}
+
+function buildCoverCandidates(g: TgGame): string[] {
   const primary = g.platforms.find(p => p.is_primary_variant) ?? g.platforms[0]
   const raw = uniq([
     g.steamAppId ? steamArt.portrait(g.steamAppId) : null,
@@ -620,6 +789,14 @@ export function coverCandidates(g: TgGame): string[] {
 
 /** Wide scene art for the detail panel's hero, best first. */
 export function heroCandidates(g: TgGame): string[] {
+  const hit = heroMemo.get(g)
+  if (hit) return hit
+  const list = buildHeroCandidates(g)
+  heroMemo.set(g, list)
+  return list
+}
+
+function buildHeroCandidates(g: TgGame): string[] {
   return uniq([
     g.fanart_url,
     ...mediaOf(g, 'fanart'),
@@ -632,6 +809,16 @@ export function heroCandidates(g: TgGame): string[] {
     ...esdeOf(g, 'titlescreens'),
     g.steamAppId ? steamArt.header(g.steamAppId) : null,
   ])
+}
+
+/** Whether any in-game screenshot exists (saved, ScreenScraper or ES-DE) — Data health's coverage. */
+export function hasScreenshot(g: TgGame): boolean {
+  return uniq([g.screenshot_url, ...mediaOf(g, 'ss'), ...esdeOf(g, 'screenshots')]).length > 0
+}
+
+/** Whether any fan art exists (saved, ScreenScraper or ES-DE). */
+export function hasFanart(g: TgGame): boolean {
+  return uniq([g.fanart_url, ...mediaOf(g, 'fanart'), ...esdeOf(g, 'fanart')]).length > 0
 }
 
 /** The screenshot strip: in-game scenes, then title screens, then fanart. */
@@ -686,3 +873,37 @@ export function subtitleParts(g: TgGame, genreFallback?: string | null): string[
 export function lastPlayedIso(g: Game): string | null { return playStatsOf(g).last }
 export function playSeconds(g: Game): number | null { return playStatsOf(g).seconds }
 export function playCount(g: Game): number | null { return playStatsOf(g).count }
+
+// ─── Card meta & series ──────────────────────────────────────────────────────
+
+/**
+ * The one muted line a card shows under its title, following the sort (the
+ * number the list is ordered by is the one worth reading): play time, last
+ * session, year, date added, series — else platform · year.
+ */
+export function cardMeta(g: TgGame, sort: TgSort, playtime: (minutes: number) => string): string {
+  const platform = platformInfo(g.platformKey).short
+  switch (sort) {
+    case 'playtime': { const s = playSeconds(g); return s != null && s > 0 ? playtime(s / 60) : 'No recorded play' }
+    case 'recent': { const last = lastPlayedIso(g); return last ? formatDay(last) : 'No recorded play' }
+    case 'year-desc':
+    case 'year-asc': return g.release_year ? String(g.release_year) : 'Year unknown'
+    case 'added': return `Added ${formatDay(g.created_at)}`
+    case 'series': return g.series_name?.trim() || 'No series'
+    default: return [platform, g.release_year].filter(Boolean).join(' · ')
+  }
+}
+
+/** Other copies of the game beyond the one it is filed under ("+1"). */
+export const extraVariants = (g: Pick<TgGame, 'platforms'>) => Math.max(0, (g.platforms?.length ?? 0) - 1)
+
+/** The rest of a game's series in release order, with how many are completed. */
+export function seriesSiblings(games: readonly TgGame[], g: TgGame): { series: string; games: TgGame[]; completed: number } | null {
+  const series = g.series_name?.trim()
+  if (!series) return null
+  const key = series.toLocaleLowerCase('en')
+  const all = games.filter(x => !x.hidden && x.series_name?.trim().toLocaleLowerCase('en') === key)
+  if (all.length < 2) return null
+  const ordered = [...all].sort((a, b) => (a.release_year ?? Infinity) - (b.release_year ?? Infinity) || collator.compare(a.title, b.title))
+  return { series, games: ordered, completed: ordered.filter(x => x.play_status === 'completed').length }
+}

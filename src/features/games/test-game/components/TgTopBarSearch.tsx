@@ -1,25 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { Search, X } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
+import { dialogIsOpen, isTypingTarget } from './tgKeys'
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent)
-
-function isTypingTarget(t: EventTarget | null): boolean {
-  if (!(t instanceof HTMLElement)) return false
-  return t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'
-}
-
-const DIALOG = '[role="dialog"], [role="alertdialog"]'
-
-/**
- * A dialog (edit form, detail drawer, lightbox, phone sheet) owns the keyboard
- * while it is open: jumping to the search box behind it would pull focus out
- * of the dialog and filter the library it is showing a game from.
- */
-function dialogIsOpen(t: EventTarget | null): boolean {
-  if (t instanceof Element && t.closest(DIALOG)) return true
-  return document.querySelector(DIALOG) != null
-}
 
 /** The top bar's search field, bound to the page store. ⌘K / Ctrl+K or "/" focuses it. */
 export function TgTopBarSearch({ className = '' }: { className?: string }) {

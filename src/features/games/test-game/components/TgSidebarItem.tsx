@@ -35,7 +35,7 @@ export function TgSidebarItem({
         <span
           className={`tg-count ${accentCount ? '!bg-[var(--tg-nav-active-count-bg)] !text-[var(--tg-nav-active-text)]' : ''}`}
         >
-          {count}
+          {count.toLocaleString('en-GB')}
         </span>
       )}
     </button>

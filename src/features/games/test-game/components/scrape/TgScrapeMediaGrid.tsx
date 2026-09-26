@@ -1,0 +1,139 @@
+import { useState } from 'react'
+import { ExternalLink, FileText, Film } from 'lucide-react'
+import type { SsCandidate, SsMediaEntry } from '../../../scraper/ssTypes'
+import type { MediaMode } from '../../../scraper/ssMediaCatalog'
+import { refOf, ssMediaUrl } from '../../../scraper/ssApi'
+import { TgLightbox } from '../TgLightbox'
+import { MODE_HINT, MODE_LABEL, estimateStored, formatBytes, groupMediaRows, type MediaRow } from './tgScrapeModel'
+import { TgSegmented, TgSsMedia } from './TgScrapeParts'
+
+const MODES: MediaMode[] = ['store', 'on_demand', 'skip']
+const modeOptions = (canStore: boolean) => MODES.map(m => ({
+  value: m, label: MODE_LABEL[m],
+  disabled: m === 'store' && !canStore,
+  hint: m === 'store' && !canStore ? 'Manuals and videos are never copied — Online streams them' : MODE_HINT[m],
+}))
+
+const entryLabel = (e: SsMediaEntry) => [e.region?.toUpperCase(), e.support ? `disc ${e.support}` : null].filter(Boolean).join(' · ') || 'Any'
+
+/**
+ * Every file they have, one card per type: a preview, the version (region,
+ * disc), its size, and Copy / Online / Skip. Previews come through the signed
+ * proxy, so looking costs no storage.
+ */
+export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onToken, readOnly, imageScale = 1 }: {
+  candidate: SsCandidate
+  /** The saved image size (What to save), for the copy-size estimate. */
+  imageScale?: number
+  rows: MediaRow[]
+  modes: Record<string, MediaMode>
+  tokens: Record<string, string>
+  onMode: (type: string, m: MediaMode) => void
+  onToken: (type: string, token: string) => void
+  readOnly: boolean
+}) {
+  const [zoom, setZoom] = useState<number | null>(null)
+  const ref = refOf(candidate)
+  const imageRows = rows.filter(r => r.info.kind === 'image')
+  const entryOf = (r: MediaRow) => r.entries.find(e => e.token === tokens[r.type]) ?? r.chosen
+  const zoomUrls = imageRows.map(r => ssMediaUrl(ref, entryOf(r), { width: 1280 }) ?? '')
+
+  if (!rows.length) return <p className="text-[13px] tg-muted">ScreenScraper has no files for this entry.</p>
+
+  return (
+    // A container: the grid follows the width it is given (a narrow review
+    // pane, a phone), not the viewport — cards never get narrower than their
+    // Copy/Online/Skip control.
+    <div className="@container flex flex-col gap-5">
+      {!readOnly && (
+        <p className="-mt-1 text-[12px] leading-snug tg-muted">
+          <b className="font-semibold text-[var(--tg-text-2)]">Copy</b> keeps a small copy in your storage ·{' '}
+          <b className="font-semibold text-[var(--tg-text-2)]">Online</b> shows it from ScreenScraper, using no storage ·{' '}
+          <b className="font-semibold text-[var(--tg-text-2)]">Skip</b> ignores it.
+        </p>
+      )}
+      {groupMediaRows(rows).map(g => (
+        <div key={g.key}>
+          <div className="mb-2 flex min-h-[32px] items-center justify-between gap-2">
+            <h3 className="text-[12px] font-semibold text-[var(--tg-text-2)]">{g.label}</h3>
+            {!readOnly && g.rows.length > 1 && (
+              <span className="flex items-center gap-0.5 text-[11.5px]">
+                <span className="mr-1 tg-faint">All:</span>
+                {MODES.map(m => (
+                  <button
+                    key={m} type="button"
+                    onClick={() => g.rows.forEach(r => onMode(r.type, m === 'store' && !r.canStore ? 'on_demand' : m))}
+                    className="min-h-[32px] rounded-md px-2 font-semibold text-[var(--tg-accent)] [@media(hover:hover)]:hover:bg-[var(--tg-hover)] [@media(pointer:coarse)]:min-h-[44px]"
+                  >
+                    {MODE_LABEL[m]}
+                  </button>
+                ))}
+              </span>
+            )}
+          </div>
+          <ul className="grid grid-cols-1 gap-2.5 @[38rem]:grid-cols-2 @[62rem]:grid-cols-3">
+            {g.rows.map(r => {
+              const entry = entryOf(r)
+              const mode = modes[r.type] ?? r.mode
+              const url = ssMediaUrl(ref, entry, r.info.kind === 'image' ? { width: 1280 } : {})
+              const zoomIndex = r.info.kind === 'image' ? imageRows.findIndex(x => x.type === r.type) : -1
+              return (
+                <li key={r.type} className={`flex min-w-0 gap-3 rounded-[14px] border border-[var(--tg-border)] p-2.5 ${mode === 'skip' ? 'opacity-60' : 'bg-[var(--tg-panel)]'}`}>
+                  {r.info.kind === 'image' ? (
+                    <button
+                      type="button" onClick={() => setZoom(zoomIndex)} aria-label={`Preview ${r.info.label}`}
+                      className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-lg bg-[var(--tg-panel-2)]"
+                    >
+                      <TgSsMedia candidate={candidate} entry={entry} width={200} className="h-full w-full" />
+                    </button>
+                  ) : (
+                    <span className="grid h-[72px] w-[72px] shrink-0 place-items-center rounded-lg bg-[var(--tg-panel-2)] text-[var(--tg-accent)]">
+                      {r.info.kind === 'pdf' ? <FileText className="h-7 w-7" strokeWidth={1.6} aria-hidden /> : <Film className="h-7 w-7" strokeWidth={1.6} aria-hidden />}
+                    </span>
+                  )}
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="block truncate text-[13px] font-semibold">{r.info.label}</span>
+                        <span className="block truncate text-[11px] tabular-nums tg-muted">
+                          {/* What a copy would cost when Copy is on — theirs is the original. */}
+                          {mode === 'store' && r.canStore
+                            ? `copy ≈ ${formatBytes(estimateStored(entry, imageScale))} · original ${formatBytes(entry.size)}`
+                            : [entry.format?.toUpperCase(), formatBytes(entry.size)].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
+                      {r.info.kind !== 'image' && url && mode !== 'skip' && (
+                        <a href={url} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] shrink-0 items-center gap-1 rounded-md px-1.5 text-[12px] font-semibold text-[var(--tg-accent)]">
+                          Open <ExternalLink className="h-3 w-3" aria-hidden />
+                        </a>
+                      )}
+                    </div>
+                    {r.entries.length > 1 && (
+                      <div role="radiogroup" aria-label={`${r.info.label} version`} className="flex flex-wrap gap-1">
+                        {r.entries.map(e => (
+                          <button
+                            key={e.token} type="button" role="radio" aria-checked={e.token === entry.token}
+                            onClick={() => onToken(r.type, e.token)}
+                            className={`min-h-[32px] rounded-md px-2.5 text-[11.5px] font-semibold [@media(pointer:coarse)]:min-h-[44px] ${
+                              e.token === entry.token ? 'bg-[var(--tg-seg-active-bg,var(--tg-accent-soft))] text-[var(--tg-nav-active-text,var(--tg-accent))]' : 'bg-[var(--tg-panel-2)] text-[var(--tg-text-2)]'
+                            }`}
+                          >
+                            {entryLabel(e)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {!readOnly && (
+                      <TgSegmented size="sm" label={`${r.info.label}: copy, online or skip`} value={mode} options={modeOptions(r.canStore)} onChange={m => onMode(r.type, m)} />
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
+      <TgLightbox images={zoomUrls} index={zoom} onClose={() => setZoom(null)} onIndex={setZoom} />
+    </div>
+  )
+}

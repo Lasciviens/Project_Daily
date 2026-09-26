@@ -56,6 +56,11 @@
   --tg-red-soft: #fde8e8;
   --tg-star: #f5b301;
   --tg-star-empty: #d7dce4;
+  /* One colour per library in stacked charts (Analytics): amber, cyan and
+     indigo differ in hue AND lightness, so they stay apart for colour-blind eyes. */
+  --tg-lib-retro: #d97706;
+  --tg-lib-steam: #0891b2;
+  --tg-lib-playstation: #4f46e5;
 
   --tg-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 12px 32px -18px rgba(15, 23, 42, 0.25);
   --tg-menu-shadow: 0 18px 40px -12px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(15, 23, 42, 0.06);
@@ -94,6 +99,8 @@
 .tg-root { background: var(--tg-bg); }
 
 .dark .tg-root, .dark .tg-portal {
+  /* Native controls (date pickers, scrollbars, select popups) follow the theme. */
+  color-scheme: dark;
   --tg-bg: #06090f;
   --tg-sidebar: #090d15;
   --tg-panel: #0d121c;
@@ -128,6 +135,9 @@
   --tg-red-soft: rgba(248, 113, 113, 0.16);
   --tg-star: #fbbf24;
   --tg-star-empty: #384253;
+  --tg-lib-retro: #f59e0b;
+  --tg-lib-steam: #22d3ee;
+  --tg-lib-playstation: #818cf8;
 
   --tg-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 40px -22px rgba(0, 0, 0, 0.8);
   --tg-menu-shadow: 0 22px 48px -12px rgba(0, 0, 0, 0.75), 0 2px 8px rgba(0, 0, 0, 0.4);
@@ -520,3 +530,86 @@
   .tg-root *, .tg-root *::before, .tg-root *::after,
   .tg-portal *, .tg-portal *::before, .tg-portal *::after { animation: none !important; transition: none !important; }
 }
+
+/* ─── Play Queue drag and drop (TgQueueViewDrag) ─────────────────────────── */
+
+/* While a row is dragged the others slide out of its way; the dragged row
+   follows the pointer with no easing, lifted over its neighbours. The global
+   reduced-motion rule above removes the slide. */
+.tg-queue.is-dragging [data-queue-id] { transition-property: transform; transition-duration: 160ms; transition-timing-function: ease; }
+.tg-queue.is-dragging [data-queue-id].is-dragged {
+  transition: none; z-index: 2;
+  background: var(--tg-panel-2); box-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--tg-border);
+}
+.tg-queue.is-dragging, .tg-queue.is-dragging * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+.tg-queue-grip { cursor: grab; color: var(--tg-faint); }
+
+/* ═══ Round 3b: profile menu, connections, Advanced chrome ═══════════════════
+   (appended block — theme switch, PSN/Steam status rows, the npsso form and
+   the legacy-token remap that lets reused components sit inside this page) */
+
+.tg-theme-switch { display: inline-flex; gap: 2px; padding: 3px; border-radius: 12px; background: var(--tg-panel-2); border: 1px solid var(--tg-border); }
+.tg-theme-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 36px; border-radius: 9px; color: var(--tg-muted);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.tg-theme-btn.is-active { background: var(--tg-accent-soft); color: var(--tg-accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tg-accent) 35%, transparent); }
+.tg-theme-btn[data-focus] { background: var(--tg-hover); color: var(--tg-text); }
+.tg-theme-btn.is-active[data-focus] { background: var(--tg-accent-soft); color: var(--tg-accent); }
+@media (pointer: coarse) { .tg-theme-btn { width: 48px; height: 44px; } }
+@media (hover: hover) { .tg-theme-btn:not(.is-active):hover { background: var(--tg-hover); color: var(--tg-text); } }
+
+.tg-conn-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 10px; }
+.tg-conn-row[data-tone='ok'] { --conn: var(--tg-green); }
+.tg-conn-row[data-tone='warn'] { --conn: var(--tg-star); }
+.tg-conn-row[data-tone='bad'] { --conn: var(--tg-red); }
+.tg-conn-row[data-tone='idle'] { --conn: var(--tg-grey); }
+.tg-conn-row[data-tone='warn'], .tg-conn-row[data-tone='bad'] { background: color-mix(in srgb, var(--conn) 9%, transparent); }
+.tg-conn-dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 999px; flex-shrink: 0; background: var(--conn); }
+.tg-conn-text { color: var(--tg-text-2); }
+.tg-conn-row[data-tone='warn'] .tg-conn-text { color: color-mix(in srgb, var(--tg-star) 70%, var(--tg-text)); }
+.tg-conn-row[data-tone='bad'] .tg-conn-text { color: var(--tg-red); }
+.tg-conn-btn {
+  display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600; color: var(--tg-text);
+  background: var(--tg-panel-2); border: 1px solid var(--tg-border);
+}
+.tg-conn-btn.is-primary { background: var(--tg-accent); border-color: transparent; color: var(--tg-on-accent); }
+.tg-conn-btn[data-focus] { border-color: var(--tg-accent); }
+@media (pointer: coarse) { .tg-conn-btn { min-height: 44px; padding: 0 14px; } }
+@media (hover: hover) {
+  .tg-conn-btn:not(.is-primary):hover { background: var(--tg-hover); }
+  .tg-conn-btn.is-primary:hover { background: var(--tg-accent-hover); }
+}
+.tg-portal .tg-conn-btn:focus-visible, .tg-root .tg-conn-btn:focus-visible, .tg-portal .tg-theme-btn:focus-visible { border-radius: 9px; }
+
+/* The shared PsnNpssoForm, drawn with the app's utilities, in this page's palette. */
+.tg-npsso ol { color: var(--tg-text-2); }
+.tg-npsso a { color: var(--tg-accent); }
+.tg-npsso code { background: var(--tg-panel-2); color: var(--tg-text); }
+.tg-npsso textarea { background: var(--tg-panel-2); border-color: var(--tg-border-strong); color: var(--tg-text); font-size: 16px; }
+.tg-npsso textarea::placeholder { color: var(--tg-faint); }
+.tg-npsso textarea:focus { border-color: var(--tg-accent); box-shadow: 0 0 0 3px var(--tg-accent-soft); --tw-ring-shadow: 0 0 #0000; }
+.tg-npsso button { background: var(--tg-accent); border-radius: 10px; }
+@media (hover: hover) { .tg-npsso button:hover:not(:disabled) { background: var(--tg-accent-hover); } }
+
+/* Reused legacy components (Advanced tabs, Add game, the classic edit form)
+   are drawn with the app's cream/ink/accent tokens. Redefining those tokens
+   here (RGB triplets, as index.css does) puts them on this page's palette
+   without touching their code. */
+.tg-legacy {
+  --canvas: 243 245 249; --cream-50: 255 255 255; --cream-100: 243 245 249; --cream-200: 236 240 246; --cream-300: 243 245 249;
+  --ink-900: 15 23 42; --ink-800: 30 41 59; --ink-700: 51 65 85; --ink-600: 71 85 105; --ink-500: 100 116 139;
+  --ink-400: 148 163 184; --ink-300: 203 213 225; --ink-200: 226 232 240; --ink-100: 241 245 249; --ink-50: 248 250 252;
+  --accent-50: 239 244 255; --accent-100: 219 231 254; --accent-200: 191 212 254; --accent-400: 96 145 250;
+  --accent-500: 37 99 235; --accent-600: 29 78 216; --accent-700: 30 64 175;
+}
+.dark .tg-legacy {
+  --canvas: 6 9 15; --cream-50: 13 18 28; --cream-100: 20 27 39; --cream-200: 26 34 48; --cream-300: 6 9 15;
+  --ink-900: 238 242 247; --ink-800: 218 224 233; --ink-700: 198 206 219; --ink-600: 164 174 190; --ink-500: 138 148 166;
+  --ink-400: 105 115 133; --ink-300: 66 76 94; --ink-200: 38 47 62; --ink-100: 28 36 50; --ink-50: 20 27 39;
+  --accent-50: 16 28 58; --accent-100: 21 42 92; --accent-200: 31 61 134; --accent-400: 75 128 255;
+  --accent-500: 47 107 255; --accent-600: 75 128 255; --accent-700: 147 178 255;
+}
+.tg-adv .tg-legacy { color: var(--tg-text); }

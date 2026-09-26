@@ -7,6 +7,7 @@ import { steamGameHeaderUrl, fetchSteamAppTypes, type SteamGame } from '../api/s
 import { steamKind, isHiddenEntry, visibleEntries, countHidden } from '../providerEntries'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ImportProviderButton } from './ImportProviderButton'
+import { steamImportRows } from '../api/providerImportRows'
 import type { ProviderGameInput } from '../api/gamesApi'
 import { formatPlaytime } from '../api/playtimeFormat'
 import { useLibraryGames } from '../hooks/useGames'
@@ -171,17 +172,7 @@ export function SteamTab() {
   // so the formatter still has the remainder to show.
   const totalMinutes = (owned.data?.games ?? []).reduce((s, g) => s + g.playtime_forever, 0)
 
-  // Steam reports playtime in MINUTES and last-played as a unix timestamp;
-  // both are converted here so `games.play_seconds` has one unit whatever the
-  // provider. The header image is a public CDN URL with no credentials in it,
-  // unlike ScreenScraper's, so it can be stored as-is.
-  const importRows: ProviderGameInput[] = (owned.data?.games ?? []).map(g => ({
-    external_ref: String(g.appid),
-    title: g.name,
-    play_seconds: g.playtime_forever * 60,
-    last_played_at: g.rtime_last_played ? new Date(g.rtime_last_played * 1000).toISOString() : null,
-    primary_cover_url: steamGameHeaderUrl(g.appid),
-  }))
+  const importRows: ProviderGameInput[] = steamImportRows(owned.data?.games ?? [])
 
   return (
     <div>

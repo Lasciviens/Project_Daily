@@ -77,9 +77,14 @@ function HeroArt({ game, variant }: { game: TgGame; variant: Variant }) {
 
   return (
     <div className={`tg-hero bg-[var(--tg-panel-2)] ${HERO_SIZE[variant]}`}>
-      <div aria-hidden className="absolute inset-0 scale-125 opacity-70 blur-2xl">
-        <TgCover game={game} mode="cover" />
-      </div>
+      {/* The blurred cover behind the art — not on the phone sheet, where a
+          scaled blur-2xl layer made the 300ms slide-in stutter; the static
+          tint (bg-panel-2) holds its place there. */}
+      {variant !== 'sheet' && (
+        <div aria-hidden className="absolute inset-0 scale-125 opacity-70 blur-2xl">
+          <TgCover game={game} mode="cover" />
+        </div>
+      )}
       {url && (
         <img
           key={attemptKey ?? undefined}

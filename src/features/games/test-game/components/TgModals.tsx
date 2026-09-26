@@ -1,19 +1,32 @@
+import { Suspense, useState } from 'react'
 import { Toaster } from '../../../../shared/components/Toaster'
+import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
-import { GameDetailModal } from '../../components/GameDetailModal'
-import { SteamGameModal } from '../../components/SteamGameModal'
-import { PsnGameModal } from '../../components/PsnGameModal'
+import { lazyWithReload } from '../../../../shared/utils/lazyWithReload'
+import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 import type { SteamGame } from '../../api/steamApi'
 import { psnGamesFromLibrary } from '../../api/psnLibraryFallback'
 import type { TgGame } from '../testGameModel'
 import type { TgActions } from '../tgTypes'
 import type { TgBreakpoint } from '../useTgBreakpoint'
 import { TgDetailSheet } from './TgDetailSheet'
+import { TgChunkFailedDialog } from './TgStates'
+import { useTgAddGame } from './tgAddGame'
+
+// The classic edit form, Add game and the provider modals load on first use.
+const GameDetailModal = lazyWithReload('games-edit', () => import('../../components/GameDetailModal').then(m => m.GameDetailModal), TgChunkFailedDialog)
+const AddGameModal = lazyWithReload('games-add', () => import('../../components/AddGameModal').then(m => m.AddGameModal), TgChunkFailedDialog)
+const SteamGameModal = lazyWithReload('games-steam', () => import('../../components/SteamGameModal').then(m => m.SteamGameModal), TgChunkFailedDialog)
+const PsnGameModal = lazyWithReload('games-psn', () => import('../../components/PsnGameModal').then(m => m.PsnGameModal), TgChunkFailedDialog)
 
 // Every modal the page owns, in one place the shell renders OUTSIDE its
 // layout tree, so switching layouts never remounts (and so closes) one. The
 // tablet/desktop details are not modal — they live in the layout as the
 // non-modal TgDetailOverlay — so the only sheet here is the phone's.
+// The legacy dialogs get `tg-portal tg-legacy` so they take this page's
+// palette (testGame.css) instead of the app's cream one.
+
+const LEGACY = 'tg-portal tg-legacy'
 
 /** A saved library row, shaped as the live Steam payload the modal expects. */
 function toSteamGame(g: TgGame): SteamGame {
@@ -44,9 +57,20 @@ interface Props {
   fullId: string | null
   provider: TgGame | null
   onClose: (which: 'edit' | 'full' | 'provider') => void
+  /** The game a play session is being planned for (the calendar planner). */
+  planGame: TgGame | null
+  onClosePlan: () => void
 }
 
-export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId, provider, onClose }: Props) {
+export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId, provider, onClose, planGame, onClosePlan }: Props) {
+  const addOpen = useTgAddGame(s => s.open)
+  const setAddOpen = useTgAddGame(s => s.setOpen)
+  // Add game stays mounted once opened, so it keeps its closing animation.
+  const [addMounted, setAddMounted] = useState(false)
+  if (addOpen && !addMounted) setAddMounted(true)
+  // The shared planner has no Back handling of its own (plan-modal/ is not
+  // edited here): without this, Back closed the sheet under it instead.
+  useHistoryDismiss(planGame != null, onClosePlan)
   return (
     <>
       {/* Widening past the phone layout closes the sheet (its history entry
@@ -57,17 +81,32 @@ export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId,
         actions={actions}
         onClose={onCloseSheet}
       />
-      {editId && <GameDetailModal gameId={editId} initialEditing onClose={() => onClose('edit')} />}
-      {fullId && <GameDetailModal gameId={fullId} onClose={() => onClose('full')} />}
-      {provider?.library === 'steam' && provider.steamAppId != null && (
-        <ErrorBoundary label="Steam" action="test_game_steam_modal">
-          <SteamGameModal game={toSteamGame(provider)} onClose={() => onClose('provider')} />
-        </ErrorBoundary>
-      )}
-      {provider?.library === 'playstation' && (
-        <ErrorBoundary label="PlayStation" action="test_game_psn_modal">
-          <PsnGameModal game={psnGamesFromLibrary([provider])[0]} onClose={() => onClose('provider')} />
-        </ErrorBoundary>
+      {/* Each mounts only once it is opened, so its code loads on first use. */}
+      <Suspense fallback={null}>
+        {editId && <GameDetailModal gameId={editId} initialEditing className={LEGACY} onClose={() => onClose('edit')} />}
+        {fullId && <GameDetailModal gameId={fullId} className={LEGACY} onClose={() => onClose('full')} />}
+        {addMounted && <AddGameModal open={addOpen} className={LEGACY} onClose={() => setAddOpen(false)} />}
+        {provider?.library === 'steam' && provider.steamAppId != null && (
+          <ErrorBoundary label="Steam" action="test_game_steam_modal">
+            <SteamGameModal game={toSteamGame(provider)} onClose={() => onClose('provider')} />
+          </ErrorBoundary>
+        )}
+        {provider?.library === 'playstation' && (
+          <ErrorBoundary label="PlayStation" action="test_game_psn_modal">
+            <PsnGameModal game={psnGamesFromLibrary([provider])[0]} onClose={() => onClose('provider')} />
+          </ErrorBoundary>
+        )}
+      </Suspense>
+      {/* The app's one planner (a time block in the Games category); it keeps
+          the app palette — plan-modal/ takes no theme and is not edited here. */}
+      {planGame && (
+        <UnifiedPlanModal
+          open
+          onClose={onClosePlan}
+          mode="schedule"
+          config={{ heading: 'Plan a gaming session' }}
+          defaults={{ title: `🎮 ${planGame.title}`, duration: 60, category: 'games', color: 'purple' }}
+        />
       )}
       <Toaster positionClassName={TOAST_POSITION[bp]} />
     </>

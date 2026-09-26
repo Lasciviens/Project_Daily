@@ -10,21 +10,26 @@ import { TgMobileSortSheet } from './TgMobileSortSheet'
  * sheets they open. Sort is its own button (an order is not a narrowing), so
  * only status and genre picks light the filter button's dot.
  */
-export function TgMobileListTools({ genres, statusCounts, showStatus, showSort }: {
+export function TgMobileListTools({ genres, studios, statusCounts, showStatus, showSort, resultCount }: {
   genres: { genre: string; count: number }[]
+  studios?: { studio: string; count: number }[]
+  resultCount?: number
   statusCounts: StatusCounts
   showStatus: boolean
   showSort: boolean
 }) {
   const statuses = useTestGameStore(s => s.statuses)
   const pickedGenres = useTestGameStore(s => s.genres)
+  const pickedStudios = useTestGameStore(s => s.studios)
   const sort = useTestGameStore(s => s.sort)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
-  const filtered = (showStatus && statuses.length > 0) || pickedGenres.length > 0
+  // How many picks narrow the list — the badge says the number, not just "some".
+  const active = (showStatus ? statuses.length : 0) + pickedGenres.length + pickedStudios.length
+  const filtered = active > 0
 
   return (
-    <div className="flex min-w-0 shrink items-center gap-2">
+    <div className="flex shrink-0 items-center gap-2">
       {showSort && (
         <button
           type="button"
@@ -39,12 +44,14 @@ export function TgMobileListTools({ genres, statusCounts, showStatus, showSort }
       <button
         type="button"
         onClick={() => setFiltersOpen(true)}
-        aria-label={filtered ? 'Filters (active)' : 'Filters'}
+        aria-label={filtered ? `Filters (${active} active)` : 'Filters'}
         className="tg-icon-btn is-bordered relative shrink-0"
       >
         <SlidersHorizontal size={18} strokeWidth={1.9} />
         {filtered && (
-          <span aria-hidden className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--tg-accent)] ring-2 ring-[var(--tg-panel-2)]" />
+          <span aria-hidden className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[var(--tg-accent)] px-1 text-[10.5px] font-bold tabular-nums text-[var(--tg-on-accent)] ring-2 ring-[var(--tg-bg)]">
+            {active}
+          </span>
         )}
       </button>
 
@@ -52,8 +59,10 @@ export function TgMobileListTools({ genres, statusCounts, showStatus, showSort }
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
         genres={genres}
+        studios={studios}
         statusCounts={statusCounts}
         showStatus={showStatus}
+        resultCount={resultCount}
       />
       {showSort && <TgMobileSortSheet open={sortOpen} onClose={() => setSortOpen(false)} />}
     </div>

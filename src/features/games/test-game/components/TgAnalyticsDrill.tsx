@@ -8,6 +8,7 @@ import { drillFigure, drillNote, drillTitle, shownOf } from './tgAnalyticsDrillC
 import { openGameFromAnalytics } from './tgAnalyticsOpen'
 import { TgAnalyticsDrillList } from './TgAnalyticsDrillList'
 import { TgMobileSheet } from './TgMobileSheet'
+import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 
 // A KPI tile's drill-down: exactly the games its number counts, under the
 // current window × library. The list comes from tileGames — the same function
@@ -42,6 +43,7 @@ function Body({ kind, games, windowed, scope, onPick }: {
 }
 
 function Drawer({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  useHistoryDismiss(open, onClose)
   return (
     <Dialog open={open} onClose={onClose} className="tg-portal relative z-[60]">
       <DialogBackdrop transition className="fixed inset-0 bg-black/40 transition duration-200 data-[closed]:opacity-0" />
@@ -52,7 +54,7 @@ function Drawer({ open, onClose, title, children }: { open: boolean; onClose: ()
         >
           <div className="flex min-h-[56px] items-center justify-between gap-3 border-b border-[var(--tg-border)] px-5">
             <DialogTitle className="text-[17px] font-bold">{title}</DialogTitle>
-            <button type="button" onClick={onClose} aria-label="Close" className="grid h-10 w-10 place-items-center rounded-full text-[var(--tg-muted)] [@media(hover:hover)]:hover:bg-[var(--tg-hover)]">
+            <button type="button" onClick={onClose} aria-label="Close" className="grid h-11 w-11 place-items-center rounded-full text-[var(--tg-muted)] [@media(hover:hover)]:hover:bg-[var(--tg-hover)]">
               <X size={18} aria-hidden />
             </button>
           </div>
@@ -63,15 +65,15 @@ function Drawer({ open, onClose, title, children }: { open: boolean; onClose: ()
   )
 }
 
-export function TgAnalyticsDrill({ kind, scoped, start, library, onClose }: {
-  kind: TgaTile | null; scoped: TgGame[]; start: number | null; library: TgaLibrary; onClose: () => void
+export function TgAnalyticsDrill({ kind, scoped, start, end, library, onClose }: {
+  kind: TgaTile | null; scoped: TgGame[]; start: number | null; end: number; library: TgaLibrary; onClose: () => void
 }) {
   const bp = useTgBreakpoint()
   // Kept while the sheet animates out, so it doesn't empty mid-transition.
   const [last, setLast] = useState<TgaTile>('games')
   if (kind && kind !== last) setLast(kind)
   const shownKind = kind ?? last
-  const games = useMemo(() => tileGames(shownKind, scoped, start), [shownKind, scoped, start])
+  const games = useMemo(() => tileGames(shownKind, scoped, start, end), [shownKind, scoped, start, end])
   const windowed = start != null
   const libLabel = TGA_LIBRARIES.find(l => l.key === library)?.label ?? 'All'
   const scope = `${windowed ? `Since ${formatDay(new Date(start).toISOString())}` : 'All time'} · ${library === 'all' ? 'all libraries' : libLabel}`

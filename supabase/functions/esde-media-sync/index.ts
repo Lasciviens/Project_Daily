@@ -69,6 +69,26 @@ async function removeDeletedCovers(userId: string, ids: string[]) {
   }
 }
 
+// ── Storage wall ────────────────────────────────────────────────────────────
+// The Free plan's 1 GB bucket quota is a hard wall: past it the project is
+// eventually locked with 402 on EVERY request. The ScreenScraper scraper
+// already refuses to store past its budget; this upload shares the bucket, so
+// it refuses past the same hard cap. 413 is not retried by the device script,
+// so a full bucket stops the run cleanly instead of hammering it.
+const STORAGE_HARD_CAP = 950 * 1024 * 1024
+async function storageRefusal(incoming: number): Promise<{ used: number } | null> {
+  const { data, error } = await db.rpc('game_media_usage') as { data: unknown; error: unknown }
+  // Before migration 104 the function does not exist: behave as before it.
+  if (error) {
+    const code = (error as { code?: string }).code
+    if (code === 'PGRST202' || code === '42883') return null
+    throw error
+  }
+  if (!Array.isArray(data)) return null
+  const used = (data as { bytes?: number }[]).reduce((sum, row) => sum + Number(row.bytes ?? 0), 0)
+  return used + incoming > STORAGE_HARD_CAP ? { used } : null
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
   if (req.method !== 'POST') return reply({ error: 'POST required' }, 405)
@@ -103,6 +123,8 @@ Deno.serve(async req => {
       if (error) throw error
       if (!variant) return reply({ error: 'Import this game first' }, 409)
       if (variant.cover_url && !variant.cover_url.startsWith(managedPrefix)) return reply({ status: 'ok', manual_cover: true })
+      const full = await storageRefusal(bytes.length)
+      if (full) return reply({ error: 'storage_full', used: full.used, cap: STORAGE_HARD_CAP }, 413)
       const object = `${userId}/esde/${variant.id}/${body.sha256}.webp`
       const url = `${base}/storage/v1/object/public/${bucket}/${object}`
       const { error: uploadError } = await db.storage.from(bucket).upload(object, bytes, { contentType: 'image/webp', cacheControl: '31536000', upsert: true })

@@ -1,6 +1,8 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { playStatsOf, shouldAutoMarkPlaying } from '../gameStats'
+import { shouldAutoMarkPlaying } from '../gameStats'
+import { providerUpdateFields, type ProviderExistingRow } from './providerImportRules'
+import { statusPatch } from './gameCachePatch'
 import type {
   Game, GamePlatform, QueueGame, PlayStatus,
   CreateGameInput, GamePatch, GamePlatformInput, GameLibrary,
@@ -106,6 +108,10 @@ const GAME_LIST_COLUMNS = [
   'esde_playcount', 'esde_last_played', 'esde_playtime_seconds', 'created_at', 'updated_at',
   // 090 · 096 · 099
   'started_at', 'finished_at', 'library', 'play_seconds', 'play_count', 'last_played_at', 'media',
+  // 104 — the ScreenScraper match marker (never external_source, which ES-DE keys on)
+  'ss_jeu_id', 'ss_scraped_at',
+  // 105 — PlayStation facts
+  'provider_kind', 'first_played_at',
 ].join(', ')
 
 const PLATFORM_LIST_COLUMNS = [
@@ -118,15 +124,26 @@ const PLATFORM_LIST_COLUMNS = [
   'esde_source_hash', 'esde_assets',
 ].join(', ')
 
-/** Runs a list read with the named columns, and once more with `*` if the
- *  database is older than one of them. */
+/** Runs a list read with the named columns. When the database is older than
+ *  one of them, that column is dropped and the read retried — `*` only as the
+ *  last resort, since it also pulls the heavy provider/ES-DE blobs for every
+ *  row. */
 async function withListColumns<T>(columns: string, read: (columns: string) => Promise<T>): Promise<T> {
-  try {
-    return await read(columns)
-  } catch (e) {
-    if (!isMissingColumn(e)) throw e
-    return read('*')
+  let cols = columns
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      return await read(cols)
+    } catch (e) {
+      if (!isMissingColumn(e)) throw e
+      const msg = (e as { message?: string }).message ?? ''
+      const missing = /column\s+(?:"?\w+"?\.)?"?(\w+)"?\s+does not exist/i.exec(msg)?.[1]
+        ?? /Could not find the '(\w+)' column/i.exec(msg)?.[1]
+      const list = cols.split(', ')
+      if (!missing || !list.includes(missing)) break
+      cols = list.filter(c => c !== missing).join(', ')
+    }
   }
+  return read('*')
 }
 
 /** Every platform row this user owns — RLS already scopes it, so no filter. */
@@ -204,15 +221,13 @@ export async function fetchGameDetail(id: string): Promise<Game> {
 }
 
 /**
- * Raw rows for the Stats panel, across EVERY library — retro, Steam and
- * PlayStation together (migration 096). The panel filters by window and by
- * library and totals the result itself (`gameStats.ts::computeGameStats`), so
- * this deliberately aggregates nothing: the numbers depend on what the user
- * picked, not on what the query returned.
+ * Raw rows for Home's Games widget, across EVERY library — retro, Steam and
+ * PlayStation together (migration 096). The widget totals them itself
+ * (`gameStats.ts::computeGameStats`), so this deliberately aggregates nothing.
  */
 export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: { game_id: string; system: string }[] }> {
   // Paginated for the same reason as fetchAllGames: capped at one page, every
-  // total on the Stats panel would silently stop counting at 1000.
+  // total would silently stop counting at 1000.
   const COLUMNS = 'id, title, play_status, is_iconic, is_coop, needs_review, rating, esde_playcount, esde_playtime_seconds, esde_last_played'
   const WITH_096 = `${COLUMNS}, library, play_seconds, play_count, last_played_at`
 
@@ -230,27 +245,14 @@ export async function fetchGameStats(): Promise<{ rows: StatsRow[]; platforms: {
   return { rows, platforms }
 }
 
-// Games flagged needs_review OR missing metadata a real library entry should
-// have — the lightweight replacement for RP5's 18-rule audit-score view (see
-// migration 089's header note: that view was one-time cataloguing QA, not an
-// ongoing personal-use feature, so it isn't ported — this is a plain filter
-// over already-fetched data instead of a permanent SQL view).
-export async function fetchGamesNeedingReview(): Promise<Game[]> {
-  const all = await fetchAllGames()
-  return all.filter(g =>
-    g.needs_review
-    || !g.primary_cover_url
-    || !g.genres?.length
-    || !g.release_year
-    || g.platforms.length === 0
-    || !g.platforms.some(p => p.is_primary_variant)
-  )
-}
 
 export async function fetchPlayQueue(): Promise<QueueGame[]> {
   const rows = await withListColumns(GAME_LIST_COLUMNS, async cols => {
     const { data, error } = await supabase
-      .from('games').select(cols).not('play_order', 'is', null).order('play_order', { ascending: true })
+      // Hidden games keep their play_order but take no place (the page's queue
+      // rule); ties number the same way everywhere (play order, title, id).
+      .from('games').select(cols).not('play_order', 'is', null).neq('play_status', 'hidden')
+      .order('play_order', { ascending: true }).order('title', { ascending: true }).order('id', { ascending: true })
       .overrideTypes<Omit<Game, 'platforms'>[], { merge: false }>()
     if (error) { if (isMissingTable(error)) return []; throw error }
     return data ?? []
@@ -277,6 +279,10 @@ export async function createGame(input: CreateGameInput): Promise<Game> {
       genres:            gameFields.genres ?? null,
       series_name:       gameFields.series_name ?? null,
       play_status:       gameFields.play_status ?? 'backlog',
+      // Added as Playing or Completed: stamp the date the quick switch would
+      // (setPlayStatus) — a manual add has no provider session to use instead.
+      ...(gameFields.play_status === 'playing' && { started_at: new Date().toISOString() }),
+      ...(gameFields.play_status === 'completed' && { finished_at: new Date().toISOString() }),
       tier:              gameFields.tier ?? null,
       rating:            gameFields.rating ?? null,
       is_coop:           gameFields.is_coop ?? false,
@@ -323,9 +329,6 @@ export async function setPlayStatus(id: string, status: PlayStatus): Promise<voi
     .from('games').select('id, title, library, started_at, finished_at, last_played_at, esde_last_played').eq('id', id).single()
   if (readErr) throw isMissingTable(readErr) ? new Error(NOT_MIGRATED) : readErr
 
-  const patch: GamePatch = { play_status: status }
-  const now = new Date().toISOString()
-  if (status === 'playing' && !current?.started_at) patch.started_at = now
   // The day you FINISHED it, not the day you pressed the button. For an
   // imported Steam/PSN library those are wildly different: marking fifty old
   // games completed in one sitting used to stamp today on every one of them,
@@ -333,10 +336,9 @@ export async function setPlayStatus(id: string, status: PlayStatus): Promise<voi
   // last session is the honest answer; now() is only the fallback for a game
   // no provider ever reported a session for (a manual add). Read through
   // playStatsOf: for a retro row `last_played_at` is migration 096's frozen
-  // backfill and ES-DE's own date is the live one.
-  if (status === 'completed' && !current?.finished_at) {
-    patch.finished_at = (current ? playStatsOf(current as PlayStatRow).last : null) ?? now
-  }
+  // backfill and ES-DE's own date is the live one. `statusPatch` is shared
+  // with the optimistic cache patch, so the page shows what is written.
+  const patch = statusPatch(current as PlayStatRow | null, status, new Date().toISOString()) as GamePatch
 
   const { error } = await supabase.from('games').update(patch).eq('id', id)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
@@ -347,17 +349,28 @@ export async function deleteGame(id: string): Promise<void> {
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
 }
 
-// Add game to end of queue (assigns next sequential play_order).
-export async function addToQueue(id: string): Promise<void> {
-  const { data } = await supabase
+// Add game to end of queue (assigns next sequential play_order). Returns the
+// position written, so the caller can correct its optimistic guess.
+export async function addToQueue(id: string): Promise<number> {
+  const { data, error: readErr } = await supabase
     .from('games').select('play_order').not('play_order', 'is', null).order('play_order', { ascending: false }).limit(1)
+  // A failed read must not look like an empty queue (it would write #1 over an existing #1).
+  if (readErr) throw isMissingTable(readErr) ? new Error(NOT_MIGRATED) : readErr
   const maxOrder = (data?.[0]?.play_order as number | undefined) ?? 0
   const { error } = await supabase.from('games').update({ play_order: maxOrder + 1 }).eq('id', id)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+  return maxOrder + 1
 }
 
 export async function removeFromQueue(id: string): Promise<void> {
   const { error } = await supabase.from('games').update({ play_order: null }).eq('id', id)
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+}
+
+/** Takes several games out of the Play Queue in one write. */
+export async function removeManyFromQueue(ids: string[]): Promise<void> {
+  if (!ids.length) return
+  const { error } = await supabase.from('games').update({ play_order: null }).in('id', ids)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
 }
 
@@ -414,18 +427,25 @@ export type ProviderGameInput = {
   primary_cover_url?: string | null
   release_year?: number | null
   genres?: string[] | null
+  /** Migration 105 — the provider's own classification (PlayStation `category`). */
+  provider_kind?: string | null
+  /** Migration 105 — the provider's first-played timestamp (PlayStation). */
+  first_played_at?: string | null
 }
+
+/** Columns only migration 105 has; dropped (and retried) against an older database. */
+const PROVIDER_105_COLUMNS = ['provider_kind', 'first_played_at'] as const
 
 /**
  * Bring a provider's owned/played list into `games` so those titles can be
  * tiered, rated, completed and counted like any other.
  *
- * Re-running is safe and is the normal case: the unique index
- * `(user_id, library, external_ref)` turns a second import into an update.
- * Only the PROVIDER's own facts are written on conflict — play statistics and
- * the cover — never `play_status`, `tier`, `rating` or notes, which are the
- * user's and which a re-import must never reset. (The same rule `esde-sync`
- * follows for the same reason.)
+ * Re-running is safe and is the normal case: an existing row (matched on
+ * `(library, external_ref)`) is updated, not duplicated. On an existing row
+ * the provider's play figures are refreshed, while title, cover, genres and
+ * year are only filled when empty (`providerUpdateFields`) — never
+ * `play_status`, `tier`, `rating` or notes, which are the user's and which a
+ * re-import must never reset. (The same rule `esde-sync` follows.)
  */
 export async function importProviderGames(
   library: Exclude<GameLibrary, 'retro'>,
@@ -447,10 +467,13 @@ export async function importProviderGames(
   // specification". Making the index total instead would be worse: a retro
   // row's `external_ref` is a ScreenScraper id that two different games can
   // legitimately share, so a scrape write would start failing.
-  let existing: { id: string; external_ref: string | null; play_status: string }[]
+  type Existing = ProviderExistingRow & { id: string; external_ref: string | null; play_status: string }
+  let existing: Existing[]
   try {
-    existing = await fetchAllPages<{ id: string; external_ref: string | null; play_status: string }>((from, to) =>
-      supabase.from('games').select('id, external_ref, play_status').eq('library', library).order('id', { ascending: true }).range(from, to))
+    existing = await fetchAllPages<Existing>((from, to) =>
+      supabase.from('games')
+        .select('id, external_ref, play_status, title, primary_cover_url, genres, release_year, play_seconds, play_count, last_played_at')
+        .eq('library', library).order('id', { ascending: true }).range(from, to))
   } catch (e) {
     throw isMissingTable(e) || isMissingColumn(e)
       ? new Error('Importing Steam/PlayStation games needs migration 096 — apply it first.')
@@ -472,6 +495,9 @@ export async function importProviderGames(
     primary_cover_url: g.primary_cover_url ?? null,
     release_year: g.release_year ?? null,
     genres: g.genres ?? null,
+    // The provider's own facts: refreshed on every import, never user-edited.
+    provider_kind: g.provider_kind ?? null,
+    first_played_at: g.first_played_at ?? null,
     synced_at: now,
   })
 
@@ -493,7 +519,7 @@ export async function importProviderGames(
     // backlog row. Every other status is something the user said.
     const promote = shouldAutoMarkPlaying(row.play_status, g.play_seconds)
     if (promote) promoted++
-    return { id: row.id, ...payload(g), ...(promote ? { play_status: 'playing' } : {}) }
+    return { id: row.id, ...payload(g), ...providerUpdateFields(row, g), ...(promote ? { play_status: 'playing' } : {}) }
   })
 
   const fail = (e: unknown) => {
@@ -502,16 +528,28 @@ export async function importProviderGames(
       : e
   }
 
+  // Before migration 105 the two provider-fact columns do not exist: the
+  // first write that says so switches every later chunk to rows without them.
+  let has105 = true
+  const strip = <R extends Record<string, unknown>>(rows: R[]) =>
+    has105 ? rows : rows.map(r => { const c = { ...r }; for (const k of PROVIDER_105_COLUMNS) delete c[k]; return c })
+  const write = async (run: (rows: Record<string, unknown>[]) => PromiseLike<{ error: unknown }>, rows: Record<string, unknown>[]) => {
+    let { error } = await run(strip(rows))
+    if (error && has105 && isMissingColumn(error)) {
+      has105 = false
+      ;({ error } = await run(strip(rows)))
+    }
+    if (error) fail(error)
+  }
+
   // Chunked for the same URL/payload-size reason the reads are.
   for (let i = 0; i < toInsert.length; i += 200) {
-    const { error } = await supabase.from('games').insert(toInsert.slice(i, i + 200))
-    if (error) fail(error)
+    await write(rows => supabase.from('games').insert(rows), toInsert.slice(i, i + 200))
   }
   for (let i = 0; i < toUpdate.length; i += 200) {
     // Conflict on the PRIMARY KEY, which is always inferable — these rows
     // carry the id read above, so this is an update in upsert's clothing.
-    const { error } = await supabase.from('games').upsert(toUpdate.slice(i, i + 200))
-    if (error) fail(error)
+    await write(rows => supabase.from('games').upsert(rows), toUpdate.slice(i, i + 200))
   }
 
   return { imported: toInsert.length, updated: toUpdate.length, promoted }

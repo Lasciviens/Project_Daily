@@ -69,8 +69,11 @@ export function playStatsOf(g: PlayStatRow): ResolvedPlay {
   }
 }
 
-/** "2h 14m" · "45m" · "3m" · null when there is genuinely nothing to show. */
-export function formatPlaytime(seconds: number | null | undefined): string | null {
+/**
+ * "2h 14m" · "45m" · "3m" from SECONDS — null when there is genuinely nothing
+ * to show. Not `playtimeFormat.formatPlaytime`, which takes MINUTES (hence the name).
+ */
+export function formatPlaytimeFromSeconds(seconds: number | null | undefined): string | null {
   if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return null
   // Floor, not round: 30 seconds must not read as a full minute, and the
   // "<1m" branch below is only reachable if it can actually land on zero.
@@ -88,7 +91,7 @@ export function formatPlaytime(seconds: number | null | undefined): string | nul
 export function formatPlaytimeShort(seconds: number | null | undefined): string | null {
   if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return null
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return formatPlaytime(seconds)
+  if (minutes < 60) return formatPlaytimeFromSeconds(seconds)
   return `${Math.floor(minutes / 60)}h`
 }
 
@@ -148,12 +151,22 @@ export function isRealPlay(seconds: number | null | undefined): boolean {
 }
 
 /**
+ * Whether a dated last session counts as play for "recently played" orders.
+ * An unknown duration counts (a provider that reports the date but not the
+ * time is not evidence of a peek); a known one under five minutes does not.
+ * The ONE rule for the library's Last played sort and Analytics' Recently played.
+ */
+export function isRealSession(seconds: number | null | undefined): boolean {
+  return seconds == null || seconds >= MIN_REAL_PLAY_SECONDS
+}
+
+/**
  * Most recently played first, among games with real recorded play. Everything
  * else keeps its own relative order BELOW that block rather than being
  * filtered out — a sort must never remove rows (CLAUDE.md's NEVER_HIDES).
  */
 export function sortByRecentlyPlayed<T extends PlayStatRow>(games: T[]): T[] {
-  const ranked = (g: T) => { const p = playStatsOf(g); return isRealPlay(p.seconds) && p.last ? p.last : null }
+  const ranked = (g: T) => { const p = playStatsOf(g); return isRealSession(p.seconds) && p.last ? p.last : null }
   const real = games.filter(g => ranked(g) !== null)
   const rest = games.filter(g => ranked(g) === null)
   real.sort((a, b) => (ranked(b) ?? '').localeCompare(ranked(a) ?? ''))
@@ -178,8 +191,8 @@ export const STATS_WINDOWS: { key: StatsWindow; label: string; days: number | nu
  * Be clear about what this can and cannot mean: every provider here reports a
  * LIFETIME total and the date of the last session — never per-session records.
  * So a window selects the games touched in it and shows their lifetime figures;
- * it cannot say how many hours fell inside the window itself. The Stats panel
- * says so on screen rather than implying a precision the data has not got.
+ * it cannot say how many hours fell inside the window itself. Every screen that
+ * uses a window says so rather than implying a precision the data has not got.
  *
  * A game with no last-played date is out of every window except "all time" —
  * there is no date on which to include it.
@@ -195,9 +208,9 @@ export function withinWindow<T extends PlayStatRow>(games: T[], window: StatsWin
 }
 
 // ─── Library-wide aggregation ───────────────────────────────────────────────
-// Lives here rather than in the API layer because the Stats panel now filters
-// by window and by library before totalling — the numbers depend on what the
-// user picked, not on what the query returned.
+// Lives here rather than in the API layer because Home's Games widget totals
+// the rows itself — the numbers depend on what is picked, not on what the
+// query returned. (The Games page's Analytics has its own model.)
 
 export type StatsRow = PlayStatRow & {
   play_status: string
@@ -252,10 +265,6 @@ export function computeGameStats(
     bySystem: [...bySystemMap.entries()].map(([system, count]) => ({ system, count })).sort((a, b) => b.count - a.count),
     playtime: computePlaytimeStats(rows),
   }
-}
-
-export const LIBRARY_LABEL: Record<string, string> = {
-  retro: 'Retro', steam: 'Steam', playstation: 'PlayStation',
 }
 
 // ─── "You are clearly playing this" ──────────────────────────────────────────

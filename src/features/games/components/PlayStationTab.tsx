@@ -14,6 +14,7 @@ import {
 import { psnGamesFromLibrary, psnRecentlyPlayed } from '../api/psnLibraryFallback'
 import { useLibraryGames } from '../hooks/useGames'
 import { ImportProviderButton } from './ImportProviderButton'
+import { psnImportRows } from '../api/providerImportRows'
 import { PsnNpssoForm } from './PsnNpssoForm'
 import { npssoLifetime, npssoLifetimeLabel } from '../api/psnTokenLifetime'
 import { formatPlaytime } from '../api/playtimeFormat'
@@ -210,15 +211,7 @@ function ConnectedView() {
   // (npTitleId). Converted to seconds here so `games.play_seconds` has one
   // unit whatever the provider. `imageUrl` is a public Sony CDN URL with no
   // credentials in it, unlike ScreenScraper's, so it can be stored as-is.
-  const importRows: ProviderGameInput[] = (played.data ?? []).map(g => ({
-    external_ref: g.titleId,
-    title: g.localizedName || g.name,
-    play_seconds: parsePlayDurationMinutes(g.playDuration) * 60,
-    play_count: g.playCount ?? null,
-    last_played_at: g.lastPlayedDateTime ?? null,
-    primary_cover_url: g.imageUrl ?? null,
-    genres: g.concept?.genres ? String(g.concept.genres).split(',').map(x => x.trim()).filter(Boolean) : null,
-  }))
+  const importRows: ProviderGameInput[] = psnImportRows(played.data ?? [])
 
   return (
     <div>

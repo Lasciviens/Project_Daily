@@ -17,7 +17,7 @@ function AxisTick({ x, y, label }: TickProps & { label?: { line1: string; line2?
   return (
     <g transform={`translate(${Number(x)},${Number(y)})`}>
       <text textAnchor="middle" dy={11} fontSize={11} fill="var(--tg-muted)">{label.line1}</text>
-      {label.line2 && <text textAnchor="middle" dy={25} fontSize={10.5} fontWeight={600} fill="var(--tg-faint)">{label.line2}</text>}
+      {label.line2 && <text textAnchor="middle" dy={25} fontSize={10.5} fontWeight={600} fill="var(--tg-muted)">{label.line2}</text>}
     </g>
   )
 }
@@ -89,14 +89,18 @@ export function TgAnalyticsColumns({ columns, height, noun, caption, allTicks = 
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <table className="sr-only">
-        <caption>{caption}</caption>
-        <tbody>
-          {columns.map(c => (
-            <tr key={c.key}><th scope="row">{c.full}</th><td>{say(c.count, noun)}</td></tr>
-          ))}
-        </tbody>
-      </table>
+      {/* In a clipped box: a table ignores a 1px width, and on a phone this one
+          widened the page and pushed the tab bar off screen. */}
+      <div className="sr-only">
+        <table>
+          <caption>{caption}</caption>
+          <tbody>
+            {columns.map(c => (
+              <tr key={c.key}><th scope="row">{c.full}</th><td>{say(c.count, noun)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   )
 }

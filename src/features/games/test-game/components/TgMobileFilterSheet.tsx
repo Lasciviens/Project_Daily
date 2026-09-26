@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useTestGameStore } from '../testGameStore'
-import { STATUS_FILTERS, STATUS_TEXT, type StatusCounts } from '../testGameModel'
+import { STATUS_FILTERS, STATUS_TEXT, genreKey, type StatusCounts } from '../testGameModel'
 import type { PlayStatus } from '../../types'
 import { TgMobileSheet } from './TgMobileSheet'
 
@@ -44,10 +45,13 @@ function ChipGroup<T extends string>({ label, allLabel, options, values, onToggl
 }
 
 /** Status (Library only) and Genre, multi-select and bound live to the store; "Done" only closes. */
-export function TgMobileFilterSheet({ open, onClose, genres, statusCounts, showStatus }: {
+export function TgMobileFilterSheet({ open, onClose, genres, studios = [], statusCounts, showStatus, resultCount }: {
   open: boolean
   onClose: () => void
   genres: { genre: string; count: number }[]
+  studios?: { studio: string; count: number }[]
+  /** How many games the filters leave — the footer button says it. */
+  resultCount?: number
   statusCounts: StatusCounts
   showStatus: boolean
 }) {
@@ -57,17 +61,32 @@ export function TgMobileFilterSheet({ open, onClose, genres, statusCounts, showS
   const toggleGenre = useTestGameStore(s => s.toggleGenre)
   const setStatuses = useTestGameStore(s => s.setStatuses)
   const setGenres = useTestGameStore(s => s.setGenres)
+  const pickedStudios = useTestGameStore(s => s.studios)
+  const toggleStudio = useTestGameStore(s => s.toggleStudio)
+  const setStudios = useTestGameStore(s => s.setStudios)
+  const [studioQuery, setStudioQuery] = useState('')
 
-  const changed = (showStatus && statuses.length > 0) || picked.length > 0
+  const changed = (showStatus && statuses.length > 0) || picked.length > 0 || pickedStudios.length > 0
   function reset() {
     if (showStatus) setStatuses([])
     setGenres([])
+    setStudios([])
   }
 
   // A genre picked on another shelf may have no games here; keep it listed
   // (at 0) so the empty grid it causes can be undone from this sheet.
-  const missing = picked.filter(p => !genres.some(g => g.genre === p)).map(genre => ({ genre, count: 0 }))
+  const missing = picked.filter(p => !genres.some(g => genreKey(g.genre) === genreKey(p))).map(genre => ({ genre, count: 0 }))
   const genreList = [...missing, ...genres]
+  // Studios: the 24 biggest (picked ones always shown), or everything the
+  // filter box matches — a long tail of one-game publishers is not a chip wall.
+  const q = studioQuery.trim().toLowerCase()
+  const studioPool = [
+    ...pickedStudios.filter(p => !studios.some(x => genreKey(x.studio) === genreKey(p))).map(studio => ({ studio, count: 0 })),
+    ...studios,
+  ]
+  const studioList = q
+    ? studioPool.filter(x => x.studio.toLowerCase().includes(q)).slice(0, 60)
+    : [...studioPool.filter(x => pickedStudios.some(p => genreKey(p) === genreKey(x.studio))), ...studioPool.filter(x => !pickedStudios.some(p => genreKey(p) === genreKey(x.studio))).slice(0, 24)]
 
   return (
     <TgMobileSheet
@@ -85,7 +104,7 @@ export function TgMobileFilterSheet({ open, onClose, genres, statusCounts, showS
       )}
       footer={
         <button type="button" onClick={onClose} className="tg-btn tg-btn-primary w-full">
-          Done
+          {resultCount != null ? `Show ${resultCount.toLocaleString('en-GB')} game${resultCount === 1 ? '' : 's'}` : 'Done'}
         </button>
       }
     >
@@ -109,6 +128,25 @@ export function TgMobileFilterSheet({ open, onClose, genres, statusCounts, showS
         onClear={() => setGenres([])}
         options={genreList.map(g => ({ value: g.genre, label: g.genre, count: g.count }))}
       />
+      {studios.length > 0 && (
+        <>
+          <ChipGroup<string>
+            label="Studio"
+            allLabel="All studios"
+            values={pickedStudios}
+            onToggle={toggleStudio}
+            onClear={() => setStudios([])}
+            options={studioList.map(x => ({ value: x.studio, label: x.studio, count: x.count }))}
+          />
+          {studios.length > 24 && (
+            <input
+              type="search" value={studioQuery} onChange={e => setStudioQuery(e.target.value)}
+              placeholder={`Find a developer or publisher (${studios.length})`} aria-label="Find a studio"
+              className="tg-input mt-3"
+            />
+          )}
+        </>
+      )}
     </TgMobileSheet>
   )
 }
