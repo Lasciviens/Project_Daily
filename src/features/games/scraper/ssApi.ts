@@ -314,3 +314,20 @@ export const refOf = (c: Pick<SsCandidate, 'jeu_id' | 'system' | 'media_sig' | '
 
 /** The public ScreenScraper page for an entry — no credentials involved. */
 export const ssGamePage = (jeuId: string) => `https://www.screenscraper.fr/gameinfos.php?gameid=${encodeURIComponent(jeuId)}`
+
+// ─── One game's storage ──────────────────────────────────────────────────────
+
+export type GameStorageCategory = 'screenscraper' | 'esde_original' | 'esde_cover' | 'database'
+export interface GameStorage { total: number; groups: { category: GameStorageCategory; files: number; bytes: number }[] }
+
+/** Files and database bytes one game keeps (migration 108). null before 108 is applied. */
+export async function fetchGameStorage(gameId: string): Promise<GameStorage | null> {
+  const { data, error } = await supabase.rpc('game_storage_usage', { p_game_id: gameId })
+  if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883' || /game_storage_usage/.test(error.message ?? '')) return null
+    throw error
+  }
+  const groups = ((data ?? []) as { category: string; files: number; bytes: number }[])
+    .map(r => ({ category: r.category as GameStorageCategory, files: Number(r.files), bytes: Number(r.bytes) }))
+  return { total: groups.reduce((s, g) => s + g.bytes, 0), groups }
+}

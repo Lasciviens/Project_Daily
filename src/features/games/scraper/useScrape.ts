@@ -3,7 +3,7 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import type { SsPrefs } from './ssTypes'
 import { defaultPrefs } from './ssPlan'
 import {
-  applyBatch, applyScrape, cleanupStorage, fetchGameScrapeData, fetchKnownNoMatches, fetchRecentRuns, fetchScrapePrefs,
+  applyBatch, applyScrape, cleanupStorage, fetchGameScrapeData, fetchGameStorage, fetchKnownNoMatches, fetchRecentRuns, fetchScrapePrefs,
   fetchScraperStatus, fetchSsSystems, fetchStorageUsage, findBatch, refreshSystems, saveScrapePrefs, undoScrape,
   type ApplyRequest, type BatchItem, type UndoResponse,
 } from './ssApi'
@@ -19,6 +19,7 @@ export const SS_KEYS = {
   storage: ['screenscraper', 'storage'] as const,
   systems: ['screenscraper', 'systems'] as const,
   game: (id: string) => ['screenscraper', 'game', id] as const,
+  gameStorage: (id: string) => ['screenscraper', 'game-storage', id] as const,
   runs: ['screenscraper', 'runs'] as const,
   noMatches: ['screenscraper', 'no-matches'] as const,
 }
@@ -81,12 +82,26 @@ export function useGameScrapeData(gameId: string | null) {
   })
 }
 
+/** What one game keeps in Storage and the database (null before migration 108). */
+export function useGameStorage(gameId: string | null) {
+  return useQuery({
+    queryKey: SS_KEYS.gameStorage(gameId ?? ''),
+    queryFn: () => fetchGameStorage(gameId!),
+    enabled: !!gameId,
+    staleTime: 60_000,
+    retry: false,
+  })
+}
+
 function afterWrite(qc: ReturnType<typeof useQueryClient>, gameIds: string[]) {
   qc.invalidateQueries({ queryKey: ['games'] })
   qc.invalidateQueries({ queryKey: SS_KEYS.storage })
   qc.invalidateQueries({ queryKey: SS_KEYS.status })
   qc.invalidateQueries({ queryKey: SS_KEYS.runs })
-  for (const id of gameIds) qc.invalidateQueries({ queryKey: SS_KEYS.game(id) })
+  for (const id of gameIds) {
+    qc.invalidateQueries({ queryKey: SS_KEYS.game(id) })
+    qc.invalidateQueries({ queryKey: SS_KEYS.gameStorage(id) })
+  }
 }
 
 /** The last saves, one entry per run, for "Recent saves" with Undo. */
