@@ -650,6 +650,9 @@ const PSN_COVER_WIDTH = 440
  * goes first; the original stays right behind it for the error walk.
  */
 function psnSized(u: string): string | null {
+  // Cheap test first: `new URL` for every candidate of every card was a
+  // measurable share of a phone grid mount.
+  if (!u.includes(PSN_IMAGE_HOST)) return null
   let url: URL
   try { url = new URL(u) } catch { return null }
   if (url.hostname !== PSN_IMAGE_HOST || url.searchParams.has('w')) return null
@@ -657,7 +660,6 @@ function psnSized(u: string): string | null {
   return url.toString()
 }
 
-/** Box art, best first. The cover component walks this list on load errors. */
 /**
  * Why a retro game belongs in "Needs review" — empty when nothing is missing.
  * Cover means any art the page can actually show (coverCandidates: ES-DE
@@ -686,7 +688,21 @@ export function needsReviewList(games: readonly TgGame[]): { game: TgGame; reaso
     .map(x => ({ ...x, cover: coverCandidates(x.game)[0] ?? null }))
 }
 
+// Per derived row (whose identity is stable while its source row is — see
+// derivedCache): cards, the hero and Needs review all ask for the same lists.
+const coverMemo = new WeakMap<TgGame, string[]>()
+const heroMemo = new WeakMap<TgGame, string[]>()
+
+/** Box art, best first. The cover component walks this list on load errors. */
 export function coverCandidates(g: TgGame): string[] {
+  const hit = coverMemo.get(g)
+  if (hit) return hit
+  const list = buildCoverCandidates(g)
+  coverMemo.set(g, list)
+  return list
+}
+
+function buildCoverCandidates(g: TgGame): string[] {
   const primary = g.platforms.find(p => p.is_primary_variant) ?? g.platforms[0]
   const raw = uniq([
     g.steamAppId ? steamArt.portrait(g.steamAppId) : null,
@@ -704,6 +720,14 @@ export function coverCandidates(g: TgGame): string[] {
 
 /** Wide scene art for the detail panel's hero, best first. */
 export function heroCandidates(g: TgGame): string[] {
+  const hit = heroMemo.get(g)
+  if (hit) return hit
+  const list = buildHeroCandidates(g)
+  heroMemo.set(g, list)
+  return list
+}
+
+function buildHeroCandidates(g: TgGame): string[] {
   return uniq([
     g.fanart_url,
     ...mediaOf(g, 'fanart'),

@@ -1,6 +1,6 @@
-import { useReducer, useState, type CSSProperties, type SyntheticEvent } from 'react'
+import { useCallback, useReducer, useState, useSyncExternalStore, type CSSProperties, type SyntheticEvent } from 'react'
 import { coverCandidates, type TgGame } from '../testGameModel'
-import { firstLiveCover, isCoverLoaded, markCoverFailed, markCoverLoaded, reportCoverError } from './coverCache'
+import { firstLiveCover, isCoverLoaded, markCoverFailed, markCoverLoaded, reportCoverError, subscribeCoverUrls } from './coverCache'
 import { TgCaseArt } from './TgCaseArt'
 
 type CoverMode = 'natural' | 'contain' | 'cover'
@@ -27,16 +27,14 @@ const ratios = new Map<string, number>()
 
 // Anything smaller is a tracking pixel or a "no image" placeholder, not box art.
 const MIN_EDGE = 16
-// A URL's first error is retried once after this pause (a network blip, not a
-// 404); only its second error condemns it for the session.
-const RETRY_MS = 1800
 
 /**
  * A game's box art inside a parent-sized box — the parent fixes the size, so
  * nothing here can shift layout.
  *
- * Walks `coverCandidates` on load errors (a URL is retried once, then
- * remembered as dead for the session), holds the image invisible until it has
+ * Walks `coverCandidates` on load errors (a failed URL is skipped at once
+ * and re-probed in the background; a second failure is remembered as dead for
+ * the session), holds the image invisible until it has
  * decoded — so a broken or half-loaded image is never on screen — and falls
  * back to a drawn case. While an image loads, a static tint holds its place.
  *
@@ -55,8 +53,12 @@ export function TgCover({ game, mode, eager = false, className = '', align = 'bo
   // moment on — a failed image is never on screen, even for a URL that loaded
   // fine earlier in the session.
   const [erroredKey, setErroredKey] = useState<string | null>(null)
-
-  const src = firstLiveCover(coverCandidates(game))
+  // The first live candidate, re-read when one of this game's URLs settles
+  // (a background probe answered) or the network returns.
+  const candidates = coverCandidates(game)
+  const subscribe = useCallback((cb: () => void) => subscribeCoverUrls(candidates, cb), [candidates])
+  const pick = () => firstLiveCover(candidates)
+  const src = useSyncExternalStore(subscribe, pick, pick)
   const imgKey = `${src}#${attempt}`
   // Captured per render: an image the browser already had shows at once, with
   // no fade; one this mount watched arrive fades in.
@@ -68,9 +70,10 @@ export function TgCover({ game, mode, eager = false, className = '', align = 'bo
     if (!src) return
     setErroredKey(imgKey)
     setFadeSrc(null)
-    // The remount after the pause (a new key) requests the same URL again.
-    if (reportCoverError(src) === 'retry') window.setTimeout(bump, RETRY_MS)
-    else bump()
+    // The URL is skipped while it is re-probed in the background (a 'retry'),
+    // or dead: either way the next candidate shows now, not after a pause.
+    reportCoverError(src)
+    bump()
   }
 
   function onLoad(e: SyntheticEvent<HTMLImageElement>) {

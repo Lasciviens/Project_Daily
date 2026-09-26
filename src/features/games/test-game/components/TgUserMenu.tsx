@@ -8,6 +8,8 @@ import { TgUserMenuAvatar } from './TgUserMenuAvatar'
 import { TgThemeSwitch } from './TgThemeSwitch'
 import { TgConnections } from './TgConnections'
 import { TgPsnRenewDialog } from './TgPsnRenewDialog'
+import { TgRefreshIcon } from './TgRefreshLibrary'
+import { useRefreshLibraryAction } from './useRefreshLibraryAction'
 
 const ICON = 'h-4 w-4 shrink-0'
 
@@ -18,6 +20,7 @@ export function TgUserMenu({ className = '' }: { className?: string }) {
   const navigate = useNavigate()
   // Outside the menu: picking "Renew token" closes the menu, the dialog stays.
   const [renewOpen, setRenewOpen] = useState(false)
+  const refresh = useRefreshLibraryAction()
 
   return (
     <>
@@ -51,6 +54,12 @@ export function TgUserMenu({ className = '' }: { className?: string }) {
             <div className="px-1 pb-1"><TgConnections inMenu onRenewPsn={() => setRenewOpen(true)} /></div>
           </MenuSection>
           <MenuSeparator className="tg-menu-sep" />
+          <MenuItem>
+            <button type="button" onClick={() => { void refresh.run() }} className="tg-menu-item">
+              <TgRefreshIcon busy={refresh.busy} />
+              Refresh library
+            </button>
+          </MenuItem>
           <MenuItem>
             <button type="button" onClick={() => setSection('advanced')} className="tg-menu-item">
               <SlidersHorizontal aria-hidden className={ICON} strokeWidth={1.9} />

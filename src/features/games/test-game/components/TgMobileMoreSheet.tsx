@@ -10,6 +10,8 @@ import { TgMobileSheet } from './TgMobileSheet'
 import { TgThemeSwitch } from './TgThemeSwitch'
 import { TgConnections } from './TgConnections'
 import { TgPsnRenewDialog } from './TgPsnRenewDialog'
+import { TgRefreshIcon } from './TgRefreshLibrary'
+import { useRefreshLibraryAction } from './useRefreshLibraryAction'
 import { useTgAddGame } from './tgAddGame'
 
 const ROW = 'flex w-full min-h-[48px] items-center gap-3 rounded-xl px-3 text-left text-[15px] font-medium transition-colors'
@@ -28,6 +30,7 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
   const setSection = useTestGameStore(s => s.setSection)
   const openAddGame = useTgAddGame(s => s.setOpen)
   const [renewOpen, setRenewOpen] = useState(false)
+  const refresh = useRefreshLibraryAction()
 
   const items: { key: TgSection; label: string; Icon: ComponentType<LucideProps>; count?: number }[] = [
     { key: 'completed', label: 'Completed', Icon: CircleCheckBig, count: counts.completed },
@@ -102,6 +105,11 @@ export function TgMobileMoreSheet({ open, onClose, counts }: {
       <TgPsnRenewDialog open={renewOpen} onClose={() => setRenewOpen(false)} />
 
       <div className="my-3 h-px bg-[var(--tg-border)]" />
+
+      <button type="button" onClick={() => { void refresh.run() }} className={`${ROW} text-[var(--tg-text-2)] ${ROW_IDLE}`}>
+        <TgRefreshIcon busy={refresh.busy} size={19} />
+        Refresh library
+      </button>
 
       {/* Both replace the sheet's own history entry, so Back from the
           destination returns here instead of to a stale overlay entry. */}

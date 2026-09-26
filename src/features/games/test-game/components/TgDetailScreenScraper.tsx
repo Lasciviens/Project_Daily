@@ -24,10 +24,12 @@ interface Tile { key: string; type: string; label: string; entry: SsMediaEntry; 
  * shown online through the signed proxy (a fresh signature per visit; none is
  * stored). Loaded for the open game only; the library list never carries it.
  */
-export function TgDetailScreenScraper({ game }: { game: TgGame }) {
-  const q = useGameScrapeData(game.library === 'retro' ? game.id : null)
+export function TgDetailScreenScraper({ game, settled = true }: { game: TgGame; settled?: boolean }) {
+  // Only for the game the selection rests on: arrowing along a shelf must not
+  // read (and sign) the heavy record of every game it passes.
+  const q = useGameScrapeData(game.library === 'retro' && settled ? game.id : null)
   const openScrape = useTestGameStore(s => s.openScrape)
-  if (game.library !== 'retro' || q.isLoading || q.error) return null
+  if (game.library !== 'retro' || !settled || q.isLoading || q.error) return null
   const data = q.data
   const again = (
     <button type="button" onClick={() => openScrape(game.id)} className="inline-flex min-h-[44px] items-center text-[12.5px] font-semibold text-[var(--tg-accent)]">

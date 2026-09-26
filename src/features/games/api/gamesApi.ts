@@ -1,7 +1,8 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { playStatsOf, shouldAutoMarkPlaying } from '../gameStats'
+import { shouldAutoMarkPlaying } from '../gameStats'
 import { providerUpdateFields, type ProviderExistingRow } from './providerImportRules'
+import { statusPatch } from './gameCachePatch'
 import type {
   Game, GamePlatform, QueueGame, PlayStatus,
   CreateGameInput, GamePatch, GamePlatformInput, GameLibrary,
@@ -346,9 +347,6 @@ export async function setPlayStatus(id: string, status: PlayStatus): Promise<voi
     .from('games').select('id, title, library, started_at, finished_at, last_played_at, esde_last_played').eq('id', id).single()
   if (readErr) throw isMissingTable(readErr) ? new Error(NOT_MIGRATED) : readErr
 
-  const patch: GamePatch = { play_status: status }
-  const now = new Date().toISOString()
-  if (status === 'playing' && !current?.started_at) patch.started_at = now
   // The day you FINISHED it, not the day you pressed the button. For an
   // imported Steam/PSN library those are wildly different: marking fifty old
   // games completed in one sitting used to stamp today on every one of them,
@@ -356,10 +354,9 @@ export async function setPlayStatus(id: string, status: PlayStatus): Promise<voi
   // last session is the honest answer; now() is only the fallback for a game
   // no provider ever reported a session for (a manual add). Read through
   // playStatsOf: for a retro row `last_played_at` is migration 096's frozen
-  // backfill and ES-DE's own date is the live one.
-  if (status === 'completed' && !current?.finished_at) {
-    patch.finished_at = (current ? playStatsOf(current as PlayStatRow).last : null) ?? now
-  }
+  // backfill and ES-DE's own date is the live one. `statusPatch` is shared
+  // with the optimistic cache patch, so the page shows what is written.
+  const patch = statusPatch(current as PlayStatRow | null, status, new Date().toISOString()) as GamePatch
 
   const { error } = await supabase.from('games').update(patch).eq('id', id)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
@@ -370,8 +367,9 @@ export async function deleteGame(id: string): Promise<void> {
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
 }
 
-// Add game to end of queue (assigns next sequential play_order).
-export async function addToQueue(id: string): Promise<void> {
+// Add game to end of queue (assigns next sequential play_order). Returns the
+// position written, so the caller can correct its optimistic guess.
+export async function addToQueue(id: string): Promise<number> {
   const { data, error: readErr } = await supabase
     .from('games').select('play_order').not('play_order', 'is', null).order('play_order', { ascending: false }).limit(1)
   // A failed read must not look like an empty queue (it would write #1 over an existing #1).
@@ -379,6 +377,7 @@ export async function addToQueue(id: string): Promise<void> {
   const maxOrder = (data?.[0]?.play_order as number | undefined) ?? 0
   const { error } = await supabase.from('games').update({ play_order: maxOrder + 1 }).eq('id', id)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+  return maxOrder + 1
 }
 
 export async function removeFromQueue(id: string): Promise<void> {

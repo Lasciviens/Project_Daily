@@ -14,7 +14,7 @@ import { TgScrapeButton } from './TgScrapeButton'
  * Steam game lives in the ⋯ menu ("Launch on Steam").
  */
 export function TgDetailActions({ game, actions, variant }: { game: TgGame; actions: TgActions; variant: 'panel' | 'sheet' }) {
-  const { queued, position, toggle } = useQueueToggle(game)
+  const { queued, position, toggle, busy } = useQueueToggle(game)
   const noteId = useId()
   const label = queued ? `In queue${position != null ? ` · #${position}` : ''}` : 'Add to queue'
   const note = queued ? 'Tap to remove from the Play Queue' : 'Adds the game to the end of the Play Queue'
@@ -26,6 +26,7 @@ export function TgDetailActions({ game, actions, variant }: { game: TgGame; acti
       <button
         type="button"
         onClick={toggle}
+        aria-busy={busy}
         title={note}
         aria-describedby={noteId}
         aria-pressed={queued}

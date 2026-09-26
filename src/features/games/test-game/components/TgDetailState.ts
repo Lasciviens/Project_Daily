@@ -59,8 +59,9 @@ export function useDetailState(game: TgGame): DetailState {
   const pending = usePending(s => s.byId[game.id])
   const patch = usePending(s => s.patch)
   const drop = usePending(s => s.drop)
-  const setPlayStatus = useSetPlayStatus()
-  const updateGame = useUpdateGame()
+  // One queue of writes per game: rapid taps land in the order they were made.
+  const setPlayStatus = useSetPlayStatus(`game-${game.id}`)
+  const updateGame = useUpdateGame(`game-${game.id}`)
 
   const stamp = game.updated_at ?? ''
   const statusOverride = live(pending?.status, stamp)

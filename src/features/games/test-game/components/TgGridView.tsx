@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import type { TgGame } from '../testGameModel'
 import { TgGameCard } from './TgGameCard'
+import { useScrollReset } from './useScrollReset'
 import { useRevealCard } from './useShelfLayout'
 
 interface Props {
   games: TgGame[]
   selectedId: string | null
+  /** Changes when the list is a different list (section, filters, sort): back to the top. */
+  resetKey?: string
   onSelect: (id: string) => void
 }
 
@@ -15,8 +18,9 @@ interface Props {
  * (--tg-cover-aspect on .tg-cover-grid), so nothing is measured in JS and a
  * resize re-renders no card. Off-screen cells skip layout and paint.
  */
-export function TgGridView({ games, selectedId, onSelect }: Props) {
+export function TgGridView({ games, selectedId, onSelect, resetKey }: Props) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
+  useScrollReset(scroller, resetKey)
   useRevealCard(scroller, selectedId, 'grid', games.length)
 
   return (

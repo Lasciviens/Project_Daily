@@ -56,10 +56,10 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill }: Props)
         if (!w.failed) {
           try { await reorder(updates) } catch { w.failed = true } // toasted and logged by the hook
         }
-        // Refresh once, after the last queued move. `cancelRefetch: false` joins
-        // the refetch the mutation already started instead of restarting it; the
-        // overrides stay until it lands, so the rows never snap back.
-        if (w.queued === 1) await qc.invalidateQueries({ queryKey: ['games'] }, { cancelRefetch: false })
+        // Each write patches every cached read itself (useReorderQueue), so
+        // nothing is refetched per move. After a failure the rest were
+        // dropped: one full refresh, after the last queued move, shows the truth.
+        if (w.queued === 1 && w.failed) await qc.invalidateQueries({ queryKey: ['games'] }, { cancelRefetch: false })
       })
       .finally(() => {
         w.queued -= 1

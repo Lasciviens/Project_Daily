@@ -72,9 +72,14 @@ export function useTestGameLibrary(): TestGameLibrary {
     placeholderData: keepPreviousData,
   })
 
+  // Steam rows wait for their store types on first load: without them every
+  // tool and soundtrack showed on the shelves for a moment and then vanished.
+  // Games arriving a beat later read as loading; a failed type read shows
+  // them unclassified (nothing hidden) rather than holding them back.
+  const steamReady = steamIds.length === 0 || steamTypes.data !== undefined || steamTypes.isError
   const games = useMemo(
-    () => deriveGames([...(retro.data ?? []), ...steam.games, ...psn.games], steamTypes.data),
-    [retro.data, steam.games, psn.games, steamTypes.data],
+    () => deriveGames([...(retro.data ?? []), ...(steamReady ? steam.games : []), ...psn.games], steamTypes.data),
+    [retro.data, steam.games, psn.games, steamTypes.data, steamReady],
   )
 
   const refetchRetro = retro.refetch

@@ -2,10 +2,13 @@ import { useState, type CSSProperties, type KeyboardEvent } from 'react'
 import type { TgGame } from '../testGameModel'
 import { TgShelfSlot } from './TgShelfSlot'
 import { shelfVars, useRevealCard, useShelfLayout } from './useShelfLayout'
+import { useScrollReset } from './useScrollReset'
 
 interface Props {
   games: TgGame[]
   selectedId: string | null
+  /** Changes when the list is a different list (section, filters, sort): back to the top. */
+  resetKey?: string
   onSelect: (id: string) => void
 }
 
@@ -21,8 +24,9 @@ interface Props {
  * properties: a resize restyles the case but re-renders no card, and nothing
  * is ever re-chunked into rows. Off-screen slots skip layout and paint.
  */
-export function TgShelf({ games, selectedId, onSelect }: Props) {
+export function TgShelf({ games, selectedId, onSelect, resetKey }: Props) {
   const [el, setEl] = useState<HTMLDivElement | null>(null)
+  useScrollReset(el, resetKey)
   const layout = useShelfLayout(el)
   const { cols, rows, measured } = layout
 

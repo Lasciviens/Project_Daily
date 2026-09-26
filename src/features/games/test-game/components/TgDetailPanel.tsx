@@ -89,8 +89,12 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
           {showStory && <TgDetailDescription key={`story-${game.id}`} text={storyline} label="Storyline" mode={textMode} />}
           {/* Each renders free-form stored records (variant rows, their
               scraped record); a bad field loses its own block, never the panel. */}
-          <ErrorBoundary key={`f-${game.id}`} label="Details" action="games_detail_fields"><TgDetailFields game={game} /></ErrorBoundary>
-          <ErrorBoundary key={`s-${game.id}`} label="ScreenScraper" action="games_detail_screenscraper"><TgDetailScreenScraper game={game} /></ErrorBoundary>
+          {/* The phone sheet builds the long record once its slide-in is done
+              (the selection has rested), not during the animation. */}
+          {(variant !== 'sheet' || settledId === game.id) && (
+            <ErrorBoundary key={`f-${game.id}`} label="Details" action="games_detail_fields"><TgDetailFields game={game} /></ErrorBoundary>
+          )}
+          <ErrorBoundary key={`s-${game.id}`} label="ScreenScraper" action="games_detail_screenscraper"><TgDetailScreenScraper game={game} settled={settledId === game.id} /></ErrorBoundary>
         </div>
         {/* Softens content scrolling under the pinned footer; over padding when nothing scrolls. */}
         <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-2 h-2 bg-gradient-to-t from-[var(--tg-panel)] to-transparent" />

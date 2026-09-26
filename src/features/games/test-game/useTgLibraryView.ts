@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useDeferredValue, useMemo } from 'react'
 import { useTestGameStore } from './testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS,
@@ -36,10 +36,12 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   const section = useTestGameStore(s => s.section)
   const platform = useTestGameStore(s => s.platform)
   const scopePlatform = useTestGameStore(s => s.scopePlatform)
-  const statuses = useTestGameStore(s => s.statuses)
-  const genres = useTestGameStore(s => s.genres)
+  // Deferred: typing and chip taps stay instant while the (interruptible)
+  // filter-sort-render of ~1,000 games catches up a frame later.
+  const statuses = useDeferredValue(useTestGameStore(s => s.statuses))
+  const genres = useDeferredValue(useTestGameStore(s => s.genres))
   const sort = useTestGameStore(s => s.sort)
-  const search = useTestGameStore(s => s.search)
+  const search = useDeferredValue(useTestGameStore(s => s.search))
 
   const counts = useMemo(() => platformCounts(lib.games), [lib.games])
   const { shown, others } = useMemo(() => splitPlatforms(counts, 8), [counts])
@@ -64,9 +66,12 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
     return lib.games.some(g => !g.hidden && g.play_status === fixedStatus && g.platformKey === scopePlatform) ? scopePlatform : ALL_PLATFORMS
   }, [fixedStatus, scopePlatform, settling, lib.games])
   const isGameSection = section !== 'analytics' && section !== 'advanced' && section !== 'scrape'
+  // Sorted once per library change or sort change; every filter below keeps
+  // that order, so a keystroke filters a sorted list instead of re-sorting.
+  const sorted = useMemo(() => sortGames(lib.games, sort), [lib.games, sort])
   const scope = useMemo(
-    () => scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres }),
-    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres],
+    () => scopeGames(sorted, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres }),
+    [sorted, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres],
   )
   const genreList = useMemo(
     // The Hidden view lists hidden games, so its genre list counts them too.
@@ -80,8 +85,8 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
     if (section === 'queue') return queueOrder(applyStatus(scope, 'all'))
     // Advanced's Random pool: no status filter Advanced could not show.
     if (!isGameSection) return applyStatus(scope, 'all')
-    return sortGames(applyStatus(scope, fixedStatus ? 'all' : statuses), sort)
-  }, [scope, section, isGameSection, fixedStatus, statuses, sort])
+    return applyStatus(scope, fixedStatus ? 'all' : statuses)
+  }, [scope, section, isGameSection, fixedStatus, statuses])
 
   const ranks = useMemo(() => queueRanks(lib.games), [lib.games])
   const navCounts = useMemo(() => {

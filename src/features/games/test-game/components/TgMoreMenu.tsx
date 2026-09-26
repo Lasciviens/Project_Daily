@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { Award, Ellipsis, Gamepad2, Eye, EyeOff, Flag, FlagOff, Info, ListPlus, ListX, Pencil, Trash2, Trophy } from 'lucide-react'
-import { useAddToQueue, useDeleteGame, useRemoveFromQueue, useUpdateGame } from '../../hooks/useGames'
+import { useDeleteGame, useUpdateGame } from '../../hooks/useGames'
 import { STATUS_TEXT, type TgGame } from '../testGameModel'
 import type { PlayStatus } from '../../types'
 import type { TgActions } from '../tgTypes'
 import { useDetailState } from './TgDetailState'
-import { useQueuePosition } from './TgMoreMenuQueue'
+import { useQueueToggle } from './TgMoreMenuQueue'
 import { TgStatusIcon } from './TgStatusIcon'
 import { TgConfirmDialog } from './TgConfirmDialog'
 import { useSteamLaunch } from './tgSteamLaunch'
@@ -30,14 +30,13 @@ function Item({ icon, onClick, danger, children }: { icon: ReactNode; onClick: (
 export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const { hiddenByStatus, autoHidden, setStatus } = useDetailState(game)
-  const position = useQueuePosition(game.id)
-  const addToQueue = useAddToQueue()
-  const removeFromQueue = useRemoveFromQueue()
-  const updateGame = useUpdateGame()
+  // The same toggle as the footer button: one lock, one optimistic state.
+  const queue = useQueueToggle(game)
+  const updateGame = useUpdateGame(`game-${game.id}`)
   const deleteGame = useDeleteGame()
   const launchSteam = useSteamLaunch(game)
 
-  const queued = game.play_order != null
+  const { queued, position } = queue
   const isSteam = game.library === 'steam' && game.steamAppId != null
   const isPsn = game.library === 'playstation'
   // Same rule as the status pill: no Unhide that the auto-hide rule would undo.
@@ -65,12 +64,12 @@ export function TgMoreMenu({ game, actions }: { game: TgGame; actions: TgActions
           {launchSteam && <Item icon={<Gamepad2 aria-hidden className={ICON} strokeWidth={1.9} />} onClick={launchSteam}>Launch on Steam</Item>}
           <div className="tg-menu-sep" role="separator" />
           {queued ? (
-            <Item icon={<ListX aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => removeFromQueue.mutate(game.id)}>
+            <Item icon={<ListX aria-hidden className={ICON} strokeWidth={1.9} />} onClick={queue.toggle}>
               Remove from Play Queue
               {position != null && <span className="ml-2 text-[12px] tabular-nums text-[var(--tg-muted)]">#{position}</span>}
             </Item>
           ) : (
-            <Item icon={<ListPlus aria-hidden className={ICON} strokeWidth={1.9} />} onClick={() => addToQueue.mutate(game.id)}>Add to Play Queue</Item>
+            <Item icon={<ListPlus aria-hidden className={ICON} strokeWidth={1.9} />} onClick={queue.toggle}>Add to Play Queue</Item>
           )}
           {!mustDecide && (
             <Item

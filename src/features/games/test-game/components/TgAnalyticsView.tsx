@@ -1,5 +1,5 @@
 import { useTestGameStore } from '../testGameStore'
-import { useTestGameLibrary } from '../useTestGameLibrary'
+import type { TestGameLibrary } from '../useTestGameLibrary'
 import { formatDay } from '../testGameModel'
 import { useState } from 'react'
 import type { TgaLibrary, TgaTile } from './tgAnalyticsModel'
@@ -23,8 +23,8 @@ import { TgEmptyState, TgErrorState } from './TgStates'
 
 const ROOT = '@container flex flex-col gap-5 pb-4 pt-2'
 
-export function TgAnalyticsView() {
-  const lib = useTestGameLibrary()
+/** `lib` is the page's own library (never a second derivation of it). */
+export function TgAnalyticsView({ lib }: { lib: TestGameLibrary }) {
   const today = useToday()
   const period = useTestGameStore(s => s.analyticsPeriod)
   const setPeriod = useTestGameStore(s => s.setAnalyticsPeriod)

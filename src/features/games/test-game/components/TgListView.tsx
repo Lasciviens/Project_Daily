@@ -7,11 +7,14 @@ import { TgCover } from './TgCover'
 import { TgStars } from './TgStars'
 import { TgStatusIcon } from './TgStatusIcon'
 import { statusLabel } from './TgStatusMeta'
+import { useScrollReset } from './useScrollReset'
 import { useRevealCard } from './useShelfLayout'
 
 interface Props {
   games: TgGame[]
   selectedId: string | null
+  /** Changes when the list is a different list (section, filters, sort): back to the top. */
+  resetKey?: string
   onSelect: (id: string) => void
 }
 
@@ -20,6 +23,7 @@ const COLUMNS = 'grid-cols-[40px_minmax(0,1fr)_112px_76px] lg:grid-cols-[40px_mi
 
 const Row = memo(function Row({ game, selected, onSelect }: { game: TgGame; selected: boolean; onSelect: (id: string) => void }) {
   const seconds = playSeconds(game)
+  const stars = starsFromRating(game.rating)
   return (
     // Off-screen rows skip layout and paint; the 2px padding holds the focus
     // ring (offset 0) inside the paint containment that comes with it.
@@ -44,7 +48,10 @@ const Row = memo(function Row({ game, selected, onSelect }: { game: TgGame; sele
           <TgStatusIcon status={game.play_status} />
           <span className="tg-status-text truncate font-medium">{statusLabel(game.play_status)}</span>
         </span>
-        <TgStars stars={starsFromRating(game.rating)} size={12} />
+        {/* Unrated rows get a dash: five empty stars per row were most of the list's DOM. */}
+        {stars == null
+          ? <span aria-label="Not rated" className="text-[12.5px] text-[var(--tg-faint)]">—</span>
+          : <TgStars stars={stars} size={12} />}
         <span className="hidden text-[12.5px] tabular-nums text-[var(--tg-text-2)] lg:block">
           {seconds == null ? '—' : formatPlaytime(seconds / 60)}
         </span>
@@ -55,8 +62,9 @@ const Row = memo(function Row({ game, selected, onSelect }: { game: TgGame; sele
 })
 
 /** The third view: one dense row per game. */
-export function TgListView({ games, selectedId, onSelect }: Props) {
+export function TgListView({ games, selectedId, onSelect, resetKey }: Props) {
   const [list, setList] = useState<HTMLDivElement | null>(null)
+  useScrollReset(list, resetKey)
   // Scrolls to a newly selected row only — never on a refetch or a length change.
   useRevealCard(list, selectedId, 'list', games.length)
 
