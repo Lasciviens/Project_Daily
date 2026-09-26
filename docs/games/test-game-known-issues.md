@@ -27,6 +27,13 @@ real-data audit, each adversarially verified.
   uploader (Codex task C7).
 - Per-row cache patching instead of invalidating the whole `['games']` namespace on every status/rating click.
 
+## ScreenScraper — reviewed, deliberately not changed (second review, 2026-09-26)
+- **Proxy links are per game, not per file** (`screenscraper-media`): one signature opens any file of that game on that system until it expires (end of next week). A leaked link can stream that game's manual or video for up to two weeks, spending the shared daily allowance; the proxy has no quota floor of its own (it cannot see the counter without an extra request per file). Accepted: the owner is the only user and links are never stored.
+- **Undo does not bring back the previous full record** (`game_scrape_records` holds one row per game; undo deletes it). A re-scrape fetches it again.
+- **The storage budget is checked per save**: two saves running at the same moment (two tabs) each reserve against the same usage reading and can overshoot the budget by one save's copies. The 950 MB hard cap and the ES-DE guard still hold.
+- **Deploying `screenscraper-sync` before migration 104** makes early saves unmarked (`ss_jeu_id` missing) and undo limited; apply 104 first (the deploy checklist says so).
+- **Changing "What to save" during an open review** does not change that review's choices (they are seeded when it opens); the next review uses the new settings.
+
 ## Fixed in the owner-feedback round (PR #492)
 - **No horizontal scrolling**: the bookcase is a vertical stack of full shelves that scrolls down.
 - **Analytics rebuilt** as a first-class screen (window × library filters, KPI tiles, completions over time,
