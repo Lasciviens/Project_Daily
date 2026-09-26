@@ -1,7 +1,7 @@
 import { ComposedChart, Bar, Line, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { compactAxisTick } from './axisFormat'
-import { useChartColors } from '../../../../shared/ui'
-import { TOOLTIP_BOX } from '../chartKit'
+import { useChartColors } from '../../ui'
+import { TOOLTIP_BOX } from './chartKit'
 
 // Canonical Health-tab chart style — translucent bar + connecting line with
 // dots on top, same color. Established with Body's weight/fat/BMI charts;

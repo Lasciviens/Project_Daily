@@ -17,7 +17,7 @@
  */
 
 require('sucrase/register')
-const { computeSleepSummary } = require('../src/features/training/healthAggregate.ts')
+const { computeSleepSummary } = require('../src/features/health/healthAggregate.ts')
 
 let passed = 0
 const failures = []

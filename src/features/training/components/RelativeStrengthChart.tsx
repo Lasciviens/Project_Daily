@@ -7,7 +7,7 @@ import {
 } from '../progressAggregate'
 import { fmtTrainingDate as formatDate } from '../dateFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
-import { TOOLTIP_BOX } from './chartKit'
+import { TOOLTIP_BOX } from '../../../shared/components/charts/chartKit'
 import { ChartCard, ChartNote } from './ChartCard'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 

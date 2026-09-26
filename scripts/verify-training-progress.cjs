@@ -42,7 +42,7 @@ const {
   resolveBodyweightForDate, computeRelativeStrengthTrend, indexRelativeStrengthTrend, REP_BUCKETS, computeRepRangeDistribution,
   computeWeeklyChangeFlags, computeWeeklySetsPerMuscleTrend, mondayOf,
 } = require('../src/features/training/progressAggregate')
-const { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } = require('../src/features/training/recoveryAggregate')
+const { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } = require('../src/features/health/recoveryAggregate')
 const { fmtWeekRange } = require('../src/features/training/dateFormat')
 
 let passed = 0

@@ -11,7 +11,7 @@ require('sucrase/register')
 const {
   BODY_COMP_FIELDS, fieldMeta, reportsInWindow, latestAndPrevious, deltaFor,
   average, computeTrend,
-} = require('../src/features/training/bodyCompositionAggregate')
+} = require('../src/features/health/bodyCompositionAggregate')
 
 let passed = 0
 let failed = 0

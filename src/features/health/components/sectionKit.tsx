@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Card, cx } from '../../../../shared/ui'
+import { Card, cx } from '../../../shared/ui'
 
 /** A Health section's panel. */
 export function SectionCard({ children, className }: { children: ReactNode; className?: string }) {

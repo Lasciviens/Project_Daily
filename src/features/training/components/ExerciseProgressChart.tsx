@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
-import { BarLineChart } from './health/BarLineChart'
+import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
 import {
   computeExerciseProgression, metricKindForExerciseType, repRangeVariedSignificantly,
   type ProgressMetricKind,

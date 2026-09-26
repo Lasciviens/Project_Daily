@@ -1,12 +1,12 @@
-import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeHeartRateDailySeries, computeHeartRateHourlySeries, computeDailySeries } from '../../healthAggregate'
-import { todayStr } from '../../../../shared/utils/dateUtils'
+import { useHealthMetricSeries } from '../hooks/useHealthExport'
+import { computeHeartRateDailySeries, computeHeartRateHourlySeries, computeDailySeries } from '../healthAggregate'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { HealthRange } from './sectionTypes'
-import { BarLineChart } from './BarLineChart'
+import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
 import { rangeForAnchor, labelForAnchor } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { HEART_EXTRA_METRICS } from './miniMetrics'
-import { useChartColors } from '../../../../shared/ui'
+import { useChartColors } from '../../../shared/ui'
 import { HeadlineStat, SectionCard, SideStat } from './sectionKit'
 
 function fmtDay(dateStr: string): string {

@@ -17,7 +17,7 @@ const {
   computeSleepSummary,
   extractSleepSessions,
   estimateSleepStageProportions,
-} = require('../src/features/training/healthAggregate.ts')
+} = require('../src/features/health/healthAggregate.ts')
 
 let passed = 0
 const failures = []

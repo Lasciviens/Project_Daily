@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import type { BodyCompositionReport } from '../../api/bodyCompositionApi'
-import { BODY_COMP_FIELDS, average, computeTrend, type BodyCompFieldKey } from '../../bodyCompositionAggregate'
-import { BarLineChart } from './BarLineChart'
-import { useChartColors } from '../../../../shared/ui'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import type { BodyCompositionReport } from '../api/bodyCompositionApi'
+import { BODY_COMP_FIELDS, average, computeTrend, type BodyCompFieldKey } from '../bodyCompositionAggregate'
+import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
+import { useChartColors } from '../../../shared/ui'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 function fmtDay(iso: string): string {
   return fmtDateEnGB(new Date(iso), { day: 'numeric', month: 'short' })

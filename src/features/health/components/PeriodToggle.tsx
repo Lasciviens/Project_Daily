@@ -1,4 +1,4 @@
-import { SegmentedControl } from '../../../../shared/ui'
+import { SegmentedControl } from '../../../shared/ui'
 
 export type Period = 'day' | 'week' | 'month'
 

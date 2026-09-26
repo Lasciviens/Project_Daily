@@ -1,14 +1,14 @@
-import { useHealthMetricSeries } from '../../hooks/useHealthExport'
+import { useHealthMetricSeries } from '../hooks/useHealthExport'
 import { shiftStr, rangeForAnchor } from './dateNav'
-import { computeDailySeries } from '../../healthAggregate'
-import { BarLineChart } from './BarLineChart'
+import { computeDailySeries } from '../healthAggregate'
+import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { BODY_EXTRA_METRICS } from './miniMetrics'
 import { BodyCompositionPanel } from './BodyCompositionPanel'
 import type { HealthRange } from './sectionTypes'
-import { useChartColors } from '../../../../shared/ui'
+import { useChartColors } from '../../../shared/ui'
 import { SectionCard } from './sectionKit'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 function fmtDay(dateStr: string): string {
   return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })

@@ -1,9 +1,9 @@
 import { HeartPulse, Map as MapIcon } from 'lucide-react'
-import { ModalShell } from '../../../../shared/modals'
-import { useChartColors } from '../../../../shared/ui'
-import { BarLineChart } from './BarLineChart'
-import type { HealthWorkout } from '../../api/healthApi'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { ModalShell } from '../../../shared/modals'
+import { useChartColors } from '../../../shared/ui'
+import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
+import type { HealthWorkout } from '../api/healthApi'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  HealthWorkoutDetail — surfaces the RICH per-workout data Health Auto Export

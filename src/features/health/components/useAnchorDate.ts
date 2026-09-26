@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { todayStr } from '../../../../shared/utils/dateUtils'
+import { todayStr } from '../../../shared/utils/dateUtils'
 
 // Anchor defaults to "today" and DateNav lets the user navigate to past
 // dates. Bug this fixes: if the tab stays open across midnight (or the PWA

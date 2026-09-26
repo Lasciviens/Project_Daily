@@ -1,9 +1,9 @@
-import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeDailySeries, computeHeartRateDailySeries, computeSleepSummary, formatSleepHours } from '../../healthAggregate'
-import { todayStr } from '../../../../shared/utils/dateUtils'
+import { useHealthMetricSeries } from '../hooks/useHealthExport'
+import { computeDailySeries, computeHeartRateDailySeries, computeSleepSummary, formatSleepHours } from '../healthAggregate'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { rangeForAnchor, shiftStr, labelForAnchor } from './dateNav'
 import type { SectionId, HealthRange } from './sectionTypes'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // Plain computed stats (no AI) shown where the training calendar normally
 // sits — the calendar isn't relevant while browsing Health, so this reclaims

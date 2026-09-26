@@ -7,7 +7,7 @@ import { lastCompleteWeek } from '../trainingInsights'
 import { fmtWeekRange } from '../dateFormat'
 import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, bandForWeeklySets, BANDS_META } from '../muscleMap'
 import { Card, CardHeader, Skeleton, TonePill, useChartColors } from '../../../shared/ui'
-import { useTooltipStyle } from './chartKit'
+import { useTooltipStyle } from '../../../shared/components/charts/chartKit'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Weekly Sets per Muscle — the sports-scientist review's top-priority "what

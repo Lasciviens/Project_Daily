@@ -1,5 +1,5 @@
-import { todayStr } from '../../../../shared/utils/dateUtils'
-import { DateNav as SharedDateNav } from '../../../../shared/components/DateNav'
+import { todayStr } from '../../../shared/utils/dateUtils'
+import { DateNav as SharedDateNav } from '../../../shared/components/DateNav'
 
 // Thin wrapper around the app-wide standard DateNav (shared/components/
 // DateNav.tsx) — Health was the original pattern source; the shared component

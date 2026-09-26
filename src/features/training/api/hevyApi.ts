@@ -183,8 +183,8 @@ export async function fetchMuscleVolume(fromISO: string, toISO: string): Promise
 // mirrors fetchMuscleVolume's own "fetch once, derive many views client-side"
 // shape rather than a separate round trip per chart.
 import type { ProgressSetRow, ProgressTemplateRow } from '../progressAggregate'
-import { fetchHealthMetricSeries } from './healthApi'
-import { computeDailySeries } from '../healthAggregate'
+import { fetchHealthMetricSeries } from '../../health/api/healthApi'
+import { computeDailySeries } from '../../health/healthAggregate'
 
 // The aggregation functions only need `id`/`type`; the exercise-picker UI
 // also needs a name and muscle group to render/filter/group by.

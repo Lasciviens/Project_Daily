@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import type { BodyCompositionReport } from '../../api/bodyCompositionApi'
-import { BODY_COMP_FIELDS } from '../../bodyCompositionAggregate'
-import { fmtTrainingDateTime } from '../../dateFormat'
+import type { BodyCompositionReport } from '../api/bodyCompositionApi'
+import { BODY_COMP_FIELDS } from '../bodyCompositionAggregate'
+import { fmtTrainingDateTime } from '../../training/dateFormat'
 import { ChevronDown } from 'lucide-react'
 
 // Every scan, every field — collapsed by default (Width Standard's "detail on

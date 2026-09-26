@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeDailySeries } from '../../healthAggregate'
-import { getAggregationType } from '../../healthMetrics'
-import { BarLineChart } from './BarLineChart'
+import { useHealthMetricSeries } from '../hooks/useHealthExport'
+import { computeDailySeries } from '../healthAggregate'
+import { getAggregationType } from '../healthMetrics'
+import { BarLineChart } from '../../../shared/components/charts/BarLineChart'
 import type { Period } from './PeriodToggle'
 import { ChevronDown } from 'lucide-react'
-import { useChartColors } from '../../../../shared/ui'
-import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
+import { useChartColors } from '../../../shared/ui'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 export interface MiniMetricConfig {
   metric: string

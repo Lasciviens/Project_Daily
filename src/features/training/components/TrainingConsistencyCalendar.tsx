@@ -5,7 +5,7 @@ import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import { computeConsistencyByWeek, currentStreakWeeks } from '../progressAggregate'
 import { fmtWeekRange } from '../dateFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
-import { useTooltipStyle } from './chartKit'
+import { useTooltipStyle } from '../../../shared/components/charts/chartKit'
 import { ChartCard, ChartEmpty, ChartNote } from './ChartCard'
 import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 

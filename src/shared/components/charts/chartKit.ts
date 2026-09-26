@@ -1,5 +1,5 @@
 import { useMemo, type CSSProperties } from 'react'
-import { useChartColors } from '../../../shared/ui'
+import { useChartColors } from '../../ui'
 
 /** Class list for a custom recharts tooltip `content` renderer. */
 export const TOOLTIP_BOX = 'rounded-row border border-line-strong bg-surface px-2.5 py-1.5 text-meta shadow-menu space-y-0.5'

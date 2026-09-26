@@ -1,6 +1,6 @@
 import { fetchHevyWorkouts, fetchHevyWorkoutDetail, fetchHevyRoutines } from '../../training/api/hevyApi'
-import { fetchHealthMetricSeries } from '../../training/api/healthApi'
-import { computeSleepSummary, computeDailySeries } from '../../training/healthAggregate'
+import { fetchHealthMetricSeries } from '../../health/api/healthApi'
+import { computeSleepSummary, computeDailySeries } from '../../health/healthAggregate'
 import { fetchFoodLogRange } from '../../recipes/api/foodLogApi'
 import { fetchAssessments } from '../../training/api/ptCoachApi'
 import { fetchAthleteProfile, fetchAthleteLimitations } from '../../training/api/athleteProfileApi'

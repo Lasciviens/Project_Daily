@@ -30,7 +30,7 @@
  */
 require('sucrase/register')
 
-const { computeDailySeries } = require('../src/features/training/healthAggregate')
+const { computeDailySeries } = require('../src/features/health/healthAggregate')
 
 let passed = 0
 let failed = 0

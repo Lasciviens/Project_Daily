@@ -1,12 +1,12 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
-import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeDailySeries, computeHourlyBuckets } from '../../healthAggregate'
-import { todayStr } from '../../../../shared/utils/dateUtils'
+import { useHealthMetricSeries } from '../hooks/useHealthExport'
+import { computeDailySeries, computeHourlyBuckets } from '../healthAggregate'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { HealthRange } from './sectionTypes'
 import { rangeForAnchor, labelForAnchor } from './dateNav'
-import { compactAxisTick } from './axisFormat'
-import { useChartColors } from '../../../../shared/ui'
-import { TOOLTIP_BOX } from '../chartKit'
+import { compactAxisTick } from '../../../shared/components/charts/axisFormat'
+import { useChartColors } from '../../../shared/ui'
+import { TOOLTIP_BOX } from '../../../shared/components/charts/chartKit'
 import { HeadlineStat, SectionCard } from './sectionKit'
 
 function fmtDay(dateStr: string): string {

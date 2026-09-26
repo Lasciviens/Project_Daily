@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { InfoBubble } from '../../../../shared/components/InfoBubble'
-import { useBodyCompositionReports } from '../../hooks/useBodyCompositionReports'
-import { latestAndPrevious, reportsInWindow, BODY_COMP_WINDOWS, type BodyCompWindow } from '../../bodyCompositionAggregate'
+import { InfoBubble } from '../../../shared/components/InfoBubble'
+import { useBodyCompositionReports } from '../hooks/useBodyCompositionReports'
+import { latestAndPrevious, reportsInWindow, BODY_COMP_WINDOWS, type BodyCompWindow } from '../bodyCompositionAggregate'
 import { BodyCompStatGrid } from './BodyCompStatGrid'
 import { BodyCompTrendChart } from './BodyCompTrendChart'
 import { BodyCompHistoryTable } from './BodyCompHistoryTable'
-import { SegmentedControl } from '../../../../shared/ui'
-import { fmtDateTimeEnGB } from '../../../../shared/utils/enGBDate'
+import { SegmentedControl } from '../../../shared/ui'
+import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
 
 // Smart-scale "body composition analysis report" scans (migration 085,
 // imported via phone-gateway's import_body_composition action — see

@@ -1,5 +1,5 @@
-import { useHealthMetricSeries } from '../../hooks/useHealthExport'
-import { computeDailySeries } from '../../healthAggregate'
+import { useHealthMetricSeries } from '../hooks/useHealthExport'
+import { computeDailySeries } from '../healthAggregate'
 
 // Inspired by Apple Health's activity rings (Move/Exercise/Stand) — own
 // palette, own goal defaults (no per-user goal setting exists yet).

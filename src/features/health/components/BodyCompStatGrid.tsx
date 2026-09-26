@@ -1,5 +1,5 @@
-import type { BodyCompositionReport } from '../../api/bodyCompositionApi'
-import { BODY_COMP_FIELDS, deltaFor, type BodyCompFieldKey } from '../../bodyCompositionAggregate'
+import type { BodyCompositionReport } from '../api/bodyCompositionApi'
+import { BODY_COMP_FIELDS, deltaFor, type BodyCompFieldKey } from '../bodyCompositionAggregate'
 
 // One card per report field — "all the data" from the latest scan at a
 // glance, mirroring MetricMiniCard's small-card anatomy (icon+label / big

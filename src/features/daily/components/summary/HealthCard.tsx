@@ -1,11 +1,11 @@
 import { Flame, Footprints, Heart, HeartPulse, Moon, Scale } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
-import { useHealthMetricSeries } from '../../../training/hooks/useHealthExport'
+import { useHealthMetricSeries } from '../../../health/hooks/useHealthExport'
 import {
   computeSleepSummary,
   computeDailySeries, computeHeartRateDailySeries,
   formatSleepHours as fmtHrs,
-} from '../../../training/healthAggregate'
+} from '../../../health/healthAggregate'
 import { shiftDateStr } from '../../../../shared/utils/dateUtils'
 
 // A SCROLLABLE health widget (replaces the sleep-only card): one horizontal
@@ -53,7 +53,7 @@ export function HealthCard({ date }: { date: string }) {
 
   return (
     <Cell>
-      <CellHeader icon={<HeartPulse />} title="Health" action={<CellLink to="/training">Details</CellLink>} />
+      <CellHeader icon={<HeartPulse />} title="Health" action={<CellLink to="/health">Details</CellLink>} />
 
       {/* Swipeable strip — snap + edge fade signals there's more to the side */}
       <div {...drag} className={`-mx-1 flex gap-2 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory px-1 pb-1 ${drag.className}`}>

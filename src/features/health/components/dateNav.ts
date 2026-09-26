@@ -1,5 +1,5 @@
 import { addDays, format, parseISO } from 'date-fns'
-import { todayStr } from '../../../../shared/utils/dateUtils'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { Period } from './PeriodToggle'
 
 const STEP_DAYS: Record<Period, number> = { day: 1, week: 7, month: 30 }
