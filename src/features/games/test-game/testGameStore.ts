@@ -4,7 +4,7 @@ import {
   ALL_PLATFORMS, toggleValue, type TgSection, type TgSort, type TgStatusFilter, type TgView,
 } from './testGameModel'
 import type { PlayStatus } from '../types'
-import type { TgaLibrary, TgaWindow } from './components/tgAnalyticsModel'
+import type { TgaLibrary, TgaTab, TgaWindow } from './components/tgAnalyticsModel'
 import type { ApplyResult, FindResult, SearchResponse } from '../scraper/ssApi'
 import type { SearchForm } from './components/scrape/tgScrapeModel'
 
@@ -79,6 +79,8 @@ interface TgState {
    *  which remounts the view, doesn't reset them. */
   analyticsPeriod: TgaWindow
   analyticsLibrary: TgaLibrary
+  /** Which Analytics tab is open (persisted, like the view). */
+  analyticsTab: TgaTab
   /** The game the Scrape page is working on (not persisted). */
   scrapeTargetId: string | null
   scrapeMode: ScrapeMode
@@ -117,6 +119,7 @@ interface TgState {
   setAdvancedTab: (t: AdvancedTab) => void
   setAnalyticsPeriod: (p: TgaWindow) => void
   setAnalyticsLibrary: (l: TgaLibrary) => void
+  setAnalyticsTab: (t: TgaTab) => void
   /** Opens the Scrape page on a game (the detail's Scrape button, a batch row). */
   openScrape: (gameId: string | null) => void
   setScrapeTarget: (gameId: string | null) => void
@@ -149,6 +152,7 @@ export const useTestGameStore = create<TgState>()(
       advancedTab: 'review',
       analyticsPeriod: 'all',
       analyticsLibrary: 'all',
+      analyticsTab: 'overview',
       scrapeTargetId: null,
       scrapeMode: 'search',
       scrapeSearch: null,
@@ -201,6 +205,7 @@ export const useTestGameStore = create<TgState>()(
       setDetailCollapsed: (detailCollapsed) => set({ detailCollapsed }),
       setAnalyticsPeriod: (analyticsPeriod) => set({ analyticsPeriod }),
       setAnalyticsLibrary: (analyticsLibrary) => set({ analyticsLibrary }),
+      setAnalyticsTab: (analyticsTab) => set({ analyticsTab }),
       openScrape: (scrapeTargetId) => set(s => ({
         scrapeTargetId, scrapeMode: 'search', section: 'scrape', scrapeReview: null,
         ...(s.section !== 'scrape' && LEAVE_SHELF),
@@ -234,7 +239,7 @@ export const useTestGameStore = create<TgState>()(
       },
       partialize: (s) => ({
         section: s.section, platform: s.platform, sort: s.sort, view: s.view,
-        advancedTab: s.advancedTab, detailCollapsed: s.detailCollapsed,
+        advancedTab: s.advancedTab, detailCollapsed: s.detailCollapsed, analyticsTab: s.analyticsTab,
       }),
       // Earlier versions persisted the selection; a reload must not bring it
       // (or open details) back.

@@ -33,6 +33,7 @@ export const TGA_SPAN_RECENT = '@[62rem]:col-span-2 @[100rem]:col-span-1'
 export const TGA_ORDER_RATINGS = '@[62rem]:order-last @[100rem]:order-none'
 
 /** "Nothing played in the last 30 days" — the window as a phrase. */
-export const TGA_RANGE: Record<'all' | '12m' | 'year' | '30d', string> = {
-  all: 'in the last 24 months', '12m': 'in the last 12 months', year: 'this year', '30d': 'in the last 30 days',
+export const TGA_RANGE: Record<'all' | '12m' | 'year' | '90d' | '30d' | '7d', string> = {
+  all: 'in the last 24 months', '12m': 'in the last 12 months', year: 'this year',
+  '90d': 'in the last 90 days', '30d': 'in the last 30 days', '7d': 'in the last 7 days',
 }

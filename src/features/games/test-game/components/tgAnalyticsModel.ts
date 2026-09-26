@@ -8,20 +8,30 @@
 // it (played, started or finished) and shows their lifetime figures; it cannot
 // say how many hours fell inside the window. The screen says so on its face.
 
-import { isRealSession } from '../../gameStats'
+import { hasPlayData, isRealSession } from '../../gameStats'
 import {
   NO_PLATFORM, foldGenres, lastPlayedIso, platformCounts, platformLabels, playSeconds, starsFromRating,
   type PlatformCount, type TgGame,
 } from '../testGameModel'
 
-export type TgaWindow = 'all' | '12m' | 'year' | '30d'
+export type TgaWindow = 'all' | '12m' | 'year' | '90d' | '30d' | '7d'
 export type TgaLibrary = 'all' | 'retro' | 'steam' | 'playstation'
+export type TgaTab = 'overview' | 'play' | 'collection' | 'health'
+
+export const TGA_TABS: { key: TgaTab; label: string }[] = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'play', label: 'Play' },
+  { key: 'collection', label: 'Collection' },
+  { key: 'health', label: 'Data health' },
+]
 
 export const TGA_WINDOWS: { key: TgaWindow; label: string }[] = [
   { key: 'all', label: 'All time' },
   { key: '12m', label: 'Last 12 months' },
   { key: 'year', label: 'This year' },
+  { key: '90d', label: 'Last 90 days' },
   { key: '30d', label: 'Last 30 days' },
+  { key: '7d', label: 'Last 7 days' },
 ]
 
 export const TGA_LIBRARIES: { key: TgaLibrary; label: string }[] = [
@@ -42,7 +52,9 @@ export function libraryOf(g: TgGame): Exclude<TgaLibrary, 'all'> {
 /** Start of the window (local midnight, ms) or null for all time. */
 export function windowStart(w: TgaWindow, today: number): number | null {
   const d = new Date(today)
+  if (w === '7d') return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6).getTime()
   if (w === '30d') return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 29).getTime()
+  if (w === '90d') return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 89).getTime()
   // The month eleven back, so the window and the chart's twelve monthly columns agree.
   if (w === '12m') return new Date(d.getFullYear(), d.getMonth() - 11, 1).getTime()
   if (w === 'year') return new Date(d.getFullYear(), 0, 1).getTime()
@@ -89,6 +101,11 @@ export function scopeByWindow(games: TgGame[], start: number | null, end?: numbe
   return start == null ? games : games.filter(g => touched(g, start, end))
 }
 
+/** Started = recorded play, or a status that says you started it (Playing, Completed, Dropped). */
+export function isStarted(g: TgGame): boolean {
+  return hasPlayData(g) || g.play_status === 'playing' || g.play_status === 'completed' || g.play_status === 'dropped'
+}
+
 export interface TgaKpis {
   games: number
   platforms: number
@@ -104,10 +121,16 @@ export interface TgaKpis {
   rated: number
   backlog: number
   backlogUnplayed: number
+  /** Games with recorded play (seconds, launches or a session date) — the Played tile. */
+  played: number
+  /** Games you've started (isStarted) — what an all-time completion rate is a share of. */
+  started: number
+  /** Playing, but no session in 60+ days (or none at all). Needs `today`. */
+  stalePlaying: number
 }
 
-/** The six headline tiles. Each tile's number is exactly its `tileGames` list. */
-export type TgaTile = 'games' | 'playing' | 'completed' | 'playtime' | 'rating' | 'backlog'
+/** The headline tiles. Each tile's number is exactly its `tileGames` list. */
+export type TgaTile = 'games' | 'playing' | 'completed' | 'playtime' | 'rating' | 'backlog' | 'played'
 
 const byTitle = (a: TgGame, b: TgGame) => a.title.localeCompare(b.title)
 const desc = (x: number, y: number) => (Number.isFinite(y) ? y : -Infinity) - (Number.isFinite(x) ? x : -Infinity)
@@ -134,10 +157,18 @@ export function tileGames(kind: TgaTile, scoped: TgGame[], start: number | null,
     case 'rating':
       return scoped.filter(g => starsFromRating(g.rating) != null)
         .sort((a, b) => (starsFromRating(b.rating) ?? 0) - (starsFromRating(a.rating) ?? 0) || byTitle(a, b))
+    case 'played': return scoped.filter(g => hasPlayData(g)).sort(recency)
   }
 }
 
-export function computeKpis(scoped: TgGame[], start: number | null, end?: number | null): TgaKpis {
+/** Playing with no session in `days` days (or none recorded) — the importer promotes, it never demotes. */
+export function isStalePlaying(g: TgGame, today: number, days = 60): boolean {
+  if (g.play_status !== 'playing') return false
+  const t = at(lastPlayedIso(g))
+  return !Number.isFinite(t) || today - t >= days * 86_400_000
+}
+
+export function computeKpis(scoped: TgGame[], start: number | null, end?: number | null, today?: number): TgaKpis {
   const played = tileGames('playtime', scoped, null)
   const rated = tileGames('rating', scoped, null)
   const backlog = tileGames('backlog', scoped, null)
@@ -157,6 +188,9 @@ export function computeKpis(scoped: TgGame[], start: number | null, end?: number
     playedGames: played.length,
     rated: rated.length,
     avgStars: rated.length ? Math.round((starSum / rated.length) * 100) / 100 : null,
+    played: tileGames('played', scoped, null).length,
+    started: scoped.filter(isStarted).length,
+    stalePlaying: today == null ? 0 : scoped.filter(g => isStalePlaying(g, today)).length,
   }
 }
 
@@ -177,6 +211,10 @@ export interface TgaBarRow {
   /** Null for a folded "Others" row, which has no single shelf to open. */
   target: string | null
   title?: string
+  /** Two-tone bar: how much of `count` is filled (played, completed…). */
+  part?: number
+  /** Printed instead of `count` (play time, a share). */
+  valueLabel?: string
 }
 
 /** The top `max` platforms by count, the rest folded into one row — unless only one is left over. */

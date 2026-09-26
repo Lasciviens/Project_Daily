@@ -769,6 +769,16 @@ function buildHeroCandidates(g: TgGame): string[] {
   ])
 }
 
+/** Whether any in-game screenshot exists (saved, ScreenScraper or ES-DE) — Data health's coverage. */
+export function hasScreenshot(g: TgGame): boolean {
+  return uniq([g.screenshot_url, ...mediaOf(g, 'ss'), ...esdeOf(g, 'screenshots')]).length > 0
+}
+
+/** Whether any fan art exists (saved, ScreenScraper or ES-DE). */
+export function hasFanart(g: TgGame): boolean {
+  return uniq([g.fanart_url, ...mediaOf(g, 'fanart'), ...esdeOf(g, 'fanart')]).length > 0
+}
+
 /** The screenshot strip: in-game scenes, then title screens, then fanart. */
 export function sceneImages(g: TgGame, extra: unknown[] = []): string[] {
   return uniq([

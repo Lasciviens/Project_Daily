@@ -15,6 +15,7 @@ export function drillTitle(kind: TgaTile, windowed: boolean): string {
     case 'playtime': return 'Playtime'
     case 'rating': return 'Rated games'
     case 'backlog': return 'Backlog'
+    case 'played': return 'Played'
   }
 }
 
@@ -46,6 +47,9 @@ export function drillNote(kind: TgaTile, windowed: boolean): string {
       : 'Lifetime play time, as ES-DE, Steam and PlayStation report it. Most played first.'
     case 'rating': return 'Your own ratings, highest first.'
     case 'backlog': return 'Backlog games (and games with no status yet), latest session first.'
+    case 'played': return windowed
+      ? 'Games with recorded play that you played in this period, latest session first.'
+      : 'Games with recorded play — play time, launches or a session date — latest session first. ES-DE only counts games it launched.'
   }
 }
 
