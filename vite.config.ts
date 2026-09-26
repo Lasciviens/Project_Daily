@@ -22,8 +22,8 @@ export default defineConfig({
         // Matched to the app's actual light-mode header/canvas surfaces —
         // the old #ef4444 red predated the amber/cream design entirely and
         // tinted the installed PWA's splash/chrome the wrong color.
-        theme_color: '#FEFCF9',
-        background_color: '#EDE4D5',
+        theme_color: '#F3F5F9',
+        background_color: '#F3F5F9',
         display: 'standalone',
         start_url: '/Project_Daily/',
         scope: '/Project_Daily/',
@@ -74,6 +74,12 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // Cache static assets indefinitely
         runtimeCaching: [
+          {
+            // The bundled Inter font files (fetched on demand by unicode-range).
+            urlPattern: /\.woff2$/i,
+            handler: 'CacheFirst',
+            options: { cacheName: 'fonts', expiration: { maxEntries: 12, maxAgeSeconds: 365 * 24 * 60 * 60 } },
+          },
           {
             urlPattern: /^https:\/\/image\.tmdb\.org\/.*/i,
             handler: 'CacheFirst',

@@ -3,81 +3,123 @@
 @tailwind utilities;
 
 @layer base {
-  /* Default accent: Orange/Amber */
+  /* ── Design tokens (docs/design/THEME.md) ─────────────────────────────────
+     RGB triplets so Tailwind's /<alpha> modifiers work. Components use the
+     Tailwind names (bg-surface, text-fg-muted, border-line, bg-success-soft…,
+     or the legacy cream/ink/accent/canvas names that map onto the same
+     variables) and never branch on the theme: :root.dark redefines the values.
+     --accent-* and --on-accent are the light defaults here and are overwritten
+     as inline styles on <html> by src/shared/theme/accent.ts. */
   :root {
-    --accent-50:  255 251 235;
-    --accent-100: 254 243 199;
-    --accent-200: 253 230 138;
-    --accent-400: 251 191 36;
-    --accent-500: 245 158 11;
-    --accent-600: 217 119 6;
-    --accent-700: 180 83 9;
+    /* Accent (blue) — full 50–950 scale; a missing shade renders nothing. */
+    --accent-50:  239 244 255;
+    --accent-100: 219 231 254;
+    --accent-200: 191 212 254;
+    --accent-300: 147 181 253;
+    --accent-400: 96 145 250;
+    --accent-500: 37 99 235;
+    --accent-600: 29 78 216;
+    --accent-700: 30 64 175;
+    --accent-800: 30 58 138;
+    --accent-900: 30 45 100;
+    --accent-950: 23 32 70;
+    --on-accent:  255 255 255;
 
-    /* Light theme (default) — identical to the hex values this app has
-       always shipped with, just expressed as space-separated RGB triplets
-       so Tailwind's <alpha-value> opacity modifiers keep working. ink-800
-       and ink-600 are interpolated additions: text-ink-800/text-ink-600
-       were referenced in ~190 places across the app (DailyBriefing, etc.)
-       but those two shades were never actually defined on the ink scale —
-       a real pre-existing gap, not something dark mode introduced. Every
-       one of those elements was rendering with NO explicit color at all,
-       silently inheriting whatever an ancestor happened to set; that was
-       invisible in light mode (the inherited fallback usually landed near
-       ink-900, dark-on-light, close enough to pass) but broke visibly once
-       dark mode made the fallback chain far less predictable per-component. */
-    --canvas:    237 228 213;
-    --cream-50:  254 252 249;
-    --cream-100: 250 248 244;
-    --cream-200: 245 240 232;
-    --cream-300: 237 228 213;
-    --ink-900:   28  25  23;
-    --ink-800:   48  45  42;
-    --ink-700:   68  64  60;
-    --ink-600:   94  89  84;
-    --ink-500:   120 113 108;
-    --ink-400:   168 162 158;
-    --ink-300:   214 211 209;
-    --ink-200:   231 229 228;
-    --ink-100:   245 245 244;
-    --ink-50:    250 248 244;
+    /* Surfaces — canvas (page), cream-50 (panel), cream-100 (recessed),
+       cream-200 (hover). */
+    --canvas:    243 245 249;
+    --cream-50:  255 255 255;
+    --cream-100: 243 245 249;
+    --cream-200: 238 242 248;
+    --cream-300: 243 245 249;
+
+    /* Ink — text and lines. 900 text · 700 body · 500 muted · 400 faint ·
+       300 strong line · 200 line · 100/50 faint fills. */
+    --ink-900: 15 23 42;
+    --ink-800: 30 41 59;
+    --ink-700: 51 65 85;
+    --ink-600: 71 85 105;
+    --ink-500: 107 114 128;
+    --ink-400: 148 156 170;
+    --ink-300: 207 214 225;
+    --ink-200: 227 231 238;
+    --ink-100: 241 244 248;
+    --ink-50:  248 250 252;
+
+    /* Always-dark surface: modal scrims and text/shade over photos. */
+    --scrim: 2 6 23;
+
+    /* Semantic tones, each with a soft background tint. */
+    --success: 22 163 74;    --success-soft: 222 242 230;
+    --warn:    217 119 6;    --warn-soft:    250 236 220;
+    --danger:  220 38 38;    --danger-soft:  250 225 225;
+    --info:    37 99 235;    --info-soft:    224 233 252;
+    --neutral: 139 149 165;  --neutral-soft: 239 240 242;
+    --highlight: 147 51 234; --highlight-soft: 240 226 252;
+    --star:    245 179 1;    --star-soft:    254 244 219;
+
+    /* Elevation. */
+    --shadow-card:       0 1px 2px rgba(15, 23, 42, 0.05), 0 12px 32px -18px rgba(15, 23, 42, 0.25);
+    --shadow-card-hover: 0 2px 4px rgba(15, 23, 42, 0.06), 0 18px 36px -16px rgba(15, 23, 42, 0.3);
+    --shadow-menu:       0 18px 40px -12px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(15, 23, 42, 0.06);
+    --shadow-float:      0 2px 10px -2px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 42, 0.08);
+
+    /* Shell geometry — every offset derives from these. */
+    --app-header-h:  56px;
+    --app-tabbar-h:  64px;
+    --app-sidebar-w: 232px;
+
+    /* Layers. */
+    --z-chrome:  40;
+    --z-drawer:  50;
+    --z-sheet:   60;
+    --z-popover: 70;
+    --z-modal:   100;
+    --z-confirm: 200;
+    --z-toast:   300;
+  }
+  @media (max-width: 639px) {
+    :root { --app-header-h: 52px; }
   }
 
-  /* Dark theme — same token names, inverted lightness. ink-900 stays "the
-     most prominent ink amount" (primary text) in both themes; it's just
-     near-white instead of near-black. Stamped by the inline script in
-     index.html before paint (avoids a flash of the wrong theme) and kept in
-     sync by useTheme()/ThemeToggle. */
   :root.dark {
-    /* accent-* is NOT redefined here on purpose — ThemeSwitcher.tsx's
-       applyTheme() sets those 7 variables as inline styles on <html> on
-       every app load (so the user's picked accent color survives a
-       reload), and inline styles always beat a stylesheet rule regardless
-       of selector specificity — a :root.dark override here would be dead
-       code that can never actually apply. Dark-mode accent values live in
-       ThemeSwitcher.tsx's THEMES[...].darkVars instead, picked at the same
-       point applyTheme() already runs. */
+    color-scheme: dark;
+    --canvas:    6 9 15;
+    --cream-50:  13 18 28;
+    --cream-100: 20 27 39;
+    --cream-200: 23 31 45;
+    --cream-300: 6 9 15;
 
-    --canvas:    21  19  15;
-    --cream-50:  32  29  23;
-    --cream-100: 38  34  25;
-    --cream-200: 45  40  32;
-    --cream-300: 21  19  15;
-    --ink-900:   242 237 225;
-    --ink-800:   223 216 202;
-    --ink-700:   203 195 179;
-    --ink-600:   180 171 156;
-    --ink-500:   156 147 132;
-    --ink-400:   116 107 94;
-    --ink-300:   74  68  59;
-    --ink-200:   53  49  42;
-    --ink-100:   41  38  31;
-    --ink-50:    38  34  25;
+    --ink-900: 238 242 247;
+    --ink-800: 218 224 233;
+    --ink-700: 198 206 219;
+    --ink-600: 164 174 190;
+    --ink-500: 138 148 166;
+    --ink-400: 105 115 133;
+    --ink-300: 48 58 75;
+    --ink-200: 31 39 53;
+    --ink-100: 24 31 44;
+    --ink-50:  18 24 35;
+
+    --success: 34 197 94;    --success-soft: 16 47 39;
+    --warn:    245 158 11;   --warn-soft:    50 40 25;
+    --danger:  248 113 113;  --danger-soft:  51 33 42;
+    --info:    59 130 246;   --info-soft:    20 36 63;
+    --neutral: 138 148 166;  --neutral-soft: 33 39 50;
+    --highlight: 192 132 252; --highlight-soft: 42 36 64;
+    --star:    251 191 36;   --star-soft:    51 46 29;
+
+    --shadow-card:       0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 40px -22px rgba(0, 0, 0, 0.8);
+    --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.45), 0 22px 44px -20px rgba(0, 0, 0, 0.85);
+    --shadow-menu:       0 22px 48px -12px rgba(0, 0, 0, 0.75), 0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-float:      0 6px 18px -6px rgba(0, 0, 0, 0.8);
   }
 
   body {
-    @apply bg-canvas text-ink-900 m-0;
+    @apply bg-canvas text-fg m-0 font-sans;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'cv11', 'ss01';
   }
 
   /* App-shell scroll architecture: the DOCUMENT never scrolls — <main>
@@ -133,7 +175,7 @@
 
   ::-webkit-scrollbar       { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-ink-300 rounded-full; }
+  ::-webkit-scrollbar-thumb { @apply bg-line-strong rounded-full; }
 
   /* Was referenced in several horizontal-scroll strips (nav, DailyPage, the
      old Games page) but never actually defined — a real fix, not just tidying,
@@ -171,75 +213,156 @@
 }
 
 @layer components {
+  /* ── Shared building blocks (THEME.md §5) ─────────────────────────────────
+     Safe inside @layer: every class name here appears in source. Prefer the
+     React primitives in src/shared/ui/ where they exist (Card, Button, …). */
+
+  /* Panels and cards. */
   .card {
-    @apply bg-cream-50 border border-ink-200 rounded-xl shadow-card transition-shadow duration-150;
+    @apply bg-surface border border-line rounded-card shadow-card;
   }
   .card-interactive {
-    @apply bg-cream-50 border border-ink-200 rounded-xl shadow-card transition-shadow duration-150 hover:shadow-card-hover;
+    @apply bg-surface border border-line rounded-card shadow-card transition-[box-shadow,transform] duration-150;
+  }
+  @media (hover: hover) {
+    .card-interactive:hover { @apply shadow-card-hover; }
+  }
+  .card-interactive:active { transform: scale(0.99); }
+
+  /* Buttons: 44px tall, 10px radius, 14px/600. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 min-h-[44px] px-[18px] rounded-control
+           text-ui font-semibold whitespace-nowrap select-none cursor-pointer
+           transition-[background-color,border-color,color,opacity,transform] duration-100
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn:active:not(:disabled) { transform: scale(0.98); }
+  .btn-primary   { @apply btn bg-accent-500 text-on-accent border border-transparent; }
+  .btn-secondary { @apply btn bg-surface-2 text-fg border border-line; }
+  .btn-ghost     { @apply btn bg-transparent text-fg-2 border border-transparent px-3; }
+  .btn-danger    { @apply btn bg-danger text-white border border-transparent; }
+  .btn-sm        { @apply min-h-[36px] px-3 text-body [@media(pointer:coarse)]:min-h-[44px]; }
+  @media (hover: hover) {
+    .btn-primary:hover:not(:disabled)   { @apply bg-accent-600; }
+    .btn-secondary:hover:not(:disabled) { @apply bg-surface-hover border-line-strong; }
+    .btn-ghost:hover:not(:disabled)     { @apply bg-surface-hover text-fg; }
+    .btn-danger:hover:not(:disabled)    { filter: brightness(1.08); }
   }
 
-  .btn-primary {
-    @apply bg-accent-500 hover:bg-accent-600 text-white font-medium px-4 py-2 rounded-lg
-           transition-colors duration-150 cursor-pointer border-none text-sm min-h-[44px];
+  /* Icon buttons: 44×44 hit area. */
+  .icon-btn {
+    @apply inline-grid place-items-center w-11 h-11 rounded-control text-fg-2 shrink-0
+           transition-colors duration-100;
+  }
+  .icon-btn-bordered { @apply icon-btn bg-surface-2 border border-line; }
+  @media (hover: hover) {
+    .icon-btn:hover, .icon-btn-bordered:hover { @apply bg-surface-hover text-fg; }
+  }
+  .icon-btn:active, .icon-btn-bordered:active { @apply bg-surface-hover; }
+
+  /* Form controls: 40px (44 on touch), recessed fill, accent halo on focus. */
+  .input, .select {
+    @apply w-full min-h-[40px] bg-surface-2 border border-line rounded-input px-3 text-body text-fg
+           placeholder:text-fg-faint transition-[border-color,box-shadow] duration-100
+           [@media(pointer:coarse)]:min-h-[44px];
+  }
+  .input:focus, .select:focus, .input:focus-visible, .select:focus-visible {
+    @apply outline-none border-accent-500;
+    box-shadow: 0 0 0 3px rgb(var(--accent-500) / 0.18);
+  }
+  textarea.input { @apply py-2 leading-relaxed; }
+  .select { @apply rounded-control font-medium pr-8; }
+  .field-label { @apply block text-micro font-semibold uppercase tracking-[0.08em] text-fg-muted mb-1.5; }
+
+  /* Eyebrow label for card and group headings. */
+  .section-label { @apply text-micro font-semibold uppercase tracking-[0.09em] text-fg-muted; }
+
+  /* Chips, badges and pill tabs. */
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-line bg-surface-2 px-2 py-px
+           text-[11.5px] font-medium text-fg-2 whitespace-nowrap;
+  }
+  .count-badge {
+    @apply inline-flex items-center justify-center min-w-[22px] h-[22px] px-[7px] rounded-full
+           bg-surface-2 text-meta font-medium tabular-nums text-fg-muted;
+  }
+  .pill-tab {
+    @apply inline-flex items-center gap-2.5 h-[34px] px-4 rounded-full text-body font-medium text-fg-2
+           whitespace-nowrap transition-colors duration-100 [@media(pointer:coarse)]:h-[44px];
+  }
+  .pill-tab.is-active, .pill-tab[aria-pressed='true'], .pill-tab[aria-selected='true'] {
+    @apply bg-accent-500 text-on-accent;
+  }
+  @media (hover: hover) {
+    .pill-tab:not(.is-active):not([aria-pressed='true']):not([aria-selected='true']):hover { @apply bg-surface-hover; }
   }
 
-  .btn-secondary {
-    @apply bg-cream-50 hover:bg-ink-100 text-ink-700 font-medium px-4 py-2 rounded-lg
-           transition-colors duration-150 cursor-pointer border border-ink-200 text-sm min-h-[44px];
+  /* Segmented control (text tabs in a recessed track). */
+  .seg {
+    @apply inline-grid grid-flow-col auto-cols-fr gap-1 rounded-row border border-line bg-surface-2 p-1;
+  }
+  .seg-btn {
+    @apply min-h-[36px] rounded-[9px] px-3 text-body font-semibold text-fg-muted transition-colors duration-100
+           [@media(pointer:coarse)]:min-h-[40px];
+  }
+  .seg-btn.is-active, .seg-btn[aria-selected='true'], .seg-btn[aria-pressed='true'], .seg-btn[aria-checked='true'] {
+    @apply bg-surface text-fg;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.12), inset 0 0 0 1px rgb(var(--ink-200));
   }
 
-  .btn-ghost {
-    @apply hover:bg-ink-100 text-ink-500 hover:text-ink-700 px-3 py-1.5 rounded-lg
-           transition-colors duration-150 cursor-pointer border-none bg-transparent text-sm min-h-[44px];
+  /* Floating menus (Headless UI MenuItems / ListboxOptions). */
+  .menu {
+    @apply bg-surface border border-line-strong rounded-menu shadow-menu p-1.5 z-popover outline-none;
+  }
+  .menu-item {
+    @apply flex w-full items-center gap-2.5 min-h-[40px] px-2.5 rounded-[9px] text-body font-medium text-fg-2
+           text-left cursor-pointer [@media(pointer:coarse)]:min-h-[44px];
+  }
+  .menu-item[data-focus], .menu-item:hover { @apply bg-surface-hover text-fg; }
+  .menu-item.is-danger { @apply text-danger; }
+  .menu-sep { @apply my-1.5 mx-1 h-px bg-line; }
+  .menu-label { @apply px-2.5 pt-1.5 pb-1 text-micro font-semibold uppercase tracking-[0.08em] text-fg-faint; }
+
+  /* List rows. */
+  .row {
+    @apply flex items-center gap-3 min-h-[44px] rounded-row px-3 transition-colors duration-100;
+  }
+  @media (hover: hover) { .row-interactive:hover { @apply bg-surface-hover; } }
+  .row-interactive:active { @apply bg-surface-hover; }
+
+  /* Loading placeholders copy the real geometry; only a few animate. */
+  .skeleton {
+    @apply rounded-md;
+    background: linear-gradient(100deg, rgb(var(--cream-100)) 30%, rgb(var(--cream-200)) 50%, rgb(var(--cream-100)) 70%);
+    background-size: 300% 100%;
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
   }
 
-  /* Press feedback baked into the shared button/card primitives — the
-     :active scale cue every native control has, without needing every call
-     site to remember .press-feedback. transform is additionally transitioned
-     so the release springs back instead of snapping. */
-  .btn-primary, .btn-secondary, .btn-ghost, .card-interactive {
-    transition-property: color, background-color, border-color, box-shadow, transform;
+  .scroll-y {
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--ink-300)) transparent;
   }
-  .btn-primary:active, .btn-secondary:active, .btn-ghost:active {
-    transform: scale(0.97);
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
   }
-  .card-interactive:active {
-    transform: scale(0.985);
-  }
+  .scroll-x::-webkit-scrollbar { display: none; }
 
-  /* iOS "liquid glass" chrome — the frosted, saturated translucency of a
-     native tab bar / navigation bar. Works because the app shell now scrolls
-     <main> BEHIND this fixed chrome (see the app-shell notes above), so
-     there's real content for backdrop-filter to frost. The inset top hairline
-     is the bright glass edge iOS draws; the outer shadow lifts the bar off the
-     content. `saturate` is what separates real glass from a plain blur — it
-     pulls the color out of whatever scrolls underneath. -webkit- prefix for
-     iOS Safari, which still needs it. Safe inside @layer: `.glass-chrome`
-     appears in layout.tsx source, so Tailwind won't purge it (unlike the
-     runtime-only view-transition rules, which had to live outside @layer). */
+  /* Translucent chrome over scrolling content (phone header, tab bar). */
   .glass-chrome {
-    background-color: rgb(var(--cream-50) / 0.62);
-    /* Only the standard property — autoprefixer (postcss.config.js) emits the
-       -webkit-backdrop-filter Safari/iOS needs. Hand-writing both made the
-       minifier keep only the prefixed one and drop the standard, so Firefox
-       lost the effect. */
-    backdrop-filter: blur(20px) saturate(180%);
-    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.35);
+    background-color: rgb(var(--cream-50) / 0.82);
+    /* Only the standard property — autoprefixer emits the -webkit- one. */
+    backdrop-filter: blur(18px) saturate(160%);
   }
-  :root.dark .glass-chrome {
-    background-color: rgb(var(--cream-50) / 0.7);
-    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.08);
-  }
-  /* Browsers without backdrop-filter fall back to a near-opaque bar so tab
-     labels never sit unreadable over scrolling content. */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .glass-chrome { background-color: rgb(var(--cream-50) / 0.96); }
+    .glass-chrome { background-color: rgb(var(--cream-50) / 0.97); }
   }
 
-  .input {
-    @apply w-full bg-cream-50 border border-ink-200 rounded-lg px-3 py-2 text-sm text-ink-900
-           placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400
-           focus:border-accent-400 transition-colors duration-150 min-h-[44px];
+  /* Kept for existing call sites; new code uses .input. */
+  .kbd {
+    @apply inline-flex items-center h-5 px-1.5 rounded-md border border-line bg-surface-2 text-[10.5px] font-semibold text-fg-muted;
   }
 }
 
@@ -400,9 +523,46 @@ select:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid rgb(var(--accent-500));
   outline-offset: 2px;
-  border-radius: 6px;
 }
 .recharts-surface:focus-visible,
 .recharts-wrapper :focus-visible {
   outline: none;
+}
+
+/* ── Status tones by data attribute (runtime values → outside @layer) ──────
+   <span data-tone="success" class="tone-dot" />, .tone-text, .tone-pill.
+   One mechanism for every status map (task priority, project status, sync
+   state…): components pick a tone name, the theme picks the colour. */
+[data-tone='success'] { --tone: var(--success); --tone-soft: var(--success-soft); }
+[data-tone='warn']    { --tone: var(--warn);    --tone-soft: var(--warn-soft); }
+[data-tone='danger']  { --tone: var(--danger);  --tone-soft: var(--danger-soft); }
+[data-tone='info']    { --tone: var(--info);    --tone-soft: var(--info-soft); }
+[data-tone='neutral'] { --tone: var(--neutral); --tone-soft: var(--neutral-soft); }
+[data-tone='highlight'] { --tone: var(--highlight); --tone-soft: var(--highlight-soft); }
+[data-tone='star']    { --tone: var(--star);    --tone-soft: var(--star-soft); }
+[data-tone='accent']  { --tone: var(--accent-500); --tone-soft: var(--accent-50); }
+.tone-dot  { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: rgb(var(--tone, var(--neutral))); flex-shrink: 0; }
+.tone-text { color: rgb(var(--tone, var(--neutral))); }
+.tone-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; line-height: 18px; white-space: nowrap;
+  background: rgb(var(--tone-soft, var(--neutral-soft)));
+  color: rgb(var(--tone, var(--neutral)));
+}
+.tone-soft { background: rgb(var(--tone-soft, var(--neutral-soft))); }
+
+@keyframes skeleton-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* Focus ring follows the shape of rounded controls. */
+.btn:focus-visible, .icon-btn:focus-visible, .icon-btn-bordered:focus-visible,
+.select:focus-visible, .menu-item:focus-visible, .seg-btn:focus-visible { border-radius: 10px; }
+.pill-tab:focus-visible, .chip:focus-visible { border-radius: 999px; }
+
+/* Hover styles stick on touch screens; everything above uses @media (hover). */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
 }

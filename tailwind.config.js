@@ -1,68 +1,95 @@
 /** @type {import('tailwindcss').Config} */
+
+// Design tokens live in src/index.css as RGB triplets on :root / :root.dark
+// (and --accent-* as inline styles from src/shared/theme/accent.ts). This file
+// only maps Tailwind names onto them, so a colour change never touches a
+// component. The system is documented in docs/design/THEME.md.
+const rgb = (name) => `rgb(var(--${name}) / <alpha-value>)`
+const scale = (name, shades) => Object.fromEntries(shades.map(s => [s, rgb(`${name}-${s}`)]))
+const tone = (name) => ({ DEFAULT: rgb(name), soft: rgb(`${name}-soft`) })
+
 export default {
   darkMode: 'selector',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // canvas/cream/ink resolve through CSS custom properties (same
-        // pattern as accent below) so :root.dark can redefine every one of
-        // them in index.css without touching any of the ~120 component
-        // files that already use these class names — the token NAME keeps
-        // its semantic role (ink-900 = "most prominent ink amount") while
-        // its actual value inverts per theme.
-        canvas: 'rgb(var(--canvas) / <alpha-value>)',
-        cream: {
-          50:  'rgb(var(--cream-50)  / <alpha-value>)',
-          100: 'rgb(var(--cream-100) / <alpha-value>)',
-          200: 'rgb(var(--cream-200) / <alpha-value>)',
-          300: 'rgb(var(--cream-300) / <alpha-value>)',
+        // ── Semantic names (use these in new code) ─────────────────────────
+        surface: {
+          DEFAULT: rgb('cream-50'),   // cards, panels, menus, sheets
+          2:       rgb('cream-100'),  // recessed fills: inputs, selects, secondary buttons, badges
+          hover:   rgb('cream-200'),  // hover / press tint of rows and buttons
         },
-        ink: {
-          // 950 is a FIXED literal shade (not var-backed) — real ink-900 was
-          // doing double duty as both "primary text color" (rightly
-          // theme-reactive, inverts to near-white in dark mode) AND "an
-          // always-near-black surface" (modal backdrop scrims, solid
-          // selected-pill states) — inverting the latter broke every modal
-          // backdrop and active-tab pill in dark mode, since bg-ink-900 was
-          // turning near-WHITE right when it needed to stay dark. Anything
-          // that wants "always dark, regardless of theme" as a BACKGROUND
-          // should use ink-950; text color keeps using the reactive 900-100
-          // scale below.
-          950: '#1c1917',
-          900: 'rgb(var(--ink-900) / <alpha-value>)',
-          800: 'rgb(var(--ink-800) / <alpha-value>)',
-          700: 'rgb(var(--ink-700) / <alpha-value>)',
-          600: 'rgb(var(--ink-600) / <alpha-value>)',
-          500: 'rgb(var(--ink-500) / <alpha-value>)',
-          400: 'rgb(var(--ink-400) / <alpha-value>)',
-          300: 'rgb(var(--ink-300) / <alpha-value>)',
-          200: 'rgb(var(--ink-200) / <alpha-value>)',
-          100: 'rgb(var(--ink-100) / <alpha-value>)',
-          // 50 was MISSING from this scale while 65 call sites (bg-ink-50,
-          // hover:bg-ink-50) already used it across home/projects/training/
-          // media/recipes/developer — Tailwind emitted nothing for an unknown
-          // key, so every one of those faint surfaces silently rendered as
-          // its parent's background (Home's TASKS/NEXT UP chips read as loose
-          // paragraphs). Adding the token fixes all of them with zero churn.
-          50:  'rgb(var(--ink-50)  / <alpha-value>)',
+        line: {
+          DEFAULT: rgb('ink-200'),    // the 1px hairline: panels, inputs, dividers
+          strong:  rgb('ink-300'),    // floating surfaces, hovered selects
         },
-        accent: {
-          50:  'rgb(var(--accent-50)  / <alpha-value>)',
-          100: 'rgb(var(--accent-100) / <alpha-value>)',
-          200: 'rgb(var(--accent-200) / <alpha-value>)',
-          400: 'rgb(var(--accent-400) / <alpha-value>)',
-          500: 'rgb(var(--accent-500) / <alpha-value>)',
-          600: 'rgb(var(--accent-600) / <alpha-value>)',
-          700: 'rgb(var(--accent-700) / <alpha-value>)',
+        fg: {
+          DEFAULT: rgb('ink-900'),    // headings, primary values
+          2:       rgb('ink-700'),    // body text, nav labels, menu items
+          muted:   rgb('ink-500'),    // meta, subtitles, section labels
+          faint:   rgb('ink-400'),    // placeholders, chevrons, decoration only
         },
+        'on-accent': rgb('on-accent'),
+        success: tone('success'),
+        warn:    tone('warn'),
+        danger:  tone('danger'),
+        info:    tone('info'),
+        neutral: tone('neutral'),
+        highlight: tone('highlight'),
+        star:    tone('star'),
+        scrim:   rgb('scrim'),
+
+        // ── Legacy names (kept: ~5,000 existing uses restyle for free) ─────
+        canvas: rgb('canvas'),
+        cream:  scale('cream', [50, 100, 200, 300]),
+        // ink-950 is the always-dark surface (scrims, photo overlays) in both
+        // themes; 50–900 invert per theme (900 = the strongest ink).
+        ink:    { ...scale('ink', [50, 100, 200, 300, 400, 500, 600, 700, 800, 900]), 950: rgb('scrim') },
+        accent: scale('accent', [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]),
       },
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'Segoe UI', 'sans-serif'],
+        sans: ['"Inter Variable"', 'Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+      },
+      fontSize: {
+        // The type scale (THEME.md §3). Each step carries its line-height.
+        micro: ['11px', { lineHeight: '16px' }],   // eyebrow labels, badges, chart ticks
+        meta:  ['12px', { lineHeight: '16px' }],   // subtitles, timestamps, secondary values
+        body:  ['13px', { lineHeight: '20px' }],   // body text, controls, list rows
+        ui:    ['14px', { lineHeight: '20px' }],   // primary buttons, emphasised rows
+        lead:  ['15px', { lineHeight: '22px' }],   // phone sheet rows, card titles on phones
+        title: ['17px', { lineHeight: '24px' }],   // sheet / dialog / card-hero titles
+        head:  ['19px', { lineHeight: '26px' }],   // phone header title
+        page:  ['24px', { lineHeight: '30px' }],   // page title (wide)
+        kpi:   ['26px', { lineHeight: '30px' }],   // big numbers
+      },
+      borderRadius: {
+        control: '10px',  // buttons, selects, icon buttons, nav items, status pills
+        input:   '11px',
+        row:     '12px',  // list rows, sheet rows
+        menu:    '14px',
+        card:    '18px',  // panels and cards
+        sheet:   '22px',  // phone bottom sheets (top corners)
       },
       boxShadow: {
-        card:       '0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04)',
-        'card-hover': '0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04)',
+        card:         'var(--shadow-card)',
+        'card-hover': 'var(--shadow-card-hover)',
+        menu:         'var(--shadow-menu)',
+        float:        'var(--shadow-float)',
+      },
+      zIndex: {
+        chrome:  'var(--z-chrome)',
+        drawer:  'var(--z-drawer)',
+        sheet:   'var(--z-sheet)',
+        popover: 'var(--z-popover)',
+        modal:   'var(--z-modal)',
+        confirm: 'var(--z-confirm)',
+        toast:   'var(--z-toast)',
+      },
+      spacing: {
+        header: 'var(--app-header-h)',
+        tabbar: 'var(--app-tabbar-h)',
+        sidebar: 'var(--app-sidebar-w)',
       },
       keyframes: {
         fadeSlideIn: {
@@ -90,5 +117,3 @@ export default {
   },
   plugins: [require('@tailwindcss/container-queries')],
 }
-
-

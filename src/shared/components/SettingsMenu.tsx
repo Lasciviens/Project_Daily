@@ -1,16 +1,16 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { useThemeStore, type ThemePreference } from '../../app/store'
 import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCalendar'
-import { applyTheme, THEMES } from './ThemeSwitcher'
+import { ACCENTS, type AccentName } from '../theme/accent'
 import { signOut } from '../../security/supabaseClient'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 
 export function SettingsMenu() {
-  const [theme,      setTheme]      = useState(() => localStorage.getItem('accent-theme') ?? 'orange')
-
-  const { theme: appearance, setTheme: setAppearance } = useThemeStore()
+  const appearance    = useThemeStore(s => s.theme)
+  const setAppearance = useThemeStore(s => s.setTheme)
+  const theme         = useThemeStore(s => s.accent)
+  const setAccent     = useThemeStore(s => s.setAccent)
   const push = usePushNotifications()
   // Connect/disconnect moved to Developer → Connections, but this hook must
   // stay HERE: SettingsMenu is mounted in the header on every route, so it is
@@ -24,11 +24,7 @@ export function SettingsMenu() {
     { value: 'system', label: 'System', icon: '💻' },
   ]
 
-  function selectTheme(name: string) {
-    applyTheme(name)
-    localStorage.setItem('accent-theme', name)
-    setTheme(name)
-  }
+  const selectTheme = (name: string) => setAccent(name as AccentName)
 
   return (
     /* Menu handles keyboard navigation, portal, and click-outside — no manual listeners needed */
@@ -66,7 +62,7 @@ export function SettingsMenu() {
         <div className="px-4 py-3 border-b border-ink-100">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2.5">Theme</p>
           <div className="flex items-center gap-2">
-            {Object.entries(THEMES).map(([name, t]) => (
+            {Object.entries(ACCENTS).map(([name, t]) => (
               <MenuItem key={name}>
                 <button
                   onClick={() => selectTheme(name)}
