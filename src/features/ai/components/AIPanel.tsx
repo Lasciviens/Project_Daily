@@ -1,26 +1,25 @@
 import { useState, useRef, useEffect } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { useQueryClient } from '@tanstack/react-query'
+import {
+  Sparkles, ChevronDown, Dumbbell, Mic, Volume2, NotebookPen, Eraser, Camera, SendHorizontal, ArrowDown, X,
+} from 'lucide-react'
 import { useUIStore, toast } from '../../../app/store'
 import { sendMessage, sendCoachMessage, AI_MODEL_OPTIONS } from '../api/aiApi'
 import type { Message, AIModel } from '../api/aiApi'
 import { useVoiceChat } from '../hooks/useVoiceChat'
 import { useKeyboardInset, useStickToBottom } from '../hooks/useChatViewport'
 import { fileToCompactDataUrl } from '../../../shared/utils/image'
+import { SideDrawer } from '../../../shared/modals/SideDrawer'
+import { ModalShell } from '../../../shared/modals'
+import { invalidate } from '../../../shared/query'
+import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
+import { IconButton, cx } from '../../../shared/ui'
 
 // The AI performs real DB writes server-side (ai-proxy's db_insert/update/
-// delete + create_task/plan_media/etc.), but the panel had NO cache
-// invalidation — so "add a task", "schedule a workout", "create this recipe"
-// succeeded in the DB yet nothing on screen updated until a full reload. After
-// every completed turn we refresh every namespace the AI can write to. (Broad
-// invalidation is cheap: TanStack only refetches queries that are actually
-// mounted; keys that don't exist are no-ops.)
-const AI_WRITE_NAMESPACES = [
-  ['tasks'], ['schedule'], ['calendar'],
-  ['recipes'], ['meal-plan'], ['recipe-ingredient-library'],
-  ['shop'], ['projects'], ['movies'], ['tv'], ['media'],
-]
+// delete + create_task/plan_media/etc.), so after every completed turn every
+// view the assistant can write to is refreshed (the 'aiWrite' group). Broad
+// invalidation is cheap: TanStack only refetches queries that are mounted.
 
 const STORAGE_KEY = 'lasci-ai-chat'
 const MODEL_KEY    = 'lasci-ai-model'
@@ -72,7 +71,9 @@ const SUMMARIZE_AND_SAVE_EN = 'Summarize this conversation and save it to memory
 const SUMMARIZE_AND_SAVE_TR = 'Bu konuşmayı özetle ve hafızaya kaydet.'
 
 export function AIPanel() {
-  const { isAIOpen, closeAI } = useUIStore()
+  const isAIOpen = useUIStore(s => s.isAIOpen)
+  const closeAI = useUIStore(s => s.closeAI)
+  const phone = useBreakpoint() === 'phone'
   const qc = useQueryClient()
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) as ChatMessage[] : [] }
@@ -130,30 +131,23 @@ export function AIPanel() {
     if (imgs.length) { e.preventDefault(); void addImages(imgs) }
   }
 
-  useEffect(() => {
-    if (isAIOpen) inputRef.current?.focus()
-  }, [isAIOpen])
-
   // Lift the sheet above the on-screen keyboard (see useKeyboardInset) and keep
   // the newest message visible without hijacking a user who scrolled up.
   const { inset: kbInset, visibleHeight } = useKeyboardInset(isAIOpen)
   const { scrollRef, atBottom, onScroll, scrollToBottom } = useStickToBottom([messages, loading])
 
-  // The lg breakpoint turns the sheet into a full-height side drawer, which must
-  // keep its class-based sizing — the keyboard fix is mobile-only.
-  const [isDesktop, setIsDesktop] = useState(() =>
-    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches)
+  // The drawer unmounts while closed; reopening lands on the newest message.
   useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)')
-    const on = () => setIsDesktop(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
+    if (!isAIOpen) return
+    const id = requestAnimationFrame(() => scrollToBottom('auto'))
+    return () => cancelAnimationFrame(id)
+  }, [isAIOpen, scrollToBottom])
 
   // vh / bottom-0 measure the FULL screen on iOS even with the keyboard up —
-  // that is what buried the input. Only when a keyboard is actually detected,
-  // drive the sheet from the real visible viewport instead.
-  const sheetStyle = kbInset > 0 && !isDesktop
+  // that is what buried the input. Only when a keyboard is actually detected
+  // (phones: the drawer is a bottom sheet there), drive the sheet from the
+  // real visible viewport instead.
+  const sheetStyle = kbInset > 0 && phone
     ? { bottom: kbInset, height: Math.max(260, visibleHeight - 24) }
     : undefined
 
@@ -233,7 +227,7 @@ export function AIPanel() {
       const reply = await (coachMode ? sendCoachMessage(next, model) : sendMessage(next, model))
       setMessages(m => [...m, { role: 'assistant', content: reply.text, steps: reply.steps, model: reply.model }])
       // The turn may have written to the DB — refresh every AI-writable view.
-      for (const key of AI_WRITE_NAMESPACES) qc.invalidateQueries({ queryKey: key })
+      void invalidate(qc, 'aiWrite')
       // Voice mode: read the answer out, then hand the mic back for the next
       // turn. Re-checking the ref in the callback means switching voice off
       // mid-sentence ends the loop instead of reopening the mic.
@@ -275,143 +269,112 @@ export function AIPanel() {
     }
   }
 
+  const modelLabel = AI_MODEL_OPTIONS.find(o => o.id === model)?.label ?? 'Auto'
+
+  const headerChips = (
+    <div className="scroll-x flex items-center gap-2 px-4 pb-2.5 sm:px-5">
+      {/* Model picker: "Auto" (default) lets the server's 4-model fallback
+          chain pick whichever has capacity; picking one explicitly still falls
+          back to the others on a 503 — it only sets which model goes FIRST. */}
+      <Listbox value={model} onChange={pickModel}>
+        <ListboxButton className={cx(CHIP, CHIP_IDLE)} aria-label={`Model: ${modelLabel}`}>
+          <ToneLed />
+          {modelLabel}
+          <ChevronDown className="h-3.5 w-3.5 text-fg-faint" aria-hidden />
+        </ListboxButton>
+        <ListboxOptions anchor={{ to: 'bottom start', gap: 6, padding: 12 }} className="menu w-60">
+          {AI_MODEL_OPTIONS.map(o => (
+            <ListboxOption key={o.id} value={o.id} className="menu-item flex-col !items-start justify-center !gap-0 py-1.5 data-[selected]:text-accent-700">
+              <span className="font-semibold">{o.label}</span>
+              <span className="text-meta font-normal text-fg-muted">{o.hint}</span>
+            </ListboxOption>
+          ))}
+        </ListboxOptions>
+      </Listbox>
+      {/* Coach mode — blunt PT persona over a prepared 30-day
+          training/health/nutrition JSON (see sendCoachMessage). */}
+      <button
+        type="button"
+        onClick={() => setCoachMode(v => !v)}
+        aria-pressed={coachMode}
+        title="Coach mode: PT persona + the last 30 days of training/sleep/weight/nutrition data as prepared context"
+        className={cx(CHIP, coachMode ? CHIP_ON : CHIP_IDLE)}
+      >
+        <Dumbbell className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />Coach
+      </button>
+      {/* Hands-free voice chat: speak → it answers out loud → the mic reopens.
+          Hidden entirely when the browser has neither half of the Web Speech API. */}
+      {(voice.sttSupported || voice.ttsSupported) && (
+        <>
+          <button
+            type="button"
+            onClick={toggleVoiceMode}
+            title={voice.sttSupported
+              ? 'Voice chat: speak your message, hear the answer, mic reopens automatically'
+              : 'Speak the answers out loud (this browser cannot listen)'}
+            aria-pressed={voiceMode}
+            className={cx(CHIP, voiceMode ? CHIP_ON : CHIP_IDLE)}
+          >
+            {voiceMode ? <Volume2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden /> : <Mic className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />}
+            Voice
+          </button>
+          {voiceMode && (
+            <button
+              type="button"
+              onClick={() => voice.setLang(voice.lang === 'tr-TR' ? 'en-US' : 'tr-TR')}
+              title="Speech language (recognition + speaking)"
+              className={cx(CHIP, CHIP_IDLE)}
+            >
+              {voice.lang === 'tr-TR' ? 'TR' : 'EN'}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+
+  const headerActions = messages.length > 0 && (
+    <>
+      <IconButton
+        label="Summarize & save this conversation"
+        onClick={() => handleSend(voice.lang === 'tr-TR' ? SUMMARIZE_AND_SAVE_TR : SUMMARIZE_AND_SAVE_EN)}
+        disabled={loading}
+        className="disabled:opacity-40"
+      >
+        <NotebookPen strokeWidth={1.9} aria-hidden />
+      </IconButton>
+      <IconButton
+        label="Clear conversation"
+        onClick={() => { setMessages([]); setError(null); try { localStorage.removeItem(STORAGE_KEY) } catch { /* */ } }}
+      >
+        <Eraser strokeWidth={1.9} aria-hidden />
+      </IconButton>
+    </>
+  )
+
   return (
     <>
-      {isAIOpen && (
-        <div className="fixed inset-0 z-40 bg-ink-950/10" onClick={handleClose} />
-      )}
-
-      <div
-        className={[
-          'fixed z-50 bg-cream-50 flex flex-col border-ink-200',
-          'bottom-0 left-0 right-0 h-[88vh] supports-[height:1dvh]:h-[88dvh] rounded-t-3xl border-t',
-          'lg:left-auto lg:right-0 lg:top-14 lg:h-auto lg:bottom-0 lg:w-[520px] xl:w-[620px] lg:rounded-none lg:border-t-0 lg:border-l',
-          isAIOpen
-            ? 'translate-y-0 lg:translate-x-0'
-            : 'translate-y-full lg:translate-y-0 lg:translate-x-full',
-          'transition-transform duration-200',
-        ].join(' ')}
-        style={sheetStyle}
+      <SideDrawer
+        open={isAIOpen}
+        onClose={handleClose}
+        title={<span className="inline-flex items-center gap-2"><span className="grid h-6 w-6 place-items-center rounded-control bg-accent-500 text-on-accent"><Sparkles className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden /></span>Ask AI</span>}
+        headerActions={headerActions}
+        headerExtra={headerChips}
+        widthClassName="w-[32.5rem] xl:w-[38.75rem]"
+        phoneStyle={sheetStyle}
       >
-        {/* Grab handle — bottom-sheet affordance (mobile only; the panel is a
-            side drawer from lg up where a handle would be meaningless). */}
-        <div className="lg:hidden flex-shrink-0 pt-2.5 pb-0.5 flex justify-center">
-          <div className="w-9 h-1 rounded-full bg-ink-300/70" />
-        </div>
-
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-ink-100 flex-shrink-0">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-            <div className="w-5 h-5 bg-accent-500 rounded-md flex items-center justify-center text-white text-[10px] font-bold">✦</div>
-            <h2 className="text-sm font-semibold text-ink-800">Ask AI</h2>
-            {/* Model picker: "Auto" (default) lets the server's 4-model
-                fallback chain pick whichever has capacity; picking one
-                explicitly still falls back to the others on a 503 — this
-                only sets which model the chain tries FIRST. */}
-            <Listbox value={model} onChange={pickModel}>
-              <div className="relative">
-                <ListboxButton className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-medium hover:bg-green-100 transition-colors min-h-[44px]">
-                  {AI_MODEL_OPTIONS.find(o => o.id === model)?.label ?? 'Auto'}
-                  <span className="opacity-60">▾</span>
-                </ListboxButton>
-                <ListboxOptions anchor="bottom start" className="z-50 mt-1 w-56 rounded-lg border border-ink-200 bg-cream-50 shadow-lg py-1 text-xs">
-                  {AI_MODEL_OPTIONS.map(o => (
-                    <ListboxOption
-                      key={o.id}
-                      value={o.id}
-                      className="px-3 py-2 cursor-pointer data-[focus]:bg-cream-100 min-h-[44px] flex flex-col justify-center"
-                    >
-                      <span className="font-medium text-ink-800">{o.label}</span>
-                      <span className="text-[10px] text-ink-400">{o.hint}</span>
-                    </ListboxOption>
-                  ))}
-                </ListboxOptions>
-              </div>
-            </Listbox>
-            {/* Coach mode — blunt PT persona over a prepared 30-day
-                training/health/nutrition JSON (see sendCoachMessage). */}
-            <button
-              onClick={() => setCoachMode(v => !v)}
-              title="Coach mode: PT persona + the last 30 days of training/sleep/weight/nutrition data as prepared context"
-              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium border transition-colors min-h-[44px] ${
-                coachMode
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-cream-100 text-ink-500 border-ink-200 hover:border-orange-300'
-              }`}
-            >
-              🏋️ Coach
-            </button>
-            {/* Hands-free voice chat: speak → it answers out loud → the mic
-                reopens. Hidden entirely when the browser has neither half of
-                the Web Speech API. */}
-            {(voice.sttSupported || voice.ttsSupported) && (
-              <>
-                <button
-                  onClick={toggleVoiceMode}
-                  title={voice.sttSupported
-                    ? 'Voice chat: speak your message, hear the answer, mic reopens automatically'
-                    : 'Speak the answers out loud (this browser cannot listen)'}
-                  aria-pressed={voiceMode}
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium border transition-colors min-h-[44px] ${
-                    voiceMode
-                      ? 'bg-accent-500 text-white border-accent-500'
-                      : 'bg-cream-100 text-ink-500 border-ink-200 hover:border-accent-300'
-                  }`}
-                >
-                  {voiceMode ? '🔊 Voice' : '🎙 Voice'}
-                </button>
-                {voiceMode && (
-                  <button
-                    onClick={() => voice.setLang(voice.lang === 'tr-TR' ? 'en-US' : 'tr-TR')}
-                    title="Speech language (recognition + speaking)"
-                    className="text-[10px] px-2 py-0.5 rounded-full font-medium border border-ink-200 bg-cream-100 text-ink-500 hover:border-accent-300 transition-colors min-h-[44px]"
-                  >
-                    {voice.lang === 'tr-TR' ? 'TR' : 'EN'}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {messages.length > 0 && (
-              <button
-                onClick={() => handleSend(voice.lang === 'tr-TR' ? SUMMARIZE_AND_SAVE_TR : SUMMARIZE_AND_SAVE_EN)}
-                disabled={loading}
-                title="Summarize & save this conversation"
-                aria-label="Summarize & save this conversation"
-                className="w-11 h-11 flex-shrink-0 flex items-center justify-center text-ink-400 hover:text-ink-700 disabled:opacity-40 transition-colors duration-150 text-lg rounded"
-              >
-                📝
-              </button>
-            )}
-            {messages.length > 0 && (
-              <button
-                onClick={() => { setMessages([]); setError(null); try { localStorage.removeItem(STORAGE_KEY) } catch { /* */ } }}
-                className="text-[11px] text-ink-400 hover:text-ink-600 min-h-[44px] px-2 py-1 rounded transition-colors duration-150"
-              >
-                Clear
-              </button>
-            )}
-            <button
-              onClick={handleClose}
-              className="w-11 h-11 flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none rounded"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-
         {/* Messages */}
-        <div ref={scrollRef} onScroll={onScroll} className="relative flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 min-h-0">
+        <div ref={scrollRef} onScroll={onScroll} className="scroll-y relative min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
           {messages.length === 0 && !loading && (
             <div>
-              <p className="text-sm text-ink-400 mb-4">What can I help you with?</p>
-              <div className="space-y-2">
+              <p className="mb-3 text-body text-fg-muted">What can I help you with?</p>
+              <div className="flex flex-col gap-2">
                 {(coachMode ? COACH_SUGGESTIONS : SUGGESTIONS).map(s => (
                   <button
                     key={s}
+                    type="button"
                     onClick={() => handleSend(s)}
-                    className="w-full text-left text-sm px-3 py-2 min-h-[44px] rounded-lg bg-cream-100 hover:bg-cream-200 text-ink-700 transition-colors duration-150"
+                    className="min-h-[44px] w-full rounded-row border border-line bg-surface-2 px-3 py-2 text-left text-body text-fg-2 transition-colors duration-100 [@media(hover:hover)]:hover:bg-surface-hover [@media(hover:hover)]:hover:text-fg"
                   >
                     {s}
                   </button>
@@ -422,44 +385,42 @@ export function AIPanel() {
 
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] flex flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div className={`flex max-w-[85%] flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 {msg.images && msg.images.length > 0 && (
-                  <div className="flex gap-1.5 flex-wrap justify-end">
+                  <div className="flex flex-wrap justify-end gap-1.5">
                     {msg.images.map((src, k) => (
-                      <img key={k} src={src} alt="" className="w-24 h-24 object-cover rounded-xl border border-ink-200" />
+                      <img key={k} src={src} alt="" className="h-24 w-24 rounded-row border border-line object-cover" />
                     ))}
                   </div>
                 )}
                 {msg.content && (
                   <div
-                    className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                      msg.role === 'user'
-                        ? 'bg-accent-500 text-white rounded-br-sm'
-                        : 'bg-cream-100 text-ink-800 rounded-bl-sm'
-                    }`}
+                    className={cx(
+                      'whitespace-pre-wrap rounded-card px-3.5 py-2.5 text-body leading-relaxed',
+                      msg.role === 'user' ? 'rounded-br-md bg-accent-500 text-on-accent' : 'rounded-bl-md bg-surface-2 text-fg',
+                    )}
                   >
                     {renderMarkdown(msg.content)}
                   </div>
                 )}
                 {msg.role === 'assistant' && (msg.model || (msg.steps && msg.steps.length > 0)) && (
-                  <div className="flex items-center gap-2 px-1">
+                  <div className="flex items-center gap-3 px-1">
                     {/* Which model ACTUALLY answered — the fallback chain can
-                        land somewhere other than the picked/preferred model,
-                        and the user wants to see where it landed. */}
-                    {msg.model && (
-                      <span className="text-[10px] text-ink-300">{msg.model.replace('gemini-', '')}</span>
-                    )}
+                        land somewhere other than the picked/preferred model. */}
+                    {msg.model && <span className="text-micro text-fg-faint">{msg.model.replace('gemini-', '')}</span>}
                     <button
+                      type="button"
                       onClick={() => copyReply(msg.content, i)}
-                      className="text-[11px] text-ink-400 hover:text-ink-700 min-h-[28px]"
+                      className="min-h-[28px] text-meta text-fg-muted hover:text-fg [@media(pointer:coarse)]:min-h-[44px]"
                       aria-label="Copy this reply"
                     >
-                      {copiedIdx === i ? '✓ Copied' : 'Copy'}
+                      {copiedIdx === i ? 'Copied' : 'Copy'}
                     </button>
                     {msg.steps && msg.steps.length > 0 && (
                       <button
+                        type="button"
                         onClick={() => setDetailSteps(msg.steps!)}
-                        className="text-[11px] text-accent-600 hover:text-accent-700 underline underline-offset-2 min-h-[28px]"
+                        className="min-h-[28px] text-meta font-semibold text-accent-600 hover:text-accent-700 [@media(pointer:coarse)]:min-h-[44px]"
                       >
                         Show detail ({msg.steps.length})
                       </button>
@@ -471,26 +432,26 @@ export function AIPanel() {
           ))}
 
           {loading && (
-            <div className="flex justify-start">
-              <div className="bg-cream-100 rounded-2xl rounded-bl-sm px-4 py-3">
-                <div className="flex gap-1 items-center">
-                  <span className="w-1.5 h-1.5 bg-ink-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 bg-ink-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 bg-ink-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="flex justify-start" role="status" aria-label="Thinking">
+              <div className="rounded-card rounded-bl-md bg-surface-2 px-4 py-3">
+                <div className="flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-fg-faint" style={{ animationDelay: '0ms' }} />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-fg-faint" style={{ animationDelay: '150ms' }} />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-fg-faint" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
           )}
 
           {error && (
-            <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-start gap-2">
-              <span className="flex-1 min-w-0">{error}</span>
-              {/* A failed turn used to strand the question — the user had to
-                  retype it. Resend the last user message instead. */}
+            <div data-tone="danger" className="tone-soft flex items-start gap-2 rounded-row py-1.5 pl-3 pr-1.5 text-body">
+              <span className="tone-text min-w-0 flex-1 py-1.5">{error}</span>
+              {/* A failed turn used to strand the question — resend the last user message instead. */}
               <button
+                type="button"
                 onClick={retryLast}
                 disabled={loading}
-                className="shrink-0 min-h-[44px] px-2 font-medium text-red-700 hover:text-red-900 disabled:opacity-40"
+                className="btn-secondary btn-sm shrink-0 disabled:opacity-40"
               >
                 Retry
               </button>
@@ -504,26 +465,30 @@ export function AIPanel() {
             in that state so a new reply must not silently land off-screen. */}
         {!atBottom && messages.length > 0 && (
           <button
+            type="button"
             onClick={() => scrollToBottom('smooth')}
             aria-label="Jump to newest message"
-            className="absolute right-4 bottom-24 z-10 min-h-[44px] min-w-[44px] px-3 rounded-full bg-ink-900/85 text-white text-xs font-medium shadow-lg backdrop-blur flex items-center gap-1"
+            className="absolute bottom-28 right-4 z-10 flex min-h-[44px] items-center gap-1 rounded-full border border-line-strong bg-surface px-3 text-meta font-semibold text-fg-2 shadow-float"
           >
-            ↓ Newest
+            <ArrowDown className="h-3.5 w-3.5" aria-hidden />Newest
           </button>
         )}
 
         {/* Input */}
-        <div className="px-4 py-3 border-t border-ink-100 flex-shrink-0">
+        <div className="shrink-0 border-t border-line px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:px-5 md:pb-3">
           {pendingImages.length > 0 && (
-            <div className="flex gap-2 mb-2 flex-wrap">
+            <div className="mb-2 flex flex-wrap gap-2">
               {pendingImages.map((src, k) => (
                 <div key={k} className="relative">
-                  <img src={src} alt="" className="w-14 h-14 object-cover rounded-lg border border-ink-200" />
+                  <img src={src} alt="" className="h-14 w-14 rounded-control border border-line object-cover" />
                   <button
+                    type="button"
                     onClick={() => setPendingImages(p => p.filter((_, j) => j !== k))}
-                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-ink-700 text-white rounded-full text-xs flex items-center justify-center leading-none"
+                    className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border border-line-strong bg-surface text-fg-2 shadow-float"
                     aria-label="Remove photo"
-                  >×</button>
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                  </button>
                 </div>
               ))}
             </div>
@@ -531,14 +496,15 @@ export function AIPanel() {
           {/* Live voice status — what is being heard, or that a reply is being
               spoken, each with a one-tap way out. */}
           {(voice.listening || voice.speaking) && (
-            <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg bg-accent-50 border border-accent-200">
-              <span className={`w-2 h-2 rounded-full bg-accent-500 shrink-0 ${voice.listening ? 'animate-pulse' : ''}`} />
-              <span className="text-xs text-ink-700 flex-1 min-w-0 truncate">
+            <div className="mb-2 flex items-center gap-2 rounded-row border border-accent-500/25 bg-accent-50 px-3 py-1">
+              <span className={cx('h-2 w-2 shrink-0 rounded-full bg-accent-500', voice.listening && 'animate-pulse')} />
+              <span className="min-w-0 flex-1 truncate text-meta text-fg-2">
                 {voice.listening ? (interim || 'Listening…') : 'Speaking…'}
               </span>
               <button
+                type="button"
                 onClick={() => { voice.stopListening(); voice.cancelSpeak() }}
-                className="text-[11px] font-medium text-accent-700 hover:text-accent-800 min-h-[28px] px-1.5 shrink-0"
+                className="min-h-[36px] shrink-0 px-1.5 text-meta font-semibold text-accent-700 [@media(pointer:coarse)]:min-h-[44px]"
               >
                 Stop
               </button>
@@ -553,42 +519,40 @@ export function AIPanel() {
               className="hidden"
               onChange={e => { void addImages(e.target.files); e.target.value = '' }}
             />
-            <button
+            <IconButton
+              bordered
+              label="Attach a photo"
               onClick={() => fileRef.current?.click()}
               disabled={loading || pendingImages.length >= 3}
-              title="Attach a photo"
-              aria-label="Attach a photo"
-              className="flex-shrink-0 w-11 h-11 rounded-lg border border-ink-200 text-ink-500 hover:bg-cream-100 disabled:opacity-40 flex items-center justify-center transition-colors duration-150 text-lg"
+              className="disabled:opacity-40"
             >
-              📷
-            </button>
+              <Camera strokeWidth={1.9} aria-hidden />
+            </IconButton>
             {/* Push-to-talk dictation — outside voice mode this just fills the
                 box so the text can be edited before sending. */}
             {voice.sttSupported && (
-              <button
+              <IconButton
+                bordered
+                label={voice.listening ? 'Stop listening' : 'Dictate a message'}
+                aria-pressed={voice.listening}
                 onClick={voice.toggleListening}
                 disabled={loading}
-                title={voice.listening ? 'Stop listening' : 'Dictate a message'}
-                aria-label={voice.listening ? 'Stop listening' : 'Dictate a message'}
-                aria-pressed={voice.listening}
-                className={`flex-shrink-0 w-11 h-11 rounded-lg border flex items-center justify-center transition-colors duration-150 text-lg disabled:opacity-40 ${
-                  voice.listening
-                    ? 'bg-accent-500 border-accent-500 text-white animate-pulse'
-                    : 'border-ink-200 text-ink-500 hover:bg-cream-100'
-                }`}
+                className={cx('disabled:opacity-40', voice.listening && '!border-accent-500 !bg-accent-500 !text-on-accent animate-pulse')}
               >
-                🎤
-              </button>
+                <Mic strokeWidth={1.9} aria-hidden />
+              </IconButton>
             )}
             <textarea
               ref={inputRef}
+              data-autofocus
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
               onPaste={handlePaste}
-              placeholder="Ask anything… (Enter to send)"
+              placeholder="Ask anything…"
+              aria-label="Message"
               rows={1}
-              className="flex-1 resize-none input text-sm py-2 max-h-32"
+              className="input max-h-32 flex-1 resize-none py-2.5"
               style={{ height: 'auto' }}
               onInput={e => {
                 const t = e.currentTarget
@@ -597,38 +561,38 @@ export function AIPanel() {
               }}
             />
             <button
+              type="button"
               onClick={() => handleSend(input)}
               disabled={(!input.trim() && !pendingImages.length) || loading}
-              className="flex-shrink-0 w-11 h-11 bg-accent-500 hover:bg-accent-600 disabled:opacity-40 text-white rounded-lg flex items-center justify-center transition-colors duration-150"
+              aria-label="Send"
+              className="btn-primary h-11 w-11 shrink-0 !px-0 disabled:opacity-40"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M14 8L2 2l2 6-2 6 12-6z" fill="currentColor" />
-              </svg>
+              <SendHorizontal className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
             </button>
           </div>
-          <p className="text-[10px] text-ink-300 mt-1.5">Shift+Enter for new line</p>
+          <p className="mt-1.5 hidden text-micro text-fg-faint md:block">Enter to send · Shift+Enter for a new line</p>
         </div>
-      </div>
+      </SideDrawer>
 
-      {/* Activity-trace detail modal — what the AI did behind the scenes */}
-      <Dialog open={detailSteps !== null} onClose={() => setDetailSteps(null)} className="relative z-[60]">
-        <DialogBackdrop className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm" />
-        <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <DialogPanel className="w-full sm:max-w-md max-h-[80vh] overflow-y-auto bg-cream-50 rounded-t-2xl sm:rounded-2xl border border-ink-200">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-cream-50">
-              <h3 className="text-sm font-semibold text-ink-800">AI activity</h3>
-              <button onClick={() => setDetailSteps(null)} className="w-9 h-9 flex items-center justify-center text-ink-400 hover:text-ink-700 text-lg">×</button>
+      {/* Activity-trace detail — what the AI did behind the scenes */}
+      <ModalShell open={detailSteps !== null} onClose={() => setDetailSteps(null)} title="AI activity" size="sm">
+        <div className="flex flex-col gap-1.5">
+          {(detailSteps ?? []).map((s, i) => (
+            <div key={i} className="whitespace-pre-wrap break-words rounded-control border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-meta text-fg-2">
+              {s}
             </div>
-            <div className="px-4 py-3 space-y-1.5">
-              {(detailSteps ?? []).map((s, i) => (
-                <div key={i} className="text-xs font-mono text-ink-700 bg-cream-50 border border-ink-100 rounded-lg px-2.5 py-1.5 whitespace-pre-wrap break-words">
-                  {s}
-                </div>
-              ))}
-            </div>
-          </DialogPanel>
+          ))}
         </div>
-      </Dialog>
+      </ModalShell>
     </>
   )
+}
+
+const CHIP = 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-meta font-semibold transition-colors duration-100 [@media(pointer:coarse)]:h-11'
+const CHIP_IDLE = 'border-line bg-surface-2 text-fg-2 [@media(hover:hover)]:hover:border-line-strong [@media(hover:hover)]:hover:text-fg'
+const CHIP_ON = 'border-accent-500/30 bg-accent-50 text-accent-700'
+
+/** Small "online" led on the model chip. */
+function ToneLed() {
+  return <span data-tone="success" aria-hidden className="tone-dot !h-1.5 !w-1.5" />
 }

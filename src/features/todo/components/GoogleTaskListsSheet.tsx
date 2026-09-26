@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { Sheet } from '../../../shared/components/Sheet'
+import { useEntityModal } from '../../../shared/modals'
+import { Button, IconButton, TonePill } from '../../../shared/ui'
 import {
   useGoogleTaskLists, useCreateGoogleTaskList, useRenameGoogleTaskList, useDeleteGoogleTaskList,
   type GoogleTaskListRow,
@@ -11,6 +14,7 @@ interface Props {
 }
 
 function ListRow({ list }: { list: GoogleTaskListRow }) {
+  const modal = useEntityModal()
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(list.title)
   const rename = useRenameGoogleTaskList()
@@ -24,40 +28,43 @@ function ListRow({ list }: { list: GoogleTaskListRow }) {
     setEditing(false)
   }
 
+  async function confirmDelete() {
+    const ok = await modal.confirm({
+      title: `Delete "${list.title}"?`,
+      message: 'Tasks in it stay here, un-synced from Google.',
+      confirmLabel: 'Delete list',
+      destructive: true,
+    })
+    if (ok) remove.mutate({ localId: list.id, googleId: list.google_id })
+  }
+
   return (
-    <div className="flex items-center gap-2 min-h-[44px] px-3 rounded-lg border border-ink-100 bg-cream-50">
+    <div className="row border border-line bg-surface pr-1">
       {editing ? (
         <input
           autoFocus
+          aria-label="List name"
           value={title}
           onChange={e => setTitle(e.target.value)}
           onBlur={save}
           onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setTitle(list.title); setEditing(false) } }}
-          className="flex-1 min-h-[36px] px-2 rounded-md border border-ink-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent-300"
+          className="input flex-1"
         />
       ) : (
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="flex-1 text-left text-sm text-ink-800 truncate press-feedback"
+          className="min-h-[44px] flex-1 truncate text-left text-body text-fg press-feedback"
           title="Tap to rename"
         >
           {list.title}
         </button>
       )}
-      {list.is_default && (
-        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent-50 text-accent-600 flex-shrink-0">Default</span>
-      )}
+      {list.is_default && <TonePill tone="accent" className="shrink-0">Default</TonePill>}
       {!list.is_default && (
-        <button
-          type="button"
-          onClick={() => { if (confirm(`Delete "${list.title}"? Tasks in it will stay locally, un-synced from Google.`)) remove.mutate({ localId: list.id, googleId: list.google_id }) }}
-          disabled={remove.isPending}
-          className="w-8 h-8 flex-shrink-0 flex items-center justify-center text-ink-300 hover:text-red-500 transition-colors duration-150 text-sm"
-          title="Delete list"
-        >
-          ✕
-        </button>
+        <IconButton label="Delete list" onClick={() => { void confirmDelete() }} disabled={remove.isPending} className="text-fg-faint hover:text-danger">
+          <X aria-hidden />
+        </IconButton>
       )}
     </div>
   )
@@ -68,9 +75,7 @@ function ListRow({ list }: { list: GoogleTaskListRow }) {
 // kept OUTSIDE UnifiedPlanModal (same reasoning that put "Set parent" in its
 // own SetParentTaskSheet rather than the modal's taskExtra slot — taskExtra
 // is a plain ReactNode with no access to the modal's own form/patch state,
-// per CLAUDE.md's start_date precedent). Google Tasks lists have no delete
-// confirmation of their own beyond the browser confirm() above — a real
-// modal felt like overkill for a rare, already-named action.
+// per CLAUDE.md's start_date precedent).
 export function GoogleTaskListsSheet({ open, onClose }: Props) {
   const { data: lists = [], isLoading } = useGoogleTaskLists()
   const create = useCreateGoogleTaskList()
@@ -84,31 +89,27 @@ export function GoogleTaskListsSheet({ open, onClose }: Props) {
 
   return (
     <Sheet open={open} onClose={onClose} title="Google Task lists" size="sm">
-      <div className="p-4 flex flex-col gap-2">
-        {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
+      <div className="flex flex-col gap-2 p-4">
+        {isLoading && <p className="text-body text-fg-muted">Loading…</p>}
         {!isLoading && lists.length === 0 && (
-          <p className="text-sm text-ink-400">
+          <p className="text-body text-fg-muted">
             No lists synced yet — tap Import in Settings to pull your Google Task lists.
           </p>
         )}
         {lists.map(l => <ListRow key={l.id} list={l} />)}
 
-        <div className="flex items-center gap-2 mt-2">
+        <div className="mt-2 flex items-center gap-2">
           <input
             value={newTitle}
+            aria-label="New list name"
             onChange={e => setNewTitle(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') addList() }}
             placeholder="New list name…"
-            className="flex-1 min-h-[44px] px-3 rounded-lg border border-ink-200 bg-cream-50 text-sm focus:outline-none focus:ring-2 focus:ring-accent-300"
+            className="input flex-1"
           />
-          <button
-            type="button"
-            onClick={addList}
-            disabled={create.isPending || !newTitle.trim()}
-            className="min-h-[44px] px-4 rounded-lg bg-accent-500 text-white text-sm font-semibold press-feedback disabled:opacity-50"
-          >
-            Add
-          </button>
+          <Button variant="primary" onClick={addList} loading={create.isPending} disabled={!newTitle.trim()}>
+            Add list
+          </Button>
         </div>
       </div>
     </Sheet>

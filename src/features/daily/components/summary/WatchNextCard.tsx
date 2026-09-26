@@ -1,11 +1,10 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Cell, CellHeader, CellLink } from './cellKit'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMovies } from '../../../media/hooks/useMovies'
 import { useTVSeries } from '../../../media/hooks/useTVSeries'
 import { useNextEpisode } from '../../../media/hooks/useNextEpisode'
-import { markEpisodeWatched } from '../../../media/api/watchedEpisodesApi'
+import { useMarkEpisodeWatched } from '../../../media/hooks/useWatchedEpisodes'
 import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
 import { posterUrl } from '../../../../integrations/tmdb/client'
 import { toast } from '../../../../app/store'
@@ -23,7 +22,6 @@ const pad = (n: number) => String(n).padStart(2, '0')
 export function WatchNextCard({ date }: { date: string }) {
   const { data: movies = [] } = useMovies()
   const { data: tv = [] } = useTVSeries()
-  const qc = useQueryClient()
 
   // Currently-watching shows first, paused after (still resumable).
   const shows = useMemo(
@@ -40,23 +38,16 @@ export function WatchNextCard({ date }: { date: string }) {
   )
   const [planOpen, setPlanOpen] = useState(false)
 
-  const markWatched = useMutation({
-    mutationFn: async () => {
-      const n = next.data
-      if (!entry || !n || n.caughtUp || n.season == null || n.episode == null) return false
-      await markEpisodeWatched(entry.id, n.season, n.episode, date)
-      return true
-    },
-    onSuccess: (written) => {
-      if (!written) return // guard no-op (refetch race) — don't claim success
-      toast.success('Marked watched ✓')
-      qc.invalidateQueries({ queryKey: ['next-episode'] })
-      qc.invalidateQueries({ queryKey: ['watched-episodes'] })
-      qc.invalidateQueries({ queryKey: ['tv'] })
-      qc.invalidateQueries({ queryKey: ['schedule'] })
-    },
-    onError: (e) => toast.error((e as Error).message ?? 'Failed'),
-  })
+  const markEpisode = useMarkEpisodeWatched()
+  function markNextWatched() {
+    const n = next.data
+    // Guard a refetch race: never claim success for a no-op write.
+    if (!entry || !n || n.caughtUp || n.season == null || n.episode == null) return
+    markEpisode.mutate(
+      { tvEntryId: entry.id, episodes: [{ season: n.season, episode: n.episode }], watchedOn: date },
+      { onSuccess: () => toast.success('Marked watched ✓') },
+    )
+  }
 
   // Movie fallback when there is no series in progress at all.
   const movieFallback = useMemo(() => {
@@ -119,8 +110,8 @@ export function WatchNextCard({ date }: { date: string }) {
                 )}
                 <div className="flex gap-1.5 mt-1.5">
                   <button
-                    onClick={() => markWatched.mutate()}
-                    disabled={markWatched.isPending || !n.released}
+                    onClick={markNextWatched}
+                    disabled={markEpisode.isPending || !n.released}
                     className="text-[11px] px-3 rounded-lg border border-green-300 text-green-700 hover:bg-green-50 transition-colors disabled:opacity-40 min-h-[44px]"
                   >
                     ✓ Watched

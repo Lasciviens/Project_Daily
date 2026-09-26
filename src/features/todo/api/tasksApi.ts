@@ -117,6 +117,13 @@ export async function fetchTaskById(id: string): Promise<Task | null> {
   return data
 }
 
+export async function fetchTasksByIds(ids: readonly string[]): Promise<Task[]> {
+  if (!ids.length) return []
+  const { data, error } = await supabase.from('tasks').select('*').in('id', [...ids])
+  if (error) throw error
+  return data ?? []
+}
+
 export async function fetchSubtasks(parentTaskId: string): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')

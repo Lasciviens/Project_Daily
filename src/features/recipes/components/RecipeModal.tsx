@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { Plus, Sparkles, X } from 'lucide-react'
 import { toast } from '../../../app/store'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { useCreateRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
@@ -10,7 +12,8 @@ import { checkMacroConsistency } from '../macroSanity'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
 
 interface Props {
-  open: boolean
+  /** Controlled callers pass it; the `recipe` entity modal omits it (always open). */
+  open?: boolean
   onClose: () => void
   recipe?: RecipeWithIngredients   // present → edit mode
 }
@@ -35,7 +38,7 @@ function previewMacros(ingredients: IngredientDraft[], servings: number, library
     { contributed: boolean; skipped: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; sugar_g: number }
 }
 
-export function RecipeModal({ open, onClose, recipe }: Props) {
+export function RecipeModal({ open = true, onClose, recipe }: Props) {
   const editMode = !!recipe
   const create = useCreateRecipe()
   const update = useUpdateRecipe()
@@ -57,7 +60,6 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
   const [sugar,        setSugar]        = useState('')
   const [sourceUrl,    setSourceUrl]    = useState('')
   const [imageUrl,     setImageUrl]     = useState('')
-  const [saving,       setSaving]       = useState(false)
   const [newIngredientRow, setNewIngredientRow] = useState<number | null>(null)
   const [pasteOpen,    setPasteOpen]    = useState(false)
   const [pasteMode,    setPasteMode]    = useState<'text' | 'url'>('text')
@@ -197,255 +199,217 @@ export function RecipeModal({ open, onClose, recipe }: Props) {
       category: category || null,
       ingredients: ingredients.filter(i => i.name.trim()),
     }
-    setSaving(true)
-    const tid = toast.loading('Saving…')
     try {
       if (editMode && recipe) await update.mutateAsync({ id: recipe.id, input })
       else                    await create.mutateAsync(input)
-      toast.dismiss(tid); toast.success('Saved ✓')
       onClose()
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    } finally {
-      setSaving(false)
-    }
+    } catch { return }   // the hook already toasted + logged
   }
 
-  const inputCls = 'w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400'
+  const saving = create.isPending || update.isPending
+  const warn = (text: string, check: NonNullable<ReturnType<typeof checkMacroConsistency>>) => (
+    <div data-tone="warn" className="tone-text mt-2 flex items-center gap-1.5 text-meta">
+      <MacroWarningBadge result={check} />
+      <span>{text}</span>
+    </div>
+  )
 
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-[70]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          <div className="sm:hidden flex justify-center pt-2 -mb-1"><span className="h-1 w-10 rounded-full bg-ink-200" /></div>
-          <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-ink-100 sticky top-0 bg-cream-50 z-10">
-            <h2 className="text-base font-bold text-ink-900">{editMode ? 'Edit recipe' : 'New recipe'}</h2>
-            <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl">×</button>
-          </div>
-
-          <div className="px-5 py-4 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Recipe title" autoFocus className={inputCls + ' mr-2'} />
-              <select value={category} onChange={e => setCategory(e.target.value as typeof category)}
-                className="min-h-[44px] px-2 text-sm border border-ink-200 rounded-xl bg-cream-50 text-ink-700 flex-shrink-0 capitalize"
-                title="Category">
-                <option value="">category?</option>
-                {(['breakfast', 'lunch', 'dinner', 'snack', 'supplement'] as const).map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <button type="button" onClick={() => setPasteOpen(o => !o)}
-                className="flex-shrink-0 text-xs text-accent-600 hover:text-accent-700 min-h-[44px] px-2 whitespace-nowrap">
-                ✨ Paste recipe
-              </button>
-            </div>
-
-            {pasteOpen && (
-              <div className="p-3 rounded-xl border border-accent-200 bg-accent-50/50 flex flex-col gap-2">
-                <div className="flex gap-1 bg-cream-50 p-0.5 rounded-lg w-fit">
-                  {(['text', 'url'] as const).map(m => (
-                    <button key={m} type="button" onClick={() => setPasteMode(m)}
-                      className={`text-[10px] px-2.5 min-h-[28px] rounded-md font-medium transition-colors ${
-                        pasteMode === m ? 'bg-accent-500 text-white' : 'text-ink-400 hover:text-ink-600'
-                      }`}>
-                      {m === 'text' ? 'Paste text' : 'From URL'}
-                    </button>
-                  ))}
+    <ModalShell
+      open={open}
+      onClose={onClose}
+      title={editMode ? 'Edit recipe' : 'New recipe'}
+      size="lg"
+      dismissible={!saving}
+      headerActions={
+        <Button variant="ghost" size="sm" icon={<Sparkles />} onClick={() => setPasteOpen(o => !o)} aria-pressed={pasteOpen}>
+          Paste recipe
+        </Button>
+      }
+      footer={
+        <div className="flex gap-2">
+          <Button block onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button block variant="primary" onClick={handleSave} loading={saving} disabled={!title.trim()}>
+            {editMode ? 'Save changes' : 'Add recipe'}
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {pasteOpen && (
+          <div className="flex flex-col gap-2 rounded-card border border-accent-500/25 bg-accent-50 p-3">
+            <SegmentedControl<'text' | 'url'>
+              size="sm" value={pasteMode} onChange={setPasteMode}
+              options={[{ value: 'text', label: 'Paste text' }, { value: 'url', label: 'From URL' }]}
+            />
+            {pasteMode === 'text' ? (
+              <>
+                <p className="text-meta text-accent-700">Paste a recipe (from anywhere) — AI fills in the title, servings, ingredients, instructions and a rough macro estimate (translated to Turkish).</p>
+                <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5} placeholder="Paste recipe text here…"
+                  aria-label="Recipe text" className="input resize-none" />
+                <div className="flex gap-2">
+                  <Button variant="ghost" block onClick={() => setPasteOpen(false)}>Cancel</Button>
+                  <Button variant="primary" block onClick={handleParsePaste} loading={parsing} disabled={!pasteText.trim()}>Parse with AI</Button>
                 </div>
+              </>
+            ) : (
+              <>
+                <p className="text-meta text-accent-700">Paste a recipe page link — AI fetches it, extracts the recipe and translates everything to Turkish.</p>
+                <input value={urlInput} onChange={e => setUrlInput(e.target.value)} type="url" placeholder="https://…" aria-label="Recipe URL" className="input" />
+                <div className="flex gap-2">
+                  <Button variant="ghost" block onClick={() => setPasteOpen(false)}>Cancel</Button>
+                  <Button variant="primary" block onClick={handleParseUrl} loading={parsing} disabled={!urlInput.trim()}>Fetch and parse</Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
-                {pasteMode === 'text' ? (
-                  <>
-                    <p className="text-[11px] text-accent-700">Paste a recipe (from anywhere) — AI will fill in the title, servings, ingredients, instructions, and a rough macro estimate (translated to Turkish).</p>
-                    <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5} placeholder="Paste recipe text here…"
-                      className="w-full bg-cream-50 border border-ink-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[44px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
-                      <button type="button" onClick={handleParsePaste} disabled={parsing || !pasteText.trim()}
-                        className="flex-1 min-h-[44px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
-                        {parsing ? 'Parsing…' : 'Parse with AI'}
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[11px] text-accent-700">Paste a recipe page link — AI will fetch it, extract the recipe, and translate everything to Turkish.</p>
-                    <input value={urlInput} onChange={e => setUrlInput(e.target.value)} type="url" placeholder="https://…"
-                      className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setPasteOpen(false)} className="flex-1 min-h-[44px] text-xs text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
-                      <button type="button" onClick={handleParseUrl} disabled={parsing || !urlInput.trim()}
-                        className="flex-1 min-h-[44px] text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
-                        {parsing ? 'Fetching…' : 'Fetch & Parse'}
-                      </button>
-                    </div>
-                  </>
+        <div className="flex items-center gap-2">
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Recipe title" aria-label="Recipe title" autoFocus className="input flex-1" />
+          <select value={category} onChange={e => setCategory(e.target.value as typeof category)} aria-label="Category"
+            className="select w-auto shrink-0 capitalize">
+            <option value="">Category</option>
+            {(['breakfast', 'lunch', 'dinner', 'snack', 'supplement'] as const).map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description (optional)" rows={2}
+          aria-label="Description" className="input resize-none" />
+
+        <div>
+          <label htmlFor="rm-servings" className="field-label">Base servings</label>
+          <input id="rm-servings" type="number" min="1" value={servings} onChange={e => setServings(e.target.value)} className="input w-24 text-center tabular-nums" />
+        </div>
+
+        <section>
+          <h3 className="field-label">Ingredients</h3>
+          <div className="flex flex-col gap-1.5">
+            {ingredients.map((row, i) => (
+              <div key={i} className="flex flex-col gap-1">
+                <div className="flex items-center gap-1.5">
+                  <input value={row.quantity ?? ''} onChange={e => setRow(i, { quantity: numOrNull(e.target.value) })} placeholder="Qty" aria-label="Quantity" inputMode="decimal"
+                    className="input w-14 px-2 text-center tabular-nums" />
+                  <input value={row.unit ?? ''} onChange={e => setRow(i, { unit: e.target.value })} placeholder="Unit" aria-label="Unit"
+                    className="input w-16 px-2" />
+                  <input value={row.name} onChange={e => setRow(i, { name: e.target.value })} placeholder="Ingredient" aria-label="Ingredient"
+                    className="input min-w-0 flex-1 px-2" />
+                  <IconButton label="Remove ingredient" onClick={() => removeRow(i)} className="text-fg-faint hover:text-danger"><X /></IconButton>
+                </div>
+                {macroMode === 'from_ingredients' && (
+                  <select
+                    value={row.library_ingredient_id ?? ''}
+                    onChange={e => handleLinkChange(i, e.target.value)}
+                    aria-label="Library ingredient"
+                    className="select ml-[3.75rem] w-auto text-meta"
+                  >
+                    <option value="">— link to a library ingredient for macros —</option>
+                    {library.map(l => <option key={l.id} value={l.id}>{l.name} (per 100{l.unit})</option>)}
+                    <option value={NEW_INGREDIENT}>+ New library ingredient…</option>
+                  </select>
+                )}
+                {newIngredientRow === i && (
+                  <NewIngredientInline
+                    defaultName={row.name}
+                    onCancel={() => setNewIngredientRow(null)}
+                    onCreate={async draft => {
+                      const created = await createLibraryItem.mutateAsync(draft)
+                      setRow(i, { library_ingredient_id: created.id, unit: created.unit, name: row.name || created.name })
+                      setNewIngredientRow(null)
+                    }}
+                  />
                 )}
               </div>
-            )}
-            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description (optional)" rows={2}
-              className="w-full bg-cream-50 border border-ink-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
+            ))}
+          </div>
+          <Button variant="ghost" size="sm" className="mt-2 text-accent-600" icon={<Plus />} onClick={addRow}>Add ingredient</Button>
+        </section>
 
+        <div>
+          <label htmlFor="rm-instructions" className="field-label">Instructions</label>
+          <textarea id="rm-instructions" value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="One step per line…" rows={4}
+            className="input resize-none" />
+        </div>
+
+        <section>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <h3 className="field-label mb-0">Macros (per serving)</h3>
+            <SegmentedControl<MacroMode>
+              size="sm" value={macroMode} onChange={setMacroMode}
+              options={[{ value: 'manual', label: 'Manual' }, { value: 'from_ingredients', label: 'From ingredients' }]}
+            />
+          </div>
+
+          {macroMode === 'manual' ? (
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Base servings</label>
-              <input type="number" min="1" value={servings} onChange={e => setServings(e.target.value)} className="w-24 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {[
+                  { v: calories, set: setCalories, label: 'Calories (kcal)' },
+                  { v: protein,  set: setProtein,  label: 'Protein (g)' },
+                  { v: carbs,    set: setCarbs,    label: 'Carbs (g)' },
+                  { v: fat,      set: setFat,      label: 'Fat (g)' },
+                  { v: fiber,    set: setFiber,    label: 'Fiber (g)' },
+                  { v: sugar,    set: setSugar,    label: 'Sugar (g)' },
+                ].map(m => (
+                  <label key={m.label} className="block">
+                    <span className="mb-0.5 block text-meta text-fg-muted">{m.label}</span>
+                    <input value={m.v} onChange={e => m.set(e.target.value)} inputMode="decimal" className="input px-2 text-center tabular-nums" />
+                  </label>
+                ))}
+              </div>
+              {(() => {
+                const num = (v: string) => (v.trim() === '' ? null : Number(v))
+                const check = checkMacroConsistency(num(calories), num(protein), num(carbs), num(fat))
+                return check?.inconsistent ? warn(`Calories don't match protein/carbs/fat — ${check.deltaPct}% off. Tap the badge for details.`, check) : null
+              })()}
+              <Button variant="ghost" size="sm" className="mt-2 text-accent-600" icon={<Sparkles />} onClick={handleEstimateMacros} loading={estimating}>
+                Estimate with AI
+              </Button>
             </div>
-
-            {/* Ingredients */}
+          ) : (
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Ingredients</label>
-              <div className="flex flex-col gap-1.5">
-                {ingredients.map((row, i) => (
-                  <div key={i} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-1.5">
-                      <input value={row.quantity ?? ''} onChange={e => setRow(i, { quantity: numOrNull(e.target.value) })} placeholder="Qty" inputMode="decimal"
-                        className="w-14 min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                      <input value={row.unit ?? ''} onChange={e => setRow(i, { unit: e.target.value })} placeholder="Unit"
-                        className="w-16 min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                      <input value={row.name} onChange={e => setRow(i, { name: e.target.value })} placeholder="Ingredient"
-                        className="flex-1 min-w-0 min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                      <button onClick={() => removeRow(i)} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 text-sm flex-shrink-0">×</button>
-                    </div>
-                    {macroMode === 'from_ingredients' && (
-                      <select
-                        value={row.library_ingredient_id ?? ''}
-                        onChange={e => handleLinkChange(i, e.target.value)}
-                        className="ml-[3.75rem] min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-ink-600 focus:outline-none focus:ring-1 focus:ring-accent-400"
-                      >
-                        <option value="">— link to a library ingredient for macros —</option>
-                        {library.map(l => <option key={l.id} value={l.id}>{l.name} (per 100{l.unit})</option>)}
-                        <option value={NEW_INGREDIENT}>+ New library ingredient…</option>
-                      </select>
-                    )}
-                    {newIngredientRow === i && (
-                      <NewIngredientInline
-                        defaultName={row.name}
-                        onCancel={() => setNewIngredientRow(null)}
-                        onCreate={async draft => {
-                          const created = await createLibraryItem.mutateAsync(draft)
-                          setRow(i, { library_ingredient_id: created.id, unit: created.unit, name: row.name || created.name })
-                          setNewIngredientRow(null)
-                        }}
-                      />
-                    )}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {[
+                  { label: 'Calories (kcal)', v: preview?.calories },
+                  { label: 'Protein (g)',     v: preview?.protein_g },
+                  { label: 'Carbs (g)',       v: preview?.carbs_g },
+                  { label: 'Fat (g)',         v: preview?.fat_g },
+                  { label: 'Fiber (g)',       v: preview?.fiber_g },
+                  { label: 'Sugar (g)',       v: preview?.sugar_g },
+                ].map(m => (
+                  <div key={m.label} className="rounded-row bg-surface-2 py-2 text-center">
+                    <div className="text-ui font-bold text-fg tabular-nums">{preview?.contributed ? m.v : '—'}</div>
+                    <div className="text-micro text-fg-muted">{m.label}</div>
                   </div>
                 ))}
               </div>
-              <button onClick={addRow} className="mt-2 text-xs text-accent-600 hover:text-accent-700 min-h-[44px]">+ Add ingredient</button>
+              <p className="mt-1.5 text-meta text-fg-muted">
+                {preview?.contributed
+                  ? preview.skipped > 0 ? `Computed from linked ingredients — ${preview.skipped} skipped (link them and use g/ml to include).` : 'Computed live from linked ingredients.'
+                  : 'Link ingredients above to a library entry (with a g/ml quantity) to compute macros automatically.'}
+              </p>
+              {(() => {
+                if (!preview?.contributed) return null
+                const check = checkMacroConsistency(preview.calories, preview.protein_g, preview.carbs_g, preview.fat_g)
+                return check?.inconsistent ? warn(`These totals don't add up cleanly — ${check.deltaPct}% off. Likely one linked ingredient has bad source data.`, check) : null
+              })()}
             </div>
+          )}
+        </section>
 
-            {/* Instructions */}
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Instructions</label>
-              <textarea value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="One step per line…" rows={4}
-                className="w-full bg-cream-50 border border-ink-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent-400" />
-            </div>
-
-            {/* Macros per serving */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Macros (per serving)</label>
-                <div className="flex gap-1 bg-cream-100 p-0.5 rounded-lg">
-                  {(['manual', 'from_ingredients'] as MacroMode[]).map(m => (
-                    <button key={m} type="button" onClick={() => setMacroMode(m)}
-                      className={`text-[10px] px-2 min-h-[28px] rounded-md font-medium transition-colors ${
-                        macroMode === m ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
-                      }`}>
-                      {m === 'manual' ? 'Manual' : 'From ingredients'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {macroMode === 'manual' ? (
-                <div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {[
-                      { v: calories, set: setCalories, label: 'Calories (kcal)' },
-                      { v: protein,  set: setProtein,  label: 'Protein (g)' },
-                      { v: carbs,    set: setCarbs,    label: 'Carbs (g)' },
-                      { v: fat,      set: setFat,      label: 'Fat (g)' },
-                      { v: fiber,    set: setFiber,    label: 'Fiber (g)' },
-                      { v: sugar,    set: setSugar,    label: 'Sugar (g)' },
-                    ].map(m => (
-                      <div key={m.label}>
-                        <label className="text-[10px] text-ink-400 block mb-0.5">{m.label}</label>
-                        <input value={m.v} onChange={e => m.set(e.target.value)} inputMode="decimal"
-                          className="w-full min-h-[40px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                      </div>
-                    ))}
-                  </div>
-                  {(() => {
-                    const num = (s: string) => (s.trim() === '' ? null : Number(s))
-                    const check = checkMacroConsistency(num(calories), num(protein), num(carbs), num(fat))
-                    return check?.inconsistent ? (
-                      <div className="flex items-center gap-1.5 mt-2 text-[11px] text-orange-700">
-                        <MacroWarningBadge result={check} />
-                        <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
-                      </div>
-                    ) : null
-                  })()}
-                  <button type="button" onClick={handleEstimateMacros} disabled={estimating}
-                    className="mt-2 text-xs text-accent-600 hover:text-accent-700 min-h-[44px] disabled:opacity-50">
-                    {estimating ? 'Estimating…' : '✨ Estimate with AI'}
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {[
-                      { label: 'Calories (kcal)', v: preview?.calories },
-                      { label: 'Protein (g)',     v: preview?.protein_g },
-                      { label: 'Carbs (g)',       v: preview?.carbs_g },
-                      { label: 'Fat (g)',         v: preview?.fat_g },
-                      { label: 'Fiber (g)',       v: preview?.fiber_g },
-                      { label: 'Sugar (g)',       v: preview?.sugar_g },
-                    ].map(m => (
-                      <div key={m.label} className="text-center bg-ink-50 rounded-lg py-2">
-                        <div className="text-sm font-bold text-ink-900">{preview?.contributed ? m.v : '—'}</div>
-                        <div className="text-[9px] text-ink-400">{m.label}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-ink-400 mt-1.5">
-                    {preview?.contributed
-                      ? preview.skipped > 0 ? `Computed from linked ingredients — ${preview.skipped} skipped (link them + use g/ml to include).` : 'Computed live from linked ingredients.'
-                      : 'Link ingredients above to a library entry (with a g/ml quantity) to compute macros automatically.'}
-                  </p>
-                  {(() => {
-                    if (!preview?.contributed) return null
-                    const check = checkMacroConsistency(preview.calories, preview.protein_g, preview.carbs_g, preview.fat_g)
-                    return check?.inconsistent ? (
-                      <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-orange-700">
-                        <MacroWarningBadge result={check} />
-                        <span>These totals don't add up cleanly — {check.deltaPct}% off. Likely one linked ingredient has bad source data.</span>
-                      </div>
-                    ) : null
-                  })()}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Image URL (optional)</label>
-              <div className="flex items-center gap-2">
-                {imageUrl.trim() && (
-                  <img src={imageUrl} alt="" className="w-11 h-11 rounded-lg object-cover border border-ink-200 flex-shrink-0" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
-                )}
-                <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} type="url" placeholder="https://…" className={inputCls} />
-              </div>
-            </div>
-
-            <input value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} placeholder="Source link (optional)" className={inputCls} />
+        <div>
+          <label htmlFor="rm-image" className="field-label">Image URL (optional)</label>
+          <div className="flex items-center gap-2">
+            {imageUrl.trim() && (
+              <img src={imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-lg border border-line object-cover" onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
+            )}
+            <input id="rm-image" value={imageUrl} onChange={e => setImageUrl(e.target.value)} type="url" placeholder="https://…" className="input" />
           </div>
+        </div>
 
-          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-cream-50">
-            <button onClick={onClose} className="flex-1 min-h-[44px] border border-ink-200 text-ink-700 rounded-xl text-sm font-medium hover:bg-cream-50">Cancel</button>
-            <button onClick={handleSave} disabled={saving || !title.trim()} className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 disabled:opacity-50">
-              {saving ? 'Saving…' : editMode ? 'Save changes' : 'Add recipe'}
-            </button>
-          </div>
-        </DialogPanel>
+        <input value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} placeholder="Source link (optional)" aria-label="Source link" className="input" />
       </div>
-    </Dialog>
+    </ModalShell>
   )
 }
 
@@ -474,50 +438,45 @@ function NewIngredientInline({ defaultName, onCancel, onCreate }: {
         calories: numOrNull(calories), protein_g: numOrNull(protein),
         carbs_g: numOrNull(carbs), fat_g: numOrNull(fat), sugar_g: numOrNull(sugar),
       })
-    } catch (err) {
-      // REAL BUG, fixed: a rejected onCreate() used to leave the button
-      // simply stopping its spinner with no message at all — every sibling
-      // save path in this file catches and toasts, this one didn't.
-      toast.error((err as Error).message ?? 'Could not save the ingredient')
+    } catch {
+      // The create hook (useMutationWithFeedback) already toasted + logged.
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="ml-[3.75rem] p-2.5 rounded-lg border border-accent-200 bg-accent-50/50 flex flex-col gap-1.5">
-      <p className="text-[10px] font-semibold text-accent-700">New library ingredient — macros per 100{unit || 'g'}</p>
+    <div className="ml-[3.75rem] flex flex-col gap-1.5 rounded-row border border-accent-500/25 bg-accent-50 p-2.5">
+      <p className="text-meta font-semibold text-accent-700">New library ingredient — macros per 100{unit || 'g'}</p>
       <div className="flex gap-1.5">
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" className="flex-1 min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs" />
-        <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Unit" className="w-14 min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-center" />
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" aria-label="Name" className="input flex-1 px-2" />
+        <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Unit" aria-label="Unit" className="input w-14 px-2 text-center" />
       </div>
-      <div className="grid grid-cols-3 sm:grid-cols-5 gap-1">
+      <div className="grid grid-cols-3 gap-1 sm:grid-cols-5">
         {[
           { v: calories, set: setCalories, ph: 'kcal' },
           { v: protein,  set: setProtein,  ph: 'Protein' },
           { v: carbs,    set: setCarbs,    ph: 'Carbs' },
           { v: fat,      set: setFat,      ph: 'Fat' },
           { v: sugar,    set: setSugar,    ph: 'Sugar' },
-        ].map((m, i) => (
-          <input key={i} value={m.v} onChange={e => m.set(e.target.value)} placeholder={m.ph} inputMode="decimal"
-            className="min-h-[36px] bg-cream-50 border border-ink-200 rounded-lg px-1 text-[11px] text-center" />
+        ].map(m => (
+          <input key={m.ph} value={m.v} onChange={e => m.set(e.target.value)} placeholder={m.ph} aria-label={m.ph} inputMode="decimal"
+            className="input px-1 text-center tabular-nums" />
         ))}
       </div>
       {(() => {
-        const num = (s: string) => (s.trim() === '' ? null : Number(s))
+        const num = (v: string) => (v.trim() === '' ? null : Number(v))
         const check = checkMacroConsistency(num(calories), num(protein), num(carbs), num(fat))
         return check?.inconsistent ? (
-          <div className="flex items-center gap-1.5 text-[10px] text-orange-700">
+          <div data-tone="warn" className="tone-text flex items-center gap-1.5 text-meta">
             <MacroWarningBadge result={check} />
             <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off.</span>
           </div>
         ) : null
       })()}
-      <div className="flex gap-1.5 mt-0.5">
-        <button onClick={onCancel} className="flex-1 min-h-[32px] text-[11px] text-ink-500 hover:bg-ink-100 rounded-lg">Cancel</button>
-        <button onClick={handleCreate} disabled={saving} className="flex-1 min-h-[32px] text-[11px] bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50">
-          {saving ? '…' : 'Create'}
-        </button>
+      <div className="mt-0.5 flex gap-1.5">
+        <Button variant="ghost" size="sm" block onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" size="sm" block onClick={handleCreate} loading={saving}>Create</Button>
       </div>
     </div>
   )

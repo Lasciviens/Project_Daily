@@ -8,7 +8,7 @@ import { useWishes, useUpdateWish, useDeleteWish } from '../hooks/useWishes'
 import { resolveWishWindow, type WishWindowState } from '../wishRules'
 import { WishCard } from '../components/WishCard'
 import { WishQuickAdd } from '../components/WishQuickAdd'
-import { WishSheet } from '../components/WishSheet'
+import { entityModal } from '../../../shared/modals'
 import { WishFilters, type KindFilter, type StatusFilter } from '../components/WishFilters'
 import type { WishItem, WishStatus } from '../types'
 
@@ -42,7 +42,6 @@ export function WishesPage() {
 
   const [kind, setKind]         = useState<KindFilter>('all')
   const [status, setStatus]     = useState<StatusFilter>('active')
-  const [editing, setEditing]   = useState<WishItem | null>(null)
   const [planning, setPlanning] = useState<WishItem | null>(null)
   const [deleting, setDeleting] = useState<WishItem | null>(null)
 
@@ -109,7 +108,7 @@ export function WishesPage() {
                   key={wish.id}
                   wish={wish}
                   today={today}
-                  onEdit={() => setEditing(wish)}
+                  onEdit={() => entityModal.open({ kind: 'wish', id: wish.id })}
                   onPlan={() => setPlanning(wish)}
                   onStatus={(s: WishStatus) => update.mutate({ id: wish.id, patch: { status: s } })}
                   onDelete={() => setDeleting(wish)}
@@ -120,7 +119,6 @@ export function WishesPage() {
         ))
       )}
 
-      {editing && <WishSheet key={editing.id} wish={editing} onClose={() => setEditing(null)} />}
 
       {/* Promotion: the task is the commitment, the wish stays as the memory —
           so this only flips the wish to 'planned' and records which task came

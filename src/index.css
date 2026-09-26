@@ -139,7 +139,7 @@
   }
 
   /* App-shell scroll architecture: the DOCUMENT never scrolls — <main>
-     (src/app/layout.tsx) is the scroll container instead. This is what
+     (src/app/shell/AppShell.tsx) is the scroll container instead. This is what
      makes the custom pull-to-refresh reliable on a real iPhone: when the
      document was the scroller, iOS decided gesture ownership on the first
      touchmove and committed its own root rubber-band before our
@@ -406,9 +406,9 @@
    users saw was just the API's built-in default, not our timing).
 
    useViewTransitionNav.ts stamps data-vt-dir="forward|back" on <html> for
-   bottom-tab-bar navigation (direction = tab order), giving the incoming
-   page a native-app horizontal slide; navigations without a direction keep
-   a plain quick crossfade. */
+   phone tab-bar navigation (direction = tab order), giving the incoming
+   page a native-app horizontal slide; sidebar and More-sheet navigation has
+   no direction and keeps a plain quick crossfade. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 180ms;
@@ -433,19 +433,26 @@ html[data-vt-dir='back'] ::view-transition-new(root) {
   from { opacity: 0; transform: translateX(-28px); }
 }
 
-/* The fixed chrome (top header, bottom tab bar) gets its OWN
-   view-transition-name so it's snapshotted separately from the sliding
-   page — identical before/after snapshots crossfade invisibly, i.e. the
-   bars visually stay put while only the content slides, exactly like a
-   native tab switch. (Classes referenced from layout.tsx.) */
-.vt-pin-header { view-transition-name: app-header; }
-.vt-pin-tabbar { view-transition-name: app-tabbar; }
+/* Every piece of shell chrome gets its OWN view-transition-name so it's
+   snapshotted separately from the sliding page — identical before/after
+   snapshots crossfade invisibly, i.e. the bars visually stay put while only
+   the content slides, exactly like a native tab switch. Names must be unique
+   per document: the shell renders the phone header OR the top bar, never
+   both (src/app/shell/AppShell.tsx). */
+.vt-pin-header  { view-transition-name: app-header; }
+.vt-pin-topbar  { view-transition-name: app-topbar; }
+.vt-pin-sidebar { view-transition-name: app-sidebar; }
+.vt-pin-tabbar  { view-transition-name: app-tabbar; }
 
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root),
   ::view-transition-new(root),
   ::view-transition-old(app-header),
   ::view-transition-new(app-header),
+  ::view-transition-old(app-topbar),
+  ::view-transition-new(app-topbar),
+  ::view-transition-old(app-sidebar),
+  ::view-transition-new(app-sidebar),
   ::view-transition-old(app-tabbar),
   ::view-transition-new(app-tabbar) {
     animation: none !important;

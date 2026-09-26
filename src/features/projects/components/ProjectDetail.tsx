@@ -3,7 +3,7 @@ import { InlineText } from './InlineText'
 import { InlineTextArea } from './InlineTextArea'
 import { StatusCycleChip, PROJECT_STATUS_COLORS } from './StatusCycleChip'
 import { PhaseCard } from './PhaseCard'
-import { ProjectItemModal } from './ProjectItemModal'
+import { entityModal } from '../../../shared/modals'
 import { ProjectNotesCard } from './ProjectNotesCard'
 import { ProjectActivityFeed } from './ProjectActivityFeed'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
@@ -59,7 +59,6 @@ interface Props {
 export function ProjectDetail({ project, onBack, onDelete }: Props) {
   const [typeFilter, setTypeFilter] = useState<ItemType | null>(null)
   const [view, setView] = useState<'phases' | 'board'>('phases')
-  const [itemModal, setItemModal] = useState<{ phaseId?: string; item?: ProjectItem } | null>(null)
   const [draggingId,  setDraggingId]  = useState<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<ItemStatus | null>(null)
   const [confirmDel,  setConfirmDel]  = useState(false)
@@ -253,10 +252,10 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                       typeFilter={typeFilter}
                       onUpdatePhase={patch => updatePhase.mutate({ id: phase.id, patch })}
                       onDeletePhase={() => deletePhase.mutate(phase.id)}
-                      onAddItem={() => setItemModal({ phaseId: phase.id })}
+                      onAddItem={() => entityModal.open({ kind: 'project-item', projectId: project.id, phaseId: phase.id })}
                       onUpdateItem={(itemId, patch) => updateItem.mutate({ id: itemId, patch })}
                       onDeleteItem={itemId => deleteItem.mutate(itemId)}
-                      onEditItem={item => setItemModal({ item })}
+                      onEditItem={item => entityModal.open({ kind: 'project-item', projectId: project.id, id: item.id })}
                     />
                   ))}
                   <button
@@ -305,7 +304,7 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
                       >
                         <button
                           type="button"
-                          onClick={() => setItemModal({ item })}
+                          onClick={() => entityModal.open({ kind: 'project-item', projectId: project.id, id: item.id })}
                           className={`text-sm leading-snug text-left hover:bg-ink-50 rounded px-0.5 -mx-0.5 transition-colors ${item.status === 'done' ? 'line-through text-ink-400' : 'text-ink-800'}`}
                         >
                           {item.title}
@@ -359,17 +358,6 @@ export function ProjectDetail({ project, onBack, onDelete }: Props) {
         </div>
       </div>
 
-      {/* Add / edit item modal */}
-      {itemModal && (
-        <ProjectItemModal
-          open
-          onClose={() => setItemModal(null)}
-          projectId={project.id}
-          phases={phases}
-          defaultPhaseId={itemModal.phaseId}
-          item={itemModal.item}
-        />
-      )}
     </div>
   )
 }

@@ -10,14 +10,19 @@
 //  removes the linked block on save; the Task itself is never affected.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { X } from 'lucide-react'
 import {
-  FieldLabel, PillGroup, Time24Field, DateStepperField, DurationField, CategorySelect, CheckboxRow,
+  FieldLabel, Required, PillGroup, Time24Field, DateStepperField, DurationField, CategorySelect, CheckboxRow,
+  SectionDivider,
 } from './fields'
+import { ADD_SLOT_CLASS } from './fieldStyles'
 import { TaskWindowField } from './TaskWindowField'
 import { GoogleListField } from './GoogleListField'
 import { DateInput } from '../DateInput'
 import { isTaskFieldHidden, isTaskFieldLocked, shiftTime, nextPlanTime, stepDate } from './planModal.config'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
+import { PRIORITY_LABEL, PRIORITY_TONE } from '../../../features/todo/taskTones'
+import type { Tone } from '../../ui'
 import type { PlanModalConfig } from './planModal.types'
 import type { PlanForm } from './planForm'
 import type { TaskSection, TaskPriority, TaskDomain } from '../../../features/todo/types'
@@ -35,14 +40,11 @@ const SECTIONS: { id: TaskSection; label: string }[] = [
 
 const LEGACY_SECTION_LABEL: Partial<Record<TaskSection, string>> = {
   tomorrow:  'Tomorrow',
-  this_week: 'This Week',
+  this_week: 'This week',
 }
 
-const PRIORITIES: { id: TaskPriority; label: string; dot: string }[] = [
-  { id: 'low',    label: 'Low',    dot: 'bg-ink-300'    },
-  { id: 'medium', label: 'Medium', dot: 'bg-accent-400' },
-  { id: 'high',   label: 'High',   dot: 'bg-red-400'    },
-]
+const PRIORITIES: { id: TaskPriority; label: string; tone: Tone }[] = (['low', 'medium', 'high'] as const)
+  .map(id => ({ id, label: PRIORITY_LABEL[id], tone: PRIORITY_TONE[id] }))
 
 const DOMAINS: { id: TaskDomain; label: string }[] = [
   { id: 'personal', label: DOMAIN_LABEL.personal },
@@ -64,16 +66,7 @@ interface Props {
   extra?: React.ReactNode
 }
 
-function SectionDivider({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 -mb-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-300">{children}</span>
-      <div className="flex-1 h-px bg-ink-100" />
-    </div>
-  )
-}
-
-export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMode, calendarLinked, extra }: Props) {
+export function TaskTab({ form, patch, config, gcalAvailable, calendarLinked, extra }: Props) {
   const hidden = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const locked = (f: Parameters<typeof isTaskFieldLocked>[0]) => isTaskFieldLocked(f, config)
 
@@ -84,15 +77,15 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
     : [...SECTIONS, { id: form.section, label: `${LEGACY_SECTION_LABEL[form.section] ?? form.section} (legacy)` }]
 
   return (
-    <div className="px-5 py-4 flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {!hidden('title') && (
         <div>
-          <FieldLabel>Title <span className="text-red-400">*</span></FieldLabel>
+          <FieldLabel>Title<Required /></FieldLabel>
           <textarea
             autoFocus value={form.title} disabled={locked('title')} rows={2}
             onChange={e => patch({ title: e.target.value })}
             placeholder="What needs to be done?"
-            className="w-full bg-cream-50 border border-ink-200 rounded-xl px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none disabled:opacity-60"
+            className="input resize-none disabled:opacity-60"
           />
         </div>
       )}
@@ -137,16 +130,16 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {!hidden('dueDate') && (
               <div>
-                <FieldLabel>Due Date</FieldLabel>
+                <FieldLabel>Due date</FieldLabel>
                 <DateInput
                   value={form.dueDate} onChange={v => patch({ dueDate: v })}
-                  className="w-full bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px]"
+                  className="input tabular-nums"
                 />
               </div>
             )}
             {!hidden('dueTime') && (
               <div>
-                <FieldLabel>Due Time</FieldLabel>
+                <FieldLabel>Due time</FieldLabel>
                 {form.dueTime ? (
                   <div className="flex items-center gap-1.5">
                     <div className="flex-1">
@@ -160,13 +153,13 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
                     <button
                       type="button" onClick={() => patch({ dueTime: '' })} disabled={locked('dueTime')}
                       title="Clear time" aria-label="Clear time"
-                      className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors disabled:opacity-40"
-                    >✕</button>
+                      className="icon-btn text-fg-faint hover:text-danger disabled:opacity-40"
+                    ><X className="h-4 w-4" aria-hidden /></button>
                   </div>
                 ) : (
                   <button
                     type="button" onClick={() => patch({ dueTime: nextPlanTime() })} disabled={locked('dueTime')}
-                    className="w-full min-h-[44px] bg-cream-50 border border-dashed border-ink-200 rounded-xl text-sm text-ink-400 hover:text-accent-600 hover:border-accent-300 transition-colors disabled:opacity-40"
+                    className={ADD_SLOT_CLASS}
                   >
                     + Set a time
                   </button>
@@ -194,7 +187,7 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
             value={form.notes} disabled={locked('notes')} rows={2}
             onChange={e => patch({ notes: e.target.value })}
             placeholder="Add details (optional)"
-            className="w-full bg-cream-50 border border-ink-200 rounded-xl px-4 py-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400 resize-none disabled:opacity-60"
+            className="input resize-none disabled:opacity-60"
           />
         </div>
       )}
@@ -211,7 +204,7 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
             disabled={locked('scheduled')}
           />
           {form.scheduled && (
-            <div className="flex flex-col gap-4 pl-1 border-l-2 border-ink-100 ml-1">
+            <div className="ml-1 flex flex-col gap-4 border-l-2 border-line pl-1">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-3">
                 <div>
                   <FieldLabel>Date</FieldLabel>
@@ -246,10 +239,10 @@ export function TaskTab({ form, patch, config, gcalAvailable, editMode: _editMod
                     <input
                       type="checkbox" checked={form.gcal} disabled={locked('scheduled')}
                       onChange={e => patch({ gcal: e.target.checked })}
-                      className="w-4 h-4 accent-accent-500 rounded disabled:opacity-60"
+                      className="h-4 w-4 rounded accent-accent-500 disabled:opacity-60"
                     />
-                    <span className="text-sm text-ink-700">
-                      {calendarLinked ? 'Added to Google Calendar ✓' : 'Add to Google Calendar'}
+                    <span className="text-body text-fg-2">
+                      {calendarLinked ? 'Added to Google Calendar' : 'Add to Google Calendar'}
                     </span>
                   </label>
                 </div>

@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { EmptyState } from '../../../shared/components/EmptyState'
+import { entityModal } from '../../../shared/modals'
 import { useMemories, useCreateMemory, useDeleteMemory } from '../../ai/hooks/useMemory'
 import { MemoryRow } from './MemoryRow'
-import { MemoryEditSheet } from './MemoryEditSheet'
 import { KIND_BADGE, KIND_LABEL, KINDS } from './memoryMeta'
 import type { AiMemory } from '../../ai/api/memoryApi'
 
@@ -58,7 +58,6 @@ export function MemoryTab() {
   const { data: memories = [], isLoading, error } = useMemories()
   const deleteMemory = useDeleteMemory()
   const [kindFilter, setKindFilter] = useState<AiMemory['kind'] | 'all'>('all')
-  const [editing, setEditing] = useState<AiMemory | null>(null)
 
   const filtered = useMemo(
     () => kindFilter === 'all' ? memories : memories.filter(m => m.kind === kindFilter),
@@ -122,13 +121,12 @@ export function MemoryTab() {
           <MemoryRow
             key={memory.id}
             memory={memory}
-            onEdit={() => setEditing(memory)}
-            onDelete={() => { if (confirm(`Delete "${memory.title}"?`)) deleteMemory.mutate(memory.id) }}
+            onEdit={() => entityModal.open({ kind: 'memory', id: memory.id })}
+            onDelete={async () => { if (await entityModal.confirm({ title: `Delete "${memory.title}"?`, confirmLabel: 'Delete', destructive: true })) deleteMemory.mutate(memory.id) }}
           />
         ))}
       </div>
 
-      <MemoryEditSheet key={editing?.id ?? 'none'} memory={editing} onClose={() => setEditing(null)} />
     </>
   )
 }

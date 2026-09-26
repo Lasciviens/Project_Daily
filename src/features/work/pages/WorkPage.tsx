@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { useWorkTasks, useUpdateTask, useDeleteTask, useToggleTask, useCreateTask } from '../../todo/hooks/useTodos'
-import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { useEntityModal } from '../../../shared/modals'
+import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { Sheet } from '../../../shared/components/Sheet'
 import { SegmentedControl } from '../../../shared/components/SegmentedControl'
 import WorkBoard from '../components/WorkBoard'
@@ -10,7 +11,6 @@ import WorkTaskCard from '../components/WorkTaskCard'
 import FocusStrip from '../components/FocusStrip'
 import WorkSidebar from '../components/WorkSidebar'
 import { isOverdue, isCompletedToday, matchesSearch, sortTasks, OVERDUE_COLOR } from '../components/workMeta'
-import { toast } from '../../../app/store'
 import type { Task, TaskStatus, TaskPriority } from '../../todo/types'
 
 type ViewMode = 'board' | 'list'
@@ -33,8 +33,9 @@ export function WorkPage() {
   const toggleTask = useToggleTask()
   const createTask = useCreateTask()
 
-  const [addOpen,   setAddOpen]  = useState(false)
-  const [editTask,  setEditTask] = useState<Task | null>(null)
+  const modal = useEntityModal()
+  const openNew  = useCallback(() => modal.open({ kind: 'task', config: { heading: 'New Task' }, defaults: { domain: 'work', section: 'today' } }), [modal])
+  const openEdit = useCallback((task: Task) => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit Task' } }), [modal])
   const [search,    setSearch]   = useState('')
   const [prioFilter, setPrioFilter] = useState<'all' | TaskPriority>('all')
   const [filterOpen, setFilterOpen] = useState(false)
@@ -72,40 +73,24 @@ export function WorkPage() {
   }, [updateTask])
 
   const handleStatusChange = useCallback(async (id: string, status: TaskStatus, waitingFor?: string) => {
-    const tid = toast.loading('Updating…')
-    try {
-      await updateTask.mutateAsync({ id, patch: {
-        status,
-        ...(waitingFor !== undefined ? { waiting_for: waitingFor } : {}),
-        ...(status === 'done' || status === 'cancelled' ? { is_focused: false } : {}),
-      } })
-      toast.dismiss(tid); toast.success('Updated ✓')
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    }
+    await withProgress(() => updateTask.mutateAsync({ id, patch: {
+      status,
+      ...(waitingFor !== undefined ? { waiting_for: waitingFor } : {}),
+      ...(status === 'done' || status === 'cancelled' ? { is_focused: false } : {}),
+    } }), { loading: 'Updating…', success: 'Updated ✓' })
   }, [updateTask])
 
   const handleMarkDone = useCallback(async (id: string) => {
-    const tid = toast.loading('Marking done…')
-    try {
+    await withProgress(async () => {
       await toggleTask.mutateAsync({ id, isDone: true })
       await updateTask.mutateAsync({ id, patch: { is_focused: false } })
-      toast.dismiss(tid); toast.success('Done! ✓')
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    }
+    }, { loading: 'Marking done…', success: 'Done! ✓' })
   }, [toggleTask, updateTask])
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('Delete this task?')) return
-    const tid = toast.loading('Deleting…')
-    try {
-      await deleteTask.mutateAsync(id)
-      toast.dismiss(tid); toast.success('Deleted')
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    }
-  }, [deleteTask])
+    if (!(await modal.confirm({ title: 'Delete this task?', confirmLabel: 'Delete', destructive: true }))) return
+    await withProgress(() => deleteTask.mutateAsync(id), { loading: 'Deleting…', success: 'Deleted' })
+  }, [deleteTask, modal])
 
   function handleQuickAdd(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter' || !quickTitle.trim()) return
@@ -147,7 +132,7 @@ export function WorkPage() {
 
         <div className="flex items-center gap-2 ml-auto">
           <button
-            onClick={() => setAddOpen(true)}
+            onClick={openNew}
             className="flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-white px-4 rounded-xl text-sm font-semibold transition-colors duration-150 min-h-[44px]"
           >
             <span className="text-lg leading-none">+</span>
@@ -171,7 +156,7 @@ export function WorkPage() {
               tasks={focusedTasks}
               onMarkDone={handleMarkDone}
               onClearFocus={clearFocus}
-              onEdit={setEditTask}
+              onEdit={openEdit}
             />
 
             {/* Overdue alert strip */}
@@ -196,7 +181,7 @@ export function WorkPage() {
                         accentColor={OVERDUE_COLOR}
                         onStatusChange={handleStatusChange}
                         onDelete={handleDelete}
-                        onEdit={setEditTask}
+                        onEdit={openEdit}
                         onFocus={toggleFocus}
                         isFocused={task.is_focused}
                       />
@@ -277,9 +262,9 @@ export function WorkPage() {
                 focusedTaskIds={focusedTasks.map(t => t.id)}
                 onStatusChange={handleStatusChange}
                 onDelete={handleDelete}
-                onEdit={setEditTask}
+                onEdit={openEdit}
                 onFocus={toggleFocus}
-                onAddTask={() => setAddOpen(true)}
+                onAddTask={openNew}
               />
             ) : (
               <WorkListView
@@ -287,7 +272,7 @@ export function WorkPage() {
                 focusedTaskIds={focusedTasks.map(t => t.id)}
                 onStatusChange={handleStatusChange}
                 onDelete={handleDelete}
-                onEdit={setEditTask}
+                onEdit={openEdit}
                 onFocus={toggleFocus}
               />
             )}
@@ -316,14 +301,6 @@ export function WorkPage() {
           </aside>
         )}
       </div>
-
-      <UnifiedPlanModal
-        open={addOpen || !!editTask}
-        onClose={() => { setAddOpen(false); setEditTask(null) }}
-        config={{ heading: editTask ? 'Edit Task' : 'New Task' }}
-        defaults={{ domain: 'work', section: 'today' }}
-        task={editTask ?? undefined}
-      />
 
       {/* Mobile filter sheet — search + priority (inline on desktop). */}
       <Sheet

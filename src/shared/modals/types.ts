@@ -25,12 +25,17 @@ export type EntityModalRequest =
   /** Opens whatever editor a one-off block belongs to: its task when task-linked, else the block. */
   | { kind: 'plan-block'; blockId: string }
   // Food.
-  | { kind: 'food-log'; date: string; slot?: MealSlot }
+  /** Log food (basket logger). `query` prefills the search box. */
+  | { kind: 'food-log'; date: string; slot?: MealSlot; query?: string }
+  /** Edit one diary row, loaded by id. */
   | { kind: 'food-log-edit'; entryId: string; date: string }
-  | { kind: 'meal-plan'; date: string; slot: MealSlot }
+  /** Plan a meal into a slot; with `entryId`, edit that planned row. */
+  | { kind: 'meal-plan'; date: string; slot: MealSlot; entryId?: string }
+  /** Recipe editor: create without `id`. */
   | { kind: 'recipe'; id?: string }
   | { kind: 'recipe-view'; id: string }
-  | { kind: 'day-targets' }
+  /** Nutrition goals editor; `date` feeds the coach (default today). */
+  | { kind: 'day-targets'; date?: string }
   // Other features.
   | { kind: 'media'; tmdbId: number; mediaType: MediaType }
   | { kind: 'hevy-workout'; id: string }

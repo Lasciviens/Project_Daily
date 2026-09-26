@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Sheet } from '../../../shared/components/Sheet'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Button } from '../../../shared/ui'
 import { useUpdateMemory } from '../../ai/hooks/useMemory'
 import { KIND_LABEL, KINDS } from './memoryMeta'
 import type { AiMemory } from '../../ai/api/memoryApi'
@@ -8,8 +9,6 @@ interface Props {
   memory: AiMemory | null   // null = closed
   onClose: () => void
 }
-
-const fieldCls = 'min-h-[44px] w-full px-3 text-sm border border-ink-200 rounded-lg bg-cream-50 text-ink-800'
 
 export function MemoryEditSheet({ memory, onClose }: Props) {
   const update = useUpdateMemory()
@@ -28,53 +27,38 @@ export function MemoryEditSheet({ memory, onClose }: Props) {
     )
   }
 
+  const canSave = !!title.trim() && !!content.trim()
+
   return (
-    <Sheet
+    <ModalShell
       open={!!memory}
       onClose={onClose}
       title="Edit memory"
       size="sm"
+      dismissible={!update.isPending}
       footer={
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-[44px] px-4 rounded-lg text-sm text-ink-500 hover:text-ink-800"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={update.isPending || !title.trim() || !content.trim()}
-            className="ml-auto min-h-[44px] px-5 rounded-lg text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50"
-          >
-            {update.isPending ? 'Saving…' : 'Save'}
-          </button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" className="ml-auto" onClick={handleSave} loading={update.isPending} disabled={!canSave}>Save memory</Button>
         </div>
       }
     >
-      <div className="flex flex-col gap-3 p-5">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-ink-500">Kind</span>
-          <select value={kind} onChange={e => setKind(e.target.value as AiMemory['kind'])} className={fieldCls}>
+      <div className="flex flex-col gap-3">
+        <label className="block">
+          <span className="field-label">Kind</span>
+          <select value={kind} onChange={e => setKind(e.target.value as AiMemory['kind'])} className="select">
             {KINDS.map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
           </select>
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-ink-500">Title</span>
-          <input value={title} onChange={e => setTitle(e.target.value)} className={fieldCls} />
+        <label className="block">
+          <span className="field-label">Title</span>
+          <input value={title} onChange={e => setTitle(e.target.value)} className="input" />
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-ink-500">Content</span>
-          <textarea
-            value={content}
-            onChange={e => setContent(e.target.value)}
-            rows={6}
-            className={`${fieldCls} min-h-[140px] py-2 resize-y`}
-          />
+        <label className="block">
+          <span className="field-label">Content</span>
+          <textarea value={content} onChange={e => setContent(e.target.value)} rows={6} className="input min-h-[140px] resize-y" />
         </label>
       </div>
-    </Sheet>
+    </ModalShell>
   )
 }

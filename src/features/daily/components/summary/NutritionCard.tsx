@@ -1,11 +1,11 @@
-import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useState } from 'react'
 import { isToday } from 'date-fns'
 import { useEatPlannedEntry } from '../../../recipes/hooks/useMealPlan'
 import { Cell, CellHeader } from './cellKit'
 import { WaterTracker } from './WaterTracker'
 import { useDayNutrition } from '../../hooks/useDayNutrition'
-import { useDayTargets, useDayTargetProfiles, type NutritionGoal, type DayTargets } from '../../hooks/useDayTargets'
+import { useDayTargets } from '../../hooks/useDayTargets'
+import { useEntityModal } from '../../../../shared/modals/useEntityModal'
 import { useNutritionCoach } from '../../hooks/useNutritionCoach'
 import { useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
@@ -209,90 +209,15 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
   )
 }
 
-// −/+ stepper for the calorie/protein goals — the goals move in meaningful
-// increments (kcal by 50, protein by 10) instead of the native number
-// spinner's ±1, which is tedious for values in the hundreds. The field stays
-// directly typeable too; the step attribute makes keyboard ↑/↓ match the
-// buttons. Clamped at 0.
-function GoalStepper({ value, step, onChange, suffix }: {
-  value: number; step: number; onChange: (v: number) => void; suffix: string
-}) {
-  const set = (v: number) => onChange(Math.max(0, v))
-  const btn = 'w-11 h-11 min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:border-accent-300 hover:text-accent-600 flex items-center justify-center text-lg leading-none transition-colors select-none'
-  return (
-    <div className="flex items-center gap-1">
-      <button type="button" aria-label={`−${step}`} onClick={() => set(value - step)} className={btn}>−</button>
-      <div className="relative">
-        <input
-          type="number" value={value} min={0} step={step}
-          onChange={e => set(Number(e.target.value) || 0)}
-          // The browser's own up/down spinner would sit right on top of the
-          // −/+ buttons already flanking this field — a second, redundant
-          // increment control. Hidden in both engines (`appearance-none` for
-          // WebKit/Blink's spin buttons, `[appearance:textfield]` for Firefox).
-          className="input w-24 text-sm py-1 text-center pr-9 tabular-nums min-h-[44px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-        />
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-ink-500 pointer-events-none">{suffix}</span>
-      </div>
-      <button type="button" aria-label={`+${step}`} onClick={() => set(value + step)} className={btn}>+</button>
-    </div>
-  )
-}
-
-const GOAL_LABEL: Record<NutritionGoal, string> = { maintain: 'Maintain', cut: 'Cut', gain: 'Gain' }
-
 export function NutritionCard({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
-  const { targets, update, isSaving } = useDayTargets()
-  const profiles = useDayTargetProfiles()
+  const { targets } = useDayTargets()
   const coach = useNutritionCoach(date, targets)
-  const [editing, setEditing] = useState(false)
   const copyYesterday = useCopyYesterdayMeals()
-
-  // Editing the Goals panel is a DRAFT — nothing writes until "Save" is
-  // tapped. Re-seeded from the current active targets every time the panel
-  // opens (the adjust-during-render pattern FoodLogModal's own `wasOpen`
-  // already uses), so opening it always starts from what's really saved.
-  const [draft, setDraft] = useState<DayTargets>(targets)
-  const [editingWasOpen, setEditingWasOpen] = useState(editing)
-  if (editing !== editingWasOpen) {
-    setEditingWasOpen(editing)
-    if (editing) setDraft(targets)
-  }
-  // Switching goal pills recalls THAT goal's own saved numbers (migration
-  // 088) instead of carrying over whatever the previous goal had. REAL BUG,
-  // fixed: with no saved profile yet (first use, or a goal never tapped
-  // before), the numbers used to just sit frozen — only the `goal` label
-  // changed, reading as "picking Cut/Gain does nothing." Now a goal with no
-  // saved profile gets a sensible DIFFERENT starting point instead: protein
-  // scales with bodyweight (`coach.proteinByGoal`, already computed for
-  // every goal — cut is a higher g/kg to spare lean mass in a deficit), and
-  // calories step off Maintain's own saved number by the standard ~500 kcal
-  // deficit / ~300 kcal surplus a cut/gain implies. Once the user taps Save,
-  // that goal has its own real profile and this fallback never runs for it
-  // again.
-  function selectGoal(g: NutritionGoal) {
-    const profile = profiles[g]
-    if (profile) { setDraft(d => ({ ...d, goal: g, ...profile })); return }
-    setDraft(d => {
-      const maintainCalories = profiles.maintain?.calories ?? d.calories
-      const calorieDelta = g === 'cut' ? -500 : g === 'gain' ? 300 : 0
-      const calories = g === 'maintain' ? maintainCalories : Math.max(coach.calorieFloor, maintainCalories + calorieDelta)
-      const protein = coach.weightKg != null ? coach.proteinByGoal[g] : d.protein
-      return { ...d, goal: g, calories, protein }
-    })
-  }
-  // The Coach's "Apply" buttons are already one deliberate tap — while the
-  // panel is closed they still write immediately (unchanged behaviour); while
-  // it's open they feed the draft instead, so a pending manual edit can't be
-  // silently clobbered by an unrelated coach suggestion (and vice versa).
-  function applyProtein(g: number) {
-    if (editing) setDraft(d => ({ ...d, protein: g })); else update({ protein: g })
-  }
-  function applyCalories(kcal: number, adjustDate: string) {
-    if (editing) setDraft(d => ({ ...d, calories: kcal, lastCalorieAdjust: adjustDate }))
-    else update({ calories: kcal, lastCalorieAdjust: adjustDate })
-  }
+  const modal = useEntityModal()
+  // The goals editor (draft → Save, per-goal profiles, coach suggestions) is
+  // the shared `day-targets` popup — one copy instead of one per card.
+  const openGoals = () => modal.open({ kind: 'day-targets', date })
 
   const [logOpen, setLogOpen] = useState(false)
   // Empty day → compact one-liner IN PLACE (the cell never moves or grows
@@ -331,101 +256,11 @@ export function NutritionCard({ date }: { date: string }) {
       />
 
       {/* Hydration — always visible (independent of meals), consistent per day. */}
-      {!editing && (
-        <div className="pb-1 mb-1 border-b border-ink-100">
-          <WaterTracker date={date} />
-        </div>
-      )}
+      <div className="pb-1 mb-1 border-b border-ink-100">
+        <WaterTracker date={date} />
+      </div>
 
-      {editing ? (
-        <div className="flex flex-col gap-2">
-          {/* Goal — steers the protein g/kg suggestion + calorie coaching */}
-          <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
-            <span>Goal</span>
-            <div className="flex gap-1">
-              {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
-                <button key={g} onClick={() => selectGoal(g)}
-                  className={`text-[11px] px-3 min-h-[44px] rounded-full border transition-colors ${
-                    draft.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
-                  }`}>{GOAL_LABEL[g]}</button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
-            <span>Calorie goal</span>
-            <GoalStepper value={draft.calories} step={50} onChange={v => setDraft(d => ({ ...d, calories: v }))} suffix="kcal" />
-          </div>
-          {/* Safety floor — a target below RMR-protecting intake is flagged, not silently allowed */}
-          {draft.calories < coach.calorieFloor && (
-            <p className="text-[10px] text-red-500 px-0.5 -mt-1">⚠ Below a safe floor (~{coach.calorieFloor} kcal). Don't cut lower — take a diet break instead.</p>
-          )}
-          <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
-            <span>Protein goal</span>
-            <GoalStepper value={draft.protein} step={10} onChange={v => setDraft(d => ({ ...d, protein: v }))} suffix="g" />
-          </div>
-          <div className="flex items-center justify-between gap-2 text-xs text-ink-600">
-            <span>Water goal</span>
-            <GoalStepper value={draft.water} step={250} onChange={v => setDraft(d => ({ ...d, water: v }))} suffix="ml" />
-          </div>
-
-          {/* Bodyweight-based protein suggestion (real latest weight) */}
-          {coach.weightKg == null ? (
-            <p className="text-[10px] text-ink-500 px-0.5">Sync or add a bodyweight (Training → Body) to get protein &amp; calorie suggestions.</p>
-          ) : coach.proteinForGoal != null && coach.proteinForGoal !== draft.protein ? (
-            <button onClick={() => applyProtein(coach.proteinForGoal!)}
-              className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
-              <span className="text-ink-600">
-                Suggested <strong className="text-accent-700">{coach.proteinForGoal}g</strong> protein
-                <span className="text-ink-500"> · {(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg × {Math.round(coach.weightKg)}kg</span>
-              </span>
-              <span className="text-accent-600 font-semibold shrink-0">Apply</span>
-            </button>
-          ) : coach.proteinForGoal != null ? (
-            <p className="text-[10px] text-ink-500 px-0.5">✓ Protein on target ({(coach.proteinForGoal / coach.weightKg).toFixed(1)} g/kg).</p>
-          ) : null}
-
-          {/* Fat floor — only on a cut (hormonal-health minimum) */}
-          {coach.fatFloorG != null && (
-            <p className="text-[10px] text-ink-500 px-0.5">Keep fat ≥ ~{coach.fatFloorG}g/day on a cut (hormonal health).</p>
-          )}
-
-          {/* Adaptive calorie coaching — gated on intake logging AND weight-signal
-              quality AND a cooldown; shows an honest 'on track' / floor / gate state */}
-          {coach.weightKg != null && (
-            coach.calorieAdvice ? (
-              <button onClick={() => applyCalories(Math.max(coach.calorieFloor, draft.calories + coach.calorieAdvice!.delta), todayStr())}
-                className="flex items-center justify-between gap-2 text-[11px] text-left rounded-lg border border-accent-200 bg-accent-50/50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
-                <span className="text-ink-600">
-                  <strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong>
-                  <span className="text-ink-500"> · {coach.calorieAdvice.reason}</span>
-                </span>
-                <span className="text-accent-600 font-semibold shrink-0">Apply</span>
-              </button>
-            ) : coach.onTrack ? (
-              <p className="text-[10px] text-green-600 px-0.5">✓ {coach.onTrack}</p>
-            ) : coach.atFloor ? (
-              <p className="text-[10px] text-ink-500 px-0.5">You're at your calorie floor (~{coach.calorieFloor}) but not losing — take a diet break rather than cutting lower.</p>
-            ) : coach.inCooldown ? (
-              <p className="text-[10px] text-ink-500 px-0.5">Calorie adjusted recently — hold {coach.cooldownDaysLeft} more day{coach.cooldownDaysLeft === 1 ? '' : 's'} so the trend can catch up.</p>
-            ) : !coach.consistent ? (
-              <p className="text-[10px] text-ink-500 px-0.5">Logged {coach.loggedDays7} of the last 7 days — log {Math.max(1, 4 - coach.loggedDays7)} more to unlock calorie coaching.</p>
-            ) : !coach.weighInsOk ? (
-              <p className="text-[10px] text-ink-500 px-0.5">Weigh in more often ({coach.weighIns} readings) — a couple of weeks of regular weigh-ins lets me read your trend.</p>
-            ) : null
-          )}
-
-          <div className="flex items-center justify-end gap-1.5">
-            <button onClick={() => setEditing(false)}
-              className="text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[44px] px-2 rounded transition-colors">
-              Cancel
-            </button>
-            <button onClick={() => { update(draft); setEditing(false) }} disabled={isSaving}
-              className="text-[11px] font-semibold text-white bg-accent-500 hover:bg-accent-600 disabled:opacity-50 min-h-[44px] px-3 rounded-lg transition-colors">
-              {isSaving ? 'Saving…' : '💾 Save'}
-            </button>
-          </div>
-        </div>
-      ) : hasMeals || expanded ? (
+      {hasMeals || expanded ? (
         <>
           <div className="flex items-center gap-3">
             <CalorieRing consumed={consumed} target={targets.calories} />
@@ -473,7 +308,7 @@ export function NutritionCard({ date }: { date: string }) {
                 title="Copy yesterday's meals into empty slots"
               >⧉ Yesterday</button>
             )}
-            <button onClick={() => setEditing(true)}
+            <button onClick={openGoals}
               className="text-[10px] text-ink-500 hover:text-ink-700 min-h-[44px] px-2 rounded transition-colors">
               Goals
             </button>
@@ -487,7 +322,7 @@ export function NutritionCard({ date }: { date: string }) {
               className="text-xs text-ink-500 hover:text-accent-600 text-left min-h-[44px] transition-colors">
               Meal slots ▾
             </button>
-            <button onClick={() => setEditing(true)}
+            <button onClick={openGoals}
               className="text-xs text-ink-500 hover:text-ink-700 min-h-[44px] transition-colors">
               Goals
             </button>

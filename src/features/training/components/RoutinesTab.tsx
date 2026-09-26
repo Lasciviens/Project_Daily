@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useHevyRoutines, useDeleteHevyRoutineLocal } from '../hooks/useHevyRoutines'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { entityModal } from '../../../shared/modals'
 import { NewRoutineModal, EditRoutineModal } from './RoutineModals'
 import { ExerciseThumb } from '../exerciseMedia'
 import type { HevyRoutine, HevyRoutineSet } from '../types.hevy'
@@ -64,8 +65,9 @@ function RoutineCard({ routine, index, onEdit }: RoutineCardProps) {
   const setCount      = routine.exercises?.reduce((acc, ex) => acc + (ex.sets?.length ?? 0), 0) ?? 0
   const accentBorder  = ACCENT_BORDERS[index % ACCENT_BORDERS.length]
 
-  function handleDelete() {
-    if (!confirm(`Delete "${routine.title}" from your local data? This cannot be undone.`)) return
+  async function handleDelete() {
+    const ok = await entityModal.confirm({ title: `Delete "${routine.title}"?`, message: 'This removes it from your local data and cannot be undone.', confirmLabel: 'Delete', destructive: true })
+    if (!ok) return
     deleteMutation.mutate(routine.id)
   }
 

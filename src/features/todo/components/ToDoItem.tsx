@@ -1,26 +1,19 @@
 import { useState } from 'react'
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { isToday, isTomorrow, isPast } from 'date-fns'
+import { AlertTriangle, Check, ChevronDown, ChevronRight, CornerDownRight } from 'lucide-react'
 import type { Task } from '../types'
-import { toast } from '../../../app/store'
 import { useToggleTask, useDeleteTask, useUpdateTask, useTaskById, useSubtasks } from '../hooks/useTodos'
-import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
-import { DOMAIN_LABEL, DOMAIN_TAG_CLASS } from '../domainColors'
-import { PRIORITY_DOT_CLASS as PRIORITY_DOT } from '../../../shared/utils/priorityColors'
+import { useEntityModal } from '../../../shared/modals'
+import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
+import { ToneDot, TonePill, cx } from '../../../shared/ui'
+import { DOMAIN_LABEL } from '../domainColors'
+import { DOMAIN_TONE, PRIORITY_LABEL, PRIORITY_TONE, dueTone } from '../taskTones'
 import { isOverdue, dueLabel } from '../taskRules'
+import { todayStr, tomorrowStr } from '../../../shared/utils/dateUtils'
 import { windowRangeLabel } from '../../../shared/components/windowChips'
 import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
 import { SetParentTaskSheet } from './SetParentTaskSheet'
 import { MoveToListSheet } from './MoveToListSheet'
-
-function dueDateCls(dateStr: string, isDone: boolean): string {
-  if (isDone) return 'bg-ink-100 text-ink-400'
-  const d = new Date(dateStr + 'T23:59:59')
-  if (isPast(d)) return 'bg-red-50 text-red-500'
-  const d0 = new Date(dateStr + 'T00:00:00')
-  if (isToday(d0) || isTomorrow(d0)) return 'bg-accent-50 text-accent-600'
-  return 'bg-ink-100 text-ink-500'
-}
+import { ToDoItemHoverActions, ToDoItemMenu } from './ToDoItemActions'
 
 interface Props {
   task:         Task
@@ -31,8 +24,8 @@ interface Props {
 }
 
 export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }: Props) {
+  const modal = useEntityModal()
   const [hovered, setHovered] = useState(false)
-  const [editing, setEditing] = useState(false)
   const [pickingParent, setPickingParent] = useState(false)
   const [pickingList, setPickingList] = useState(false)
   const [subtasksOpen, setSubtasksOpen] = useState(false)
@@ -42,354 +35,154 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown }:
   const isDone      = task.status === 'done'
   const isCancelled = task.status === 'cancelled'
   // Mobile-only affordance (lg:hidden on the reveal panel below) — desktop
-  // already has hover-revealed action buttons including delete, so the
-  // swipe gesture would just be redundant clutter there.
+  // already has hover-revealed action buttons including delete.
   const swipe = useSwipeToReveal()
 
   const { data: parentTask } = useTaskById(task.parent_task_id)
   // Always fetched (cheap, indexed by parent_task_id) rather than gated on
-  // subtasksOpen — the count badge needs a number even before the row is
-  // ever expanded, and react-query dedupes this against the same key the
-  // expanded view reads, so expanding costs no extra request.
+  // subtasksOpen — the count badge needs a number before the row is ever
+  // expanded, and react-query dedupes this against the expanded view's key.
   const { data: subtasks = [] } = useSubtasks(task.id)
 
-  // Local toast wrappers around the shared hooks — MANDATORY per the toast
-  // rule ("every async action must show feedback on completion"), but the
-  // hooks themselves stay bare on purpose: UnifiedPlanModal.handleDelete
-  // already wraps the SAME useDeleteTask()/useUpdateTask() in its own
-  // toast.loading/success/error block, so adding one inside the hook would
-  // double-toast that path (see CLAUDE.md's migration rule for useTodos.ts).
-  // Wrapping only at this row's own call sites is the "manual pattern for
-  // a one-off async action" the same doc explicitly allows.
-  async function handleDelete() {
-    const tid = toast.loading('Deleting…')
-    try {
-      await remove.mutateAsync(task.id)
-      toast.dismiss(tid); toast.success('Deleted ✓')
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to delete')
-    }
+  // The hooks own error toasts + logging; only Delete gets per-call copy.
+  const openEditor   = () => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit task' } })
+  const handleDelete = () => withProgress(() => remove.mutateAsync(task.id), { loading: 'Deleting…', success: 'Deleted' })
+  const handleToggle = () => toggle.mutate({ id: task.id, isDone: !isDone })
+  const handleCancel = () => update.mutate({ id: task.id, patch: { status: 'cancelled' } })
+  const handleReopen = () => update.mutate({ id: task.id, patch: { status: 'open' } })
+
+  const actions = {
+    onEdit: openEditor,
+    onSetParent: () => setPickingParent(true),
+    onMoveToList: () => setPickingList(true),
+    onCancel: handleCancel,
+    onReopen: handleReopen,
+    onDelete: () => { void handleDelete() },
+    onMoveUp, onMoveDown, canMoveUp, canMoveDown,
+    busy: update.isPending || remove.isPending,
   }
-  async function handleToggle() {
-    try {
-      await toggle.mutateAsync({ id: task.id, isDone: !isDone })
-    } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to update task')
-    }
-  }
-  async function handleCancel() {
-    try {
-      await update.mutateAsync({ id: task.id, patch: { status: 'cancelled' } })
-    } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to cancel task')
-    }
-  }
-  async function handleReopen() {
-    try {
-      await update.mutateAsync({ id: task.id, patch: { status: 'open' } })
-    } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to reopen task')
-    }
-  }
+
+  const today = todayStr()
+  const tomorrow = tomorrowStr()
+  const due = task.due_date
+    ? {
+        tone: dueTone(task.due_date, isDone, today, tomorrow),
+        // A windowed task (start_date + due_date) shows ONE range chip INSTEAD
+        // of the due chip — never both (a second chip starves the title on a
+        // 393px screen). Colour and the overdue mark still come from due_date.
+        text: task.start_date ? windowRangeLabel(task.start_date, task.due_date) : dueLabel(task)?.text,
+      }
+    : null
 
   return (
     <>
-      <div className="relative overflow-hidden rounded-lg">
+      <div className="relative overflow-hidden rounded-row">
         {/* Delete panel revealed behind the row on swipe-left (mobile only).
             Hidden (not unmounted) at rest: the row's overflow-hidden clip and
             this button's own corner radius are coincident, so a resting row
-            leaked a pink antialiased arc at its top-right corner. Hiding it
-            also stops screen readers announcing a Delete button per row. */}
+            leaked an antialiased arc at its top-right corner. Hiding it also
+            stops screen readers announcing a Delete button per row. */}
         <button
-          onClick={() => { handleDelete(); swipe.close() }}
+          type="button"
+          onClick={() => { void handleDelete(); swipe.close() }}
           disabled={remove.isPending}
           aria-hidden={!swipe.isOpen}
           tabIndex={swipe.isOpen ? undefined : -1}
-          className={`lg:hidden absolute inset-y-0 right-0 w-[76px] flex items-center justify-center bg-red-500 text-white text-sm font-semibold press-feedback rounded-r-lg transition-opacity duration-150 ${
-            swipe.isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
+          className={cx(
+            'absolute inset-y-0 right-0 flex w-[76px] items-center justify-center rounded-r-row bg-danger text-ui font-semibold text-white press-feedback transition-opacity duration-150 lg:hidden',
+            swipe.isOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
         >
           Delete
         </button>
 
-        {/* Entire row is a click target that opens the edit modal.
-            Inline controls (checkbox / action buttons) stopPropagation so they act independently. */}
+        {/* Entire row opens the editor; inline controls stopPropagation. */}
         <div
           role="button"
           tabIndex={0}
-          onClick={() => { if (!swipe.isOpen) setEditing(true) }}
-          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true) } }}
-          className={`relative bg-cream-50 group flex items-start gap-2.5 px-3 py-2 min-h-[44px] rounded-lg cursor-pointer transition-colors duration-150 press-feedback ${
-            hovered ? 'bg-cream-100' : ''
-          }`}
+          onClick={() => { if (!swipe.isOpen) openEditor() }}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditor() } }}
+          className={cx(
+            'group relative flex min-h-[44px] cursor-pointer items-start gap-2.5 rounded-row bg-surface px-3 py-2 transition-colors duration-150 press-feedback',
+            hovered && 'bg-surface-hover',
+          )}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           {...swipe.rowProps}
         >
-        {/* Circle checkbox — matches Google Tasks iPhone style */}
-        <button
-          onClick={e => { e.stopPropagation(); handleToggle() }}
-          disabled={toggle.isPending}
-          aria-label={isDone ? 'Mark as open' : 'Mark as done'}
-          className="flex-shrink-0 flex items-center justify-center min-w-[44px] min-h-[44px] lg:min-w-0 lg:min-h-0 lg:w-auto lg:h-auto -ml-3 lg:ml-0 lg:mt-0.5"
-        >
-          <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150 ${
-            isDone
-              ? 'bg-accent-500 border-accent-500'
-              : 'border-ink-300 hover:border-accent-400'
-          }`}>
-            {isDone && (
-              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-          </span>
-        </button>
-
-        <div className="flex-1 min-w-0 py-0.5">
-          {/* Title row with priority dot — items-start (not items-center) so a
-              wrapped title keeps the dot beside its FIRST line instead of
-              floating down to the middle of the block. */}
-          <div className="flex items-start gap-1.5">
-            <span className={`w-2 h-2 mt-[5px] rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
-            <span className={`text-sm leading-snug ${(isDone || isCancelled) ? 'line-through text-ink-400' : 'text-ink-800'}`}>
-              {task.title}
-            </span>
-          </div>
-          {/* Domain tag + due date chip */}
-          <div className="flex flex-wrap items-center gap-1.5 mt-1 ml-3">
-            {isCancelled && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-ink-100 text-ink-400">
-                Cancelled
-              </span>
-            )}
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${DOMAIN_TAG_CLASS[task.domain]}`}>
-              {DOMAIN_LABEL[task.domain]}
-            </span>
-            {/* A windowed task (start_date + due_date) shows ONE range chip
-                INSTEAD of the due chip — never both. This row is already at its
-                width limit (see the ⋯-menu comment below: a second chip is what
-                starves the title on a 393px screen). Colour and the overdue mark
-                still come from due_date — the window's closing edge is the only
-                deadline there is. */}
-            {task.start_date && task.due_date ? (
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${dueDateCls(task.due_date, isDone)}`}>
-                {isOverdue(task) && <span title="Overdue">⚠ </span>}
-                {windowRangeLabel(task.start_date, task.due_date)}
-              </span>
-            ) : task.due_date ? (
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${dueDateCls(task.due_date, isDone)}`}>
-                {isOverdue(task) && <span title="Overdue">⚠ </span>}
-                {dueLabel(task)?.text}
-              </span>
-            ) : null}
-          </div>
-          {/* Description gets its OWN line — sharing the chip row squeezed it
-              to a 1px-wide slot that rendered nothing on a phone. */}
-          {task.description && (
-            <p className="text-[11px] text-ink-500 line-clamp-1 w-full mt-0.5 ml-3">{task.description}</p>
-          )}
-          {parentTask && (
-            <p className="text-[11px] text-ink-400 mt-0.5 ml-3 truncate">
-              ↳ Subtask of <span className="text-ink-500">{parentTask.title}</span>
-            </p>
-          )}
-          {subtasks.length > 0 && (
-            <button
-              type="button"
-              onClick={e => { e.stopPropagation(); setSubtasksOpen(o => !o) }}
-              className="text-[11px] font-medium text-accent-600 hover:text-accent-700 mt-1 ml-3"
-            >
-              {subtasksOpen ? '▾' : '▸'} {subtasks.length} subtask{subtasks.length === 1 ? '' : 's'}
-            </button>
-          )}
-        </div>
-
-        {/* Mobile: ONE 44px ⋯ menu instead of up to five side-by-side icon
-            buttons — those held ~136px of a 393px row and starved the title
-            down to ~101px (a normal title wrapped to six lines). Same pattern
-            ItemRow.tsx already uses; every action stays reachable, and the
-            row tap itself is still the fast path to edit. Hover actions below
-            keep the icon strip on desktop. */}
-        <Menu as="div" className="flex-shrink-0 lg:hidden" onClick={e => e.stopPropagation()}>
-          <MenuButton
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 active:text-ink-700 text-lg leading-none rounded press-feedback"
-            title="More actions"
-            aria-label="More actions"
+          {/* Circle checkbox — matches Google Tasks iPhone style */}
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); handleToggle() }}
+            disabled={toggle.isPending}
+            aria-label={isDone ? 'Mark as open' : 'Mark as done'}
+            aria-pressed={isDone}
+            className="-ml-3 flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center lg:ml-0 lg:mt-0.5 lg:h-auto lg:min-h-0 lg:w-auto lg:min-w-0"
           >
-            ⋯
-          </MenuButton>
-          <MenuItems
-            anchor="bottom end"
-            transition
-            className="z-[60] w-44 bg-cream-50 border border-ink-200 rounded-xl shadow-card-hover overflow-hidden [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0 data-[closed]:scale-95"
-          >
-            <MenuItem>
+            <span className={cx(
+              'flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors duration-150',
+              isDone ? 'border-accent-500 bg-accent-500 text-on-accent' : 'border-line-strong hover:border-accent-500',
+            )}>
+              {isDone && <Check className="h-3 w-3" strokeWidth={3} aria-hidden />}
+            </span>
+          </button>
+
+          <div className="min-w-0 flex-1 py-0.5">
+            {/* items-start keeps the priority dot beside a wrapped title's FIRST line. */}
+            <div className="flex items-start gap-2">
+              <span className="mt-[6px] flex" title={`${PRIORITY_LABEL[task.priority]} priority`}>
+                <ToneDot tone={PRIORITY_TONE[task.priority]} />
+              </span>
+              <span className={cx('text-body leading-snug', isDone || isCancelled ? 'text-fg-faint line-through' : 'text-fg')}>
+                {task.title}
+              </span>
+            </div>
+            <div className="ml-4 mt-1 flex flex-wrap items-center gap-1.5">
+              {isCancelled && <TonePill tone="neutral">Cancelled</TonePill>}
+              <TonePill tone={DOMAIN_TONE[task.domain]}>{DOMAIN_LABEL[task.domain]}</TonePill>
+              {due?.text && (
+                <TonePill tone={due.tone} className="tabular-nums">
+                  {isOverdue(task) && <AlertTriangle className="h-3 w-3" aria-label="Overdue" />}
+                  {due.text}
+                </TonePill>
+              )}
+            </div>
+            {/* Description gets its OWN line — sharing the chip row squeezed it
+                to a 1px-wide slot that rendered nothing on a phone. */}
+            {task.description && (
+              <p className="ml-4 mt-0.5 line-clamp-1 w-full text-meta text-fg-muted">{task.description}</p>
+            )}
+            {parentTask && (
+              <p className="ml-4 mt-0.5 flex items-center gap-1 truncate text-meta text-fg-faint">
+                <CornerDownRight className="h-3 w-3 shrink-0" aria-hidden />
+                Subtask of <span className="truncate text-fg-muted">{parentTask.title}</span>
+              </p>
+            )}
+            {subtasks.length > 0 && (
               <button
-                onClick={() => setEditing(true)}
-                className="w-full text-left px-3 min-h-[44px] text-sm text-ink-700 data-[focus]:bg-ink-100"
-              >✎ Edit</button>
-            </MenuItem>
-            {onMoveUp && (
-              <MenuItem>
-                <button
-                  onClick={onMoveUp}
-                  disabled={!canMoveUp}
-                  className="w-full text-left px-3 min-h-[44px] text-sm text-ink-700 disabled:opacity-30 data-[focus]:bg-ink-100"
-                >↑ Move up</button>
-              </MenuItem>
+                type="button"
+                onClick={e => { e.stopPropagation(); setSubtasksOpen(o => !o) }}
+                aria-expanded={subtasksOpen}
+                className="ml-4 mt-1 inline-flex items-center gap-0.5 text-meta font-semibold text-accent-600"
+              >
+                {subtasksOpen ? <ChevronDown className="h-3.5 w-3.5" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
+                {subtasks.length} subtask{subtasks.length === 1 ? '' : 's'}
+              </button>
             )}
-            {onMoveDown && (
-              <MenuItem>
-                <button
-                  onClick={onMoveDown}
-                  disabled={!canMoveDown}
-                  className="w-full text-left px-3 min-h-[44px] text-sm text-ink-700 disabled:opacity-30 data-[focus]:bg-ink-100"
-                >↓ Move down</button>
-              </MenuItem>
-            )}
-            <MenuItem>
-              <button
-                onClick={() => setPickingParent(true)}
-                className="w-full text-left px-3 min-h-[44px] text-sm text-ink-700 data-[focus]:bg-ink-100"
-              >↳ Set parent…</button>
-            </MenuItem>
-            <MenuItem>
-              <button
-                onClick={() => setPickingList(true)}
-                className="w-full text-left px-3 min-h-[44px] text-sm text-ink-700 data-[focus]:bg-ink-100"
-              >📋 Move to list…</button>
-            </MenuItem>
-            {task.google_web_view_link && (
-              <MenuItem>
-                <a
-                  href={task.google_web_view_link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full block text-left px-3 min-h-[44px] leading-[44px] text-sm text-ink-700 data-[focus]:bg-ink-100"
-                >Open in Google Tasks ↗</a>
-              </MenuItem>
-            )}
-            {!isCancelled && (
-              <MenuItem>
-                <button
-                  onClick={() => handleCancel()}
-                  disabled={update.isPending}
-                  className="w-full text-left px-3 min-h-[44px] text-sm text-orange-600 data-[focus]:bg-ink-100"
-                  title="Cancel keeps a record, unlike Delete"
-                >⊘ Cancel</button>
-              </MenuItem>
-            )}
-            {/* Real gap: Cancel had no reverse. A task cancelled either by hand
-                or because a pull discovered it deleted on Google's side
-                (upsert_task_from_google's own google_deleted branch) had no
-                way back to active — reopening also re-fires migration 071's
-                "un-cancelled" trigger branch, which enqueues a fresh outbox
-                'create' since Google Tasks has no undelete of its own. */}
-            {isCancelled && (
-              <MenuItem>
-                <button
-                  onClick={() => handleReopen()}
-                  disabled={update.isPending}
-                  className="w-full text-left px-3 min-h-[44px] text-sm text-accent-600 data-[focus]:bg-ink-100"
-                  title="Reopen — re-creates it on Google Tasks if connected"
-                >↺ Reopen</button>
-              </MenuItem>
-            )}
-            <MenuItem>
-              <button
-                onClick={() => handleDelete()}
-                disabled={remove.isPending}
-                className="w-full text-left px-3 min-h-[44px] text-sm text-red-600 data-[focus]:bg-ink-100"
-              >✕ Delete</button>
-            </MenuItem>
-          </MenuItems>
-        </Menu>
-        {hovered && (
-          <div className="hidden lg:flex items-center gap-0.5 flex-shrink-0 mt-0.5">
-            {onMoveUp && (
-              <button
-                onClick={e => { e.stopPropagation(); onMoveUp() }}
-                disabled={!canMoveUp}
-                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
-                title="Move up"
-              >↑</button>
-            )}
-            {onMoveDown && (
-              <button
-                onClick={e => { e.stopPropagation(); onMoveDown() }}
-                disabled={!canMoveDown}
-                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-ink-600 disabled:opacity-20 transition-colors duration-150 text-xs"
-                title="Move down"
-              >↓</button>
-            )}
-            <button
-              onClick={e => { e.stopPropagation(); setEditing(true) }}
-              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[11px]"
-              title="Edit"
-            >✎</button>
-            <button
-              onClick={e => { e.stopPropagation(); setPickingParent(true) }}
-              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-xs"
-              title="Set parent task"
-            >↳</button>
-            <button
-              onClick={e => { e.stopPropagation(); setPickingList(true) }}
-              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[10px]"
-              title="Move to list"
-            >📋</button>
-            {task.google_web_view_link && (
-              <a
-                href={task.google_web_view_link}
-                target="_blank"
-                rel="noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-[10px]"
-                title="Open in Google Tasks"
-              >↗</a>
-            )}
-            {!isCancelled && (
-              <button
-                onClick={e => { e.stopPropagation(); handleCancel() }}
-                disabled={update.isPending}
-                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-orange-500 transition-colors duration-150 text-xs"
-                title="Cancel (keeps a record, unlike Delete)"
-              >⊘</button>
-            )}
-            {isCancelled && (
-              <button
-                onClick={e => { e.stopPropagation(); handleReopen() }}
-                disabled={update.isPending}
-                className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-accent-500 transition-colors duration-150 text-xs"
-                title="Reopen (re-creates it on Google Tasks if connected)"
-              >↺</button>
-            )}
-            <button
-              onClick={e => { e.stopPropagation(); handleDelete() }}
-              disabled={remove.isPending}
-              className="w-5 h-5 flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors duration-150 text-xs"
-              title="Delete"
-            >✕</button>
           </div>
-        )}
+
+          <ToDoItemMenu task={task} {...actions} />
+          {hovered && <ToDoItemHoverActions task={task} {...actions} />}
         </div>
       </div>
 
-      {/* Google's own subtask depth cap (a subtask can't itself be a parent —
-          verified against the Tasks API v1 discovery doc) means this never
-          recurses more than one level, so plain reuse of ToDoItem is safe. */}
+      {/* Google's own subtask depth cap (a subtask can't itself be a parent)
+          means this never recurses more than one level. */}
       {subtasksOpen && subtasks.length > 0 && (
-        <div className="ml-6 mt-1 flex flex-col gap-1 border-l border-ink-100 pl-2">
+        <div className="ml-6 mt-1 flex flex-col gap-1 border-l border-line pl-2">
           {subtasks.map(st => <ToDoItem key={st.id} task={st} />)}
         </div>
       )}
-
-      <UnifiedPlanModal
-        open={editing}
-        onClose={() => setEditing(false)}
-        config={{ heading: 'Edit Task' }}
-        task={task}
-      />
 
       <SetParentTaskSheet
         open={pickingParent}

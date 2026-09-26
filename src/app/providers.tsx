@@ -3,11 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { Router } from './router'
 import { applyStoredTheme } from './store'
+import { STALE } from '../shared/query'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5,
+      staleTime: STALE.default,
       retry: 1,
     },
   },

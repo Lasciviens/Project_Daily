@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useIngredientLibrary, useCreateIngredientLibraryItem, useUpdateIngredientLibraryItem, useDeleteIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { toast } from '../../../app/store'
+import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { lookupBarcode, type BarcodeProduct } from '../api/openFoodFactsApi'
 import { BarcodeScanner } from './BarcodeScanner'
 import { OnlineFoodSearch } from './OnlineFoodSearch'
@@ -119,15 +120,12 @@ export function IngredientManager() {
       food_group: f.group || null,
       ...(meta && !editingId ? { source: meta.source, source_ref: meta.source_ref, image_url: meta.image_url } : {}),
     }
-    const tid = toast.loading(editingId ? 'Saving…' : 'Adding…')
-    try {
+    const ok = await withProgress(async () => {
       if (editingId) await update.mutateAsync({ id: editingId, input })
       else await create.mutateAsync(input)
-      toast.dismiss(tid); toast.success(editingId ? 'Saved ✓' : 'Added ✓')
-      reset()
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    }
+      return true
+    }, { loading: editingId ? 'Saving…' : 'Adding…', success: editingId ? 'Saved ✓' : 'Added ✓' })
+    if (ok) reset()
   }
 
   const inputCls = 'min-h-[44px] px-2.5 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
@@ -266,11 +264,8 @@ export function IngredientManager() {
         message="This removes it from your food library."
         onConfirm={() => {
           if (!toDelete) return
-          const tid = toast.loading('Deleting…')
-          remove.mutate(toDelete.id, {
-            onSuccess: () => { toast.dismiss(tid); toast.success('Deleted ✓') },
-            onError:   e  => { toast.dismiss(tid); toast.error((e as Error).message ?? 'Failed') },
-          })
+          const id = toDelete.id
+          void withProgress(() => remove.mutateAsync(id), { loading: 'Deleting…', success: 'Deleted ✓' })
         }}
         onClose={() => setToDelete(null)}
       />

@@ -1,26 +1,30 @@
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Skeleton } from '../../../shared/ui'
 import { useHevyWorkoutDetail } from '../hooks/useHevyWorkouts'
 import { ExerciseThumb } from '../exerciseMedia'
 import { formatDurationBetween as fmtDuration } from '../../../shared/utils/formatDuration'
 import { fmtTrainingDateTime as fmtDateTime } from '../dateFormat'
 import type { HevySet } from '../types.hevy'
+import type { Tone } from '../../../shared/ui'
 
 interface Props {
+  /** null = closed (controlled callers); the `hevy-workout` entity modal always passes an id. */
   workoutId: string | null
   onClose: () => void
 }
 
-const SET_TYPE_CONFIG: Record<HevySet['type'], { label: string; className: string }> = {
-  warmup:  { label: 'W', className: 'bg-ink-100 text-ink-500' },
-  normal:  { label: 'N', className: 'bg-accent-100 text-accent-700' },
-  dropset: { label: 'D', className: 'bg-ink-800 text-white' },
-  failure: { label: 'F', className: 'bg-red-100 text-red-600' },
+const SET_TYPE: Record<HevySet['type'], { label: string; name: string; tone: Tone }> = {
+  warmup:  { label: 'W', name: 'Warm-up', tone: 'neutral' },
+  normal:  { label: 'N', name: 'Normal',  tone: 'accent' },
+  dropset: { label: 'D', name: 'Drop set', tone: 'info' },
+  failure: { label: 'F', name: 'Failure', tone: 'danger' },
 }
 
 function SetTypeBadge({ type }: { type: HevySet['type'] }) {
-  const cfg = SET_TYPE_CONFIG[type] ?? SET_TYPE_CONFIG.normal
+  const cfg = SET_TYPE[type] ?? SET_TYPE.normal
   return (
-    <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold ${cfg.className}`}>
+    <span data-tone={cfg.tone} title={cfg.name} aria-label={cfg.name}
+      className="inline-flex h-5 w-5 items-center justify-center rounded bg-[rgb(var(--tone-soft))] text-[10px] font-bold text-[rgb(var(--tone))]">
       {cfg.label}
     </span>
   )
@@ -28,123 +32,69 @@ function SetTypeBadge({ type }: { type: HevySet['type'] }) {
 
 export function HevyWorkoutDetail({ workoutId, onClose }: Props) {
   const { data: workout, isLoading } = useHevyWorkoutDetail(workoutId)
+  const exercises = workout?.exercises?.slice().sort((a, b) => a.index - b.index) ?? []
 
   return (
-    <Dialog open={!!workoutId} onClose={onClose} className="relative z-[60]">
-      <DialogBackdrop
-        transition
-        className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0"
-      />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel
-          transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
-        >
-          <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-ink-100">
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <h2 className="text-base font-semibold text-ink-900 truncate">
-                {workout?.title ?? '—'}
-              </h2>
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-ink-400">
-                <span>{fmtDateTime(workout?.start_time ?? null)}</span>
-                <span>{fmtDuration(workout?.start_time ?? null, workout?.end_time ?? null)}</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 transition-colors duration-150 text-xl leading-none shrink-0"
-            >
-              ×
-            </button>
-          </div>
+    <ModalShell
+      open={!!workoutId}
+      onClose={onClose}
+      size="lg"
+      title={workout?.title ?? (isLoading ? 'Loading…' : 'Workout')}
+      subtitle={workout ? `${fmtDateTime(workout.start_time ?? null)} · ${fmtDuration(workout.start_time ?? null, workout.end_time ?? null)}` : undefined}
+    >
+      {isLoading && (
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-row" className="h-12" />)}
+        </div>
+      )}
 
-          <div className="px-5 py-4 flex flex-col gap-4">
-            {isLoading && (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="h-12 rounded-lg bg-cream-200 animate-pulse" />
-                ))}
-              </div>
-            )}
+      {!isLoading && workout && exercises.length === 0 && (
+        <p className="py-4 text-center text-body text-fg-muted">No exercise data</p>
+      )}
 
-            {!isLoading && workout && (
-              <>
-                {(!workout.exercises || workout.exercises.length === 0) && (
-                  <p className="text-sm text-ink-400 py-4 text-center">No exercise data</p>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {workout.exercises
-                    ?.slice()
-                    .sort((a, b) => a.index - b.index)
-                    .map((ex) => (
-                      <div key={ex.id} className="flex flex-col gap-2 md:border md:border-ink-100 md:rounded-xl md:p-3">
-                        {/* Animated demo GIF (same fuzzy-match layer as Routines/
-                            Exercises — tap to enlarge with instructions) */}
-                        <div className="flex items-center gap-2.5">
-                          <ExerciseThumb title={ex.title} templateId={ex.exercise_template_id} size={44} />
-                          <div className="min-w-0">
-                            <h3 className="text-sm font-semibold text-ink-900">{ex.title}</h3>
-                            {ex.notes && (
-                              <p className="text-[12px] text-ink-400 mt-0.5">{ex.notes}</p>
-                            )}
-                          </div>
-                        </div>
-
-                        {ex.sets && ex.sets.length > 0 && (
-                          <div className="overflow-x-auto -mx-1">
-                            <table className="w-full text-xs min-w-[280px]">
-                              <thead>
-                                <tr className="text-[10px] font-semibold uppercase tracking-wider text-ink-400">
-                                  <th className="text-left py-1.5 px-1 w-6">#</th>
-                                  <th className="text-left py-1.5 px-1 w-8">Type</th>
-                                  <th className="text-left py-1.5 px-1">Weight × Reps</th>
-                                  <th className="text-left py-1.5 px-1">RPE</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {ex.sets
-                                  .slice()
-                                  .sort((a, b) => a.index - b.index)
-                                  .map((set) => (
-                                    <tr key={set.id} className="border-t border-ink-50">
-                                      <td className="py-1.5 px-1 text-ink-400">{set.index + 1}</td>
-                                      <td className="py-1.5 px-1">
-                                        <SetTypeBadge type={set.type} />
-                                      </td>
-                                      <td className="py-1.5 px-1 text-ink-700">
-                                        {set.weight_kg !== null ? `${set.weight_kg} kg` : '—'}
-                                        {' × '}
-                                        {set.reps !== null ? set.reps : '—'}
-                                      </td>
-                                      <td className="py-1.5 px-1 text-ink-400">
-                                        {set.rpe !== null ? `RPE ${set.rpe}` : '—'}
-                                      </td>
-                                    </tr>
-                                  ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+      {!isLoading && exercises.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {exercises.map(ex => (
+            <div key={ex.id} className="flex flex-col gap-2 md:rounded-card md:border md:border-line md:p-3">
+              {/* Demo GIF (same fuzzy-match layer as Routines/Exercises — tap to enlarge). */}
+              <div className="flex items-center gap-2.5">
+                <ExerciseThumb title={ex.title} templateId={ex.exercise_template_id} size={44} />
+                <div className="min-w-0">
+                  <h3 className="text-body font-semibold text-fg">{ex.title}</h3>
+                  {ex.notes && <p className="mt-0.5 text-meta text-fg-muted">{ex.notes}</p>}
                 </div>
-              </>
-            )}
-          </div>
+              </div>
 
-          <div className="px-5 pb-5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn-secondary w-full sm:w-auto min-h-[44px]"
-            >
-              Close
-            </button>
-          </div>
-        </DialogPanel>
-      </div>
-    </Dialog>
+              {ex.sets && ex.sets.length > 0 && (
+                <div className="-mx-1 overflow-x-auto">
+                  <table className="w-full min-w-[280px] text-meta">
+                    <thead>
+                      <tr className="section-label">
+                        <th className="w-6 px-1 py-1.5 text-left font-semibold">#</th>
+                        <th className="w-8 px-1 py-1.5 text-left font-semibold">Type</th>
+                        <th className="px-1 py-1.5 text-left font-semibold">Weight × reps</th>
+                        <th className="px-1 py-1.5 text-left font-semibold">RPE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ex.sets.slice().sort((a, b) => a.index - b.index).map(set => (
+                        <tr key={set.id} className="border-t border-line tabular-nums">
+                          <td className="px-1 py-1.5 text-fg-muted">{set.index + 1}</td>
+                          <td className="px-1 py-1.5"><SetTypeBadge type={set.type} /></td>
+                          <td className="px-1 py-1.5 text-fg-2">
+                            {set.weight_kg !== null ? `${set.weight_kg} kg` : '—'}{' × '}{set.reps !== null ? set.reps : '—'}
+                          </td>
+                          <td className="px-1 py-1.5 text-fg-muted">{set.rpe !== null ? `RPE ${set.rpe}` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </ModalShell>
   )
 }

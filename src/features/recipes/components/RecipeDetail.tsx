@@ -1,6 +1,10 @@
 import { useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { ChefHat, Flame, Minus, Plus, ShoppingBag, UtensilsCrossed, ExternalLink } from 'lucide-react'
 import { toast } from '../../../app/store'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { entityModal } from '../../../shared/modals/useEntityModal'
+import { Button, IconButton } from '../../../shared/ui'
+import { cx } from '../../../shared/ui/cx'
 import { useDeleteRecipe, useIncrementTimesCooked } from '../hooks/useRecipes'
 import { useAddMissingIngredientsToShop } from '../hooks/useShopIntegration'
 import { useAddFoodLogEntries } from '../hooks/useFoodLog'
@@ -8,7 +12,6 @@ import { recipeSnapshot } from '../api/foodLogApi'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MacroBar } from './MacroBar'
 import { CookMode } from './CookMode'
-import { ConfirmDialog } from './ConfirmDialog'
 import type { RecipeWithIngredients, MealSlot } from '../types'
 
 function slotForNow(): MealSlot {
@@ -30,7 +33,8 @@ const LOG_SLOTS: { slot: MealSlot; label: string }[] = [
 interface Props {
   recipe: RecipeWithIngredients
   onClose: () => void
-  onEdit: (recipe: RecipeWithIngredients) => void
+  /** Defaults to opening the shared `recipe` editor popup. */
+  onEdit?: (recipe: RecipeWithIngredients) => void
 }
 
 // Scale a base quantity by the serving factor and print it cleanly (max 2
@@ -51,7 +55,6 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const [have,      setHave]     = useState<Set<string>>(new Set())
   const [cookMode,  setCookMode] = useState(false)
   const [imgError,  setImgError] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const remove       = useDeleteRecipe()
   const addToShop    = useAddMissingIngredientsToShop()
   const cooked        = useIncrementTimesCooked()
@@ -59,10 +62,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const factor = recipe.servings > 0 ? servings / recipe.servings : 1
 
   function handleMadeThis() {
-    cooked.mutate({ id: recipe.id, current: recipe.times_cooked }, {
-      onSuccess: () => toast.success(recipe.times_cooked === 0 ? 'First time — nice! 🎉' : `Made it ${recipe.times_cooked + 1} times 🔥`),
-      onError:   e  => toast.error((e as Error).message),
-    })
+    cooked.mutate({ id: recipe.id, current: recipe.times_cooked })
   }
 
   // Log this recipe to the diary as ONE named line (recipe_id + a macro
@@ -74,10 +74,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
       date: logDate, meal_slot: logSlot,
       recipe_id: recipe.id, quantity: ate, unit: 'serving',
       ...recipeSnapshot(recipe, ate),
-    }], {
-      onSuccess: () => toast.success(`Logged ${ate}× to ${logSlot} ✓`),
-      onError:   e  => toast.error((e as Error).message),
-    })
+    }])
   }
 
   function toggleHave(id: string) {
@@ -90,7 +87,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
 
   function handleAddMissingToShop() {
     const missing = recipe.ingredients.filter(i => !have.has(i.id))
-    if (!missing.length) { toast.error('Everything is checked off — nothing to add'); return }
+    if (!missing.length) { toast.warning('Everything is checked off — nothing to add'); return }
     // REAL BUG, fixed: every ON-SCREEN quantity already scales by `factor`
     // (via `scaledQty`), but this used to push the recipe's RAW base
     // quantities to Shop unscaled — double a batch before shopping and the
@@ -99,22 +96,22 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
       ...i,
       quantity: i.quantity == null ? null : Math.round(i.quantity * factor * 100) / 100,
     }))
-    const tid = toast.loading('Adding to Shop…')
-    addToShop.mutate({ ingredients: missingScaled, recipeTitle: recipe.title }, {
-      onSuccess: (count) => { toast.dismiss(tid); toast.success(`Added ${count} item${count !== 1 ? 's' : ''} to Shop ✓`) },
-      onError:   (e)     => { toast.dismiss(tid); toast.error((e as Error).message) },
-    })
+    addToShop.mutate({ ingredients: missingScaled, recipeTitle: recipe.title })
   }
 
   const macro = (perServing: number | null) =>
     perServing == null ? null : Math.round(perServing * servings)
 
-  function handleDelete() {
-    const tid = toast.loading('Deleting…')
-    remove.mutate(recipe.id, {
-      onSuccess: () => { toast.dismiss(tid); toast.success('Deleted'); onClose() },
-      onError:   e  => { toast.dismiss(tid); toast.error((e as Error).message) },
-    })
+  async function handleDelete() {
+    const ok = await entityModal.confirm({ title: `Delete "${recipe.title}"?`, message: "This can't be undone.", confirmLabel: 'Delete recipe' })
+    if (!ok) return
+    remove.mutate(recipe.id, { onSuccess: onClose })
+  }
+
+  function handleEdit() {
+    if (onEdit) { onEdit(recipe); return }
+    onClose()
+    entityModal.open({ kind: 'recipe', id: recipe.id })
   }
 
   const steps = (recipe.instructions ?? '').split('\n').map(s => s.trim()).filter(Boolean)
@@ -129,195 +126,171 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
 
   const hasImage = !!recipe.image_url && !imgError
 
+  const stepper = 'icon-btn-bordered'
+
   return (
-    <Dialog open onClose={onClose} className="relative z-[65]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          {/* Cover image banner */}
-          {hasImage && (
-            <div className="relative w-full aspect-[16/9] flex-shrink-0">
-              <img src={recipe.image_url!} alt={recipe.title} onError={() => setImgError(true)} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-              <button onClick={onClose} className="absolute top-3 right-3 min-w-[44px] min-h-[44px] flex items-center justify-center text-white bg-black/30 hover:bg-black/50 rounded-full text-lg transition-colors">×</button>
-              {recipe.times_cooked > 0 && (
-                <span className="absolute bottom-3 left-4 flex items-center gap-1 text-xs font-semibold bg-black/40 text-white px-2 py-1 rounded-full backdrop-blur-sm">
-                  🔥 Made {recipe.times_cooked}×
-                </span>
-              )}
+    <ModalShell
+      onClose={onClose}
+      size="lg"
+      title={hasImage ? undefined : recipe.title}
+      subtitle={hasImage ? undefined : recipe.description ?? undefined}
+      hero={hasImage ? (
+        <div className="relative aspect-[16/9] w-full">
+          <img src={recipe.image_url!} alt="" onError={() => setImgError(true)} className="h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-scrim/80 via-scrim/10 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 p-4">
+            {recipe.times_cooked > 0 && (
+              <span className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-scrim/50 px-2 py-0.5 text-meta font-semibold text-white backdrop-blur-sm">
+                <Flame className="h-3.5 w-3.5" aria-hidden /> Made {recipe.times_cooked}×
+              </span>
+            )}
+            <h2 className="text-title font-semibold text-white">{recipe.title}</h2>
+            {recipe.description && <p className="line-clamp-2 text-meta text-white/80">{recipe.description}</p>}
+          </div>
+        </div>
+      ) : undefined}
+      footer={
+        <div className="flex gap-2">
+          <Button variant="ghost" className="text-danger" onClick={handleDelete} loading={remove.isPending}>Delete</Button>
+          <Button variant="primary" block onClick={handleEdit}>Edit recipe</Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {/* Serving scaler + cook actions. Phones: the action cluster drops to
+            its own row; Cook mode is icon-only below sm. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex items-center gap-2">
+            <span className="section-label">Servings</span>
+            <div className="flex items-center gap-1">
+              <button type="button" aria-label="Fewer servings" onClick={() => setServings(s => Math.max(1, s - 1))} className={stepper}><Minus className="h-4 w-4" aria-hidden /></button>
+              <span className="w-10 text-center text-ui font-bold text-fg tabular-nums">{servings}</span>
+              <button type="button" aria-label="More servings" onClick={() => setServings(s => s + 1)} className={stepper}><Plus className="h-4 w-4" aria-hidden /></button>
             </div>
-          )}
-
-          <div className={`flex items-start justify-between gap-2 px-5 pt-5 pb-3 border-b border-ink-100 sticky top-0 bg-cream-50 z-10 ${hasImage ? '-mt-4 rounded-t-2xl' : ''}`}>
-            <div className="min-w-0">
-              <h2 className="text-base font-bold text-ink-900 leading-snug">{recipe.title}</h2>
-              {recipe.description && <p className="text-xs text-ink-400 mt-0.5">{recipe.description}</p>}
-            </div>
-            {!hasImage && (
-              <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl flex-shrink-0">×</button>
+            {servings !== recipe.servings && (
+              <button type="button" onClick={() => setServings(recipe.servings)} className="min-h-[44px] px-1 text-meta font-semibold text-accent-600">Reset</button>
             )}
           </div>
-
-          <div className="px-5 py-4 flex flex-col gap-4">
-            {/* Serving scaler + Cook actions. Mobile: the action cluster drops
-                to its OWN row (the single wrapping row was cramped); Cook Mode
-                is icon-only below sm to keep the cluster on one line. */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Servings</span>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setServings(s => Math.max(1, s - 1))} className="min-w-[44px] min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">−</button>
-                  <span className="w-10 text-center text-sm font-bold text-ink-900 tabular-nums">{servings}</span>
-                  <button onClick={() => setServings(s => s + 1)} className="min-w-[44px] min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:bg-cream-50">+</button>
-                </div>
-                {servings !== recipe.servings && (
-                  <button onClick={() => setServings(recipe.servings)} className="min-h-[44px] px-1 text-[11px] text-accent-600 hover:text-accent-700">reset</button>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap sm:ml-auto">
-                {/* Portions EATEN — free entry (type 0.3, 1.5, 2…), not just
-                    ±0.5 steps; a batch's portion is a free % of its yield. */}
-                <div className="flex items-center rounded-lg border border-accent-300 overflow-hidden">
-                  <button onClick={() => setAte(a => Math.max(0.1, Math.round((a - 0.5) * 10) / 10))} aria-label="less"
-                    className="min-w-[36px] min-h-[44px] text-accent-700 hover:bg-accent-50 leading-none">−</button>
-                  <input value={ate} onChange={e => { const n = Number(e.target.value.replace(',', '.')); setAte(Number.isFinite(n) && n > 0 ? n : 0) }} inputMode="decimal"
-                    className="w-10 text-center text-xs font-bold text-ink-900 tabular-nums bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 min-h-[44px]" />
-                  <button onClick={() => setAte(a => Math.round((a + 0.5) * 10) / 10)} aria-label="more"
-                    className="min-w-[36px] min-h-[44px] text-accent-700 hover:bg-accent-50 leading-none">+</button>
-                </div>
-                <button onClick={handleLog} disabled={logFood.isPending || ate <= 0} title="Log the eaten portions to today's diary"
-                  className="min-h-[44px] px-3 text-xs font-semibold bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors disabled:opacity-50 whitespace-nowrap">
-                  🍽️ {logFood.isPending ? 'Logging…' : 'I ate this'}
-                </button>
-                {steps.length > 0 && (
-                  <button onClick={() => setCookMode(true)} title="Cook Mode" aria-label="Cook Mode"
-                    className="min-h-[44px] min-w-[44px] px-3 flex items-center justify-center gap-1 text-xs font-semibold bg-ink-950 text-white rounded-lg hover:bg-ink-800 transition-colors">
-                    👨‍🍳 <span className="hidden sm:inline">Cook Mode</span>
-                  </button>
-                )}
-                <button onClick={handleMadeThis} disabled={cooked.isPending} title="I made this (counter only)" className="min-h-[44px] min-w-[44px] flex items-center justify-center text-base bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors disabled:opacity-50">
-                  🔥
-                </button>
-              </div>
+          <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto sm:flex-nowrap">
+            {/* Portions EATEN — free entry (0.3, 1.5, 2…), not just ±0.5 steps. */}
+            <div className="flex items-center overflow-hidden rounded-control border border-line bg-surface-2">
+              <button type="button" onClick={() => setAte(a => Math.max(0.1, Math.round((a - 0.5) * 10) / 10))} aria-label="Fewer portions eaten"
+                className="grid min-h-[44px] min-w-[36px] place-items-center text-fg-2 hover:bg-surface-hover"><Minus className="h-4 w-4" aria-hidden /></button>
+              <input value={ate} aria-label="Portions eaten" inputMode="decimal"
+                onChange={e => { const n = Number(e.target.value.replace(',', '.')); setAte(Number.isFinite(n) && n > 0 ? n : 0) }}
+                className="min-h-[44px] w-10 bg-transparent text-center text-body font-bold text-fg tabular-nums focus:outline-none" />
+              <button type="button" onClick={() => setAte(a => Math.round((a + 0.5) * 10) / 10)} aria-label="More portions eaten"
+                className="grid min-h-[44px] min-w-[36px] place-items-center text-fg-2 hover:bg-surface-hover"><Plus className="h-4 w-4" aria-hidden /></button>
             </div>
-
-            {/* When + where "I ate this" logs to — defaults to today + the
-                time-of-day slot, both editable so a past meal can be backfilled. */}
-            <div className="flex items-center gap-2 flex-wrap -mt-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Log to</span>
-              <input type="date" value={logDate} max={formatLocalDate(new Date())} onChange={e => setLogDate(e.target.value)}
-                className="min-h-[40px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50 text-ink-800 focus:outline-none focus:ring-2 focus:ring-accent-400" />
-              <select value={logSlot} onChange={e => setLogSlot(e.target.value as MealSlot)}
-                className="min-h-[40px] px-2 text-xs border border-ink-200 rounded-lg bg-cream-50 text-ink-800 focus:outline-none focus:ring-2 focus:ring-accent-400">
-                {LOG_SLOTS.map(s => <option key={s.slot} value={s.slot}>{s.label}</option>)}
-              </select>
-            </div>
-
-            {/* What "I ate this" will log — portion as a % of the batch + kcal.
-                REAL BUG, fixed: this used to divide by `recipe.servings` (the
-                recipe's base/original yield), never the currently-scaled
-                `servings` state — doubling the batch before logging kept
-                showing "of {original} portions" and roughly doubled the
-                reported "% of the batch" relative to what was actually
-                cooked. `recipe.calories` itself is per-serving and stays
-                correct either way — only this descriptive line was wrong. */}
-            {ate > 0 && (recipe.calories != null || servings > 1) && (
-              <p className="text-[11px] text-ink-400 tabular-nums -mt-2">
-                Eating <strong className="text-ink-600">{ate}</strong> of {servings} portion{servings === 1 ? '' : 's'}
-                {servings > 0 && <span> · {Math.round((ate / servings) * 100)}% of the batch</span>}
-                {recipe.calories != null && <span> · logs <strong className="text-ink-600">{Math.round(recipe.calories * ate)}</strong> kcal</span>}
-              </p>
-            )}
-
-            {/* Macros (scaled to selected servings) */}
-            {totals.length > 0 && (
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-                {totals.map(t => (
-                  <div key={t.label} className="text-center bg-ink-50 rounded-lg py-2">
-                    <div className="text-sm font-bold text-ink-900">{t.v}{t.suffix ?? ''}</div>
-                    <div className="text-[10px] text-ink-400">{t.label}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {totals.length > 0 && <MacroBar protein={macro(recipe.protein_g)} carbs={macro(recipe.carbs_g)} fat={macro(recipe.fat_g)} />}
-
-            {/* Ingredients — checkbox = "I already have this" */}
-            {recipe.ingredients.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Ingredients</label>
-                  <span className="text-[10px] text-ink-400">Check what you already have</span>
-                </div>
-                <ul className="flex flex-col gap-0.5">
-                  {recipe.ingredients.map(ing => {
-                    const checked = have.has(ing.id)
-                    return (
-                      <li key={ing.id}>
-                        <button
-                          type="button" onClick={() => toggleHave(ing.id)}
-                          className={`w-full flex items-center gap-2 text-sm text-left rounded-lg px-1.5 py-1 min-h-[44px] transition-colors ${checked ? 'opacity-50' : 'hover:bg-cream-50'}`}
-                        >
-                          <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${checked ? 'bg-accent-500 border-accent-500' : 'border-ink-300'}`}>
-                            {checked && <span className="text-white text-[9px] font-bold leading-none">✓</span>}
-                          </span>
-                          <span className={`font-medium tabular-nums text-ink-900 min-w-[3rem] ${checked ? 'line-through' : ''}`}>
-                            {scaledQty(ing.quantity, factor)} {ing.unit ?? ''}
-                          </span>
-                          <span className={`flex-1 text-ink-800 ${checked ? 'line-through' : ''}`}>
-                            {ing.name}{ing.note ? <span className="text-ink-400"> · {ing.note}</span> : ''}
-                          </span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-                <button
-                  onClick={handleAddMissingToShop}
-                  disabled={addToShop.isPending}
-                  className="mt-2 w-full min-h-[40px] text-xs font-medium text-accent-600 border border-accent-200 rounded-lg hover:bg-accent-50 disabled:opacity-50 transition-colors"
-                >
-                  🛍️ Add missing to Shop
-                </button>
-              </div>
-            )}
-
-            {/* Instructions */}
+            <Button variant="primary" size="sm" icon={<UtensilsCrossed />} onClick={handleLog} loading={logFood.isPending} disabled={ate <= 0}
+              title="Log the eaten portions to the diary">
+              I ate this
+            </Button>
             {steps.length > 0 && (
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Instructions</label>
-                <ol className="flex flex-col gap-2">
-                  {steps.map((s, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-ink-700">
-                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-accent-100 text-accent-700 text-[11px] font-bold flex items-center justify-center">{i + 1}</span>
-                      <span className="flex-1 leading-snug">{s}</span>
-                    </li>
-                  ))}
-                </ol>
+              <Button size="sm" icon={<ChefHat />} onClick={() => setCookMode(true)} aria-label="Cook mode">
+                <span className="hidden sm:inline">Cook mode</span>
+              </Button>
+            )}
+            <IconButton label="I made this (counter only)" bordered onClick={handleMadeThis} disabled={cooked.isPending}>
+              <Flame />
+            </IconButton>
+          </div>
+        </div>
+
+        {/* When + where "I ate this" logs to — defaults to today + the
+            time-of-day slot, both editable so a past meal can be backfilled. */}
+        <div className="-mt-1 flex flex-wrap items-center gap-2">
+          <span className="section-label">Log to</span>
+          <input type="date" value={logDate} max={formatLocalDate(new Date())} onChange={e => setLogDate(e.target.value)}
+            aria-label="Log date" className="input w-auto" />
+          <select value={logSlot} onChange={e => setLogSlot(e.target.value as MealSlot)} aria-label="Meal slot" className="select w-auto">
+            {LOG_SLOTS.map(s => <option key={s.slot} value={s.slot}>{s.label}</option>)}
+          </select>
+        </div>
+
+        {/* What "I ate this" will log. Divides by the currently-scaled
+            `servings` (not the recipe's base yield) — the "% of the batch"
+            used to double when the batch was scaled up. */}
+        {ate > 0 && (recipe.calories != null || servings > 1) && (
+          <p className="-mt-2 text-meta text-fg-muted tabular-nums">
+            Eating <strong className="text-fg-2">{ate}</strong> of {servings} portion{servings === 1 ? '' : 's'}
+            {servings > 0 && <span> · {Math.round((ate / servings) * 100)}% of the batch</span>}
+            {recipe.calories != null && <span> · logs <strong className="text-fg-2">{Math.round(recipe.calories * ate)}</strong> kcal</span>}
+          </p>
+        )}
+
+        {/* Macros (scaled to selected servings) */}
+        {totals.length > 0 && (
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+            {totals.map(t => (
+              <div key={t.label} className="rounded-row bg-surface-2 py-2 text-center">
+                <div className="text-ui font-bold text-fg tabular-nums">{t.v}{t.suffix ?? ''}</div>
+                <div className="text-micro text-fg-muted">{t.label}</div>
               </div>
-            )}
-
-            {recipe.source_url && (
-              <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:text-blue-700 underline">Source ↗</a>
-            )}
+            ))}
           </div>
+        )}
+        {totals.length > 0 && <MacroBar protein={macro(recipe.protein_g)} carbs={macro(recipe.carbs_g)} fat={macro(recipe.fat_g)} />}
 
-          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-cream-50">
-            <button onClick={() => setConfirmDelete(true)} className="min-h-[44px] px-4 text-sm font-medium text-red-500 hover:bg-red-50 rounded-xl">Delete</button>
-            <button onClick={() => onEdit(recipe)} className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600">Edit</button>
-          </div>
-        </DialogPanel>
+        {/* Ingredients — checkbox = "I already have this" */}
+        {recipe.ingredients.length > 0 && (
+          <section>
+            <div className="mb-1.5 flex items-center justify-between">
+              <h3 className="section-label">Ingredients</h3>
+              <span className="text-meta text-fg-muted">Check what you already have</span>
+            </div>
+            <ul className="flex flex-col gap-0.5">
+              {recipe.ingredients.map(ing => {
+                const checked = have.has(ing.id)
+                return (
+                  <li key={ing.id}>
+                    <button
+                      type="button" onClick={() => toggleHave(ing.id)} aria-pressed={checked}
+                      className={cx('row row-interactive w-full px-1.5 text-left text-body', checked && 'opacity-50')}
+                    >
+                      <span className={cx('flex h-4 w-4 shrink-0 items-center justify-center rounded border-2', checked ? 'border-accent-500 bg-accent-500' : 'border-line-strong')}>
+                        {checked && <span className="text-[9px] font-bold leading-none text-on-accent">✓</span>}
+                      </span>
+                      <span className={cx('min-w-[3rem] font-medium text-fg tabular-nums', checked && 'line-through')}>
+                        {scaledQty(ing.quantity, factor)} {ing.unit ?? ''}
+                      </span>
+                      <span className={cx('flex-1 text-fg-2', checked && 'line-through')}>
+                        {ing.name}{ing.note ? <span className="text-fg-muted"> · {ing.note}</span> : ''}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <Button size="sm" block className="mt-2" icon={<ShoppingBag />} onClick={handleAddMissingToShop} loading={addToShop.isPending}>
+              Add missing to Shop
+            </Button>
+          </section>
+        )}
+
+        {steps.length > 0 && (
+          <section>
+            <h3 className="section-label mb-1.5">Instructions</h3>
+            <ol className="flex flex-col gap-2">
+              {steps.map((st, i) => (
+                <li key={i} className="flex gap-2 text-body text-fg-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-50 text-micro font-bold text-accent-700 tabular-nums">{i + 1}</span>
+                  <span className="flex-1 leading-snug">{st}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {recipe.source_url && (
+          <a href={recipe.source_url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex min-h-[44px] items-center gap-1 self-start text-meta font-semibold text-accent-600">
+            Source <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+          </a>
+        )}
       </div>
 
       {cookMode && <CookMode recipe={recipe} steps={steps} onClose={() => setCookMode(false)} />}
-
-      <ConfirmDialog
-        open={confirmDelete}
-        title={`Delete "${recipe.title}"?`}
-        message="This can't be undone."
-        onConfirm={handleDelete}
-        onClose={() => setConfirmDelete(false)}
-      />
-    </Dialog>
+    </ModalShell>
   )
 }

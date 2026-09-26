@@ -1,6 +1,7 @@
 import { useMovieFull, useTVFull } from '../hooks/useTMDB'
 import { MediaDetailBody } from './MediaDetailBody'
-import { Sheet } from '../../../shared/components/Sheet'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Skeleton as Bone } from '../../../shared/ui'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import type { UserMovieEntry, UserTVEntry } from '../types'
 
@@ -15,13 +16,13 @@ interface Props {
 
 function Skeleton() {
   return (
-    <div className="p-5 flex gap-4">
-      <div className="w-32 aspect-[2/3] rounded-xl bg-cream-200 animate-pulse flex-shrink-0" />
+    <div className="flex gap-4 p-5">
+      <Bone rounded="rounded-card" className="aspect-[2/3] w-32 shrink-0" />
       <div className="flex-1 space-y-3">
-        <div className="h-4 bg-cream-200 animate-pulse rounded w-3/4" />
-        <div className="h-3 bg-cream-200 animate-pulse rounded w-full" />
-        <div className="h-3 bg-cream-200 animate-pulse rounded w-5/6" />
-        <div className="h-3 bg-cream-200 animate-pulse rounded w-2/3" />
+        <Bone className="h-4 w-3/4" />
+        <Bone className="h-3 w-full" />
+        <Bone className="h-3 w-5/6" />
+        <Bone className="h-3 w-2/3" />
       </div>
     </div>
   )
@@ -47,49 +48,33 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
     ? `https://image.tmdb.org/t/p/w780${detail.backdrop_path}`
     : null
 
-  // Bottom-sheet on mobile (grab handle, slides up), centered dialog on desktop —
-  // via the shared Sheet primitive. No `title` prop: the backdrop hero below is
-  // the header, carrying the poster/title/rating overlay + its own close button.
+  // The backdrop hero is the header (poster, title, rating); ModalShell floats
+  // its close button over it. Phones: bottom sheet; sm+: centered dialog.
   return (
-    <Sheet open={tmdbId !== null} onClose={onClose} size="lg">
-      {/* Backdrop hero (shrunk on mobile so the overview clears the fold) */}
-      <div className="relative h-28 sm:h-48 flex-shrink-0 bg-ink-200">
-        {backdrop && (
-          <img
-            src={backdrop}
-            alt=""
-            className="w-full h-full object-cover"
-          />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-        <button
-          onClick={onClose}
-          className="press-feedback absolute top-3 right-3 w-11 h-11 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors duration-150 text-lg"
-          aria-label="Close"
-        >
-          ×
-        </button>
-        <div className="absolute bottom-0 left-0 p-4">
-          <div className="flex items-end gap-3">
-            {detail && (
-              <img
-                src={posterUrl(detail.poster_path, 'w92')}
-                alt={title}
-                className="w-10 rounded-md flex-shrink-0"
-              />
-            )}
-            <div>
-              {title && <h2 className="text-white font-semibold text-lg leading-tight">{title}</h2>}
-              <div className="flex items-center gap-2 text-white/70 text-xs">
-                {year && <span>{year}</span>}
-                {detail?.vote_average ? <span>★ {detail.vote_average.toFixed(1)}</span> : null}
+    <ModalShell
+      open={tmdbId !== null}
+      onClose={onClose}
+      size="lg"
+      bodyClassName=""
+      hero={
+        <div className="relative h-28 shrink-0 bg-surface-2 sm:h-48">
+          {backdrop && <img src={backdrop} alt="" className="h-full w-full object-cover" />}
+          <div className="absolute inset-0 bg-gradient-to-t from-scrim/80 via-scrim/20 to-transparent" />
+          <div className="absolute bottom-0 left-0 p-4">
+            <div className="flex items-end gap-3">
+              {detail && <img src={posterUrl(detail.poster_path, 'w92')} alt="" className="w-10 shrink-0 rounded-md" />}
+              <div>
+                {title && <h2 className="text-title font-semibold leading-tight text-white">{title}</h2>}
+                <div className="flex items-center gap-2 text-meta text-white/70 tabular-nums">
+                  {year && <span>{year}</span>}
+                  {detail?.vote_average ? <span>★ {detail.vote_average.toFixed(1)}</span> : null}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Body */}
+      }
+    >
       {loading || !detail ? (
         <Skeleton />
       ) : (
@@ -101,6 +86,6 @@ export function MediaDetailModal({ tmdbId, mediaType, userEntry, onClose, onAdde
           onOpenDetail={onOpenDetail}
         />
       )}
-    </Sheet>
+    </ModalShell>
   )
 }

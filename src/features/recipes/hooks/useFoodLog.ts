@@ -1,17 +1,18 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
 import {
   fetchFoodLog, addFoodLogEntries, deleteFoodLogEntry, updateFoodLogEntry, fetchRecentFoods, fetchFoodLogRange,
-  fetchFoodFavorites, addFoodFavorite, removeFoodFavorite, hideRecentFood, type LoggedFood, type RecentFood,
+  fetchFoodLogEntry, fetchFoodFavorites, addFoodFavorite, removeFoodFavorite, hideRecentFood, type LoggedFood, type RecentFood,
 } from '../api/foodLogApi'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import type { FoodLogEntry, FoodLogEntryInput } from '../types'
 
 export function useFoodLog(date: string) {
   return useQuery({
-    queryKey: ['food-log', date],
+    queryKey: qk.foodLog.day(date),
     queryFn:  () => fetchFoodLog(date),
-    staleTime: 30_000,
+    staleTime: STALE.live,
   })
 }
 
@@ -19,9 +20,9 @@ export function useFoodLog(date: string) {
 // prefix so the existing invalidation refreshes it after any log/edit/delete.
 export function useFoodLogRange(from: string, to: string) {
   return useQuery({
-    queryKey: ['food-log', 'range', from, to],
+    queryKey: qk.foodLog.range(from, to),
     queryFn:  () => fetchFoodLogRange(from, to),
-    staleTime: 30_000,
+    staleTime: STALE.live,
   })
 }
 
@@ -29,60 +30,50 @@ export function useFoodLogRange(from: string, to: string) {
 // to re-log with its own snapshot macros. Feeds the Daily card's recent chips.
 export function useRecentFoods() {
   return useQuery({
-    queryKey: ['food-log', 'recent-foods'],
+    queryKey: qk.foodLog.recents(),
     queryFn:  () => fetchRecentFoods(shiftDateStr(todayStr(), -30)),
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 }
 
-// Same, but scoped to the 'supplement' slot — the fast re-log chips in the
-// dedicated Supplements modal (creatine/whey/etc. you already take).
-export function useRecentSupplements() {
+/** One diary row by id (the edit popup's source of truth). */
+export function useFoodLogEntry(id: string | null | undefined) {
   return useQuery({
-    queryKey: ['food-log', 'recent-supplements'],
-    queryFn:  () => fetchRecentFoods(shiftDateStr(todayStr(), -60), 'supplement'),
-    staleTime: 5 * 60_000,
+    // TODO(qk): move to a qk.foodLog.entry(id) builder.
+    queryKey: [...qk.foodLog.all, 'entry', id ?? ''] as const,
+    queryFn:  () => fetchFoodLogEntry(id!),
+    enabled:  !!id,
+    staleTime: STALE.live,
   })
 }
 
-function useInvalidateNutrition() {
-  const qc = useQueryClient()
-  return () => {
-    qc.invalidateQueries({ queryKey: ['food-log'] })
-    // NutritionCard reads under ['meal-plan','day-nutrition',date] — a plain
-    // ['day-nutrition'] key does NOT prefix-match it, so the card would go
-    // stale after a log/delete. Invalidate the whole ['meal-plan'] namespace
-    // (same one the Recipes meal planner uses) so every nutrition view refreshes.
-    qc.invalidateQueries({ queryKey: ['meal-plan'] })
-  }
-}
-
+// Every write below refreshes the whole `nutrition` group: the Daily card
+// reads under ['meal-plan','day-nutrition',date], which a food-log-only
+// invalidation would miss (the documented stale-ring bug).
 export function useAddFoodLogEntries() {
-  const invalidate = useInvalidateNutrition()
   return useMutationWithFeedback({
     action:         'add_food_log_entries',
-    successMessage: 'Logged ✓',
+    successMessage: (_: void, entries: FoodLogEntryInput[]) =>
+      entries.length > 1 ? `Logged ${entries.length} items` : `Logged to ${entries[0]?.meal_slot ?? 'diary'}`,
     mutationFn:     (entries: FoodLogEntryInput[]) => addFoodLogEntries(entries),
-    onSuccess:      () => invalidate(),
+    invalidates:    ['nutrition'],
   })
 }
 
 export function useDeleteFoodLogEntry() {
-  const invalidate = useInvalidateNutrition()
   return useMutationWithFeedback({
-    action:     'delete_food_log_entry',
-    mutationFn: ({ id }: { id: string; date: string }) => deleteFoodLogEntry(id),
-    onSuccess:  () => invalidate(),
+    action:      'delete_food_log_entry',
+    mutationFn:  ({ id }: { id: string; date: string }) => deleteFoodLogEntry(id),
+    invalidates: ['nutrition'],
   })
 }
 
 export function useUpdateFoodLogEntry() {
-  const invalidate = useInvalidateNutrition()
   return useMutationWithFeedback({
     action:         'update_food_log_entry',
-    successMessage: 'Updated ✓',
+    successMessage: 'Updated',
     mutationFn:     ({ id, patch }: { id: string; patch: Parameters<typeof updateFoodLogEntry>[1] }) => updateFoodLogEntry(id, patch),
-    onSuccess:      () => invalidate(),
+    invalidates:    ['nutrition'],
   })
 }
 
@@ -91,40 +82,37 @@ export function useUpdateFoodLogEntry() {
 // hasn't been logged in a while.
 export function useFoodFavorites() {
   return useQuery({
-    queryKey: ['food-log', 'favorites'],
+    queryKey: qk.foodLog.favorites(),
     queryFn:  fetchFoodFavorites,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   })
 }
 
 export function useAddFoodFavorite() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'add_food_favorite',
-    successMessage: 'Added to favourites ✓',
+    successMessage: 'Added to favourites',
     mutationFn:     (food: RecentFood) => addFoodFavorite(food),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: ['food-log', 'favorites'] }),
+    invalidates:    [qk.foodLog.favorites()],
   })
 }
 
 export function useRemoveFoodFavorite() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
-    action:     'remove_food_favorite',
-    mutationFn: (foodKey: string) => removeFoodFavorite(foodKey),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['food-log', 'favorites'] }),
+    action:      'remove_food_favorite',
+    mutationFn:  (foodKey: string) => removeFoodFavorite(foodKey),
+    invalidates: [qk.foodLog.favorites()],
   })
 }
 
 // "Remove from Recent" — a standing preference (migration 087), not a
 // one-off dismissal; persists across sessions/devices.
 export function useHideRecentFood() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'hide_recent_food',
-    successMessage: 'Removed from Recent',
+    successMessage: 'Removed from recent',
     mutationFn:     (foodKey: string) => hideRecentFood(foodKey),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: ['food-log', 'recent-foods'] }),
+    invalidates:    [qk.foodLog.recents()],
   })
 }
 

@@ -28,13 +28,11 @@ const READY_AT = MAX_PULL * (1 - Math.exp(-THRESHOLD / MAX_PULL))
 // root scroller does), so this hook keeps control even while the gesture
 // is still ambiguous during the slop window.
 //
-// This hook is mounted ONCE at the app shell (src/app/layout.tsx). Most
-// pages scroll in <main> itself (the container this hook is attached to),
-// but the Personal group (Daily/Shop/Recipes, via PersonalLayout) scrolls
-// inside its own nested overflow-y-auto container — isAtTop() walks up from
-// the touch target looking for the nearest scrollable ancestor and checks
-// its scrollTop; if none is found before reaching <main>, it checks
-// <main>'s own scrollTop.
+// This hook is mounted ONCE at the app shell (src/app/shell/AppShell.tsx)
+// and attached to <main>, which every page scrolls in. A page with its own
+// scrolling pane (Shop's wishlist column) is still handled: isAtTop() walks
+// up from the touch target to the nearest scrollable ancestor and checks its
+// scrollTop; if none is found before reaching <main>, it checks <main>'s own.
 //
 // Gesture state machine (prevents two real misfires):
 //   idle → tracking (touch started while at top)
@@ -93,7 +91,7 @@ export function usePullToRefresh(onRefresh: () => Promise<void>) {
         node = node.parentElement
       }
       // No nested scroll container between the touch target and <main> —
-      // <main> itself is the page's scroller (see layout.tsx).
+      // <main> itself is the page's scroller (see AppShell.tsx).
       return (el as HTMLElement).scrollTop <= 2
     }
 

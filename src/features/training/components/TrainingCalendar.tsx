@@ -1,17 +1,14 @@
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useState, useMemo } from 'react'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useTrainingBlocks, useScheduleBlocks } from '../../daily/hooks/useSchedule'
 import { projectRecurringBlocksForDay } from '../../daily/components/dayAgendaProjection'
 import { HevyWorkoutDetail } from './HevyWorkoutDetail'
-import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { useEntityModal } from '../../../shared/modals'
 import { DateNav } from '../../../shared/components/DateNav'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
-import { supabase } from '../../../integrations/supabase/client'
 import type { HevyWorkout, StravaActivity } from '../types.hevy'
 import type { TimeBlock, ScheduleBlock } from '../../daily/types'
-import type { Task } from '../../todo/types'
 
 // A calendar "plan" entry is either a real one-off time_blocks row, or a
 // PROJECTED occurrence of a recurring schedule_blocks template (e.g. "every
@@ -532,29 +529,18 @@ export function TrainingCalendar() {
   }))
 
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
-  const [selectedPlanItem, setSelectedPlanItem] = useState<CalendarPlanItem | null>(null)
-  const selectedPlanBlock = selectedPlanItem?.kind === 'block' ? selectedPlanItem.timeBlock : undefined
-
-  // A task-linked plan block must open the TASK (mode='task', where its
-  // Schedule section lives) — NOT the block directly via `timeBlock`, which
-  // is contractually a standalone-only prop (planModal.types.ts). Opening a
-  // task-linked block with `timeBlock` seeded `alsoCreateTask` misleadingly
-  // (buildInitialForm has no idea a task already exists) and Save then
-  // created a SECOND task and re-pointed the block's task_id at it — the
-  // real duplicate-task bug. Same pattern as NextSessionBanner. A recurring
-  // occurrence (kind='recurring') has no task concept at all — schedule_blocks
-  // rows can never be task-linked — so this only ever applies to a real block.
-  const isPlanTaskLinked = !!selectedPlanBlock?.task_id
-  const { data: selectedPlanTask } = useQuery({
-    queryKey: ['tasks', 'byId', selectedPlanBlock?.task_id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('tasks').select('*').eq('id', selectedPlanBlock!.task_id!).single()
-      if (error) throw error
-      return data as Task
-    },
-    enabled: isPlanTaskLinked,
-    staleTime: 60_000,
-  })
+  // A task-linked plan block must open the TASK, never the block via
+  // `timeBlock` (that minted a second task — the real duplicate-task bug).
+  // The shared block editor applies that routing rule once for every caller;
+  // a recurring occurrence opens its template (it can never be task-linked).
+  const modal = useEntityModal()
+  const openPlan = useCallback((item: CalendarPlanItem) => {
+    if (item.kind === 'recurring' && item.scheduleBlock) {
+      modal.open({ kind: 'schedule-block', id: item.scheduleBlock.id, config: { heading: 'Edit Recurring Session' } })
+    } else if (item.timeBlock) {
+      modal.open({ kind: 'time-block', id: item.timeBlock.id, config: { heading: 'Edit Session' } })
+    }
+  }, [modal])
 
   const { data: workouts = [] } = useHevyWorkouts({ limit: 200 })
   const { data: activities = [] } = useStravaActivities({ limit: 200 })
@@ -657,7 +643,7 @@ export function TrainingCalendar() {
           onToday={handleTodayWeek}
           onSwitchToMonth={() => setView('month')}
           onOpenWorkout={setSelectedWorkoutId}
-          onOpenPlan={setSelectedPlanItem}
+          onOpenPlan={openPlan}
         />
       ) : (
         <MonthView
@@ -673,7 +659,7 @@ export function TrainingCalendar() {
           onToday={handleTodayMonth}
           onSwitchToWeek={() => setView('week')}
           onOpenWorkout={setSelectedWorkoutId}
-          onOpenPlan={setSelectedPlanItem}
+          onOpenPlan={openPlan}
         />
       )}
 
@@ -682,14 +668,6 @@ export function TrainingCalendar() {
         onClose={() => setSelectedWorkoutId(null)}
       />
 
-      <UnifiedPlanModal
-        open={!!selectedPlanItem && (isPlanTaskLinked ? !!selectedPlanTask : true)}
-        onClose={() => setSelectedPlanItem(null)}
-        config={{ heading: selectedPlanItem?.kind === 'recurring' ? 'Edit Recurring Session' : 'Edit Session' }}
-        task={isPlanTaskLinked ? selectedPlanTask : undefined}
-        timeBlock={selectedPlanItem?.kind === 'block' && !isPlanTaskLinked ? selectedPlanBlock : undefined}
-        scheduleBlock={selectedPlanItem?.kind === 'recurring' ? selectedPlanItem.scheduleBlock : undefined}
-      />
     </div>
   )
 }

@@ -1,10 +1,8 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { toast } from '../../../app/store'
+import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { useSeasonDetails } from '../hooks/useTMDB'
-import { useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
-import { markEpisodeWatched } from '../api/watchedEpisodesApi'
-import { useQueryClient } from '@tanstack/react-query'
+import { useWatchedEpisodes, useMarkEpisodeWatched } from '../hooks/useWatchedEpisodes'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
 import type { TMDBTVFull } from '../types'
@@ -25,7 +23,7 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
 
   const { data: seasonData, isLoading } = useSeasonDetails(tv.id, season)
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
-  const queryClient                     = useQueryClient()
+  const markWatched                     = useMarkEpisodeWatched()
 
   const watchedSet = new Set(watched.filter(w => w.season_number === season).map(w => w.episode_number))
   const watchedMap = new Map(watched.filter(w => w.season_number === season).map(w => [w.episode_number, w.watched_at]))
@@ -48,29 +46,18 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   }
 
   // Mark every selected episode as watched (today), then clear the selection.
+  // useMarkEpisodeWatched refreshes progress + the schedule (the DB trigger
+  // deletes a watched episode's planned block, migration 043) and toasts errors.
   async function handleMarkSelectedWatched() {
     if (selected.size === 0) return
     setMarking(true)
-    const tid = toast.loading(`Marking ${selected.size} episode${selected.size > 1 ? 's' : ''} as watched…`)
-    try {
-      for (const epNum of selected) {
-        await markEpisodeWatched(tvEntryId, season, epNum, TODAY)
-      }
-      await queryClient.invalidateQueries({ queryKey: ['watched-episodes', tvEntryId] })
-      // Marking watched cleans up the episode's planned block server-side
-      // (migration 043) — refresh schedule + series progress so the timeline
-      // and TV views update without a reload.
-      queryClient.invalidateQueries({ queryKey: ['schedule'] })
-      queryClient.invalidateQueries({ queryKey: ['tv'] })
-      toast.dismiss(tid)
-      toast.success(`Marked as watched ✓`)
-      setSelected(new Set())
-    } catch (err) {
-      toast.dismiss(tid)
-      toast.error((err as Error).message ?? 'Failed')
-    } finally {
-      setMarking(false)
-    }
+    const episodes = [...selected].map(episode => ({ season, episode }))
+    const ok = await withProgress(
+      () => markWatched.mutateAsync({ tvEntryId, episodes, watchedOn: TODAY }).then(() => true),
+      { loading: `Marking ${episodes.length} episode${episodes.length > 1 ? 's' : ''} as watched…`, success: 'Marked as watched ✓' },
+    )
+    if (ok) setSelected(new Set())
+    setMarking(false)
   }
 
   // Build plan modal pre-fills from selected episodes

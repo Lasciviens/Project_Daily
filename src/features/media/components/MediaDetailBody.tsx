@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
-import { markEpisodeWatched } from '../api/watchedEpisodesApi'
+import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
+import { useMarkEpisodeWatched } from '../hooks/useWatchedEpisodes'
 import { posterUrl, tmdbMovieUrl, tmdbTVUrl } from '../../../integrations/tmdb/client'
 import { PlanThisButton } from './PlanThisButton'
 import { haptic } from '../../../shared/utils/haptics'
@@ -124,7 +124,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
   const removeTV    = useDeleteTV()
   const updateMovie = useUpdateMovie()
   const updateTV    = useUpdateTV()
-  const qc          = useQueryClient()
+  const markWatched = useMarkEpisodeWatched()
 
   const isAdding  = addMovie.isPending || addTV.isPending
   const entryId   = userEntry?.id
@@ -148,37 +148,32 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
     setNote(userEntry?.personal_note ?? '')
   }
 
+  // The media hooks toast + log failures themselves; withProgress only adds the
+  // per-call loading/success copy (it resolves undefined on failure).
   async function handleAdd() {
-    const tid = toast.loading('Adding to library…')
-    try {
+    const ok = await withProgress(async () => {
       if (isMovie) {
         await addMovie.mutateAsync({ tmdb: movie! as TMDBMovieFull, status: selectedStatus as UserMovieEntry['status'] })
       } else {
         await addTV.mutateAsync({ tmdb: tv! as TMDBTVFull, status: selectedStatus as UserTVEntry['status'] })
       }
-      toast.dismiss(tid); toast.success('Added to library ✓')
-      onAdded?.()
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to add')
-    }
+      return true
+    }, { loading: 'Adding to library…', success: 'Added to library ✓' })
+    if (ok) onAdded?.()
   }
 
   async function handleRemove() {
     if (!entryId) return
-    const tid = toast.loading('Removing…')
-    try {
+    const ok = await withProgress(async () => {
       if (isMovie) await removeMovie.mutateAsync(entryId)
       else         await removeTV.mutateAsync(entryId)
-      toast.dismiss(tid); toast.success('Removed from library')
-      onAdded?.()
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to remove')
-    }
+      return true
+    }, { loading: 'Removing…', success: 'Removed from library' })
+    if (ok) onAdded?.()
   }
 
   async function handleStatusChange(newStatus: MediaStatus) {
-    const tid = toast.loading('Updating status…')
-    try {
+    await withProgress(async () => {
       if (isMovie && movieEntry) {
         // Stamp watched_at on completion via the pill too (not only the
         // separate "Mark watched" button) — otherwise completing from the
@@ -195,10 +190,7 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
         if (newStatus === 'watching' && !tvEntry.started_at)  patch.started_at  = new Date().toISOString()
         await updateTV.mutateAsync({ id: tvEntry.id, patch })
       }
-      toast.dismiss(tid); toast.success('Status updated ✓')
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    }
+    }, { loading: 'Updating status…', success: 'Status updated ✓' })
   }
 
   async function saveNote() {
@@ -208,8 +200,8 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
       if (isMovie && movieEntry)   await updateMovie.mutateAsync({ id: movieEntry.id, patch: { personal_note: value } })
       else if (tvEntry)            await updateTV.mutateAsync({ id: tvEntry.id, patch: { personal_note: value } })
       toast.success('Note saved ✓')
-    } catch (err) {
-      toast.error((err as Error).message ?? 'Failed to save note')
+    } catch {
+      // The update hook already toasted + logged the failure.
     }
   }
 
@@ -227,41 +219,29 @@ export function MediaDetailBody({ detail, mediaType, userEntry, onAdded, onOpenD
       toast.success('Caught up — no next episode ✓')
       return
     }
-    const tid = toast.loading('Marking next episode watched…')
-    try {
-      await markEpisodeWatched(tvEntry.id, info.season, info.episode, new Date().toISOString().slice(0, 10))
-      qc.invalidateQueries({ queryKey: ['tv'] })
-      qc.invalidateQueries({ queryKey: ['watched-episodes'] })
-      qc.invalidateQueries({ queryKey: ['next-episode'] })
-      toast.dismiss(tid); toast.success(`S${info.season} E${info.episode} watched ✓`)
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    }
+    const { season, episode } = info
+    await withProgress(
+      () => markWatched.mutateAsync({ tvEntryId: tvEntry.id, episodes: [{ season, episode }] }),
+      { loading: 'Marking next episode watched…', success: `S${season} E${episode} watched ✓` },
+    )
   }
 
   async function handleMarkWatched() {
     if (!movieEntry) return
-    const tid = toast.loading('Marking watched…')
-    try {
-      await updateMovie.mutateAsync({ id: movieEntry.id, patch: { status: 'completed', watched_at: new Date().toISOString() } })
-      toast.dismiss(tid); toast.success('Marked as watched ✓')
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    }
+    await withProgress(
+      () => updateMovie.mutateAsync({ id: movieEntry.id, patch: { status: 'completed', watched_at: new Date().toISOString() } }),
+      { loading: 'Marking watched…', success: 'Marked as watched ✓' },
+    )
   }
 
   async function handleRatingChange(value: number) {
-    const tid = toast.loading('Saving rating…')
-    try {
+    await withProgress(async () => {
       if (isMovie && movieEntry) {
         await updateMovie.mutateAsync({ id: movieEntry.id, patch: { rating: value } })
       } else if (tvEntry) {
         await updateTV.mutateAsync({ id: tvEntry.id, patch: { rating: value } })
       }
-      toast.dismiss(tid); toast.success('Rating saved ✓')
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    }
+    }, { loading: 'Saving rating…', success: 'Rating saved ✓' })
   }
 
   return (

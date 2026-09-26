@@ -75,6 +75,42 @@ export async function fetchTimeBlocks(dateStr: string): Promise<TimeBlock[]> {
   return data ?? []
 }
 
+export async function fetchTimeBlock(id: string): Promise<TimeBlock | null> {
+  const { data, error } = await supabase.from('time_blocks').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// At most one block per task (partial unique index, migration 077).
+export async function fetchTimeBlockByTaskId(taskId: string): Promise<TimeBlock | null> {
+  const { data, error } = await supabase.from('time_blocks').select('*').eq('task_id', taskId).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// Always a fresh read (never cached): the calendar-link protocol decides
+// "create an event or not" off this value. `.single()` on purpose — a missing
+// row is an error there, not "no event yet".
+export async function fetchTimeBlockCalendarEventId(id: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('time_blocks').select('google_calendar_event_id').eq('id', id).single()
+  if (error) throw error
+  return data?.google_calendar_event_id ?? null
+}
+
+// Which of these tasks already own a Google Calendar event through their
+// linked block (those must never also become Google Tasks).
+export async function fetchCalendarLinkedTaskIds(taskIds: string[]): Promise<Set<string>> {
+  if (!taskIds.length) return new Set()
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('task_id')
+    .not('google_calendar_event_id', 'is', null)
+    .in('task_id', taskIds)
+  if (error) throw error
+  return new Set((data ?? []).map(b => b.task_id as string))
+}
+
 // All training-category blocks within a date range (inclusive) — used by the
 // Training calendar to show planned/future sessions.
 export async function fetchTrainingBlocksRange(from: string, to: string): Promise<TimeBlock[]> {

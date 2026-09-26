@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useStravaStatus, useSyncStrava, useDisconnectStrava } from '../hooks/useTrainingSessions'
+import { useStravaStatus, useSyncStrava, useDisconnectStrava, STRAVA_INVALIDATE } from '../hooks/useTrainingSessions'
+import { invalidate } from '../../../shared/query'
 import { buildStravaOAuthUrl, exchangeStravaCode } from '../api/stravaApi'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
@@ -33,7 +34,7 @@ export function StravaWidget() {
       .then(result => {
         toast.dismiss(loadingId)
         toast.success(`Connected as ${result.athlete_name ?? 'Strava athlete'} ✓`)
-        qc.invalidateQueries({ queryKey: ['training'] })
+        void invalidate(qc, ...STRAVA_INVALIDATE)
       })
       .catch(err => {
         toast.dismiss(loadingId)
@@ -42,33 +43,9 @@ export function StravaWidget() {
       .finally(() => setConnecting(false))
   }, [qc])
 
-  function handleSync() {
-    const id = toast.loading('Syncing Strava activities…')
-    sync.mutate(undefined, {
-      onSuccess: (data) => {
-        toast.dismiss(id)
-        toast.success(`Synced ${data.synced} activities from Strava`)
-      },
-      onError: (err: Error) => {
-        toast.dismiss(id)
-        toast.error(`Sync failed: ${err.message}`)
-      },
-    })
-  }
-
-  function handleDisconnect() {
-    const id = toast.loading('Disconnecting Strava…')
-    disconnect.mutate(undefined, {
-      onSuccess: () => {
-        toast.dismiss(id)
-        toast.success('Strava disconnected')
-      },
-      onError: () => {
-        toast.dismiss(id)
-        toast.error('Failed to disconnect Strava')
-      },
-    })
-  }
+  // Both hooks own their loading/success/error toasts.
+  const handleSync       = () => sync.mutate()
+  const handleDisconnect = () => disconnect.mutate()
 
   if (isLoading || connecting) {
     return (

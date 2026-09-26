@@ -1,20 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { format, getDay, isToday, subDays } from 'date-fns'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   useScheduleBlocks, useTimeBlocks, useDeleteTimeBlock, useUpdateTimeBlock,
   useDeleteScheduleBlock,
 } from '../hooks/useSchedule'
-import { useTaskById } from '../../todo/hooks/useTodos'
+import { useTasksByIds } from '../../todo/hooks/useTodos'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
-import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { useEntityModal } from '../../../shared/modals'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
-import { supabase } from '../../../integrations/supabase/client'
 import { useCalendarStore, toast } from '../../../app/store'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } from './dayAgendaProjection'
 import type { CalendarEvent } from '../../calendar/types'
-import type { TimeBlock, ScheduleBlock } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DayAgenda — replaces the old 24h × 52px pixel-grid DayTimeline. Design
@@ -34,9 +32,9 @@ import type { TimeBlock, ScheduleBlock } from '../types'
 //  Schedule section lives inside it now), and a standalone one-off block
 //  opens 'schedule' mode directly. Nothing here decides which tab to show;
 //  the caller (this file) decides which ENTITY was clicked. A task-linked
-//  row is opened by id + a real fetch (useTaskById), NEVER by a lookup into
-//  a preloaded map — the map can still be loading (or briefly stale) when
-//  the tap happens, and a lookup miss used to silently do nothing at all.
+//  row is opened by id through the shared entity-modal host (the adapter
+//  loads the task itself), NEVER by a lookup into a preloaded map — the map
+//  can still be loading when the tap happens, and a miss used to do nothing.
 //
 //  Cross-midnight projection (dayAgendaProjection.ts): every one-off block
 //  and recurring template is projected onto EVERY day it actually occupies,
@@ -83,12 +81,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   const prevDateStr = format(subDays(date, 1), 'yyyy-MM-dd')
   const dayOfWeek   = getDay(date)
 
-  const [modal,             setModal]             = useState(false)
-  const [clickTime,         setClickTime]         = useState<string | undefined>(undefined)
   const [editEvent,         setEditEvent]         = useState<CalendarEvent | null>(null)
-  const [editTaskId,        setEditTaskId]        = useState<string | null>(null)
-  const [editTimeBlock,     setEditTimeBlock]     = useState<TimeBlock | null>(null)
-  const [editScheduleBlock, setEditScheduleBlock] = useState<ScheduleBlock | null>(null)
   const [selectedId,        setSelectedId]        = useState<string | null>(null)
 
   const { data: schedBlocks = [] } = useScheduleBlocks()
@@ -101,16 +94,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   const qc                  = useQueryClient()
   const calToken            = useCalendarStore(s => s.accessToken)
 
-  // Task-linked row click: fetch the task by id directly rather than
-  // depending on a preloaded map (see file header comment) — a real query,
-  // with real loading/error feedback, so a tap never silently does nothing.
-  const { data: editTaskData, isFetching: editTaskLoading, isError: editTaskFailed } = useTaskById(editTaskId)
-  useEffect(() => {
-    if (editTaskId && editTaskFailed) {
-      toast.error('Could not load this task')
-      setEditTaskId(null)
-    }
-  }, [editTaskId, editTaskFailed])
+  const modal = useEntityModal()
 
   async function handleCalRefresh() {
     const tid = toast.loading('Syncing calendar…')
@@ -125,16 +109,8 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   // Full linked-Task rows (not just notes) — used for the 📝 preview only
   // now; navigation no longer depends on this map being loaded (see above).
   const linkedTaskIds = [...timeBlocks, ...prevTimeBlocks].filter(b => b.task_id).map(b => b.task_id!)
-  const { data: linkedTasksFull = [] } = useQuery({
-    queryKey: ['tasks', 'by-ids', dateStr, linkedTaskIds.join(',')],
-    queryFn:  async () => {
-      const { data } = await supabase.from('tasks').select('id, description').in('id', linkedTaskIds)
-      return data ?? []
-    },
-    enabled:   linkedTaskIds.length > 0,
-    staleTime: 5 * 60_000,
-  })
-  const taskNotesMap = new Map(linkedTasksFull.map(t => [t.id, t.description as string | null]))
+  const { data: linkedTasksFull = [] } = useTasksByIds(linkedTaskIds)
+  const taskNotesMap = new Map(linkedTasksFull.map(t => [t.id, t.description ?? null]))
 
   // A block's own google_calendar_event_id already represents its Google
   // Calendar presence — an event fetched separately from the Calendar API
@@ -223,23 +199,27 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   const today = isToday(date)
   const nextBlock = today ? day.find(b => b.startHour > nowHour) : undefined
 
-  function openAdd(time?: string) { setClickTime(time); setModal(true) }
+  // "+ Add" — always creates a standalone one-off block (schedule mode);
+  // "Also add to Tasks" is offered inside ScheduleTab itself.
+  function openAdd(time?: string) {
+    modal.open({ kind: 'time-block', config: { heading: 'Add time block' }, defaults: { date: dateStr, startTime: time, category: 'daily' } })
+  }
 
   // Opens the ONE editor for whichever entity this row actually is — see
   // the file-header comment for the routing rule. Always routes through
   // canonicalId, never the (possibly synthetic) spillover row id.
   function openEditor(block: AgendaBlock) {
     if (block.kind === 'recurring') {
-      const sb = schedBlocks.find(s => s.id === block.canonicalId)
-      if (sb) setEditScheduleBlock(sb)
+      modal.open({ kind: 'schedule-block', id: block.canonicalId, config: { heading: 'Edit recurring block' } })
       return
     }
+    // The editor loads the row by id itself (loading + not-found states in
+    // its own shell), so a tap never silently does nothing.
     if (block.taskId) {
-      setEditTaskId(block.taskId)
+      modal.open({ kind: 'task', id: block.taskId, config: { heading: 'Edit Task' } })
       return
     }
-    const tb = [...timeBlocks, ...prevTimeBlocks].find(b => b.id === block.canonicalId)
-    if (tb) setEditTimeBlock(tb)
+    modal.open({ kind: 'time-block', id: block.canonicalId, config: { heading: 'Edit block' } })
   }
 
   // ── Row renderer (plain render function, not a nested component —
@@ -435,44 +415,6 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
           </div>
         )}
       </div>
-
-      {/* "+ Add" — always creates a standalone one-off block (schedule mode);
-          "Also add to Tasks" is offered inside ScheduleTab itself. */}
-      <UnifiedPlanModal
-        open={modal}
-        onClose={() => { setModal(false); setClickTime(undefined) }}
-        mode="schedule"
-        config={{ heading: 'Add time block' }}
-        defaults={{ date: dateStr, startTime: clickTime, category: 'daily' }}
-      />
-
-      {/* ✎ editors — exactly one entity per open, routed by openEditor().
-          The Task editor opens ONLY once its fetch actually resolves — a
-          loading tap (editTaskId set, editTaskData not yet in) shows a tiny
-          overlay instead of doing nothing at all. */}
-      {editTaskId && editTaskLoading && !editTaskData && (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-ink-950/10">
-          <div className="bg-cream-50 rounded-xl px-4 py-2.5 text-sm text-ink-600 shadow-lg border border-ink-200">Loading…</div>
-        </div>
-      )}
-      <UnifiedPlanModal
-        open={!!editTaskId && !!editTaskData}
-        onClose={() => setEditTaskId(null)}
-        config={{ heading: 'Edit Task' }}
-        task={editTaskData ?? undefined}
-      />
-      <UnifiedPlanModal
-        open={!!editTimeBlock}
-        onClose={() => setEditTimeBlock(null)}
-        config={{ heading: 'Edit block' }}
-        timeBlock={editTimeBlock ?? undefined}
-      />
-      <UnifiedPlanModal
-        open={!!editScheduleBlock}
-        onClose={() => setEditScheduleBlock(null)}
-        config={{ heading: 'Edit recurring block' }}
-        scheduleBlock={editScheduleBlock ?? undefined}
-      />
 
       {editEvent && <EditCalendarEventModal mode="edit" event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>

@@ -5,7 +5,7 @@ import { useHevyPRs } from '../hooks/useHevyPRs'
 import { useOpenTrainingSessionTasks } from '../../todo/hooks/useTodos'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { HevyWorkoutCard } from './HevyWorkoutCard'
-import { HevyWorkoutDetail } from './HevyWorkoutDetail'
+import { entityModal } from '../../../shared/modals'
 import { HevyPRList } from './HevyPRList'
 import { ExerciseThumb } from '../exerciseMedia'
 import { RoutinesTab } from './RoutinesTab'
@@ -109,7 +109,6 @@ function BestLiftsCard({ muscleFilter }: { muscleFilter: string }) {
 
 function WorkoutsSubTab() {
   const [page, setPage] = useState(0)
-  const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
 
   const { data: workouts = [], isLoading } = useHevyWorkouts({
     limit:  PAGE_SIZE,
@@ -182,7 +181,7 @@ function WorkoutsSubTab() {
             <HevyWorkoutCard
               key={workout.id}
               workout={workout}
-              onClick={() => setSelectedWorkoutId(workout.id)}
+              onClick={() => entityModal.open({ kind: 'hevy-workout', id: workout.id })}
               matchedTask={workout.start_time ? taskByDueDate.get(formatLocalDate(new Date(workout.start_time))) : undefined}
             />
           ))}
@@ -212,10 +211,6 @@ function WorkoutsSubTab() {
         </div>
       )}
 
-      <HevyWorkoutDetail
-        workoutId={selectedWorkoutId}
-        onClose={() => setSelectedWorkoutId(null)}
-      />
     </>
   )
 }

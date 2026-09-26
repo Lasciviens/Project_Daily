@@ -1,0 +1,13 @@
+import type { EntityModalProps } from '../../../shared/modals/types'
+import { RecipeModal } from '../components/RecipeModal'
+import { useRecipe } from '../hooks/useRecipes'
+import { EntityModalPending } from './entityModalLoad'
+import { useFirstLoaded } from './useFirstLoaded'
+
+/** `recipe`: the recipe editor — create without `id`, edit by id. */
+export function RecipeEntityModal({ request, onClose }: EntityModalProps<'recipe'>) {
+  const query = useRecipe(request.id)
+  const recipe = useFirstLoaded(query.data)
+  if (request.id && !recipe) return <EntityModalPending query={query} what="recipe" size="lg" onClose={onClose} />
+  return <RecipeModal onClose={onClose} recipe={recipe} />
+}

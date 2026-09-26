@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
-import { useDayTargets, useDayTargetProfiles, type NutritionGoal, type DayTargets } from '../../daily/hooks/useDayTargets'
+import { useDayTargets } from '../../daily/hooks/useDayTargets'
+import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { useNutritionCoach } from '../../daily/hooks/useNutritionCoach'
 import { useDeleteFoodLogEntry } from '../hooks/useFoodLog'
 import { useDeleteQuickMeal } from '../../daily/hooks/useQuickMeals'
@@ -34,7 +35,7 @@ function splitTitleQty(title: string): { name: string; qty: string | null } {
 //  Food · Today — the FULL-SIZE nutrition surface. Two columns on wide screens
 //  (summary + coach left · meal slots right, so the right isn't empty). Small
 //  calorie + protein rings, macro chips (fiber inline w/ a green dot next to
-//  fat), an inline Goals editor, and — the key flow — a ✓ on a PLANNED row
+//  fat), a Goals popup, and — the key flow — a ✓ on a PLANNED row
 //  confirms it as EATEN so it starts counting toward the day.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,6 @@ const SLOTS: { slot: MealSlot; label: string; icon: string }[] = [
   { slot: 'snack',      label: 'Snack',      icon: '🍎' },
   { slot: 'supplement', label: 'Supplement', icon: '💊' },
 ]
-const GOAL_LABEL: Record<NutritionGoal, string> = { maintain: 'Maintain', cut: 'Cut', gain: 'Gain' }
 
 // `size` is the SVG coordinate/geometry basis; `sizeClass` sets the DISPLAYED
 // box (responsive so the ring can shrink on a phone) — the viewBox scales the
@@ -74,30 +74,10 @@ function Ring({ consumed, target, size, stroke, color, label, sizeClass }: {
   )
 }
 
-// −/+ stepper for a goal number (same feel as the Daily card's).
-function GoalStepper({ value, step, suffix, onChange }: { value: number; step: number; suffix: string; onChange: (v: number) => void }) {
-  const set = (v: number) => onChange(Math.max(0, v))
-  const btn = 'w-11 h-11 min-h-[44px] rounded-lg border border-ink-200 text-ink-600 hover:border-accent-300 flex items-center justify-center leading-none'
-  return (
-    <div className="flex items-center gap-1">
-      <button type="button" onClick={() => set(value - step)} className={btn}>−</button>
-      <div className="relative">
-        <input type="number" value={value} min={0} step={step} onChange={e => set(Number(e.target.value) || 0)}
-          // Hide the browser's own up/down spinner — it would sit right on
-          // top of the −/+ buttons already flanking this field, a second,
-          // redundant increment control.
-          className="w-20 min-h-[44px] text-sm text-center pr-8 tabular-nums border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-ink-400 pointer-events-none">{suffix}</span>
-      </div>
-      <button type="button" onClick={() => set(value + step)} className={btn}>+</button>
-    </div>
-  )
-}
-
 export function FoodTodayTab({ date }: { date: string }) {
   const { data: nut } = useDayNutrition(date)
-  const { targets, update, isSaving } = useDayTargets()
-  const profiles = useDayTargetProfiles()
+  const { targets, update } = useDayTargets()
+  const modal = useEntityModal()
   const coach = useNutritionCoach(date, targets)
   const delLog  = useDeleteFoodLogEntry()
   const delMeal = useDeleteQuickMeal()
@@ -105,47 +85,14 @@ export function FoodTodayTab({ date }: { date: string }) {
   const [logSlot, setLogSlot] = useState<MealSlot | null>(null)
   const [editMeal, setEditMeal] = useState<DayMeal | null>(null)
   const [planMeal, setPlanMeal] = useState<MealPlanEntry | null>(null)
-  const [goalsOpen, setGoalsOpen] = useState(false)
   const [coachOpen, setCoachOpen] = useState(false)   // mobile-only collapse
 
-  // Editing the Goals panel is a DRAFT — nothing writes until "Save" is
-  // tapped (see the identical pattern + rationale in NutritionCard.tsx).
-  const [draft, setDraft] = useState<DayTargets>(targets)
-  const [goalsWasOpen, setGoalsWasOpen] = useState(goalsOpen)
-  if (goalsOpen !== goalsWasOpen) {
-    setGoalsWasOpen(goalsOpen)
-    if (goalsOpen) setDraft(targets)
-  }
-  // REAL BUG, fixed: with no saved profile for a goal yet, switching pills
-  // only changed the `goal` label — the numbers sat frozen, reading as
-  // "picking Cut/Gain does nothing." A goal with no saved profile now gets
-  // a sensible DIFFERENT starting point: protein scales with bodyweight
-  // (`coach.proteinByGoal`, already computed for every goal), calories step
-  // off Maintain's own saved number by the standard ~500 kcal deficit /
-  // ~300 kcal surplus a cut/gain implies. Saving a goal replaces this
-  // fallback with its own real profile from then on.
-  function selectGoal(g: NutritionGoal) {
-    const profile = profiles[g]
-    if (profile) { setDraft(d => ({ ...d, goal: g, ...profile })); return }
-    setDraft(d => {
-      const maintainCalories = profiles.maintain?.calories ?? d.calories
-      const calorieDelta = g === 'cut' ? -500 : g === 'gain' ? 300 : 0
-      const calories = g === 'maintain' ? maintainCalories : Math.max(coach.calorieFloor, maintainCalories + calorieDelta)
-      const protein = coach.weightKg != null ? coach.proteinByGoal[g] : d.protein
-      return { ...d, goal: g, calories, protein }
-    })
-  }
-  // Coach "Apply" buttons write immediately while the panel is closed
-  // (unchanged, one deliberate tap); while it's open they feed the draft so
-  // a pending manual edit and an unrelated coach suggestion can't clobber
-  // each other.
-  function applyProtein(g: number) {
-    if (goalsOpen) setDraft(d => ({ ...d, protein: g })); else update({ protein: g })
-  }
-  function applyCalories(kcal: number, adjustDate: string) {
-    if (goalsOpen) setDraft(d => ({ ...d, calories: kcal, lastCalorieAdjust: adjustDate }))
-    else update({ calories: kcal, lastCalorieAdjust: adjustDate })
-  }
+  // Goals live in the shared `day-targets` popup (draft → Save, per-goal
+  // profiles). The Coach card's "Apply" buttons below stay one deliberate tap
+  // that writes immediately — the popup covers the card while it's open.
+  const openGoals = () => modal.open({ kind: 'day-targets', date })
+  function applyProtein(g: number) { update({ protein: g }) }
+  function applyCalories(kcal: number, adjustDate: string) { update({ calories: kcal, lastCalorieAdjust: adjustDate }) }
   // Which "As meal" groups are expanded to their individual items — collapsed
   // (just the compact summary row) by default for every group.
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -279,8 +226,8 @@ export function FoodTodayTab({ date }: { date: string }) {
           <div className="rounded-2xl border border-ink-200 bg-cream-50 shadow-card overflow-hidden relative">
             <div className="h-1 bg-accent-500" />
             {/* ⚙ Goals — bottom-right corner of the nutrition widget. */}
-            <button onClick={() => setGoalsOpen(o => !o)} title="Goals" aria-label="Goals"
-              className={`press-feedback absolute bottom-2 right-2 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center text-base transition-colors ${goalsOpen ? 'text-accent-700 bg-accent-50' : 'text-ink-400 hover:text-accent-600 hover:bg-cream-100/90 bg-cream-50/70'}`}>⚙</button>
+            <button onClick={openGoals} title="Goals" aria-label="Nutrition goals"
+              className="press-feedback absolute bottom-2 right-2 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center text-base transition-colors text-ink-400 hover:text-accent-600 hover:bg-cream-100/90 bg-cream-50/70">⚙</button>
             <div className="p-4 sm:p-6 flex items-center gap-4 sm:gap-5 flex-wrap">
               <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color="rgb(var(--accent-500))" label="kcal left" sizeClass="w-[108px] h-[108px] sm:w-[134px] sm:h-[134px]" />
               {/* Small, tasteful protein ring — "kalan protein" as a graphic. */}
@@ -321,52 +268,6 @@ export function FoodTodayTab({ date }: { date: string }) {
             <WaterTracker date={date} />
           </div>
 
-          {/* Goals editor — under the nutrition widget, same width (user
-              request). Set targets by hand + apply coach suggestions. */}
-          {goalsOpen && (
-            <div className="rounded-2xl border border-ink-200 bg-cream-50 p-4 flex flex-col gap-3 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-ink-600">Goal</span>
-                <div className="flex gap-1">
-                  {(['maintain', 'cut', 'gain'] as NutritionGoal[]).map(g => (
-                    <button key={g} onClick={() => selectGoal(g)}
-                      className={`text-[11px] px-2.5 min-h-[44px] rounded-full border transition-colors ${
-                        draft.goal === g ? 'bg-accent-500 border-accent-500 text-white font-semibold' : 'border-ink-200 text-ink-600 hover:border-accent-300'
-                      }`}>{GOAL_LABEL[g]}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-ink-600">Calories</span>
-                <GoalStepper value={draft.calories} step={50} suffix="kcal" onChange={v => setDraft(d => ({ ...d, calories: v }))} />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-ink-600">Protein</span>
-                <GoalStepper value={draft.protein} step={10} suffix="g" onChange={v => setDraft(d => ({ ...d, protein: v }))} />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-ink-600">Water</span>
-                <GoalStepper value={draft.water} step={250} suffix="ml" onChange={v => setDraft(d => ({ ...d, water: v }))} />
-              </div>
-              <p className="text-[11px] text-ink-400 leading-relaxed">
-                Each goal (Cut/Maintain/Gain) keeps its own saved numbers — switch goals above to recall them, adjust, then tap Save.
-                The 🧠 Coach suggests a protein target from your bodyweight
-                ({coach.weightKg ? `~${coach.proteinForGoal}g for ${draft.goal}` : 'add a bodyweight to enable'}) and nudges
-                calories from your 4-week weight trend — apply those from the Coach card below. Fiber goal ≈ 14g per 1000 kcal.
-              </p>
-              <div className="flex items-center justify-end gap-1.5">
-                <button onClick={() => setGoalsOpen(false)}
-                  className="text-[11px] font-medium text-ink-500 hover:text-ink-800 min-h-[44px] px-2 rounded transition-colors">
-                  Cancel
-                </button>
-                <button onClick={() => { update(draft); setGoalsOpen(false) }} disabled={isSaving}
-                  className="text-[11px] font-semibold text-white bg-accent-500 hover:bg-accent-600 disabled:opacity-50 min-h-[44px] px-3 rounded-lg transition-colors">
-                  {isSaving ? 'Saving…' : '💾 Save'}
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Coach — always visible; collapsible on mobile (summary + expand)
               so the meal slots below stay reachable. Expanded by default on sm+. */}
           <div className="rounded-2xl border border-accent-200 bg-accent-50/40 px-4 py-2.5 sm:py-3 flex flex-col gap-1.5 text-xs">
@@ -386,7 +287,7 @@ export function FoodTodayTab({ date }: { date: string }) {
               <>
                 {coach.calorieAdvice ? (
                   <button
-                    onClick={() => applyCalories(Math.max(coach.calorieFloor, (goalsOpen ? draft.calories : targets.calories) + coach.calorieAdvice!.delta), formatLocalDate(new Date()))}
+                    onClick={() => applyCalories(Math.max(coach.calorieFloor, targets.calories + coach.calorieAdvice!.delta), formatLocalDate(new Date()))}
                     className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">
                     <span className="text-ink-600"><strong className="text-accent-700">{coach.calorieAdvice.delta > 0 ? '+' : ''}{coach.calorieAdvice.delta} kcal</strong><span className="text-ink-400"> · {coach.calorieAdvice.reason}</span></span>
                     <span className="text-accent-600 font-semibold shrink-0">Apply</span>
@@ -402,7 +303,7 @@ export function FoodTodayTab({ date }: { date: string }) {
                 ) : coach.inCooldown ? (
                   <p className="text-ink-400">Calorie adjusted recently — hold {coach.cooldownDaysLeft} more day{coach.cooldownDaysLeft === 1 ? '' : 's'} so the trend can catch up.</p>
                 ) : null}
-                {coach.proteinForGoal != null && coach.proteinForGoal !== (goalsOpen ? draft.protein : targets.protein) ? (
+                {coach.proteinForGoal != null && coach.proteinForGoal !== targets.protein ? (
                   <button
                     onClick={() => applyProtein(coach.proteinForGoal!)}
                     className="flex items-center justify-between gap-2 text-left rounded-lg border border-accent-200 bg-cream-50 px-2.5 py-1.5 min-h-[44px] hover:bg-accent-50 transition-colors">

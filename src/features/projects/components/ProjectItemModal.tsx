@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { useState } from 'react'
 import { toast } from '../../../app/store'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Button } from '../../../shared/ui'
+import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { useCreateItem, useUpdateItem } from '../hooks/useProjects'
 import type { ProjectItem, ProjectPhase, ItemType, ItemStatus, ItemPriority } from '../types'
 
@@ -26,7 +28,8 @@ const PRIORITY_OPTIONS: Array<{ value: ItemPriority; label: string }> = [
 ]
 
 interface Props {
-  open:        boolean
+  /** Controlled callers pass it; the `project-item` entity modal omits it. */
+  open?:       boolean
   onClose:     () => void
   projectId:   string
   phases:      ProjectPhase[]
@@ -34,48 +37,29 @@ interface Props {
   item?:       ProjectItem | null   // present → edit mode; absent → add mode
 }
 
-const inputCls = 'w-full min-h-[44px] px-3 rounded-lg border border-ink-200 bg-cream-50 text-sm text-ink-800 focus:outline-none focus:ring-2 focus:ring-accent-300'
-
-export function ProjectItemModal({ open, onClose, projectId, phases, defaultPhaseId, item }: Props) {
+export function ProjectItemModal({ open = true, onClose, projectId, phases, defaultPhaseId, item }: Props) {
   const isEdit = !!item
 
-  const [title,    setTitle]    = useState('')
-  const [notes,    setNotes]    = useState('')
-  const [phaseId,  setPhaseId]  = useState('')
-  const [type,     setType]     = useState<ItemType>('improvement')
-  const [status,   setStatus]   = useState<ItemStatus>('open')
-  const [priority, setPriority] = useState<ItemPriority>('medium')
+  // Seeded once per mount — every caller mounts this popup fresh for one item.
+  const [title,    setTitle]    = useState(item?.title ?? '')
+  const [notes,    setNotes]    = useState(item?.notes ?? '')
+  const [phaseId,  setPhaseId]  = useState(item?.phase_id ?? defaultPhaseId ?? phases[0]?.id ?? '')
+  const [type,     setType]     = useState<ItemType>(item?.type ?? 'improvement')
+  const [status,   setStatus]   = useState<ItemStatus>(item?.status ?? 'open')
+  const [priority, setPriority] = useState<ItemPriority>(item?.priority ?? 'medium')
 
   const createItem = useCreateItem(projectId)
   const updateItem = useUpdateItem(projectId)
   const saving = createItem.isPending || updateItem.isPending
 
-  useEffect(() => {
-    if (!open) return
-    if (item) {
-      setTitle(item.title)
-      setNotes(item.notes ?? '')
-      setPhaseId(item.phase_id)
-      setType(item.type)
-      setStatus(item.status)
-      setPriority(item.priority)
-    } else {
-      setTitle('')
-      setNotes('')
-      setPhaseId(defaultPhaseId ?? phases[0]?.id ?? '')
-      setType('improvement')
-      setStatus('open')
-      setPriority('medium')
-    }
-  }, [open, item, defaultPhaseId, phases])
 
   async function handleSave() {
     const trimmed = title.trim()
     if (!trimmed) { toast.error('Title is required'); return }
     if (!phaseId) { toast.error('Phase is required'); return }
 
-    const tid = toast.loading(isEdit ? 'Saving item…' : 'Creating item…')
-    try {
+    // The item hooks toast + log failures themselves; this adds the per-call copy.
+    const ok = await withProgress(async () => {
       if (isEdit && item) {
         await updateItem.mutateAsync({
           id: item.id,
@@ -92,97 +76,67 @@ export function ProjectItemModal({ open, onClose, projectId, phases, defaultPhas
           notes: notes.trim() || null,
         })
       }
-      toast.dismiss(tid)
-      toast.success(isEdit ? 'Item saved ✓' : 'Item created ✓')
-      onClose()
-    } catch (err) {
-      toast.dismiss(tid)
-      toast.error((err as Error).message ?? 'Failed to save item')
-    }
+      return true
+    }, { loading: isEdit ? 'Saving item…' : 'Creating item…', success: isEdit ? 'Item saved' : 'Item created' })
+    if (ok) onClose()
   }
 
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-[60]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          <div className="p-4 sm:p-5 flex flex-col gap-3">
-            <h2 className="text-base font-bold text-ink-900">{isEdit ? 'Edit item' : 'New item'}</h2>
+    <ModalShell
+      open={open}
+      onClose={onClose}
+      title={isEdit ? 'Edit item' : 'New item'}
+      size="sm"
+      dismissible={!saving}
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave} loading={saving}>{isEdit ? 'Save item' : 'Create item'}</Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <div>
+          <label htmlFor="pim-title" className="field-label">Title</label>
+          <input id="pim-title" autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="Item title…" className="input" />
+        </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-ink-500">Title</label>
-              <input
-                autoFocus
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="Item title…"
-                className={inputCls}
-              />
-            </div>
+        <div>
+          <label htmlFor="pim-notes" className="field-label">Notes</label>
+          <textarea id="pim-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add notes…" rows={3}
+            className="input min-h-[80px] resize-none" />
+        </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-ink-500">Notes</label>
-              <textarea
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Add notes…"
-                rows={3}
-                className={`${inputCls} min-h-[80px] py-2 resize-none`}
-              />
-            </div>
-
-            {phases.length > 1 && (
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-ink-500">Phase</label>
-                <select value={phaseId} onChange={e => setPhaseId(e.target.value)} className={inputCls}>
-                  {phases.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-ink-500">Type</label>
-                <select value={type} onChange={e => setType(e.target.value as ItemType)} className={inputCls}>
-                  {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-ink-500">Status</label>
-                <select value={status} onChange={e => setStatus(e.target.value as ItemStatus)} className={inputCls}>
-                  {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-ink-500">Priority</label>
-                <select value={priority} onChange={e => setPriority(e.target.value as ItemPriority)} className={inputCls}>
-                  {PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 mt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="min-h-[44px] px-4 rounded-xl text-sm font-semibold text-ink-600 hover:bg-ink-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="min-h-[44px] px-4 rounded-xl bg-accent-600 text-white text-sm font-semibold hover:bg-accent-700 transition-colors disabled:opacity-50"
-              >
-                {isEdit ? 'Save' : 'Create'}
-              </button>
-            </div>
+        {phases.length > 1 && (
+          <div>
+            <label htmlFor="pim-phase" className="field-label">Phase</label>
+            <select id="pim-phase" value={phaseId} onChange={e => setPhaseId(e.target.value)} className="select">
+              {phases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
           </div>
-        </DialogPanel>
+        )}
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div>
+            <label htmlFor="pim-type" className="field-label">Type</label>
+            <select id="pim-type" value={type} onChange={e => setType(e.target.value as ItemType)} className="select">
+              {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="pim-status" className="field-label">Status</label>
+            <select id="pim-status" value={status} onChange={e => setStatus(e.target.value as ItemStatus)} className="select">
+              {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="pim-priority" className="field-label">Priority</label>
+            <select id="pim-priority" value={priority} onChange={e => setPriority(e.target.value as ItemPriority)} className="select">
+              {PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
       </div>
-    </Dialog>
+    </ModalShell>
   )
 }
