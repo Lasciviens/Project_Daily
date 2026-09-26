@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 
-// Drag-down-to-close for the phone bottom sheet. The grab handle and title
+// Drag-down-to-close for a phone bottom sheet (ModalShell, the page sheets). The grab handle and title
 // row drag with pointer events (`touch-action: none` there, so the browser
 // never claims the gesture); the scrolling body drags only while it sits at
 // its top and the finger moves down, through a non-passive touch listener
@@ -24,7 +24,7 @@ function reducedMotion() {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 }
 
-export function useTgSheetDrag(open: boolean, onClose: () => void) {
+export function useSheetDrag(open: boolean, onClose: () => void) {
   // The panel lives in a ref for the style writes and in state so the effects
   // re-run when the Dialog remounts it.
   const panelRef = useRef<HTMLElement | null>(null)

@@ -13,6 +13,7 @@ import { AIPanel } from '../features/ai/components/AIPanel'
 import { CommandBar } from '../shared/components/CommandBar'
 import { SettingsMenu } from '../shared/components/SettingsMenu'
 import { Toaster } from '../shared/components/Toaster'
+import { ModalHost } from '../shared/modals'
 import { OfflineBanner } from '../shared/components/OfflineBanner'
 import { Sheet } from '../shared/components/Sheet'
 import { ListRow } from '../shared/components/ListRow'
@@ -125,6 +126,7 @@ export function Layout() {
       <DevRequestsDrawer />
       <AIPanel />
       <CommandBar />
+      <ModalHost />
       <Toaster />
       <OfflineBanner />
     </div>

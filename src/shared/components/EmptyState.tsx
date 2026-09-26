@@ -19,15 +19,15 @@ export function EmptyState({
   className = '',
 }: EmptyStateProps) {
   const base = `flex flex-col items-center justify-center gap-2 py-12 px-4 text-center ${
-    bordered ? 'rounded-2xl border border-dashed border-ink-200 bg-cream-50' : ''
+    bordered ? 'rounded-card border border-dashed border-line bg-surface' : ''
   } ${className}`
 
   return (
     <div className={base}>
-      {icon != null && <span className="text-3xl text-ink-400">{icon}</span>}
-      <p className="text-sm font-medium text-ink-700">{title}</p>
+      {icon != null && <span aria-hidden className="grid h-11 w-11 place-items-center rounded-full bg-surface-2 text-xl text-fg-faint [&_svg]:h-5 [&_svg]:w-5">{icon}</span>}
+      <p className="text-ui font-semibold text-fg">{title}</p>
       {description != null && (
-        <p className="max-w-sm text-xs text-ink-500">{description}</p>
+        <p className="max-w-sm text-body text-fg-muted">{description}</p>
       )}
       {action != null && <div className="mt-2">{action}</div>}
     </div>

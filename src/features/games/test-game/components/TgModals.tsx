@@ -1,5 +1,6 @@
 import { Suspense, useState } from 'react'
 import { Toaster } from '../../../../shared/components/Toaster'
+import { ModalHost } from '../../../../shared/modals'
 import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { lazyWithReload } from '../../../../shared/utils/lazyWithReload'
@@ -108,6 +109,7 @@ export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId,
           defaults={{ title: `🎮 ${planGame.title}`, duration: 60, category: 'games', color: 'purple' }}
         />
       )}
+      <ModalHost />
       <Toaster positionClassName={TOAST_POSITION[bp]} />
     </>
   )
