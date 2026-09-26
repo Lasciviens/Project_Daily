@@ -5,7 +5,9 @@ import { useHevyPRs } from '../hooks/useHevyPRs'
 import { useOpenTrainingSessionTasks } from '../../todo/hooks/useTodos'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { HevyWorkoutCard } from './HevyWorkoutCard'
-import { HevyWorkoutDetail } from './HevyWorkoutDetail'
+import { entityModal } from '../../../shared/modals'
+import { Button, Card, EmptyState, Skeleton } from '../../../shared/ui'
+import { ChevronLeft, ChevronRight, Dumbbell, Plus } from 'lucide-react'
 import { HevyPRList } from './HevyPRList'
 import { ExerciseThumb } from '../exerciseMedia'
 import { RoutinesTab } from './RoutinesTab'
@@ -20,7 +22,7 @@ type SubTab = 'workouts' | 'routines' | 'prs' | 'progress' | 'muscles' | 'body' 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'workouts',  label: 'Workouts'         },
   { id: 'routines',  label: 'Routines'          },
-  { id: 'prs',       label: 'Personal Records'  },
+  { id: 'prs',       label: 'Personal records'  },
   { id: 'progress',  label: 'Progress'          },
   { id: 'muscles',   label: 'Muscles'           },
   { id: 'body',      label: 'Body'              },
@@ -37,7 +39,7 @@ function BestLiftsCard({ muscleFilter }: { muscleFilter: string }) {
   const [peekId, setPeekId] = useState<string | null>(null)
 
   if (isLoading) {
-    return <div className="h-24 rounded-xl bg-cream-200 animate-pulse" />
+    return <Skeleton rounded="rounded-card" className="mb-3 h-24 max-w-md" />
   }
 
   if (prs.length === 0) return null
@@ -61,13 +63,13 @@ function BestLiftsCard({ muscleFilter }: { muscleFilter: string }) {
     .slice(0, 5)
 
   return (
-    <div className="rounded-xl border border-ink-200 bg-cream-50 mb-3 max-w-md">
-      <div className="px-3 py-2 border-b border-ink-100">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">
-          Top 5 Lifts by Weight{muscleFilter !== 'All' ? <span className="capitalize"> · {muscleFilter}</span> : ''}
+    <Card padded={false} className="mb-3 max-w-md">
+      <div className="border-b border-line px-4 py-2.5">
+        <p className="section-label">
+          Top 5 lifts by weight{muscleFilter !== 'All' ? <span className="capitalize"> · {muscleFilter}</span> : ''}
         </p>
       </div>
-      <div className="divide-y divide-ink-50">
+      <div className="divide-y divide-line">
         {top5.map((pr, i) => {
           const open = peekId === pr.exercise_template_id
           return (
@@ -80,20 +82,20 @@ function BestLiftsCard({ muscleFilter }: { muscleFilter: string }) {
               <button
                 type="button"
                 onClick={() => setPeekId(open ? null : pr.exercise_template_id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${open ? 'bg-cream-100' : 'hover:bg-cream-50'}`}
+                className={`flex min-h-[44px] w-full items-center gap-3 px-4 py-2 text-left transition-colors ${open ? 'bg-surface-hover' : 'hover:bg-surface-hover'}`}
               >
-                <span className="text-xs font-bold text-ink-400 w-4 shrink-0">#{i + 1}</span>
-                <span className="text-sm font-medium text-ink-800 flex-1 truncate">{pr.title}</span>
-                <span className="text-sm font-bold text-accent-700 shrink-0 tabular-nums">
+                <span className="w-5 shrink-0 text-meta font-bold tabular-nums text-fg-faint">#{i + 1}</span>
+                <span className="flex-1 truncate text-body font-medium text-fg">{pr.title}</span>
+                <span className="shrink-0 text-body font-bold tabular-nums text-fg">
                   {pr.max_weight_kg} kg{pr.reps_at_max != null ? ` × ${pr.reps_at_max}` : ''}
                 </span>
               </button>
               {open && (
-                <div className="absolute z-30 left-0 right-0 top-full mt-1 p-3 rounded-xl border border-ink-200 bg-cream-50 shadow-xl flex items-center gap-3 animate-fadeSlideIn">
+                <div className="absolute left-0 right-0 top-full z-popover mt-1 flex items-center gap-3 rounded-menu border border-line-strong bg-surface p-3 shadow-menu animate-fadeSlideIn">
                   <ExerciseThumb title={pr.title} templateId={pr.exercise_template_id} size={72} />
-                  <div className="flex flex-col gap-0.5 text-xs min-w-0">
-                    <span className="font-semibold text-ink-900">{pr.title}</span>
-                    <span className="text-ink-600">Best: <strong>{pr.max_weight_kg} kg{pr.reps_at_max != null ? ` × ${pr.reps_at_max}` : ''}</strong></span>
+                  <div className="flex min-w-0 flex-col gap-0.5 text-meta">
+                    <span className="font-semibold text-fg">{pr.title}</span>
+                    <span className="text-fg-muted">Best: <strong>{pr.max_weight_kg} kg{pr.reps_at_max != null ? ` × ${pr.reps_at_max}` : ''}</strong></span>
                   </div>
                 </div>
               )}
@@ -101,7 +103,7 @@ function BestLiftsCard({ muscleFilter }: { muscleFilter: string }) {
           )
         })}
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -109,7 +111,6 @@ function BestLiftsCard({ muscleFilter }: { muscleFilter: string }) {
 
 function WorkoutsSubTab() {
   const [page, setPage] = useState(0)
-  const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
 
   const { data: workouts = [], isLoading } = useHevyWorkouts({
     limit:  PAGE_SIZE,
@@ -152,70 +153,45 @@ function WorkoutsSubTab() {
       {/* Summary line — compact. The Log button lives in the sub-tab row now
           (HevyTab), so this no longer needs its own full-height button row. */}
       {allRecent.length > 0 && (
-        <div className="flex gap-3 text-xs text-ink-500 mb-2 -mt-0.5 flex-wrap">
-          <span><strong className="text-ink-800">{weekCount}</strong> this week</span>
-          <span className="text-ink-200">·</span>
-          <span><strong className="text-ink-800">{monthCount}</strong> in {monthLabel}</span>
+        <div className="mb-2 flex flex-wrap gap-3 text-meta text-fg-muted">
+          <span><strong className="tabular-nums text-fg">{weekCount}</strong> this week</span>
+          <span className="text-fg-faint" aria-hidden>·</span>
+          <span><strong className="tabular-nums text-fg">{monthCount}</strong> in {monthLabel}</span>
         </div>
       )}
 
       {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-[72px] rounded-xl bg-cream-200 animate-pulse" />
+        <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} rounded="rounded-card" className="h-[88px]" />
           ))}
         </div>
       ) : workouts.length === 0 ? (
-        <div className="text-center py-14 border border-dashed border-ink-200 rounded-xl">
-          <p className="text-2xl mb-2">🏋️</p>
-          <p className="text-ink-600 font-medium text-sm">No workouts yet</p>
-          <p className="text-ink-400 text-xs mt-1">Click Sync to import your Hevy data</p>
-        </div>
+        <EmptyState bordered icon={<Dumbbell />} title="No workouts yet" description="Sync to import your Hevy data." />
       ) : (
-        // HORIZONTAL fix (the actual complaint): a workout card doesn't need
-        // 1900px of monitor width. Cards flow into CONTENT-SIZED columns
-        // (each 19–22rem), the column count derives from available width
-        // (auto-fill), and leftover space stays empty on the right —
-        // the grid form of the repo's content-sized/left-aligned rule.
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] gap-2 justify-start items-start">
+        // Content-sized columns (19–22rem); leftover width stays on the right.
+        <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] gap-2 justify-start items-start">
           {workouts.map(workout => (
             <HevyWorkoutCard
               key={workout.id}
               workout={workout}
-              onClick={() => setSelectedWorkoutId(workout.id)}
+              onClick={() => entityModal.open({ kind: 'hevy-workout', id: workout.id })}
               matchedTask={workout.start_time ? taskByDueDate.get(formatLocalDate(new Date(workout.start_time))) : undefined}
             />
           ))}
         </div>
       )}
 
-      {!isLoading && (
-        <div className="flex gap-2 justify-between pt-1">
-          {page > 0 ? (
-            <button
-              type="button"
-              onClick={() => setPage(p => p - 1)}
-              className="min-h-[44px] px-4 text-sm border border-ink-200 rounded-xl text-ink-600 hover:bg-ink-50 transition-colors"
-            >
-              ← Previous
-            </button>
-          ) : <div />}
-          {workouts.length === PAGE_SIZE ? (
-            <button
-              type="button"
-              onClick={() => setPage(p => p + 1)}
-              className="min-h-[44px] px-4 text-sm border border-ink-200 rounded-xl text-ink-600 hover:bg-ink-50 transition-colors"
-            >
-              Next →
-            </button>
-          ) : <div />}
+      {!isLoading && (page > 0 || workouts.length === PAGE_SIZE) && (
+        <div className="flex justify-between gap-2 pt-3">
+          {page > 0
+            ? <Button icon={<ChevronLeft />} onClick={() => setPage(p => p - 1)}>Previous</Button>
+            : <div />}
+          {workouts.length === PAGE_SIZE
+            ? <Button onClick={() => setPage(p => p + 1)}>Next <ChevronRight className="h-4 w-4" aria-hidden /></Button>
+            : <div />}
         </div>
       )}
-
-      <HevyWorkoutDetail
-        workoutId={selectedWorkoutId}
-        onClose={() => setSelectedWorkoutId(null)}
-      />
     </>
   )
 }
@@ -237,67 +213,49 @@ function PRsSubTab() {
 
 // ─── HevyTab ──────────────────────────────────────────────────────────────────
 
-export function HevyTab({ onSubTabChange }: { onSubTabChange?: (id: SubTab) => void } = {}) {
+export function HevyTab() {
   const [activeTab, setActiveTab] = useState<SubTab>('workouts')
   const [logOpen, setLogOpen] = useState(false)
   const activeSubRef = useRef<HTMLButtonElement>(null)
 
-  // Report the active sub-tab up so the page can widen for the data-dense ones
-  // (Exercises grid, Muscles two-column) on large monitors.
-  useEffect(() => { onSubTabChange?.(activeTab) }, [activeTab, onSubTabChange])
-
-  // Six sub-tabs never fit a 393px phone, so the strip scrolls — keep the
-  // ACTIVE one in view instead of leaving it half-hidden behind the pinned
-  // Log button / the right-edge fade.
+  // Keep the active sub-tab in view on the scrolling phone strip.
   useEffect(() => {
     activeSubRef.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [activeTab])
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Sub-tab bar — pill underline style. The Workouts "Log" action is
-          pinned right of the scroll strip so it no longer costs a second
-          stacked row on mobile; a right-edge fade cues that the strip scrolls
-          (mobile only — all sub-tabs fit on desktop). */}
-      <div className="flex items-center gap-2 -mx-1 px-1">
-        <div className="relative flex-1 min-w-0">
-          <div className="flex gap-0 overflow-x-auto scrollbar-none snap-x snap-mandatory touch-pan-x overscroll-x-contain border-b border-ink-100">
-            {SUB_TABS.map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                ref={activeTab === tab.id ? activeSubRef : undefined}
-                onClick={() => setActiveTab(tab.id)}
-                className={`min-h-[44px] px-3 text-sm font-medium whitespace-nowrap transition-all shrink-0 border-b-2 -mb-px press-feedback snap-start ${
-                  activeTab === tab.id
-                    ? 'border-accent-500 text-accent-600 font-semibold'
-                    : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <div
-            className="sm:hidden pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-canvas to-transparent"
-            aria-hidden
-          />
+      {/* Seven sub-tabs never fit a phone, so the strip scrolls to the screen
+          edge. The Log action sits with the Workouts content below instead of
+          beside the strip, where it cut the last tab off mid-word. */}
+      <div>
+        <div role="tablist" aria-label="Hevy sections" className="scroll-x -mx-4 flex min-w-0 border-b border-line px-4 sm:mx-0 sm:px-0">
+          {SUB_TABS.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              ref={activeTab === tab.id ? activeSubRef : undefined}
+              onClick={() => setActiveTab(tab.id)}
+              className={`-mb-px min-h-[44px] shrink-0 whitespace-nowrap border-b-2 px-3 text-body transition-colors ${
+                activeTab === tab.id
+                  ? 'border-accent-500 font-semibold text-fg'
+                  : 'border-transparent font-medium text-fg-muted hover:text-fg'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
-        {activeTab === 'workouts' && (
-          // Icon-only below sm: the "Log" word cost ~60px, which is exactly
-          // what pushed the sub-tab strip under this button on a phone.
-          <button
-            type="button"
-            onClick={() => setLogOpen(true)}
-            aria-label="Log workout"
-            title="Log workout"
-            className="shrink-0 min-h-[44px] min-w-[44px] px-2 sm:px-3 bg-accent-600 text-white text-sm font-semibold rounded-xl hover:bg-accent-700 transition-colors flex items-center justify-center gap-1 press-feedback"
-          >
-            <span className="text-base leading-none">+</span>
-            <span className="hidden sm:inline">Log Workout</span>
-          </button>
-        )}
       </div>
+      {activeTab === 'workouts' && (
+        <div className="flex">
+          <Button variant="primary" icon={<Plus />} onClick={() => setLogOpen(true)} className="shrink-0">
+            Log workout
+          </Button>
+        </div>
+      )}
 
       {/* Sub-tab content — width is managed by the page (calendar lives there) */}
       <div>

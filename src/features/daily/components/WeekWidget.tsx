@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { SlidersHorizontal } from 'lucide-react'
 import { addDays, addWeeks, format, startOfWeek, endOfWeek, isToday, isSameDay, getISOWeek, differenceInCalendarWeeks } from 'date-fns'
 import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { useCalendarEventDatesForRange, useCalendarList } from '../../calendar/hooks/useCalendar'
 import { useCalendarStore } from '../../../app/store'
 import { DateNav } from '../../../shared/components/DateNav'
+import { Card, IconButton, ToneDot, TonePill, cx } from '../../../shared/ui'
 import type { Task } from '../../todo/types'
 
 interface Props {
@@ -24,13 +26,13 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
   // Structurally independent of the day view, but its position still follows
   // it: jump to the week containing highlightDate whenever it lands outside
   // the week currently on screen (e.g. paging many days ahead via Daily's ‹ ›).
+  // Adjust-during-render (React's replacement for setState-in-effect).
   const highlightKey = highlightDate ? format(highlightDate, 'yyyy-MM-dd') : null
-  useEffect(() => {
-    if (!highlightDate) return
-    const target = differenceInCalendarWeeks(highlightDate, baseWeekStart, { weekStartsOn: 1 })
-    setWeekOffset(target)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlightKey])
+  const [seenHighlightKey, setSeenHighlightKey] = useState<string | null>(null)
+  if (highlightKey !== seenHighlightKey) {
+    setSeenHighlightKey(highlightKey)
+    if (highlightDate) setWeekOffset(differenceInCalendarWeeks(highlightDate, baseWeekStart, { weekStartsOn: 1 }))
+  }
 
   const { data: tasks = [] } = useTasksByWeek(weekStart, weekEnd)
   const { data: calDates }   = useCalendarEventDatesForRange(weekStart, weekEnd)
@@ -67,150 +69,123 @@ export function WeekWidget({ onDayClick, highlightDate }: Props) {
     (t): t is Task => !t.due_date && t.status !== 'done'
   )
 
+  const openTotal   = tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length
   const totalTasks  = tasks.filter(t => t.status !== 'cancelled').length
   const doneTasks   = tasks.filter(t => t.status === 'done').length
   const donePercent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
 
   return (
-    <div className="card p-5">
-      {/* Header — app-standard ‹ label › navigation (shared DateNav) */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-1">
+    <Card className="max-w-3xl">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-1">
         <DateNav
           label={`Week ${weekNumber}`}
           onPrev={() => setWeekOffset(w => w - 1)}
           onNext={() => setWeekOffset(w => w + 1)}
           onToday={() => setWeekOffset(0)}
           isToday={isCurrentWeek}
-          labelClassName="text-xs font-semibold uppercase tracking-wider text-ink-500 min-w-[64px]"
+          labelClassName="min-w-[72px] text-lead font-semibold text-fg"
         />
         <div className="flex items-center gap-1">
-          {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length > 0 && (
-            <span className="text-[10px] bg-accent-50 text-accent-600 font-semibold px-1.5 py-0.5 rounded-full">
-              {tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled').length} open
-            </span>
-          )}
+          {openTotal > 0 && <TonePill tone="accent">{openTotal} open</TonePill>}
           {calList.length > 1 && (
-            <button
+            <IconButton
+              label="Filter calendars"
+              aria-pressed={showCalFilter}
               onClick={() => setShowCalFilter(p => !p)}
-              className={`min-h-[44px] min-w-[44px] flex items-center justify-center text-[10px] rounded transition-colors duration-150 font-medium ${
-                showCalFilter ? 'bg-accent-100 text-accent-700' : 'text-ink-400 hover:text-ink-600'
-              }`}
-              title="Filter calendars"
+              className={cx(showCalFilter && 'bg-accent-50 text-accent-600')}
             >
-              ⊞
-            </button>
+              <SlidersHorizontal />
+            </IconButton>
           )}
         </div>
       </div>
 
-      {/* Calendar filter checkboxes */}
       {showCalFilter && calList.length > 1 && (
-        <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-ink-100">
+        <div className="mb-3 flex flex-wrap gap-1.5 border-b border-line pb-3">
           {calList.map(cal => (
             <button
               key={cal.id}
+              type="button"
+              aria-pressed={isCalSelected(cal.id)}
               onClick={() => toggleCalendar(cal.id)}
-              className={`flex items-center gap-1 text-[10px] px-2.5 min-h-[44px] rounded-full border transition-colors duration-150 ${
-                isCalSelected(cal.id)
-                  ? 'bg-green-50 border-green-200 text-green-700'
-                  : 'bg-ink-50 border-ink-200 text-ink-400'
-              }`}
+              className="pill-tab"
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${isCalSelected(cal.id) ? 'bg-green-400' : 'bg-ink-300'}`} />
               {cal.summary}
             </button>
           ))}
         </div>
       )}
 
-      {/* Date range + completion bar */}
-      <div className="flex items-center justify-between mb-3">
-        {/* en-GB (day-first) — the repo's date rule; this card owns the label,
-            the Week tab around it no longer prints its own copy. */}
-        <p className="text-[10px] text-ink-400">
+      <div className="mb-3 flex items-center justify-between">
+        {/* en-GB (day-first); this card owns the range label. */}
+        <p className="text-meta tabular-nums text-fg-muted">
           {format(weekStart, 'd MMM')} – {format(weekEnd, 'd MMM yyyy')}
         </p>
         {totalTasks > 0 && (
           <div className="flex items-center gap-1.5">
-            <div className="h-1 w-16 bg-ink-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-green-400 rounded-full transition-all duration-300"
-                style={{ width: `${donePercent}%` }}
-              />
+            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-2">
+              <div className="h-full rounded-full bg-success transition-all duration-300" style={{ width: `${donePercent}%` }} />
             </div>
-            <span className="text-[10px] text-ink-400">{donePercent}%</span>
+            <span className="text-meta tabular-nums text-fg-muted">{donePercent}% done</span>
           </div>
         )}
       </div>
 
-      {/* Day grid */}
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
         {days.map(day => {
-          const current    = isToday(day)
-          const selected   = highlightDate ? isSameDay(day, highlightDate) : false
-          const openCount  = openCountForDay(day)
+          const current     = isToday(day)
+          const selected    = highlightDate ? isSameDay(day, highlightDate) : false
+          const openCount   = openCountForDay(day)
           const hasCalEvent = hasCalEventOnDay(day)
-          const clickable  = !!onDayClick
+          const clickable   = !!onDayClick
 
           return (
             <button
               key={day.toISOString()}
+              type="button"
               onClick={() => onDayClick?.(day)}
               disabled={!clickable}
-              className={`flex flex-col items-center py-2 px-1 rounded-lg text-center transition-colors duration-150 ${
-                current
-                  ? 'bg-accent-500 text-white'
-                  : selected
-                  ? 'bg-accent-100 text-accent-700 ring-2 ring-accent-400'
-                  : clickable
-                  ? 'bg-cream-100 hover:bg-cream-200 cursor-pointer'
-                  : 'bg-cream-100'
-              }`}
+              aria-pressed={selected}
+              aria-label={format(day, 'EEEE d MMMM')}
+              className={cx(
+                'flex min-h-[72px] flex-col items-center rounded-row px-1 py-2 text-center transition-colors duration-150',
+                current ? 'bg-accent-500 text-on-accent'
+                  : selected ? 'bg-accent-50 text-accent-700 ring-2 ring-inset ring-accent-500'
+                  : clickable ? 'bg-surface-2 hover:bg-surface-hover'
+                  : 'bg-surface-2',
+              )}
             >
-              <span className={`text-[9px] font-semibold uppercase ${current ? 'text-accent-100' : 'text-ink-400'}`}>
+              <span className={cx('text-micro font-semibold uppercase', current ? 'opacity-80' : 'text-fg-faint')}>
                 {format(day, 'EEE')}
               </span>
-              <span className={`text-sm font-bold mt-0.5 ${current ? 'text-white' : 'text-ink-800'}`}>
+              <span className={cx('mt-0.5 text-lead font-bold tabular-nums', !current && !selected && 'text-fg')}>
                 {format(day, 'd')}
               </span>
-              {/* Task count badge */}
               {openCount > 0 && (
-                <span className={`mt-0.5 text-[10px] font-semibold px-1 rounded-sm ${
-                  current ? 'bg-accent-600 text-white' : 'bg-accent-100 text-accent-700'
-                }`}>
+                <span className={cx('mt-0.5 rounded-sm px-1 text-micro font-semibold tabular-nums', current ? 'bg-accent-700 text-on-accent' : 'bg-accent-50 text-accent-700')}>
                   {openCount}
                 </span>
               )}
-              {/* Calendar event dot */}
-              {hasCalEvent && (
-                <span className={`mt-0.5 w-1 h-1 rounded-full ${
-                  current ? 'bg-green-200' : 'bg-green-400'
-                }`} />
-              )}
+              {hasCalEvent && <span data-tone="info" aria-hidden className={cx('tone-dot mt-1 !h-1 !w-1', current && 'opacity-80')} />}
             </button>
           )
         })}
       </div>
 
-      {/* Undated "this week" tasks */}
       {floatingTasks.length > 0 && isCurrentWeek && (
-        <div className="mt-4 pt-3 border-t border-ink-100">
-          <p className="text-[10px] text-ink-400 uppercase font-semibold tracking-wider mb-2">
-            This week — no date
-          </p>
-          <div>
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="section-label mb-2">This week — no date</p>
+          <ul>
             {floatingTasks.slice(0, 5).map(task => (
-              <div key={task.id} className="flex items-center gap-2 py-1">
-                <span className="w-1 h-1 rounded-full bg-accent-400 flex-shrink-0" />
-                <span className="text-sm text-ink-700 truncate">{task.title}</span>
-              </div>
+              <li key={task.id} className="flex items-center gap-2 py-1">
+                <ToneDot tone="accent" className="!h-1.5 !w-1.5" />
+                <span className="truncate text-body text-fg-2">{task.title}</span>
+              </li>
             ))}
-            {floatingTasks.length > 5 && (
-              <p className="text-xs text-ink-400 mt-1">+{floatingTasks.length - 5} more</p>
-            )}
-          </div>
+          </ul>
+          {floatingTasks.length > 5 && <p className="mt-1 text-meta text-fg-muted">+{floatingTasks.length - 5} more</p>}
         </div>
       )}
-    </div>
+    </Card>
   )
 }

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Plus } from 'lucide-react'
+import { Button } from '../../../shared/ui'
 import { WindowChips } from '../../../shared/components/windowChips'
 import { useCreateWish } from '../hooks/useWishes'
 
@@ -32,25 +34,18 @@ export function WishQuickAdd() {
   }
 
   return (
-    <form
-      onSubmit={e => { e.preventDefault(); add() }}
-      className="max-w-xl rounded-2xl border border-ink-200 bg-cream-50 p-3 sm:p-4"
-    >
+    <form onSubmit={e => { e.preventDefault(); add() }} className="card max-w-xl p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder="Something you want to do…"
           aria-label="Wish"
-          className="min-h-[44px] flex-1 min-w-[11rem] max-w-md rounded-xl border border-ink-200 bg-canvas px-3 text-sm text-ink-900 placeholder:text-ink-400"
+          className="input min-w-[11rem] max-w-md flex-1"
         />
-        <button
-          type="submit"
-          disabled={!canSave}
-          className="press-feedback min-h-[44px] rounded-xl bg-accent-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-accent-700 disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" disabled={!canSave} loading={create.isPending} icon={<Plus />}>
           Add
-        </button>
+        </Button>
       </div>
 
       <WindowChips value={period} onChange={setPeriod} className="mt-3" />

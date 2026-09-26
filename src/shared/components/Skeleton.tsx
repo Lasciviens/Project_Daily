@@ -3,11 +3,11 @@ interface SkeletonProps {
   rounded?: string
 }
 
-export function Skeleton({ className = '', rounded = 'rounded-xl' }: SkeletonProps) {
+export function Skeleton({ className = '', rounded = 'rounded-control' }: SkeletonProps) {
   return (
     <span
       aria-hidden="true"
-      className={`block animate-pulse motion-reduce:animate-none bg-cream-200 ${rounded} ${className}`}
+      className={`block skeleton ${rounded} ${className}`}
     />
   )
 }
@@ -34,7 +34,7 @@ export function SkeletonText({ lines = 3, className = '' }: SkeletonTextProps) {
 
 export function SkeletonCard({ className = '' }: { className?: string }) {
   return (
-    <div className={`rounded-2xl border border-ink-100 bg-cream-50 p-4 ${className}`}>
+    <div className={`card p-4 ${className}`}>
       <div className="flex items-center gap-3">
         <Skeleton rounded="rounded-full" className="h-10 w-10 shrink-0" />
         <span className="flex-1 min-w-0 space-y-2">

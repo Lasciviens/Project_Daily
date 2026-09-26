@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
 import { fetchTrainingHistory, fetchBodyweightHistory } from '../api/hevyApi'
 
 // 6-month window — long enough to show a real trend, short enough that the
@@ -9,9 +10,9 @@ export function useTrainingHistory() {
   const to = new Date()
   const from = new Date(to.getTime() - WINDOW_DAYS * 86_400_000)
   return useQuery({
-    queryKey: ['hevy', 'training-history', from.toISOString().slice(0, 10)],
+    queryKey: qk.hevy.trainingHistory(from.toISOString().slice(0, 10)),
     queryFn:  () => fetchTrainingHistory(from.toISOString(), to.toISOString()),
-    staleTime: 10 * 60_000,
+    staleTime: STALE.long,
   })
 }
 
@@ -23,8 +24,8 @@ export function useBodyweightHistory() {
   const toStr = to.toISOString().slice(0, 10)
   const fromStr = from.toISOString().slice(0, 10)
   return useQuery({
-    queryKey: ['hevy', 'bodyweight-history', fromStr, toStr],
+    queryKey: qk.hevy.bodyweightHistory(fromStr, toStr),
     queryFn:  () => fetchBodyweightHistory(fromStr, toStr),
-    staleTime: 10 * 60_000,
+    staleTime: STALE.long,
   })
 }

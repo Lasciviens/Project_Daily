@@ -55,6 +55,16 @@ export async function fetchMealPlan(weekStart: string, weekEnd: string): Promise
   return legacy.data ?? []
 }
 
+/** One planned row by id. Pre-061 the id belongs to recipe_meal_plans instead. */
+export async function fetchMealPlanEntry(id: string): Promise<MealPlanEntry | null> {
+  const { data, error } = await supabase.from('food_log_entries').select(PLAN_SELECT).eq('id', id).maybeSingle()
+  if (error) throw error
+  if (data) return rowToEntry(data as unknown as PlanRow)
+  // Post-061 the legacy table is gone; its error just means "not found".
+  const legacy = await supabase.from('recipe_meal_plans').select(PLAN_SELECT).eq('id', id).maybeSingle()
+  return legacy.error ? null : ((legacy.data as MealPlanEntry | null) ?? null)
+}
+
 // Map a plan-input to a food_log_entries 'planned' row: the amount goes into
 // quantity/unit; macros stay null (live on read).
 function plannedRow(input: CreateMealPlanEntryInput) {

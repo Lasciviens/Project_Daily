@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Button, SegmentedControl } from '../../../shared/ui'
 import { toast } from '../../../app/store'
+import { SLOT_OPTIONS } from './foodLogUtils'
 import { useRecipes } from '../hooks/useRecipes'
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import { useSetMealPlanEntry, useDeleteMealPlanEntry } from '../hooks/useMealPlan'
@@ -29,7 +31,6 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
   const [ingredientQty, setIngredientQty] = useState('')
   const [ingredientUnit, setIngredientUnit] = useState('g')
   const [servings,    setServings]    = useState('1')
-  const [saving,      setSaving]      = useState(false)
 
   // Prefill when the modal opens (or the edited entry changes). Adjusting
   // state during render on a prop change is React's recommended pattern over
@@ -56,12 +57,9 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
   }
 
   async function handleSave() {
-    if (mode === 'recipe' && !recipeId)       { toast.error('Pick a recipe'); return }
+    if (mode === 'recipe' && !recipeId)           { toast.error('Pick a recipe'); return }
     if (mode === 'custom' && !customTitle.trim()) { toast.error('Type a title'); return }
     if (mode === 'ingredient' && !ingredientId)   { toast.error('Pick an ingredient'); return }
-
-    setSaving(true)
-    const tid = toast.loading('Saving…')
     try {
       await setEntry.mutateAsync({
         id: existing?.id,   // edit-in-place when present (was a broken upsert → 42P10)
@@ -73,114 +71,99 @@ export function AssignMealModal({ open, onClose, date, mealSlot, existing }: Pro
         ingredient_unit:       mode === 'ingredient' ? (ingredientUnit.trim() || null) : null,
         servings:              Math.max(0.5, Number(servings) || 1),
       })
-      toast.dismiss(tid); toast.success('Saved ✓')
       onClose()
-    } catch {
-      toast.dismiss(tid)   // the hook (useMutationWithFeedback) already toasted + logged the error
-    } finally {
-      setSaving(false)
-    }
+    } catch { return }   // the hook already toasted + logged
   }
 
   async function handleRemove() {
     if (!existing) return
-    const tid = toast.loading('Removing…')
     try {
       await remove.mutateAsync(existing.id)
-      toast.dismiss(tid); toast.success('Removed')
       onClose()
-    } catch {
-      toast.dismiss(tid)   // the hook (useMutationWithFeedback) already toasted + logged the error
-    }
+    } catch { return }
   }
 
-  const inputCls = 'w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400'
+  const busy = setEntry.isPending || remove.isPending
+  const slotLabel = SLOT_OPTIONS.find(o => o.id === mealSlot)?.label ?? mealSlot
 
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-[70]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-sm max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          <div className="sm:hidden flex justify-center pt-2 -mb-1"><span className="h-1 w-10 rounded-full bg-ink-200" /></div>
-          <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-ink-100">
-            <h2 className="text-base font-bold text-ink-900 capitalize">{mealSlot}</h2>
-            <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl">×</button>
-          </div>
+    <ModalShell
+      open={open}
+      onClose={onClose}
+      title={existing ? `Edit planned ${slotLabel.toLowerCase()}` : `Plan ${slotLabel.toLowerCase()}`}
+      size="sm"
+      dismissible={!busy}
+      footer={
+        <div className="flex gap-2">
+          {existing && (
+            <Button variant="ghost" className="text-danger" onClick={handleRemove} loading={remove.isPending} disabled={setEntry.isPending}>Remove</Button>
+          )}
+          <Button variant="primary" block onClick={handleSave} loading={setEntry.isPending} disabled={remove.isPending}>Save</Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <SegmentedControl<Mode>
+          fullWidth size="sm" value={mode} onChange={setMode}
+          options={[
+            { value: 'recipe', label: 'Recipe' },
+            { value: 'ingredient', label: 'Ingredient' },
+            { value: 'custom', label: 'Type it' },
+          ]}
+        />
 
-          <div className="px-5 py-4 flex flex-col gap-3">
-            {/* Mode toggle */}
-            <div className="flex gap-1 bg-cream-100 p-0.5 rounded-lg">
-              {(['recipe', 'ingredient', 'custom'] as Mode[]).map(m => (
-                <button key={m} type="button" onClick={() => setMode(m)}
-                  className={`flex-1 text-[11px] min-h-[32px] rounded-md font-medium transition-colors ${
-                    mode === m ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-400 hover:text-ink-600'
-                  }`}>
-                  {m === 'recipe' ? '🍲 Recipe' : m === 'ingredient' ? '🥚 Ingredient' : '✏️ Type it'}
-                </button>
-              ))}
+        {mode === 'recipe' && (
+          <>
+            <select value={recipeId} onChange={e => setRecipeId(e.target.value)} className="select" aria-label="Recipe">
+              <option value="">Pick a recipe…</option>
+              {recipes.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+            </select>
+            <p className="text-meta text-fg-muted">
+              Not in the list? Use{' '}
+              <button type="button" onClick={() => setMode('custom')} className="font-semibold text-accent-600">Type it</button>
+              {' '}for a quick one-off, or build it in Food → Library.
+            </p>
+          </>
+        )}
+
+        {mode === 'custom' && (
+          <>
+            <input autoFocus value={customTitle} onChange={e => setCustomTitle(e.target.value)} aria-label="Meal"
+              placeholder="Type any meal — e.g. Restaurant, mom's köfte…" className="input" />
+            <p className="text-meta text-fg-muted">Free text — plan anything, even if it's not a saved recipe. Confirm it as eaten later with ✓.</p>
+          </>
+        )}
+
+        {mode === 'ingredient' && (
+          <div className="flex flex-col gap-2">
+            <select value={ingredientId} aria-label="Ingredient" onChange={e => {
+              setIngredientId(e.target.value)
+              const lib = library.find(l => l.id === e.target.value)
+              if (lib) setIngredientUnit(lib.unit)
+            }} className="select">
+              <option value="">Pick from ingredient library…</option>
+              {library.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+            {library.length === 0 && (
+              <p className="text-meta text-fg-muted">No library foods yet — add one in the Food → Ingredients tab, or scan a barcode from "Log food".</p>
+            )}
+            <div className="flex gap-2">
+              <input type="number" min="0" step="any" value={ingredientQty} onChange={e => setIngredientQty(e.target.value)}
+                placeholder="Qty" aria-label="Quantity" className="input flex-1 text-center tabular-nums" />
+              <input value={ingredientUnit} onChange={e => setIngredientUnit(e.target.value)}
+                placeholder="Unit" aria-label="Unit" className="input w-20 text-center" />
             </div>
-
-            {mode === 'recipe' && (
-              <>
-                <select value={recipeId} onChange={e => setRecipeId(e.target.value)} className={inputCls}>
-                  <option value="">Pick a recipe…</option>
-                  {recipes.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
-                </select>
-                <p className="text-[11px] text-ink-400">
-                  Not in the list? Use <button type="button" onClick={() => setMode('custom')} className="text-accent-600 hover:text-accent-700 font-medium">✏️ Type it</button> for a quick one-off, or build it in Food → Library.
-                </p>
-              </>
-            )}
-
-            {mode === 'custom' && (
-              <>
-                <input autoFocus value={customTitle} onChange={e => setCustomTitle(e.target.value)}
-                  placeholder="Type any meal — e.g. Restaurant, mom's köfte…"
-                  className={inputCls} />
-                <p className="text-[11px] text-ink-400">Free text — plan anything, even if it's not a saved recipe. Confirm it as eaten later with ✓.</p>
-              </>
-            )}
-
-            {mode === 'ingredient' && (
-              <div className="flex flex-col gap-2">
-                <select value={ingredientId} onChange={e => {
-                  setIngredientId(e.target.value)
-                  const lib = library.find(l => l.id === e.target.value)
-                  if (lib) setIngredientUnit(lib.unit)
-                }} className={inputCls}>
-                  <option value="">Pick from ingredient library…</option>
-                  {library.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-                {library.length === 0 && (
-                  <p className="text-[11px] text-ink-400">No library foods yet — add one in the Food → Ingredients tab, or scan a barcode from "Log food".</p>
-                )}
-                <div className="flex gap-2">
-                  <input type="number" min="0" step="any" value={ingredientQty} onChange={e => setIngredientQty(e.target.value)} placeholder="Qty"
-                    className="flex-1 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                  <input value={ingredientUnit} onChange={e => setIngredientUnit(e.target.value)} placeholder="Unit"
-                    className="w-20 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
-                </div>
-              </div>
-            )}
-
-            {mode !== 'ingredient' && (
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">Servings</label>
-                <input type="number" min="0.5" step="0.5" value={servings} onChange={e => setServings(e.target.value)} className="w-24 min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-center focus:outline-none focus:ring-2 focus:ring-accent-400" />
-              </div>
-            )}
           </div>
+        )}
 
-          <div className="px-5 py-4 border-t border-ink-100 flex gap-3">
-            {existing && (
-              <button onClick={handleRemove} className="min-h-[44px] px-4 text-sm font-medium text-red-500 hover:bg-red-50 rounded-xl">Remove</button>
-            )}
-            <button onClick={handleSave} disabled={saving} className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 disabled:opacity-50">
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+        {mode !== 'ingredient' && (
+          <div>
+            <label htmlFor="amm-servings" className="field-label">Servings</label>
+            <input id="amm-servings" type="number" min="0.5" step="0.5" value={servings} onChange={e => setServings(e.target.value)}
+              className="input w-24 text-center tabular-nums" />
           </div>
-        </DialogPanel>
+        )}
       </div>
-    </Dialog>
+    </ModalShell>
   )
 }

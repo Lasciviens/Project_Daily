@@ -13,7 +13,7 @@ export interface HealthWorkout {
   avg_heart_rate:   number | null
   min_heart_rate:   number | null
   max_heart_rate:   number | null
-  // deno-lint-ignore no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- free-form HAE jsonb, read defensively
   raw:              Record<string, any>
   synced_at:        string
 }
@@ -30,7 +30,7 @@ export interface HealthMetric {
   // data source (the Fitbit/Google Health integration was removed
   // 2026-09-01) — every row is 'apple' except a manual correction.
   source_family?: 'apple' | 'manual'
-  // deno-lint-ignore no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- free-form HAE jsonb, read defensively
   value:       Record<string, any>
   synced_at:   string
 }

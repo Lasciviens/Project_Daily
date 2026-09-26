@@ -7,6 +7,9 @@ import { rangeForAnchor, labelForAnchor } from './dateNav'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { STEPS_EXTRA_METRICS, RUNNING_EXTRA_METRICS } from './miniMetrics'
 import { compactAxisTick } from './axisFormat'
+import { useChartColors } from '../../../../shared/ui'
+import { TOOLTIP_BOX } from '../chartKit'
+import { HeadlineStat, SectionCard, SideStat } from './sectionKit'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
@@ -15,6 +18,7 @@ function fmtDay(dateStr: string): string {
 export function StepsSection({ range }: { range: HealthRange }) {
   const today = todayStr()
   const { anchor, setAnchor, period, setPeriod } = range
+  const c = useChartColors()
 
   // The mini-metric cards read the SAME window the rest of the page is on
   // (they used to be pinned to the last 7 days ending today, so they sat
@@ -61,14 +65,14 @@ export function StepsSection({ range }: { range: HealthRange }) {
     const date: string | undefined = payload[0]?.payload?.date
     const value: number | undefined = payload[0]?.value
     return (
-      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
-        <p className="text-ink-400 font-medium">{label}</p>
-        <p className="font-semibold text-rose-600">{value != null ? `${value.toLocaleString('en-GB')} steps` : '—'}</p>
+      <div className={TOOLTIP_BOX}>
+        <p className="font-medium text-fg-muted">{label}</p>
+        <p className="font-semibold text-fg">{value != null ? `${value.toLocaleString('en-GB')} steps` : '—'}</p>
         {period !== 'day' && date && (
           <button
             type="button"
             onClick={() => goToDay(date)}
-            className="text-accent-600 underline text-xs py-1.5 flex items-center min-h-[44px]"
+            className="flex min-h-[44px] items-center py-1.5 text-meta font-semibold text-accent-600"
           >
             Go to this day →
           </button>
@@ -78,45 +82,28 @@ export function StepsSection({ range }: { range: HealthRange }) {
   }
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
-            🚶 Steps {isDay
-              ? (anchor === today ? 'Today' : `· ${labelForAnchor('day', anchor)}`)
-              : period === 'week' ? '· Weekly Average' : '· Monthly Average'}
-          </p>
-          <p className="text-2xl sm:text-3xl font-bold text-ink-900 leading-tight">
-            {stepsLoading ? '…' : Math.round(steps).toLocaleString('en-GB')}
-            {!isDay && <span className="text-sm font-normal text-ink-400"> /day</span>}
-          </p>
-        </div>
+    <SectionCard>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <HeadlineStat
+          label={<>Steps {isDay
+            ? (anchor === today ? 'today' : `· ${labelForAnchor('day', anchor)}`)
+            : period === 'week' ? '· weekly average' : '· monthly average'}</>}
+          value={stepsLoading ? '…' : Math.round(steps).toLocaleString('en-GB')}
+          unit={!isDay ? '/day' : undefined}
+        />
         <div className="flex gap-4">
-          {!isDay && (
-            <div className="text-center">
-              <p className="text-lg font-bold text-ink-800">{Math.round(totalSteps).toLocaleString('en-GB')}</p>
-              <p className="text-[10px] text-ink-400">total steps</p>
-            </div>
-          )}
-          <div className="text-center">
-            <p className="text-lg font-bold text-ink-800">{distanceKm.toFixed(isDay ? 2 : 1)}</p>
-            <p className="text-[10px] text-ink-400">{isDay ? 'km' : 'km total'}</p>
-          </div>
-          {pace != null && (
-            <div className="text-center">
-              <p className="text-lg font-bold text-ink-800">{Math.round(pace)}</p>
-              <p className="text-[10px] text-ink-400">cm/step</p>
-            </div>
-          )}
+          {!isDay && <SideStat value={Math.round(totalSteps).toLocaleString('en-GB')} label="total steps" />}
+          <SideStat value={distanceKm.toFixed(isDay ? 2 : 1)} label={isDay ? 'km' : 'km total'} />
+          {pace != null && <SideStat value={Math.round(pace)} label="cm/step" />}
         </div>
       </div>
 
       <div className="h-32">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={c.grid} />
+            <XAxis dataKey="label" tick={{ fontSize: 9, fill: c.axis }} interval={period === 'day' ? 3 : period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 9, fill: c.axis }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
             {/* Hover trigger (default): the value must be visible the moment
                 the pointer is over a bar — click is reserved for the
                 "Go to this day" button inside the tooltip. pointerEvents:
@@ -126,13 +113,13 @@ export function StepsSection({ range }: { range: HealthRange }) {
             {/* maxBarSize: a single-day series would otherwise stretch one bar
                 across the whole plot area, reading as a solid slab / render
                 error rather than as one data point. */}
-            <Bar dataKey="value" fill="#f43f5e" radius={[3, 3, 0, 0]} activeBar={false} maxBarSize={28} />
+            <Bar dataKey="value" fill={c.series[0]} radius={[3, 3, 0, 0]} activeBar={false} maxBarSize={28} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      <MetricMiniGrid title="Mobility & Activity" metrics={STEPS_EXTRA_METRICS} window={miniWindow} />
-      <MetricMiniGrid title="Running Dynamics" metrics={RUNNING_EXTRA_METRICS} window={miniWindow} />
-    </div>
+      <MetricMiniGrid title="Mobility & activity" metrics={STEPS_EXTRA_METRICS} window={miniWindow} />
+      <MetricMiniGrid title="Running dynamics" metrics={RUNNING_EXTRA_METRICS} window={miniWindow} />
+    </SectionCard>
   )
 }

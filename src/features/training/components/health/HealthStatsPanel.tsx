@@ -3,6 +3,7 @@ import { computeDailySeries, computeHeartRateDailySeries, computeSleepSummary, f
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { rangeForAnchor, shiftStr, labelForAnchor } from './dateNav'
 import type { SectionId, HealthRange } from './sectionTypes'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 // Plain computed stats (no AI) shown where the training calendar normally
 // sits — the calendar isn't relevant while browsing Health, so this reclaims
@@ -90,7 +91,7 @@ function TrendBadge({ pct, goodDirection = 'up' }: { pct: number | null; goodDir
   const isUp = pct > 0
   const isGood = goodDirection === 'up' ? isUp : !isUp
   return (
-    <span className={`text-[10px] font-semibold ${isGood ? 'text-emerald-600' : 'text-red-500'}`}
+    <span data-tone={isGood ? 'success' : 'danger'} className="tone-text text-micro font-semibold tabular-nums"
       title="Compared with the same-length window immediately before this one">
       {isUp ? '▲' : '▼'} {Math.abs(pct)}%
     </span>
@@ -99,13 +100,13 @@ function TrendBadge({ pct, goodDirection = 'up' }: { pct: number | null; goodDir
 
 function StatRow({ label, value, sub, trend }: { label: string; value: string; sub?: string; trend?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-ink-50 last:border-0 gap-2">
+    <div className="flex items-center justify-between gap-2 border-b border-line py-1.5 last:border-0">
       <div className="min-w-0">
-        <p className="text-xs text-ink-500">{label}</p>
-        {sub && <p className="text-[10px] text-ink-300">{sub}</p>}
+        <p className="text-meta text-fg-muted">{label}</p>
+        {sub && <p className="text-micro font-normal text-fg-faint">{sub}</p>}
       </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        <span className="text-sm font-bold text-ink-900">{value}</span>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <span className="text-body font-bold tabular-nums text-fg">{value}</span>
         {trend}
       </div>
     </div>
@@ -114,19 +115,19 @@ function StatRow({ label, value, sub, trend }: { label: string; value: string; s
 
 function Panel({ title, win, children }: { title: string; win: Win; children: React.ReactNode }) {
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">📈 {title}</p>
+    <div className="card p-4">
+      <p className="section-label">{title}</p>
       {/* Which window produced these numbers. Without it there was no way to
           tell whether a figure was for the day you were looking at or a
           leftover from a different range. */}
-      <p className="text-[10px] text-ink-300 mb-2">{win.label}</p>
+      <p className="mb-2 text-meta text-fg-muted">{win.label}</p>
       {children}
     </div>
   )
 }
 
 function fmtDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 /** "Average" is meaningless for a single day — say what the number really is. */

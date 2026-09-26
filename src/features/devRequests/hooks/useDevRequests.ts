@@ -1,52 +1,49 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
 import {
   fetchDevRequests, createDevRequest, updateDevRequest, deleteDevRequest, deleteDevRequests, reorderDevRequests,
 } from '../api/devRequestsApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import type { DevRequest, CreateDevRequestInput } from '../types'
 
-const QK = ['dev-requests'] as const
+const QK = qk.devRequests.all
 
 export function useDevRequests() {
-  return useQuery({ queryKey: QK, queryFn: fetchDevRequests, staleTime: 30_000 })
+  return useQuery({ queryKey: QK, queryFn: fetchDevRequests, staleTime: STALE.short })
 }
 
 export function useCreateDevRequest() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'create_dev_request',
-    successMessage: 'Added ✓',
+    successMessage: 'Added',
     mutationFn:     (input: CreateDevRequestInput) => createDevRequest(input),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: QK }),
+    invalidates:    [QK],
   })
 }
 
 export function useUpdateDevRequest() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:     'update_dev_request',
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateDevRequest>[1] }) => updateDevRequest(id, patch),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: QK }),
+    invalidates: [QK],
   })
 }
 
 export function useDeleteDevRequest() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'delete_dev_request',
     successMessage: 'Deleted',
     mutationFn:     (id: string) => deleteDevRequest(id),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: QK }),
+    invalidates:    [QK],
   })
 }
 
 export function useBulkDeleteDevRequests() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'bulk_delete_dev_requests',
     successMessage: 'Deleted',
     mutationFn:     (ids: string[]) => deleteDevRequests(ids),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: QK }),
+    invalidates:    [QK],
   })
 }
 
@@ -70,6 +67,6 @@ export function useReorderDevRequests() {
       const ctx = mutateResult as { previous?: DevRequest[] } | undefined
       if (ctx?.previous) qc.setQueryData(QK, ctx.previous)
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: QK }),
+    invalidates: [QK],
   })
 }

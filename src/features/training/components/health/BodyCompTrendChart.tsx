@@ -2,9 +2,11 @@ import { useState } from 'react'
 import type { BodyCompositionReport } from '../../api/bodyCompositionApi'
 import { BODY_COMP_FIELDS, average, computeTrend, type BodyCompFieldKey } from '../../bodyCompositionAggregate'
 import { BarLineChart } from './BarLineChart'
+import { useChartColors } from '../../../../shared/ui'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 function fmtDay(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(iso), { day: 'numeric', month: 'short' })
 }
 
 const TREND_ARROW: Record<'up' | 'down' | 'flat', string> = { up: '↗', down: '↘', flat: '→' }
@@ -19,6 +21,7 @@ const TREND_ARROW: Record<'up' | 'down' | 'flat', string> = { up: '↗', down: '
 export function BodyCompTrendChart({ reportsInWindow }: { reportsInWindow: BodyCompositionReport[] }) {
   const [metric, setMetric] = useState<BodyCompFieldKey>('weight_kg')
   const meta = BODY_COMP_FIELDS.find(f => f.key === metric)!
+  const c = useChartColors()
 
   const points = reportsInWindow.filter(r => Number.isFinite(r[metric]))
   const chartData = points.map(r => ({ label: fmtDay(r.measured_at), value: Math.round(r[metric] * 10 ** meta.decimals) / 10 ** meta.decimals }))
@@ -27,34 +30,33 @@ export function BodyCompTrendChart({ reportsInWindow }: { reportsInWindow: BodyC
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-1.5">
+      <div role="tablist" aria-label="Metric" className="scroll-x -mx-1 flex gap-1 px-1 sm:flex-wrap">
         {BODY_COMP_FIELDS.map(f => (
           <button
             key={f.key}
             type="button"
+            role="tab"
+            aria-selected={metric === f.key}
             onClick={() => setMetric(f.key)}
-            className={`min-h-[32px] px-2.5 rounded-full text-[11px] font-semibold border transition-colors ${
-              metric === f.key ? 'text-white border-transparent' : 'text-ink-500 border-ink-200 hover:border-ink-300'
-            }`}
-            style={metric === f.key ? { backgroundColor: f.color } : undefined}
+            className="pill-tab shrink-0 px-3 text-meta"
           >
-            {f.icon} {f.label}
+            {f.label}
           </button>
         ))}
       </div>
 
       {chartData.length === 0 ? (
-        <p className="text-xs text-ink-300 py-6 text-center">No data for this metric in the selected period.</p>
+        <p className="py-6 text-center text-body text-fg-muted">No data for this metric in the selected period.</p>
       ) : (
         <>
-          <BarLineChart data={chartData} dataKey="value" color={meta.color} unit={meta.unit} tooltipLabel={meta.label} height={180} />
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-ink-500">
+          <BarLineChart data={chartData} dataKey="value" color={c.series[meta.series]} unit={meta.unit} tooltipLabel={meta.label} height={180} />
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-meta text-fg-muted">
             {avg != null && (
-              <p>Average (period): <span className="font-semibold text-ink-800">{avg.toFixed(meta.decimals)} {meta.unit}</span></p>
+              <p>Average (period): <span className="font-semibold tabular-nums text-fg">{avg.toFixed(meta.decimals)} {meta.unit}</span></p>
             )}
             {trend && (
               <p>
-                Trend: <span className="font-semibold text-ink-800">
+                Trend: <span className="font-semibold tabular-nums text-fg">
                   {TREND_ARROW[trend.direction]} {trend.direction === 'flat' ? 'flat' : `${trend.perWeek > 0 ? '+' : ''}${trend.perWeek.toFixed(meta.decimals)} ${meta.unit}/week`}
                 </span>
               </p>

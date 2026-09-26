@@ -1,73 +1,45 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../../../integrations/supabase/client'
-import { requireUser } from '../../../shared/utils/requireUser'
+import { useQuery } from '@tanstack/react-query'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
+import {
+  fetchTransitRoutes, insertTransitRoute, deleteTransitRoute, updateTransitRouteLabel,
+  type UserTransitRoute,
+} from '../api/transitStoreApi'
 import type { StopResult } from '../api/ruterApi'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export type { UserTransitRoute }
 
-export interface UserTransitRoute {
-  id:             string
-  label:          string
-  from_stop_id:   string
-  from_stop_name: string
-  to_stop_id:     string
-  to_stop_name:   string
-  sort_order:     number
-}
+const INVALIDATES = [qk.transit.routes()]
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
-export function useTransitRoutes(): {
-  routes:      UserTransitRoute[]
-  isLoading:   boolean
-  addRoute:    (label: string, from: StopResult, to: StopResult) => Promise<void>
-  removeRoute: (id: string) => Promise<void>
-  updateLabel: (id: string, label: string) => Promise<void>
-} {
-  const qc = useQueryClient()
-
+export function useTransitRoutes() {
   const { data: routes = [], isLoading } = useQuery({
-    queryKey: ['transit', 'routes'],
-    queryFn: async (): Promise<UserTransitRoute[]> => {
-      const { data, error } = await supabase
-        .from('user_transit_routes')
-        .select('*')
-        .order('sort_order', { ascending: true })
-      if (error) throw error
-      return data as UserTransitRoute[]
-    },
+    queryKey: qk.transit.routes(),
+    queryFn:  fetchTransitRoutes,
+    staleTime: STALE.default,
   })
 
-  async function addRoute(label: string, from: StopResult, to: StopResult): Promise<void> {
-    const user = await requireUser()
+  const add = useMutationWithFeedback({
+    action: 'add_transit_route', successMessage: 'Route saved',
+    mutationFn: ({ label, from, to }: { label: string; from: StopResult; to: StopResult }) =>
+      insertTransitRoute(label, from, to, routes.length),
+    invalidates: INVALIDATES,
+  })
+  const remove = useMutationWithFeedback({
+    action: 'remove_transit_route', successMessage: 'Route removed',
+    mutationFn: deleteTransitRoute, invalidates: INVALIDATES,
+  })
+  const rename = useMutationWithFeedback({
+    action: 'rename_transit_route',
+    mutationFn: ({ id, label }: { id: string; label: string }) => updateTransitRouteLabel(id, label),
+    invalidates: INVALIDATES,
+  })
 
-    const { error } = await supabase.from('user_transit_routes').insert({
-      user_id:        user.id,
-      label,
-      from_stop_id:   from.id,
-      from_stop_name: from.name,
-      to_stop_id:     to.id,
-      to_stop_name:   to.name,
-      sort_order:     routes.length,
-    })
-    if (error) throw error
-    await qc.invalidateQueries({ queryKey: ['transit', 'routes'] })
+  // Errors are toasted by the mutations; these reject only so a caller can stop its flow.
+  return {
+    routes,
+    isLoading,
+    addRoute:    (label: string, from: StopResult, to: StopResult) => add.mutateAsync({ label, from, to }),
+    removeRoute: (id: string) => remove.mutateAsync(id),
+    updateLabel: (id: string, label: string) => rename.mutateAsync({ id, label }),
   }
-
-  async function removeRoute(id: string): Promise<void> {
-    const { error } = await supabase.from('user_transit_routes').delete().eq('id', id)
-    if (error) throw error
-    await qc.invalidateQueries({ queryKey: ['transit', 'routes'] })
-  }
-
-  async function updateLabel(id: string, label: string): Promise<void> {
-    const { error } = await supabase
-      .from('user_transit_routes')
-      .update({ label })
-      .eq('id', id)
-    if (error) throw error
-    await qc.invalidateQueries({ queryKey: ['transit', 'routes'] })
-  }
-
-  return { routes, isLoading, addRoute, removeRoute, updateLabel }
 }

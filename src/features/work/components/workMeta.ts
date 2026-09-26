@@ -1,29 +1,34 @@
-import type { Task, TaskStatus } from '../../todo/types'
+import type { Task, TaskPriority, TaskStatus } from '../../todo/types'
+import type { Tone } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { PRIORITY_META } from '../../../shared/utils/priorityColors'
 import { isOverdue, dueLabel } from '../../todo/taskRules'
+import { PRIORITY_TONE, PRIORITY_LABEL, STATUS_TONE } from '../../todo/taskTones'
 
-export { todayStr, PRIORITY_META, isOverdue, dueLabel }
+export { todayStr, isOverdue, dueLabel, PRIORITY_TONE, PRIORITY_LABEL }
 
 // Shared status/priority metadata + task helpers for the Work views
-// (board, list, focus strip, header stats all read from here).
+// (board, list, focus strip, header stats all read from here). Colours come
+// from the task tone maps — Work never picks a colour of its own.
 
 export type BoardStatus = 'open' | 'in_progress' | 'waiting' | 'done'
 
 export interface StatusMeta {
   id:    BoardStatus
   label: string
-  color: string   // hex — used via style attr for dots/accents
+  tone:  Tone
 }
 
 export const BOARD_COLUMNS: StatusMeta[] = [
-  { id: 'open',        label: 'To-do',       color: '#D97706' },
-  { id: 'in_progress', label: 'In Progress', color: '#16A34A' },
-  { id: 'waiting',     label: 'Waiting',     color: '#0284C7' },
-  { id: 'done',        label: 'Done today',  color: '#6B7280' },
+  { id: 'open',        label: 'To-do',       tone: STATUS_TONE.open },
+  { id: 'in_progress', label: 'In progress', tone: STATUS_TONE.in_progress },
+  { id: 'waiting',     label: 'Waiting',     tone: STATUS_TONE.waiting },
+  { id: 'done',        label: 'Done today',  tone: STATUS_TONE.done },
 ]
 
-export const OVERDUE_COLOR = '#DC2626'
+export const OVERDUE_TONE: Tone = 'danger'
+
+/** Glyph that pairs with the priority tone, so colour is never the only signal. */
+export const PRIORITY_ICON: Record<TaskPriority, string> = { high: '▲', medium: '●', low: '▼' }
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
 
@@ -41,6 +46,13 @@ export function sortTasks(tasks: Task[]): Task[] {
 }
 
 export const STATUS_CYCLE: TaskStatus[] = ['open', 'in_progress', 'waiting', 'done']
+
+/** Status shown for a task in the list view: overdue outranks its column. */
+export function taskStatusMeta(task: Task): { label: string; tone: Tone } {
+  if (isOverdue(task)) return { label: 'Overdue', tone: OVERDUE_TONE }
+  const col = BOARD_COLUMNS.find(c => c.id === task.status)
+  return col ? { label: col.label, tone: col.tone } : { label: task.status, tone: 'neutral' }
+}
 
 // Matches a task against the header search box (title + description).
 export function matchesSearch(task: Task, q: string): boolean {

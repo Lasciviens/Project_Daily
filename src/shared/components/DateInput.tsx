@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 interface Props {
   value:       string             // YYYY-MM-DD or ''
@@ -36,10 +36,12 @@ function formatDisplay(raw: string): string {
 
 export function DateInput({ value, onChange, className, placeholder, min, max, 'aria-label': ariaLabel }: Props) {
   const [display, setDisplay] = useState(() => isoToDisplay(value))
-
-  useEffect(() => {
+  // Re-sync when the parent changes `value` (adjust-during-render, not an effect).
+  const [syncedValue, setSyncedValue] = useState(value)
+  if (value !== syncedValue) {
+    setSyncedValue(value)
     setDisplay(isoToDisplay(value))
-  }, [value])
+  }
 
   function inRange(iso: string): boolean {
     return (!min || iso >= min) && (!max || iso <= max)

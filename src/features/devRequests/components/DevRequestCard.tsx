@@ -1,5 +1,7 @@
+import { Check, GripVertical, X } from 'lucide-react'
 import type { DevRequest } from '../types'
-import { CATEGORY_BADGE, PRIORITY_DOT } from './devRequestMeta'
+import { IconButton, ToneDot, TonePill, cx } from '../../../shared/ui'
+import { CATEGORY_TONE, PRIORITY_TONE } from './devRequestMeta'
 
 interface Props {
   request:    DevRequest
@@ -13,65 +15,62 @@ interface Props {
 
 export function DevRequestCard({ request, dragging, onDragStart, onDragEnd, onCycleStatus, onDelete, onEdit }: Props) {
   const isDone = request.status === 'done'
+  const inProgress = request.status === 'in_progress'
 
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`flex items-start gap-2 bg-cream-50 border border-ink-100 rounded-xl p-2.5 cursor-grab select-none transition-opacity ${
-        dragging ? 'opacity-30' : ''
-      } ${isDone ? 'opacity-60' : ''}`}
+      className={cx(
+        'group flex cursor-grab select-none items-start gap-1 rounded-row border border-line bg-surface py-1 pl-1 pr-1 transition-opacity',
+        dragging && 'opacity-30',
+        isDone && 'opacity-60',
+      )}
     >
+      <GripVertical aria-hidden className="mt-3.5 h-4 w-4 shrink-0 text-fg-faint opacity-0 transition-opacity [@media(hover:hover)]:group-hover:opacity-100" />
       <button
         type="button"
         onClick={onCycleStatus}
-        title={`Status: ${request.status} (click to advance)`}
-        className={`shrink-0 mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center min-h-[44px] min-w-[24px] lg:min-h-0 lg:min-w-0 ${
-          isDone ? 'bg-emerald-500 border-emerald-500'
-            : request.status === 'in_progress' ? 'border-accent-500' : 'border-ink-300'
-        }`}
+        aria-label={`Status: ${request.status.replace('_', ' ')} — advance`}
+        title={`Status: ${request.status.replace('_', ' ')} (click to advance)`}
+        className="grid min-h-[44px] min-w-[36px] shrink-0 place-items-center lg:min-h-[40px]"
       >
-        {isDone && <span className="text-[9px] text-white">✓</span>}
+        <span
+          data-tone={isDone ? 'success' : inProgress ? 'info' : 'neutral'}
+          className={cx(
+            'grid h-4 w-4 place-items-center rounded-full border-2 border-[rgb(var(--tone))]',
+            isDone && 'bg-[rgb(var(--tone))]',
+          )}
+        >
+          {isDone && <Check aria-hidden className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+        </span>
       </button>
 
-      <div className="flex-1 min-w-0 flex flex-col gap-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 py-2">
         <div className="flex items-start justify-between gap-2">
           <button
             type="button"
             onClick={onEdit}
-            className={`text-left text-sm leading-snug hover:bg-ink-50 rounded px-0.5 -mx-0.5 transition-colors ${
-              isDone ? 'line-through text-ink-400' : 'text-ink-800'
-            }`}
+            className={cx(
+              '-mx-1 rounded-control px-1 text-left text-body transition-colors [@media(hover:hover)]:hover:bg-surface-hover',
+              isDone ? 'text-fg-faint line-through' : 'text-fg',
+            )}
           >
             {request.title}
           </button>
-          {/* Page/category the request came from — framed and pinned to the
-              card's top-right corner so it reads as metadata about the
-              request, not just another inline tag buried in the meta row. */}
-          {request.page && (
-            <span className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-md border border-ink-200 bg-ink-50 text-ink-500 whitespace-nowrap">
-              {request.page}
-            </span>
-          )}
+          {request.page && <span className="chip shrink-0 font-mono text-micro">{request.page}</span>}
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${CATEGORY_BADGE[request.category]}`}>
-            {request.category}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <TonePill tone={CATEGORY_TONE[request.category]}>{request.category}</TonePill>
+          <span className="inline-flex items-center gap-1 text-meta text-fg-muted" title={`Priority: ${request.priority}`}>
+            <ToneDot tone={PRIORITY_TONE[request.priority]} />{request.priority}
           </span>
-          <span className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[request.priority]}`} title={`priority: ${request.priority}`} />
-          {request.effort && <span className="text-[10px] text-ink-300">· {request.effort}</span>}
+          {request.effort && <span className="text-meta text-fg-faint">· {request.effort}</span>}
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onDelete}
-        className="shrink-0 min-w-[44px] min-h-[44px] lg:min-w-[24px] lg:min-h-[24px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors"
-        title="Delete"
-      >
-        ✕
-      </button>
+      <IconButton label="Delete request" onClick={onDelete} className="shrink-0 hover:!text-danger"><X /></IconButton>
     </div>
   )
 }

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
-import { searchStops, type StopResult } from '../../api/ruterApi'
+import { MapPin, Signpost, X } from 'lucide-react'
+import type { StopResult } from '../../api/ruterApi'
+import { useStopSearch } from '../../hooks/useTransitQueries'
+import { IconButton } from '../../../../shared/ui'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,13 +33,7 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
     return () => clearTimeout(id)
   }, [q])
 
-  const { data: results, isLoading, error } = useQuery({
-    queryKey:  ['stopSearch', debounced],
-    queryFn:   () => searchStops(debounced),
-    enabled:   debounced.length >= 2,
-    staleTime: 5 * 60_000,
-    retry:     false,
-  })
+  const { data: results, isLoading, error } = useStopSearch(debounced)
 
   const hasFavorites   = (favorites?.length ?? 0) > 0
   const showFavorites  = debounced.length < 2 && hasFavorites
@@ -65,41 +61,39 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
             onChange={e => setQ(e.target.value)}
             placeholder={placeholder}
             displayValue={() => q}
-            className="flex-1 px-3 py-2 text-sm rounded-lg border border-ink-200 focus:outline-none focus:ring-2 focus:ring-accent-400 bg-cream-50 min-h-[44px]"
+            className="input min-w-0 flex-1"
           />
           {q && (
-            <button
-              onClick={() => { setQ(''); setDebounced('') }}
-              className="text-ink-300 hover:text-ink-600 transition-colors duration-150 text-xs px-1 min-h-[44px] min-w-[44px] flex items-center justify-center"
-              title="Clear"
-            >✕</button>
+            <IconButton label="Clear search" onClick={() => { setQ(''); setDebounced('') }}>
+              <X />
+            </IconButton>
           )}
         </div>
 
-        <ComboboxOptions className="absolute z-20 mt-1 w-full bg-cream-50 border border-ink-200 rounded-lg shadow-lg overflow-hidden text-sm empty:hidden">
+        <ComboboxOptions className="menu absolute z-popover mt-1 w-full overflow-hidden text-body empty:hidden">
 
           {/* ── Favorites (shown when input is focused, before typing) ── */}
           {showFavorites && hasFavorites && (
             <>
               <div className="px-3 pt-2 pb-1">
-                <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wide">Saved stops</span>
+                <span className="section-label">Saved stops</span>
               </div>
               {favorites!.map(fav => (
                 <ComboboxOption
                   key={fav.id}
                   value={{ id: fav.id, name: fav.name, locality: fav.locality, layer: 'venue' } as StopResult}
-                  className="w-full text-left px-3 py-2.5 data-[focus]:bg-cream-50 transition-colors duration-150 min-h-[44px] flex items-center gap-2 cursor-pointer"
+                  className="flex min-h-[44px] w-full cursor-pointer items-center gap-2 rounded-control px-3 py-2 text-left transition-colors duration-150 data-[focus]:bg-surface-hover"
                 >
-                  <span className="text-ink-400 text-xs flex-shrink-0">🚏</span>
+                  <Signpost aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
                   <span className="flex-1 min-w-0">
-                    <span className="font-medium text-ink-800">{fav.name}</span>
+                    <span className="font-medium text-fg">{fav.name}</span>
                     {fav.locality && (
-                      <span className="text-ink-400 text-xs ml-2">{fav.locality}</span>
+                      <span className="text-fg-muted text-meta ml-2">{fav.locality}</span>
                     )}
                   </span>
                 </ComboboxOption>
               ))}
-              <div className="px-3 py-2 border-t border-ink-100 text-[10px] text-ink-400">
+              <div className="px-3 py-2 border-t border-line text-micro text-fg-muted">
                 {stopsOnly ? 'Type to search stops…' : 'Type to search stops or addresses…'}
               </div>
             </>
@@ -109,15 +103,15 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
           {debounced.length >= 2 && (
             <>
               {isLoading && (
-                <div className="px-3 py-2.5 text-ink-400 text-xs">Searching…</div>
+                <div className="px-3 py-2.5 text-fg-muted text-meta">Searching…</div>
               )}
               {error && (
-                <div className="px-3 py-2.5 text-red-500 text-xs">
-                  {(error as Error).message?.includes('Rate') ? '⏳ Rate limited — wait a moment' : `Error: ${(error as Error).message}`}
+                <div className="px-3 py-2.5 text-danger text-meta">
+                  {(error as Error).message?.includes('Rate') ? 'Rate limited — wait a moment' : (error as Error).message}
                 </div>
               )}
               {!isLoading && !error && filteredResults && filteredResults.length === 0 && (
-                <div className="px-3 py-2.5 text-ink-400 text-xs">No results for "{debounced}"</div>
+                <div className="px-3 py-2.5 text-fg-muted text-meta">No results for "{debounced}"</div>
               )}
               {!isLoading && filteredResults && filteredResults.length > 0 && filteredResults.slice(0, 7).map((r, i) => {
                 const isAddress = r.layer === 'address' || r.layer === 'street'
@@ -125,13 +119,15 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
                   <ComboboxOption
                     key={r.id || i}
                     value={r}
-                    className="w-full text-left px-3 py-2.5 data-[focus]:bg-cream-50 transition-colors duration-150 min-h-[44px] flex items-center gap-2 cursor-pointer"
+                    className="flex min-h-[44px] w-full cursor-pointer items-center gap-2 rounded-control px-3 py-2 text-left transition-colors duration-150 data-[focus]:bg-surface-hover"
                   >
-                    <span className="text-ink-400 text-xs flex-shrink-0">{isAddress ? '📍' : '🚏'}</span>
+                    {isAddress
+                      ? <MapPin aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
+                      : <Signpost aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />}
                     <span className="flex-1 min-w-0">
-                      <span className="font-medium text-ink-800">{r.name}</span>
+                      <span className="font-medium text-fg">{r.name}</span>
                       {(r.locality || r.category) && (
-                        <span className="text-ink-400 text-xs ml-2">
+                        <span className="text-fg-muted text-meta ml-2">
                           {[r.locality, !isAddress ? r.category : undefined].filter(Boolean).join(' · ')}
                         </span>
                       )}

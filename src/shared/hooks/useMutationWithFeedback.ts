@@ -1,55 +1,96 @@
-import { useMutation, type UseMutationOptions, type UseMutationResult } from '@tanstack/react-query'
+import { useMutation, useQueryClient, type QueryKey, type UseMutationOptions, type UseMutationResult } from '@tanstack/react-query'
 import { toast } from '../../app/store'
 import { logError } from '../utils/logError'
+import { invalidate, type InvalidationGroup } from '../query/invalidate'
 
-// Wraps TanStack Query's useMutation so every mutation built with it is
-// GUARANTEED to surface a failure (toast.error + logError) — a structural
-// check baked into the primitive itself, not something every call site has
-// to remember to hand-write. Before this existed, the mandatory "toast on
-// every async action" rule was followed inconsistently: some hooks toasted
-// on error but forgot logError (recurred twice — Developer tab's clear-logs
-// mutations), others had no feedback at all anywhere (the daily timeline's
-// drag/postpone/rename/delete, the to-do list's toggle/delete/reorder) — a
-// real, repeated regression. Building the mutation with this hook instead of
-// bare useMutation makes that class of bug structurally impossible: forgetting
-// to add an onError toast no longer means silence, it means the default one.
+// THE mutation primitive (THEME.md §10). Every failure is GUARANTEED to be
+// toasted and logged to app_error_logs — forgetting an onError no longer means
+// silence, it means the default one. Beyond that, the primitive owns the rest
+// of the feedback so call sites never hand-write toast blocks:
 //
-// `action` is the one thing every caller must still supply — a short
-// snake_case identifier used as the logError context (e.g. "delete_task",
-// "postpone_time_block"). Everything else is automatic:
-// - onError: always toasts the error message and logs it to app_error_logs.
-// - onSuccess: silent by default (matches the existing "edits feel live, no
-//   toast needed" convention) — pass `successMessage` to opt into a toast.
-// A caller-supplied onSuccess/onError still runs (e.g. to invalidate query
-// keys) — this only ADDS the guaranteed feedback, it never replaces app logic.
+// - `action`          snake_case logError context ("delete_task"). Required.
+// - `successMessage`  opt-in success toast (edits feel live without one).
+// - `loadingMessage`  opt-in "Saving…" toast for slow writes, dismissed when
+//                     the request settles (kept out of onMutate's context, so
+//                     optimistic hooks keep their snapshot there).
+// - `invalidates`     groups / keys refreshed after the mutation settles,
+//                     success or failure (an optimistic write rolled back
+//                     still needs the server truth).
+// A caller's own onSuccess/onError/onSettled still runs after these.
+//
+// Callers must NOT wrap mutateAsync in their own toast.error — that
+// double-toasts. Use try/catch only to stop a multi-step flow: `catch { return }`.
+type Target = InvalidationGroup | QueryKey
+type Resolve<T, A extends unknown[]> = T | ((...args: A) => T)
+
 interface FeedbackMutationOptions<TData, TVariables, TContext>
   extends UseMutationOptions<TData, Error, TVariables, TContext> {
   action: string
-  successMessage?: string | ((data: TData, variables: TVariables) => string)
+  successMessage?: Resolve<string | undefined, [TData, TVariables]>
+  loadingMessage?: Resolve<string | undefined, [TVariables]>
   errorFallback?: string
+  invalidates?: Resolve<readonly Target[], [TData | undefined, TVariables]>
 }
+
+const resolve = <T, A extends unknown[]>(v: Resolve<T, A> | undefined, ...args: A) =>
+  (typeof v === 'function' ? (v as (...a: A) => T)(...args) : v)
 
 export function useMutationWithFeedback<TData, TVariables = void, TContext = unknown>({
   action,
   successMessage,
+  loadingMessage,
   errorFallback,
+  invalidates,
+  mutationFn,
   onSuccess,
   onError,
+  onSettled,
   ...rest
 }: FeedbackMutationOptions<TData, TVariables, TContext>): UseMutationResult<TData, Error, TVariables, TContext> {
+  const qc = useQueryClient()
   return useMutation<TData, Error, TVariables, TContext>({
     ...rest,
-    onSuccess: (data, variables, onMutateResult, context) => {
-      if (successMessage) {
-        toast.success(typeof successMessage === 'function' ? successMessage(data, variables) : successMessage)
+    mutationFn: mutationFn && (async (variables, ctx) => {
+      const label = resolve(loadingMessage, variables)
+      const tid = label ? toast.loading(label) : undefined
+      try {
+        return await mutationFn(variables, ctx)
+      } finally {
+        if (tid !== undefined) toast.dismiss(tid)
       }
-      onSuccess?.(data, variables, onMutateResult, context)
+    }),
+    onSuccess: (data, variables, onMutateResult, context) => {
+      const msg = resolve(successMessage, data, variables)
+      if (msg) toast.success(msg)
+      return onSuccess?.(data, variables, onMutateResult, context)
     },
     onError: (err, variables, onMutateResult, context) => {
-      const msg = (err as Error)?.message ?? errorFallback ?? 'Something went wrong'
+      const msg = (err as Error)?.message || errorFallback || 'Something went wrong'
       toast.error(msg)
-      logError(`${errorFallback ?? action}: ${msg}`, { action, payload: variables })
-      onError?.(err, variables, onMutateResult, context)
+      logError(`${action}: ${msg}`, { action, payload: variables })
+      return onError?.(err, variables, onMutateResult, context)
+    },
+    onSettled: async (data, error, variables, onMutateResult, context) => {
+      const targets = resolve(invalidates, data, variables)
+      if (targets?.length) await invalidate(qc, ...targets)
+      return onSettled?.(data, error, variables, onMutateResult, context)
     },
   })
+}
+
+/**
+ * Per-call loading/success copy around a mutateAsync whose hook already
+ * toasts + logs errors. Resolves undefined on failure (never re-toasts).
+ */
+export async function withProgress<T>(run: () => Promise<T>, msg: { loading: string; success?: string }): Promise<T | undefined> {
+  const tid = toast.loading(msg.loading)
+  try {
+    const result = await run()
+    toast.dismiss(tid)
+    if (msg.success) toast.success(msg.success)
+    return result
+  } catch {
+    toast.dismiss(tid)
+    return undefined
+  }
 }

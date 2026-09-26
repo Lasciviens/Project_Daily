@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
 import { fetchDayTargets, upsertDayTargets, fetchDayTargetProfiles, DAY_TARGETS_DEFAULTS } from '../api/dayTargetsApi'
 import type { DayTargets, NutritionGoal, DayTargetProfiles } from '../api/dayTargetsApi'
 
@@ -22,15 +23,15 @@ export type { DayTargets, NutritionGoal, DayTargetProfiles }
 // real fetch, which is why editing a goal right after loading could look
 // like it worked while a page RELOAD reverted it). `placeholderData`
 // renders the same instant fallback without suppressing the mount-time fetch.
-const QK = ['day-targets'] as const
-const PROFILES_QK = ['day-target-profiles'] as const
+const QK = qk.dayTargets.all
+const PROFILES_QK = qk.dayTargets.profiles
 
 export function useDayTargets() {
   const qc = useQueryClient()
   const { data } = useQuery({
     queryKey: QK,
     queryFn:  fetchDayTargets,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
     placeholderData: DAY_TARGETS_DEFAULTS,
   })
   const targets = data ?? DAY_TARGETS_DEFAULTS
@@ -41,7 +42,7 @@ export function useDayTargets() {
   // so either still feels instant.
   const mutation = useMutationWithFeedback<DayTargets, DayTargets, { previous?: DayTargets; previousProfiles?: DayTargetProfiles }>({
     action:         'update_day_targets',
-    successMessage: 'Saved ✓',
+    successMessage: 'Saved',
     mutationFn:     (next: DayTargets) => upsertDayTargets(next),
     onMutate: async (next) => {
       await qc.cancelQueries({ queryKey: QK })
@@ -63,10 +64,7 @@ export function useDayTargets() {
       if (ctx?.previous) qc.setQueryData(QK, ctx.previous)
       if (ctx?.previousProfiles) qc.setQueryData(PROFILES_QK, ctx.previousProfiles)
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: QK })
-      qc.invalidateQueries({ queryKey: PROFILES_QK })
-    },
+    invalidates: [QK, PROFILES_QK],
   })
 
   const update = useCallback((patch: Partial<DayTargets>) => {
@@ -83,7 +81,7 @@ export function useDayTargetProfiles() {
   const { data } = useQuery({
     queryKey: PROFILES_QK,
     queryFn:  fetchDayTargetProfiles,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
     placeholderData: {} as DayTargetProfiles,
   })
   return data ?? {}

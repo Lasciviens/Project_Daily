@@ -1,20 +1,21 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { fetchHealthWorkouts, fetchHealthMetrics, fetchHealthMetricSeries, upsertManualSleepEntry, type ManualSleepInput } from '../api/healthApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
 
 export function useHealthWorkouts(opts: { limit?: number; offset?: number } = {}) {
   return useQuery({
-    queryKey: ['health', 'workouts', opts],
+    queryKey: qk.health.workouts(opts),
     queryFn:  () => fetchHealthWorkouts(opts),
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 }
 
 export function useHealthMetrics(opts: { limit?: number } = {}) {
   return useQuery({
-    queryKey: ['health', 'metrics', opts],
+    queryKey: qk.health.metrics(opts),
     queryFn:  () => fetchHealthMetrics(opts),
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 }
 
@@ -26,9 +27,9 @@ export function useHealthMetricSeries(
   toDate: string,
 ) {
   return useQuery({
-    queryKey: ['health', 'metric-series', metricName, fromDate, toDate],
+    queryKey: qk.health.metricSeries(metricName, fromDate, toDate),
     queryFn:  () => fetchHealthMetricSeries(metricName, fromDate, toDate),
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 }
 
@@ -36,11 +37,10 @@ export function useHealthMetricSeries(
 // entry) as source: 'manual' — see upsertManualSleepEntry for the
 // Deep/Core/REM split + upsert-not-insert logic.
 export function useAddManualSleep() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'add_manual_sleep',
-    successMessage: 'Sleep entry saved ✓',
+    successMessage: 'Sleep entry saved',
     mutationFn:     (input: ManualSleepInput) => upsertManualSleepEntry(input),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: ['health', 'metric-series', 'sleep_analysis'] }),
+    invalidates:    [qk.health.metricSeriesAll('sleep_analysis')],
   })
 }

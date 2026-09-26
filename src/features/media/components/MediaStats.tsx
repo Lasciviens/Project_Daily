@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { BarChart3 } from 'lucide-react'
 import { computeMediaStats } from '../hooks/useMediaStats'
+import { SectionLabel } from '../../../shared/ui'
+import { CollapsibleCard } from './CollapsibleCard'
 import type { UserMovieEntry, UserTVEntry } from '../types'
 
 interface Props {
@@ -8,94 +10,70 @@ interface Props {
 }
 
 export function MediaStats({ movieEntries, tvEntries }: Props) {
-  const [open, setOpen] = useState(false)
-
-  // Stats are pure computation — no API calls
+  // Pure computation over the already-loaded library — no extra request.
   const s = computeMediaStats(movieEntries, tvEntries)
-
   const hasData = s.moviesWatched > 0 || s.tvSeriesTracked > 0
 
   return (
-    <div className="mb-6">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 mb-3 w-full text-left group min-h-[44px]"
-      >
-        <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">
-          📊 Your Stats
-        </span>
-        <span className={`ml-auto text-ink-400 text-xs transition-transform duration-150 ${open ? 'rotate-0' : '-rotate-90'}`}>
-          ▾
-        </span>
-      </button>
+    <CollapsibleCard title="Your stats" icon={<BarChart3 />}>
+      {!hasData ? (
+        <p className="text-body text-fg-muted">Add some movies or series to your library to see stats.</p>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            <StatBox label="Films watched" value={s.moviesWatched} />
+            <StatBox label="Watch hours" value={`${s.hoursWatched + s.tvHoursWatched}h`} />
+            <StatBox label="TV series" value={s.tvSeriesTracked} />
+            <StatBox label="Episodes" value={s.tvEpisodesWatched} />
+          </div>
 
-      {open && (
-        <div className="rounded-xl border border-ink-100 bg-cream-50 p-4">
-          {!hasData ? (
-            <p className="text-xs text-ink-400">Add some movies or TV series to your library to see stats.</p>
-          ) : (
-            <div className="space-y-4">
-              {/* Numbers row */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatBox label="Films watched" value={s.moviesWatched} icon="🎬" />
-                <StatBox label="Watch hours" value={`${s.hoursWatched + s.tvHoursWatched}h`} icon="⏱" />
-                <StatBox label="TV series" value={s.tvSeriesTracked} icon="📺" />
-                <StatBox label="Episodes" value={s.tvEpisodesWatched} icon="▶" />
+          {s.avgMyRating !== null && (
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
+              <div>
+                <p className="text-meta text-fg-muted">Your average</p>
+                <p className="text-lead font-bold text-fg tabular-nums"><span data-tone="star" className="tone-text">★</span> {s.avgMyRating}/10</p>
               </div>
-
-              {/* Ratings comparison */}
-              {s.avgMyRating !== null && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              {s.avgTMDBRating !== null && (
+                <>
                   <div>
-                    <p className="text-[10px] text-ink-400 mb-0.5">Your avg rating</p>
-                    <p className="text-base font-bold text-accent-600">⭐ {s.avgMyRating}/10</p>
+                    <p className="text-meta text-fg-muted">TMDB average</p>
+                    <p className="text-lead font-bold text-fg-2 tabular-nums">★ {s.avgTMDBRating}/10</p>
                   </div>
-                  {s.avgTMDBRating !== null && (
-                    <>
-                      <div className="text-ink-200 text-lg">vs</div>
-                      <div>
-                        <p className="text-[10px] text-ink-400 mb-0.5">TMDB avg</p>
-                        <p className="text-base font-bold text-ink-600">★ {s.avgTMDBRating}/10</p>
-                      </div>
-                      <div className="text-xs text-ink-400">
-                        {s.avgMyRating > s.avgTMDBRating
-                          ? '↑ You rate higher than TMDB'
-                          : s.avgMyRating < s.avgTMDBRating
-                          ? '↓ You rate lower than TMDB'
-                          : 'Spot on with TMDB'}
-                      </div>
-                    </>
-                  )}
-                </div>
+                  <p className="text-meta text-fg-muted">
+                    {s.avgMyRating > s.avgTMDBRating
+                      ? 'You rate higher than TMDB'
+                      : s.avgMyRating < s.avgTMDBRating
+                        ? 'You rate lower than TMDB'
+                        : 'Spot on with TMDB'}
+                  </p>
+                </>
               )}
+            </div>
+          )}
 
-              {/* Genre breakdown */}
-              {s.topGenres.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Top genres</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {s.topGenres.map(g => (
-                      <span key={g.name} className="text-xs px-2.5 py-1 rounded-full bg-accent-100 text-accent-700 font-medium">
-                        {g.name} <span className="text-accent-400">{g.count}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+          {s.topGenres.length > 0 && (
+            <div>
+              <SectionLabel className="mb-2">Top genres</SectionLabel>
+              <div className="flex flex-wrap gap-1.5">
+                {s.topGenres.map(g => (
+                  <span key={g.name} className="chip">
+                    {g.name} <span className="text-fg-muted tabular-nums">{g.count}</span>
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
       )}
-    </div>
+    </CollapsibleCard>
   )
 }
 
-function StatBox({ label, value, icon }: { label: string; value: string | number; icon: string }) {
+function StatBox({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="text-center p-2 rounded-lg bg-cream-50 border border-ink-100">
-      <div className="text-lg">{icon}</div>
-      <div className="text-base font-bold text-ink-900">{value}</div>
-      <div className="text-[10px] text-ink-400 leading-tight">{label}</div>
+    <div className="rounded-row bg-surface-2 px-3 py-2">
+      <div className="text-lead font-bold text-fg tabular-nums">{value}</div>
+      <div className="text-meta text-fg-muted">{label}</div>
     </div>
   )
 }

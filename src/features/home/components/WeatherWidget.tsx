@@ -1,129 +1,68 @@
-import { useQuery } from '@tanstack/react-query'
-import { fetchWeather, weatherIcon, weatherLabel } from '../api/weatherApi'
-import { useGeolocation } from '../hooks/useGeolocation'
+import { useState } from 'react'
+import { CloudSun } from 'lucide-react'
+import { ModalShell } from '../../../shared/modals'
+import { Button, Skeleton } from '../../../shared/ui'
+import { weatherIcon, weatherLabel } from '../api/weatherApi'
+import { useWeather } from '../hooks/useWeather'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
+import { GlanceTile } from './GlanceTile'
+import { WeatherDetails } from './WeatherDetails'
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export function WeatherWidget() {
-  // Weather changes slowly — 10m default is fine; 30m is also acceptable
-  const ws = useWidgetState('weather', { collapsed: false, intervalMs: 10 * 60_000 })
-  const { data: geo } = useGeolocation()
-
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['weather', geo?.lat, geo?.lon],
-    queryFn:  () => fetchWeather(geo!.lat, geo!.lon),
-    staleTime: ws.intervalMs,
-    // Disable refetch entirely when collapsed or sync is paused
-    refetchInterval: !ws.collapsed && ws.syncActive ? ws.intervalMs : false,
-    enabled: !ws.collapsed && !!geo,
-  })
-
-  function handleManualSync() {
-    refetch()
-    ws.markSynced()
-  }
-
+function WeatherSkeleton() {
   return (
-    <WidgetShell title="Weather" ws={ws} onManualSync={handleManualSync}>
-      {isLoading && (
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-cream-200 animate-pulse flex-shrink-0" />
-          <div className="flex-1 space-y-2">
-            <div className="h-4 w-16 rounded bg-cream-200 animate-pulse" />
-            <div className="h-3 w-24 rounded bg-cream-200 animate-pulse" />
-          </div>
-        </div>
-      )}
-      {/* WidgetShell's ↻ is hidden below sm: (pull-to-refresh covers mobile),
-          so a failed widget had no in-place recovery on a phone — and no
-          reason for the failure either. */}
-      {error && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-ink-500">Unavailable — {(error as Error).message || 'could not load the forecast'}</span>
-          <button
-            type="button"
-            onClick={handleManualSync}
-            className="min-h-[44px] px-3 rounded-lg border border-ink-200 text-xs font-medium text-accent-600 hover:bg-accent-50 transition-colors"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+    <div className="space-y-4">
+      <div className="flex items-end gap-3">
+        <Skeleton rounded="rounded-full" className="h-12 w-12" />
+        <div className="space-y-2"><Skeleton className="h-7 w-20" /><Skeleton className="h-3 w-24" /></div>
+      </div>
+      <Skeleton className="h-16 w-full" />
+    </div>
+  )
+}
 
-      {geo?.source === 'default' && (
-        <p className="text-[10px] text-ink-300 mb-2">
-          📍 Using Oslo (location unavailable) — allow location access for your local forecast
-        </p>
-      )}
+function WeatherError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-body text-fg-muted">
+      <span>Forecast unavailable — {message || 'could not load it'}.</span>
+      <Button size="sm" onClick={onRetry}>Retry</Button>
+    </div>
+  )
+}
 
-      {data && (
-        <>
-          {/* Current conditions */}
-          <div className="flex items-end gap-3 mb-3">
-            <span className="text-5xl leading-none">{weatherIcon(data.current.symbol)}</span>
-            <div className="min-w-0">
-              <div className="text-3xl font-bold text-ink-900">{data.current.temp}°C</div>
-              <div className="text-sm text-ink-500 truncate">{weatherLabel(data.current.symbol)}</div>
-            </div>
-            <div className="ml-auto text-right text-xs text-ink-400 space-y-1 shrink-0">
-              <div>💨 {data.current.windSpeed} m/s {data.current.windDirection}</div>
-              <div>💧 {data.current.humidity}%</div>
-              {data.current.precip1h > 0 && (
-                <div>🌧 {data.current.precip1h.toFixed(1)} mm</div>
-              )}
-            </div>
-          </div>
-
-          {/* Extra current-conditions detail — pressure + cloud cover, so the
-              widget carries as much at-a-glance weather info as the Transit
-              widget carries transit info. */}
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <div className="rounded-lg bg-cream-100 px-2.5 py-1.5 text-xs text-ink-500 flex items-center justify-between">
-              <span>Pressure</span>
-              <span className="font-semibold text-ink-800">{data.current.pressure} hPa</span>
-            </div>
-            <div className="rounded-lg bg-cream-100 px-2.5 py-1.5 text-xs text-ink-500 flex items-center justify-between">
-              <span>Cloud cover</span>
-              <span className="font-semibold text-ink-800">{data.current.cloudCover}%</span>
-            </div>
-          </div>
-
-          {/* 12-hour hourly forecast */}
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Next hours</p>
-          <div className="flex gap-3 overflow-x-auto pb-1 mb-4">
-            {data.hours.map((h, i) => (
-              <div key={i} className="flex flex-col items-center gap-1 min-w-[44px]">
-                <span className="text-xs text-ink-400">{h.time}</span>
-                <span className="text-lg">{weatherIcon(h.symbol)}</span>
-                <span className="text-xs font-medium text-ink-700">{h.temp}°</span>
-                {h.precip > 0 && (
-                  <span className="text-[10px] text-blue-500">{h.precip.toFixed(1)}</span>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Daily forecast */}
-          {data.daily.length > 0 && (
-            <>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400 mb-1.5">Next days</p>
-              <div className="grid grid-cols-5 gap-1.5">
-                {data.daily.map(d => (
-                  <div key={d.date} className="flex flex-col items-center gap-0.5 rounded-lg bg-cream-100 py-2 px-1">
-                    <span className="text-[10px] font-medium text-ink-500">{d.label}</span>
-                    <span className="text-xl">{weatherIcon(d.symbol)}</span>
-                    <span className="text-xs font-semibold text-ink-800">{d.max}°</span>
-                    <span className="text-[10px] text-ink-400">{d.min}°</span>
-                    {d.precip > 0 && <span className="text-[9px] text-blue-500">{d.precip.toFixed(1)}mm</span>}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </>
-      )}
+/** Desktop side-column card. Collapsing it stops its forecast query. */
+export function WeatherWidget() {
+  const ws = useWidgetState('weather')
+  const { data, isLoading, error, refetch, isFetching, geo } = useWeather({ enabled: !ws.collapsed })
+  return (
+    <WidgetShell title="Weather" icon={<CloudSun />} ws={ws} onRefresh={() => refetch()} refreshing={isFetching}>
+      {isLoading && <WeatherSkeleton />}
+      {error && !data && <WeatherError message={(error as Error).message} onRetry={() => refetch()} />}
+      {data && <WeatherDetails data={data} fallbackLocation={geo?.source === 'default'} />}
     </WidgetShell>
+  )
+}
+
+/** Phone glance tile; the full forecast opens in a sheet. */
+export function WeatherTile() {
+  const [open, setOpen] = useState(false)
+  const { data, isLoading, error, refetch, geo } = useWeather()
+  const today = data?.daily[0]
+  return (
+    <>
+      <GlanceTile
+        label="Weather"
+        icon={<CloudSun />}
+        loading={isLoading}
+        value={data ? <span className="flex items-center gap-1.5"><span aria-hidden>{weatherIcon(data.current.symbol)}</span>{data.current.temp}°</span> : '—'}
+        hint={data ? `${weatherLabel(data.current.symbol)}${today ? ` · ${today.min}°/${today.max}°` : ''}` : error ? 'Unavailable' : undefined}
+        onClick={() => setOpen(true)}
+      />
+      <ModalShell open={open} onClose={() => setOpen(false)} title="Weather" size="sm">
+        {isLoading && <WeatherSkeleton />}
+        {error && !data && <WeatherError message={(error as Error).message} onRetry={() => refetch()} />}
+        {data && <WeatherDetails data={data} fallbackLocation={geo?.source === 'default'} />}
+      </ModalShell>
+    </>
   )
 }

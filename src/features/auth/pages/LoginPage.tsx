@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { signIn, requestPasswordReset } from '../../../security/supabaseClient'
+import { Button } from '../../../shared/ui'
+import { AuthFrame, AuthNotice } from '../components/AuthFrame'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -10,6 +13,12 @@ export function LoginPage() {
   const [error, setError]       = useState<string | null>(null)
   const [notice, setNotice]     = useState<string | null>(null)
   const [loading, setLoading]   = useState(false)
+
+  function switchMode(next: 'signin' | 'forgot') {
+    setMode(next)
+    setError(null)
+    setNotice(null)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -44,113 +53,71 @@ export function LoginPage() {
     setNotice('If an account exists for that email, a reset link has been sent.')
   }
 
+  const emailField = (
+    <div>
+      <label htmlFor="login-email" className="field-label">Email</label>
+      <input
+        id="login-email"
+        type="email"
+        autoComplete="email"
+        value={email}
+        onChange={e => setEmail(e.target.value)}
+        placeholder="you@example.com"
+        required
+        className="input"
+      />
+    </div>
+  )
+
   if (mode === 'forgot') {
     return (
-      <div className="min-h-screen bg-canvas flex items-center justify-center px-4">
-        <div className="w-full max-w-sm">
-          <div className="flex flex-col items-center mb-8">
-            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Lasci's Board" className="w-12 h-12 mb-3" />
-            <h1 className="text-xl font-semibold text-ink-900">Reset password</h1>
-            <p className="text-sm text-ink-500 mt-1">We'll email you a reset link</p>
-          </div>
-
-          <form onSubmit={handleForgotPassword} className="card p-6 flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-ink-700">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                className="input"
-              />
-            </div>
-
-            {error && (
-              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
-            {notice && (
-              <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-                {notice}
-              </p>
-            )}
-
-            <button type="submit" disabled={loading} className="btn-primary w-full mt-1">
-              {loading ? 'Sending…' : 'Send reset link'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setMode('signin'); setError(null); setNotice(null) }}
-              className="text-xs text-ink-500 hover:text-ink-800 min-h-[44px]"
-            >
-              ← Back to sign in
-            </button>
-          </form>
-        </div>
-      </div>
+      <AuthFrame title="Reset password" subtitle="We'll email you a reset link">
+        <form onSubmit={handleForgotPassword} className="flex flex-col gap-4">
+          {emailField}
+          {error && <AuthNotice tone="danger">{error}</AuthNotice>}
+          {notice && <AuthNotice tone="success">{notice}</AuthNotice>}
+          <Button type="submit" variant="primary" block loading={loading}>
+            {loading ? 'Sending…' : 'Send reset link'}
+          </Button>
+          <Button variant="ghost" icon={<ArrowLeft />} onClick={() => switchMode('signin')}>
+            Back to sign in
+          </Button>
+        </form>
+      </AuthFrame>
     )
   }
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Lasci's Board" className="w-12 h-12 mb-3" />
-          <h1 className="text-xl font-semibold text-ink-900">Lasci's Board</h1>
-          <p className="text-sm text-ink-500 mt-1">Sign in to your board</p>
+    <AuthFrame title="Lasci's Board" subtitle="Sign in to your board">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {emailField}
+        <div>
+          <div className="flex items-center justify-between">
+            <label htmlFor="login-password" className="field-label">Password</label>
+            <button
+              type="button"
+              onClick={() => switchMode('forgot')}
+              className="mb-1.5 min-h-[32px] text-meta font-semibold text-accent-600 hover:text-accent-700 [@media(pointer:coarse)]:min-h-[44px]"
+            >
+              Forgot password?
+            </button>
+          </div>
+          <input
+            id="login-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+            className="input"
+          />
         </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="card p-6 flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-ink-700">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              className="input"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-ink-700">Password</label>
-              <button
-                type="button"
-                onClick={() => { setMode('forgot'); setError(null); setNotice(null) }}
-                className="text-xs text-accent-600 hover:text-accent-700"
-              >
-                Forgot password?
-              </button>
-            </div>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="input"
-            />
-          </div>
-
-          {error && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
-
-          <button type="submit" disabled={loading} className="btn-primary w-full mt-1">
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
-      </div>
-    </div>
+        {error && <AuthNotice tone="danger">{error}</AuthNotice>}
+        <Button type="submit" variant="primary" block loading={loading}>
+          {loading ? 'Signing in…' : 'Sign in'}
+        </Button>
+      </form>
+    </AuthFrame>
   )
 }

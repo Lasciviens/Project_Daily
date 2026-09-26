@@ -1,135 +1,182 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
+import { Sun, Moon, Monitor, Check, Bell, BellOff, Plug, Code2, LogOut, UserRound } from 'lucide-react'
 import { useThemeStore, type ThemePreference } from '../../app/store'
-import { useAutoRefreshCalendarToken } from '../../features/calendar/hooks/useCalendar'
-import { applyTheme, THEMES } from './ThemeSwitcher'
+import { ACCENTS, type AccentName } from '../theme/accent'
 import { signOut } from '../../security/supabaseClient'
 import { usePushNotifications } from '../hooks/usePushNotifications'
+import { useAuth } from '../hooks/useAuth'
+import { cx } from '../ui/cx'
+
+// Settings live in two places with the same parts: this avatar menu (top bar,
+// phone header) and the phone More sheet. Connect/disconnect stays in
+// Developer → Connections; both only link there.
+
+const THEME_OPTIONS: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'system', label: 'System', icon: Monitor },
+]
+
+/** Light / Dark / System as a 3-icon segmented switch. */
+export function ThemeSwitch({ block }: { block?: boolean }) {
+  const theme = useThemeStore(s => s.theme)
+  const setTheme = useThemeStore(s => s.setTheme)
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Appearance"
+      className={cx('grid grid-cols-3 gap-1 rounded-row border border-line bg-surface-2 p-[3px]', block ? 'w-full' : 'inline-grid')}
+    >
+      {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
+        const on = theme === value
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            aria-label={label}
+            title={label}
+            onClick={() => setTheme(value)}
+            className={cx(
+              'grid h-9 min-w-10 place-items-center rounded-[9px] transition-colors duration-100 [@media(pointer:coarse)]:h-11',
+              on ? 'bg-accent-50 text-accent-700 shadow-[inset_0_0_0_1px_rgb(var(--accent-500)/0.35)]' : 'text-fg-muted hover:text-fg',
+            )}
+          >
+            <Icon className="h-4 w-4" strokeWidth={1.9} aria-hidden />
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Accent colour picker: 36px swatches (44px on touch); the picked one carries a check. */
+export function AccentSwatches() {
+  const accent = useThemeStore(s => s.accent)
+  const setAccent = useThemeStore(s => s.setAccent)
+  return (
+    <div role="radiogroup" aria-label="Accent colour" className="flex flex-wrap gap-1">
+      {(Object.entries(ACCENTS) as [AccentName, (typeof ACCENTS)[AccentName]][]).map(([name, preset]) => {
+        const on = accent === name
+        return (
+          <button
+            key={name}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            aria-label={preset.label}
+            title={preset.label}
+            onClick={() => setAccent(name)}
+            className="grid h-9 w-9 place-items-center rounded-full [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+          >
+            <span
+              // The hairline keeps a dark swatch (Slate) visible on the dark surface.
+              className={cx('grid h-6 w-6 place-items-center rounded-full border border-line-strong ring-offset-2 ring-offset-surface', on && 'ring-2 ring-line-strong')}
+              style={{ backgroundColor: preset.hex }}
+            >
+              {on && <Check className="h-3.5 w-3.5" style={{ color: `rgb(${preset.onAccent})` }} strokeWidth={3} aria-hidden />}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Web Push toggle, or why it isn't available here. `className` styles the button row. */
+export function NotificationsControl({ className = 'menu-item' }: { className?: string }) {
+  const push = usePushNotifications()
+  if (!push.supported) {
+    return (
+      <p className="px-2.5 py-1.5 text-meta text-fg-muted">
+        Notifications aren't supported here. On iOS, add the site to your Home Screen first.
+      </p>
+    )
+  }
+  const Icon = push.enabled ? BellOff : Bell
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => (push.enabled ? push.disable() : push.enable())}
+        disabled={push.busy}
+        className={cx(className, 'disabled:opacity-50')}
+      >
+        <Icon className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />
+        <span className="flex-1 text-left">{push.busy ? 'Working…' : push.enabled ? 'Turn off notifications' : 'Turn on notifications'}</span>
+      </button>
+      {push.enabled && <p className="px-2.5 pb-1 text-meta text-fg-muted">Your morning brief arrives on the lock screen.</p>}
+    </>
+  )
+}
+
+type User = ReturnType<typeof useAuth>['user']
+
+function initialOf(user: User): string {
+  const meta = user?.user_metadata as Record<string, unknown> | undefined
+  const name = typeof meta?.full_name === 'string' ? meta.full_name : ''
+  const source = name || (user?.email ?? '')
+  return (source.trim()[0] ?? '').toUpperCase()
+}
+
+/** 36px round avatar: the account's initial on the accent tint. */
+export function UserAvatar({ user }: { user: User }) {
+  const initial = initialOf(user)
+  return (
+    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-50 text-ui font-semibold text-accent-700 ring-1 ring-line-strong">
+      {initial || <UserRound className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden />}
+    </span>
+  )
+}
 
 export function SettingsMenu() {
-  const [theme,      setTheme]      = useState(() => localStorage.getItem('accent-theme') ?? 'orange')
-
-  const { theme: appearance, setTheme: setAppearance } = useThemeStore()
-  const push = usePushNotifications()
-  // Connect/disconnect moved to Developer → Connections, but this hook must
-  // stay HERE: SettingsMenu is mounted in the header on every route, so it is
-  // the only always-on place the Calendar access token gets refreshed. On the
-  // Connections tab it would only run while that tab happened to be open.
-  useAutoRefreshCalendarToken()
-
-  const APPEARANCE_OPTIONS: { value: ThemePreference; label: string; icon: string }[] = [
-    { value: 'light',  label: 'Light',  icon: '☀️' },
-    { value: 'dark',   label: 'Dark',   icon: '🌙' },
-    { value: 'system', label: 'System', icon: '💻' },
-  ]
-
-  function selectTheme(name: string) {
-    applyTheme(name)
-    localStorage.setItem('accent-theme', name)
-    setTheme(name)
-  }
+  const { user } = useAuth()
 
   return (
-    /* Menu handles keyboard navigation, portal, and click-outside — no manual listeners needed */
     <Menu>
-      <MenuButton
-        title="Settings"
-        className="w-11 h-11 flex items-center justify-center rounded-lg text-lg transition-colors duration-150 text-ink-400 hover:text-ink-700 hover:bg-ink-100 data-[open]:bg-ink-100 data-[open]:text-ink-700"
-      >
-        ⚙
+      <MenuButton aria-label="Settings and account" title="Settings" className="grid h-11 w-11 shrink-0 place-items-center rounded-full">
+        <UserAvatar user={user} />
       </MenuButton>
 
       <MenuItems
-        anchor="bottom end"
+        anchor={{ to: 'bottom end', gap: 8, padding: 12 }}
         transition
-        className="z-50 bg-cream-50 border border-ink-200 rounded-xl shadow-card-hover w-60 overflow-hidden [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0 data-[closed]:scale-95"
+        className="menu w-[min(19rem,calc(100vw-24px))] origin-top-right transition duration-150 ease-out data-[closed]:-translate-y-1 data-[closed]:opacity-0"
       >
-        {/* Notifications (Web Push) */}
-        <div className="px-4 py-3 border-b border-ink-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2">Notifications</p>
-          {push.supported ? (
-            <button
-              onClick={() => (push.enabled ? push.disable() : push.enable())}
-              disabled={push.busy}
-              className="w-full min-h-[44px] rounded-lg border border-ink-200 text-sm text-ink-700 hover:border-accent-300 hover:text-accent-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {push.busy ? '…' : push.enabled ? '🔕 Turn off notifications' : '🔔 Turn on notifications'}
-            </button>
-          ) : (
-            <p className="text-[10px] text-ink-400 leading-snug">Not supported on this device. On iOS, add the site to your Home Screen (PWA) first, then enable here.</p>
-          )}
-          {push.enabled && <p className="text-[10px] text-ink-400 mt-1.5 leading-snug">Your morning brief will arrive on the lock screen.</p>}
-        </div>
-
-        {/* Theme */}
-        <div className="px-4 py-3 border-b border-ink-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2.5">Theme</p>
-          <div className="flex items-center gap-2">
-            {Object.entries(THEMES).map(([name, t]) => (
-              <MenuItem key={name}>
-                <button
-                  onClick={() => selectTheme(name)}
-                  title={t.label}
-                  className={`w-5 h-5 rounded-full border-2 transition-all duration-150 hover:scale-110 ${
-                    theme === name ? 'border-ink-500 scale-110' : 'border-transparent'
-                  }`}
-                  style={{ backgroundColor: t.hex }}
-                />
-              </MenuItem>
-            ))}
+        {user?.email && (
+          <div className="px-2.5 pb-2 pt-1.5">
+            <p className="text-micro text-fg-faint">Signed in as</p>
+            <p className="truncate text-body font-semibold text-fg">{user.email}</p>
           </div>
-        </div>
+        )}
+        <div className="menu-sep" />
 
-        {/* Appearance (light/dark/system) */}
-        <div className="px-4 py-3 border-b border-ink-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-2.5">Appearance</p>
-          <div className="flex gap-1 p-0.5 bg-cream-100 rounded-lg">
-            {APPEARANCE_OPTIONS.map(opt => (
-              <MenuItem key={opt.value}>
-                {({ close }) => (
-                  <button
-                    onClick={() => { setAppearance(opt.value); close() }}
-                    title={opt.label}
-                    className={`flex-1 min-h-[44px] rounded-md text-xs font-medium transition-colors duration-150 ${
-                      appearance === opt.value ? 'bg-cream-50 text-ink-900 shadow-card' : 'text-ink-500 hover:text-ink-800'
-                    }`}
-                  >
-                    {opt.icon}
-                  </button>
-                )}
-              </MenuItem>
-            ))}
-          </div>
-        </div>
+        <p className="menu-label">Appearance</p>
+        <div className="px-2.5 pb-2"><ThemeSwitch block /></div>
 
-        {/* Developer */}
+        <p className="menu-label">Accent</p>
+        <div className="px-1.5 pb-1.5"><AccentSwatches /></div>
+
+        <div className="menu-sep" />
+        <NotificationsControl />
+        <div className="menu-sep" />
+
         <MenuItem>
-          <Link
-            to="/developer"
-            className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 hover:bg-cream-50 transition-colors duration-150 data-[focus]:bg-cream-50 border-b border-ink-100"
-          >
-            👨‍💻 Developer
+          <Link to="/developer?tab=connections" className="menu-item">
+            <Plug className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Connections
           </Link>
         </MenuItem>
-
-        {/* Where Google/Strava/PlayStation connect + disconnect now live. */}
         <MenuItem>
-          <Link
-            to="/developer?tab=connections"
-            className="flex items-center min-h-[44px] px-4 text-sm text-ink-700 hover:bg-cream-50 transition-colors duration-150 data-[focus]:bg-cream-50 border-b border-ink-100"
-          >
-            🔌 Connections
+          <Link to="/developer" className="menu-item">
+            <Code2 className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Developer
           </Link>
         </MenuItem>
-
-        {/* Sign out */}
+        <div className="menu-sep" />
         <MenuItem>
-          <button
-            onClick={() => signOut()}
-            className="w-full px-4 py-3 text-left text-sm text-ink-500 hover:bg-cream-50 hover:text-red-500 transition-colors duration-150 data-[focus]:bg-cream-50 data-[focus]:text-red-500"
-          >
-            Sign out
+          <button type="button" onClick={() => signOut()} className="menu-item">
+            <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.9} aria-hidden />Sign out
           </button>
         </MenuItem>
       </MenuItems>

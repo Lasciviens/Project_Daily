@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { WEIGHT_UNITS } from '../api/recipesApi'
+import { Button } from '../../../shared/ui'
 import { sanitizeDecimal } from './foodLogUtils'
 import type { RecipeWithIngredients } from '../types'
 
@@ -28,48 +29,45 @@ export function MealPortionPicker({ recipe, busy, onLog, onCancel }: {
   const grams = totalG > 0 ? Math.round((p / 100) * totalG) : null
 
   return (
-    <div className="rounded-2xl border border-accent-200 bg-accent-50/50 p-3.5 flex flex-col gap-2">
-      <p className="text-xs font-semibold text-accent-700 truncate">How much of “{recipe.title}” did you eat?</p>
-      <div className="flex gap-1.5 flex-wrap">
+    <div className="flex flex-col gap-2.5 rounded-card border border-accent-500/25 bg-accent-50 p-3.5">
+      <p className="truncate text-meta font-semibold text-accent-700">How much of “{recipe.title}” did you eat?</p>
+      <div className="flex flex-wrap gap-1.5">
         {[25, 50, 75, 100].map(v => (
-          <button key={v} type="button" onClick={() => setPct(String(v))}
-            className={`text-xs px-3 min-h-[36px] rounded-full border transition-colors ${
-              p === v ? 'border-accent-500 bg-accent-500 text-white' : 'border-accent-200 text-accent-700 hover:border-accent-400'
-            }`}>
+          <button key={v} type="button" onClick={() => setPct(String(v))} aria-pressed={p === v} className="pill-tab border border-line bg-surface">
             {v}%
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
-          <input value={pct} onChange={e => setPct(sanitizeDecimal(e.target.value))} inputMode="decimal"
-            className="w-16 min-h-[40px] px-2 text-sm text-right border border-ink-200 rounded-xl bg-cream-50 tabular-nums" />
-          <span className="text-[11px] text-ink-400">%</span>
+          <input value={pct} onChange={e => setPct(sanitizeDecimal(e.target.value))} inputMode="decimal" aria-label="Percent of the batch"
+            className="input w-16 text-right tabular-nums" />
+          <span className="text-meta text-fg-muted">%</span>
         </div>
         {grams != null && (
           <div className="flex items-center gap-1">
-            <span className="text-ink-300 text-xs">·</span>
+            <span className="text-meta text-fg-faint">·</span>
             <input
               value={grams}
+              aria-label="Grams eaten"
               onChange={e => {
                 const g = Number(sanitizeDecimal(e.target.value)) || 0
                 setPct(totalG > 0 ? String(Math.round((g / totalG) * 1000) / 10) : '0')
               }}
               inputMode="decimal"
-              className="w-16 min-h-[40px] px-2 text-sm text-right border border-ink-200 rounded-xl bg-cream-50 tabular-nums" />
-            <span className="text-[11px] text-ink-400">g</span>
+              className="input w-16 text-right tabular-nums" />
+            <span className="text-meta text-fg-muted">g</span>
           </div>
         )}
-        <span className="text-[11px] text-ink-500 tabular-nums ml-auto">
-          {servingsEaten}× · <strong className="text-ink-800">{kcal}</strong> kcal · {prot}g P
+        <span className="ml-auto text-meta text-fg-muted tabular-nums">
+          {servingsEaten}× · <strong className="text-fg">{kcal}</strong> kcal · {prot}g protein
         </span>
       </div>
-      <div className="flex gap-1.5">
-        <button type="button" onClick={onCancel} className="flex-1 min-h-[44px] text-xs text-ink-500 hover:bg-ink-100 rounded-xl">Cancel</button>
-        <button type="button" onClick={() => onLog(servingsEaten)} disabled={busy || servingsEaten <= 0}
-          className="flex-1 min-h-[44px] text-xs font-semibold bg-accent-500 text-white rounded-xl hover:bg-accent-600 disabled:opacity-50">
-          {busy ? 'Logging…' : `Log ${p}%`}
-        </button>
+      <div className="flex gap-2">
+        <Button variant="ghost" block onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" block onClick={() => onLog(servingsEaten)} loading={busy} disabled={servingsEaten <= 0}>
+          Log {p}%
+        </Button>
       </div>
     </div>
   )

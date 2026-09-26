@@ -24,22 +24,24 @@ interface Props {
 export function GoogleListField({ value, onChange, locked }: Props) {
   const { data: lists = [] } = useGoogleTaskLists()
   const datalistId = useId()
+  const inputId = useId()
 
   return (
     <div>
-      <FieldLabel>Google Task list</FieldLabel>
+      <FieldLabel htmlFor={inputId}>Google Task list</FieldLabel>
       <input
+        id={inputId}
         list={datalistId}
         value={value}
         disabled={locked}
         onChange={e => onChange(e.target.value)}
         placeholder="Personal, Work, Training…"
-        className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400 disabled:opacity-60"
+        className="input disabled:opacity-60"
       />
       <datalist id={datalistId}>
         {lists.map(l => <option key={l.id} value={l.title} />)}
       </datalist>
-      <p className="mt-1.5 text-xs text-ink-400">
+      <p className="mt-1.5 text-meta text-fg-muted">
         Pick an existing list or type a new name — it's created on Google automatically.
       </p>
     </div>

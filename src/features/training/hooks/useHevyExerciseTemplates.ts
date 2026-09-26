@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
 import { fetchHevyExerciseTemplates } from '../api/hevyApi'
 
 export function useHevyExerciseTemplates() {
   return useQuery({
-    queryKey: ['hevy', 'templates'],
+    queryKey: qk.hevy.templates(),
     queryFn:  fetchHevyExerciseTemplates,
-    staleTime: 10 * 60_000,
+    staleTime: STALE.long,
   })
 }

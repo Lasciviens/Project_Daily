@@ -1,4 +1,6 @@
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
+import { ChevronDown, Star, X } from 'lucide-react'
+import { cx } from '../../../shared/ui'
 import { SLOT_OPTIONS, foodEmoji } from './foodLogUtils'
 import type { MealSlot } from '../types'
 
@@ -15,16 +17,15 @@ export function SlotSelect({ value, onChange }: { value: MealSlot; onChange: (s:
   const current = SLOT_OPTIONS.find(o => o.id === value) ?? SLOT_OPTIONS[0]
   return (
     <Listbox value={value} onChange={onChange}>
-      <ListboxButton className="min-h-[44px] pl-3 pr-2 rounded-xl border border-ink-200 bg-cream-100 text-sm font-medium text-ink-800 flex items-center gap-1.5 hover:border-accent-300 transition-colors shrink-0">
-        <span>{current.icon}</span>
+      <ListboxButton className="flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-control border border-line bg-surface-2 pl-3 pr-2 text-body font-medium text-fg transition-colors hover:border-line-strong">
+        <span aria-hidden>{current.icon}</span>
         <span>{current.label}</span>
-        <span className="text-ink-300 text-xs">▾</span>
+        <ChevronDown aria-hidden className="h-4 w-4 text-fg-faint" />
       </ListboxButton>
-      <ListboxOptions anchor="bottom end" className="z-[80] mt-1 w-44 rounded-xl border border-ink-200 bg-cream-50 shadow-lg p-1 focus:outline-none">
+      <ListboxOptions anchor="bottom end" className="menu w-44 [--anchor-gap:4px]">
         {SLOT_OPTIONS.map(o => (
-          <ListboxOption key={o.id} value={o.id}
-            className="flex items-center gap-2 px-3 min-h-[44px] rounded-lg text-sm text-ink-700 data-[focus]:bg-accent-50 data-[selected]:font-semibold cursor-pointer">
-            <span>{o.icon}</span>{o.label}
+          <ListboxOption key={o.id} value={o.id} className="menu-item data-[selected]:font-semibold data-[selected]:text-fg">
+            <span aria-hidden>{o.icon}</span>{o.label}
           </ListboxOption>
         ))}
       </ListboxOptions>
@@ -52,12 +53,12 @@ export function FoodThumb({ name, group, imageUrl, size = 40, sizeClass, classNa
     return (
       <img src={imageUrl} alt="" loading="lazy"
         style={boxStyle}
-        className={`rounded-lg object-cover bg-cream-100 shrink-0 ${boxClass} ${className}`} />
+        className={cx('shrink-0 rounded-lg bg-surface-2 object-cover', boxClass, className)} />
     )
   }
   return (
     <span style={sizeClass ? undefined : { width: size, height: size, fontSize: size * 0.55 }}
-      className={`rounded-lg bg-cream-100 grid place-items-center shrink-0 leading-none ${sizeClass ? 'text-base sm:text-lg' : ''} ${boxClass} ${className}`}>
+      className={cx('grid shrink-0 place-items-center rounded-lg bg-surface-2 leading-none', sizeClass && 'text-base sm:text-lg', boxClass, className)}>
       {foodEmoji(name, group)}
     </span>
   )
@@ -85,26 +86,25 @@ export function FoodTile({ title, imageUrl, group, calories, isFavorite, onAdd, 
   sizeClass?: string
 }) {
   return (
-    <div className="relative rounded-2xl border border-ink-100 bg-cream-100/50 hover:border-accent-300 hover:bg-cream-100 transition-colors">
+    <div className="relative rounded-row border border-line bg-surface-2/60 transition-colors hover:border-accent-500/50 hover:bg-surface-2">
       <button type="button" onClick={onAdd}
-        className="w-full p-2 flex flex-col items-center gap-1.5 min-h-[96px] press-feedback">
+        className="press-feedback flex min-h-[96px] w-full flex-col items-center gap-1.5 p-2">
         <FoodThumb name={title} group={group} imageUrl={imageUrl} sizeClass={sizeClass} />
-        <span className="text-[11px] font-medium text-ink-700 leading-tight text-center line-clamp-2 w-full">{title}</span>
+        <span className="line-clamp-2 w-full text-center text-meta font-medium leading-tight text-fg-2">{title}</span>
         {calories != null && calories > 0 && (
-          <span className="text-[10px] text-ink-400 tabular-nums">{Math.round(calories)} kcal</span>
+          <span className="text-micro tabular-nums text-fg-muted">{Math.round(calories)} kcal</span>
         )}
       </button>
       <button type="button" onClick={onToggleFavorite} aria-label={isFavorite ? 'Remove favourite' : 'Add favourite'}
-        title={isFavorite ? 'Remove favourite' : 'Add favourite'}
-        className={`absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs leading-none transition-colors ${
-          isFavorite ? 'bg-accent-500 text-white' : 'bg-cream-50/90 border border-ink-200 text-ink-400 hover:text-accent-600'
-        }`}>
-        {isFavorite ? '★' : '☆'}
+        aria-pressed={isFavorite} title={isFavorite ? 'Remove favourite' : 'Add favourite'}
+        className={cx('absolute left-1 top-1 grid h-6 w-6 place-items-center rounded-full transition-colors',
+          isFavorite ? 'bg-star text-surface' : 'border border-line bg-surface/90 text-fg-faint hover:text-star')}>
+        <Star aria-hidden className={cx('h-3.5 w-3.5', isFavorite && 'fill-current')} />
       </button>
       {onHide && (
         <button type="button" onClick={onHide} aria-label="Remove from Recent" title="Remove from Recent"
-          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-cream-50/90 border border-ink-200 text-ink-400 hover:text-red-500 flex items-center justify-center text-[11px] leading-none">
-          ✕
+          className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full border border-line bg-surface/90 text-fg-faint transition-colors hover:text-danger">
+          <X aria-hidden className="h-3.5 w-3.5" />
         </button>
       )}
     </div>

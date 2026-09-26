@@ -1,40 +1,31 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
+import { CardHeader, cx } from '../../../../shared/ui'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Shared anatomy for the glance-board cells. Every module renders inside ONE
-//  fixed grid slot of the board surface (TodaySummary): the cell paints its
-//  own background over the board's hairline-gap backdrop and never draws its
-//  own border — borders belong to top-level surfaces only. Header = icon chip
-//  + 13px semibold title + exactly one right-side control.
+//  Shared anatomy for the glance-board cells. Every module is one card in a
+//  FIXED grid slot of TodaySummary (h-full, so a row's cards line up). Header =
+//  icon chip + title + exactly one right-side control.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function Cell({ children }: { children: ReactNode }) {
-  return <div className="bg-cream-50 p-4 flex flex-col gap-2.5 h-full">{children}</div>
+export function Cell({ children, className }: { children: ReactNode; className?: string }) {
+  return <section className={cx('card flex h-full min-w-0 flex-col gap-3 p-4', className)}>{children}</section>
 }
 
-export function CellHeader({ icon, title, action }: { icon: string; title: string; action?: ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-2 min-h-[44px]">
-      <h3 className="flex items-center gap-2 text-[13px] font-semibold text-ink-800">
-        <span className="w-6 h-6 rounded-md bg-ink-100/60 grid place-items-center text-[13px] leading-none">{icon}</span>
-        {title}
-      </h3>
-      {action}
-    </div>
-  )
+export function CellHeader({ icon, title, action }: { icon: ReactNode; title: string; action?: ReactNode }) {
+  return <CardHeader className="!mb-0 min-h-[44px]" icon={icon} title={title} action={action} />
 }
 
-// Quiet link-out — deliberately ink, not accent (the accent is budgeted for
-// primary actions and "now" states, not navigation). ink-500 is the floor for
-// text/icon controls: ink-400 measures 2.46:1 on cream, below the 4.5:1 rule.
+// Quiet link-out in the card header (THEME §5: accent meta text + chevron).
 export function CellLink({ to, children }: { to: string; children: ReactNode }) {
   return (
     <Link
       to={to}
-      className="text-[11px] font-medium text-ink-500 hover:text-accent-600 min-h-[44px] px-1.5 flex items-center transition-colors shrink-0"
+      className="flex min-h-[44px] shrink-0 items-center gap-0.5 px-1.5 text-meta font-semibold text-accent-600 transition-colors hover:text-accent-700"
     >
       {children}
+      <ChevronRight className="h-3.5 w-3.5" aria-hidden />
     </Link>
   )
 }

@@ -15,22 +15,20 @@ function StatCard({
   const meta = BODY_COMP_FIELDS.find(f => f.key === fieldKey)!
   const arrow = !delta || Math.abs(delta.delta) < 0.05 ? '·' : delta.delta > 0 ? '▲' : '▼'
   return (
-    <div className="bg-cream-50 border border-ink-100 rounded-xl p-3 flex flex-col gap-1.5">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400 leading-tight" style={{ color: meta.color }}>
-        {meta.icon} {meta.label}
-      </p>
-      <p className="text-lg font-bold text-ink-900 leading-tight">
+    <div className="flex flex-col gap-1.5 rounded-row border border-line bg-surface p-3">
+      <p className="section-label leading-tight">{meta.label}</p>
+      <p className="text-lead font-bold leading-tight tabular-nums text-fg">
         {value.toFixed(meta.decimals)}
-        <span className="text-[11px] font-normal text-ink-400 ml-1">{meta.unit}</span>
+        <span className="ml-1 text-meta font-normal text-fg-muted">{meta.unit}</span>
       </p>
       {delta && Math.abs(delta.delta) >= 0.05 ? (
-        <p className="text-[11px] font-semibold text-ink-500">
+        <p className="text-meta font-semibold tabular-nums text-fg-2">
           {arrow} {delta.delta > 0 ? '+' : ''}{delta.delta.toFixed(meta.decimals)} {meta.unit}
           {delta.deltaPercent != null && ` (${delta.deltaPercent > 0 ? '+' : ''}${delta.deltaPercent.toFixed(1)}%)`}
-          <span className="text-ink-300 font-normal"> vs last scan</span>
+          <span className="font-normal text-fg-muted"> vs last scan</span>
         </p>
       ) : (
-        <p className="text-[11px] text-ink-300">{arrow} vs last scan</p>
+        <p className="text-meta text-fg-muted">{arrow} vs last scan</p>
       )}
     </div>
   )

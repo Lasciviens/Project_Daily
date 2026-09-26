@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  FieldLabel, TextField, DateStepperField, Time24Field, DurationField,
+  FieldLabel, Required, TextField, DateStepperField, Time24Field, DurationField,
   CategorySelect, RecurrenceField, CheckboxRow,
 } from './fields'
 import { stepDate, shiftTime, isScheduleFieldHidden, isScheduleFieldLocked, hasValidRecurrenceSelection } from './planModal.config'
@@ -36,10 +36,10 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
   }
 
   return (
-    <div className="px-5 py-4 flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {!hidden('title') && (
         <div>
-          <FieldLabel>Title <span className="text-red-400">*</span></FieldLabel>
+          <FieldLabel>Title<Required /></FieldLabel>
           <TextField
             value={form.title} onChange={v => patch({ title: v })}
             placeholder="What are you planning?" locked={locked('title')} autoFocus
@@ -97,7 +97,7 @@ export function ScheduleTab({ form, patch, config, gcalAvailable, extra }: Props
             onMode={m => patch({ recurrence: m })} onToggleDay={toggleDay} locked={locked('recurrence')}
           />
           {!hasValidRecurrenceSelection(form.recurrence, form.weeklyDays) && (
-            <p className="mt-1.5 text-[11px] text-red-500">Pick at least one day.</p>
+            <p className="mt-1.5 text-meta text-danger">Pick at least one day.</p>
           )}
         </div>
       )}

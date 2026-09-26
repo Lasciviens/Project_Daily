@@ -1,7 +1,10 @@
 import { useMemo } from 'react'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { computeWeeklyChangeFlags, metricKindForExerciseType, type WeeklyChangeFlag } from '../progressAggregate'
-import { METRIC_META } from './ExerciseProgressChart'
+import { METRIC_META } from '../progressMetricMeta'
+import { ArrowUp, Sparkles } from 'lucide-react'
+import { Skeleton } from '../../../shared/ui'
+import { ChartCard, ChartNote } from './ChartCard'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Big Changes This Week — a strength-coach review's explicit alternative to
@@ -41,7 +44,7 @@ export function WeeklyChangesPanel() {
   const titleById = useMemo(() => new Map(data?.templates.map(t => [t.id, t.title]) ?? []), [data])
   const typeById = useMemo(() => new Map(data?.templates.map(t => [t.id, t.type]) ?? []), [data])
 
-  if (isLoading) return <div className="h-24 rounded-2xl bg-cream-200 animate-pulse" />
+  if (isLoading) return <Skeleton rounded="rounded-card" className="h-24" />
 
   // Sort: new exercises first (nothing to compare, most actionable to notice),
   // then load jumps, then volume jumps, each by size descending.
@@ -49,35 +52,35 @@ export function WeeklyChangesPanel() {
   const sorted = [...flags].sort((a, b) => order[a.kind] - order[b.kind] || (b.pct ?? 0) - (a.pct ?? 0))
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-2">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">📋 Big Changes This Week</p>
-
+    <ChartCard title="Big changes this week">
       {sorted.length === 0 ? (
-        <p className="text-xs text-ink-400 py-2">Nothing jumped this week.</p>
+        <p className="py-2 text-body text-fg-muted">Nothing jumped this week.</p>
       ) : (
         <ul className="flex flex-col gap-1.5">
           {sorted.map((f, i) => (
-            <li key={`${f.templateId}-${f.kind}-${i}`} className="text-xs text-ink-700 flex items-start gap-2">
-              <span aria-hidden>{f.kind === 'new' ? '🆕' : '↑'}</span>
+            <li key={`${f.templateId}-${f.kind}-${i}`} className="flex items-start gap-2 text-body text-fg-2">
+              {f.kind === 'new'
+                ? <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-muted" aria-label="New" />
+                : <ArrowUp className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-muted" aria-label="Up" />}
               <span>{describeFlag(f, titleById.get(f.templateId) ?? 'Unknown exercise', typeById.get(f.templateId) ?? '')}</span>
             </li>
           ))}
         </ul>
       )}
 
-      <div className="flex flex-col gap-1 text-[11px] text-ink-400 mt-1">
+      <ChartNote className="mt-1 flex flex-col gap-1">
         <p>
           This is a change detector, not a risk score. It compares this week&apos;s top-set load and set count for each exercise against your own median over
           the previous four weeks. A flag means &quot;this went up sharply&quot; — it does not mean you&apos;re injured, overreaching, or doing anything wrong.
           Deliberately pushing a lift is supposed to trigger this.
         </p>
         <p>New or returning exercises are flagged with no threshold — unfamiliar movements cause more soreness than familiar ones at the same load, which is normal.</p>
-        <p className="text-ink-300">
+        <p>
           The +10% load / +30% set thresholds are coaching rules of thumb, not measured cut-offs. We deliberately don&apos;t show an acute:chronic workload
           ratio here — it comes from team-sport running data with heavily criticised injury-prediction claims, and lifting tonnage is a poor load proxy
           anyway (100 kg × 5 and 50 kg × 10 count the same).
         </p>
-      </div>
-    </div>
+      </ChartNote>
+    </ChartCard>
   )
 }

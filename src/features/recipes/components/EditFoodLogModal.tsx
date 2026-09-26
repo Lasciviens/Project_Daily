@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Button } from '../../../shared/ui'
 import { SlotSelect } from './foodLogKit'
+import { sanitizeDecimal } from './foodLogUtils'
 import { toast } from '../../../app/store'
 import { useUpdateFoodLogEntry, useDeleteFoodLogEntry } from '../hooks/useFoodLog'
 import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
@@ -21,13 +23,18 @@ import type { DayMeal } from '../../daily/api/dayNutritionApi'
 //  All kinds can move meal slot. Delete is available too.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function sanitizeDecimal(raw: string): string {
-  const cleaned = raw.replace(',', '.').replace(/[^0-9.]/g, '')
-  const firstDot = cleaned.indexOf('.')
-  return firstDot === -1 ? cleaned : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '')
+/** What the editor needs from a diary row — a DayMeal satisfies it, and the
+ *  `food-log-edit` entity modal builds one from the row it loads by id. */
+export type EditableFoodEntry = Pick<DayMeal, 'id' | 'meal_slot' | 'title' | 'logEntry'> & {
+  calories:  number | null
+  protein_g: number | null
+  carbs_g:   number | null
+  fat_g:     number | null
+  fiber_g?:  number | null
+  sugar_g?:  number | null
 }
 
-interface Props { meal: DayMeal; date: string; onClose: () => void }
+interface Props { meal: EditableFoodEntry; date: string; onClose: () => void }
 
 export function EditFoodLogModal({ meal, date, onClose }: Props) {
   const { data: library = [] } = useIngredientLibrary()
@@ -49,9 +56,8 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
   const [prot, setProt] = useState(String(meal.protein_g ?? ''))
   const [carb, setCarb] = useState(String(meal.carbs_g ?? ''))
   const [fat, setFat] = useState(String(meal.fat_g ?? ''))
-  const mExtra = meal as typeof meal & { fiber_g?: number | null; sugar_g?: number | null }
-  const [fiber, setFiber] = useState(String(mExtra.fiber_g ?? ''))
-  const [sugar, setSugar] = useState(String(mExtra.sugar_g ?? ''))
+  const [fiber, setFiber] = useState(String(meal.fiber_g ?? ''))
+  const [sugar, setSugar] = useState(String(meal.sugar_g ?? ''))
 
   const amt = Math.max(0, Number(sanitizeDecimal(amount)) || 0)
   const preview = kind === 'library' && lib ? ingredientSnapshot(lib, amt)
@@ -81,90 +87,90 @@ export function EditFoodLogModal({ meal, date, onClose }: Props) {
     } catch { /* useMutationWithFeedback already toasts; this just avoids an unhandled rejection */ }
   }
 
-  const inputCls = 'min-h-[44px] px-3 text-sm border border-ink-200 rounded-xl bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400'
+  const saving = update.isPending || del.isPending
 
   return (
-    <Dialog open onClose={onClose} className="relative z-[70]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-sm max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-          <div className="sm:hidden flex justify-center pt-2 -mb-1"><span className="h-1 w-10 rounded-full bg-ink-200" /></div>
-          <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-ink-100">
-            <h2 className="text-base font-bold text-ink-900 truncate pr-2">Edit · {meal.title}</h2>
-            <button onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none shrink-0">×</button>
-          </div>
+    <ModalShell
+      onClose={onClose}
+      title={`Edit · ${meal.title}`}
+      size="sm"
+      dismissible={!saving}
+      footer={
+        <div className="flex gap-2">
+          <Button variant="ghost" className="text-danger" loading={del.isPending} disabled={update.isPending}
+            onClick={() => del.mutate({ id: meal.id, date }, { onSuccess: onClose })}>
+            Delete
+          </Button>
+          <Button variant="primary" block onClick={handleSave} loading={update.isPending} disabled={del.isPending}>
+            Save
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {/* Slot — same compact dropdown as the Log food screen */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="field-label mb-0">Meal</span>
+          <SlotSelect value={slot} onChange={setSlot} />
+        </div>
 
-          <div className="px-5 py-4 flex flex-col gap-3">
-            {/* Slot — same compact dropdown as the Log Food screen */}
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Meal</label>
-              <SlotSelect value={slot} onChange={setSlot} />
+        {kind === 'library' && lib ? (
+          <div>
+            <label htmlFor="efl-amount" className="field-label">Amount ({lib.name})</label>
+            <div className="flex items-center gap-2">
+              <input id="efl-amount" value={amount} onChange={e => setAmount(sanitizeDecimal(e.target.value))} inputMode="decimal" className="input w-24 text-right tabular-nums" />
+              <span className="text-meta text-fg-muted">{lib.unit || 'g'}</span>
+              {lib.serving_grams != null && lib.serving_label && (
+                <span className="text-meta text-fg-muted tabular-nums">≈ {Math.round((amt / lib.serving_grams) * 10) / 10}× {lib.serving_label}</span>
+              )}
             </div>
-
-            {kind === 'library' && lib ? (
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1 block">Amount ({lib.name})</label>
-                <div className="flex items-center gap-2">
-                  <input value={amount} onChange={e => setAmount(sanitizeDecimal(e.target.value))} inputMode="decimal" className={`${inputCls} w-24 text-right tabular-nums`} />
-                  <span className="text-xs text-ink-400">{lib.unit || 'g'}</span>
-                  {lib.serving_grams != null && lib.serving_label && <span className="text-[11px] text-ink-400">≈ {Math.round((amt / lib.serving_grams) * 10) / 10}× {lib.serving_label}</span>}
-                </div>
-              </div>
-            ) : kind === 'recipe' && recipe ? (
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1 block">Servings ({recipe.title})</label>
-                <input value={amount} onChange={e => setAmount(sanitizeDecimal(e.target.value))} inputMode="decimal" className={`${inputCls} w-24 text-right tabular-nums`} />
-                {recipe.servings > 0 && <span className="text-[11px] text-ink-400 ml-2">{Math.round((amt / recipe.servings) * 100)}% of the batch</span>}
-              </div>
-            ) : (
-              <>
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1 block">Name</label>
-                  <input value={title} onChange={e => setTitle(e.target.value)} className={`${inputCls} w-full`} />
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                  {[
-                    { v: kcal, set: setKcal, ph: 'kcal' },
-                    { v: prot, set: setProt, ph: 'Prot' },
-                    { v: carb, set: setCarb, ph: 'Carb' },
-                    { v: fat, set: setFat, ph: 'Fat' },
-                    { v: fiber, set: setFiber, ph: 'Fiber' },
-                    { v: sugar, set: setSugar, ph: 'Sugar' },
-                  ].map((m, i) => (
-                    <input key={i} value={m.v} onChange={e => m.set(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder={m.ph}
-                      className="min-h-[44px] px-2 text-sm text-center border border-ink-200 rounded-xl bg-cream-50 tabular-nums" />
-                  ))}
-                </div>
-                {(() => {
-                  const n = (s: string) => (s.trim() === '' ? null : Number(sanitizeDecimal(s)))
-                  const check = checkMacroConsistency(n(kcal), n(prot), n(carb), n(fat))
-                  return check?.inconsistent ? (
-                    <div className="flex items-center gap-1.5 text-[11px] text-orange-700">
-                      <MacroWarningBadge result={check} />
-                      <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
-                    </div>
-                  ) : null
-                })()}
-              </>
-            )}
-
-            {preview && (
-              <p className="text-[11px] text-ink-500 tabular-nums">
-                = <strong className="text-ink-800">{Math.round(preview.calories ?? 0)}</strong> kcal · {Math.round(preview.protein_g ?? 0)}g P · {Math.round(preview.carbs_g ?? 0)}g C · {Math.round(preview.fat_g ?? 0)}g F
-              </p>
-            )}
           </div>
-
-          <div className="px-5 py-4 border-t border-ink-100 flex gap-3">
-            <button onClick={() => del.mutate({ id: meal.id, date }, { onSuccess: onClose })}
-              className="min-h-[44px] px-4 text-sm font-medium text-red-500 hover:bg-red-50 rounded-xl">Delete</button>
-            <button onClick={handleSave} disabled={update.isPending}
-              className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 disabled:opacity-50">
-              {update.isPending ? 'Saving…' : 'Save'}
-            </button>
+        ) : kind === 'recipe' && recipe ? (
+          <div>
+            <label htmlFor="efl-servings" className="field-label">Servings ({recipe.title})</label>
+            <div className="flex items-center gap-2">
+              <input id="efl-servings" value={amount} onChange={e => setAmount(sanitizeDecimal(e.target.value))} inputMode="decimal" className="input w-24 text-right tabular-nums" />
+              {recipe.servings > 0 && <span className="text-meta text-fg-muted tabular-nums">{Math.round((amt / recipe.servings) * 100)}% of the batch</span>}
+            </div>
           </div>
-        </DialogPanel>
+        ) : (
+          <>
+            <div>
+              <label htmlFor="efl-name" className="field-label">Name</label>
+              <input id="efl-name" value={title} onChange={e => setTitle(e.target.value)} className="input" />
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {[
+                { v: kcal, set: setKcal, ph: 'kcal' },
+                { v: prot, set: setProt, ph: 'Protein' },
+                { v: carb, set: setCarb, ph: 'Carbs' },
+                { v: fat, set: setFat, ph: 'Fat' },
+                { v: fiber, set: setFiber, ph: 'Fiber' },
+                { v: sugar, set: setSugar, ph: 'Sugar' },
+              ].map(m => (
+                <input key={m.ph} value={m.v} onChange={e => m.set(sanitizeDecimal(e.target.value))} inputMode="decimal"
+                  placeholder={m.ph} aria-label={m.ph} className="input text-center tabular-nums" />
+              ))}
+            </div>
+            {(() => {
+              const n = (v: string) => (v.trim() === '' ? null : Number(sanitizeDecimal(v)))
+              const check = checkMacroConsistency(n(kcal), n(prot), n(carb), n(fat))
+              return check?.inconsistent ? (
+                <div data-tone="warn" className="tone-text flex items-center gap-1.5 text-meta">
+                  <MacroWarningBadge result={check} />
+                  <span>Calories don't match protein/carbs/fat — {check.deltaPct}% off. Tap the badge for details.</span>
+                </div>
+              ) : null
+            })()}
+          </>
+        )}
+
+        {preview && (
+          <p className="text-meta text-fg-muted tabular-nums">
+            = <strong className="text-fg">{Math.round(preview.calories ?? 0)}</strong> kcal · {Math.round(preview.protein_g ?? 0)}g protein · {Math.round(preview.carbs_g ?? 0)}g carbs · {Math.round(preview.fat_g ?? 0)}g fat
+          </p>
+        )}
       </div>
-    </Dialog>
+    </ModalShell>
   )
 }

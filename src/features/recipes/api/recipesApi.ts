@@ -51,6 +51,20 @@ export function sumMacros(
   return { contributed, skippedCount, totals }
 }
 
+/**
+ * True when every named ingredient can feed the per-100g computation: linked to
+ * the library, a weight/volume unit and a quantity. A recipe like this is really
+ * "from ingredients" even if it was stored as manual — the logger's "Save meal"
+ * used to store it that way, which froze its calories at save time.
+ */
+export function canComputeFromIngredients(
+  ingredients: Array<{ name?: string | null; library_ingredient_id: string | null; unit: string | null; quantity: number | null }>,
+): boolean {
+  const named = ingredients.filter(i => (i.name ?? '').trim() || i.library_ingredient_id)
+  return named.length > 0 && named.every(i =>
+    !!i.library_ingredient_id && i.quantity != null && !!i.unit && WEIGHT_UNITS.has(i.unit.trim().toLowerCase()))
+}
+
 export async function computeMacrosFromIngredients(
   ingredients: RecipeInput['ingredients'],
   servings: number,
@@ -94,7 +108,9 @@ export async function fetchRecipes(): Promise<RecipeWithIngredients[]> {
 }
 
 async function replaceIngredients(userId: string, recipeId: string, ingredients: RecipeInput['ingredients']) {
-  await supabase.from('recipe_ingredients').delete().eq('recipe_id', recipeId)
+  // A failed delete followed by the insert would duplicate every ingredient.
+  const { error: delError } = await supabase.from('recipe_ingredients').delete().eq('recipe_id', recipeId)
+  if (delError) throw delError
   const rows = ingredients
     .filter(i => i.name.trim())
     .map((i, idx) => ({
@@ -202,6 +218,49 @@ export async function updateRecipe(id: string, input: RecipeInput): Promise<void
   if (error) throw error
 
   await replaceIngredients(user.id, id, input.ingredients)
+}
+
+/**
+ * A library ingredient's macros changed: recompute the stored per-serving macros
+ * of every recipe that is calculated from its ingredients and uses it (plus
+ * manual recipes whose ingredients are all library-linked by weight — only the
+ * logger's old "Save meal" made those, since links are only editable in
+ * 'from_ingredients' mode — which are switched to 'from_ingredients'). Without this, recipe and planned-meal
+ * calories kept the old numbers forever. Eaten diary rows are snapshots and are
+ * deliberately left alone. Returns how many recipes were updated.
+ */
+export async function recomputeRecipesUsingIngredient(libraryId: string): Promise<number> {
+  const { data: links, error: linkError } = await supabase
+    .from('recipe_ingredients').select('recipe_id').eq('library_ingredient_id', libraryId)
+  if (linkError) throw linkError
+  const ids = [...new Set((links ?? []).map(l => l.recipe_id as string))]
+  if (!ids.length) return 0
+
+  const { data: recipes, error } = await supabase
+    .from('recipes').select('*, ingredients:recipe_ingredients(*)').in('id', ids)
+  if (error) throw error
+
+  let updated = 0
+  for (const r of (recipes ?? []) as RecipeWithIngredients[]) {
+    const computable = r.macro_mode === 'from_ingredients'
+      || (r.macro_mode === 'manual' && canComputeFromIngredients(r.ingredients))
+    if (!computable) continue
+    const m = await computeMacrosFromIngredients(r.ingredients, r.servings)
+    const row: Record<string, unknown> = {
+      macro_mode: 'from_ingredients',
+      calories: m.calories, protein_g: m.protein_g, carbs_g: m.carbs_g,
+      fat_g: m.fat_g, fiber_g: m.fiber_g, sugar_g: m.sugar_g,
+      updated_at: new Date().toISOString(),
+    }
+    let { error: upError } = await supabase.from('recipes').update(row).eq('id', r.id)
+    if (upError && missingRecipeCol(upError, 'fiber_g')) {
+      delete row.fiber_g
+      ;({ error: upError } = await supabase.from('recipes').update(row).eq('id', r.id))
+    }
+    if (upError) throw upError
+    updated++
+  }
+  return updated
 }
 
 export async function deleteRecipe(id: string): Promise<void> {

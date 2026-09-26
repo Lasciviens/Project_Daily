@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import type { UserMovieEntry, UserTVEntry } from '../types'
+import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
 
 interface Item { id: number; title: string; poster_path: string | null; date: string | null }
 interface Group {
@@ -13,7 +14,7 @@ interface Props {
   tab:          'movies' | 'tv'
   movieEntries: UserMovieEntry[]
   tvEntries:    UserTVEntry[]
-  onOpenDetail: (id: number, type: 'movie' | 'tv') => void
+  onOpenDetail: (id: number, type: MediaType) => void
 }
 
 // "Coming soon" is a DATE fact (not yet released), not a manual label. Keeping
@@ -61,7 +62,7 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
   const filledGroups = groups.filter(g => g.entries.length > 0)
   if (filledGroups.length === 0) return null
 
-  const type  = tab === 'movies' ? 'movie' : 'tv'
+  const type: MediaType = tab === 'movies' ? 'movie' : 'tv'
   const total = filledGroups.reduce((n, g) => n + g.entries.length, 0)
 
   // Split groups into two columns: left = even indices, right = odd indices
@@ -71,22 +72,25 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
   function renderGroup(group: Group) {
     return (
       <div key={group.label} className="min-w-0">
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-400">{group.label}</span>
-          <span className="text-[9px] text-ink-300">{group.entries.length}</span>
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <span className="section-label">{group.label}</span>
+          <span className="text-micro text-fg-faint tabular-nums">{group.entries.length}</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {group.entries.map(e => (
             <button
               key={e.id}
+              type="button"
               onClick={() => onOpenDetail(e.id, type)}
               title={e.title}
-              className="min-h-[44px] flex items-center justify-center press-feedback"
+              aria-label={e.title}
+              className="press-feedback rounded-md focus-visible:outline-accent-500"
             >
               <img
                 src={posterUrl(e.poster_path, 'w185')}
-                alt={e.title}
-                className="w-[86px] h-[120px] rounded object-cover hover:opacity-80 hover:ring-2 hover:ring-accent-400 transition-all"
+                alt=""
+                loading="lazy"
+                className="h-[120px] w-[80px] rounded-md bg-surface-2 object-cover transition-opacity hover:opacity-85"
               />
             </button>
           ))}
@@ -96,29 +100,26 @@ export function CompactLibraryStrip({ tab, movieEntries, tvEntries, onOpenDetail
   }
 
   return (
-    <div className="mb-4 rounded-xl border border-ink-100 bg-cream-50/60">
-      {/* Header */}
+    <div className="rounded-row border border-line bg-surface/70">
       <button
+        type="button"
         onClick={() => setCollapsed(v => !v)}
-        className="w-full flex items-center gap-2 px-3 py-2 min-h-[44px] text-left hover:bg-cream-100 rounded-xl transition-colors"
+        aria-expanded={!collapsed}
+        className="row row-interactive w-full text-left"
       >
-        <span className="text-[10px] font-bold uppercase tracking-wider text-ink-400 flex-1">
-          My Library
-          <span className="ml-1.5 normal-case font-normal text-ink-300">({total})</span>
+        <span className="section-label flex-1">
+          My library <span className="ml-1 font-normal normal-case tracking-normal text-fg-faint tabular-nums">({total})</span>
         </span>
-        <span className="text-[10px] text-ink-400">{collapsed ? '▶' : '▼'}</span>
+        <ChevronDown aria-hidden className={`h-4 w-4 text-fg-faint transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
 
       {!collapsed && (
         <>
-          {/* Mobile: ONE column in logical status order. The 2-column
-              even/odd split below stacked left-column-then-right-column on a
-              phone, scrambling the reading order (Coming soon → Watching →
-              Completed → Wishlist…); a single ordered flow fixes it. Posters
-              get the full card width to wrap several per row. */}
-          <div className="px-3 pb-3 space-y-4 sm:hidden">{filledGroups.map(renderGroup)}</div>
-          {/* ≥sm: two balanced columns (even/odd split reads down-then-across). */}
-          <div className="px-3 pb-3 hidden sm:grid grid-cols-2 gap-4">
+          {/* Phones: one column in status order (an even/odd split stacked
+              column-then-column and scrambled the reading order). */}
+          <div className="space-y-4 px-3 pb-3 sm:hidden">{filledGroups.map(renderGroup)}</div>
+          {/* sm+: two balanced columns, reading down then across. */}
+          <div className="hidden grid-cols-2 gap-4 px-3 pb-3 sm:grid">
             <div className="space-y-4">{leftGroups.map(renderGroup)}</div>
             <div className="space-y-4">{rightGroups.map(renderGroup)}</div>
           </div>

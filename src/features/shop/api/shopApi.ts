@@ -26,11 +26,6 @@ export async function createShopCategory(input: CreateShopCategoryInput): Promis
   return data
 }
 
-export async function deleteShopCategory(id: string): Promise<void> {
-  const { error } = await supabase.from('shop_categories').delete().eq('id', id)
-  if (error) throw error
-}
-
 // ─── Items ────────────────────────────────────────────────────────────────────
 
 export async function fetchShopItems(): Promise<ShopItem[]> {

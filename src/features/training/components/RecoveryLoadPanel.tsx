@@ -6,7 +6,11 @@ import { computeSleepSummary, computeDailySeries, formatSleepHours } from '../he
 import { computeWeeklyVolumeTrend } from '../progressAggregate'
 import { computeWeeklySleepTrend, computeWeeklyRestingHRTrend } from '../recoveryAggregate'
 import { lastCompleteWeek } from '../trainingInsights'
-import { fmtWeekRange } from '../dateFormat'
+import { fmtWeekRange, nowMs } from '../dateFormat'
+import { Skeleton, useChartColors } from '../../../shared/ui'
+import { useTooltipStyle } from './chartKit'
+import { ChartCard, ChartEmpty, ChartNote } from './ChartCard'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Recovery vs Load — a follow-up sports-scientist review (2026-08-31) of the
@@ -22,7 +26,7 @@ import { fmtWeekRange } from '../dateFormat'
 const WINDOW_DAYS = 182
 
 function fmtWeek(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
 }
 
 // A single date ("3 Aug") is ambiguous for a WEEKLY value — real user
@@ -53,9 +57,12 @@ function domainWithMinSpan(values: (number | null)[], minSpan: number): [number,
 
 export function RecoveryLoadPanel() {
   const { data: training, isLoading: loadingTraining } = useTrainingHistory()
+  const c = useChartColors()
+  const tip = useTooltipStyle()
+  const tick = { fontSize: 9, fill: c.axis }
 
   const toStr = new Date().toISOString().slice(0, 10)
-  const fromStr = new Date(Date.now() - WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
+  const fromStr = new Date(nowMs() - WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
 
   const { data: sleepPoints = [], isLoading: loadingSleep } = useHealthMetricSeries('sleep_analysis', fromStr, toStr)
   const { data: rhrPoints = [], isLoading: loadingRhr } = useHealthMetricSeries('resting_heart_rate', fromStr, toStr)
@@ -96,86 +103,85 @@ export function RecoveryLoadPanel() {
   const sleepDomain = useMemo(() => domainWithMinSpan(weeks.map(w => w.sleepHours), 2), [weeks])
   const rhrDomain = useMemo(() => domainWithMinSpan(weeks.map(w => w.rhrBpm), 10), [weeks])
 
-  if (isLoading) return <div className="h-56 rounded-2xl bg-cream-200 animate-pulse" />
+  if (isLoading) return <Skeleton rounded="rounded-card" className="h-56" />
   if (weeks.length === 0) {
     return (
-      <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300 mb-2">😴 Recovery Inputs Alongside Load</p>
-        <p className="text-xs text-ink-300 py-6 text-center">No training, sleep or heart-rate data in the last 6 months yet.</p>
-      </div>
+      <ChartCard title="Recovery inputs alongside load">
+        <ChartEmpty>No training, sleep or heart-rate data in the last 6 months yet.</ChartEmpty>
+      </ChartCard>
     )
   }
 
   const xInterval = Math.ceil(weeks.length / 8)
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-2">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">😴 Recovery Inputs Alongside Load</p>
-
-      <p className="text-[10px] text-ink-400 -mt-1">Weekly tonnage</p>
+    <ChartCard title="Recovery inputs alongside load">
+      <p className="text-meta text-fg-muted">Weekly tonnage</p>
       <div style={{ height: 72 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={weeks} margin={{ top: 2, right: 4, left: -4, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={c.grid} />
+            <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} interval={xInterval} />
             {/* Zero-based on purpose — a Bar's height needs to mean "how big
                 is this number", and an auto-computed non-zero minimum made a
                 real week of training look like a near-empty sliver. */}
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={[0, 'auto']} />
+            <YAxis tick={tick} axisLine={false} tickLine={false} width={32} domain={[0, 'auto']} />
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly. */}
-            <Tooltip cursor={false} formatter={(v: any) => [`${Number(v).toLocaleString('en-GB')} kg`, 'Tonnage']} labelFormatter={weekRangeLabelFormatter} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
-            <Bar dataKey="tonnageKg" fill="#7c3aed" fillOpacity={0.35} radius={[3, 3, 0, 0]} barSize={10} />
+            <Tooltip cursor={false} formatter={(v: any) => [`${Number(v).toLocaleString('en-GB')} kg`, 'Tonnage']} labelFormatter={weekRangeLabelFormatter} contentStyle={tip.contentStyle} labelStyle={tip.labelStyle} />
+            <Bar dataKey="tonnageKg" fill={c.series[1]} fillOpacity={0.35} radius={[3, 3, 0, 0]} barSize={10} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      <p className="text-[10px] text-ink-400 -mb-1">Average nightly sleep (hours)</p>
+      <p className="text-meta text-fg-muted">Average nightly sleep (hours)</p>
       <div style={{ height: 64 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={weeks} margin={{ top: 2, right: 4, left: -4, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={sleepDomain} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={c.grid} />
+            <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} interval={xInterval} />
+            <YAxis tick={tick} axisLine={false} tickLine={false} width={32} domain={sleepDomain} />
             <Tooltip
               cursor={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
               formatter={(v: any, _n: any, entry: any) => [v == null ? 'not enough nights tracked' : `${formatSleepHours(Number(v))} (${entry?.payload?.sleepNights}/7 nights)`, 'Sleep']}
               labelFormatter={weekRangeLabelFormatter}
-              contentStyle={{ fontSize: 11, borderRadius: 8 }}
+              contentStyle={tip.contentStyle}
+              labelStyle={tip.labelStyle}
             />
-            <Line dataKey="sleepHours" stroke="#0ea5e9" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+            <Line dataKey="sleepHours" stroke={c.series[0]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <p className="text-[10px] text-ink-400 -mb-1">Weekly resting heart rate (median, bpm)</p>
+      <p className="text-meta text-fg-muted">Weekly resting heart rate (median, bpm)</p>
       <div style={{ height: 64 }}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={weeks} margin={{ top: 2, right: 4, left: -4, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
-            <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={32} domain={rhrDomain} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={c.grid} />
+            <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} interval={xInterval} />
+            <YAxis tick={tick} axisLine={false} tickLine={false} width={32} domain={rhrDomain} />
             <Tooltip
               cursor={false}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts formatter's props type is awkward to import cleanly.
               formatter={(v: any, _n: any, entry: any) => [v == null ? 'not enough days tracked' : `${v} bpm (${entry?.payload?.rhrDays}/7 days)`, 'Resting HR']}
               labelFormatter={weekRangeLabelFormatter}
-              contentStyle={{ fontSize: 11, borderRadius: 8 }}
+              contentStyle={tip.contentStyle}
+              labelStyle={tip.labelStyle}
             />
-            <Line dataKey="rhrBpm" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+            <Line dataKey="rhrBpm" stroke={c.series[3]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="flex flex-col gap-1 text-[11px] text-ink-400 mt-1">
+      <ChartNote className="mt-1 flex flex-col gap-1">
         <p>
           Three separate measurements on one timeline — not combined into a score, and nothing here predicts anything. Sleep loss impairs physical
           performance on average (−7.6% across 69 studies, Craven 2022), but maximal strength is one of the more robust qualities, so a single bad night
           usually isn&apos;t visible in a lift. Resting heart rate and HRV track training status in <em>endurance</em> athletes — there&apos;s no comparable
           evidence for lifting.
         </p>
-        <p className="text-ink-300">Weeks with fewer than 4 nights/days of data are left blank rather than estimated. Use this to spot patterns worth investigating yourself — not as a readiness signal.</p>
-      </div>
-    </div>
+        <p>Weeks with fewer than 4 nights/days of data are left blank rather than estimated. Use this to spot patterns worth investigating yourself — not as a readiness signal.</p>
+      </ChartNote>
+    </ChartCard>
   )
 }

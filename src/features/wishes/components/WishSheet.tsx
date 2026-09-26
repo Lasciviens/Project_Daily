@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Sheet } from '../../../shared/components/Sheet'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Button } from '../../../shared/ui'
 import { useUpdateWish } from '../hooks/useWishes'
 import { WishForm, type WishDraft } from './WishForm'
 import type { WishItem } from '../types'
@@ -52,32 +53,21 @@ export function WishSheet({ wish, onClose }: { wish: WishItem; onClose: () => vo
   }
 
   return (
-    <Sheet
-      open
+    <ModalShell
       onClose={onClose}
       title="Edit wish"
       size="md"
+      dismissible={!update.isPending}
       footer={
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="press-feedback min-h-[44px] rounded-xl border border-ink-200 px-4 text-sm font-medium text-ink-600 hover:bg-cream-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={!draft.title.trim() || update.isPending}
-            className="press-feedback ml-auto min-h-[44px] rounded-xl bg-accent-600 px-5 text-sm font-semibold text-white hover:bg-accent-700 disabled:opacity-50"
-          >
-            Save
-          </button>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" className="ml-auto" onClick={save} loading={update.isPending} disabled={!draft.title.trim()}>
+            Save wish
+          </Button>
         </div>
       }
     >
       <WishForm draft={draft} onChange={patch => setDraft(d => ({ ...d, ...patch }))} />
-    </Sheet>
+    </ModalShell>
   )
 }

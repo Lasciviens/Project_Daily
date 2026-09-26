@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ArrowDownToLine, ArrowUpFromLine, ListTree } from 'lucide-react'
+import { Button } from '../../../shared/ui'
 import { useAllTasks, useSyncFromGoogleTasks, usePushToGoogleTasks } from '../hooks/useTodos'
 import { GoogleTaskListsSheet } from './GoogleTaskListsSheet'
 
@@ -11,8 +13,6 @@ import { GoogleTaskListsSheet } from './GoogleTaskListsSheet'
 //   phone, never touched in this app.
 // - Push: a task created before Google was connected, or whose create-time
 //   sync silently failed (useCreateTask never blocks the Supabase write on it).
-// Small-pill styling for a consistent "extra sync action under a connected
-// integration" pattern.
 export function GoogleTasksSyncButtons() {
   const { data: tasks = [] } = useAllTasks()
   const pull = useSyncFromGoogleTasks()
@@ -21,35 +21,18 @@ export function GoogleTasksSyncButtons() {
 
   return (
     <>
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => pull.mutate()}
-          disabled={pull.isPending}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          size="sm" icon={<ArrowDownToLine />} loading={pull.isPending} onClick={() => pull.mutate()}
           title="Import tasks written directly in the Google Tasks app"
-          className="min-h-[44px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 bg-cream-50 border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors press-feedback disabled:opacity-50"
-        >
-          <span className={pull.isPending ? 'animate-spin' : ''}>↓</span>
-          Import
-        </button>
-        <button
-          type="button"
-          onClick={() => push.mutate(tasks)}
-          disabled={push.isPending}
+        >Import</Button>
+        <Button
+          size="sm" icon={<ArrowUpFromLine />} loading={push.isPending} onClick={() => push.mutate(tasks)}
           title="Push tasks not yet in Google Tasks (e.g. created before Google was connected)"
-          className="min-h-[44px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 bg-cream-50 border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors press-feedback disabled:opacity-50"
-        >
-          <span className={push.isPending ? 'animate-spin' : ''}>↑</span>
-          Push
-        </button>
-        <button
-          type="button"
-          onClick={() => setListsOpen(true)}
-          title="Manage Google Task lists"
-          className="min-h-[44px] px-3 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 flex items-center gap-1.5 bg-cream-50 border border-ink-200 text-ink-600 hover:bg-ink-50 transition-colors press-feedback"
-        >
-          📋 Lists
-        </button>
+        >Push</Button>
+        <Button size="sm" icon={<ListTree />} onClick={() => setListsOpen(true)} title="Manage Google Task lists">
+          Lists
+        </Button>
       </div>
       <GoogleTaskListsSheet open={listsOpen} onClose={() => setListsOpen(false)} />
     </>

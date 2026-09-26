@@ -1,3 +1,4 @@
+import { fmtDateEnGB } from '../../shared/utils/enGBDate'
 // Canonical en-GB date/time formatters for Training views. Was independently
 // forked across HevyWorkoutCard/HevyWorkoutDetail/HevyPRList/BodyMeasurementsTab
 // — two slightly different day formats existed (`day:'numeric'` vs
@@ -5,7 +6,7 @@
 // project's DD/MM/YYYY convention more closely, so it's canonical here.
 
 export function formatTrainingDate(d: Date): string {
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  return fmtDateEnGB(d, { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 export function formatTrainingTime(d: Date): string {
@@ -35,6 +36,11 @@ export function fmtWeekRange(weekStartIso: string): string {
   const start = new Date(weekStartIso + 'T00:00:00')
   const end = new Date(start)
   end.setDate(end.getDate() + 6)
-  const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const fmt = (d: Date) => fmtDateEnGB(d, { day: 'numeric', month: 'short' })
   return `${fmt(start)} – ${fmt(end)}`
+}
+
+/** Current time in ms — the one clock read for render-time "last N days" windows. */
+export function nowMs(): number {
+  return Date.now()
 }

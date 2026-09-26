@@ -12,7 +12,7 @@ const STARS = [1, 2, 3, 4, 5]
 
 /**
  * 5-star rating with half-star precision → 1–10 scale.
- * Hover glows yellow up to the cursor; click commits the selection.
+ * Hover fills up to the cursor; click commits the selection.
  * Left half of star i = value 2i-1, right half = value 2i.
  */
 export function StarRating({ value, onChange, disabled }: Props) {
@@ -35,10 +35,10 @@ export function StarRating({ value, onChange, disabled }: Props) {
             // hit zone spanning the full height.
             <span key={i} className="relative inline-block w-9 h-11 leading-none">
               {/* Base (empty) star */}
-              <span className="absolute inset-0 flex items-center justify-center text-2xl text-ink-300 select-none">★</span>
+              <span className="absolute inset-0 flex items-center justify-center text-2xl text-line-strong select-none">★</span>
               {/* Filled overlay clipped to pct */}
               <span
-                className="absolute inset-0 flex items-center justify-center text-2xl text-accent-500 select-none overflow-hidden"
+                className="absolute inset-0 flex items-center justify-center text-2xl text-star select-none overflow-hidden"
                 style={{ width: `${pct}%` }}
               >★</span>
               {/* Hover/click zones — left & right halves */}
@@ -64,7 +64,7 @@ export function StarRating({ value, onChange, disabled }: Props) {
           )
         })}
       </div>
-      <span className="text-xs font-semibold text-ink-500 tabular-nums w-10">
+      <span className="w-10 text-meta font-semibold text-fg-muted tabular-nums">
         {fill > 0 ? `${fill}/10` : '—'}
       </span>
     </div>

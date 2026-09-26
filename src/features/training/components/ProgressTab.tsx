@@ -10,6 +10,7 @@ import { RecoveryLoadPanel } from './RecoveryLoadPanel'
 import { TrainingInsightsPanel } from './TrainingInsightsPanel'
 import { ProgressOverview } from '../progress/ProgressOverview'
 import { ExerciseDecisionTable } from '../progress/ExerciseDecisionTable'
+import { ChevronDown } from 'lucide-react'
 
 // New Hevy sub-tab (2026-08-28, strength-coach + sports-scientist agent
 // review): progress/history charts, distinct from Personal Records (all-time
@@ -68,21 +69,24 @@ import { ExerciseDecisionTable } from '../progress/ExerciseDecisionTable'
 export function ProgressTab() {
   const [showMore, setShowMore] = useState(false)
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 sm:gap-4">
       <ProgressOverview />
       <ExerciseDecisionTable />
 
       <button
         type="button"
         onClick={() => setShowMore(v => !v)}
-        className="self-start min-h-[44px] px-3 text-xs font-semibold text-ink-500 hover:text-ink-800 flex items-center gap-1.5"
+        aria-expanded={showMore}
+        className="btn-ghost btn-sm gap-1.5 self-start text-meta"
       >
-        {showMore ? '▲ Hide supporting charts' : '▼ Show supporting charts & analysis'}
+        <ChevronDown aria-hidden className={`h-4 w-4 transition-transform ${showMore ? 'rotate-180' : ''}`} />
+        {showMore ? 'Hide supporting charts' : 'Show supporting charts & analysis'}
       </button>
 
+      {/* One column up to 2xl; two chart columns on a wide monitor. */}
       {showMore && (
-        <div className="flex flex-col gap-3">
-          <TrainingInsightsPanel />
+        <div className="grid items-start gap-3 sm:gap-4 2xl:grid-cols-2">
+          <div className="2xl:col-span-2"><TrainingInsightsPanel /></div>
           <ExerciseProgressChart />
           <RelativeStrengthChart />
           <WeeklyVolumeChart />

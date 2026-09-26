@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
 import { useHealthMetricSeries } from '../../training/hooks/useHealthExport'
 import { computeDailySeries } from '../../training/healthAggregate'
 import { fetchLoggedDates } from '../../recipes/api/foodLogApi'
@@ -88,9 +89,9 @@ export function useNutritionCoach(date: string, targets: DayTargets): NutritionC
   const from = shiftDateStr(date, -WEIGHT_WINDOW_DAYS)
   const { data: wPts = [] } = useHealthMetricSeries('weight_body_mass', from, date)
   const { data: loggedDates = [] } = useQuery({
-    queryKey: ['food-log', 'logged-dates', date],
+    queryKey: qk.foodLog.loggedDates(date),
     queryFn:  () => fetchLoggedDates(shiftDateStr(date, -(CONSISTENCY_WINDOW_DAYS - 1)), date),
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 
   const wSeries = computeDailySeries('weight_body_mass', wPts)

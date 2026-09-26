@@ -1,4 +1,5 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import {
   fetchAthleteProfile,
@@ -24,24 +25,23 @@ import type {
 // One profile row per user + a separate list of limitations. Own query
 // namespaces; every mutation invalidates its own so the Training settings UI
 // and the coach snapshot (both consumers) stay in sync.
-const PROFILE_KEY = ['athlete-profile'] as const
-const LIMITATIONS_BASE_KEY = ['athlete-limitations'] as const
+const PROFILE_KEY = qk.athlete.profile
+const LIMITATIONS_BASE_KEY = qk.athlete.limitations
 
 export function limitationsKey(activeOnly = false) {
   return [...LIMITATIONS_BASE_KEY, activeOnly] as const
 }
 
 export function useAthleteProfile() {
-  return useQuery({ queryKey: PROFILE_KEY, queryFn: fetchAthleteProfile })
+  return useQuery({ queryKey: PROFILE_KEY, queryFn: fetchAthleteProfile, staleTime: STALE.default })
 }
 
 export function useUpsertAthleteProfile() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'upsert_athlete_profile',
     successMessage: 'Profile saved',
     mutationFn:     (input: UpsertAthleteProfileInput) => upsertAthleteProfile(input),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: PROFILE_KEY }),
+    invalidates:    [PROFILE_KEY],
   })
 }
 
@@ -49,106 +49,98 @@ export function useAthleteLimitations(activeOnly = false) {
   return useQuery({
     queryKey: limitationsKey(activeOnly),
     queryFn:  () => fetchAthleteLimitations(activeOnly),
+    staleTime: STALE.default,
   })
 }
 
 export function useCreateLimitation() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'create_athlete_limitation',
     successMessage: 'Limitation added',
     mutationFn:     (input: CreateLimitationInput) => createAthleteLimitation(input),
-    // Prefix-invalidates every activeOnly variant of the limitations key.
-    onSuccess:      () => qc.invalidateQueries({ queryKey: LIMITATIONS_BASE_KEY }),
+    invalidates:    [LIMITATIONS_BASE_KEY],
   })
 }
 
 export function useUpdateLimitation() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:     'update_athlete_limitation',
     mutationFn: ({ id, patch }: { id: string; patch: UpdateLimitationInput }) => updateAthleteLimitation(id, patch),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: LIMITATIONS_BASE_KEY }),
+    invalidates:    [LIMITATIONS_BASE_KEY],
   })
 }
 
 export function useDeleteLimitation() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'delete_athlete_limitation',
     successMessage: 'Limitation removed',
     mutationFn:     (id: string) => deleteAthleteLimitation(id),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: LIMITATIONS_BASE_KEY }),
+    invalidates:    [LIMITATIONS_BASE_KEY],
   })
 }
 
 // ─── Current program (explicit, never inferred) ─────────────────────────────
-const CURRENT_PROGRAM_KEY = ['current-program-routines'] as const
+const CURRENT_PROGRAM_KEY = qk.training.currentProgram
 
 export function useCurrentProgramRoutines() {
-  return useQuery({ queryKey: CURRENT_PROGRAM_KEY, queryFn: fetchCurrentProgramRoutines })
+  return useQuery({ queryKey: CURRENT_PROGRAM_KEY, queryFn: fetchCurrentProgramRoutines, staleTime: STALE.default })
 }
 
 export function useSetCurrentProgramRoutines() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'set_current_program_routines',
     successMessage: 'Current program saved',
     mutationFn:     (routineIds: string[]) => setCurrentProgramRoutines(routineIds),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: CURRENT_PROGRAM_KEY }),
+    invalidates:    [CURRENT_PROGRAM_KEY],
   })
 }
 
 // ─── Muscle preferences ──────────────────────────────────────────────────────
-const MUSCLE_PREFS_KEY = ['athlete-muscle-preferences'] as const
+const MUSCLE_PREFS_KEY = qk.athlete.musclePrefs
 
 export function useMusclePreferences() {
-  return useQuery({ queryKey: MUSCLE_PREFS_KEY, queryFn: fetchMusclePreferences })
+  return useQuery({ queryKey: MUSCLE_PREFS_KEY, queryFn: fetchMusclePreferences, staleTime: STALE.default })
 }
 
 export function useUpsertMusclePreference() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'upsert_muscle_preference',
     successMessage: 'Saved',
     mutationFn:     (input: UpsertMusclePreferenceInput) => upsertMusclePreference(input),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: MUSCLE_PREFS_KEY }),
+    invalidates:    [MUSCLE_PREFS_KEY],
   })
 }
 
 export function useDeleteMusclePreference() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'delete_muscle_preference',
     successMessage: 'Removed',
     mutationFn:     (muscleSlug: string) => deleteMusclePreference(muscleSlug),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: MUSCLE_PREFS_KEY }),
+    invalidates:    [MUSCLE_PREFS_KEY],
   })
 }
 
 // ─── Exercise target overrides ───────────────────────────────────────────────
-const EXERCISE_TARGETS_KEY = ['exercise-target-overrides'] as const
+const EXERCISE_TARGETS_KEY = qk.training.exerciseTargets
 
 export function useExerciseTargetOverrides() {
-  return useQuery({ queryKey: EXERCISE_TARGETS_KEY, queryFn: fetchExerciseTargetOverrides })
+  return useQuery({ queryKey: EXERCISE_TARGETS_KEY, queryFn: fetchExerciseTargetOverrides, staleTime: STALE.default })
 }
 
 export function useUpsertExerciseTargetOverride() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'upsert_exercise_target_override',
     successMessage: 'Target saved',
     mutationFn:     (input: UpsertExerciseTargetInput) => upsertExerciseTargetOverride(input),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: EXERCISE_TARGETS_KEY }),
+    invalidates:    [EXERCISE_TARGETS_KEY],
   })
 }
 
 export function useDeleteExerciseTargetOverride() {
-  const qc = useQueryClient()
   return useMutationWithFeedback({
     action:         'delete_exercise_target_override',
     successMessage: 'Target removed',
     mutationFn:     (exerciseTemplateId: string) => deleteExerciseTargetOverride(exerciseTemplateId),
-    onSuccess:      () => qc.invalidateQueries({ queryKey: EXERCISE_TARGETS_KEY }),
+    invalidates:    [EXERCISE_TARGETS_KEY],
   })
 }

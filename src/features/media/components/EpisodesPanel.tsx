@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { toast } from '../../../app/store'
+import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { useSeasonDetails } from '../hooks/useTMDB'
-import { useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
-import { markEpisodeWatched } from '../api/watchedEpisodesApi'
-import { useQueryClient } from '@tanstack/react-query'
-import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { useWatchedEpisodes, useMarkEpisodeWatched } from '../hooks/useWatchedEpisodes'
+import { CalendarPlus, Check } from 'lucide-react'
+import { useEntityModal } from '../../../shared/modals'
+import { Button, SectionLabel, Skeleton } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
 import type { TMDBTVFull } from '../types'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 interface Props {
   tv:         TMDBTVFull
@@ -20,12 +21,12 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const realSeasons = (tv.seasons ?? []).filter(s => s.season_number > 0)
   const [season,    setSeason]    = useState(realSeasons[0]?.season_number ?? 1)
   const [selected,  setSelected]  = useState<Set<number>>(new Set())
-  const [planModal, setPlanModal] = useState(false)
   const [marking,   setMarking]   = useState(false)
 
   const { data: seasonData, isLoading } = useSeasonDetails(tv.id, season)
   const { data: watched = [] }          = useWatchedEpisodes(tvEntryId)
-  const queryClient                     = useQueryClient()
+  const markWatched                     = useMarkEpisodeWatched()
+  const modal                           = useEntityModal()
 
   const watchedSet = new Set(watched.filter(w => w.season_number === season).map(w => w.episode_number))
   const watchedMap = new Map(watched.filter(w => w.season_number === season).map(w => [w.episode_number, w.watched_at]))
@@ -48,32 +49,21 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   }
 
   // Mark every selected episode as watched (today), then clear the selection.
+  // useMarkEpisodeWatched refreshes progress + the schedule (the DB trigger
+  // deletes a watched episode's planned block, migration 043) and toasts errors.
   async function handleMarkSelectedWatched() {
     if (selected.size === 0) return
     setMarking(true)
-    const tid = toast.loading(`Marking ${selected.size} episode${selected.size > 1 ? 's' : ''} as watched…`)
-    try {
-      for (const epNum of selected) {
-        await markEpisodeWatched(tvEntryId, season, epNum, TODAY)
-      }
-      await queryClient.invalidateQueries({ queryKey: ['watched-episodes', tvEntryId] })
-      // Marking watched cleans up the episode's planned block server-side
-      // (migration 043) — refresh schedule + series progress so the timeline
-      // and TV views update without a reload.
-      queryClient.invalidateQueries({ queryKey: ['schedule'] })
-      queryClient.invalidateQueries({ queryKey: ['tv'] })
-      toast.dismiss(tid)
-      toast.success(`Marked as watched ✓`)
-      setSelected(new Set())
-    } catch (err) {
-      toast.dismiss(tid)
-      toast.error((err as Error).message ?? 'Failed')
-    } finally {
-      setMarking(false)
-    }
+    const episodes = [...selected].map(episode => ({ season, episode }))
+    const ok = await withProgress(
+      () => markWatched.mutateAsync({ tvEntryId, episodes, watchedOn: TODAY }).then(() => true),
+      { loading: `Marking ${episodes.length} episode${episodes.length > 1 ? 's' : ''} as watched…`, success: 'Marked as watched' },
+    )
+    if (ok) setSelected(new Set())
+    setMarking(false)
   }
 
-  // Build plan modal pre-fills from selected episodes
+  // Plan pre-fills from the selected episodes.
   const selectedEpisodes = (seasonData?.episodes ?? []).filter(e => selected.has(e.episode_number))
   const defaultRuntime = tv.episode_run_time?.[0] ?? 45
   const planTitle = selectedEpisodes.length === 1
@@ -83,97 +73,92 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
   const rawDuration  = selectedEpisodes.reduce((sum, ep) => sum + (ep.runtime ?? defaultRuntime), 0) || defaultRuntime
   const planDuration = ceilToQuarter(rawDuration)
 
+  function openPlan() {
+    modal.open({
+      kind: 'time-block',
+      config: { heading: 'Plan episodes' },
+      defaults: { title: planTitle, date: TODAY, duration: planDuration, category: 'media', color: 'blue' },
+      source: {
+        sourceType: 'tv_episode',
+        sourceId: tvEntryId,
+        taskSourceType: 'tv_series',
+        // Only one specific episode is auto-matched when marked watched; a
+        // "watch 3 episodes" block is deliberately left alone (migration 043).
+        episodeInfo: selectedEpisodes.length === 1
+          ? { seasonNumber: season, episodeNumber: selectedEpisodes[0].episode_number }
+          : undefined,
+      },
+    })
+    setSelected(new Set())
+  }
+
   if (realSeasons.length === 0) return null
 
   return (
-    <div className="mt-4">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-2">Episodes</p>
+    <div>
+      <SectionLabel className="mb-2">Episodes</SectionLabel>
 
-      {/* Season tabs + Select All */}
-      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none scroll-fade-x snap-x-mandatory pb-1 mb-3">
-        {realSeasons.map(s => {
-          const done = watchedBySeason.get(s.season_number) ?? 0
-          const pct = s.episode_count > 0 ? Math.min(100, (done / s.episode_count) * 100) : 0
-          return (
-            <button
-              key={s.season_number}
-              onClick={() => { setSeason(s.season_number); setSelected(new Set()) }}
-              className={[
-                'relative flex-shrink-0 text-xs px-2.5 py-1 rounded-lg min-h-[44px] transition-colors press-feedback snap-start overflow-hidden',
-                season === s.season_number
-                  ? 'bg-accent-500 text-white font-semibold'
-                  : 'bg-cream-100 text-ink-500 hover:bg-cream-200',
-              ].join(' ')}
-            >
-              S{s.season_number}
-              <span className="ml-1 text-[9px] opacity-70">
-                {done > 0 ? `${done}/${s.episode_count}` : s.episode_count}
-              </span>
-              {done === s.episode_count && s.episode_count > 0 && <span className="ml-0.5 text-[9px]">✓</span>}
-              {/* Season progress fill — the at-a-glance "where am I" bar */}
-              <span
-                className={`absolute left-0 bottom-0 h-[3px] rounded-full ${season === s.season_number ? 'bg-white/70' : 'bg-green-500/80'}`}
-                style={{ width: `${pct}%` }}
-              />
-            </button>
-          )
-        })}
-        <div className="flex items-center gap-1 ml-auto flex-shrink-0">
-          <button
-            onClick={() => setSelected(new Set((seasonData?.episodes ?? []).map(e => e.episode_number)))}
-            disabled={isLoading || !seasonData}
-            className="text-xs px-2 py-1 rounded-lg min-h-[44px] bg-cream-100 text-ink-500 hover:bg-cream-200 disabled:opacity-40 transition-colors"
-          >
-            Select All
-          </button>
-          {selected.size > 0 && (
-            <button
-              onClick={() => setSelected(new Set())}
-              className="text-xs text-accent-500 hover:text-accent-700 px-1.5 min-h-[44px] transition-colors"
-            >
-              Clear
-            </button>
-          )}
+      <div className="mb-3 flex items-center gap-1">
+        <div role="tablist" aria-label="Seasons" className="scroll-x flex min-w-0 flex-1 gap-1 pb-1">
+          {realSeasons.map(s => {
+            const done = watchedBySeason.get(s.season_number) ?? 0
+            const pct = s.episode_count > 0 ? Math.min(100, (done / s.episode_count) * 100) : 0
+            const active = season === s.season_number
+            const complete = done === s.episode_count && s.episode_count > 0
+            return (
+              <button
+                key={s.season_number}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => { setSeason(s.season_number); setSelected(new Set()) }}
+                className={[
+                  'press-feedback relative min-h-[44px] shrink-0 overflow-hidden rounded-control px-3 text-body font-semibold tabular-nums transition-colors',
+                  active ? 'bg-accent-500 text-on-accent' : 'bg-surface-2 text-fg-2 hover:bg-surface-hover',
+                ].join(' ')}
+              >
+                S{s.season_number}
+                <span className="ml-1 text-micro font-medium opacity-75">
+                  {done > 0 ? `${done}/${s.episode_count}` : s.episode_count}
+                </span>
+                {complete && <Check aria-label="Season watched" className="ml-0.5 inline h-3 w-3" />}
+                {/* Season progress fill — the at-a-glance "where am I" bar. */}
+                <span
+                  aria-hidden
+                  className={`absolute bottom-0 left-0 h-[3px] rounded-full ${active ? 'bg-on-accent/70' : 'bg-success'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </button>
+            )
+          })}
         </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setSelected(new Set((seasonData?.episodes ?? []).map(e => e.episode_number)))}
+          disabled={isLoading || !seasonData}
+        >
+          Select all
+        </Button>
       </div>
 
-      {/* Selection action bar — plan or mark watched the selected episodes */}
       {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-2 px-2 py-1.5 bg-accent-50 rounded-lg border border-accent-200">
-          <span className="text-xs text-accent-700 font-medium flex-1 min-w-0">
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-row border border-accent-500/30 bg-accent-50 px-3 py-1.5">
+          <span className="min-w-0 flex-1 text-body font-medium text-accent-700 tabular-nums">
             {selected.size} episode{selected.size > 1 ? 's' : ''} selected
           </span>
-          <button
-            onClick={handleMarkSelectedWatched}
-            disabled={marking}
-            className="text-xs bg-green-500 text-white px-3 py-1 rounded-lg min-h-[44px] hover:bg-green-600 disabled:opacity-50 transition-colors"
-          >
-            ✓ Mark as watched
-          </button>
-          <button
-            onClick={() => setPlanModal(true)}
-            className="text-xs bg-accent-500 text-white px-3 py-1 rounded-lg min-h-[44px] hover:bg-accent-600 transition-colors"
-          >
-            Plan
-          </button>
-          <button
-            onClick={() => setSelected(new Set())}
-            className="text-xs text-accent-500 hover:text-accent-700 px-2 min-h-[44px]"
-          >
-            Clear
-          </button>
+          <Button size="sm" onClick={handleMarkSelectedWatched} loading={marking} icon={<Check />}>Mark watched</Button>
+          <Button size="sm" variant="primary" onClick={openPlan} icon={<CalendarPlus />}>Plan</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </div>
       )}
 
-      {/* Episode list */}
       {isLoading ? (
         <div className="space-y-1.5">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-10 bg-cream-100 rounded-lg animate-pulse" />
-          ))}
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} rounded="rounded-row" className="h-11 w-full" />)}
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {(seasonData?.episodes ?? []).map(ep => {
             const isWatched  = watchedSet.has(ep.episode_number)
             const isSelected = selected.has(ep.episode_number)
@@ -183,55 +168,50 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
             return (
               <button
                 key={ep.episode_number}
+                type="button"
+                aria-pressed={isSelected}
                 onClick={() => toggleSelect(ep.episode_number)}
                 className={[
-                  'w-full flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors text-left',
-                  // Watched rows read as DONE at a glance (Netflix-style):
-                  // tinted green, dimmed title, big check badge on the right.
-                  isSelected ? 'bg-accent-50 border border-accent-200'
-                    : isWatched ? 'bg-green-50/60 hover:bg-green-50'
-                    : 'hover:bg-cream-50',
+                  'flex min-h-[44px] w-full items-center gap-2.5 rounded-row px-2 py-1 text-left transition-colors',
+                  // Watched rows read as done at a glance: tinted, dimmed title, check badge.
+                  isSelected ? 'bg-accent-50 ring-1 ring-inset ring-accent-500/30'
+                    : isWatched ? 'bg-success-soft/60 hover:bg-success-soft'
+                    : 'hover:bg-surface-hover',
                 ].join(' ')}
               >
-                {/* Selection checkbox — small visual, full touch target */}
-                <span className="flex-shrink-0 flex items-center justify-center min-h-[44px] min-w-[28px]">
-                  <span className={[
-                    'w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors',
-                    isSelected
-                      ? 'bg-accent-500 border-accent-500'
-                      : 'border-ink-300',
-                  ].join(' ')}>
-                    {isSelected && <span className="text-white text-[8px] font-bold leading-none">✓</span>}
+                <span
+                  aria-hidden
+                  className={[
+                    'grid h-4 w-4 shrink-0 place-items-center rounded border-2 transition-colors',
+                    isSelected ? 'border-accent-500 bg-accent-500 text-on-accent' : 'border-line-strong',
+                  ].join(' ')}
+                >
+                  {isSelected && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                </span>
+
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-1.5">
+                    <span className={`shrink-0 text-micro font-bold tabular-nums ${isWatched ? 'text-success' : 'text-fg-faint'}`}>
+                      E{String(ep.episode_number).padStart(2, '0')}
+                    </span>
+                    <span className={`truncate text-body font-medium ${isWatched ? 'text-fg-muted' : 'text-fg'}`}>{ep.name}</span>
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-2 text-micro text-fg-muted tabular-nums">
+                    {runtime && <span>{runtime}m</span>}
+                    {ep.air_date && (
+                      <span>{fmtDateEnGB(new Date(ep.air_date + 'T00:00:00'), { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                    )}
+                    {isWatched && watchedOn && (
+                      <span className="font-medium text-success">
+                        Watched {fmtDateEnGB(new Date(watchedOn), { day: 'numeric', month: 'short' })}
+                      </span>
+                    )}
                   </span>
                 </span>
 
-                {/* Episode info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className={`text-[10px] font-bold flex-shrink-0 ${isWatched ? 'text-green-600' : 'text-ink-400'}`}>
-                      E{String(ep.episode_number).padStart(2, '0')}
-                    </span>
-                    <span className={`text-xs truncate font-medium ${isWatched ? 'text-ink-500' : 'text-ink-800'}`}>{ep.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {runtime && <span className="text-[9px] text-ink-400">{runtime}m</span>}
-                    {ep.air_date && (
-                      <span className="text-[9px] text-ink-400">
-                        {new Date(ep.air_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}
-                      </span>
-                    )}
-                    {isWatched && watchedOn && (
-                      <span className="text-[9px] text-green-600 font-medium">
-                        Watched {new Date(watchedOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Watched badge — the unmistakable signal */}
                 {isWatched && (
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-500 text-white text-[10px] font-bold flex items-center justify-center">
-                    ✓
+                  <span aria-label="Watched" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-white">
+                    <Check className="h-3 w-3" strokeWidth={3} />
                   </span>
                 )}
               </button>
@@ -239,32 +219,6 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
           })}
         </div>
       )}
-
-      {/* Plan modal */}
-      <UnifiedPlanModal
-        open={planModal}
-        onClose={() => { setPlanModal(false); setSelected(new Set()) }}
-        mode="schedule"
-        config={{ heading: 'Plan episodes' }}
-        defaults={{
-          title:    planTitle,
-          date:     TODAY,
-          duration: planDuration,
-          category: 'media',
-          color:    'blue',
-        }}
-        source={{
-          sourceType: 'tv_episode',
-          sourceId: tvEntryId,
-          taskSourceType: 'tv_series',
-          // Only when exactly one specific episode was planned — a batch
-          // "watch 3 episodes" block intentionally isn't auto-matched when
-          // just one of them gets marked watched (see migration 043).
-          episodeInfo: selectedEpisodes.length === 1
-            ? { seasonNumber: season, episodeNumber: selectedEpisodes[0].episode_number }
-            : undefined,
-        }}
-      />
     </div>
   )
 }

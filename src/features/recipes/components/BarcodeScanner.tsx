@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { ModalShell } from '../../../shared/modals/ModalShell'
+import { Button } from '../../../shared/ui'
 
 // Camera barcode scanner. iOS Safari has NO native BarcodeDetector, so we try
 // the native API first (Android/desktop Chrome) and fall back to @zxing/browser
@@ -77,45 +78,43 @@ export function BarcodeScanner({ open, onClose, onDetected }: Props) {
     return () => { cancelled = true; stopRef.current() }
   }, [open, onDetected])
 
+  const submitManual = () => { if (manual.length >= 6) { stopRef.current(); onDetected(manual) } }
+
   return (
-    <Dialog open={open} onClose={onClose} className="relative z-[70]">
-      <DialogBackdrop transition className="fixed inset-0 bg-ink-950/60 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel transition className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-cream-50 border border-ink-200 overflow-hidden transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4">
-          <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-ink-100">
-            <h2 className="text-base font-bold text-ink-900">📷 Scan barcode</h2>
-            <button type="button" onClick={onClose} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none">×</button>
+    <ModalShell
+      open={open}
+      onClose={onClose}
+      title="Scan barcode"
+      size="sm"
+      mobile="fullscreen"
+      bodyClassName="p-0"
+      footer={
+        // Manual fallback — always available (some cameras/lighting just won't read a code).
+        <div className="flex items-center gap-2">
+          <input
+            value={manual}
+            onChange={e => setManual(e.target.value.replace(/\D/g, ''))}
+            inputMode="numeric"
+            aria-label="Barcode number"
+            placeholder="Or type the barcode number"
+            className="input flex-1 tabular-nums"
+            onKeyDown={e => { if (e.key === 'Enter') submitManual() }}
+          />
+          <Button variant="primary" disabled={manual.length < 6} onClick={submitManual}>Look up</Button>
+        </div>
+      }
+    >
+      {/* Always-dark camera well: video reads best on black in both themes. */}
+      <div className="relative flex aspect-[4/3] items-center justify-center bg-scrim">
+        <video ref={videoRef} playsInline muted className="h-full w-full object-cover" />
+        {status === 'scanning' && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="h-24 w-3/4 rounded-lg border-2 border-accent-400/80 shadow-[0_0_0_9999px_rgb(0_0_0/0.35)]" />
           </div>
-
-          <div className="relative bg-ink-950 aspect-[4/3] flex items-center justify-center">
-            <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
-            {status === 'scanning' && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="w-3/4 h-24 border-2 border-accent-400/80 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
-              </div>
-            )}
-            {status === 'starting' && <p className="absolute text-cream-50 text-sm">Starting camera…</p>}
-            {status === 'error' && <p className="absolute text-cream-50 text-sm px-6 text-center">Camera unavailable. Enter the barcode number below instead.</p>}
-          </div>
-
-          {/* Manual fallback — always available */}
-          <div className="px-5 py-4 flex items-center gap-2">
-            <input
-              value={manual}
-              onChange={e => setManual(e.target.value.replace(/\D/g, ''))}
-              inputMode="numeric"
-              placeholder="Or type the barcode number"
-              className="flex-1 min-h-[44px] px-3 text-sm border border-ink-200 rounded-lg bg-cream-50 focus:outline-none focus:ring-2 focus:ring-accent-400 tabular-nums"
-              onKeyDown={e => { if (e.key === 'Enter' && manual.length >= 6) { stopRef.current(); onDetected(manual) } }}
-            />
-            <button type="button" disabled={manual.length < 6}
-              onClick={() => { stopRef.current(); onDetected(manual) }}
-              className="min-h-[44px] px-4 rounded-lg text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 disabled:opacity-50">
-              Look up
-            </button>
-          </div>
-        </DialogPanel>
+        )}
+        {status === 'starting' && <p className="absolute text-body text-white">Starting camera…</p>}
+        {status === 'error' && <p className="absolute px-6 text-center text-body text-white">Camera unavailable. Enter the barcode number below instead.</p>}
       </div>
-    </Dialog>
+    </ModalShell>
   )
 }

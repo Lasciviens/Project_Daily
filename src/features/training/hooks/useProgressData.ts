@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { nowMs } from '../dateFormat'
 import { useTrainingHistory, useBodyweightHistory } from './useTrainingProgress'
 import { useAthleteProfile, useCurrentProgramRoutines, useExerciseTargetOverrides } from './useAthleteProfile'
 import { useHevyRoutines } from './useHevyRoutines'
@@ -106,7 +107,7 @@ export function useProgressData(): ProgressData {
   const { data: routines = [], isLoading: loadingRoutines } = useHevyRoutines()
 
   const toStr = new Date().toISOString().slice(0, 10)
-  const fromStr = new Date(Date.now() - RECOVERY_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
+  const fromStr = new Date(nowMs() - RECOVERY_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10)
   const { data: sleepPoints = [] } = useHealthMetricSeries('sleep_analysis', fromStr, toStr)
 
   const isLoading = loadingHistory || loadingProgram || loadingRoutines
@@ -120,7 +121,7 @@ export function useProgressData(): ProgressData {
     // all, ever. A recency hint is offered so the picker isn't a blank
     // wall, but the engine itself never runs on it unconfirmed.
     if (currentProgramIds.size === 0) {
-      const cutoff = Date.now() - RECENT_DAYS * 86_400_000
+      const cutoff = nowMs() - RECENT_DAYS * 86_400_000
       const suggestedRoutines = routines.filter(r => new Date(r.hevy_updated_at).getTime() >= cutoff)
       return { ...EMPTY, isLoading: false, needsCurrentProgram: true, suggestedRoutines }
     }
@@ -223,7 +224,7 @@ export function useProgressData(): ProgressData {
     let bodyweightDirection: SummaryCards['bodyweightDirection'] = null
     if (bodyweight.length >= 2) {
       const latestBw = bodyweight[bodyweight.length - 1]
-      const twoWeeksAgo = Date.now() - 14 * 86_400_000
+      const twoWeeksAgo = nowMs() - 14 * 86_400_000
       const older = [...bodyweight].reverse().find(b => new Date(b.date).getTime() <= twoWeeksAgo) ?? bodyweight[0]
       const days = Math.max(1, Math.round((new Date(latestBw.date).getTime() - new Date(older.date).getTime()) / 86_400_000))
       bodyweightDirection = { deltaKg: Math.round((latestBw.kg - older.kg) * 10) / 10, days }

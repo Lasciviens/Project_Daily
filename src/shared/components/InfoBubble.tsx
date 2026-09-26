@@ -12,13 +12,13 @@ export function InfoBubble({ children, label }: { children: ReactNode; label?: s
     <Popover className="relative inline-block align-middle">
       <PopoverButton
         aria-label={label ?? 'More information'}
-        className="w-4 h-4 rounded-full bg-ink-200 text-ink-600 text-[10px] font-bold leading-none inline-flex items-center justify-center hover:bg-ink-300 focus:outline-none"
+        className="relative inline-flex h-4 w-4 items-center justify-center rounded-full bg-surface-2 text-micro font-bold leading-none text-fg-muted ring-1 ring-line hover:bg-surface-hover hover:text-fg after:absolute after:-inset-3.5 after:content-['']"
       >
         i
       </PopoverButton>
       <PopoverPanel
         anchor="bottom start"
-        className="z-[70] w-72 max-w-[85vw] rounded-xl border border-ink-200 bg-cream-50 p-3 text-xs text-ink-600 leading-relaxed shadow-lg [--anchor-gap:4px]"
+        className="z-popover w-72 max-w-[85vw] rounded-menu border border-line-strong bg-surface p-3 text-meta leading-relaxed text-fg-2 shadow-menu [--anchor-gap:4px]"
       >
         {children}
       </PopoverPanel>

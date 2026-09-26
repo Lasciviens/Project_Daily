@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
+import { nowMs } from '../dateFormat'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
 import { computeRepRangeDistribution } from '../progressAggregate'
 import { slugForHevyGroup, labelForSlug, MAJOR_MUSCLES } from '../muscleMap'
+import { SegmentedControl, Skeleton, useChartColors } from '../../../shared/ui'
+import { ChartCard, ChartNote } from './ChartCard'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Rep-Range Distribution — a follow-up sports-scientist review (2026-08-31)
@@ -27,18 +30,15 @@ import { slugForHevyGroup, labelForSlug, MAJOR_MUSCLES } from '../muscleMap'
 
 type Period = 30 | 90 | 182
 
-const BUCKET_COLOR: Record<string, string> = {
-  '1-5':   '#7c3aed',
-  '6-12':  '#0ea5e9',
-  '13-20': '#16a34a',
-  '21-30': '#f59e0b',
-  '31+':   '#ec4899',
-}
+// Categorical, never a good→bad ramp: no bucket is "the right one".
+const BUCKET_SERIES: Record<string, number> = { '1-5': 1, '6-12': 0, '13-20': 4, '21-30': 2, '31+': 3 }
 
 export function RepRangeDistributionChart() {
   const { data, isLoading } = useTrainingHistory()
   const [period, setPeriod] = useState<Period>(90)
   const [muscle, setMuscle] = useState<string | null>(null)
+  const c = useChartColors()
+  const bucketColor = (key: string) => c.series[BUCKET_SERIES[key] ?? 5]
 
   const templateIdsForMuscle = useMemo(() => {
     if (!data || !muscle) return undefined
@@ -51,7 +51,7 @@ export function RepRangeDistributionChart() {
 
   const chartData = useMemo(() => {
     if (!data) return []
-    const cutoff = new Date(Date.now() - period * 86_400_000).toISOString().slice(0, 10)
+    const cutoff = new Date(nowMs() - period * 86_400_000).toISOString().slice(0, 10)
     const inWindow = data.sets.filter(s => s.date >= cutoff)
     return computeRepRangeDistribution(inWindow, templateIdsForMuscle)
   }, [data, period, templateIdsForMuscle])
@@ -59,65 +59,49 @@ export function RepRangeDistributionChart() {
   const totalSets = chartData.reduce((a, b) => a + b.count, 0)
   const noRepCount = useMemo(() => {
     if (!data) return 0
-    const cutoff = new Date(Date.now() - period * 86_400_000).toISOString().slice(0, 10)
+    const cutoff = new Date(nowMs() - period * 86_400_000).toISOString().slice(0, 10)
     return data.sets.filter(s => s.date >= cutoff && s.set_type !== 'warmup' && s.reps == null).length
   }, [data, period])
 
-  if (isLoading) return <div className="h-40 rounded-2xl bg-cream-200 animate-pulse" />
+  if (isLoading) return <Skeleton rounded="rounded-card" className="h-40" />
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">🔢 Rep Ranges Trained</p>
-        <div className="flex gap-0.5 p-0.5 bg-cream-100 rounded-lg">
-          {([30, 90, 182] as Period[]).map(p => (
-            <button
-              key={p} type="button" onClick={() => setPeriod(p)}
-              className={`px-2.5 min-h-[44px] rounded-md text-[11px] font-semibold transition-colors ${
-                period === p ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-800'
-              }`}
-            >
-              {p}d
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button" onClick={() => setMuscle(null)}
-          className={`px-2.5 min-h-[36px] rounded-full text-[11px] font-semibold border transition-colors ${
-            muscle === null ? 'bg-ink-950 text-white border-ink-950' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'
-          }`}
-        >
-          All muscles
-        </button>
-        {[...MAJOR_MUSCLES].map(s => (
+    <ChartCard
+      title="Rep ranges trained"
+      action={
+        <SegmentedControl<string>
+          size="sm"
+          value={String(period)}
+          onChange={v => setPeriod(Number(v) as Period)}
+          options={([30, 90, 182] as Period[]).map(p => ({ value: String(p), label: `${p}d` }))}
+        />
+      }
+    >
+      <div role="tablist" aria-label="Muscle" className="scroll-x -mx-1 flex gap-1 px-1 sm:flex-wrap">
+        {[null, ...MAJOR_MUSCLES].map(s => (
           <button
-            key={s} type="button" onClick={() => setMuscle(s)}
-            className={`px-2.5 min-h-[36px] rounded-full text-[11px] font-semibold border transition-colors ${
-              muscle === s ? 'bg-ink-950 text-white border-ink-950' : 'bg-cream-50 text-ink-600 border-ink-200 hover:border-ink-400'
-            }`}
+            key={s ?? 'all'} type="button" role="tab" aria-selected={muscle === s} onClick={() => setMuscle(s)}
+            className="pill-tab shrink-0 px-3 text-meta"
           >
-            {labelForSlug(s)}
+            {s ? labelForSlug(s) : 'All muscles'}
           </button>
         ))}
       </div>
 
       {totalSets === 0 ? (
-        <p className="text-xs text-ink-300 py-8 text-center">No working sets with a rep count logged in this window{muscle ? ` for ${labelForSlug(muscle)}` : ''}.</p>
+        <p className="py-8 text-center text-body text-fg-muted">No working sets with a rep count logged in this window{muscle ? ` for ${labelForSlug(muscle)}` : ''}.</p>
       ) : (
         <>
-          <p className="text-[11px] text-ink-500">{totalSets} working sets in this window</p>
+          <p className="text-meta tabular-nums text-fg-2">{totalSets} working sets in this window</p>
 
           {/* The stacked bar itself — a single row, segment width = share of
               totalSets. Zero-count buckets contribute no segment (nothing to
               render, nothing to hover). */}
-          <div className="flex h-8 rounded-lg overflow-hidden border border-ink-200">
+          <div className="flex h-8 max-w-3xl overflow-hidden rounded-control border border-line">
             {chartData.filter(b => b.count > 0).map(b => (
               <div
                 key={b.key}
-                style={{ width: `${(b.count / totalSets) * 100}%`, backgroundColor: BUCKET_COLOR[b.key] }}
+                style={{ width: `${(b.count / totalSets) * 100}%`, backgroundColor: bucketColor(b.key) }}
                 title={`${b.label}: ${b.count} sets (${Math.round((b.count / totalSets) * 100)}%)`}
               />
             ))}
@@ -127,14 +111,14 @@ export function RepRangeDistributionChart() {
               tooltip round-trip needed to see a share. */}
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
             {chartData.map(b => (
-              <span key={b.key} className="flex items-center gap-1.5 text-[11px] text-ink-600">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: BUCKET_COLOR[b.key] }} />
+              <span key={b.key} className="flex items-center gap-1.5 text-meta tabular-nums text-fg-2">
+                <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: bucketColor(b.key) }} />
                 {b.label} · {b.count} ({totalSets ? Math.round((b.count / totalSets) * 100) : 0}%)
               </span>
             ))}
           </div>
 
-          <div className="flex flex-col gap-1 text-[11px] text-ink-400">
+          <ChartNote className="flex flex-col gap-1">
             <p>
               This counts working sets, not effort or results — a grinding top set and an easy one weigh the same here, and this log has no RIR/effort
               field to tell them apart.
@@ -143,15 +127,15 @@ export function RepRangeDistributionChart() {
             {muscle && (
               <p>Sets are filed by the exercise&apos;s primary muscle only (no secondary-muscle credit) — for total weekly dose per muscle, see the Muscles tab.</p>
             )}
-            <p className="text-ink-300">
+            <p>
               There&apos;s no &quot;right&quot; shape here on purpose — muscle growth is roughly equivalent from about 5 to 30 reps when sets are
               taken close to failure (Schoenfeld 2017; Morton 2016), so a spread across 6–20 and a concentration at 8 can both be fine. Use this to spot drift you
               didn&apos;t intend, not to chase a specific distribution.
             </p>
-            {noRepCount > 0 && <p className="text-ink-300">{noRepCount} duration/distance-based sets in this window have no rep count and aren&apos;t shown here.</p>}
-          </div>
+            {noRepCount > 0 && <p>{noRepCount} duration/distance-based sets in this window have no rep count and aren&apos;t shown here.</p>}
+          </ChartNote>
         </>
       )}
-    </div>
+    </ChartCard>
   )
 }

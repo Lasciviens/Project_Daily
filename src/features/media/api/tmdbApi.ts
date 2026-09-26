@@ -1,6 +1,5 @@
 import { tmdbFetch } from '../../../integrations/tmdb/client'
 import type {
-  TMDBMovie, TMDBTVSeries,
   TMDBSearchMovie, TMDBSearchTV,
   TMDBMovieFull, TMDBTVFull,
 } from '../types'
@@ -24,12 +23,6 @@ export const getPopularMovies = () =>
 
 export const getPopularTV = () =>
   tmdbFetch<PagedResponse<TMDBSearchTV>>('/tv/popular')
-
-export const getMovieDetails = (tmdbId: number) =>
-  tmdbFetch<TMDBMovie>(`/movie/${tmdbId}`)
-
-export const getTVDetails = (tmdbId: number) =>
-  tmdbFetch<TMDBTVSeries>(`/tv/${tmdbId}`)
 
 export const getMovieFull = (tmdbId: number) =>
   tmdbFetch<TMDBMovieFull>(`/movie/${tmdbId}`, { append_to_response: 'credits,watch/providers,videos' })
@@ -77,15 +70,3 @@ export const getNorwegianTopRatedTV = () =>
 
 export const getSeasonDetails = (tvId: number, season: number) =>
   tmdbFetch<import('../types').TMDBSeasonDetail>(`/tv/${tvId}/season/${season}`)
-
-export const getMovieGenres = () =>
-  tmdbFetch<{ genres: { id: number; name: string }[] }>('/genre/movie/list')
-
-export const getTVGenres = () =>
-  tmdbFetch<{ genres: { id: number; name: string }[] }>('/genre/tv/list')
-
-export const discoverMovies = (params: Record<string, string>) =>
-  tmdbFetch<PagedResponse<TMDBSearchMovie>>('/discover/movie', params)
-
-export const discoverTV = (params: Record<string, string>) =>
-  tmdbFetch<PagedResponse<TMDBSearchTV>>('/discover/tv', params)

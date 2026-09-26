@@ -10,7 +10,6 @@ import type {
   HevyRoutineExercise,
   HevyRoutineSet,
   HevyRoutineFolder,
-  StravaActivity,
   HevySyncState,
 } from '../types.hevy'
 
@@ -384,9 +383,11 @@ export async function fetchHevyPRs(): Promise<HevyPR[]> {
   if (setsErr) throw setsErr
 
   if (!sets?.length) return []
+  type PRSetRow = { exercise_template_id: string; weight_kg: number; reps: number | null; hevy_exercise_id: string }
+  const prSets = sets as PRSetRow[]
 
   // We need the workout date — join via hevy_workout_exercises → hevy_workouts
-  const exerciseIds = [...new Set((sets as any[]).map(s => s.hevy_exercise_id))]
+  const exerciseIds = [...new Set(prSets.map(s => s.hevy_exercise_id))]
 
   const { data: exercises, error: exErr } = await supabase
     .from('hevy_workout_exercises')
@@ -394,7 +395,8 @@ export async function fetchHevyPRs(): Promise<HevyPR[]> {
     .in('id', exerciseIds)
   if (exErr) throw exErr
 
-  const workoutIds = [...new Set((exercises ?? []).map((e: any) => e.hevy_workout_id))]
+  const exerciseRows = (exercises ?? []) as { id: string; hevy_workout_id: string }[]
+  const workoutIds = [...new Set(exerciseRows.map(e => e.hevy_workout_id))]
 
   const { data: workouts, error: wErr } = await supabase
     .from('hevy_workouts')
@@ -409,14 +411,14 @@ export async function fetchHevyPRs(): Promise<HevyPR[]> {
   // file (fetchHevyWorkouts, fetchWorkoutsWithTemplateIds, fetchTrainingHistory)
   // already prefers `start_time ?? hevy_created_at` — this now matches them.
   const workoutDateById = new Map<string, string>(
-    (workouts ?? []).map((w: any) => [w.id, (w.start_time ?? w.hevy_created_at) as string])
+    ((workouts ?? []) as { id: string; start_time: string | null; hevy_created_at: string }[]).map(w => [w.id, w.start_time ?? w.hevy_created_at])
   )
   const workoutIdByExerciseId = new Map<string, string>(
-    (exercises ?? []).map((e: any) => [e.id as string, e.hevy_workout_id as string])
+    exerciseRows.map(e => [e.id, e.hevy_workout_id])
   )
 
   // Fetch exercise templates for titles and muscle groups
-  const templateIds = [...new Set((sets as any[]).map(s => s.exercise_template_id as string))]
+  const templateIds = [...new Set(prSets.map(s => s.exercise_template_id))]
 
   const { data: templates, error: tErr } = await supabase
     .from('hevy_exercise_templates')
@@ -425,7 +427,7 @@ export async function fetchHevyPRs(): Promise<HevyPR[]> {
   if (tErr) throw tErr
 
   const templateById = new Map<string, HevyExerciseTemplate>(
-    (templates ?? []).map((t: any) => [t.id as string, t as HevyExerciseTemplate])
+    ((templates ?? []) as HevyExerciseTemplate[]).map(t => [t.id, t])
   )
 
   // Aggregate: per exercise_template_id find the set with max weight_kg
@@ -440,7 +442,7 @@ export async function fetchHevyPRs(): Promise<HevyPR[]> {
   // Records "at least 3 times" filter below).
   const workoutIdsByTemplate = new Map<string, Set<string>>()
 
-  for (const s of sets as any[]) {
+  for (const s of prSets) {
     const current = prMap.get(s.exercise_template_id)
     if (!current || s.weight_kg > current.weight_kg) {
       prMap.set(s.exercise_template_id, {
@@ -490,26 +492,6 @@ export async function fetchBodyMeasurements(limit = 50): Promise<HevyBodyMeasure
   return data ?? []
 }
 
-// ─── Strava Activities ────────────────────────────────────────────────────────
-
-export async function fetchStravaActivities(opts: {
-  limit?: number
-  type?: string
-} = {}): Promise<StravaActivity[]> {
-  const { limit = 20, type } = opts
-
-  let query = supabase
-    .from('strava_activities')
-    .select('*')
-    .order('start_date', { ascending: false })
-    .limit(limit)
-
-  if (type) query = query.eq('type', type)
-
-  const { data, error } = await query
-  if (error) throw error
-  return data ?? []
-}
 
 // ─── Edge Function Calls ──────────────────────────────────────────────────────
 
@@ -587,7 +569,7 @@ export async function fetchHevyRoutines(): Promise<HevyRoutine[]> {
   const exerciseList: HevyRoutineExercise[] = exercises ?? []
   const exerciseIds = exerciseList.map(e => e.id)
 
-  let setMap = new Map<string, HevyRoutineSet[]>()
+  const setMap = new Map<string, HevyRoutineSet[]>()
   if (exerciseIds.length > 0) {
     const { data: sets, error: sErr } = await supabase
       .from('hevy_routine_sets')
@@ -663,47 +645,6 @@ export async function fetchHevyExerciseTemplates(): Promise<HevyExerciseTemplate
     ...t,
     secondary_muscle_groups: musclesByTemplate.get(t.id) ?? [],
   }))
-}
-
-// ─── Sync Status ──────────────────────────────────────────────────────────────
-
-export async function fetchHevySyncStatus(): Promise<{
-  workouts: number
-  routines: number
-  exercise_templates: number
-  body_measurements: number
-  last_synced: string | null
-}> {
-  const [
-    { count: workouts },
-    { count: routines },
-    { count: exercise_templates },
-    { count: body_measurements },
-  ] = await Promise.all([
-    supabase.from('hevy_workouts').select('*', { count: 'exact', head: true }),
-    supabase.from('hevy_routines').select('*', { count: 'exact', head: true }),
-    supabase.from('hevy_exercise_templates').select('*', { count: 'exact', head: true }),
-    supabase.from('hevy_body_measurements').select('*', { count: 'exact', head: true }),
-  ])
-
-  const { data: { user } } = await supabase.auth.getUser()
-  let last_synced: string | null = null
-  if (user) {
-    const { data } = await supabase
-      .from('hevy_workout_events_cursor')
-      .select('last_events_since')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    last_synced = data?.last_events_since ?? null
-  }
-
-  return {
-    workouts:           workouts ?? 0,
-    routines:           routines ?? 0,
-    exercise_templates: exercise_templates ?? 0,
-    body_measurements:  body_measurements ?? 0,
-    last_synced,
-  }
 }
 
 // ─── Hevy API (write operations via Edge Function) ────────────────────────────

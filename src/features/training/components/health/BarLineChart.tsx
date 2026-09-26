@@ -1,5 +1,7 @@
 import { ComposedChart, Bar, Line, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { compactAxisTick } from './axisFormat'
+import { useChartColors } from '../../../../shared/ui'
+import { TOOLTIP_BOX } from '../chartKit'
 
 // Canonical Health-tab chart style — translucent bar + connecting line with
 // dots on top, same color. Established with Body's weight/fat/BMI charts;
@@ -21,11 +23,8 @@ interface TooltipEntry {
 // dataKey and keep the custom [min,max]/unit formatting the old `formatter`
 // prop had.
 //
-// "See details" link (not a click-anywhere-on-the-bar navigation): clicking
-// a bar used to jump straight to that day, which meant there was no way to
-// just glance at the tooltip without also navigating away. Now the bar
-// click only opens/keeps the tooltip open (via Tooltip's trigger="click"),
-// and this explicit link inside it is the only thing that navigates.
+// "Go to this day" link: the explicit link inside the tooltip is the only
+// thing that navigates; a bar click never does.
 function makeTooltipContent(unit: string, onPointClick?: (point: ChartPoint) => void) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- recharts' TooltipProps generic is awkward to import cleanly; we only read a few fields.
   return function TooltipContent({ active, payload, label }: any) {
@@ -39,8 +38,8 @@ function makeTooltipContent(unit: string, onPointClick?: (point: ChartPoint) => 
     })
     const rawPoint = payload[0]?.payload as ChartPoint | undefined
     return (
-      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5">
-        <p className="text-ink-400 font-medium">{label}</p>
+      <div className={TOOLTIP_BOX}>
+        <p className="font-medium text-fg-muted">{label}</p>
         {rows.map(r => (
           <p key={String(r.dataKey ?? r.name)} style={{ color: r.color }} className="font-semibold">
             {Array.isArray(r.value) ? `${r.value[0]}–${r.value[1]} ${unit}` : `${r.value} ${unit}`} {r.name}
@@ -50,7 +49,7 @@ function makeTooltipContent(unit: string, onPointClick?: (point: ChartPoint) => 
           <button
             type="button"
             onClick={() => onPointClick(rawPoint)}
-            className="text-accent-600 underline text-xs py-1.5 flex items-center min-h-[44px]"
+            className="flex min-h-[44px] items-center py-1.5 text-meta font-semibold text-accent-600"
           >
             Go to this day →
           </button>
@@ -85,15 +84,16 @@ export function BarLineChart({
   // Health-tab call site is untouched (default unchanged).
   yDomain?: [number | 'auto' | 'dataMin', number | 'auto' | 'dataMax']
 }) {
+  const c = useChartColors()
   return (
     <div style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-          <XAxis dataKey="label" tick={{ fontSize: 9 }} axisLine={false} tickLine={false} interval={xInterval} />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={c.grid} />
+          <XAxis dataKey="label" tick={{ fontSize: 9, fill: c.axis }} axisLine={false} tickLine={false} interval={xInterval} />
           {/* width/margin: 2-digit bpm ticks fitted by luck — a 3-digit or
               4-digit axis clipped to slivers of glyphs. See axisFormat.ts. */}
-          <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} domain={yDomain} />
+          <YAxis tick={{ fontSize: 9, fill: c.axis }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} domain={yDomain} />
           {/* Hover trigger (default): per explicit user request, the value
               must appear the moment the pointer is over a point — no click
               needed. On touch, the first tap acts as hover and still shows

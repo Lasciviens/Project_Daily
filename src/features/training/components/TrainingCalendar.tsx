@@ -1,17 +1,17 @@
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useState, useMemo, useEffect, useRef } from 'react'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useTrainingBlocks, useScheduleBlocks } from '../../daily/hooks/useSchedule'
 import { projectRecurringBlocksForDay } from '../../daily/components/dayAgendaProjection'
-import { HevyWorkoutDetail } from './HevyWorkoutDetail'
-import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
+import { useEntityModal } from '../../../shared/modals'
 import { DateNav } from '../../../shared/components/DateNav'
+import { Card, SegmentedControl, ToneDot, type Tone } from '../../../shared/ui'
+import { STRAVA_ORANGE } from '../stravaMeta'
+import { StravaTypeIcon } from './StravaIcons'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
-import { supabase } from '../../../integrations/supabase/client'
 import type { HevyWorkout, StravaActivity } from '../types.hevy'
 import type { TimeBlock, ScheduleBlock } from '../../daily/types'
-import type { Task } from '../../todo/types'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // A calendar "plan" entry is either a real one-off time_blocks row, or a
 // PROJECTED occurrence of a recurring schedule_blocks template (e.g. "every
@@ -38,10 +38,16 @@ function toDateStr(iso: string): string {
 // Local YYYY-MM-DD (avoids the UTC shift that toISOString would introduce)
 const ymd = formatLocalDate
 
-// Dot colour for a planned training day, relative to today.
-function planDotClass(dateStr: string, todayStr: string): string {
-  if (dateStr === todayStr) return 'bg-green-500'
-  return dateStr > todayStr ? 'bg-blue-500' : 'bg-red-500'
+// A planned session's tone relative to today: due today, upcoming, or a past
+// plan that never became a workout. A logged workout is `success`.
+function planTone(dateStr: string, todayStr: string): Tone {
+  if (dateStr === todayStr) return 'warn'
+  return dateStr > todayStr ? 'info' : 'danger'
+}
+const WORKOUT_TONE: Tone = 'success'
+
+function StravaDot({ className = 'h-2 w-2' }: { className?: string }) {
+  return <span aria-hidden className={`inline-block shrink-0 rounded-full ${className}`} style={{ backgroundColor: STRAVA_ORANGE }} />
 }
 
 // The day a workout was actually performed (session start), falling back to
@@ -66,7 +72,7 @@ function addDays(date: Date, n: number): Date {
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+  return fmtDateEnGB(date, { day: '2-digit', month: 'short' })
 }
 
 function formatDayLabel(date: Date): string {
@@ -85,21 +91,40 @@ function getWorkoutDuration(w: HevyWorkout): number | null {
   return Math.round(diff / 60_000)
 }
 
-function stravaIcon(type: StravaActivity['type']): string {
-  switch (type) {
-    case 'run':     return '🏃'
-    case 'cycling': return '🚴'
-    case 'swim':    return '🏊'
-    case 'walk':    return '🚶'
-    case 'yoga':    return '🧘'
-    default:        return '⚡'
-  }
-}
-
 function formatDistance(meters: number | null): string {
   if (!meters) return ''
   if (meters >= 1000) return ` ${(meters / 1000).toFixed(1)} km`
   return ` ${meters} m`
+}
+
+function CalendarLegend() {
+  const items: { tone?: Tone; label: string }[] = [
+    { tone: 'warn', label: 'Plan today' },
+    { tone: 'info', label: 'Plan upcoming' },
+    { tone: 'danger', label: 'Plan missed' },
+    { tone: WORKOUT_TONE, label: 'Workout' },
+    { label: 'Strava' },
+  ]
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-meta text-fg-muted">
+      {items.map(i => (
+        <span key={i.label} className="flex items-center gap-1.5">
+          {i.tone ? <ToneDot tone={i.tone} /> : <StravaDot />} {i.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function CalViewToggle({ value, onChange }: { value: 'week' | 'month'; onChange: (v: 'week' | 'month') => void }) {
+  return (
+    <SegmentedControl<'week' | 'month'>
+      size="sm"
+      value={value}
+      onChange={onChange}
+      options={[{ value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }]}
+    />
+  )
 }
 
 // ─── Week View ────────────────────────────────────────────────────────────────
@@ -124,38 +149,50 @@ interface DayCellProps {
 function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWorkout, onOpenPlan }: DayCellProps) {
   const dateStr = ymd(day.date)
   const isSelected = selectedDate === dateStr
+  const cellRef = useRef<HTMLDivElement>(null)
+
+  // Phones show the week as a scrolling strip: bring the selected day (today
+  // on first render) into view horizontally, without scrolling the page.
+  useEffect(() => {
+    const el = cellRef.current
+    const strip = el?.parentElement
+    if (!isSelected || !el || !strip || strip.scrollWidth <= strip.clientWidth) return
+    strip.scrollLeft = el.offsetLeft - strip.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2
+  }, [isSelected])
 
   return (
     <div
-      className={`flex flex-col items-stretch gap-1.5 min-h-[76px] w-[92px] flex-shrink-0 snap-start sm:w-auto sm:flex-shrink p-1.5 rounded-2xl border transition-colors cursor-pointer ${
+      ref={cellRef}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      className={`flex min-h-[76px] w-[92px] flex-shrink-0 cursor-pointer snap-start flex-col items-stretch gap-1.5 rounded-row border p-1.5 transition-colors sm:w-auto sm:flex-shrink ${
         isSelected
-          ? 'border-accent-400 bg-accent-50 ring-1 ring-accent-300'
-          : isToday
-          ? 'border-accent-200 bg-accent-50/40'
-          : 'border-ink-100 bg-cream-50 hover:border-ink-300 hover:bg-cream-50'
+          ? 'border-accent-500 bg-accent-50'
+          : 'border-line bg-surface hover:border-line-strong hover:bg-surface-hover'
       }`}
       onClick={() => onSelect(isSelected ? '' : dateStr)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(isSelected ? '' : dateStr) } }}
     >
       <div className="flex flex-col items-center gap-0.5">
-        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">{formatDayLabel(day.date)}</span>
-        <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full ${
-          isToday ? 'bg-accent-600 text-white' : 'text-ink-700'
+        <span className="text-micro font-semibold uppercase tracking-[0.06em] text-fg-muted">{formatDayLabel(day.date)}</span>
+        <span className={`flex h-7 w-7 items-center justify-center rounded-full text-body font-bold tabular-nums ${
+          isToday ? 'bg-accent-500 text-on-accent' : 'text-fg-2'
         }`}>
           {day.date.getDate()}
         </span>
       </div>
 
       <div className="flex flex-col gap-1">
-        {/* Planned training sessions (future blue / today green / past red) */}
         {day.plans.map(p => (
           <button
             key={p.id}
             type="button"
             onClick={e => { e.stopPropagation(); onOpenPlan(p) }}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 bg-cream-100 text-ink-600 text-[10px] font-medium leading-tight truncate hover:bg-cream-200 transition-colors text-left"
+            className="flex items-center gap-1 truncate rounded bg-surface-2 px-1.5 py-0.5 text-left text-micro font-medium leading-tight text-fg-2 transition-colors hover:bg-surface-hover"
             title={`${p.kind === 'recurring' ? 'Recurring plan' : 'Planned'}: ${p.title} — click to edit`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${planDotClass(dateStr, todayStr)}`} />
+            <ToneDot tone={planTone(dateStr, todayStr)} className="!h-1.5 !w-1.5" />
             <span className="truncate">{p.kind === 'recurring' && '⟳ '}{p.title}</span>
           </button>
         ))}
@@ -167,10 +204,11 @@ function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWor
               key={w.id}
               type="button"
               onClick={e => { e.stopPropagation(); onOpenWorkout(w.id) }}
-              className="text-left rounded px-1.5 py-0.5 bg-accent-100 text-accent-800 text-[10px] font-medium leading-tight truncate hover:bg-accent-200 transition-colors"
+              className="flex items-center gap-1 truncate rounded bg-surface-2 px-1.5 py-0.5 text-left text-micro font-medium leading-tight text-fg transition-colors hover:bg-surface-hover"
               title={`${w.title} — view details`}
             >
-              {w.title}{dur ? ` · ${dur}m` : ''}
+              <ToneDot tone={WORKOUT_TONE} className="!h-1.5 !w-1.5" />
+              <span className="truncate">{w.title}{dur ? ` · ${dur}m` : ''}</span>
             </button>
           )
         })}
@@ -178,10 +216,12 @@ function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWor
         {day.activities.map(a => (
           <div
             key={a.id}
-            className="rounded px-1.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-medium leading-tight truncate"
+            className="flex items-center gap-1 truncate rounded bg-surface-2 px-1.5 py-0.5 text-micro font-medium leading-tight text-fg-2"
             title={a.title}
           >
-            {stravaIcon(a.type)}{formatDistance(a.distance_meters)}
+            <StravaDot className="h-1.5 w-1.5" />
+            <StravaTypeIcon type={a.type} className="h-3 w-3 shrink-0" />
+            <span className="truncate">{formatDistance(a.distance_meters)}</span>
           </div>
         ))}
       </div>
@@ -211,24 +251,19 @@ function DayDetailPanel({
   }
 
   return (
-    <div className="border border-ink-200 rounded-xl p-3 flex flex-col gap-2">
-      <p className="text-sm font-bold text-ink-800">
+    <div className="flex flex-col gap-3 border-t border-line pt-3">
+      <p className="text-body font-semibold text-fg">
         {selectedDay.date.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}
       </p>
 
       {selectedDay.plans.length > 0 && (
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5">Planned</p>
-          <div className="flex flex-col gap-2">
+          <p className="section-label mb-1.5">Planned</p>
+          <div className="flex flex-col gap-1">
             {selectedDay.plans.map(p => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => onOpenPlan(p)}
-                className="w-full text-left flex items-center gap-2 p-2.5 bg-cream-100 border border-ink-100 rounded-lg hover:bg-cream-200 transition-colors min-h-[44px]"
-              >
-                <span className={`w-2 h-2 rounded-full shrink-0 ${planDotClass(dateKey, todayStr)}`} />
-                <span className="text-sm font-medium text-ink-900">{p.kind === 'recurring' && '⟳ '}{p.title}</span>
+              <button key={p.id} type="button" onClick={() => onOpenPlan(p)} className="row row-interactive w-full border border-line text-left">
+                <ToneDot tone={planTone(dateKey, todayStr)} />
+                <span className="text-body font-medium text-fg">{p.kind === 'recurring' && '⟳ '}{p.title}</span>
               </button>
             ))}
           </div>
@@ -237,19 +272,15 @@ function DayDetailPanel({
 
       {selectedDay.workouts.length > 0 && (
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-600 mb-1.5">Hevy Workouts</p>
-          <div className="flex flex-col gap-2">
+          <p className="section-label mb-1.5">Hevy workouts</p>
+          <div className="flex flex-col gap-1">
             {selectedDay.workouts.map(w => {
               const dur = getWorkoutDuration(w)
               return (
-                <button
-                  key={w.id}
-                  type="button"
-                  onClick={() => onOpenWorkout(w.id)}
-                  className="w-full text-left flex items-center justify-between gap-2 p-2.5 bg-accent-50 border border-accent-100 rounded-lg hover:bg-accent-100 transition-colors min-h-[44px]"
-                >
-                  <span className="text-sm font-medium text-ink-900">{w.title}</span>
-                  {dur && <span className="text-xs text-accent-600 shrink-0">{dur} min</span>}
+                <button key={w.id} type="button" onClick={() => onOpenWorkout(w.id)} className="row row-interactive w-full border border-line text-left">
+                  <ToneDot tone={WORKOUT_TONE} />
+                  <span className="flex-1 text-body font-medium text-fg">{w.title}</span>
+                  {dur && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{dur} min</span>}
                 </button>
               )
             })}
@@ -259,13 +290,15 @@ function DayDetailPanel({
 
       {selectedDay.activities.length > 0 && (
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 mb-1.5">Strava</p>
-          <div className="flex flex-col gap-2">
+          <p className="section-label mb-1.5">Strava</p>
+          <div className="flex flex-col gap-1">
             {selectedDay.activities.map(a => (
-              <div key={a.id} className="flex items-center justify-between gap-2 p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
-                <span className="text-sm font-medium text-ink-900">{stravaIcon(a.type)} {a.title}</span>
+              <div key={a.id} className="row border border-line">
+                <StravaDot />
+                <StravaTypeIcon type={a.type} className="h-4 w-4 shrink-0 text-fg-muted" />
+                <span className="flex-1 text-body font-medium text-fg">{a.title}</span>
                 {a.distance_meters && (
-                  <span className="text-xs text-blue-600 shrink-0">{(a.distance_meters / 1000).toFixed(2)} km</span>
+                  <span className="shrink-0 text-meta tabular-nums text-fg-muted">{(a.distance_meters / 1000).toFixed(2)} km</span>
                 )}
               </div>
             ))}
@@ -323,27 +356,18 @@ function WeekView({ weekStart, workouts, activities, plansByDate, todayStr, toda
         <DateNav
           size="md"
           label={weekLabel}
-          labelClassName="text-sm font-semibold text-ink-700 min-w-[150px]"
+          labelClassName="min-w-[150px] text-body font-semibold text-fg"
           onPrev={onPrev}
           onNext={onNext}
           onToday={onToday}
           isToday={false}
         />
-        <button
-          type="button"
-          onClick={onSwitchToMonth}
-          className="min-h-[44px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
-        >
-          Month
-        </button>
+        <CalViewToggle value="week" onChange={v => { if (v === 'month') onSwitchToMonth() }} />
       </div>
 
-      {/* 7-day grid — a true 7-col grid squeezes each day to ~43px at phone
-          widths, truncating workout/plan chip text to illegibility. Below
-          sm this becomes a horizontally scrollable strip of fixed-width day
-          cards instead, wide enough for the chip text to actually read;
-          sm+ (desktop rail) keeps the original 7-col grid unchanged. */}
-      <div className="flex overflow-x-auto gap-1.5 scrollbar-none scroll-fade-x snap-x snap-mandatory pb-1 sm:grid sm:grid-cols-7 sm:overflow-visible sm:pb-0">
+      {/* Below sm a 7-col grid squeezes each day to ~43px, so the week becomes
+          a scrollable strip of readable fixed-width day cards. */}
+      <div className="scroll-x flex snap-x snap-mandatory gap-1.5 pb-1 sm:grid sm:grid-cols-7 sm:overflow-visible sm:pb-0">
         {days.map(day => (
           <WeekDayCell
             key={day.date.toISOString()}
@@ -432,27 +456,19 @@ function MonthView({ year, month, workouts, activities, plansByDate, todayStr, t
         <DateNav
           size="md"
           label={monthLabel}
-          labelClassName="text-sm font-semibold text-ink-700 min-w-[150px]"
+          labelClassName="min-w-[150px] text-body font-semibold text-fg"
           onPrev={onPrevMonth}
           onNext={onNextMonth}
           onToday={onToday}
           isToday={false}
         />
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onSwitchToWeek}
-            className="min-h-[44px] px-3 border border-ink-200 rounded-xl text-sm text-ink-600 hover:bg-cream-50 transition-colors"
-          >
-            Week
-          </button>
-        </div>
+        <CalViewToggle value="month" onChange={v => { if (v === 'week') onSwitchToWeek() }} />
       </div>
 
       {/* Day-of-week headers */}
       <div className="grid grid-cols-7 gap-1">
         {DAY_LABELS.map(d => (
-          <div key={d} className="text-[10px] font-bold text-ink-500 uppercase text-center py-1">{d}</div>
+          <div key={d} className="py-1 text-center text-micro font-semibold uppercase tracking-[0.06em] text-fg-muted">{d}</div>
         ))}
       </div>
 
@@ -474,23 +490,22 @@ function MonthView({ year, month, workouts, activities, plansByDate, todayStr, t
               key={dateStr}
               type="button"
               onClick={() => setSelectedDate(isSelected ? null : dateStr)}
-              className={`aspect-square flex flex-col items-center justify-start pt-1 rounded-lg border transition-colors min-h-[44px] ${
+              aria-pressed={isSelected}
+              className={`flex aspect-square min-h-[44px] flex-col items-center justify-start rounded-control border pt-1 transition-colors ${
                 isSelected
-                  ? 'border-accent-400 bg-accent-50'
-                  : isToday
-                  ? 'border-accent-200 bg-accent-50/50'
-                  : 'border-transparent hover:border-ink-200 hover:bg-cream-50'
+                  ? 'border-accent-500 bg-accent-50'
+                  : 'border-transparent hover:border-line hover:bg-surface-hover'
               }`}
             >
-              <span className={`text-xs font-semibold ${
-                isToday ? 'text-accent-700' : 'text-ink-700'
+              <span className={`grid h-6 w-6 place-items-center rounded-full text-meta font-semibold tabular-nums ${
+                isToday ? 'bg-accent-500 text-on-accent' : 'text-fg-2'
               }`}>
                 {date.getDate()}
               </span>
-              <div className="flex gap-0.5 mt-0.5">
-                {hasPlan && <span className={`w-1.5 h-1.5 rounded-full ${planDotClass(dateStr, todayStr)}`} />}
-                {hasWorkout && <span className="w-1.5 h-1.5 rounded-full bg-accent-500" />}
-                {hasActivity && <span className="w-1.5 h-1.5 rounded-full bg-[#FC4C02]" />}
+              <div className="mt-0.5 flex gap-0.5">
+                {hasPlan && <ToneDot tone={planTone(dateStr, todayStr)} className="!h-1.5 !w-1.5" />}
+                {hasWorkout && <ToneDot tone={WORKOUT_TONE} className="!h-1.5 !w-1.5" />}
+                {hasActivity && <StravaDot className="h-1.5 w-1.5" />}
               </div>
             </button>
           )
@@ -498,13 +513,7 @@ function MonthView({ year, month, workouts, activities, plansByDate, todayStr, t
       </div>
 
       {/* Legend */}
-      <div className="flex gap-3 flex-wrap text-[11px] text-ink-500">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Plan today</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Plan upcoming</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Plan past</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-accent-500 inline-block" /> Workout</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#FC4C02] inline-block" /> Strava</span>
-      </div>
+      <CalendarLegend />
 
       {/* Day detail */}
       <DayDetailPanel
@@ -531,30 +540,19 @@ export function TrainingCalendar() {
     month: today.getMonth(),
   }))
 
-  const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
-  const [selectedPlanItem, setSelectedPlanItem] = useState<CalendarPlanItem | null>(null)
-  const selectedPlanBlock = selectedPlanItem?.kind === 'block' ? selectedPlanItem.timeBlock : undefined
-
-  // A task-linked plan block must open the TASK (mode='task', where its
-  // Schedule section lives) — NOT the block directly via `timeBlock`, which
-  // is contractually a standalone-only prop (planModal.types.ts). Opening a
-  // task-linked block with `timeBlock` seeded `alsoCreateTask` misleadingly
-  // (buildInitialForm has no idea a task already exists) and Save then
-  // created a SECOND task and re-pointed the block's task_id at it — the
-  // real duplicate-task bug. Same pattern as NextSessionBanner. A recurring
-  // occurrence (kind='recurring') has no task concept at all — schedule_blocks
-  // rows can never be task-linked — so this only ever applies to a real block.
-  const isPlanTaskLinked = !!selectedPlanBlock?.task_id
-  const { data: selectedPlanTask } = useQuery({
-    queryKey: ['tasks', 'byId', selectedPlanBlock?.task_id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('tasks').select('*').eq('id', selectedPlanBlock!.task_id!).single()
-      if (error) throw error
-      return data as Task
-    },
-    enabled: isPlanTaskLinked,
-    staleTime: 60_000,
-  })
+  // A task-linked plan block must open the TASK, never the block via
+  // `timeBlock` (that minted a second task — the real duplicate-task bug).
+  // The shared block editor applies that routing rule once for every caller;
+  // a recurring occurrence opens its template (it can never be task-linked).
+  const modal = useEntityModal()
+  const openPlan = useCallback((item: CalendarPlanItem) => {
+    if (item.kind === 'recurring' && item.scheduleBlock) {
+      modal.open({ kind: 'schedule-block', id: item.scheduleBlock.id, config: { heading: 'Edit recurring session' } })
+    } else if (item.timeBlock) {
+      modal.open({ kind: 'time-block', id: item.timeBlock.id, config: { heading: 'Edit session' } })
+    }
+  }, [modal])
+  const openWorkout = useCallback((id: string) => modal.open({ kind: 'hevy-workout', id }), [modal])
 
   const { data: workouts = [] } = useHevyWorkouts({ limit: 200 })
   const { data: activities = [] } = useStravaActivities({ limit: 200 })
@@ -643,7 +641,7 @@ export function TrainingCalendar() {
   }
 
   return (
-    <div className="w-full">
+    <Card className="w-full">
       {view === 'week' ? (
         <WeekView
           weekStart={weekStart}
@@ -656,8 +654,8 @@ export function TrainingCalendar() {
           onNext={handleNextWeek}
           onToday={handleTodayWeek}
           onSwitchToMonth={() => setView('month')}
-          onOpenWorkout={setSelectedWorkoutId}
-          onOpenPlan={setSelectedPlanItem}
+          onOpenWorkout={openWorkout}
+          onOpenPlan={openPlan}
         />
       ) : (
         <MonthView
@@ -672,24 +670,10 @@ export function TrainingCalendar() {
           onNextMonth={handleNextMonth}
           onToday={handleTodayMonth}
           onSwitchToWeek={() => setView('week')}
-          onOpenWorkout={setSelectedWorkoutId}
-          onOpenPlan={setSelectedPlanItem}
+          onOpenWorkout={openWorkout}
+          onOpenPlan={openPlan}
         />
       )}
-
-      <HevyWorkoutDetail
-        workoutId={selectedWorkoutId}
-        onClose={() => setSelectedWorkoutId(null)}
-      />
-
-      <UnifiedPlanModal
-        open={!!selectedPlanItem && (isPlanTaskLinked ? !!selectedPlanTask : true)}
-        onClose={() => setSelectedPlanItem(null)}
-        config={{ heading: selectedPlanItem?.kind === 'recurring' ? 'Edit Recurring Session' : 'Edit Session' }}
-        task={isPlanTaskLinked ? selectedPlanTask : undefined}
-        timeBlock={selectedPlanItem?.kind === 'block' && !isPlanTaskLinked ? selectedPlanBlock : undefined}
-        scheduleBlock={selectedPlanItem?.kind === 'recurring' ? selectedPlanItem.scheduleBlock : undefined}
-      />
-    </div>
+    </Card>
   )
 }

@@ -1,4 +1,6 @@
+import { Check } from 'lucide-react'
 import { Sheet } from '../../../shared/components/Sheet'
+import { cx } from '../../../shared/ui'
 import { useGoogleTaskLists } from '../hooks/useGoogleTaskLists'
 import { useUpdateTask } from '../hooks/useTodos'
 import type { Task } from '../types'
@@ -25,9 +27,9 @@ export function MoveToListSheet({ open, onClose, task }: Props) {
 
   return (
     <Sheet open={open} onClose={onClose} title="Move to list" size="sm">
-      <div className="p-4 flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5 p-4">
         {lists.length === 0 && (
-          <p className="text-sm text-ink-400">
+          <p className="text-body text-fg-muted">
             No lists synced yet — tap Import in Settings to pull your Google Task lists.
           </p>
         )}
@@ -37,14 +39,16 @@ export function MoveToListSheet({ open, onClose, task }: Props) {
             type="button"
             onClick={() => choose(l.id === task.google_tasklist_id ? null : l.id)}
             disabled={update.isPending}
-            className={`min-h-[44px] flex items-center justify-between px-3 rounded-lg border text-sm transition-colors press-feedback ${
+            aria-pressed={task.google_tasklist_id === l.id}
+            className={cx(
+              'row row-interactive justify-between border text-body press-feedback disabled:opacity-50',
               task.google_tasklist_id === l.id
-                ? 'border-accent-300 bg-accent-50 text-accent-700'
-                : 'border-ink-100 bg-cream-50 text-ink-700 hover:border-accent-200'
-            }`}
+                ? 'border-accent-500/30 bg-accent-50 font-semibold text-accent-700'
+                : 'border-line bg-surface text-fg-2',
+            )}
           >
             <span className="truncate">{l.title}</span>
-            {task.google_tasklist_id === l.id && <span aria-hidden>✓</span>}
+            {task.google_tasklist_id === l.id && <Check className="h-4 w-4 shrink-0" aria-hidden />}
           </button>
         ))}
       </div>

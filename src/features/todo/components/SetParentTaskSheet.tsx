@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
+import { X } from 'lucide-react'
 import { Sheet } from '../../../shared/components/Sheet'
+import { Button } from '../../../shared/ui'
 import { useAllTasks, useSetParentTask } from '../hooks/useTodos'
 import type { Task } from '../types'
 
@@ -52,38 +54,33 @@ export function SetParentTaskSheet({ open, onClose, task, hasSubtasks }: Props) 
     <Sheet open={open} onClose={onClose} title="Set parent task" size="sm">
       <div className="p-4">
         {task.parent_task_id && (
-          <button
-            type="button"
-            onClick={() => choose(null)}
-            disabled={setParent.isPending}
-            className="w-full min-h-[44px] mb-3 rounded-lg border border-ink-200 text-sm text-ink-600 hover:border-accent-300 hover:text-accent-700 transition-colors press-feedback"
-          >
-            ✕ Remove from parent (make top-level)
-          </button>
+          <Button block icon={<X />} onClick={() => choose(null)} disabled={setParent.isPending} className="mb-3">
+            Remove from parent (make top-level)
+          </Button>
         )}
 
         {hasSubtasks ? (
-          <p className="text-sm text-ink-500 leading-snug">
+          <p className="text-body leading-snug text-fg-muted">
             This task already has subtasks of its own — Google Tasks only supports one level of
             nesting, so it can't also become a subtask of another task.
           </p>
         ) : (
           <Combobox onChange={(id: string | null) => id && choose(id)}>
             <ComboboxInput
-              className="w-full min-h-[44px] px-3 rounded-lg border border-ink-200 bg-cream-50 text-sm focus:outline-none focus:ring-2 focus:ring-accent-300"
+              className="input"
               placeholder="Search tasks…"
               onChange={e => setQuery(e.target.value)}
               autoFocus
             />
-            <ComboboxOptions className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-ink-100">
+            <ComboboxOptions className="mt-2 max-h-64 overflow-y-auto rounded-row border border-line p-1">
               {candidates.length === 0 && (
-                <p className="px-3 py-2 text-sm text-ink-400">No matching tasks</p>
+                <p className="px-3 py-2 text-body text-fg-muted">No matching tasks</p>
               )}
               {candidates.map(t => (
                 <ComboboxOption
                   key={t.id}
                   value={t.id}
-                  className="min-h-[44px] flex items-center px-3 text-sm text-ink-700 cursor-pointer data-[focus]:bg-cream-100"
+                  className="row cursor-pointer text-body text-fg-2 data-[focus]:bg-surface-hover data-[focus]:text-fg"
                 >
                   {t.title}
                 </ComboboxOption>

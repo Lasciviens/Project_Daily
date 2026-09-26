@@ -1,22 +1,9 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { resolveWishWindow, wishPeriodLabel, type WishWindowState } from '../wishRules'
+import { ArrowRight, CalendarPlus, Check, ExternalLink, MapPin, MoreHorizontal, Pencil, Trash2, Undo2, Ban } from 'lucide-react'
+import { ToneDot, TonePill } from '../../../shared/ui'
+import { resolveWishWindow, wishPeriodLabel } from '../wishRules'
+import { SCHEDULED_TONE, WINDOW_TONE, WISH_PRIORITY_TONE } from '../wishTones'
 import type { WishItem, WishStatus } from '../types'
-
-const PRIORITY_DOT: Record<WishItem['priority'], string> = {
-  low: 'bg-ink-300', medium: 'bg-accent-400', high: 'bg-red-400',
-}
-
-// A period is a reminder, never a deadline — so a PASSED window is grey, the
-// same weight as "anytime". Never red, never an overdue mark: only the user
-// closes a wish, by ticking or deleting it.
-const PERIOD_CHIP: Record<WishWindowState, string> = {
-  open:     'bg-accent-50 text-accent-600',
-  upcoming: 'bg-ink-100 text-ink-600',
-  passed:   'bg-ink-100 text-ink-400',
-  anytime:  'bg-ink-100 text-ink-500',
-}
-
-const MENU_ITEM = 'w-full text-left px-3 min-h-[44px] text-sm data-[focus]:bg-ink-100'
 
 interface Props {
   wish:      WishItem
@@ -35,97 +22,68 @@ export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Pr
   const place    = [wish.city, wish.country].filter(Boolean).join(', ')
 
   return (
-    <div className={`flex flex-col gap-2 rounded-2xl border border-ink-200 bg-cream-50 p-3 ${
-      isClosed ? 'opacity-60' : state === 'passed' ? 'opacity-80' : ''
-    }`}>
+    <div className={`card flex flex-col gap-2 p-3 ${isClosed ? 'opacity-60' : state === 'passed' ? 'opacity-80' : ''}`}>
       <div className="flex items-start gap-2">
-        <span className={`mt-[7px] h-2 w-2 flex-shrink-0 rounded-full ${PRIORITY_DOT[wish.priority]}`} />
+        <ToneDot tone={WISH_PRIORITY_TONE[wish.priority]} className="mt-[7px]" />
         <div className="min-w-0 flex-1">
-          <p className={`text-sm font-semibold leading-snug text-ink-900 ${isDone ? 'line-through' : ''}`}>
-            {wish.kind === 'place' && <span aria-hidden className="mr-1">📍</span>}
+          <p className={`text-ui font-semibold leading-snug text-fg ${isDone ? 'line-through' : ''}`}>
+            {wish.kind === 'place' && <MapPin aria-label="Place" className="mr-1 inline h-3.5 w-3.5 -translate-y-px text-fg-muted" />}
             {wish.title}
           </p>
-          {wish.notes && <p className="mt-0.5 line-clamp-2 text-xs text-ink-400">{wish.notes}</p>}
+          {wish.notes && <p className="mt-0.5 line-clamp-2 text-meta text-fg-muted">{wish.notes}</p>}
         </div>
 
-        {/* One ⋯ menu at every width (not a hover-only strip) so the secondary
-            actions have the same reachable path on a phone as on a desktop. */}
-        <Menu as="div" className="flex-shrink-0">
-          <MenuButton
-            className="press-feedback flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-lg leading-none text-ink-400 hover:text-ink-700"
-            title="More actions"
-            aria-label="More actions"
-          >
-            ⋯
+        {/* One menu at every width, so phones reach the same actions. */}
+        <Menu as="div" className="-mr-1 -mt-1 shrink-0">
+          <MenuButton className="icon-btn" aria-label="More actions" title="More actions">
+            <MoreHorizontal className="h-[18px] w-[18px]" aria-hidden />
           </MenuButton>
-          <MenuItems
-            anchor="bottom end"
-            transition
-            className="z-[60] w-44 overflow-hidden rounded-xl border border-ink-200 bg-cream-50 shadow-card-hover [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0"
-          >
+          <MenuItems anchor="bottom end" transition
+            className="menu w-48 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
             <MenuItem>
-              <button onClick={onEdit} className={`${MENU_ITEM} text-ink-700`}>✎ Edit</button>
+              <button type="button" onClick={onEdit} className="menu-item"><Pencil aria-hidden className="h-4 w-4" /> Edit</button>
             </MenuItem>
             <MenuItem>
               {wish.status === 'dropped' ? (
-                <button onClick={() => onStatus('idea')} className={`${MENU_ITEM} text-ink-700`}>↩ Put back</button>
+                <button type="button" onClick={() => onStatus('idea')} className="menu-item"><Undo2 aria-hidden className="h-4 w-4" /> Put back</button>
               ) : (
-                <button onClick={() => onStatus('dropped')} className={`${MENU_ITEM} text-ink-600`}>⊘ Not any more</button>
+                <button type="button" onClick={() => onStatus('dropped')} className="menu-item"><Ban aria-hidden className="h-4 w-4" /> Not any more</button>
               )}
             </MenuItem>
+            <div className="menu-sep" />
             <MenuItem>
-              <button onClick={onDelete} className={`${MENU_ITEM} text-red-600`}>✕ Delete</button>
+              <button type="button" onClick={onDelete} className="menu-item is-danger"><Trash2 aria-hidden className="h-4 w-4" /> Delete</button>
             </MenuItem>
           </MenuItems>
         </Menu>
       </div>
 
       <div className="ml-4 flex flex-wrap items-center gap-1.5">
-        {period && (
-          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${PERIOD_CHIP[state]}`}>
-            {period}
-          </span>
-        )}
+        {period && <TonePill tone={WINDOW_TONE[state]}>{period}</TonePill>}
         {wish.status === 'planned' && (
-          <span
-            className="rounded-full bg-accent-50 px-1.5 py-0.5 text-[10px] font-medium text-accent-600"
-            title="A task was created from this wish — the wish stays here as the memory"
-          >
-            → scheduled
+          <span title="A task was created from this wish — the wish stays here as the memory">
+            <TonePill tone={SCHEDULED_TONE}><ArrowRight aria-hidden className="h-3 w-3" /> scheduled</TonePill>
           </span>
         )}
-        {wish.status === 'dropped' && (
-          <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-400">Not any more</span>
-        )}
-        {place && (
-          <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-600">{place}</span>
-        )}
+        {wish.status === 'dropped' && <TonePill tone="neutral">Not any more</TonePill>}
+        {place && <span className="chip">{place}</span>}
         {wish.url && (
-          <a
-            href={wish.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] text-blue-500 underline hover:text-blue-700"
-          >
-            Link ↗
+          <a href={wish.url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 text-meta font-semibold text-accent-600 hover:text-accent-700">
+            Link <ExternalLink aria-hidden className="h-3 w-3" />
           </a>
         )}
       </div>
 
-      <div className="flex items-center gap-1 border-t border-ink-100 pt-1.5">
-        <button
-          onClick={() => onStatus(isDone ? 'idea' : 'done')}
-          className="press-feedback min-h-[44px] flex-1 rounded-lg text-[11px] font-medium text-ink-600 transition-colors hover:bg-cream-100"
-        >
-          {isDone ? '↩ Not done yet' : '✓ Done'}
+      <div className="flex items-center gap-1 border-t border-line pt-1.5">
+        <button type="button" onClick={() => onStatus(isDone ? 'idea' : 'done')}
+          className="btn-ghost btn-sm flex-1 justify-center">
+          {isDone ? <><Undo2 aria-hidden className="h-4 w-4" /> Not done yet</> : <><Check aria-hidden className="h-4 w-4" /> Done</>}
         </button>
         {!isClosed && (
-          <button
-            onClick={onPlan}
-            className="press-feedback min-h-[44px] flex-1 rounded-lg text-[11px] font-medium text-accent-600 transition-colors hover:bg-accent-50"
-            title="Turn it into a real task — the wish stays on this list"
-          >
-            + Plan it
+          <button type="button" onClick={onPlan} title="Turn it into a real task — the wish stays on this list"
+            className="btn-ghost btn-sm flex-1 justify-center text-accent-600">
+            <CalendarPlus aria-hidden className="h-4 w-4" /> Plan it
           </button>
         )}
       </div>

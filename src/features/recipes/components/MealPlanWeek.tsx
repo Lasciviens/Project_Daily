@@ -1,37 +1,30 @@
 import { useState, Fragment } from 'react'
 import { format, addDays, addWeeks, startOfWeek, endOfWeek, isToday, getISOWeek } from 'date-fns'
+import { Check, ClipboardList, Plus } from 'lucide-react'
 import { useMealPlan, useEatPlannedEntry } from '../hooks/useMealPlan'
 import { useFoodLogRange } from '../hooks/useFoodLog'
-import { AssignMealModal } from './AssignMealModal'
-import { EditFoodLogModal } from './EditFoodLogModal'
+import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { DateNav } from '../../../shared/components/DateNav'
+import { Card, IconButton, cx } from '../../../shared/ui'
 import type { MealSlot, MealPlanEntry } from '../types'
 import type { LoggedFood } from '../api/foodLogApi'
-import type { DayMeal } from '../../daily/api/dayNutritionApi'
 
 const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack', 'supplement']
 const SLOT_LABEL: Record<MealSlot, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack', supplement: 'Suppl.' }
 
-interface CellTarget { date: string; slot: MealSlot; entry: MealPlanEntry | null }
-
-// A logged (diary) row → the DayMeal shape EditFoodLogModal edits.
-function loggedToDayMeal(l: LoggedFood): DayMeal {
-  return {
-    id: l.id, meal_slot: l.meal_slot, title: l.title, servings: 1,
-    calories: Math.round(l.calories ?? 0), protein_g: Math.round(l.protein_g ?? 0),
-    carbs_g: Math.round(l.carbs_g ?? 0), fat_g: Math.round(l.fat_g ?? 0),
-    fiber_g: Math.round(l.fiber_g ?? 0), sugar_g: Math.round(l.sugar_g ?? 0),
-    source: 'log',
-    logEntry: { library_ingredient_id: l.library_ingredient_id, recipe_id: l.recipe_id, custom_title: l.custom_title, quantity: l.quantity, unit: l.unit },
-  }
+function planLabelOf(entry: MealPlanEntry | null): string | null {
+  if (!entry) return null
+  const base = entry.recipe?.title ?? entry.custom_title
+    ?? (entry.ingredient?.name ? `${entry.ingredient_quantity ?? ''}${entry.ingredient_unit ?? ''} ${entry.ingredient.name}`.trim() : null)
+  if (!base) return null
+  return entry.servings !== 1 ? `${base} ×${entry.servings}` : base
 }
 
 export function MealPlanWeek() {
+  const modal = useEntityModal()
   const [weekOffset, setWeekOffset] = useState(0)
-  const [target, setTarget] = useState<CellTarget | null>(null)
-  const [editLog, setEditLog] = useState<LoggedFood | null>(null)
-  // Mobile shows ONE day at a time (the 7×5 grid is unusable at 393px). Default
-  // to today's weekday (Mon-based index).
+  // Phones show ONE day at a time (the 7×5 grid is unusable at 393px);
+  // default to today's weekday (Mon-based).
   const [dayIdx, setDayIdx] = useState(() => (new Date().getDay() + 6) % 7)
   const eat = useEatPlannedEntry()
 
@@ -55,181 +48,167 @@ export function MealPlanWeek() {
     arr.push(l); eatenBy.set(k, arr)
   }
 
-  return (
-    <div>
-      {/* Week nav — app-standard ‹ label › date navigation (shared DateNav) */}
-      <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
-        <DateNav
-          label={`Week ${getISOWeek(weekStart)}`}
-          labelClassName="text-sm font-bold text-ink-900 min-w-[72px]"
-          onPrev={() => setWeekOffset(w => w - 1)}
-          onNext={() => setWeekOffset(w => w + 1)}
-          onToday={() => setWeekOffset(0)}
-          isToday={weekOffset === 0}
-        />
-        {/* en-GB day-first, per the repo date rule. */}
-        <span className="text-xs text-ink-500">{format(weekStart, 'd MMM')} – {format(weekEnd, 'd MMM')}</span>
-      </div>
-      {/* Legend — the plan vs what was actually eaten (the Today diary), now
-          shown together so a logged day no longer looks empty here. */}
-      <p className="text-[11px] text-ink-400 mb-3">📋 planned · <span className="text-green-600">✓ eaten</span> (from Today) — tap to edit</p>
+  const openPlan = (date: string, slot: MealSlot, entry: MealPlanEntry | null) =>
+    modal.open({ kind: 'meal-plan', date, slot, entryId: entry?.id })
+  // "Add" always CREATES — editing the existing row would overwrite it, and
+  // several planned rows per slot are legal (post-061).
+  const openAdd = (date: string, slot: MealSlot) => modal.open({ kind: 'meal-plan', date, slot })
+  const openEaten = (l: LoggedFood) => modal.open({ kind: 'food-log-edit', entryId: l.id, date: l.date })
 
-      {/* ── MOBILE: one day at a time (the 720px grid is unusable at 393px) ── */}
-      <div className="md:hidden">
-        {/* Day picker */}
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 mb-3">
-          {days.map((day, i) => (
-            <button key={day.toISOString()} onClick={() => setDayIdx(i)}
-              className={`press-feedback shrink-0 min-w-[46px] min-h-[44px] rounded-xl px-2 py-1.5 border text-center transition-colors ${
-                i === dayIdx ? 'bg-accent-500 border-accent-500 text-white'
-                  : `bg-cream-50 text-ink-600 ${isToday(day) ? 'border-accent-300' : 'border-ink-200'}`
-              }`}>
-              <div className="text-[9px] font-semibold uppercase opacity-80">{format(day, 'EEE')}</div>
-              <div className="text-sm font-bold leading-tight">{format(day, 'd')}</div>
-            </button>
-          ))}
+  return (
+    <div className="flex flex-col gap-3 sm:gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div className="flex items-center gap-2">
+          <DateNav
+            size="md"
+            label={`Week ${getISOWeek(weekStart)}`}
+            labelClassName="min-w-[76px] text-center text-ui font-semibold text-fg"
+            onPrev={() => setWeekOffset(w => w - 1)}
+            onNext={() => setWeekOffset(w => w + 1)}
+            onToday={() => setWeekOffset(0)}
+            isToday={weekOffset === 0}
+          />
+          <span className="text-meta tabular-nums text-fg-muted">{format(weekStart, 'd MMM')} – {format(weekEnd, 'd MMM')}</span>
         </div>
-        {/* Selected day's slots as stacked cards (same style as Food → Today) */}
-        <div className="flex flex-col gap-2.5 stagger-in">
+        {/* Plan vs what was actually eaten (the Today diary), shown together. */}
+        <p className="flex items-center gap-3 text-meta text-fg-muted">
+          <span className="inline-flex items-center gap-1"><ClipboardList aria-hidden className="h-3.5 w-3.5" />Planned</span>
+          <span className="inline-flex items-center gap-1 text-success"><Check aria-hidden className="h-3.5 w-3.5" />Eaten</span>
+          <span className="hidden sm:inline">Tap to edit</span>
+        </p>
+      </div>
+
+      {/* ── Phone: one day at a time ── */}
+      <div className="md:hidden">
+        <div role="tablist" aria-label="Day" className="scroll-x -mx-1 mb-3 flex gap-1.5 px-1">
+          {days.map((day, i) => {
+            const active = i === dayIdx
+            return (
+              <button key={day.toISOString()} type="button" role="tab" aria-selected={active} onClick={() => setDayIdx(i)}
+                className={cx(
+                  'press-feedback min-h-[48px] min-w-[46px] shrink-0 rounded-row border px-2 py-1 text-center transition-colors',
+                  active ? 'border-accent-500 bg-accent-500 text-on-accent'
+                    : cx('bg-surface text-fg-2', isToday(day) ? 'border-accent-500/50' : 'border-line'),
+                )}>
+                <div className="text-micro font-semibold uppercase opacity-80">{format(day, 'EEE')}</div>
+                <div className="text-ui font-bold leading-tight tabular-nums">{format(day, 'd')}</div>
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex flex-col gap-3 stagger-in">
           {SLOTS.map(slot => {
             const dateStr = format(days[dayIdx], 'yyyy-MM-dd')
             const entry = entryFor(dateStr, slot)
             const eaten = eatenBy.get(`${dateStr}|${slot}`) ?? []
-            const planLabel = entry?.recipe?.title ?? entry?.custom_title
-              ?? (entry?.ingredient?.name ? `${entry.ingredient_quantity ?? ''}${entry.ingredient_unit ?? ''} ${entry.ingredient.name}`.trim() : null)
-            const openPlan = () => setTarget({ date: dateStr, slot, entry })
-            // "+ add" always CREATES (entry: null) — passing the existing row
-            // made AssignMealModal save with its id, silently OVERWRITING the
-            // planned meal (multiple planned rows per slot are legal post-061).
-            const openAdd = () => setTarget({ date: dateStr, slot, entry: null })
+            const planLabel = planLabelOf(entry)
             return (
-              <div key={slot} className="rounded-2xl border border-ink-200 bg-cream-50 overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ink-100">
-                  <span className="text-sm font-semibold text-ink-800 flex-1">{SLOT_LABEL[slot]}</span>
-                  <button onClick={openAdd} className="press-feedback text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[44px] px-2.5 rounded-lg">+ Add</button>
-                </div>
+              <Card key={slot} padded={false} className="overflow-hidden">
+                <header className="flex items-center gap-2 border-b border-line py-1 pl-4 pr-2">
+                  <h3 className="flex-1 text-ui font-semibold text-fg">{SLOT_LABEL[slot]}</h3>
+                  <button type="button" onClick={() => openAdd(dateStr, slot)} className="btn-ghost btn-sm gap-1 !px-2.5 text-accent-600">
+                    <Plus aria-hidden className="h-4 w-4" />Add
+                  </button>
+                </header>
                 {planLabel || eaten.length > 0 ? (
-                  <ul className="divide-y divide-ink-50">
-                    {planLabel && (
-                      <li className="flex items-center gap-1.5 px-4 py-1.5 min-h-[44px] text-sm">
-                        {/* No "planned" badge: 📋 + the italic muted title already
-                            encode the state, and on a phone the badge stole ~60px
-                            from the title — the planned row truncated while the
-                            eaten row below it didn't, so one meal read as two. */}
-                        <button onClick={openPlan} className="flex items-center gap-2 flex-1 min-w-0 text-left min-h-[44px]">
-                          <span className="flex-1 min-w-0 truncate text-ink-500 italic">📋 {planLabel}{entry!.servings !== 1 ? ` ×${entry!.servings}` : ''}</span>
+                  <ul className="divide-y divide-line">
+                    {planLabel && entry && (
+                      <li className="flex items-center gap-1 pl-4 pr-2 text-body">
+                        <button type="button" onClick={() => openPlan(dateStr, slot, entry)} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 text-left">
+                          <ClipboardList aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
+                          <span className="min-w-0 flex-1 truncate italic text-fg-muted">{planLabel}</span>
                         </button>
-                        <button onClick={() => eat.mutate(entry!)} disabled={eat.isPending} aria-label="Mark eaten" title="I ate this — count it"
-                          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-green-600 hover:bg-green-50 shrink-0 disabled:opacity-50">✓</button>
+                        <IconButton label="Mark eaten" onClick={() => eat.mutate(entry)} disabled={eat.isPending} className="text-success disabled:opacity-50"><Check /></IconButton>
                       </li>
                     )}
                     {eaten.map(l => (
                       <li key={l.id}>
-                        <button onClick={() => setEditLog(l)} className="w-full flex items-center gap-2 px-4 py-1.5 min-h-[44px] text-sm text-left hover:bg-green-50/40 transition-colors">
-                          <span className="flex-1 min-w-0 truncate text-ink-800">✓ {l.title}</span>
-                          {l.calories ? <span className="text-xs text-ink-500 tabular-nums shrink-0">{Math.round(l.calories)} kcal</span> : null}
+                        <button type="button" onClick={() => openEaten(l)} className="flex min-h-[44px] w-full items-center gap-2 px-4 text-left text-body transition-colors hover:bg-surface-hover">
+                          <Check aria-hidden className="h-4 w-4 shrink-0 text-success" />
+                          <span className="min-w-0 flex-1 truncate text-fg">{l.title}</span>
+                          {l.calories ? <span className="shrink-0 text-meta tabular-nums text-fg-muted">{Math.round(l.calories)} kcal</span> : null}
                         </button>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <button onClick={openPlan} className="w-full flex items-center text-left px-4 min-h-[44px] text-xs text-ink-400 hover:text-accent-600 transition-colors">+ Plan a meal</button>
+                  <button type="button" onClick={() => openPlan(dateStr, slot, null)} className="flex min-h-[44px] w-full items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
+                    Plan a meal
+                  </button>
                 )}
-              </div>
+              </Card>
             )
           })}
         </div>
       </div>
 
-      {/* ── DESKTOP: the full 7-day × 5-slot grid ── */}
-      <div className="hidden md:block overflow-x-auto scrollbar-none scroll-fade-x">
-        <div className="grid gap-1.5 min-w-[720px]" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
-          {/* Header row */}
-          <div />
-          {days.map(day => (
-            <div key={day.toISOString()} className={`text-center py-1.5 rounded-lg ${isToday(day) ? 'bg-accent-50' : ''}`}>
-              <p className="text-[9px] font-semibold uppercase text-ink-400">{format(day, 'EEE')}</p>
-              <p className={`text-sm font-bold ${isToday(day) ? 'text-accent-600' : 'text-ink-800'}`}>{format(day, 'd')}</p>
-            </div>
-          ))}
-
-          {/* Meal slot rows */}
-          {SLOTS.map(slot => (
-            <Fragment key={slot}>
-              <div className="flex items-center text-[11px] font-semibold text-ink-500">
-                {SLOT_LABEL[slot]}
+      {/* ── Tablet and up: the full 7-day × 5-slot grid ── */}
+      <Card padded={false} className="hidden overflow-hidden md:block">
+        <div className="scroll-x">
+          <div className="grid min-w-[760px] gap-1.5 p-3" style={{ gridTemplateColumns: '84px repeat(7, minmax(0, 1fr))' }}>
+            <div />
+            {days.map(day => (
+              <div key={day.toISOString()} className={cx('rounded-row py-1.5 text-center', isToday(day) && 'bg-accent-50')}>
+                <p className="section-label">{format(day, 'EEE')}</p>
+                <p className={cx('text-ui font-bold tabular-nums', isToday(day) ? 'text-accent-600' : 'text-fg')}>{format(day, 'd')}</p>
               </div>
-              {days.map(day => {
-                const dateStr = format(day, 'yyyy-MM-dd')
-                const entry = entryFor(dateStr, slot)
-                const eaten = eatenBy.get(`${dateStr}|${slot}`) ?? []
-                const planLabel = entry?.recipe?.title ?? entry?.custom_title
-                  ?? (entry?.ingredient?.name ? `${entry.ingredient_quantity ?? ''}${entry.ingredient_unit ?? ''} ${entry.ingredient.name}`.trim() : null)
-                const filled = !!planLabel || eaten.length > 0
-                const openPlan = () => setTarget({ date: dateStr, slot, entry })
-            // "+ add" always CREATES (entry: null) — passing the existing row
-            // made AssignMealModal save with its id, silently OVERWRITING the
-            // planned meal (multiple planned rows per slot are legal post-061).
-            const openAdd = () => setTarget({ date: dateStr, slot, entry: null })
-                // A div (not a button) so plan / eaten / add can each be their
-                // own control without nesting buttons.
-                return (
-                  <div
-                    key={`${slot}-${dateStr}`}
-                    className={`min-h-[60px] rounded-lg border flex flex-col overflow-hidden ${
-                      filled ? 'bg-cream-50 border-ink-200' : 'bg-cream-50 border-dashed border-ink-200'
-                    }`}
-                  >
-                    {!filled ? (
-                      // Empty → the WHOLE cell is a big centered + (per request).
-                      <button onClick={openAdd}
-                        className="flex-1 min-h-[60px] w-full flex items-center justify-center text-xl text-ink-300 hover:text-accent-600 hover:bg-accent-50/40 transition-colors">+</button>
-                    ) : (
-                      <>
-                        <div className="flex flex-col gap-0.5 p-1 flex-1">
-                          {planLabel && (
-                            <div className="flex items-center gap-0.5 rounded hover:bg-accent-50 transition-colors">
-                              <button onClick={openPlan} className="flex-1 min-w-0 text-left px-1 py-0.5">
-                                <span className="text-[11px] font-medium text-ink-800 leading-tight line-clamp-2">📋 {planLabel}{entry!.servings !== 1 ? ` ×${entry!.servings}` : ''}</span>
-                              </button>
-                              {/* Confirm planned → eaten (starts counting). */}
-                              <button onClick={() => eat.mutate(entry!)} disabled={eat.isPending}
-                                aria-label="Mark eaten" title="I ate this — count it"
-                                className="min-w-[24px] min-h-[24px] rounded-full text-green-600 hover:bg-green-100 shrink-0 text-xs disabled:opacity-50">✓</button>
-                            </div>
-                          )}
-                          {eaten.map(l => (
-                            <button key={l.id} onClick={() => setEditLog(l)}
-                              className="text-left rounded px-1 py-0.5 hover:bg-green-50 transition-colors">
-                              <span className="text-[10px] text-green-700 leading-tight line-clamp-1">✓ {l.title}{l.calories ? ` · ${Math.round(l.calories)}` : ''}</span>
-                            </button>
-                          ))}
-                        </div>
-                        {/* Filled → a full-width bottom row to add more (clickable). */}
-                        <button onClick={openAdd}
-                          className="w-full text-left px-2 py-1 text-[10px] text-ink-300 hover:text-accent-600 hover:bg-accent-50/40 border-t border-ink-100 transition-colors">＋ add</button>
-                      </>
-                    )}
-                  </div>
-                )
-              })}
-            </Fragment>
-          ))}
-        </div>
-      </div>
+            ))}
 
-      {target && (
-        <AssignMealModal
-          open
-          onClose={() => setTarget(null)}
-          date={target.date}
-          mealSlot={target.slot}
-          existing={target.entry}
-        />
-      )}
-      {editLog && (
-        <EditFoodLogModal meal={loggedToDayMeal(editLog)} date={editLog.date} onClose={() => setEditLog(null)} />
-      )}
+            {SLOTS.map(slot => (
+              <Fragment key={slot}>
+                <div className="flex items-center text-meta font-semibold text-fg-muted">{SLOT_LABEL[slot]}</div>
+                {days.map(day => {
+                  const dateStr = format(day, 'yyyy-MM-dd')
+                  const entry = entryFor(dateStr, slot)
+                  const eaten = eatenBy.get(`${dateStr}|${slot}`) ?? []
+                  const planLabel = planLabelOf(entry)
+                  const filled = !!planLabel || eaten.length > 0
+                  // A div (not a button) so plan / eaten / add are separate controls.
+                  return (
+                    <div key={`${slot}-${dateStr}`}
+                      className={cx('flex min-h-[64px] flex-col overflow-hidden rounded-row border bg-surface', filled ? 'border-line' : 'border-dashed border-line')}>
+                      {!filled ? (
+                        <button type="button" onClick={() => openAdd(dateStr, slot)} aria-label={`Plan ${SLOT_LABEL[slot]} on ${format(day, 'EEE d MMM')}`}
+                          className="flex min-h-[64px] w-full flex-1 items-center justify-center text-fg-faint transition-colors hover:bg-accent-50 hover:text-accent-600">
+                          <Plus aria-hidden className="h-5 w-5" />
+                        </button>
+                      ) : (
+                        <>
+                          <div className="flex flex-1 flex-col gap-0.5 p-1">
+                            {planLabel && entry && (
+                              <div className="flex items-start gap-0.5 rounded-md transition-colors hover:bg-surface-hover">
+                                <button type="button" onClick={() => openPlan(dateStr, slot, entry)} className="min-w-0 flex-1 px-1 py-0.5 text-left">
+                                  <span className="line-clamp-2 text-meta font-medium leading-tight text-fg-2">{planLabel}</span>
+                                </button>
+                                <button type="button" onClick={() => eat.mutate(entry)} disabled={eat.isPending}
+                                  aria-label="Mark eaten" title="Mark eaten"
+                                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-success transition-colors hover:bg-success-soft disabled:opacity-50">
+                                  <Check aria-hidden className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            )}
+                            {eaten.map(l => (
+                              <button key={l.id} type="button" onClick={() => openEaten(l)}
+                                className="flex items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-success-soft">
+                                <Check aria-hidden className="h-3 w-3 shrink-0 text-success" />
+                                <span className="line-clamp-1 text-micro leading-tight text-fg-2">{l.title}{l.calories ? ` · ${Math.round(l.calories)}` : ''}</span>
+                              </button>
+                            ))}
+                          </div>
+                          <button type="button" onClick={() => openAdd(dateStr, slot)}
+                            className="flex w-full items-center gap-1 border-t border-line px-2 py-1 text-left text-micro text-fg-faint transition-colors hover:bg-accent-50 hover:text-accent-600">
+                            <Plus aria-hidden className="h-3 w-3" />Add
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      </Card>
     </div>
   )
 }

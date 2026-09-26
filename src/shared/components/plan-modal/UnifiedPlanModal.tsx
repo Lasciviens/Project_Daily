@@ -2,8 +2,8 @@
 //  UnifiedPlanModal — the single planning surface for the whole app.
 //
 //  ┌─ RULES (read before editing) ─────────────────────────────────────────────┐
-//  │ 1. ALWAYS ON TOP. Each open instance claims the next z-index above every    │
-//  │    other modal (see useTopZIndex). Never hardcode a z-class on the Dialog.  │
+//  │ 1. ONE CHROME. Rendered inside ModalShell (THEME.md §8) — stacking, Back,   │
+//  │    Esc and the phone sheet come from there. Never hand-roll a Dialog here.  │
 //  │ 2. CONFIG-DRIVEN. Callers shape the modal from THEIR file via `config`,      │
 //  │    `defaults`, `source`, `scheduleExtra`/`taskExtra`, `onSaved`. Adding a    │
 //  │    per-caller variation should NOT require editing this folder — add a       │
@@ -21,6 +21,27 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-09-26 · v13 · Theme + shared popup system (THEME.md §8–§10):
+//                    Chrome moved onto ModalShell — the hand-rolled Dialog,
+//                    backdrop and the module-level zCursor/useTopZIndex are
+//                    gone (ModalShell's depth context stacks nested popups),
+//                    Back now closes it, dismiss is blocked while saving.
+//                    No supabase import any more: the linked block is read
+//                    through the schedule hook layer's linkedTimeBlockQuery
+//                    (qk.schedule.byTask, staleTime 0 — same ref-guarded
+//                    once-per-open hydration; a failed read now toasts and
+//                    keeps Save disabled instead of guessing "none"), the calendar
+//                    link's fresh event-id read through scheduleApi's
+//                    fetchTimeBlockCalendarEventId. Every write now goes
+//                    through a useMutationWithFeedback hook (create/update/
+//                    delete block, update/delete recurring, task hooks), so
+//                    every failure is toasted + logged exactly once by the
+//                    hook; handleSave only stops the flow and shows the
+//                    'Saving…'/'Saved' copy via withProgress. The Google Tasks
+//                    sync warning moved into useCreateTask. Deletes confirm
+//                    through entityModal.confirm (no native confirm()).
+//                    New `loading`/`loadError` props let PlanEntityModals
+//                    show the same shell while a row loads by id.
 //  2026-08-22 · v12 · Fourth post-review pass (one correctness fix):
 //                    updateTimeBlock's remote calendar-event PATCH swallowed
 //                    ALL failures (including 404 — the remote event deleted
@@ -215,11 +236,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useRef, useState } from 'react'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useQueryClient } from '@tanstack/react-query'
+import { AlertCircle, Trash2 } from 'lucide-react'
 import { toast, useCalendarStore } from '../../../app/store'
-import { useCreateTimeBlock, useCreateScheduleBlock } from '../../../features/daily/hooks/useSchedule'
-import { updateTimeBlock, deleteTimeBlock, updateScheduleBlock, deleteScheduleBlock } from '../../../features/daily/api/scheduleApi'
+import {
+  useCreateTimeBlock, useCreateScheduleBlock, useUpdateTimeBlock, useDeleteTimeBlock,
+  useUpdateScheduleBlock, useDeleteScheduleBlock, linkedTimeBlockQuery,
+} from '../../../features/daily/hooks/useSchedule'
+import { updateTimeBlock, fetchTimeBlockCalendarEventId } from '../../../features/daily/api/scheduleApi'
 import { useCreateTask, useUpdateTask, useDeleteTask } from '../../../features/todo/hooks/useTodos'
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
@@ -229,7 +253,11 @@ import {
 } from '../../../features/calendar/api/calendarApi'
 import { ensureValidCalendarToken } from '../../../features/calendar/api/calendarTokenSync'
 import { logError } from '../../utils/logError'
-import { supabase } from '../../../integrations/supabase/client'
+import { withProgress } from '../../hooks/useMutationWithFeedback'
+import { invalidate } from '../../query'
+import { ModalShell } from '../../modals/ModalShell'
+import { entityModal } from '../../modals/useEntityModal'
+import { Button, Skeleton } from '../../ui'
 import { ScheduleTab } from './ScheduleTab'
 import { TaskTab } from './TaskTab'
 import { RecurringTab } from './RecurringTab'
@@ -242,26 +270,18 @@ import {
 import type { PlanForm } from './planForm'
 import type { PlanMode, UnifiedPlanModalProps, PlanModalConfig } from './planModal.types'
 import type { TimeBlock } from '../../../features/daily/types'
+import type { Task } from '../../../features/todo/types'
 import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
 
-// ── z-index stacking — newest open modal always wins ──────────────────────────
-let zCursor = 1000
-function useTopZIndex(open: boolean): number {
-  const [z, setZ] = useState(1000)
-  useEffect(() => {
-    if (open) { zCursor += 10; setZ(zCursor) }
-  }, [open])
-  return z
-}
-
 const MODE_HEADING: Record<PlanMode, { create: string; edit: string }> = {
-  task:      { create: 'New Task',     edit: 'Edit Task' },
+  task:      { create: 'New task',     edit: 'Edit task' },
   schedule:  { create: 'Add to schedule', edit: 'Edit schedule' },
   recurring: { create: 'New repeating schedule', edit: 'Edit repeating schedule' },
 }
 
 export function UnifiedPlanModal({
   open, onClose, mode, config, defaults, source, task, timeBlock, scheduleBlock, scheduleExtra, taskExtra, onSaved,
+  loading = false, loadError,
 }: UnifiedPlanModalProps) {
   // task / timeBlock / scheduleBlock presence always wins over an explicit
   // `mode` — a caller editing an existing row never needs to think about
@@ -269,46 +289,59 @@ export function UnifiedPlanModal({
   // be a caller bug we'd rather resolve predictably than surface silently.
   const effectiveMode: PlanMode = task ? 'task' : scheduleBlock ? 'recurring' : timeBlock ? 'schedule' : (mode ?? 'task')
   const editMode   = !!task || !!timeBlock || !!scheduleBlock
-  const zIndex     = useTopZIndex(open)
 
   const [form,      setForm]      = useState<PlanForm>(() => buildInitialForm(defaults, task, timeBlock, scheduleBlock))
   const [saving,    setSaving]    = useState(false)
   // The task's linked one-off time_block, if any — fetched once per open via
   // hydrateLinkedBlock below. null = confirmed no linked block; undefined =
   // not fetched yet (mode='task', editMode only).
-  const [linkedBlock, setLinkedBlock] = useState<TimeBlock | null | undefined>(undefined)
+  const [linkedBlock, setLinkedBlock] = useState<TimeBlock | null | undefined>(() => (task ? undefined : null))
 
   const qc          = useQueryClient()
   const calToken    = useCalendarStore(s => s.accessToken)
   const createBlock = useCreateTimeBlock()
+  const updateBlock = useUpdateTimeBlock()
+  const deleteBlock = useDeleteTimeBlock()
   const createRecur = useCreateScheduleBlock()
+  const updateRecur = useUpdateScheduleBlock()
+  const deleteRecur = useDeleteScheduleBlock()
   const createTask  = useCreateTask()
   const updateTaskM = useUpdateTask()
   const deleteTaskM = useDeleteTask()
   const { data: googleTaskLists = [] } = useGoogleTaskLists()
 
-  // Re-seed whenever the modal (re)opens or its inputs change.
-  useEffect(() => {
-    if (!open) return
-    setForm(buildInitialForm(defaults, task, timeBlock, scheduleBlock))
-    setLinkedBlock(task ? undefined : null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, task, timeBlock, scheduleBlock])
+  // Re-seed whenever the modal (re)opens or its inputs change — adjusted
+  // during render (not in an effect) so the stale form never paints. `seed`
+  // is a fresh object per open/input change; the list hydration below keys
+  // off its identity to run once per open.
+  const [seed, setSeed] = useState(() => ({ open, task, timeBlock, scheduleBlock }))
+  if (seed.open !== open || seed.task !== task || seed.timeBlock !== timeBlock || seed.scheduleBlock !== scheduleBlock) {
+    setSeed({ open, task, timeBlock, scheduleBlock })
+    if (open) {
+      setForm(buildInitialForm(defaults, task, timeBlock, scheduleBlock))
+      setLinkedBlock(task ? undefined : null)
+    }
+  }
 
-  // Fetch a Task's linked one-off block, ONCE per open, and correct the
-  // schedule sub-section's seeded guess to reality. Guarded by a ref (not
-  // just `linkedBlock === undefined`, since that's also the value while the
-  // fetch is in flight) so this never re-fires and clobbers an edit the user
-  // made while it was loading — plan requirement: "async fetch yüzünden
-  // kullanıcının editini sonradan overwrite eden useEffect yazma."
-  const hydratedRef = useRef(false)
+  // Fetch a Task's linked one-off block, ONCE per open (a fresh server read
+  // through the schedule hook layer's shared query options — never a cached
+  // row), and correct the schedule sub-section's seeded guess to reality.
+  // Guarded by a ref (not just `linkedBlock === undefined`, since that's also
+  // the value while the fetch is in flight) so this never re-fires and
+  // clobbers an edit the user made while it was loading — plan requirement:
+  // "async fetch yüzünden kullanıcının editini sonradan overwrite eden
+  // useEffect yazma." A failed read leaves `linkedBlock` undefined, which
+  // keeps Save disabled: guessing "no block" could insert a second one.
+  // Keyed on the task OBJECT: a re-seed (new task identity) re-hydrates too,
+  // instead of leaving Save stuck on "Loading…" behind a spent guard.
+  const hydratedForRef = useRef<Task | null>(null)
   useEffect(() => {
-    if (!open || !task) { hydratedRef.current = false; return }
-    if (hydratedRef.current) return
+    if (!open || !task) { hydratedForRef.current = null; return }
+    if (hydratedForRef.current === task) return
     let cancelled = false
-    supabase.from('time_blocks').select('*').eq('task_id', task.id).maybeSingle().then(({ data }) => {
-      if (cancelled || hydratedRef.current) return
-      hydratedRef.current = true
+    qc.fetchQuery(linkedTimeBlockQuery(task.id)).then(data => {
+      if (cancelled || hydratedForRef.current === task) return
+      hydratedForRef.current = task
       setLinkedBlock(data ?? null)
       if (data) {
         setForm(f => ({
@@ -321,6 +354,10 @@ export function UnifiedPlanModal({
           gcal: !!data.google_calendar_event_id,
         }))
       }
+    }, (err: Error) => {
+      if (cancelled) return
+      toast.error(`Couldn't load this task's schedule: ${err.message}`)
+      logError(err.message, { action: 'load_linked_time_block', taskId: task.id })
     })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -328,13 +365,15 @@ export function UnifiedPlanModal({
 
   // googleListTitle is seeded from the task's domain (a guess) synchronously
   // — correct it to the task's REAL current list title once the lists load,
-  // same one-time-hydration shape as the schedule fetch above.
-  useEffect(() => {
-    if (!open || !task?.google_tasklist_id) return
+  // ONCE per open (a later lists refetch never overwrites what was typed).
+  const [listSeed, setListSeed] = useState<object | null>(null)
+  if (open && task?.google_tasklist_id && listSeed !== seed) {
     const list = googleTaskLists.find(l => l.id === task.google_tasklist_id)
-    if (list) setForm(f => ({ ...f, googleListTitle: list.title }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, task, googleTaskLists])
+    if (list) {
+      setListSeed(seed)
+      setForm(f => ({ ...f, googleListTitle: list.title }))
+    }
+  }
 
   const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
 
@@ -354,14 +393,12 @@ export function UnifiedPlanModal({
     const token = await ensureValidCalendarToken()
     if (!token) return 'unknown' // nothing here is verified without a token
     try {
-      const { data: current, error: lookupError } = await supabase
-        .from('time_blocks').select('google_calendar_event_id').eq('id', blockId).single()
       // A real bug fixed: this read's error was never checked, so a DB
       // failure here (network, RLS, …) looked identical to "no event
       // linked yet" and this function would go on to create a SECOND
-      // event for a block that already had one.
-      if (lookupError) throw lookupError
-      if (current?.google_calendar_event_id) return 'linked'
+      // event for a block that already had one. The api read throws.
+      const currentEventId = await fetchTimeBlockCalendarEventId(blockId)
+      if (currentEventId) return 'linked'
 
       const start = new Date(`${dateStr}T${timeHHMM}:00`)
       const end   = new Date(start.getTime() + durationMin * 60_000)
@@ -389,6 +426,9 @@ export function UnifiedPlanModal({
       }
 
       try {
+        // Raw api call on purpose (not useUpdateTimeBlock): a failure here is
+        // handled by the compensation below and must not also be toasted as
+        // a failed save. handleSave refreshes the task graph afterwards.
         await updateTimeBlock(blockId, { google_calendar_event_id: created.id })
         return 'linked'
       } catch (persistErr) {
@@ -453,7 +493,7 @@ export function UnifiedPlanModal({
     const title = form.title.trim()
     if (!form.scheduled) {
       // "Unschedule": the time slot goes, the Task never does.
-      if (existingBlock) await deleteTimeBlock(existingBlock.id)
+      if (existingBlock) await deleteBlock.mutateAsync({ id: existingBlock.id, silent: true })
       return 'not_linked'
     }
 
@@ -465,17 +505,17 @@ export function UnifiedPlanModal({
       // (404) that the existing block's calendar event is gone — trust
       // ITS confirmed outcome, not the pre-call `existingBlock` snapshot,
       // when deciding what's actually linked right now.
-      const syncResult = await updateTimeBlock(existingBlock.id, {
+      const syncResult = await updateBlock.mutateAsync({ id: existingBlock.id, patch: {
         date: form.date, start_time: startTimeVal, duration_minutes: effDuration,
         title, category: form.category,
-      })
+      } })
       if (form.gcal && calToken && syncResult.calendarStatus === 'not_linked') {
         // Never linked, or just confirmed gone (404 — cleared above) —
         // nothing there right now, safe to (re)create one.
         return await linkCalendarEvent(existingBlock.id, form.date, form.startTime, effDuration, title)
       }
       if (!form.gcal && calToken && existingBlock.google_calendar_event_id) {
-        const unlinkResult = await updateTimeBlock(existingBlock.id, { google_calendar_event_id: null })
+        const unlinkResult = await updateBlock.mutateAsync({ id: existingBlock.id, patch: { google_calendar_event_id: null } })
         return unlinkResult.calendarStatus
       }
       // form.gcal && calToken && syncResult.calendarStatus === 'unknown' falls
@@ -566,7 +606,7 @@ export function UnifiedPlanModal({
     // duplicate Google Task (one task, one Google entry) — same policy as
     // before, now keyed off `scheduled` + `gcal` instead of domain==='personal'.
     const willBeCalendarEvent = form.scheduled && form.gcal && !!calToken
-    const { task: created, googleTaskError } = await createTask.mutateAsync({
+    const { task: created } = await createTask.mutateAsync({
       title,
       description: form.notes.trim() || null,
       section:     form.section,
@@ -580,7 +620,6 @@ export function UnifiedPlanModal({
       google_tasklist_id: googleTasklistId,
       skipGoogleTasks: willBeCalendarEvent,
     })
-    if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
     const calendarStatus = await syncTaskSchedule(created.id, null)
     // The mirror of the edit-path fix above: if the calendar link this task
     // was created betting on didn't actually happen, push it to Google
@@ -618,7 +657,7 @@ export function UnifiedPlanModal({
         // already exists for on every other create path; this branch was the
         // one place that forgot to pass it).
         const willBeCalendarEvent = form.gcal && !!calToken
-        const { task: created, googleTaskError } = await createTask.mutateAsync({
+        const { task: created } = await createTask.mutateAsync({
           title, section: sectionForDate(form.date), domain: defaults?.domain ?? 'personal',
           priority: defaults?.priority ?? 'medium', due_date: form.date,
           // No explicit `source` on this call site (common — e.g. a
@@ -628,23 +667,22 @@ export function UnifiedPlanModal({
           source_id:   source?.sourceId       ?? timeBlock.source_id ?? undefined,
           skipGoogleTasks: willBeCalendarEvent,
         })
-        if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
         linkedTaskId = created.id
         skippedGoogleTasksForLinkedTask = willBeCalendarEvent
       }
       // Same fix as syncTaskSchedule above: trust THIS call's own confirmed
       // outcome, not the pre-call `timeBlock` snapshot — a 404 discovered
       // here must not read as "still linked".
-      const syncResult = await updateTimeBlock(timeBlock.id, {
+      const syncResult = await updateBlock.mutateAsync({ id: timeBlock.id, patch: {
         date: form.date, start_time: startTimeVal, duration_minutes: effDuration,
         title, category: form.category,
         ...(linkedTaskId ? { task_id: linkedTaskId } : {}),
-      })
+      } })
       let calendarStatus: TimeBlockCalendarStatus = syncResult.calendarStatus
       if (form.gcal && calToken && syncResult.calendarStatus === 'not_linked') {
         calendarStatus = await linkCalendarEvent(timeBlock.id, form.date, form.startTime, effDuration, title)
       } else if (!form.gcal && calToken && timeBlock.google_calendar_event_id) {
-        const unlinkResult = await updateTimeBlock(timeBlock.id, { google_calendar_event_id: null })
+        const unlinkResult = await updateBlock.mutateAsync({ id: timeBlock.id, patch: { google_calendar_event_id: null } })
         calendarStatus = unlinkResult.calendarStatus
       } else if (!form.gcal) {
         calendarStatus = 'not_linked'
@@ -676,13 +714,12 @@ export function UnifiedPlanModal({
       const taskDomain = defaults?.domain
         ?? (form.category === 'work' ? 'work' : form.category === 'media' ? 'media' : 'personal')
       const willBeCalendarEvent = form.gcal && !!calToken
-      const { task: created, googleTaskError } = await createTask.mutateAsync({
+      const { task: created } = await createTask.mutateAsync({
         title, section: sectionForDate(form.date), domain: taskDomain,
         priority: defaults?.priority ?? 'medium', due_date: form.date,
         source_type: source?.taskSourceType, source_id: source?.sourceId,
         skipGoogleTasks: willBeCalendarEvent,
       })
-      if (googleTaskError) toast.error(`Google Tasks sync failed: ${googleTaskError}`)
       linkedTaskId = created.id
       skippedGoogleTasksForLinkedTask = willBeCalendarEvent
     }
@@ -722,10 +759,10 @@ export function UnifiedPlanModal({
     const days = daysForRecurrence(form.recurrence, form.weeklyDays)
 
     if (scheduleBlock) {
-      await updateScheduleBlock(scheduleBlock.id, {
+      await updateRecur.mutateAsync({ id: scheduleBlock.id, patch: {
         title, days_of_week: days, start_time: startTimeVal,
         end_time: endTimeFrom(form.startTime, effDuration), category: form.category,
-      })
+      } })
       onSaved?.({ mode: 'recurring' })
       return
     }
@@ -754,72 +791,47 @@ export function UnifiedPlanModal({
   const recurrenceIncomplete = (effectiveMode === 'recurring' || effectiveMode === 'schedule')
     && !hasValidRecurrenceSelection(form.recurrence, form.weeklyDays)
 
+  // Every write inside the save paths goes through a useMutationWithFeedback
+  // hook, which already toasts + logs its own failure; a throw here only
+  // means "stop the multi-step flow", never "toast again".
   async function handleSave() {
     if (!form.title.trim()) { toast.error('Title is required'); return }
     if (scheduleStillLoading) { toast.error('Still loading this task’s schedule — try again in a moment'); return }
     if (recurrenceIncomplete) { toast.error('Pick at least one day for the weekly repeat.'); return }
     setSaving(true)
-    const tid = toast.loading(editMode ? 'Saving…' : 'Planning…')
-    try {
+    const ok = await withProgress(async () => {
       if (effectiveMode === 'task')            await saveTask()
       else if (effectiveMode === 'schedule')   await saveSchedule()
       else                                     await saveRecurring()
-      toast.dismiss(tid); toast.success(editMode ? 'Saved ✓' : 'Planned ✓')
-      qc.invalidateQueries({ queryKey: ['tasks'] })
-      qc.invalidateQueries({ queryKey: ['schedule'] })
-      qc.invalidateQueries({ queryKey: ['calendar'] })
-      onClose()
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-    } finally {
-      setSaving(false)
-    }
+      return true
+    }, { loading: editMode ? 'Saving…' : 'Planning…', success: editMode ? 'Saved' : 'Planned' })
+    setSaving(false)
+    // Also covers the calendar-link writes, which bypass the hooks on purpose
+    // (see linkCalendarEvent) — refresh on failure too: an earlier step may
+    // already have landed.
+    void invalidate(qc, 'taskGraph')
+    if (ok) onClose()
   }
 
   async function handleDelete() {
-    if (task) {
-      if (!confirm('Delete this task?')) return
-      const tid = toast.loading('Deleting…')
-      try {
-        await deleteTaskM.mutateAsync(task)
-        toast.dismiss(tid); toast.success('Deleted ✓')
-        onClose()
-      } catch (err) {
-        toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-      }
-      return
-    }
-    if (scheduleBlock) {
-      if (!confirm('Delete this repeating schedule?')) return
-      const tid = toast.loading('Deleting…')
-      try {
-        await deleteScheduleBlock(scheduleBlock.id)
-        qc.invalidateQueries({ queryKey: ['schedule', 'blocks'] })
-        toast.dismiss(tid); toast.success('Deleted ✓')
-        onClose()
-      } catch (err) {
-        toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-      }
-      return
-    }
-    if (timeBlock) {
-      if (!confirm('Delete this schedule?')) return
-      const tid = toast.loading('Deleting…')
-      try {
-        await deleteTimeBlock(timeBlock.id)
-        qc.invalidateQueries({ queryKey: ['schedule'] })
-        qc.invalidateQueries({ queryKey: ['calendar'] })
-        toast.dismiss(tid); toast.success('Deleted ✓')
-        onClose()
-      } catch (err) {
-        toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed')
-      }
-    }
+    const target = task
+      ? { title: 'Delete this task?', label: 'Delete task', run: () => deleteTaskM.mutateAsync(task) }
+      : scheduleBlock
+        ? { title: 'Delete this repeating schedule?', label: 'Delete', run: () => deleteRecur.mutateAsync(scheduleBlock.id) }
+        : timeBlock
+          ? { title: 'Delete this schedule?', label: 'Delete', run: () => deleteBlock.mutateAsync({ id: timeBlock.id, silent: true }) }
+          : null
+    if (!target) return
+    if (!(await entityModal.confirm({ title: target.title, confirmLabel: target.label, destructive: true }))) return
+    setSaving(true)
+    const ok = await withProgress(async () => { await target.run(); return true }, { loading: 'Deleting…', success: 'Deleted' })
+    setSaving(false)
+    if (ok) onClose()
   }
 
   const primaryLabel = saving
     ? (editMode ? 'Saving…' : 'Planning…')
-    : (editMode ? 'Save Changes' : (effectiveMode === 'task' ? 'Add Task' : effectiveMode === 'recurring' ? 'Save Repeat' : 'Plan it'))
+    : (editMode ? 'Save changes' : (effectiveMode === 'task' ? 'Add task' : effectiveMode === 'recurring' ? 'Save repeat' : 'Plan it'))
 
   // Editing an existing one-off block never offers recurrence (no silent
   // one-off <-> recurring conversion — a real, separate storage-migration UX
@@ -829,28 +841,55 @@ export function UnifiedPlanModal({
     ? { ...config, hideScheduleFields: [...(config?.hideScheduleFields ?? []), 'recurrence'] }
     : config
 
-  return (
-    <Dialog open={open} onClose={onClose} className="relative" style={{ zIndex }}>
-      <DialogBackdrop
-        transition
-        className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0"
-      />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel
-          transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-md max-h-[90vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
-        >
-          {/* Header — no tab switcher any more; mode decides the content */}
-          <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-100 sticky top-0 bg-cream-50 z-10">
-            <h2 className="text-base font-bold text-ink-900">
-              {config?.heading ?? MODE_HEADING[effectiveMode][editMode ? 'edit' : 'create']}
-            </h2>
-            <button
-              type="button" onClick={onClose}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl"
-            >×</button>
-          </div>
+  // A row still loading by id (or failed to) is an edit, not a create.
+  const blocked = loading || !!loadError
+  const heading = config?.heading ?? MODE_HEADING[effectiveMode][editMode || blocked ? 'edit' : 'create']
 
+  const footer = (
+    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+      {editMode && !blocked && (
+        <Button
+          variant="ghost" icon={<Trash2 />} onClick={() => { void handleDelete() }} disabled={saving}
+          className="text-danger hover:text-danger sm:mr-auto"
+        >
+          {task ? 'Delete task' : scheduleBlock ? 'Delete repeating schedule' : 'Delete schedule'}
+        </Button>
+      )}
+      <div className="flex gap-2 sm:ml-auto">
+        <Button onClick={onClose} disabled={saving} className="flex-1 sm:flex-none">Cancel</Button>
+        {!loadError && (
+          <Button
+            variant="primary" onClick={() => { void handleSave() }} loading={saving}
+            disabled={blocked || !form.title.trim() || scheduleStillLoading || recurrenceIncomplete}
+            className="flex-1 sm:flex-none"
+          >{blocked || scheduleStillLoading ? 'Loading…' : primaryLabel}</Button>
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+    <ModalShell open={open} onClose={onClose} title={heading} footer={footer} size="md" dismissible={!saving}>
+      {loadError ? (
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <AlertCircle className="h-6 w-6 text-danger" aria-hidden />
+          <p className="text-body text-fg-2">{loadError.message}</p>
+          {loadError.onRetry && <Button size="sm" onClick={loadError.onRetry}>Try again</Button>}
+        </div>
+      ) : loading ? (
+        <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading">
+          <Skeleton className="h-3 w-16" />
+          <Skeleton className="h-16 w-full" rounded="rounded-input" />
+          <Skeleton className="h-3 w-20" />
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-20" rounded="rounded-full" />
+            <Skeleton className="h-9 w-20" rounded="rounded-full" />
+            <Skeleton className="h-9 w-20" rounded="rounded-full" />
+          </div>
+          <Skeleton className="h-11 w-full" rounded="rounded-input" />
+        </div>
+      ) : (
+        <>
           {effectiveMode === 'task' && (
             <TaskTab
               form={form} patch={patch} config={config} gcalAvailable={!!calToken} editMode={editMode}
@@ -863,31 +902,8 @@ export function UnifiedPlanModal({
           {effectiveMode === 'recurring' && (
             <RecurringTab form={form} patch={patch} extra={scheduleExtra} />
           )}
-
-          {/* Footer */}
-          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-cream-50">
-            <button
-              type="button" onClick={onClose}
-              className="flex-1 min-h-[44px] border border-ink-200 text-ink-700 rounded-xl text-sm font-medium hover:bg-cream-50 transition-colors"
-            >Cancel</button>
-            <button
-              type="button" onClick={handleSave} disabled={saving || !form.title.trim() || scheduleStillLoading || recurrenceIncomplete}
-              className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >{scheduleStillLoading ? 'Loading…' : primaryLabel}</button>
-          </div>
-
-          {editMode && (
-            <div className="px-5 pb-5">
-              <button
-                type="button" onClick={handleDelete} disabled={saving}
-                className="w-full min-h-[44px] text-sm font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
-              >
-                {task ? 'Delete Task' : scheduleBlock ? 'Delete Repeating Schedule' : 'Delete Schedule'}
-              </button>
-            </div>
-          )}
-        </DialogPanel>
-      </div>
-    </Dialog>
+        </>
+      )}
+    </ModalShell>
   )
 }

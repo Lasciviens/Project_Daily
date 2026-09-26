@@ -1,31 +1,22 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../shared/query'
 import { fetchBodyMeasurements, callHevyApi } from '../api/hevyApi'
-import { toast } from '../../../app/store'
-import { logError } from '../../../shared/utils/logError'
 
 export function useHevyBodyMeasurements(limit?: number) {
   return useQuery({
-    queryKey: ['hevy', 'measurements', limit],
+    queryKey: qk.hevy.measurements(limit),
     queryFn:  () => fetchBodyMeasurements(limit),
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 }
 
 export function useUpsertBodyMeasurement() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (payload: unknown) => callHevyApi('upsert_body_measurement', payload),
-    onMutate: () => toast.loading('Saving measurement…'),
-    onSuccess: (_data, _vars, tid) => {
-      qc.invalidateQueries({ queryKey: ['hevy', 'measurements'] })
-      toast.dismiss(tid as string)
-      toast.success('Measurement saved ✓')
-    },
-    onError: (err, _vars, tid) => {
-      toast.dismiss(tid as string)
-      const msg = (err as Error).message ?? 'Failed to save measurement'
-      toast.error(msg)
-      logError(`Body measurement save failed: ${msg}`)
-    },
+  return useMutationWithFeedback({
+    action:         'upsert_body_measurement',
+    loadingMessage: 'Saving measurement…',
+    successMessage: 'Measurement saved',
+    mutationFn:     (payload: unknown) => callHevyApi('upsert_body_measurement', payload),
+    invalidates:    [qk.hevy.measurementsAll],
   })
 }

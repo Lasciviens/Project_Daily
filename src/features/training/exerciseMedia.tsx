@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
+import { Pencil } from 'lucide-react'
+import { ModalShell } from '../../shared/modals'
+import { Button } from '../../shared/ui'
 import { useExerciseGifOverrides, useUpsertExerciseGifOverride, useDeleteExerciseGifOverride } from './hooks/useExerciseGifOverrides'
-import { resolveExerciseGif, normalizeTokens, type IndexedExercise } from './exerciseGifResolver'
+import { resolveExerciseGif } from './exerciseGifResolver'
+import { useExerciseImageDb } from './hooks/useExerciseImageDb'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Exercise demo GIFs.
@@ -35,44 +37,6 @@ import { resolveExerciseGif, normalizeTokens, type IndexedExercise } from './exe
 //  dataset has no entry for at all.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const GIF_SOURCE = 'https://cdn.jsdelivr.net/gh/JahelCuadrado/ExerciseGymGifsDB@v1.1.0'
-const MANIFEST_URL = `${GIF_SOURCE}/api/en/exercises.json`
-
-interface RawExercise {
-  name: string
-  equipment: string | null
-  gifUrl: string
-  instructions?: string[]
-}
-
-// Fetched + indexed once, cached forever (the dataset is static). Exported so
-// the manual-override picker below can search the SAME already-loaded
-// dataset rather than fetching it a second time.
-export function useExerciseImageDb() {
-  return useQuery({
-    queryKey: ['exercise-gif-db'],
-    queryFn: async (): Promise<IndexedExercise[]> => {
-      const res = await fetch(MANIFEST_URL)
-      if (!res.ok) throw new Error(`exercise-gif-db ${res.status}`)
-      // Manifest is { count, exercises: [...] } — not a bare array.
-      const json = await res.json()
-      const raw: RawExercise[] = Array.isArray(json) ? json : (json.exercises ?? [])
-      return raw
-        .filter(e => e.gifUrl)
-        .map(e => ({
-          name: e.name,
-          tokens: normalizeTokens(e.name).tokens,
-          equipment: e.equipment,
-          gifUrl: e.gifUrl,
-          instructions: e.instructions ?? [],
-        }))
-    },
-    staleTime: Infinity,
-    gcTime: Infinity,
-    retry: 1,
-  })
-}
-
 /**
  * Looping demo GIF thumbnail for an exercise, matched by name to
  * ExerciseGymGifsDB (or a manual override, if one exists for this
@@ -96,55 +60,29 @@ export function ExerciseThumb({ title, templateId, size = 48 }: { title: string;
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="shrink-0 rounded-lg overflow-hidden border border-ink-200 bg-cream-100 focus:outline-none focus:ring-2 focus:ring-accent-400"
+        className="shrink-0 overflow-hidden rounded-lg border border-line bg-surface-2"
         style={{ width: size, height: size }}
         aria-label={`Show ${title} demo`}
       >
-        <img
-          src={match.gifUrl}
-          alt=""
-          loading="lazy"
-          onError={() => setFailed(true)}
-          className="w-full h-full object-cover"
-        />
+        <img src={match.gifUrl} alt="" loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />
       </button>
 
-      <Dialog open={open} onClose={() => setOpen(false)} className="relative z-[70]">
-        <DialogBackdrop transition className="fixed inset-0 bg-ink-900/50 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-        <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <DialogPanel transition className="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-cream-50">
-              <h3 className="text-sm font-semibold text-ink-800 truncate pr-2">{title}</h3>
-              <button
-                onClick={() => setOpen(false)}
-                className="w-9 h-9 flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none shrink-0"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-4 flex flex-col gap-3">
-              <img
-                src={match.gifUrl}
-                alt={title}
-                className="w-full rounded-xl border border-ink-100 bg-cream-100"
-              />
-              {match.overridden && (
-                <p className="text-[11px] text-accent-700">✎ Manually set for this exercise.</p>
-              )}
-              {!match.overridden && match.name.toLowerCase() !== title.toLowerCase() && (
-                <p className="text-[11px] text-ink-400">Demo: {match.name}</p>
-              )}
-              {match.instructions.length > 0 && (
-                <ol className="flex flex-col gap-1.5 list-decimal list-inside">
-                  {match.instructions.map((step, i) => (
-                    <li key={i} className="text-xs text-ink-600 leading-relaxed">{step}</li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          </DialogPanel>
+      <ModalShell open={open} onClose={() => setOpen(false)} title={title} size="sm">
+        <div className="flex flex-col gap-3">
+          <img src={match.gifUrl} alt={title} className="w-full rounded-row border border-line bg-surface-2" />
+          {match.overridden && <p className="text-meta text-fg-muted">Manually set for this exercise.</p>}
+          {!match.overridden && match.name.toLowerCase() !== title.toLowerCase() && (
+            <p className="text-meta text-fg-muted">Demo: {match.name}</p>
+          )}
+          {match.instructions.length > 0 && (
+            <ol className="flex list-inside list-decimal flex-col gap-1.5">
+              {match.instructions.map((step, i) => (
+                <li key={i} className="text-body leading-relaxed text-fg-2">{step}</li>
+              ))}
+            </ol>
+          )}
         </div>
-      </Dialog>
+      </ModalShell>
     </>
   )
 }
@@ -184,92 +122,76 @@ export function ExerciseGifPicker({ templateId, title }: { templateId: string; t
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-[11px] font-semibold text-ink-400 hover:text-accent-700 min-h-[32px] px-1 shrink-0"
+        className="btn-ghost btn-sm shrink-0 gap-1 self-start px-2 text-meta text-fg-muted"
       >
-        {existing ? '✎ GIF (fixed)' : '✎ Fix GIF'}
+        <Pencil className="h-3.5 w-3.5" aria-hidden />
+        {existing ? 'GIF (fixed)' : 'Fix GIF'}
       </button>
 
-      <Dialog open={open} onClose={() => setOpen(false)} className="relative z-[70]">
-        <DialogBackdrop transition className="fixed inset-0 bg-ink-900/50 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0" />
-        <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <DialogPanel transition className="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-ink-100 sticky top-0 bg-cream-50">
-              <h3 className="text-sm font-semibold text-ink-800 truncate pr-2">Fix GIF — {title}</h3>
-              <button onClick={() => setOpen(false)} className="w-9 h-9 flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none shrink-0">×</button>
-            </div>
-
-            <div className="p-4 flex flex-col gap-4">
-              {existing && (
-                <div className="flex items-center gap-3 p-2.5 rounded-lg border border-ink-200 bg-cream-100">
-                  <img src={existing.gif_url} alt="" className="w-14 h-14 rounded-md object-cover border border-ink-200" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-ink-700">Currently manually set</p>
-                    <p className="text-[11px] text-ink-400 truncate">{existing.gif_url}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => remove.mutate(templateId)}
-                    className="text-[11px] font-semibold text-red-600 hover:text-red-700 min-h-[36px] px-2 shrink-0"
-                  >
-                    Revert
-                  </button>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-ink-600">Search the demo GIF library</label>
-                <input
-                  type="search"
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  placeholder="e.g. incline dumbbell press"
-                  className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-                />
-                {results.length > 0 && (
-                  <div className="flex flex-col gap-1 max-h-56 overflow-y-auto border border-ink-200 rounded-lg divide-y divide-ink-100">
-                    {results.map(r => (
-                      <button
-                        key={r.name}
-                        type="button"
-                        onClick={() => pick(r.gifUrl, 'exercisegymgifsdb')}
-                        className="flex items-center gap-2.5 p-2 min-h-[44px] hover:bg-cream-100 text-left"
-                      >
-                        <img src={r.gifUrl} alt="" loading="lazy" className="w-10 h-10 rounded object-cover border border-ink-200 shrink-0" />
-                        <span className="text-xs text-ink-700 flex-1 min-w-0 truncate">{r.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {query.trim() && results.length === 0 && (
-                  <p className="text-xs text-ink-400">No matches in the demo library — paste a GIF URL below instead.</p>
-                )}
+      <ModalShell open={open} onClose={() => setOpen(false)} title={`Fix GIF — ${title}`} size="sm">
+        <div className="flex flex-col gap-4">
+          {existing && (
+            <div className="flex items-center gap-3 rounded-row border border-line bg-surface-2 p-2.5">
+              <img src={existing.gif_url} alt="" className="h-14 w-14 rounded-md border border-line object-cover" />
+              <div className="min-w-0 flex-1">
+                <p className="text-meta font-semibold text-fg-2">Currently manually set</p>
+                <p className="truncate text-micro font-normal text-fg-muted">{existing.gif_url}</p>
               </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-ink-600">Or paste a GIF URL directly</label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={customUrl}
-                    onChange={e => setCustomUrl(e.target.value)}
-                    placeholder="https://…"
-                    className="flex-1 min-w-0 min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-                  />
-                  <button
-                    type="button"
-                    disabled={!customUrl.trim()}
-                    onClick={() => pick(customUrl.trim(), 'manual')}
-                    className="min-h-[44px] px-3 rounded-lg bg-ink-950 text-white text-xs font-semibold disabled:opacity-40"
-                  >
-                    Save
-                  </button>
-                </div>
-                <p className="text-[11px] text-ink-300">For an exercise the demo library doesn&apos;t have at all — any public, direct GIF/image URL works.</p>
-              </div>
+              <Button size="sm" variant="ghost" className="shrink-0 !text-danger" loading={remove.isPending} onClick={() => remove.mutate(templateId)}>
+                Revert
+              </Button>
             </div>
-          </DialogPanel>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`gif-search-${templateId}`} className="field-label">Search the demo GIF library</label>
+            <input
+              id={`gif-search-${templateId}`}
+              type="search"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="e.g. incline dumbbell press"
+              className="input w-full"
+            />
+            {results.length > 0 && (
+              <div className="flex max-h-56 flex-col divide-y divide-line overflow-y-auto rounded-row border border-line">
+                {results.map(r => (
+                  <button
+                    key={r.name}
+                    type="button"
+                    onClick={() => pick(r.gifUrl, 'exercisegymgifsdb')}
+                    className="flex min-h-[44px] items-center gap-2.5 p-2 text-left hover:bg-surface-hover"
+                  >
+                    <img src={r.gifUrl} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded border border-line object-cover" />
+                    <span className="min-w-0 flex-1 truncate text-body text-fg-2">{r.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {query.trim() && results.length === 0 && (
+              <p className="text-meta text-fg-muted">No matches in the demo library — paste a GIF URL below instead.</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`gif-url-${templateId}`} className="field-label">Or paste a GIF URL directly</label>
+            <div className="flex gap-2">
+              <input
+                id={`gif-url-${templateId}`}
+                type="url"
+                value={customUrl}
+                onChange={e => setCustomUrl(e.target.value)}
+                placeholder="https://…"
+                className="input min-w-0 flex-1"
+              />
+              <Button variant="primary" disabled={!customUrl.trim()} loading={upsert.isPending} onClick={() => pick(customUrl.trim(), 'manual')}>
+                Save
+              </Button>
+            </div>
+            <p className="text-meta text-fg-muted">For an exercise the demo library doesn&apos;t have at all — any public, direct GIF/image URL works.</p>
+          </div>
         </div>
-      </Dialog>
+      </ModalShell>
     </>
   )
 }

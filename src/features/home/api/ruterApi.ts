@@ -102,15 +102,6 @@ export const TRANSPORT_ICON: Record<string, string> = {
   ferry: '⛴', water: '⛴', foot: '🚶',
 }
 
-export const TRANSPORT_COLOR: Record<string, string> = {
-  bus:   'bg-blue-100 text-blue-800',
-  tram:  'bg-green-100 text-green-800',
-  metro: 'bg-purple-100 text-purple-800',
-  rail:  'bg-gray-100 text-gray-800',
-  ferry: 'bg-cyan-100 text-cyan-800',
-  foot:  'bg-ink-100 text-ink-600',
-}
-
 // ─── GraphQL helper ───────────────────────────────────────────────────────────
 
 async function gql(query: string): Promise<unknown> {

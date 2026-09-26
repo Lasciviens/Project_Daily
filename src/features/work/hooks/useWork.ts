@@ -1,4 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { qk, STALE } from '../../../shared/query'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import {
   fetchWorkNote,
   upsertWorkNote,
@@ -12,75 +14,69 @@ import {
 } from '../api/workApi'
 
 export function useWorkNote() {
-  return useQuery({
-    queryKey: ['work', 'note'],
-    queryFn: fetchWorkNote,
-  })
+  return useQuery({ queryKey: qk.work.note(), queryFn: fetchWorkNote, staleTime: STALE.default })
 }
 
+// Autosave: silent on success (the widget shows "Saved"), but a failure is
+// always toasted + logged — it used to vanish without a trace.
 export function useUpsertWorkNote() {
-  const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'upsert_work_note',
+    errorFallback: "Couldn't save your notes",
     mutationFn: (content: string) => upsertWorkNote(content),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['work', 'note'] }),
+    invalidates: [qk.work.note()],
   })
 }
 
 export function usePinnedLinks() {
-  return useQuery({
-    queryKey: ['work', 'links'],
-    queryFn: fetchPinnedLinks,
-    staleTime: 10 * 60_000,
-  })
+  return useQuery({ queryKey: qk.work.links(), queryFn: fetchPinnedLinks, staleTime: STALE.long })
 }
 
 export function useCreatePinnedLink() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ title, url }: { title: string; url: string }) =>
-      createPinnedLink(title, url),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['work', 'links'] }),
+  return useMutationWithFeedback({
+    action: 'create_pinned_link',
+    successMessage: 'Link added',
+    mutationFn: ({ title, url }: { title: string; url: string }) => createPinnedLink(title, url),
+    invalidates: [qk.work.links()],
   })
 }
 
 export function useDeletePinnedLink() {
-  const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'delete_pinned_link',
     mutationFn: (id: string) => deletePinnedLink(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['work', 'links'] }),
+    invalidates: [qk.work.links()],
   })
 }
 
 export function useWeeklyGoals(weekStart: string) {
   return useQuery({
-    queryKey: ['work', 'goals', weekStart],
+    queryKey: qk.work.goals(weekStart),
     queryFn: () => fetchWeeklyGoals(weekStart),
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
   })
 }
 
 export function useCreateWeeklyGoal() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ weekStart, title }: { weekStart: string; title: string }) =>
-      createWeeklyGoal(weekStart, title),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['work', 'goals'] }),
+  return useMutationWithFeedback({
+    action: 'create_weekly_goal',
+    mutationFn: ({ weekStart, title }: { weekStart: string; title: string }) => createWeeklyGoal(weekStart, title),
+    invalidates: [qk.work.goalsAll],
   })
 }
 
 export function useToggleWeeklyGoal() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, done }: { id: string; done: boolean }) =>
-      toggleWeeklyGoal(id, done),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['work', 'goals'] }),
+  return useMutationWithFeedback({
+    action: 'toggle_weekly_goal',
+    mutationFn: ({ id, done }: { id: string; done: boolean }) => toggleWeeklyGoal(id, done),
+    invalidates: [qk.work.goalsAll],
   })
 }
 
 export function useDeleteWeeklyGoal() {
-  const qc = useQueryClient()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'delete_weekly_goal',
     mutationFn: (id: string) => deleteWeeklyGoal(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['work', 'goals'] }),
+    invalidates: [qk.work.goalsAll],
   })
 }

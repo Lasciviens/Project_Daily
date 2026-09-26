@@ -1,104 +1,63 @@
 import type { ReactNode } from 'react'
-import type { WidgetStateResult } from '../hooks/useWidgetState'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { Link } from 'react-router-dom'
+import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
+import { Card, IconButton, cx } from '../../../shared/ui'
+import type { WidgetState } from '../hooks/useWidgetState'
 
 interface WidgetShellProps {
-  title:        string
-  ws:           WidgetStateResult   // from useWidgetState()
-  onManualSync?: () => void         // called when user clicks the ↻ button
-  headerRight?: ReactNode           // extra content next to title (e.g. mode tabs)
-  children:     ReactNode
+  title: string
+  icon?: ReactNode
+  ws: WidgetState
+  /** Extra header controls (mode tabs); shown only while expanded. */
+  headerRight?: ReactNode
+  /** Explicit refresh; the icon spins while `refreshing`. */
+  onRefresh?: () => void
+  refreshing?: boolean
+  /** Link-out in the header ("Open" → the feature's own page). */
+  to?: string
+  children: ReactNode
+  className?: string
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 /**
- * Wraps every home-page widget with a consistent header that provides:
- *   • collapse/expand toggle
- *   • last-sync timestamp
- *   • pause/resume auto-sync
- *   • sync interval selector (1m / 10m / 30m / 1h)
- *   • manual sync button
- *
- * The parent widget controls the actual TanStack Query enabled/refetchInterval
- * based on ws.collapsed and ws.syncActive — this shell only renders the controls.
+ * The Home widget frame: a Card whose header collapses the body. The widget
+ * itself disables its queries while `ws.collapsed`, so a closed card costs
+ * nothing. Pull-to-refresh covers routine refreshing; `onRefresh` is for the
+ * few widgets where a manual refresh matters (live departures, currency).
  */
-export function WidgetShell({ title, ws, onManualSync, headerRight, children }: WidgetShellProps) {
-  // Each widget's onManualSync owns calling ws.markSynced() itself (some gate
-  // it on success, e.g. CurrencyWidget) — calling it here too always marked
-  // "synced" even on a failed fetch and double-fired it for widgets that also
-  // call it internally.
-
+export function WidgetShell({ title, icon, ws, headerRight, onRefresh, refreshing, to, children, className }: WidgetShellProps) {
+  const bodyId = `widget-${title.toLowerCase().replace(/\s+/g, '-')}`
   return (
-    <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm overflow-hidden">
-      {/* ── Header — wraps to a second row rather than clipping content/buttons
-           when the widget sits in a narrow column (e.g. the 280px sidebar). ── */}
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-ink-100 min-h-[44px]">
-        {/* Collapse toggle — oversized tap target on mobile, compact on desktop */}
-        {/* 44px tap target on mobile, compact 16px on desktop */}
+    <Card padded={false} className={cx('min-w-0', className)}>
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 pl-1 pr-2">
         <button
+          type="button"
           onClick={ws.toggle}
-          className="text-ink-400 hover:text-ink-700 transition-colors duration-150 flex-shrink-0 min-w-[44px] min-h-[44px] -ml-3 flex items-center justify-center lg:min-w-0 lg:min-h-0 lg:ml-0 lg:w-4 lg:flex-none"
-          title={ws.collapsed ? 'Expand' : 'Collapse'}
+          aria-expanded={!ws.collapsed}
+          aria-controls={bodyId}
+          className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 rounded-control px-2 text-left"
         >
-          {ws.collapsed ? '▶' : '▼'}
+          {ws.collapsed
+            ? <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
+            : <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />}
+          {icon != null && (
+            <span aria-hidden className="grid h-7 w-7 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600 [&_svg]:h-4 [&_svg]:w-4">{icon}</span>
+          )}
+          <h2 className="truncate text-lead font-semibold text-fg">{title}</h2>
         </button>
-
-        {/* Title — min-w-[5rem] so it can't shrink-and-truncate to "CU…"; that
-            keeps the full title AND forces a wide headerRight (e.g. Currency's
-            Rates/Convert/Change tabs) to wrap onto the second row of this
-            flex-wrap header instead of crushing the title (real mobile bug). */}
-        <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wide flex-1 min-w-[5rem] truncate">
-          {title}
-        </h3>
-
-        {/* Extra header content (e.g. tab switcher for currency modes) */}
-        {headerRight && !ws.collapsed && (
-          <div className="flex items-center">{headerRight}</div>
+        {!ws.collapsed && headerRight != null && <div className="flex items-center">{headerRight}</div>}
+        {!ws.collapsed && onRefresh && (
+          <IconButton label={`Refresh ${title.toLowerCase()}`} onClick={onRefresh} disabled={refreshing}>
+            <RefreshCw className={cx(refreshing && 'animate-spin motion-reduce:animate-none')} />
+          </IconButton>
         )}
-
-        {/* Sync controls — only visible when expanded. Hidden below sm: PTR
-            already re-syncs on mobile, and these buttons + timestamp made the
-            News/Currency header tabs wrap to a second row on a phone. */}
-        {!ws.collapsed && (
-          <div className="hidden sm:flex items-center gap-1.5 flex-shrink-0">
-            {/* Last sync timestamp */}
-            <span className="text-[10px] text-ink-300 hidden sm:block">
-              {ws.lastSyncLabel}
-            </span>
-
-            {/* Pause / Resume auto-sync — min 44px tap target on mobile */}
-            <button
-              onClick={ws.toggleSync}
-              title={ws.syncActive ? 'Pause auto-sync' : 'Resume auto-sync'}
-              className={`text-xs rounded transition-colors duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center lg:min-w-0 lg:min-h-0 lg:px-1 ${
-                ws.syncActive
-                  ? 'text-ink-400 hover:text-ink-700'
-                  : 'text-accent-500 hover:text-accent-700'
-              }`}
-            >
-              {ws.syncActive ? '⏸' : '▶'}
-            </button>
-
-            {/* Manual sync — min 44px tap target on mobile */}
-            {onManualSync && (
-              <button
-                onClick={onManualSync}
-                title="Sync now"
-                className="text-xs text-ink-400 hover:text-accent-600 transition-colors duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center lg:min-w-0 lg:min-h-0"
-              >
-                ↻
-              </button>
-            )}
-          </div>
+        {to && (
+          <Link to={to} className="inline-flex min-h-[44px] items-center gap-0.5 rounded-control px-2 text-meta font-semibold text-accent-600">
+            Open <ChevronRight aria-hidden className="h-3.5 w-3.5" />
+          </Link>
         )}
-      </div>
-
-      {/* ── Body — hidden when collapsed ── */}
-      {!ws.collapsed && (
-        <div className="p-4">{children}</div>
-      )}
-    </div>
+      </header>
+      {!ws.collapsed && <div id={bodyId} className="px-4 pb-4 sm:px-5 sm:pb-5">{children}</div>}
+    </Card>
   )
 }

@@ -17,17 +17,22 @@ import { useNavigate } from 'react-router-dom'
 // side (tab-order-aware, like a native tab switch) instead of the default
 // crossfade. Cleaned up in `finished` regardless of outcome so a skipped/
 // interrupted transition can't leave the attribute stuck for later ones.
+//
+// `replace`: navigating from inside an overlay (the More sheet) replaces the
+// overlay's own throwaway history entry (useHistoryDismiss) instead of
+// burying it, so one Back returns to the previous page, not to a dead entry.
 export function useViewTransitionNav() {
   const navigate = useNavigate()
 
-  return useCallback((to: string, direction?: 'forward' | 'back') => {
+  return useCallback((to: string, direction?: 'forward' | 'back', opts?: { replace?: boolean }) => {
+    const go = () => navigate(to, { replace: opts?.replace })
     if (!document.startViewTransition) {
-      navigate(to)
+      go()
       return
     }
     if (direction) document.documentElement.dataset.vtDir = direction
     const transition = document.startViewTransition(() => {
-      flushSync(() => navigate(to))
+      flushSync(go)
     })
     transition.finished.finally(() => {
       delete document.documentElement.dataset.vtDir

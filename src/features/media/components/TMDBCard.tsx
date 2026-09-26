@@ -17,30 +17,25 @@ export function TMDBCard({ item, type, onOpenDetail }: Props) {
   const upcoming = isUpcoming(date)
 
   return (
-    <div
-      className="flex flex-col cursor-pointer"
+    <button
+      type="button"
       onClick={() => { haptic('light'); onOpenDetail(item.id) }}
+      className="group flex min-w-0 flex-col text-left"
     >
-      <div className={`press-feedback relative rounded-lg overflow-hidden aspect-[2/3] hover:brightness-90 transition-all duration-150 ${upcoming ? 'grayscale' : ''}`}>
-        <img
-          src={posterUrl(item.poster_path)}
-          alt={title}
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
+      <span className={`press-feedback relative block aspect-[2/3] overflow-hidden rounded-row bg-surface-2 transition-[filter] duration-150 group-hover:brightness-90 ${upcoming ? 'grayscale' : ''}`}>
+        <img src={posterUrl(item.poster_path)} alt="" className="h-full w-full object-cover" loading="lazy" />
         {upcoming && (
-          <div className="absolute bottom-0 inset-x-0 flex justify-center pb-2">
-            <span className="text-[9px] font-bold uppercase tracking-wider text-accent-300 bg-black/60 px-1.5 py-0.5 rounded">
+          <span className="absolute inset-x-0 bottom-0 flex justify-center pb-2">
+            <span className="rounded-md bg-scrim/65 px-1.5 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-white">
               Upcoming
             </span>
-          </div>
+          </span>
         )}
-      </div>
-      <p className="text-xs font-medium text-ink-800 mt-1.5 truncate px-0.5">{title}</p>
-      <div className="flex items-center gap-1 px-0.5">
-        <span className="text-[10px] text-ink-400">★ {item.vote_average.toFixed(1)}</span>
-        {date && <span className="text-[10px] text-ink-400">· {date.slice(0, 4)}</span>}
-      </div>
-    </div>
+      </span>
+      <span className="mt-1.5 truncate px-0.5 text-meta font-medium text-fg">{title}</span>
+      <span className="px-0.5 text-micro text-fg-muted tabular-nums">
+        ★ {item.vote_average.toFixed(1)}{date && ` · ${date.slice(0, 4)}`}
+      </span>
+    </button>
   )
 }

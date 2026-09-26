@@ -1,18 +1,16 @@
 import { useState, useMemo } from 'react'
-import {
-  Dialog, DialogPanel, DialogBackdrop,
-  Combobox, ComboboxInput, ComboboxOptions, ComboboxOption,
-} from '@headlessui/react'
-import { useQueryClient } from '@tanstack/react-query'
-import { callHevyApi } from '../api/hevyApi'
+import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
+import { format } from 'date-fns'
+import { Plus, X } from 'lucide-react'
+import { ModalShell } from '../../../shared/modals'
+import { Button, IconButton } from '../../../shared/ui'
+import { useLogHevyWorkout } from '../hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../hooks/useHevyRoutines'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
-import { toast } from '../../../app/store'
+import { SET_TYPE_OPTIONS, type SetType } from '../setTypeMeta'
 import type { HevyExerciseTemplate, HevyRoutine } from '../types.hevy'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type SetType = 'normal' | 'warmup' | 'dropset' | 'failure'
 
 interface SetRow {
   id: number
@@ -41,10 +39,9 @@ function blankExercise(): ExerciseRow {
   return { id: nextExId(), template: null, query: '', sets: [blankSet()] }
 }
 
+// A datetime-local input takes LOCAL wall time (toISOString would be UTC).
 function localDateTimeString(): string {
-  const d = new Date()
-  d.setSeconds(0, 0)
-  return d.toISOString().slice(0, 16)
+  return format(new Date(), "yyyy-MM-dd'T'HH:mm")
 }
 
 // ─── Exercise row component ───────────────────────────────────────────────────
@@ -77,34 +74,30 @@ function ExerciseRowEditor({ ex, templates, onChange, onRemove }: ExerciseRowPro
   }
 
   return (
-    <div className="border border-ink-200 rounded-xl overflow-hidden">
-      {/* Exercise header */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-cream-50 border-b border-ink-100">
-        <div className="flex-1 relative">
+    <div className="overflow-hidden rounded-card border border-line">
+      <div className="flex items-center gap-1 border-b border-line bg-surface-2 py-2 pl-3 pr-1">
+        <div className="relative flex-1">
           <Combobox
             value={ex.template}
             onChange={t => onChange({ ...ex, template: t, query: t?.title ?? '' })}
             onClose={() => {}}
           >
             <ComboboxInput
-              className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-3 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
+              aria-label="Exercise"
+              className="input w-full"
               placeholder="Search exercise…"
               displayValue={(t: HevyExerciseTemplate | null) => t?.title ?? ''}
               onChange={e => onChange({ ...ex, query: e.target.value })}
             />
-            <ComboboxOptions className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto bg-cream-50 border border-ink-200 rounded-xl shadow-lg">
+            <ComboboxOptions className="menu absolute mt-1 max-h-52 w-full overflow-y-auto">
               {filtered.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-ink-400">No matches</div>
+                <div className="px-2.5 py-2 text-body text-fg-muted">No matches</div>
               ) : (
                 filtered.map(t => (
-                  <ComboboxOption
-                    key={t.id}
-                    value={t}
-                    className="px-3 py-2 cursor-pointer text-sm text-ink-800 data-[focus]:bg-cream-50"
-                  >
+                  <ComboboxOption key={t.id} value={t} className="menu-item cursor-pointer">
                     <span className="font-medium">{t.title}</span>
                     {t.primary_muscle_group && (
-                      <span className="ml-2 text-[11px] text-ink-400 capitalize">{t.primary_muscle_group}</span>
+                      <span className="ml-auto text-meta capitalize text-fg-muted">{t.primary_muscle_group}</span>
                     )}
                   </ComboboxOption>
                 ))
@@ -112,68 +105,58 @@ function ExerciseRowEditor({ ex, templates, onChange, onRemove }: ExerciseRowPro
             </ComboboxOptions>
           </Combobox>
         </div>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center text-ink-400 hover:text-red-500 transition-colors"
-          title="Remove exercise"
-        >
-          ✕
-        </button>
+        <IconButton label="Remove exercise" onClick={onRemove} className="text-fg-faint hover:!text-danger">
+          <X />
+        </IconButton>
       </div>
 
-      {/* Sets */}
-      <div className="px-3 pt-2 pb-1">
-        <div className="grid grid-cols-[80px_1fr_1fr_36px] gap-2 text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 px-1">
+      <div className="px-3 pb-1 pt-2">
+        <div className="mb-1.5 grid grid-cols-[88px_1fr_1fr_44px] gap-2 px-1 text-micro font-semibold uppercase tracking-[0.08em] text-fg-muted">
           <span>Type</span><span>Weight (kg)</span><span>Reps</span><span />
         </div>
 
-        {ex.sets.map((s) => (
-          <div key={s.id} className="grid grid-cols-[80px_1fr_1fr_36px] gap-2 mb-1.5 items-center">
+        {ex.sets.map((s, i) => (
+          <div key={s.id} className="mb-1.5 grid grid-cols-[88px_1fr_1fr_44px] items-center gap-2">
             <select
+              aria-label={`Set ${i + 1} type`}
               value={s.type}
               onChange={e => updateSet(s.id, { type: e.target.value as SetType })}
-              className="min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-xs text-ink-700 focus:outline-none focus:ring-1 focus:ring-accent-400"
+              className="select w-full px-2"
             >
-              <option value="normal">Normal</option>
-              <option value="warmup">Warmup</option>
-              <option value="dropset">Dropset</option>
-              <option value="failure">Failure</option>
+              {SET_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             <input
+              aria-label={`Set ${i + 1} weight`}
               type="number"
               step="0.5"
               min="0"
               value={s.weight_kg}
               onChange={e => updateSet(s.id, { weight_kg: e.target.value })}
               placeholder="—"
-              className="min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-400"
+              className="input w-full px-2"
             />
             <input
+              aria-label={`Set ${i + 1} reps`}
               type="number"
               min="0"
               value={s.reps}
               onChange={e => updateSet(s.id, { reps: e.target.value })}
               placeholder="—"
-              className="min-h-[44px] bg-cream-50 border border-ink-200 rounded-lg px-2 text-sm text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-400"
+              className="input w-full px-2"
             />
-            <button
-              type="button"
+            <IconButton
+              label={`Remove set ${i + 1}`}
               onClick={() => removeSet(s.id)}
               disabled={ex.sets.length === 1}
-              className="min-h-[44px] flex items-center justify-center text-ink-300 hover:text-red-400 transition-colors disabled:opacity-30 text-xs"
+              className="text-fg-faint hover:!text-danger disabled:opacity-30"
             >
-              ✕
-            </button>
+              <X />
+            </IconButton>
           </div>
         ))}
 
-        <button
-          type="button"
-          onClick={addSet}
-          className="text-xs text-accent-600 hover:text-accent-800 font-medium min-h-[44px] flex items-center gap-1 mb-1"
-        >
-          + Add set
+        <button type="button" onClick={addSet} className="btn-ghost btn-sm mb-1 gap-1 px-2 text-meta !text-accent-600">
+          <Plus className="h-3.5 w-3.5" aria-hidden /> Add set
         </button>
       </div>
     </div>
@@ -187,8 +170,13 @@ interface Props {
   onClose: () => void
 }
 
+// The form mounts only while open, so each opening starts blank.
 export function LogHevyWorkoutModal({ isOpen, onClose }: Props) {
-  const qc = useQueryClient()
+  return isOpen ? <LogHevyWorkoutForm onClose={onClose} /> : null
+}
+
+function LogHevyWorkoutForm({ onClose }: { onClose: () => void }) {
+  const logWorkout = useLogHevyWorkout()
   const { data: routines = [] } = useHevyRoutines()
   const { data: templates = [] } = useHevyExerciseTemplates()
 
@@ -196,7 +184,6 @@ export function LogHevyWorkoutModal({ isOpen, onClose }: Props) {
   const [dateTime, setDateTime]   = useState(localDateTimeString)
   const [routineId, setRoutineId] = useState('')
   const [exercises, setExercises] = useState<ExerciseRow[]>(() => [blankExercise()])
-  const [saving, setSaving]       = useState(false)
 
   // When a routine is picked, pre-populate exercises
   function handleRoutineChange(id: string) {
@@ -231,10 +218,7 @@ export function LogHevyWorkoutModal({ isOpen, onClose }: Props) {
   }
 
   async function handleSave() {
-    if (!title.trim()) {
-      toast.error('Title is required')
-      return
-    }
+    if (!title.trim()) return
 
     const start = new Date(dateTime).toISOString()
     const payload = {
@@ -263,143 +247,92 @@ export function LogHevyWorkoutModal({ isOpen, onClose }: Props) {
         })),
     }
 
-    setSaving(true)
-    const tid = toast.loading('Saving workout…')
     try {
-      await callHevyApi('create_workout', payload)
-      qc.invalidateQueries({ queryKey: ['hevy', 'workouts'] })
-      toast.dismiss(tid)
-      toast.success('Workout logged ✓')
-      onClose()
-      // reset
-      setTitle('')
-      setDateTime(localDateTimeString())
-      setRoutineId('')
-      setExercises([blankExercise()])
-    } catch (err) {
-      toast.dismiss(tid)
-      toast.error((err as Error).message ?? 'Failed to save workout')
-    } finally {
-      setSaving(false)
+      await logWorkout.mutateAsync(payload)
+    } catch {
+      return
     }
+    onClose()
   }
 
   return (
-    <Dialog open={isOpen} onClose={onClose} className="relative z-[60]">
-      <DialogBackdrop
-        transition
-        className="fixed inset-0 bg-ink-950/30 backdrop-blur-sm transition duration-200 data-[closed]:opacity-0"
-      />
-      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <DialogPanel
-          transition
-          className="w-full rounded-t-2xl sm:rounded-2xl sm:max-w-2xl max-h-[92vh] overflow-y-auto bg-cream-50 border border-ink-200 transition duration-200 data-[closed]:opacity-0 data-[closed]:translate-y-4 sm:data-[closed]:translate-y-0 sm:data-[closed]:scale-95"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-ink-100 sticky top-0 bg-cream-50 z-10">
-            <h2 className="text-base font-bold text-ink-900">Log Workout</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-xl leading-none"
-            >
-              ×
-            </button>
+    <ModalShell
+      onClose={onClose}
+      title="Log workout"
+      size="lg"
+      dismissible={!logWorkout.isPending}
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
+          <Button variant="primary" onClick={handleSave} loading={logWorkout.isPending} disabled={!title.trim()} className="w-full sm:w-auto">
+            Log workout
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div>
+          <label htmlFor="log-workout-title" className="field-label">Title <span className="text-danger">*</span></label>
+          <input
+            id="log-workout-title"
+            type="text"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="e.g. Push Day"
+            className="input w-full"
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="log-workout-when" className="field-label">Date &amp; time</label>
+            <input
+              id="log-workout-when"
+              type="datetime-local"
+              value={dateTime}
+              onChange={e => setDateTime(e.target.value)}
+              className="input w-full"
+            />
           </div>
 
-          <div className="px-5 py-4 flex flex-col gap-4">
-            {/* Title */}
+          {routines.length > 0 && (
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
-                Title <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="e.g. Push Day"
-                className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-4 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
-            </div>
-
-            {/* Date + time */}
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
-                Date &amp; time
-              </label>
-              <input
-                type="datetime-local"
-                value={dateTime}
-                onChange={e => setDateTime(e.target.value)}
-                className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-4 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
-            </div>
-
-            {/* Routine picker */}
-            {routines.length > 0 && (
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-1.5 block">
-                  Start from routine (optional)
-                </label>
-                <select
-                  value={routineId}
-                  onChange={e => handleRoutineChange(e.target.value)}
-                  className="w-full min-h-[44px] bg-cream-50 border border-ink-200 rounded-xl px-4 text-sm text-ink-900 focus:outline-none focus:ring-2 focus:ring-accent-400"
-                >
-                  <option value="">— None —</option>
-                  {routines.map(r => (
-                    <option key={r.id} value={r.id}>{r.title}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Exercises */}
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-2">
-                Exercises
-              </p>
-              <div className="flex flex-col gap-3">
-                {exercises.map(ex => (
-                  <ExerciseRowEditor
-                    key={ex.id}
-                    ex={ex}
-                    templates={templates}
-                    onChange={updated => updateExercise(ex.id, updated)}
-                    onRemove={() => removeExercise(ex.id)}
-                  />
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={addExercise}
-                className="mt-3 min-h-[44px] w-full border border-dashed border-ink-300 rounded-xl text-sm text-ink-500 hover:bg-cream-50 hover:text-ink-700 transition-colors"
+              <label htmlFor="log-workout-routine" className="field-label">Start from routine (optional)</label>
+              <select
+                id="log-workout-routine"
+                value={routineId}
+                onChange={e => handleRoutineChange(e.target.value)}
+                className="select w-full"
               >
-                + Add exercise
-              </button>
+                <option value="">None</option>
+                {routines.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+              </select>
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Footer */}
-          <div className="px-5 py-4 border-t border-ink-100 flex gap-3 sticky bottom-0 bg-cream-50">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 min-h-[44px] border border-ink-200 text-ink-700 rounded-xl text-sm font-medium hover:bg-cream-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || !title.trim()}
-              className="flex-1 min-h-[44px] bg-accent-500 text-white rounded-xl text-sm font-semibold hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? 'Saving…' : 'Log Workout'}
-            </button>
+        <div>
+          <p className="field-label">Exercises</p>
+          <div className="flex flex-col gap-3">
+            {exercises.map(ex => (
+              <ExerciseRowEditor
+                key={ex.id}
+                ex={ex}
+                templates={templates}
+                onChange={updated => updateExercise(ex.id, updated)}
+                onRemove={() => removeExercise(ex.id)}
+              />
+            ))}
           </div>
-        </DialogPanel>
+          <button
+            type="button"
+            onClick={addExercise}
+            className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-control border border-dashed border-line-strong text-body text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+          >
+            <Plus className="h-4 w-4" aria-hidden /> Add exercise
+          </button>
+        </div>
       </div>
-    </Dialog>
+    </ModalShell>
   )
 }

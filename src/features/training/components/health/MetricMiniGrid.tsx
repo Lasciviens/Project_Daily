@@ -7,9 +7,9 @@ import { MetricMiniCard, type MiniMetricConfig, type MiniMetricWindow } from './
 export function MetricMiniGrid({ title, metrics, window }: { title: string; metrics: MiniMetricConfig[]; window: MiniMetricWindow }) {
   if (!metrics.length) return null
   return (
-    <div className="pt-3 border-t border-ink-100 flex flex-col gap-2">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-300">{title}</p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-start">
+    <div className="flex flex-col gap-2 border-t border-line pt-3">
+      <p className="section-label">{title}</p>
+      <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-4">
         {metrics.map(m => <MetricMiniCard key={m.metric} config={m} window={window} />)}
       </div>
     </div>

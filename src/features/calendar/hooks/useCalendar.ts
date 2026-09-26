@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useCalendarStore } from '../../../app/store'
 import { supabase } from '../../../integrations/supabase/client'
@@ -11,8 +11,9 @@ import {
   refreshCalendarToken,
   updateCalendarEvent,
   deleteCalendarEvent,
-  createCalendarEvent,
 } from '../api/calendarApi'
+import { qk, STALE } from '../../../shared/query'
+import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 
 const REFRESH_THRESHOLD_MS = 5 * 60_000  // refresh when ≤5 min remaining
 
@@ -21,6 +22,9 @@ const REFRESH_THRESHOLD_MS = 5 * 60_000  // refresh when ≤5 min remaining
 function useValidToken(): string | null {
   const { accessToken, expiresAt } = useCalendarStore()
   if (!accessToken) return null
+  // Reading the clock here is deliberate: an expired token must disable the
+  // queries on the very render it expires; the refresh timer re-renders us.
+  // eslint-disable-next-line react-hooks/purity
   if (expiresAt && Date.now() > expiresAt - 60_000) return null
   return accessToken
 }
@@ -127,14 +131,14 @@ export function useCalendarEventsForDay(dateStr: string) {
   const calIds = useSelectedCalendarIds()
 
   return useQuery({
-    queryKey: ['calendar', 'day', dateStr, calIds.join(',')],
+    queryKey: qk.calendar.day(dateStr, calIds.join(',')),
     queryFn:  async () => {
       const activeToken = await ensureToken(token, setAccessToken)
       const results = await Promise.all(calIds.map(id => fetchEventsForDay(activeToken, dateStr, id)))
       return sortEvents(results.flat())
     },
     enabled:   !!token,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
     retry:     false,
   })
 }
@@ -145,14 +149,14 @@ export function useCalendarEventsForRange(timeMin: string, timeMax: string) {
   const calIds = useSelectedCalendarIds()
 
   return useQuery({
-    queryKey: ['calendar', 'range', timeMin, timeMax, calIds.join(',')],
+    queryKey: qk.calendar.range(timeMin, timeMax, calIds.join(',')),
     queryFn:  async () => {
       const activeToken = await ensureToken(token, setAccessToken)
       const results = await Promise.all(calIds.map(id => fetchEventsForRange(activeToken, timeMin, timeMax, id)))
       return sortEvents(results.flat())
     },
     enabled:   !!token,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
     retry:     false,
   })
 }
@@ -160,51 +164,36 @@ export function useCalendarEventsForRange(timeMin: string, timeMax: string) {
 export function useCalendarList() {
   const token = useValidToken()
   return useQuery({
-    queryKey: ['calendar', 'list'],
+    queryKey: qk.calendar.list(),
     queryFn:  () => fetchCalendarList(token!),
     enabled:  !!token,
-    staleTime: 60 * 60_000,
+    staleTime: STALE.hour,
     retry:     false,
   })
 }
 
 export function useUpdateCalendarEvent() {
-  const qc = useQueryClient()
   const { accessToken } = useCalendarStore()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'update_calendar_event',
+    successMessage: 'Event updated',
     mutationFn: ({ calendarId, eventId, patch }: {
       calendarId: string
       eventId:    string
       patch:      Record<string, unknown>
     }) => updateCalendarEvent(accessToken!, calendarId, eventId, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
+    invalidates: [qk.calendar.all],
   })
 }
 
 export function useDeleteCalendarEvent() {
-  const qc = useQueryClient()
   const { accessToken } = useCalendarStore()
-  return useMutation({
+  return useMutationWithFeedback({
+    action: 'delete_calendar_event',
+    successMessage: 'Event deleted',
     mutationFn: ({ calendarId, eventId }: { calendarId: string; eventId: string }) =>
       deleteCalendarEvent(accessToken!, calendarId, eventId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
-  })
-}
-
-export function useCreateCalendarEvent() {
-  const qc = useQueryClient()
-  const { accessToken } = useCalendarStore()
-  return useMutation({
-    mutationFn: ({ calendarId, event }: {
-      calendarId: string
-      event: {
-        summary:      string
-        description?: string
-        start:        { dateTime: string; timeZone: string }
-        end:          { dateTime: string; timeZone: string }
-      }
-    }) => createCalendarEvent(accessToken!, calendarId, event),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
+    invalidates: [qk.calendar.all],
   })
 }
 
@@ -218,7 +207,7 @@ export function useCalendarEventDatesForRange(startDate: Date, endDate: Date) {
   const calIds               = useSelectedCalendarIds()
 
   return useQuery({
-    queryKey: ['calendar', 'dates', startStr, endStr, calIds.join(',')],
+    queryKey: qk.calendar.dates(startStr, endStr, calIds.join(',')),
     queryFn:  async () => {
       const activeToken = await ensureToken(token, setAccessToken)
       const timeMin = new Date(startStr + 'T00:00:00').toISOString()
@@ -241,7 +230,7 @@ export function useCalendarEventDatesForRange(startDate: Date, endDate: Date) {
       return dates
     },
     enabled:   !!token,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.default,
     retry:     false,
   })
 }

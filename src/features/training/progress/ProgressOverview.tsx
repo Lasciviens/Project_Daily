@@ -4,6 +4,7 @@ import { useSetCurrentProgramRoutines } from '../hooks/useAthleteProfile'
 import { progressVerdictHeadline, workloadLabel } from '../progressCopy'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import type { ProgramDecision } from '../progressDecisions'
+import { Button, Card, CardHeader, Skeleton, type Tone } from '../../../shared/ui'
 
 // The page's headline — answers "what's happening / why / how reliable" in
 // the first viewport, per the redesign's own acceptance criteria. Two
@@ -18,16 +19,16 @@ import type { ProgramDecision } from '../progressDecisions'
 // all in that state and asks for an explicit selection instead, offering a
 // recency-based suggestion the athlete must still confirm.
 
-function verdictTone(verdict: ProgramDecision['progressVerdict']): string {
-  if (verdict === 'progressing') return 'text-green-700'
-  if (verdict === 'mixed') return 'text-amber-700'
-  return 'text-ink-400'
+const VERDICT_TONE: Record<ProgramDecision['progressVerdict'], Tone> = {
+  progressing: 'success',
+  mixed: 'warn',
+  insufficient_data: 'neutral',
 }
 
-function workloadTone(workload: ProgramDecision['workload']): string {
-  if (workload === 'continue') return 'text-accent-700'
-  if (workload === 'review_workload') return 'text-amber-700'
-  return 'text-red-700'
+const WORKLOAD_TONE: Record<ProgramDecision['workload'], Tone> = {
+  continue: 'success',
+  review_workload: 'warn',
+  ease_off: 'danger',
 }
 
 function GatingCard() {
@@ -35,43 +36,36 @@ function GatingCard() {
   const setProgram = useSetCurrentProgramRoutines()
 
   return (
-    <div className="bg-cream-50 border-2 border-dashed border-accent-300 rounded-2xl p-5 flex flex-col gap-3 items-start">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-accent-600">Setup needed</p>
-      <p className="text-lg font-bold text-ink-900">Select your current training program to generate progress decisions.</p>
-      <p className="text-sm text-ink-500 max-w-2xl">
-        Every decision below (increase/keep/watch, muscle dose, the overall verdict) is scoped to the routines you
+    <div className="flex flex-col items-start gap-3 rounded-card border-2 border-dashed border-accent-200 bg-surface p-5">
+      <p className="section-label text-accent-600">Setup needed</p>
+      <p className="text-title font-semibold text-fg">Select your current training program to generate progress decisions.</p>
+      <p className="max-w-2xl text-body text-fg-muted">
+        Every decision below (increase/keep/watch, the overall verdict) is scoped to the routines you
         confirm here — never guessed from recent activity alone, so an old program never quietly mixes in with what
         you&apos;re training today.
       </p>
       {suggestedRoutines.length > 0 && (
-        <div className="flex flex-col gap-2 w-full">
-          <p className="text-xs text-ink-500">Recently trained — looks like your current program?</p>
+        <div className="flex w-full flex-col gap-2">
+          <p className="text-meta text-fg-muted">Recently trained — looks like your current program?</p>
           <div className="flex flex-wrap gap-2">
-            {suggestedRoutines.map(r => (
-              <span key={r.id} className="px-3 py-1.5 rounded-full bg-cream-100 border border-ink-200 text-sm text-ink-700">{r.title}</span>
-            ))}
+            {suggestedRoutines.map(r => <span key={r.id} className="chip text-body">{r.title}</span>)}
           </div>
-          <button
-            type="button"
-            onClick={() => setProgram.mutate(suggestedRoutines.map(r => r.id))}
-            disabled={setProgram.isPending}
-            className="self-start min-h-[44px] px-4 rounded-xl bg-accent-500 text-white text-sm font-semibold hover:bg-accent-600 disabled:opacity-50 transition-colors mt-1"
-          >
-            Yes, use these as my current program
-          </button>
+          <Button variant="primary" className="mt-1 self-start" loading={setProgram.isPending} onClick={() => setProgram.mutate(suggestedRoutines.map(r => r.id))}>
+            Use these as my current program
+          </Button>
         </div>
       )}
-      <p className="text-xs text-ink-400">Or pick exactly which routines count in Training → Coach → Profile → Current program.</p>
+      <p className="text-meta text-fg-muted">Or pick exactly which routines count in Training → Coach → Profile → Current program.</p>
     </div>
   )
 }
 
-function SummaryCard({ label, value, valueClass, note, info }: { label: string; value: string; valueClass?: string; note: string; info: ReactNode }) {
+function SummaryCard({ label, value, tone, note, info }: { label: string; value: string; tone?: Tone; note: string; info: ReactNode }) {
   return (
-    <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 flex items-center gap-1.5">{label} <InfoBubble>{info}</InfoBubble></p>
-      <p className={`text-2xl font-bold ${valueClass ?? 'text-ink-900'}`}>{value}</p>
-      <p className="text-xs text-ink-500 mt-1">{note}</p>
+    <div className="min-w-0">
+      <p className="section-label flex items-center gap-1.5">{label} <InfoBubble>{info}</InfoBubble></p>
+      <p data-tone={tone} className={`mt-1 text-kpi font-bold tabular-nums tracking-tight ${tone ? 'tone-text' : 'text-fg'}`}>{value}</p>
+      <p className="mt-0.5 text-meta text-fg-muted">{note}</p>
     </div>
   )
 }
@@ -79,7 +73,7 @@ function SummaryCard({ label, value, valueClass, note, info }: { label: string; 
 export function ProgressOverview() {
   const { isLoading, needsCurrentProgram, program, summary } = useProgressData()
 
-  if (isLoading) return <div className="h-32 rounded-2xl bg-cream-200 animate-pulse" />
+  if (isLoading) return <Skeleton rounded="rounded-card" className="h-32" />
   if (needsCurrentProgram) return <GatingCard />
   if (!program || !summary) return null
 
@@ -91,29 +85,29 @@ export function ProgressOverview() {
     : '—'
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-4 sm:p-5 flex flex-col gap-4">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">🎯 Progress</p>
+    <Card className="flex flex-col gap-4">
+      <CardHeader variant="label" title="Progress" className="!mb-0" />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 flex items-center gap-1.5">
+          <p className="section-label flex items-center gap-1.5">
             Progress result
             <InfoBubble><b>Progress result</b>Compares each analyzable exercise&apos;s recent direction. &quot;Progressing&quot; needs most of them trending up; &quot;Mixed&quot; means it&apos;s genuinely split.</InfoBubble>
           </p>
-          <p className={`text-2xl font-bold ${verdictTone(program.progressVerdict)}`}>{progressVerdictHeadline(program.progressVerdict)}</p>
-          <p className="text-xs text-ink-500 mt-1">
+          <p data-tone={VERDICT_TONE[program.progressVerdict]} className="tone-text mt-1 text-kpi font-bold tracking-tight">{progressVerdictHeadline(program.progressVerdict)}</p>
+          <p className="mt-1 text-meta text-fg-muted">
             {summary.exerciseProgress.analyzable > 0
               ? `${summary.exerciseProgress.improving} of ${summary.exerciseProgress.analyzable} analyzable current-program movements improved.`
               : 'Not enough current-program history yet to judge any exercise reliably.'}
           </p>
         </div>
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 flex items-center gap-1.5">
+          <p className="section-label flex items-center gap-1.5">
             Workload decision
             <InfoBubble><b>Workload decision</b>A different question from progress: should you change the training load itself? Needs at least 2 different exercises declining PLUS a second signal (e.g. sleep down) — never from one exercise alone.</InfoBubble>
           </p>
-          <p className={`text-2xl font-bold ${workloadTone(program.workload)}`}>{workloadLabel(program.workload)}</p>
-          <p className="text-xs text-ink-500 mt-1">
+          <p data-tone={WORKLOAD_TONE[program.workload]} className="tone-text mt-1 text-kpi font-bold tracking-tight">{workloadLabel(program.workload)}</p>
+          <p className="mt-1 text-meta text-fg-muted">
             {program.workload === 'review_workload'
               ? `${program.affectedExerciseIds.length} exercises declining, and ${program.corroboratingSignal}.`
               : 'Nothing here suggests you need to change your training load right now.'}
@@ -121,7 +115,7 @@ export function ProgressOverview() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-3 border-t border-ink-100">
+      <div className="grid grid-cols-2 gap-4 border-t border-line pt-3 lg:grid-cols-4">
         <SummaryCard
           label="Routine adherence" value={adherenceText} note="this week, so far"
           info={<><b>Routine adherence</b>How many sessions you&apos;ve logged this week against your own stated weekly target — never judged before the week is actually over.</>}
@@ -131,7 +125,7 @@ export function ProgressOverview() {
           info={<><b>Exercise progress</b>Of the current-program exercises with enough logged sessions to judge (the &quot;analyzable&quot; ones — see Data confidence for the full program count), how many are increasing or holding at the top of their range.</>}
         />
         <SummaryCard
-          label="Bodyweight" value={bwText} valueClass={summary.bodyweightDirection && summary.bodyweightDirection.deltaKg < 0 ? 'text-green-700' : undefined}
+          label="Bodyweight" value={bwText} 
           note={summary.bodyweightDirection ? `over ~${summary.bodyweightDirection.days} days` : 'not enough weigh-ins yet'}
           info={<><b>Bodyweight direction</b>A plain before/after comparison, not a smoothed trend — read the direction over months, not this one number.</>}
         />
@@ -140,6 +134,6 @@ export function ProgressOverview() {
           info={<><b>Data confidence</b>Out of every exercise actually in your current program&apos;s routines (a different, larger denominator than &quot;Exercise progress&quot; above, which only counts the ones already judgeable), how many have enough comparable sessions (3+) to trust their trend at all.</>}
         />
       </div>
-    </div>
+    </Card>
   )
 }

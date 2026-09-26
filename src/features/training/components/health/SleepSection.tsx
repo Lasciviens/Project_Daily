@@ -9,21 +9,30 @@ import type { HealthRange } from './sectionTypes'
 import { MetricMiniGrid } from './MetricMiniGrid'
 import { SLEEP_EXTRA_METRICS } from './miniMetrics'
 import { compactAxisTick } from './axisFormat'
+import { AlarmClock, BedDouble, ChevronDown, Search, X } from 'lucide-react'
+import { Button, TonePill, useChartColors } from '../../../../shared/ui'
+import { TOOLTIP_BOX } from '../chartKit'
+import { HeadlineStat, SectionCard } from './sectionKit'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
 }
 
 function fmtDayLong(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
+// Sleep-stage colours are identity data users know by colour (THEME.md §2.5):
+// literal and the same in both themes. SLEEP is the "asleep" colour.
 const STAGES = [
   { key: 'deep' as const, label: 'Deep',  color: '#4338ca' },
   { key: 'core' as const, label: 'Core',  color: '#6366f1' },
   { key: 'rem'  as const, label: 'REM',   color: '#a5b4fc' },
   { key: 'awake' as const, label: 'Awake', color: '#f87171' },
 ]
+const SLEEP_COLOR = STAGES[1].color
+const AWAKE_COLOR = STAGES[3].color
 
 const fmtClock = (ms: number) => {
   const d = new Date(ms)
@@ -39,6 +48,7 @@ const fmtClock = (ms: number) => {
 // an axis would be invented precision; the stage split is shown separately as
 // its own labelled bar.
 function NightChart({ sessions }: { sessions: { startMs: number; endMs: number }[] }) {
+  const c = useChartColors()
   const bedtime = sessions[0].startMs
   const wake    = sessions[sessions.length - 1].endMs
   const inBedH  = (wake - bedtime) / 3_600_000
@@ -57,14 +67,14 @@ function NightChart({ sessions }: { sessions: { startMs: number; endMs: number }
   for (let t = first.getTime(); t <= max; t += stepH * 3_600_000) if (t >= min) ticks.push(t)
 
   return (
-    <div className="rounded-xl border border-ink-100 bg-cream-50 px-3 py-3 max-w-2xl">
-      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">🕐 When you slept</p>
-        <p className="text-xs text-ink-600 tabular-nums">
-          <span className="font-semibold">😴 {fmtClock(bedtime)}</span>
-          <span className="text-ink-300"> → </span>
-          <span className="font-semibold">⏰ {fmtClock(wake)}</span>
-          <span className="text-ink-400"> · {fmtHrs(inBedH)} in bed</span>
+    <div className="max-w-2xl rounded-row border border-line bg-surface px-3 py-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="section-label">When you slept</p>
+        <p className="flex items-center gap-1 text-meta tabular-nums text-fg-2">
+          <BedDouble className="h-3.5 w-3.5 text-fg-muted" aria-label="Bedtime" /><span className="font-semibold">{fmtClock(bedtime)}</span>
+          <span className="text-fg-faint"> → </span>
+          <AlarmClock className="h-3.5 w-3.5 text-fg-muted" aria-label="Wake" /><span className="font-semibold">{fmtClock(wake)}</span>
+          <span className="text-fg-muted"> · {fmtHrs(inBedH)} in bed</span>
         </p>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" aria-hidden="true">
@@ -76,28 +86,28 @@ function NightChart({ sessions }: { sessions: { startMs: number; endMs: number }
           const w = x(gapEnd) - x(gapStart)
           return (
             <g key={`gap-${i}`}>
-              <rect x={x(gapStart)} y={TOP} width={w} height={BAND_H} rx={4} fill="#fecaca" />
-              {w > 26 && <text x={(x(gapStart) + x(gapEnd)) / 2} y={TOP + BAND_H / 2 + 3} textAnchor="middle" fontSize={8} fill="#dc2626">awake</text>}
+              <rect x={x(gapStart)} y={TOP} width={w} height={BAND_H} rx={4} fill={AWAKE_COLOR} fillOpacity={0.3} />
+              {w > 26 && <text x={(x(gapStart) + x(gapEnd)) / 2} y={TOP + BAND_H / 2 + 3} textAnchor="middle" fontSize={8} fill={c.danger}>awake</text>}
             </g>
           )
         })}
         {/* asleep session bands */}
         {sessions.map((s, i) => (
-          <rect key={i} x={x(s.startMs)} y={TOP} width={Math.max(x(s.endMs) - x(s.startMs), 2)} height={BAND_H} rx={6} fill="#6366f1" fillOpacity={0.9} />
+          <rect key={i} x={x(s.startMs)} y={TOP} width={Math.max(x(s.endMs) - x(s.startMs), 2)} height={BAND_H} rx={6} fill={SLEEP_COLOR} fillOpacity={0.9} />
         ))}
         {/* hour axis */}
-        <line x1={0} y1={AXIS_Y - 8} x2={W} y2={AXIS_Y - 8} stroke="rgb(var(--ink-200))" strokeWidth={1} />
+        <line x1={0} y1={AXIS_Y - 8} x2={W} y2={AXIS_Y - 8} stroke={c.grid} strokeWidth={1} />
         {ticks.map(t => (
           <g key={t}>
-            <line x1={x(t)} y1={AXIS_Y - 11} x2={x(t)} y2={AXIS_Y - 5} stroke="rgb(var(--ink-300))" strokeWidth={1} />
-            <text x={x(t)} y={AXIS_Y + 4} textAnchor="middle" fontSize={8.5} fill="rgb(var(--ink-400))">
+            <line x1={x(t)} y1={AXIS_Y - 11} x2={x(t)} y2={AXIS_Y - 5} stroke={c.grid} strokeWidth={1} />
+            <text x={x(t)} y={AXIS_Y + 4} textAnchor="middle" fontSize={8.5} fill={c.axis}>
               {new Date(t).getHours().toString().padStart(2, '0')}
             </text>
           </g>
         ))}
       </svg>
       {sessions.length > 1 && (
-        <p className="text-[10px] text-amber-600 mt-1">{sessions.length - 1} interruption{sessions.length > 2 ? 's' : ''} overnight (woke up, then back to sleep)</p>
+        <p data-tone="warn" className="tone-text mt-1 text-micro font-medium">{sessions.length - 1} interruption{sessions.length > 2 ? 's' : ''} overnight (woke up, then back to sleep)</p>
       )}
     </div>
   )
@@ -121,13 +131,13 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
     const date: string | undefined = point?.payload?.date
     const sources = date ? sourcesByDate.get(date) : null
     return (
-      <div className="bg-cream-50 border border-ink-200 rounded-lg shadow-md px-2.5 py-1.5 text-xs space-y-0.5 pointer-events-none">
-        <p className="text-ink-400 font-medium">{label}</p>
-        <p className="font-semibold text-indigo-600">{point.value != null ? fmtHrs(point.value) : '—'}</p>
+      <div className={`${TOOLTIP_BOX} pointer-events-none`}>
+        <p className="font-medium text-fg-muted">{label}</p>
+        <p className="font-semibold tabular-nums text-fg">{point.value != null ? fmtHrs(point.value) : '—'}</p>
         {sources && sources.size > 0 && (
-          <p className="text-ink-400">{[...sources].join(', ')}</p>
+          <p className="text-fg-muted">{[...sources].join(', ')}</p>
         )}
-        <p className="text-[10px] text-ink-300">click bar for actions</p>
+        <p className="text-micro font-normal text-fg-faint">Click the bar for actions</p>
       </div>
     )
   }
@@ -136,6 +146,7 @@ function makeSleepTooltipContent(sourcesByDate: Map<string, Set<string>>) {
 export function SleepSection({ range }: { range: HealthRange }) {
   const today = todayStr()
   const { anchor, setAnchor, period, setPeriod } = range
+  const c = useChartColors()
 
   // The mini-metric cards read the SAME window the rest of the page is on
   // (they used to be pinned to the last 7 days ending today, so they sat
@@ -180,8 +191,8 @@ export function SleepSection({ range }: { range: HealthRange }) {
   const detailSessions = daySessions
 
   const headline = isDay
-    ? (anchor === today ? "Today's Sleep" : `Sleep · ${fmtDayLong(anchor)}`)
-    : period === 'week' ? 'Sleep · Weekly Average' : 'Sleep · Monthly Average'
+    ? (anchor === today ? 'Sleep today' : `Sleep · ${fmtDayLong(anchor)}`)
+    : period === 'week' ? 'Sleep · weekly average' : 'Sleep · monthly average'
 
   // Left-join onto every date in range so a night with no synced data still
   // shows as a gap on the axis instead of silently disappearing.
@@ -255,30 +266,28 @@ export function SleepSection({ range }: { range: HealthRange }) {
   }
 
   return (
-    <div className="bg-cream-50 border border-ink-200 rounded-2xl p-3 sm:p-4 flex flex-col gap-3">
+    <SectionCard>
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">😴 {headline}</p>
-        <div className="flex items-center gap-2 flex-wrap mt-1">
-          <p className="text-2xl sm:text-3xl font-bold text-ink-900 leading-tight">
-            {isLoading ? '…' : detail ? fmtHrs(detail.total) : '—'}
-            {!isDay && detail && <span className="text-sm font-normal text-ink-400"> /night</span>}
-          </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <HeadlineStat
+            label={headline}
+            value={isLoading ? '…' : detail ? fmtHrs(detail.total) : '—'}
+            unit={!isDay && detail ? '/night' : undefined}
+          />
           {isDay && detail && (sourcesByDate.get(anchor)?.has('Manual') ?? false) && (
-            <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5">
-              Manual
-            </span>
+            <TonePill tone="neutral" className="mb-1">Manual</TonePill>
           )}
         </div>
         {isDay && !detail && !isLoading && (
-          <p className="text-xs text-ink-400 mt-1">No sleep data for this night — use ‹ › to pick another day, or add it manually below.</p>
+          <p className="mt-1 text-meta text-fg-muted">No sleep data for this night — use ‹ › to pick another day, or add it manually below.</p>
         )}
         {!isDay && summary.length > 0 && bestNight && worstNight && (
-          <p className="text-xs text-ink-400 mt-1">
+          <p className="mt-1 text-meta text-fg-muted">
             {summary.length} night{summary.length !== 1 ? 's' : ''} tracked · best {fmtHrs(bestNight.total)} ({fmtDay(bestNight.date)}) · lowest {fmtHrs(worstNight.total)} ({fmtDay(worstNight.date)})
           </p>
         )}
         {!isDay && summary.length === 0 && !isLoading && (
-          <p className="text-xs text-ink-400 mt-1">No sleep data in this {period}.</p>
+          <p className="mt-1 text-meta text-fg-muted">No sleep data in this {period}.</p>
         )}
       </div>
 
@@ -290,17 +299,17 @@ export function SleepSection({ range }: { range: HealthRange }) {
         // pr-12 keeps the fields clear of the absolutely-positioned 44px
         // cancel button in the top-right corner (a 28px one used to fit
         // beside the Save button on a phone row; a compliant one does not).
-        <form onSubmit={handleManualSubmit} className="flex flex-wrap items-end gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 pr-12 relative">
+        <form onSubmit={handleManualSubmit} className="relative flex max-w-xl flex-wrap items-end gap-2 rounded-row border border-line bg-surface-2 p-3 pr-12">
           <button
             type="button"
             onClick={() => setShowManualForm(false)}
             aria-label="Cancel"
-            className="absolute top-1.5 right-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-ink-400 hover:text-ink-700 text-sm leading-none"
+            className="icon-btn absolute right-1.5 top-1.5"
           >
-            ×
+            <X className="h-4 w-4" aria-hidden />
           </button>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Night of</label>
+          <div className="flex flex-col">
+            <label className="field-label">Night of</label>
             {/* DateInput (not a raw <input type="date">) — native date inputs
                 render in the browser/OS locale regardless of the stored
                 value's format, which silently showed MM/DD/YYYY for
@@ -308,24 +317,21 @@ export function SleepSection({ range }: { range: HealthRange }) {
                 everywhere, no exceptions. */}
             <DateInput
               value={manualDate} max={today} onChange={setManualDate}
-              className="min-h-[44px] px-2 text-sm border border-ink-200 rounded-lg bg-cream-50"
+              className="input w-40"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-semibold text-ink-500 uppercase tracking-wide">Hours slept</label>
+          <div className="flex flex-col">
+            <label className="field-label">Hours slept</label>
             <input
               type="number" step="0.25" min="0" max="24" placeholder="7.5" value={manualHours}
               onChange={e => setManualHours(e.target.value)}
-              className="min-h-[44px] w-20 px-2 text-sm border border-ink-200 rounded-lg bg-cream-50"
+              className="input w-24"
             />
           </div>
-          <button
-            type="submit" disabled={addManualSleep.isPending}
-            className="min-h-[44px] px-3 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-          >
-            {addManualSleep.isPending ? 'Saving…' : isCorrectingExisting ? 'Save correction' : 'Save'}
-          </button>
-          <p className="text-[10px] text-ink-400 basis-full pr-6">
+          <Button type="submit" variant="primary" loading={addManualSleep.isPending}>
+            {isCorrectingExisting ? 'Save correction' : 'Save sleep'}
+          </Button>
+          <p className="basis-full pr-6 text-meta text-fg-muted">
             {isCorrectingExisting
               ? 'Overwrites your previous manual entry for this night only — Watch-synced nights are never touched.'
               : `Logged as source "Manual" — Deep/Core/REM split estimated from your ${stageProportions ? 'own' : 'default'} sleep-stage average.`}
@@ -335,10 +341,10 @@ export function SleepSection({ range }: { range: HealthRange }) {
 
       {detail && (
         <>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
-            🛏️ Sleep stages{!isDay && ' · avg/night'}
+          <p className="section-label">
+            Sleep stages{!isDay && ' · avg/night'}
           </p>
-          <div className="h-4 rounded-full overflow-hidden flex w-full bg-ink-100">
+          <div className="flex h-4 w-full max-w-3xl overflow-hidden rounded-full bg-surface-2">
             {STAGES.map(s => {
               const val = detail[s.key]
               const pct = detail.total > 0 ? (val / detail.total) * 100 : 0
@@ -349,10 +355,10 @@ export function SleepSection({ range }: { range: HealthRange }) {
           </div>
           <div className="flex gap-3 flex-wrap">
             {STAGES.map(s => (
-              <div key={s.key} className="flex items-center gap-1.5 text-xs">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                <span className="text-ink-500">{s.label}</span>
-                <span className="font-semibold text-ink-800">{fmtHrs(detail[s.key])}</span>
+              <div key={s.key} className="flex items-center gap-1.5 text-meta">
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
+                <span className="text-fg-muted">{s.label}</span>
+                <span className="font-semibold tabular-nums text-fg">{fmtHrs(detail[s.key])}</span>
               </div>
             ))}
           </div>
@@ -369,9 +375,9 @@ export function SleepSection({ range }: { range: HealthRange }) {
           <div className="h-28">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 4, right: 4, left: -4, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--ink-200))" />
-                <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 9 }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={c.grid} />
+                <XAxis dataKey="label" tick={{ fontSize: 9, fill: c.axis }} interval={period === 'month' ? 3 : 0} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: c.axis }} axisLine={false} tickLine={false} width={38} tickFormatter={compactAxisTick} />
                 {/* Hide the hover tooltip while a bar is pinned — otherwise the
                     pinned popover AND the hover tooltip both render = two info
                     boxes at once (user-reported). The popover already shows the
@@ -384,7 +390,7 @@ export function SleepSection({ range }: { range: HealthRange }) {
                   dataKey="total"
                   radius={[3, 3, 0, 0]}
                   activeBar={false}
-                  fill="#6366f1"
+                  fill={SLEEP_COLOR}
                   className="cursor-pointer"
                   onClick={(d) => {
                     const bar = d as unknown as { x?: number; y?: number; width?: number; payload?: { date?: string }; date?: string }
@@ -406,24 +412,24 @@ export function SleepSection({ range }: { range: HealthRange }) {
             const night = summaryByDate.get(pinned.date)
             return (
               <div
-                className="absolute z-20 w-[200px] bg-cream-50 border border-ink-200 rounded-lg shadow-lg px-2.5 py-2 text-xs"
+                className="menu absolute w-[200px] px-2.5 py-2 text-meta"
                 style={{ left: pinned.x, top: pinned.y, transform: 'translate(-50%, calc(-100% - 6px))' }}
               >
                 <div className="flex items-start justify-between gap-1">
                   <div>
-                    <p className="text-ink-400 font-medium">{fmtDayLong(pinned.date)}</p>
-                    <p className="font-semibold text-indigo-600">{night ? fmtHrs(night.total) : 'no data'}</p>
+                    <p className="font-medium text-fg-muted">{fmtDayLong(pinned.date)}</p>
+                    <p className="font-semibold tabular-nums text-fg">{night ? fmtHrs(night.total) : 'no data'}</p>
                   </div>
                   <button type="button" onClick={() => setPinned(null)} aria-label="Close"
-                    className="min-w-[44px] min-h-[44px] -mr-1 -mt-1 flex items-center justify-center text-ink-400 hover:text-ink-700">✕</button>
+                    className="icon-btn -mr-1 -mt-1"><X className="h-4 w-4" aria-hidden /></button>
                 </div>
                 <div className="flex flex-col items-start mt-0.5">
                   <button type="button" onClick={() => { viewDay(pinned.date); setPinned(null) }}
-                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 min-h-[44px] flex items-center">
+                    className="flex min-h-[44px] items-center text-meta font-semibold text-accent-600">
                     View this day →
                   </button>
                   <button type="button" onClick={() => { openCorrectForm(pinned.date); setPinned(null) }}
-                    className="text-xs font-semibold text-accent-600 hover:text-accent-700 min-h-[44px] flex items-center">
+                    className="flex min-h-[44px] items-center text-meta font-semibold text-accent-600">
                     Correct manually
                   </button>
                 </div>
@@ -433,19 +439,21 @@ export function SleepSection({ range }: { range: HealthRange }) {
         </div>
       )}
 
-      <MetricMiniGrid title="Sleep Extras" metrics={SLEEP_EXTRA_METRICS} window={miniWindow} />
+      <MetricMiniGrid title="Sleep extras" metrics={SLEEP_EXTRA_METRICS} window={miniWindow} />
 
       {/* Raw incoming rows — the actual health_metrics stored for this range,
           so what the webhook received can be inspected directly (each value is
           the raw exported point). Handy for spotting missing/collided sessions
           vs what iPhone Health shows. */}
-      <div className="border-t border-ink-100 pt-2">
+      <div className="border-t border-line pt-2">
         <button
           type="button"
+          aria-expanded={showRaw}
           onClick={() => setShowRaw(v => !v)}
-          className="text-[11px] text-ink-500 hover:text-ink-700 min-h-[44px] flex items-center"
+          className="btn-ghost btn-sm gap-1 px-2 text-meta"
         >
-          {showRaw ? '▲ Hide raw data' : `🔍 Raw data (${points.length} rows)`}
+          {showRaw ? <ChevronDown className="h-3.5 w-3.5 rotate-180" aria-hidden /> : <Search className="h-3.5 w-3.5" aria-hidden />}
+          {showRaw ? 'Hide raw data' : `Raw data (${points.length} rows)`}
         </button>
         {showRaw && (
           <div className="mt-1 max-h-64 overflow-y-auto flex flex-col gap-1">
@@ -456,25 +464,25 @@ export function SleepSection({ range }: { range: HealthRange }) {
                 const isSession = typeof v?.totalSleep === 'number'
                 const hhmm = (s: unknown) => (typeof s === 'string' && s.length >= 16 ? s.slice(11, 16) : '?')
                 return (
-                  <div key={i} className="text-[10px] font-mono bg-cream-100 rounded px-2 py-1 flex flex-wrap gap-x-2 gap-y-0.5">
-                    <span className="text-ink-500">{p.date}</span>
-                    <span className={p.source === 'manual' ? 'text-indigo-600 font-semibold' : 'text-ink-400'}>{p.source || '—'}</span>
+                  <div key={i} className="flex flex-wrap gap-x-2 gap-y-0.5 rounded bg-surface-2 px-2 py-1 font-mono text-micro font-normal">
+                    <span className="text-fg-muted">{p.date}</span>
+                    <span className={p.source === 'manual' ? 'font-semibold text-fg' : 'text-fg-faint'}>{p.source || '—'}</span>
                     {isSession ? (
                       <>
-                        <span className="text-ink-700">{hhmm(v.sleepStart)}→{hhmm(v.sleepEnd)}</span>
-                        <span className="text-ink-900 font-semibold">{fmtHrs(Number(v.totalSleep))}</span>
-                        <span className="text-ink-400">C{fmtHrs(Number(v.core ?? 0))} R{fmtHrs(Number(v.rem ?? 0))} D{fmtHrs(Number(v.deep ?? 0))} A{fmtHrs(Number(v.awake ?? 0))}</span>
+                        <span className="text-fg-2">{hhmm(v.sleepStart)}→{hhmm(v.sleepEnd)}</span>
+                        <span className="font-semibold text-fg">{fmtHrs(Number(v.totalSleep))}</span>
+                        <span className="text-fg-faint">C{fmtHrs(Number(v.core ?? 0))} R{fmtHrs(Number(v.rem ?? 0))} D{fmtHrs(Number(v.deep ?? 0))} A{fmtHrs(Number(v.awake ?? 0))}</span>
                       </>
                     ) : (
-                      <span className="text-ink-700">{String(v?.value ?? '?')} {typeof v?.qty === 'number' ? fmtHrs(v.qty) : ''}</span>
+                      <span className="text-fg-2">{String(v?.value ?? '?')} {typeof v?.qty === 'number' ? fmtHrs(v.qty) : ''}</span>
                     )}
                   </div>
                 )
               })}
-            {points.length === 0 && <p className="text-[11px] text-ink-400">No rows in this range.</p>}
+            {points.length === 0 && <p className="text-meta text-fg-muted">No rows in this range.</p>}
           </div>
         )}
       </div>
-    </div>
+    </SectionCard>
   )
 }
