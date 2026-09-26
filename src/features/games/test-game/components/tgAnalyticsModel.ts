@@ -18,11 +18,12 @@ export type TgaWindow = 'all' | '12m' | 'year' | '90d' | '30d' | '7d'
 export type TgaLibrary = 'all' | 'retro' | 'steam' | 'playstation'
 export type TgaTab = 'overview' | 'play' | 'collection' | 'health'
 
-export const TGA_TABS: { key: TgaTab; label: string }[] = [
+/** `short` is the phone's label, where four tabs share one row. */
+export const TGA_TABS: { key: TgaTab; label: string; short?: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'play', label: 'Play' },
   { key: 'collection', label: 'Collection' },
-  { key: 'health', label: 'Data health' },
+  { key: 'health', label: 'Data health', short: 'Health' },
 ]
 
 export const TGA_WINDOWS: { key: TgaWindow; label: string }[] = [

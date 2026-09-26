@@ -42,7 +42,13 @@ export function TgAnalyticsTabs({ tab, onTab, panelId }: { tab: TgaTab; onTab: (
                 : 'text-[var(--tg-muted)] [@media(hover:hover)]:hover:text-[var(--tg-text)]'
             }`}
           >
-            {t.label}
+            {t.short ? (
+              <>
+                <span className="@[34rem]:hidden" aria-hidden>{t.short}</span>
+                <span className="hidden @[34rem]:inline">{t.label}</span>
+                <span className="sr-only @[34rem]:hidden">{t.label}</span>
+              </>
+            ) : t.label}
           </button>
         )
       })}

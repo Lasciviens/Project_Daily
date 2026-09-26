@@ -1,11 +1,12 @@
 import { formatPlaytime } from '../../api/playtimeFormat'
 import { playSeconds, starsFromRating, type TgGame } from '../testGameModel'
-import type { TgaTile } from './tgAnalyticsModel'
-import { fmtInt, plural } from './tgAnalyticsFormat'
+import type { TgaKpis, TgaTile } from './tgAnalyticsModel'
+import { fmtInt, fmtPct, plural } from './tgAnalyticsFormat'
 
-// Words for the KPI drill-down (TgAnalyticsDrill): its title, the figure it
-// adds up to, and one plain line saying what the list is — and, for Playtime,
-// what the data cannot say.
+// Words for the Overview tab: the KPI tiles' second lines, the KPI drill-down
+// (TgAnalyticsDrill) — its title, the figure it adds up to, one plain line
+// saying what the list is and, for Playtime, what the data cannot say — and
+// the idle and hidden notes.
 
 export function drillTitle(kind: TgaTile, windowed: boolean): string {
   switch (kind) {
@@ -59,3 +60,54 @@ export const hoursOf = (g: TgGame) => {
 }
 
 export const shownOf = (shown: number, total: number) => `Showing ${fmtInt(shown)} of ${fmtInt(total)}`
+
+// ─── KPI tiles ───────────────────────────────────────────────────────────────
+
+/** Playing: idle games first, since they are the part of the figure that isn't true today. */
+export function playingSub(k: TgaKpis): string {
+  if (k.stalePlaying > 0) return `${fmtInt(k.stalePlaying)} with no session in 60+ days`
+  return k.queued ? `${fmtInt(k.queued)} in your play queue` : 'Nothing queued next'
+}
+
+/**
+ * The Completed ring's share. All time: of the games you've started — a
+ * completion rate of owned games mostly measures how big the backlog is. In a
+ * window: of the games played in it.
+ */
+export function completedShare(k: TgaKpis, windowed: boolean): number | null {
+  const base = windowed ? k.completionBase : k.started
+  return base > 0 ? Math.min(1, k.completed / base) : null
+}
+
+export function completedSub(k: TgaKpis, windowed: boolean): string {
+  if (windowed) return k.completionBase ? `${fmtPct(k.completed, k.completionBase)} of games played` : 'Nothing to complete yet'
+  if (!k.started) return 'Nothing started yet'
+  return `${fmtPct(k.completed, k.started)} of games you’ve started · ${fmtPct(k.completed, k.completionBase)} of owned`
+}
+
+/** Played: the share with no recorded play — ES-DE only counts what it launched, so never "never played". */
+export function playedSub(k: TgaKpis): string {
+  const none = k.games - k.played
+  if (!k.games) return 'Nothing in view'
+  return none ? `${fmtPct(none, k.games)} with no recorded play` : 'Every game has recorded play'
+}
+
+// ─── Idle and hidden notes ───────────────────────────────────────────────────
+
+/** "idle 94 days" — or, with no session date at all, says so. */
+export const idleLabel = (idleDays: number | null) => (idleDays == null ? 'no session recorded' : `idle ${plural(idleDays, 'day')}`)
+
+/** Who set Playing: you (a start date) or an importer promoting a game with real hours. */
+export function idleSplit(b: { chosen: number; auto: number }): string {
+  return `${fmtInt(b.chosen)} chosen by you · ${fmtInt(b.auto)} set by an import`
+}
+
+/** "3 hidden titles aren't counted here (2 hidden by you, 1 app or non-game)". */
+export function hiddenNote(h: { total: number; explicit: number; auto: number }): string {
+  const why = [
+    h.explicit ? `${fmtInt(h.explicit)} hidden by you` : null,
+    h.auto ? `${fmtInt(h.auto)} ${h.auto === 1 ? 'app or non-game' : 'apps and non-games'}` : null,
+  ].filter(Boolean).join(', ')
+  const verb = h.total === 1 ? 'hidden title isn’t' : 'hidden titles aren’t'
+  return `${fmtInt(h.total)} ${verb} counted here${why ? ` (${why})` : ''}`
+}
