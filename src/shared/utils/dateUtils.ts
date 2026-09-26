@@ -42,3 +42,20 @@ export function datesBetweenStr(from: string, to: string): string[] {
   }
   return dates
 }
+
+// The local calendar day an ISO timestamp falls on ("2026-09-26T23:30:00Z" is
+// the 27th in Oslo). Use this, never `iso.slice(0, 10)`, to file a workout,
+// activity or reading under a day: slicing takes the UTC date, which is
+// yesterday for anything logged between local midnight and 01:00/02:00.
+export function localDayOf(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? null : formatLocalDate(d)
+}
+
+// Monday (yyyy-MM-dd) of the local week a local date falls in.
+export function mondayOfStr(dateStr: string): string {
+  const d = parseISO(dateStr)
+  const back = (d.getDay() + 6) % 7
+  return formatLocalDate(addDays(d, -back))
+}
