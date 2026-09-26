@@ -8,7 +8,7 @@ import { withOverrides } from '../../../scraper/ssRules'
 import { FIELD_MEDIA, decideMediaModes } from '../../../scraper/ssPlan'
 import { useApplyScrape, useGameStorage, useStorageUsage } from '../../../scraper/useScrape'
 import {
-  applySummary, candidateLine, choiceToPolicy, fieldRows, formToRom, handheldCategories, initialChoice, mediaRows, summaryText, writingChoice,
+  applySummary, candidateLine, storageFor, choiceToPolicy, fieldRows, formToRom, handheldCategories, initialChoice, mediaRows, summaryText, writingChoice,
   type FieldChoice, type FieldRow, type SearchForm,
 } from './tgScrapeModel'
 import { TgBasisBadges, TgCandidateCover, TgFlagChips, TgScrapeCard, TgSsAttribution, TgSwitch } from './TgScrapeParts'
@@ -16,7 +16,8 @@ import { TgScrapeFieldList } from './TgScrapeFieldList'
 import { TgScrapeMediaGrid } from './TgScrapeMediaGrid'
 import { TgScrapeRecord } from './TgScrapeRecord'
 import { TgScrapeApplied } from './TgScrapeApplied'
-import { TgScrapeStorageLine } from './TgScrapeStorageLine'
+import { TgScrapeStorageBanner, TgScrapeStorageLine } from './TgScrapeStorageLine'
+import { mediaInfo } from '../../../scraper/ssMediaCatalog'
 
 const MEDIA_FIELD: Record<string, SsField> = Object.fromEntries(Object.entries(FIELD_MEDIA).map(([f, t]) => [t, f as SsField]))
 
@@ -104,6 +105,8 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
 
   const mediaPlan = mRows.map(r => ({ row: r, mode: modeOf(r.type), entry: r.entries.find(e => e.token === tokens[r.type]) ?? r.chosen }))
   const summary = applySummary(rows, choices, mediaPlan, prefs.imageScale)
+  const { now: storageNow, change: storageDelta } = storageFor(gameStorage.data, summary.store ? summary.bytes : 0, recordBytes, snapshot)
+  const copyLabels = mediaPlan.filter(m => m.mode === 'store').map(m => mediaInfo(m.row.type).label.toLowerCase())
   const nothing = summary.fields === 0 && summary.store === 0 && summary.onDemand === 0 && !snapshot
 
   // Tell BEFORE saving when copies will not happen — in the Save bar itself,
@@ -156,11 +159,7 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
           <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden /> {storageNote}
         </p>
       )}
-      <TgScrapeStorageLine
-        now={gameStorage.data ?? null}
-        copies={summary.store ? summary.bytes : 0}
-        record={recordBytes * (snapshot ? 2 : 1)}
-      />
+      <TgScrapeStorageLine now={storageNow} change={storageDelta} />
     <div className="flex items-center gap-3">
       <p className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-snug tabular-nums text-[var(--tg-text-2)]">
         {summaryText(summary, copyBlock)}{snapshot ? ' · raw answer kept' : ''}
@@ -215,6 +214,8 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
           readOnly={!game} imageScale={prefs.imageScale}
         />
       </TgScrapeCard>
+
+      {game && <TgScrapeStorageBanner now={storageNow} change={storageDelta} copyLabels={copyLabels} online={summary.onDemand} />}
 
       <TgScrapeCard title="Everything else">
         {game && (

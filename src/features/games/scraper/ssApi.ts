@@ -317,7 +317,7 @@ export const ssGamePage = (jeuId: string) => `https://www.screenscraper.fr/gamei
 
 // ─── One game's storage ──────────────────────────────────────────────────────
 
-export type GameStorageCategory = 'screenscraper' | 'esde_original' | 'esde_cover' | 'database'
+export type GameStorageCategory = 'screenscraper' | 'scrape_record' | 'esde_original' | 'esde_cover' | 'database'
 export interface GameStorage { total: number; groups: { category: GameStorageCategory; files: number; bytes: number }[] }
 
 /** Files and database bytes one game keeps (migration 108). null before 108 is applied. */
