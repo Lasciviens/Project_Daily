@@ -10,6 +10,7 @@ import { fmtTrainingDate as formatDate } from '../dateFormat'
 import { SegmentedControl, Skeleton, useChartColors } from '../../../shared/ui'
 import { ChartCard, ChartNote } from './ChartCard'
 import { METRIC_META, VOLUME_META } from '../progressMetricMeta'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Exercise Progress — pick one exercise, see its progression across every
@@ -26,7 +27,7 @@ import { METRIC_META, VOLUME_META } from '../progressMetricMeta'
 // ─────────────────────────────────────────────────────────────────────────────
 
 function fmtDay(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
 }
 
 // Exported so WeeklyChangesPanel ("Big changes this week") reports load

@@ -111,7 +111,7 @@ export function HevyPRList({ activeGroup, onActiveGroupChange }: HevyPRListProps
         <p className="py-6 text-body text-fg-muted">No exercises match “{query}”.</p>
       )}
       {/* Fixed-width columns (15–18rem); leftover width stays on the right. */}
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(15rem,18rem))] gap-x-3 justify-start">
+      <ul className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(15rem,18rem))] gap-x-3 justify-start">
         {sorted.map(pr => {
           const isOpen = peekId === pr.exercise_template_id
           return (

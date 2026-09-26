@@ -38,10 +38,13 @@ type Ctx = { key: readonly unknown[]; previous?: WatchedEpisode[] }
  * block the DB trigger deletes (group `episodeWatched`). Optimistic on the
  * series' watched list, rolled back on failure.
  */
-export function useMarkEpisodeWatched() {
+export function useMarkEpisodeWatched(opts?: { successMessage?: string }) {
   const qc = useQueryClient()
   return useMutationWithFeedback<void, MarkEpisodesInput, Ctx>({
     action: 'mark_episode_watched',
+    // Opt-in per surface: a one-tap "watched next" confirms itself, a
+    // checkbox list stays silent.
+    successMessage: opts?.successMessage,
     mutationFn: async ({ tvEntryId, episodes, watched = true, watchedOn }) => {
       const day = watchedOn ?? format(new Date(), 'yyyy-MM-dd')
       for (const { season, episode } of episodes) {

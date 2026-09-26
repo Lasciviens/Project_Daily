@@ -13,13 +13,14 @@ import { AlarmClock, BedDouble, ChevronDown, Search, X } from 'lucide-react'
 import { Button, TonePill, useChartColors } from '../../../../shared/ui'
 import { TOOLTIP_BOX } from '../chartKit'
 import { HeadlineStat, SectionCard } from './sectionKit'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 function fmtDay(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })
 }
 
 function fmtDayLong(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 // Sleep-stage colours are identity data users know by colour (THEME.md §2.5):

@@ -5,16 +5,15 @@ import { useDayData } from '../hooks/useDayData'
 import { useUIStore } from '../../../app/store'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel } from '../../../shared/ui'
-import { ToDoItem } from '../../todo/components/ToDoItem'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  DayQuickRail — the companion beside the Schedule hero on wide viewports
-//  (xl+, covers laptop 1469 and monitor 2450). Putting the schedule on its own
-//  row leaves a big empty horizontal band; rather than blow the timeline up,
-//  this fills it with things worth doing from Daily: quick actions, what's
-//  next, day stats, and the day's open tasks. Hidden below xl
-//  (narrow screens have no gap to fill — the hero just goes full width).
+//  DayQuickRail — the companion beside the Schedule hero on big monitors
+//  (2xl+). Putting the schedule on its own row leaves a big empty horizontal
+//  band; rather than blow the timeline up, this fills it with things worth
+//  doing from Daily: quick actions, what's next, day stats and a link to all
+//  tasks (the open tasks themselves are already in the Tasks column beside
+//  it). Hidden below 2xl: at laptop width it squeezed to ~190px.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RailStat({ value, label }: { value: number | string; label: string }) {
@@ -49,7 +48,7 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
   const plannedH = Math.round((plannedMin / 60) * 10) / 10
 
   return (
-    <aside className="hidden flex-col gap-5 rounded-card border border-line bg-surface-2 p-4 xl:flex">
+    <aside className="hidden flex-col gap-5 self-start rounded-card border border-line bg-surface-2 p-4 2xl:flex">
       <div>
         <SectionLabel className="mb-2">Quick actions</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
@@ -79,29 +78,13 @@ export function DayQuickRail({ date, onOpenTasks }: { date: Date; onOpenTasks?: 
         </div>
       </div>
 
-      {/* flex-1: the elastic block, so the rail matches the hero's height. */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="mb-1 flex items-center justify-between">
-          <SectionLabel>Open tasks</SectionLabel>
-          {onOpenTasks && (
-            <button type="button" onClick={onOpenTasks} className="flex min-h-[44px] items-center gap-0.5 px-1.5 text-meta font-semibold text-accent-600 hover:text-accent-700">
-              All <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-            </button>
-          )}
-        </div>
-        {openTaskList.length === 0 ? (
-          <p className="px-1 text-body text-fg-muted">Nothing open for this day.</p>
-        ) : (
-          <div className="flex flex-col gap-1 overflow-y-auto">
-            {openTaskList.slice(0, 5).map(t => <ToDoItem key={t.id} task={t} />)}
-            {openTaskList.length > 5 && (
-              <button type="button" onClick={onOpenTasks} className="min-h-[44px] px-1 text-left text-meta text-fg-muted hover:text-fg">
-                +{openTaskList.length - 5} more
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      {/* The open tasks themselves live in the Tasks column right beside
+          this rail, so the rail only links to the full list. */}
+      {onOpenTasks && (
+        <button type="button" onClick={onOpenTasks} className="-mt-2 flex min-h-[44px] items-center gap-0.5 self-start px-1 text-meta font-semibold text-accent-600 hover:text-accent-700">
+          All tasks <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      )}
     </aside>
   )
 }

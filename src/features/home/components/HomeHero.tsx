@@ -26,8 +26,9 @@ function relativeDay(dateStr: string): string {
 function useOpenScheduleItem() {
   const modal = useEntityModal()
   return (item: { kind: NextUpItem['kind'] | NextTrainingItem['kind']; id: string }) => {
-    if (item.kind === 'block') modal.open({ kind: 'time-block', id: item.id })
-    else if (item.kind === 'recurring') modal.open({ kind: 'schedule-block', id: item.id })
+    // Same headings as Daily's agenda, so one block reads the same everywhere.
+    if (item.kind === 'block') modal.open({ kind: 'time-block', id: item.id, config: { heading: 'Edit block' } })
+    else if (item.kind === 'recurring') modal.open({ kind: 'schedule-block', id: item.id, config: { heading: 'Edit recurring block' } })
   }
 }
 

@@ -39,6 +39,8 @@ export interface ModalShellProps {
   /** Extra class names on the scrolling body (padding etc.). Default `p-4 sm:p-5`. */
   bodyClassName?: string
   panelClassName?: string
+  /** Accessible name when there is no `title` (e.g. the command palette). */
+  ariaLabel?: string
   children: ReactNode
 }
 
@@ -50,7 +52,7 @@ export interface ModalShellProps {
 export function ModalShell({
   open = true, onClose, title, subtitle, headerActions, hero, footer,
   size = 'md', mobile = 'sheet', dismissible = true, layer = 'modal',
-  bodyClassName = 'p-4 sm:p-5', panelClassName, children,
+  bodyClassName = 'p-4 sm:p-5', panelClassName, ariaLabel, children,
 }: ModalShellProps) {
   const depth = useModalDepth()
   const close = () => { if (dismissible) onClose() }
@@ -66,7 +68,7 @@ export function ModalShell({
   )
 
   return (
-    <Dialog open={open} onClose={close} className="relative" style={z}>
+    <Dialog open={open} onClose={close} className="relative" style={z} aria-label={title == null ? ariaLabel : undefined}>
       <DialogBackdrop
         ref={backdropRef}
         transition

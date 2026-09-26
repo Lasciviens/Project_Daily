@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { addDays, format, startOfMonth, endOfMonth, isToday, isYesterday, isTomorrow, isSameDay, differenceInCalendarDays } from 'date-fns'
 import { DayView } from '../components/DayView'
 import { DayAgenda } from '../components/DayAgenda'
@@ -34,9 +35,25 @@ const DESKTOP_PERIODS: SegmentedOption<Period>[] = [
 ]
 const PHONE_PERIODS = DESKTOP_PERIODS.filter(o => o.value !== 'yesterday' && o.value !== 'tomorrow')
 
+/** `?date=yyyy-MM-dd` (Home's week strip links here) → that local day, else null. */
+function dateFromParam(raw: string | null): Date | null {
+  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null
+  const d = new Date(raw + 'T00:00:00')
+  return Number.isNaN(d.getTime()) || formatLocalDate(d) !== raw ? null : d
+}
+
 export function DailyPage() {
+  const [searchParams] = useSearchParams()
+  const dateParam = searchParams.get('date')
   const [mode,     setMode]     = useState<Mode>('day')
-  const [viewDate, setViewDate] = useState<Date>(new Date())
+  const [viewDate, setViewDate] = useState<Date>(() => dateFromParam(dateParam) ?? new Date())
+  // A new ?date= while Daily is already open (render-time adjustment).
+  const [seenParam, setSeenParam] = useState(dateParam)
+  if (seenParam !== dateParam) {
+    setSeenParam(dateParam)
+    const d = dateFromParam(dateParam)
+    if (d) { setViewDate(d); setMode('day') }
+  }
 
   function handleDayClick(date: Date) {
     setViewDate(date)
@@ -70,6 +87,7 @@ export function DailyPage() {
   return (
     <PageContainer>
       <PageHeader
+        titleOnPhone
         className="!mb-4"
         title={
           <DateNav
@@ -117,12 +135,12 @@ function useGreeting() {
 // One unified day view. TWO stacked bands; boxes never change position:
 //   ROW 1 — the schedule hero (week strip + Schedule + Tasks in one card). On
 //     xl+ a companion rail fills the band beside it instead of stretching the
-//     timeline; below xl the hero is full width and the rail is hidden.
+//     timeline; below 2xl the hero is full width and the rail is hidden.
 //   ROW 2 — the glance board (TodaySummary), explicit column steps.
 function DaySection({ date, onDayClick, onOpenTasks }: { date: Date; onDayClick: (d: Date) => void; onOpenTasks?: () => void }) {
   return (
     <div className="flex flex-col gap-5 sm:gap-6">
-      <div className="xl:grid xl:grid-cols-[minmax(0,60rem)_minmax(0,1fr)] xl:items-stretch xl:gap-5">
+      <div className="2xl:grid 2xl:grid-cols-[minmax(0,60rem)_minmax(16rem,22rem)] 2xl:items-start 2xl:gap-5">
         <Card padded={false} className="w-full overflow-hidden">
           <WeekStrip viewDate={date} onDayClick={onDayClick} />
           <div className="divide-y divide-line lg:grid lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:divide-x lg:divide-y-0">

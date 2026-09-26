@@ -79,7 +79,7 @@ the user can pick Orange, Red, Purple, Yellow or Slate in Settings. Every preset
 `accent-50 … accent-950` scale per theme plus `--on-accent`, applied inline on `<html>` by
 `applyAccent()`. Rules:
 
-- `bg-accent-500 text-on-accent` — primary buttons, the active pill tab, active tab-bar icon chip.
+- `bg-accent-500 text-on-accent` — primary buttons, the active pill tab. (The phone tab bar is flat: its active tab is `text-accent-600` icon + label, no filled chip.)
 - `hover:bg-accent-600` — hover of a filled accent control. (In dark, 600 is *lighter* — intended.)
 - `bg-accent-50 text-accent-600` (or `-700`) — selected rows, active nav item, icon chips, soft badges.
 - `text-accent-600` — text links and "Clear filters"-style actions.
@@ -107,7 +107,7 @@ and import that map everywhere. No per-component colour maps.
 | `success` | done, healthy, on track, connected |
 | `warn` | due soon, needs attention, expiring |
 | `danger` | overdue, failed, destructive, disconnected |
-| `info` | informational, in progress (when not the accent) |
+| `info` | informational, in progress — cyan, deliberately never the accent hue so a status can't read as a link |
 | `neutral` | idle, unknown, cancelled, not started |
 | `highlight` | a special category the user flagged (wish, favourite) |
 | `star` | ratings, streaks |

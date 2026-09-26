@@ -51,7 +51,7 @@ export function ShopPage() {
           <PageHeader
             title="Shop"
             subtitle="Wishlist — things you're planning to buy"
-            className="max-md:[&_h1]:sr-only max-md:[&_h1+p]:hidden"
+            className="max-md:[&_h1+p]:hidden"
             actions={<>
               <FoodTabs />
               <IconButton label="Ask the shopping assistant" bordered onClick={openAssistant} className="hidden md:inline-grid lg:hidden"><Sparkles /></IconButton>
@@ -104,9 +104,10 @@ export function ShopPage() {
         </PageContainer>
       </div>
 
-      {/* Phone: a docked bar that opens the assistant as a bottom sheet */}
+      {/* Phone: a card in the page gutter, above the tab bar, that opens the
+          assistant as a bottom sheet (not a full-bleed strip). */}
       <button type="button" onClick={openAssistant}
-        className="press-feedback flex min-h-[52px] shrink-0 items-center gap-2.5 border-t border-line bg-surface px-4 text-left md:hidden">
+        className="press-feedback mx-4 mt-2 flex min-h-[52px] shrink-0 items-center gap-2.5 rounded-card border border-line bg-surface px-4 text-left shadow-card md:hidden">
         <span aria-hidden className="grid h-7 w-7 place-items-center rounded-control bg-accent-50 text-accent-600"><Sparkles className="h-4 w-4" /></span>
         <span className="text-ui font-semibold text-fg">Ask the assistant</span>
         <ChevronRight aria-hidden className="ml-auto h-4 w-4 text-fg-faint" />

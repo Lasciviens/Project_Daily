@@ -6,6 +6,7 @@ import { BodyCompStatGrid } from './BodyCompStatGrid'
 import { BodyCompTrendChart } from './BodyCompTrendChart'
 import { BodyCompHistoryTable } from './BodyCompHistoryTable'
 import { SegmentedControl } from '../../../../shared/ui'
+import { fmtDateTimeEnGB } from '../../../../shared/utils/enGBDate'
 
 // Smart-scale "body composition analysis report" scans (migration 085,
 // imported via phone-gateway's import_body_composition action — see
@@ -46,7 +47,7 @@ export function BodyCompositionPanel() {
       </div>
 
       <p className="text-meta text-fg-muted">
-        Latest scan: <span className="font-semibold tabular-nums text-fg-2">{new Date(latest!.measured_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+        Latest scan: <span className="font-semibold tabular-nums text-fg-2">{fmtDateTimeEnGB(new Date(latest!.measured_at), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
         {' · '}{reports.length} scan{reports.length === 1 ? '' : 's'} total
       </p>
 

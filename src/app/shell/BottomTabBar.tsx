@@ -18,6 +18,14 @@ export function BottomTabBar() {
   // Open state remembers the page it was opened on, so any navigation closes
   // the sheet without an effect (and without a Back of its own).
   const [openOn, setOpenOn] = useState<string | null>(null)
+  // Forget the origin once the route moves on (render-time adjustment, no
+  // effect): otherwise coming back to that page later — Back, or a tab tap —
+  // matched `openOn` again and the sheet reopened by itself.
+  const [seenPath, setSeenPath] = useState(pathname)
+  if (seenPath !== pathname) {
+    setSeenPath(pathname)
+    if (openOn !== null) setOpenOn(null)
+  }
   const moreOpen = openOn === pathname
   const activeIndex = TAB_ENTRIES.findIndex(e => isActive(e, pathname))
   const moreActive = MORE_ENTRIES.some(e => isActive(e, pathname))

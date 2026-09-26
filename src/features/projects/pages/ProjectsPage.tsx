@@ -5,7 +5,7 @@ import { useProjects, useProjectStats, useCreateProject } from '../hooks/useProj
 import { ProjectCard } from '../components/ProjectCard'
 import { ProjectDetail } from '../components/ProjectDetail'
 
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start items-start gap-3 sm:gap-4'
+const GRID = 'grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start items-start gap-3 sm:gap-4'
 
 export function ProjectsPage() {
   const { data: projects = [], isLoading, isError, refetch } = useProjects()

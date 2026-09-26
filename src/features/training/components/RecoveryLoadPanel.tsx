@@ -10,6 +10,7 @@ import { fmtWeekRange, nowMs } from '../dateFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
 import { useTooltipStyle } from './chartKit'
 import { ChartCard, ChartEmpty, ChartNote } from './ChartCard'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Recovery vs Load — a follow-up sports-scientist review (2026-08-31) of the
@@ -25,7 +26,7 @@ import { ChartCard, ChartEmpty, ChartNote } from './ChartCard'
 const WINDOW_DAYS = 182
 
 function fmtWeek(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
 }
 
 // A single date ("3 Aug") is ambiguous for a WEEKLY value — real user

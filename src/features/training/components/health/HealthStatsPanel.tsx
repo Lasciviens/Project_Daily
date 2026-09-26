@@ -3,6 +3,7 @@ import { computeDailySeries, computeHeartRateDailySeries, computeSleepSummary, f
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { rangeForAnchor, shiftStr, labelForAnchor } from './dateNav'
 import type { SectionId, HealthRange } from './sectionTypes'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 // Plain computed stats (no AI) shown where the training calendar normally
 // sits — the calendar isn't relevant while browsing Health, so this reclaims
@@ -126,7 +127,7 @@ function Panel({ title, win, children }: { title: string; win: Win; children: Re
 }
 
 function fmtDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 /** "Average" is meaningless for a single day — say what the number really is. */

@@ -71,7 +71,7 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
               <span className={cx('text-ui font-bold leading-tight tabular-nums', !viewed && 'text-fg')}>
                 {format(d, 'd')}
               </span>
-              <span className="flex min-h-[10px] items-center gap-0.5 leading-none">
+              <span className="flex h-3 items-center gap-0.5 leading-none">
                 {count > 0 && (
                   <span className={cx('rounded-sm px-1 text-micro font-semibold leading-none tabular-nums', viewed ? 'bg-accent-700 text-on-accent' : 'bg-accent-50 text-accent-700')}>
                     {count}

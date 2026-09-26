@@ -1,6 +1,7 @@
 import { useLayoutEffect } from 'react'
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { qk } from '../../shared/query/keys'
 import { usePullToRefresh } from '../../shared/hooks/usePullToRefresh'
 import { useBreakpoint } from '../../shared/hooks/useBreakpoint'
 import { DevRequestsDrawer } from '../../features/devRequests/components/DevRequestsDrawer'
@@ -42,13 +43,11 @@ export function AppShell() {
   const bp = useBreakpoint()
   const phone = bp === 'phone'
 
-  // Pull down to refetch every query. dailyBriefing is excluded on purpose:
-  // it is staleTime: Infinity to enforce "one AI briefing per day", and
-  // invalidateQueries ignores staleTime — every pull used to cost an AI call.
-  // The card's own refresh button stays the manual override.
+  // Pull down to refetch every query except the one-per-session location fix
+  // (staleTime: Infinity; re-running it only re-asks the GPS, it isn't data).
   const qc = useQueryClient()
   const pullToRefresh = usePullToRefresh(() => qc.invalidateQueries({
-    predicate: query => query.queryKey[0] !== 'dailyBriefing',
+    predicate: query => query.queryKey[0] !== qk.external.geolocation()[0],
   }))
 
   const reportScroll = useUIStore(s => s.reportScroll)

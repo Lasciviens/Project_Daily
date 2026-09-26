@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo } from 'react'
+import { useCallback, useState, useMemo, useEffect, useRef } from 'react'
 import { useHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useStravaActivities } from '../hooks/useStravaActivities'
 import { useTrainingBlocks, useScheduleBlocks } from '../../daily/hooks/useSchedule'
@@ -11,6 +11,7 @@ import { StravaTypeIcon } from './StravaIcons'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import type { HevyWorkout, StravaActivity } from '../types.hevy'
 import type { TimeBlock, ScheduleBlock } from '../../daily/types'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // A calendar "plan" entry is either a real one-off time_blocks row, or a
 // PROJECTED occurrence of a recurring schedule_blocks template (e.g. "every
@@ -71,7 +72,7 @@ function addDays(date: Date, n: number): Date {
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+  return fmtDateEnGB(date, { day: '2-digit', month: 'short' })
 }
 
 function formatDayLabel(date: Date): string {
@@ -148,9 +149,20 @@ interface DayCellProps {
 function WeekDayCell({ day, isToday, selectedDate, todayStr, onSelect, onOpenWorkout, onOpenPlan }: DayCellProps) {
   const dateStr = ymd(day.date)
   const isSelected = selectedDate === dateStr
+  const cellRef = useRef<HTMLDivElement>(null)
+
+  // Phones show the week as a scrolling strip: bring the selected day (today
+  // on first render) into view horizontally, without scrolling the page.
+  useEffect(() => {
+    const el = cellRef.current
+    const strip = el?.parentElement
+    if (!isSelected || !el || !strip || strip.scrollWidth <= strip.clientWidth) return
+    strip.scrollLeft = el.offsetLeft - strip.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2
+  }, [isSelected])
 
   return (
     <div
+      ref={cellRef}
       role="button"
       tabIndex={0}
       aria-pressed={isSelected}

@@ -26,6 +26,7 @@ type LoadState = { loading?: boolean; loadError?: { message: string; onRetry?: (
 
 function loadStateOf(query: UseQueryResult<unknown>, loaded: boolean, what: string): LoadState {
   if (loaded) return {}
+  if (query.isFetching) return { loading: true }
   if (query.isError) return { loadError: { message: `Couldn't load this ${what}.`, onRetry: () => { void query.refetch() } } }
   if (query.isSuccess) return { loadError: { message: `This ${what} no longer exists.` } }
   return { loading: true }
@@ -34,7 +35,7 @@ function loadStateOf(query: UseQueryResult<unknown>, loaded: boolean, what: stri
 export function TaskEntityModal({ request, onClose }: EntityModalProps<'task'>) {
   const { id, defaults, config, source, onSaved } = request
   const query = useTaskById(id)
-  const task = useFirstLoaded(query.data)
+  const task = useFirstLoaded(query.data, query)
   const load = id ? loadStateOf(query, !!task, 'task') : {}
   return (
     <UnifiedPlanModal
@@ -55,9 +56,9 @@ function BlockEditor({ blockId, onClose, passThrough }: {
   passThrough?: Omit<EntityModalProps<'time-block'>['request'], 'kind' | 'id'>
 }) {
   const blockQuery = useTimeBlock(blockId)
-  const block = useFirstLoaded(blockQuery.data)
+  const block = useFirstLoaded(blockQuery.data, blockQuery)
   const taskQuery = useTaskById(block?.task_id)
-  const task = useFirstLoaded(taskQuery.data)
+  const task = useFirstLoaded(taskQuery.data, taskQuery)
   const onSaved: ((r: PlanResult) => void) | undefined = passThrough?.onSaved
 
   if (!block) {
@@ -97,7 +98,7 @@ export function PlanBlockEntityModal({ request, onClose }: EntityModalProps<'pla
 export function ScheduleBlockEntityModal({ request, onClose }: EntityModalProps<'schedule-block'>) {
   const { id, defaults, config, source, onSaved } = request
   const query = useScheduleBlock(id)
-  const scheduleBlock = useFirstLoaded(query.data)
+  const scheduleBlock = useFirstLoaded(query.data, query)
   const load = id ? loadStateOf(query, !!scheduleBlock, 'repeating schedule') : {}
   return (
     <UnifiedPlanModal

@@ -1,3 +1,4 @@
+import { DialogTitle } from '@headlessui/react'
 import { ModalShell } from '../modals/ModalShell'
 import { Button } from '../ui/Button'
 
@@ -36,7 +37,8 @@ export function ConfirmDialog({
         </div>
       }
     >
-      <h2 className="text-title font-semibold text-fg">{title}</h2>
+      {/* DialogTitle names the dialog for assistive tech. */}
+      <DialogTitle as="h2" className="text-title font-semibold text-fg">{title}</DialogTitle>
       {/* pre-line so a caller can lay a longer message out in paragraphs. */}
       {message && <p className="mt-1.5 whitespace-pre-line text-body text-fg-muted">{message}</p>}
     </ModalShell>

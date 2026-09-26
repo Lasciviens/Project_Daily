@@ -102,7 +102,7 @@ export function WorkPage() {
       <div className="sticky top-0 z-10 -mx-4 mb-4 bg-canvas/85 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <PageHeader
           className="mb-0"
-          title={<span className="hidden sm:inline">Work</span>}
+          title="Work"
           subtitle={<span className="hidden sm:inline">{format(new Date(), 'EEEE d MMMM')}</span>}
           actions={
             <>

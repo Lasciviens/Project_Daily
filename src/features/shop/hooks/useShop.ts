@@ -46,6 +46,10 @@ export function useCreateShopItem() {
 export function useUpdateShopItem() {
   return useMutationWithFeedback({
     action:      'update_shop_item',
+    // A status flip is a visible move between lists, so it gets a toast;
+    // field edits stay silent.
+    successMessage: (_d: unknown, { patch }: { patch: UpdateShopItemInput }) =>
+      patch.status === 'bought' ? 'Marked bought' : patch.status === 'wishlist' ? 'Back on wishlist' : undefined,
     mutationFn:  ({ id, patch }: { id: string; patch: UpdateShopItemInput }) => updateShopItem(id, patch),
     invalidates: [qk.shop.items()],
   })

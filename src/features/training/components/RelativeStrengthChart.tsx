@@ -9,6 +9,7 @@ import { fmtTrainingDate as formatDate } from '../dateFormat'
 import { Skeleton, useChartColors } from '../../../shared/ui'
 import { TOOLTIP_BOX } from './chartKit'
 import { ChartCard, ChartNote } from './ChartCard'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Relative Strength vs Bodyweight — a follow-up sports-scientist +
@@ -29,7 +30,7 @@ import { ChartCard, ChartNote } from './ChartCard'
 // ─────────────────────────────────────────────────────────────────────────────
 
 function fmtDay(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
 }
 
 const MIN_POINTS = 3

@@ -14,8 +14,9 @@ export function EntityModalPending({ query, what, title, size = 'md', onClose }:
   size?: ModalSize
   onClose: () => void
 }) {
-  const failed = query.isError
-  const missing = query.isSuccess
+  // While a refetch runs, a cached row is waiting to be confirmed, not missing.
+  const failed = query.isError && !query.isFetching
+  const missing = query.isSuccess && !query.isFetching
   return (
     <ModalShell onClose={onClose} title={title ?? (failed || missing ? `Can't open this ${what}` : 'Loading…')} size={size}>
       {failed ? (

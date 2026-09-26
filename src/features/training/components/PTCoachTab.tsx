@@ -6,6 +6,7 @@ import { Button, Card, IconButton, SectionLabel } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useAthleteProfile, useAthleteLimitations } from '../hooks/useAthleteProfile'
 import { AthleteProfileSheet } from './AthleteProfileSheet'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  AI PT — user-initiated daily assessment (NEVER auto-runs; each run costs
@@ -36,7 +37,7 @@ function renderBold(text: string) {
   )
 }
 
-const fmtDate = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+const fmtDate = (d: string) => fmtDateEnGB(new Date(d + 'T00:00:00'), { day: 'numeric', month: 'short' })
 
 export function PTCoachTab() {
   const today = todayStr()

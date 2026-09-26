@@ -8,6 +8,7 @@ import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Skeleton } from '../../../shared/ui'
 import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
 import type { TMDBTVFull } from '../types'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 interface Props {
   tv:         TMDBTVFull
@@ -198,11 +199,11 @@ export function EpisodesPanel({ tv, tvEntryId }: Props) {
                   <span className="mt-0.5 flex items-center gap-2 text-micro text-fg-muted tabular-nums">
                     {runtime && <span>{runtime}m</span>}
                     {ep.air_date && (
-                      <span>{new Date(ep.air_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                      <span>{fmtDateEnGB(new Date(ep.air_date + 'T00:00:00'), { day: 'numeric', month: 'short', year: '2-digit' })}</span>
                     )}
                     {isWatched && watchedOn && (
                       <span className="font-medium text-success">
-                        Watched {new Date(watchedOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        Watched {fmtDateEnGB(new Date(watchedOn), { day: 'numeric', month: 'short' })}
                       </span>
                     )}
                   </span>

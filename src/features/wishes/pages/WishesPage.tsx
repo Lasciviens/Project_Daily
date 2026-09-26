@@ -29,7 +29,7 @@ const GROUPS: { state: WishWindowState; title: string; note?: string }[] = [
   { state: 'passed',   title: 'Passed', note: 'The season went by — nothing here is late. These stay until you tick or delete them.' },
 ]
 
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(15rem,18rem))] justify-start items-start gap-3'
+const GRID = 'grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(15rem,18rem))] justify-start items-start gap-3'
 
 export function WishesPage() {
   const today = todayStr()

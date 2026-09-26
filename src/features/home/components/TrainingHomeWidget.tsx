@@ -6,6 +6,7 @@ import { useWeekTrainingStats } from '../hooks/useWeekTrainingStats'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceTile } from './GlanceTile'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 function Stat({ value, label }: { value: string | number; label: string }) {
   return (
@@ -16,7 +17,7 @@ function Stat({ value, label }: { value: string | number; label: string }) {
   )
 }
 
-const dayLabel = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+const dayLabel = (iso: string) => fmtDateEnGB(new Date(iso), { weekday: 'short', day: 'numeric', month: 'short' })
 
 /** This week's sessions (Hevy + Strava) and the last workout, which opens its detail. */
 export function TrainingHomeWidget() {

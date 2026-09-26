@@ -53,8 +53,9 @@
     --success: 22 163 74;    --success-soft: 222 242 230;
     --warn:    217 119 6;    --warn-soft:    250 236 220;
     --danger:  220 38 38;    --danger-soft:  250 225 225;
-    --info:    37 99 235;    --info-soft:    224 233 252;
+    --info:    14 116 144;   --info-soft:    222 242 247;  /* cyan — never the accent hue */
     --neutral: 139 149 165;  --neutral-soft: 239 240 242;
+    --neutral-fg: 71 85 105; /* neutral LABEL text: the dot colour is too faint for words */
     --highlight: 147 51 234; --highlight-soft: 240 226 252;
     --star:    245 179 1;    --star-soft:    254 244 219;
 
@@ -113,8 +114,9 @@
     --success: 34 197 94;    --success-soft: 16 47 39;
     --warn:    245 158 11;   --warn-soft:    50 40 25;
     --danger:  248 113 113;  --danger-soft:  51 33 42;
-    --info:    59 130 246;   --info-soft:    20 36 63;
+    --info:    34 196 224;   --info-soft:    12 40 50;     /* cyan — never the accent hue */
     --neutral: 138 148 166;  --neutral-soft: 33 39 50;
+    --neutral-fg: 150 160 177;
     --highlight: 192 132 252; --highlight-soft: 42 36 64;
     --star:    251 191 36;   --star-soft:    51 46 29;
 
@@ -300,7 +302,9 @@
   }
   .count-badge {
     @apply inline-flex items-center justify-center min-w-[22px] h-[22px] px-[7px] rounded-full
-           bg-surface-2 text-meta font-medium tabular-nums text-fg-muted;
+           border border-line bg-surface-2 text-meta font-medium tabular-nums text-fg-muted;
+    /* The hairline keeps the pill visible on canvas / surface-2 in light,
+       where surface-2 and canvas are the same colour. */
   }
   .pill-tab {
     @apply inline-flex items-center gap-2.5 h-[34px] px-4 rounded-full text-body font-medium text-fg-2
@@ -551,27 +555,35 @@ select:focus-visible,
 .recharts-wrapper :focus-visible {
   outline: none;
 }
+/* Containers Headless UI focuses programmatically when they open (a menu
+   panel, a dialog, a listbox): their items carry the focus state, so a ring
+   round the whole panel is noise. */
+[role="menu"]:focus-visible,
+[role="dialog"]:focus-visible,
+[role="listbox"]:focus-visible {
+  outline: none;
+}
 
 /* ── Status tones by data attribute (runtime values → outside @layer) ──────
    <span data-tone="success" class="tone-dot" />, .tone-text, .tone-pill.
    One mechanism for every status map (task priority, project status, sync
    state…): components pick a tone name, the theme picks the colour. */
-[data-tone='success'] { --tone: var(--success); --tone-soft: var(--success-soft); }
-[data-tone='warn']    { --tone: var(--warn);    --tone-soft: var(--warn-soft); }
-[data-tone='danger']  { --tone: var(--danger);  --tone-soft: var(--danger-soft); }
-[data-tone='info']    { --tone: var(--info);    --tone-soft: var(--info-soft); }
-[data-tone='neutral'] { --tone: var(--neutral); --tone-soft: var(--neutral-soft); }
-[data-tone='highlight'] { --tone: var(--highlight); --tone-soft: var(--highlight-soft); }
-[data-tone='star']    { --tone: var(--star);    --tone-soft: var(--star-soft); }
-[data-tone='accent']  { --tone: var(--accent-500); --tone-soft: var(--accent-50); }
+[data-tone='success'] { --tone: var(--success); --tone-soft: var(--success-soft); --tone-fg: var(--success); }
+[data-tone='warn']    { --tone: var(--warn);    --tone-soft: var(--warn-soft); --tone-fg: var(--warn); }
+[data-tone='danger']  { --tone: var(--danger);  --tone-soft: var(--danger-soft); --tone-fg: var(--danger); }
+[data-tone='info']    { --tone: var(--info);    --tone-soft: var(--info-soft); --tone-fg: var(--info); }
+[data-tone='neutral'] { --tone: var(--neutral); --tone-soft: var(--neutral-soft); --tone-fg: var(--neutral-fg); }
+[data-tone='highlight'] { --tone: var(--highlight); --tone-soft: var(--highlight-soft); --tone-fg: var(--highlight); }
+[data-tone='star']    { --tone: var(--star);    --tone-soft: var(--star-soft); --tone-fg: var(--star); }
+[data-tone='accent']  { --tone: var(--accent-500); --tone-soft: var(--accent-50); --tone-fg: var(--accent-500); }
 .tone-dot  { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: rgb(var(--tone, var(--neutral))); flex-shrink: 0; }
-.tone-text { color: rgb(var(--tone, var(--neutral))); }
+.tone-text { color: rgb(var(--tone-fg, var(--neutral-fg))); }
 .tone-pill {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 1px 8px; border-radius: 999px;
   font-size: 11.5px; font-weight: 600; line-height: 18px; white-space: nowrap;
   background: rgb(var(--tone-soft, var(--neutral-soft)));
-  color: rgb(var(--tone, var(--neutral)));
+  color: rgb(var(--tone-fg, var(--neutral-fg)));
 }
 .tone-soft { background: rgb(var(--tone-soft, var(--neutral-soft))); }
 

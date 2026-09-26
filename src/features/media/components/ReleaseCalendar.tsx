@@ -2,6 +2,7 @@ import { CalendarClock, Film, Tv } from 'lucide-react'
 import { CollapsibleCard } from './CollapsibleCard'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import type { MediaType, UserMovieEntry, UserTVEntry } from '../types'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 interface Props {
   movieEntries: UserMovieEntry[]
@@ -25,7 +26,7 @@ function daysUntil(date: Date): number {
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  return fmtDateEnGB(date, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 export function ReleaseCalendar({ movieEntries, tvEntries, onOpenDetail }: Props) {

@@ -35,6 +35,8 @@ export function MediaPage() {
   return (
     <PageContainer width="full">
       <PageHeader
+        // Ends where the column + rail end, not at the viewport edge.
+        className="max-w-[93.25rem]"
         title="Media"
         actions={
           <SegmentedControl<Tab>
@@ -46,7 +48,9 @@ export function MediaPage() {
       />
 
       <div className="flex items-start gap-5">
-        <div className="stagger-in flex min-w-0 flex-1 flex-col gap-5">
+        {/* Capped so a monitor doesn't smear a two-poster library across
+            2,000px; the rail then sits right beside the column. */}
+        <div className="stagger-in flex min-w-0 max-w-[72rem] flex-1 flex-col gap-5">
           {/* The rotating backdrop is scoped to the search + library card only. */}
           <section className="card relative p-4 sm:p-5">
             <MediaBackdrop />

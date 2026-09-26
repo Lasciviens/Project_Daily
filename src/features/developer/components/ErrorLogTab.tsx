@@ -4,9 +4,10 @@ import { toast } from '../../../app/store'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, EmptyState, IconButton, Skeleton, ToneDot, cx } from '../../../shared/ui'
 import { useErrorLogs, useClearErrorLogs } from '../hooks/useLogs'
+import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return fmtDateTimeEnGB(new Date(iso), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
 function copyText(text: string) {

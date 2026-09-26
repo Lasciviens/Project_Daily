@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowUpDown } from 'lucide-react'
 import { SegmentedControl, cx } from '../../../shared/ui'
 import type { CurrencyData } from '../api/currencyApi'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 type Mode = 'rates' | 'convert' | 'change'
 
@@ -14,7 +15,7 @@ export function ChangeBadge({ pct, className }: { pct: number; className?: strin
   const tone = flat ? 'neutral' : pct > 0 ? 'success' : 'danger'
   return (
     <span data-tone={tone} className={cx('tone-text inline-flex items-center gap-0.5 text-meta font-semibold tabular-nums', className)}>
-      <span aria-hidden>{flat ? '–' : pct > 0 ? '▲' : '▼'}</span>
+      {!flat && <span aria-hidden>{pct > 0 ? '▲' : '▼'}</span>}
       <span>{flat ? '0.00%' : `${Math.abs(pct).toFixed(2)}%`}</span>
       <span className="sr-only">{flat ? 'unchanged' : pct > 0 ? 'up' : 'down'} since yesterday</span>
     </span>
@@ -138,7 +139,7 @@ export function CurrencyDetails({ data }: { data: CurrencyData }) {
           onChange={setMode}
           options={[{ value: 'rates', label: 'Rates' }, { value: 'convert', label: 'Convert' }, { value: 'change', label: 'Change' }]}
         />
-        <span className="text-micro tabular-nums text-fg-muted">Updated {data.date}</span>
+        <span className="text-micro tabular-nums text-fg-muted">Updated {/^\d{4}-\d{2}-\d{2}$/.test(data.date) ? fmtDateEnGB(data.date + 'T00:00:00', { day: 'numeric', month: 'short', year: 'numeric' }) : data.date}</span>
       </div>
       {mode === 'rates' && <Rates data={data} />}
       {mode === 'convert' && <Converter rawRates={data.rawRates} />}

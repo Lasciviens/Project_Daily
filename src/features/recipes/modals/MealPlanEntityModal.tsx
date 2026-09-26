@@ -8,7 +8,7 @@ import { useFirstLoaded } from '../../../shared/modals/useFirstLoaded'
 export function MealPlanEntityModal({ request, onClose }: EntityModalProps<'meal-plan'>) {
   const { date, slot, entryId } = request
   const query = useMealPlanEntry(entryId)
-  const existing = useFirstLoaded(query.data)
+  const existing = useFirstLoaded(query.data, query)
   if (entryId && !existing) return <EntityModalPending query={query} what="planned meal" size="sm" onClose={onClose} />
   return (
     <AssignMealModal

@@ -23,7 +23,7 @@ export default function FocusStrip({ tasks, onMarkDone, onClearFocus, onEdit }: 
   }
 
   return (
-    <div className="scroll-x -mx-4 flex snap-x snap-mandatory gap-3 px-4 pb-1 sm:mx-0 sm:px-0">
+    <div className="scroll-x -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 px-4 pb-1 sm:mx-0 sm:scroll-px-0 sm:px-0">
       {tasks.map(task => (
         <article
           key={task.id}

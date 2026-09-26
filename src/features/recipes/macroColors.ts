@@ -2,6 +2,7 @@
 // Chart series tokens, never the accent (THEME.md §2.5) — used as inline
 // styles because SVG attributes can't take Tailwind classes.
 export const MACRO_COLOR = {
+  calories: 'rgb(var(--chart-2))',
   protein: 'rgb(var(--chart-1))',
   carbs:   'rgb(var(--chart-3))',
   fat:     'rgb(var(--chart-4))',

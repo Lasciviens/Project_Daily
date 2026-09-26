@@ -142,7 +142,7 @@ export function TaskTab({ form, patch, config, gcalAvailable, calendarLinked, ex
                 <FieldLabel>Due time</FieldLabel>
                 {form.dueTime ? (
                   <div className="flex items-center gap-1.5">
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <Time24Field
                         value={form.dueTime}
                         onChange={v => patch({ dueTime: v })}

@@ -8,6 +8,7 @@ import { Activity, Gauge, Heart, MapPin, Mountain, Timer } from 'lucide-react'
 import { Card, EmptyState, Skeleton, StatTile } from '../../../shared/ui'
 import { STRAVA_ORANGE, STRAVA_TYPE_LABEL } from '../stravaMeta'
 import { StravaTypeIcon } from './StravaIcons'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 type ActivityType = 'all' | 'run' | 'cycling' | 'walk' | 'swim' | 'other'
 
@@ -20,7 +21,7 @@ function formatPace(secPerKm: number): string {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  return fmtDateEnGB(new Date(iso), { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function ActivityCard({ activity }: { activity: StravaActivity }) {

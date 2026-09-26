@@ -15,6 +15,10 @@ import { MACRO_COLOR } from '../macroColors'
 import type { MealSlot } from '../types'
 import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/dayNutritionApi'
 
+// The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
+// Shared by the rows and their column-heading row so the two always line up.
+const MACRO_GRID = 'hidden items-center gap-x-2 @[40rem]:grid @[40rem]:grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.25rem_3rem_3rem_3rem_2.75rem_2.75rem]'
+
 // `DayMeal.title` bakes the amount into the string ("Chicken · 150g"); the
 // desktop grid wants name and amount in separate aligned columns. Only a tail
 // that starts with a digit is a quantity — a food name that itself contains
@@ -165,7 +169,7 @@ export function FoodTodayTab({ date }: { date: string }) {
         </div>
 
         {/* Wide card: every macro in its own aligned column */}
-        <div className={cx('hidden items-center gap-x-2 text-body @[40rem]:grid @[40rem]:grid-cols-[minmax(0,1fr)_3.5rem_3rem_3rem_3rem_3rem_3rem_2.75rem_2.75rem]', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
+        <div className={cx(MACRO_GRID, 'text-body', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
           {nameBtn}
           <span className={num}>{qty ?? ''}</span>
           <span className={cx(num, !planned && 'font-medium text-fg-2')}>{meal.calories > 0 ? meal.calories : ''}</span>
@@ -213,17 +217,17 @@ export function FoodTodayTab({ date }: { date: string }) {
   const coachAction = 'flex min-h-[44px] items-center justify-between gap-2 rounded-row border border-line bg-surface px-3 py-1.5 text-left transition-colors hover:bg-surface-hover'
 
   return (
-    <div className="grid grid-cols-1 items-start gap-3 sm:gap-4 xl:grid-cols-[minmax(0,30rem)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 items-start gap-3 sm:gap-4 justify-start xl:grid-cols-[minmax(0,30rem)_minmax(0,42rem)]">
       {/* Left: summary, water, coach */}
       <div className="flex min-w-0 flex-col gap-3 sm:gap-4">
         <Card>
           <CardHeader title="Nutrition" variant="label"
             action={<IconButton label="Nutrition goals" onClick={openGoals} className="-my-2 -mr-2"><Settings2 /></IconButton>} />
           <div className="flex flex-wrap items-center gap-4 sm:gap-5">
-            <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color="rgb(var(--accent-500))"
+            <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color={MACRO_COLOR.calories}
               label="kcal left" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" />
             <Ring consumed={protein} target={targets.protein} size={92} stroke={9} color={MACRO_COLOR.protein}
-              label="protein left" sizeClass="h-[76px] w-[76px] sm:h-[88px] sm:w-[88px]" />
+              label="g left" sizeClass="h-[88px] w-[88px]" />
             <div className="min-w-[10rem] flex-1">
               <p className="text-body text-fg-muted tabular-nums">
                 <strong className="text-title font-bold text-fg">{consumed}</strong> / {targets.calories} kcal
@@ -321,6 +325,17 @@ export function FoodTodayTab({ date }: { date: string }) {
               </header>
               {meals.length > 0 ? (
                 <ul className="divide-y divide-line">
+                  {/* Column headings for the wide layout's aligned numbers. */}
+                  <li aria-hidden className={cx(MACRO_GRID, 'pl-4 pr-2 py-1 text-micro font-semibold uppercase tracking-[0.06em] text-fg-faint')}>
+                    <span />
+                    <span className="text-right">Amount</span>
+                    <span className="text-right">kcal</span>
+                    <span className="text-right">Protein</span>
+                    <span className="text-right">Carbs</span>
+                    <span className="text-right">Fat</span>
+                    <span className="text-right">Fiber</span>
+                    <span /><span />
+                  </li>
                   {groupDayMeals(meals).map(row => row.kind === 'group' ? groupHeaderLine(row) : mealLine(row.meal, false))}
                 </ul>
               ) : (

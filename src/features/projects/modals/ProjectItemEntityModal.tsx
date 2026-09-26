@@ -8,7 +8,7 @@ export function ProjectItemEntityModal({ request, onClose }: EntityModalProps<'p
   const { projectId, id, phaseId } = request
   const phasesQ = usePhases(projectId)
   const itemsQ = useItems(id ? projectId : null)
-  const item = useFirstLoaded(id ? itemsQ.data?.find(i => i.id === id) : undefined)
+  const item = useFirstLoaded(id ? itemsQ.data?.find(i => i.id === id) : undefined, itemsQ)
 
   if (!phasesQ.data) return <EntityModalPending query={phasesQ} what="project" size="sm" onClose={onClose} />
   if (id && !item) return <EntityModalPending query={itemsQ} what="item" size="sm" onClose={onClose} />

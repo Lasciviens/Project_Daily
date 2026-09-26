@@ -3,13 +3,14 @@ import { cx } from '../../../shared/ui'
 import { relativeTime } from '../../../shared/utils/relativeTime'
 import type { AuditLog } from '../hooks/useLogs'
 import { OP_META, friendlyTable } from './activityLogMeta'
+import { fmtDateTimeEnGB } from '../../../shared/utils/enGBDate'
 
 // Rows of the CRUD audit timeline (audit_logs, written by DB triggers —
 // migration 037, +052 added dev_requests): a plain-language sentence per
 // change, same-transaction cascades grouped, a readable diff on expand.
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', {
+  return fmtDateTimeEnGB(new Date(iso), {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   })

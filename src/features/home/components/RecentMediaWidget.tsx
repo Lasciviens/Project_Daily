@@ -6,6 +6,7 @@ import { useRecentlyWatched, type RecentlyWatchedItem } from '../../media/hooks/
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
 import { GlanceTile } from './GlanceTile'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 function openMedia(modal: ReturnType<typeof useEntityModal>, item: RecentlyWatchedItem) {
   if (item.tmdbId != null) modal.open({ kind: 'media', tmdbId: item.tmdbId, mediaType: item.type })
@@ -58,7 +59,7 @@ export function RecentMediaTile() {
       icon={<Clapperboard />}
       loading={isLoading}
       value={latest ? latest.title : 'Nothing yet'}
-      hint={latest ? new Date(latest.watched_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'Open Media'}
+      hint={latest ? fmtDateEnGB(new Date(latest.watched_at), { day: 'numeric', month: 'short' }) : 'Open Media'}
       {...(latest?.tmdbId != null ? { onClick: () => openMedia(modal, latest) } : { to: '/media' })}
     />
   )

@@ -118,8 +118,10 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
 
   return (
     <section>
-      <div className="mb-3 flex items-center gap-2">
-        <div role="tablist" aria-label="Discover" className="scroll-x flex min-w-0 flex-1 gap-1">
+      {/* Phones: the tabs take the whole row and the refresh action wraps
+          under them, so no tab is cut off against the icon. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 sm:flex-nowrap">
+        <div role="tablist" aria-label="Discover" className="scroll-x -mx-4 flex min-w-0 basis-[calc(100%+2rem)] gap-1 px-4 sm:mx-0 sm:basis-auto sm:flex-1 sm:px-0">
           {TABS.map(t => (
             <button
               key={t.key}
@@ -134,7 +136,7 @@ export function DiscoveryTabs({ mediaType, onOpenDetail }: Props) {
           ))}
         </div>
         {tab !== 'norway' && (
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0">
             {syncLabel && <span className="hidden text-meta text-fg-muted sm:block">{syncLabel}</span>}
             <IconButton label="Refresh now" onClick={handleManualSync}>
               <RefreshCw className={activeQuery?.isFetching ? 'animate-spin' : ''} />

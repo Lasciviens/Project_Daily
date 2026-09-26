@@ -2,6 +2,8 @@ import { Hourglass } from 'lucide-react'
 import type { Task } from '../../todo/types'
 import { TonePill, cx } from '../../../shared/ui'
 import { PRIORITY_ICON, PRIORITY_LABEL, PRIORITY_TONE, dueLabel } from './workMeta'
+import { dueTone } from '../../todo/taskTones'
+import { todayStr, tomorrowStr } from '../../../shared/utils/dateUtils'
 
 // Small chips every Work view shares (card, list row, focus strip), so the
 // board, the list and the strip can never drift apart visually.
@@ -21,8 +23,10 @@ export function PriorityMark({ task, withLabel = false }: { task: Task; withLabe
 
 export function DueChip({ task }: { task: Task }) {
   const due = dueLabel(task)
-  if (!due || task.status === 'done') return null
-  return <TonePill tone={due.urgent ? 'danger' : 'neutral'} className="shrink-0 tabular-nums">{due.text}</TonePill>
+  if (!due || task.status === 'done' || !task.due_date) return null
+  // One due-state → tone map for the whole app (Daily, Home, Work agree).
+  const tone = dueTone(task.due_date, false, todayStr(), tomorrowStr())
+  return <TonePill tone={tone} className="shrink-0 tabular-nums">{due.text}</TonePill>
 }
 
 export function WaitingChip({ text, className }: { text: string; className?: string }) {

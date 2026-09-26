@@ -18,6 +18,7 @@ import type {
   ConsistencyWeek, WeeklyVolumePoint, RepBucketCount, ExerciseSessionPoint, RelativeStrengthPoint,
 } from './progressAggregate'
 import type { Landmarks } from './muscleMap'
+import { fmtDateEnGB } from '../../shared/utils/enGBDate'
 
 export type FindingTier = 'measured' | 'evidence' | 'heuristic'
 export interface Finding {
@@ -315,5 +316,5 @@ function fmtKg(n: number): string {
   return `${Math.round(n).toLocaleString('en-GB')} kg`
 }
 function fmtWeekLabel(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
 }

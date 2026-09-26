@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
-import { Search, Plus, CornerDownLeft, type LucideIcon } from 'lucide-react'
+import { Search, Plus, CornerDownLeft, X, type LucideIcon } from 'lucide-react'
 import { useUIStore } from '../../app/store'
 import { NAV } from '../../app/navigation'
 import { useTasksBySection, useCreateTask } from '../../features/todo/hooks/useTodos'
@@ -69,6 +69,7 @@ export function CommandBar() {
       size="lg"
       bodyClassName="p-0"
       panelClassName="sm:mt-[12vh] sm:self-start"
+      ariaLabel="Search or jump to"
     >
       {/* Mounted only while open, so the query and task reads reset with it. */}
       <Palette onClose={closeBar} />
@@ -81,6 +82,15 @@ function Palette({ onClose }: { onClose: () => void }) {
   const modal = useEntityModal()
   const createTask = useCreateTask()
   const [query, setQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Headless UI's Dialog skips initial focus on touch devices (so a keyboard
+  // doesn't pop up unasked). The palette was opened by an explicit tap on
+  // Search, so typing should go straight into the field there too.
+  useEffect(() => {
+    const id = window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 60)
+    return () => window.clearTimeout(id)
+  }, [])
 
   const todayTasks = useTasksBySection('today', true)
   const inboxTasks = useTasksBySection('inbox', true)
@@ -145,7 +155,9 @@ function Palette({ onClose }: { onClose: () => void }) {
       <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-surface px-4">
         <Search className="h-[18px] w-[18px] shrink-0 text-fg-muted" strokeWidth={2} aria-hidden />
         <ComboboxInput
+          ref={inputRef}
           autoFocus
+          data-autofocus
           value={query}
           onChange={e => setQuery(e.target.value)}
           displayValue={() => query}
@@ -153,6 +165,9 @@ function Palette({ onClose }: { onClose: () => void }) {
           aria-label="Search or jump to"
           className="min-h-[56px] w-full bg-transparent text-lead font-medium text-fg placeholder:font-normal placeholder:text-fg-faint focus:outline-none"
         />
+        <button type="button" onClick={onClose} aria-label="Close" className="icon-btn -mr-2 shrink-0">
+          <X className="h-[18px] w-[18px]" aria-hidden />
+        </button>
       </div>
 
       <ComboboxOptions static className="flex flex-col gap-px p-2 outline-none">

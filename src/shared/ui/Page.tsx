@@ -20,14 +20,20 @@ interface PageHeaderProps {
   /** A tab row / filter row rendered under the title line. */
   children?: ReactNode
   className?: string
+  /**
+   * Phones show the route title in the shell header (THEME.md §6.2), so the
+   * H1 is visually hidden below md (still read by screen readers). Set this
+   * when the title is not the route name but content — e.g. Daily's date nav.
+   */
+  titleOnPhone?: boolean
 }
 
-export function PageHeader({ title, subtitle, actions, children, className }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, actions, children, className, titleOnPhone = false }: PageHeaderProps) {
   return (
     <header className={cx('mb-4 sm:mb-6', className)}>
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
-          <h1 className="text-head font-bold tracking-tight text-fg sm:text-page">{title}</h1>
+          <h1 className={cx('text-head font-bold tracking-tight text-fg sm:text-page', !titleOnPhone && 'max-md:sr-only')}>{title}</h1>
           {subtitle != null && <p className="mt-0.5 text-body text-fg-muted">{subtitle}</p>}
         </div>
         {actions != null && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

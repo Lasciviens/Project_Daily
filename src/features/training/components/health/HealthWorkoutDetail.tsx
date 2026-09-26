@@ -3,6 +3,7 @@ import { ModalShell } from '../../../../shared/modals'
 import { useChartColors } from '../../../../shared/ui'
 import { BarLineChart } from './BarLineChart'
 import type { HealthWorkout } from '../../api/healthApi'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  HealthWorkoutDetail — surfaces the RICH per-workout data Health Auto Export
@@ -118,7 +119,7 @@ export function HealthWorkoutDetail({ workout, onClose }: { workout: HealthWorko
       size="md"
       title={workout.name}
       subtitle={<>
-        {workout.start_time && new Date(workout.start_time).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+        {workout.start_time && fmtDateEnGB(new Date(workout.start_time), { weekday: 'short', day: 'numeric', month: 'short' })}
         {' · '}{hhmm(workout.start_time)}–{hhmm(workout.end_time)}
         {raw.location && ` · ${raw.location}`}
       </>}

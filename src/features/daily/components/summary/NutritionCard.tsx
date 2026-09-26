@@ -11,6 +11,7 @@ import { useEntityModal } from '../../../../shared/modals/useEntityModal'
 import { useNutritionCoach } from '../../hooks/useNutritionCoach'
 import { useDeleteQuickMeal, useCopyYesterdayMeals } from '../../hooks/useQuickMeals'
 import { MacroBar } from '../../../recipes/components/MacroBar'
+import { MACRO_COLOR } from '../../../recipes/macroColors'
 import { useRecentFoods, useAddFoodLogEntries, useDeleteFoodLogEntry } from '../../../recipes/hooks/useFoodLog'
 import { useIngredientLibrary } from '../../../recipes/hooks/useIngredientLibrary'
 import { ingredientSnapshot, type RecentFood } from '../../../recipes/api/foodLogApi'
@@ -64,7 +65,8 @@ function CalorieRing({ consumed, target }: { consumed: number; target: number })
     <div className="relative h-[80px] w-[80px] shrink-0">
       <svg viewBox="0 0 72 72" className="h-full w-full -rotate-90" aria-hidden>
         <circle cx="36" cy="36" r={R} fill="none" className="stroke-surface-2" strokeWidth="7" />
-        <circle cx="36" cy="36" r={R} fill="none" className={over ? 'stroke-danger' : 'stroke-accent-500'}
+        <circle cx="36" cy="36" r={R} fill="none" className={over ? 'stroke-danger' : undefined}
+          style={over ? undefined : { stroke: MACRO_COLOR.calories }}
           strokeWidth="7" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct)} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -125,7 +127,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
   }
 
   const slotLabel = (
-    <span className={cx('flex w-[4.75rem] shrink-0 items-center gap-1', isNow ? 'font-semibold text-accent-600' : 'text-fg-muted')}>
+    <span className={cx('flex w-[5.75rem] shrink-0 items-center gap-1.5', isNow ? 'font-semibold text-accent-600' : 'text-fg-muted')}>
       <span className="leading-none">{icon}</span>{label}
       {isNow && <span className="sr-only">(now)</span>}
     </span>
@@ -137,8 +139,8 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
       {meals.length > 0 ? (
         <div className="flex flex-col">
           {meals.map((meal, i) => (
-            <div key={meal.id} className="flex min-h-[44px] items-center gap-1">
-              {i === 0 ? slotLabel : <span className="w-[4.75rem] shrink-0" />}
+            <div key={meal.id} className="flex min-h-[44px] items-center gap-2">
+              {i === 0 ? slotLabel : <span className="w-[5.75rem] shrink-0" />}
               <span className={cx('flex-1 truncate', meal.source === 'plan' ? 'italic text-fg-muted' : 'text-fg-2')}>{meal.title}</span>
               {meal.calories > 0 && <span className="shrink-0 pr-1 text-meta tabular-nums text-fg-muted">{meal.calories} kcal</span>}
               {meal.source === 'plan' && meal.planEntry && (
@@ -163,7 +165,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
         </div>
       ) : (
         <>
-          <div className="flex min-h-[44px] items-center gap-1">
+          <div className="flex min-h-[44px] items-center gap-2">
             {slotLabel}
             {adding ? (
               <input
@@ -188,7 +190,7 @@ function SlotRow({ date, slot, label, icon, isNow, meals }: {
             )}
           </div>
           {adding && recent.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1 pl-[4.75rem]">
+            <div className="mt-1 flex flex-wrap gap-1 pl-[6.25rem]">
               {recent.slice(0, 5).map(r => (
                 <button key={r.key} type="button" onMouseDown={e => e.preventDefault()} onClick={() => reLog(r)}
                   className="chip min-h-[44px] px-2.5 hover:bg-surface-hover">
@@ -262,7 +264,7 @@ export function NutritionCard({ date }: { date: string }) {
                   <span className="tabular-nums"><strong className="text-fg">{protein}g</strong> / {targets.protein}g</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-surface-2">
-                  <div className="h-full rounded-full bg-info transition-all" style={{ width: `${proteinPct}%` }} />
+                  <div className="h-full rounded-full transition-all" style={{ width: `${proteinPct}%`, backgroundColor: MACRO_COLOR.protein }} />
                 </div>
                 {coach.proteinPerMealG != null && (
                   <p className="mt-1 text-meta text-fg-muted">≈{coach.proteinPerMealG}g protein per meal spreads it best</p>

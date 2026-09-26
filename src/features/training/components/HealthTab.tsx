@@ -16,6 +16,7 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import type { HealthWorkout } from '../api/healthApi'
 import { ChevronDown, ChevronRight, Smartphone } from 'lucide-react'
 import { Card, EmptyState, Skeleton } from '../../../shared/ui'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // Apple Health-inspired browse view: activity rings + dedicated sections per
 // metric group (steps/energy/heart/sleep/body). Every HealthKit metric we
@@ -24,7 +25,7 @@ import { Card, EmptyState, Skeleton } from '../../../shared/ui'
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(iso), { day: 'numeric', month: 'short' })
 }
 
 function fmtDuration(seconds: number | null): string {

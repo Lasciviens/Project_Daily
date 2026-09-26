@@ -6,6 +6,7 @@ import { BarLineChart } from './BarLineChart'
 import type { Period } from './PeriodToggle'
 import { ChevronDown } from 'lucide-react'
 import { useChartColors } from '../../../../shared/ui'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 export interface MiniMetricConfig {
   metric: string
@@ -65,7 +66,7 @@ function summarize(metric: string, series: { date: string; value: number }[], wi
 }
 
 function fmtDay(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
 }
 
 export function MetricMiniCard({ config, window }: { config: MiniMetricConfig; window: MiniMetricWindow }) {

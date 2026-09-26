@@ -107,7 +107,9 @@ function tasksSection(i: BriefInput): BriefSection | null {
   if (overdue) parts.push(`${overdue} overdue`)
   if (high) parts.push(`${high} high priority`)
   if (t.doneToday) parts.push(`${t.doneToday} done`)
-  lines.push({ text: parts.join(' · '), tone: overdue ? 'danger' : undefined, href: '/daily' })
+  // Neutral on purpose: the headline already carries the overdue alert, and
+  // a red line would paint "1 done" and "high priority" red too.
+  lines.push({ text: parts.join(' · '), href: '/daily' })
   const focus = pickFocusTask(t.open)
   if (focus) lines.push({ text: `Start with “${focus.title}”${focus.overdue ? ' (overdue)' : focus.dueTime ? ` (due ${focus.dueTime.slice(0, 5)})` : ''}.`, href: '/daily' })
   return { id: 'tasks', title: 'Tasks', lines }
@@ -190,7 +192,8 @@ function moneySection(i: BriefInput): BriefSection | null {
   return {
     id: 'money', title: 'Currency',
     lines: c.slice(0, 3).map(x => {
-      const pct = `${x.changePct >= 0 ? '+' : ''}${x.changePct.toFixed(1)}%`
+      // Anything that rounds to 0.0 prints as a plain 0.0% — never "-0.0%".
+      const pct = Math.abs(x.changePct) < 0.05 ? '0.0%' : `${x.changePct > 0 ? '+' : ''}${x.changePct.toFixed(1)}%`
       return { text: `${x.pair} ${x.rate.toFixed(x.rate >= 100 ? 0 : 2)} (${pct})`, tone: Math.abs(x.changePct) >= 1 ? (x.changePct > 0 ? 'success' : 'danger') : undefined }
     }),
   }

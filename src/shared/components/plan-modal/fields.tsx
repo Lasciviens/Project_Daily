@@ -120,11 +120,15 @@ export function Time24Field({
 }) {
   const [hh = '09', mm = '00'] = value.split(':')
   const selectCls = 'select w-auto px-2 pr-7 tabular-nums disabled:opacity-60'
-  const shiftCls = 'inline-flex min-h-[44px] shrink-0 items-center rounded-input border border-line bg-surface-2 px-2.5 text-meta font-semibold tabular-nums text-fg-2 transition-colors hover:bg-surface-hover hover:text-fg disabled:opacity-40'
+  // In a narrow slot (a half-width dialog column) the selects take the first
+  // row and the two shift buttons share the second, so nothing is pushed out
+  // of the dialog; from 17rem up it is one row.
+  const shiftCls = 'inline-flex min-h-[44px] flex-1 @[17rem]:flex-none shrink-0 items-center justify-center rounded-input border border-line bg-surface-2 px-2.5 text-meta font-semibold tabular-nums text-fg-2 transition-colors hover:bg-surface-hover hover:text-fg disabled:opacity-40'
   return (
-    <div className="flex items-center gap-2">
+    <div className="@container">
+    <div className="flex flex-wrap items-center gap-2">
       <button type="button" disabled={locked} onClick={() => onShift(-30)} className={shiftCls}>−30m</button>
-      <div className="flex flex-1 items-center justify-center gap-1">
+      <div className="order-first flex basis-full items-center justify-center gap-1 @[17rem]:order-none @[17rem]:basis-auto @[17rem]:flex-1">
         <select value={hh} disabled={locked} aria-label="Hour" onChange={e => onChange(`${e.target.value}:${mm}`)} className={selectCls}>
           {HOUR_OPTS.map(h => <option key={h} value={h}>{h}</option>)}
         </select>
@@ -134,6 +138,7 @@ export function Time24Field({
         </select>
       </div>
       <button type="button" disabled={locked} onClick={() => onShift(30)} className={shiftCls}>+30m</button>
+    </div>
     </div>
   )
 }

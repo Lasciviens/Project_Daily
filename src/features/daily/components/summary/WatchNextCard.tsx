@@ -9,7 +9,7 @@ import { useMarkEpisodeWatched } from '../../../media/hooks/useWatchedEpisodes'
 import { useEntityModal } from '../../../../shared/modals'
 import { Button, TonePill } from '../../../../shared/ui'
 import { posterUrl } from '../../../../integrations/tmdb/client'
-import { toast } from '../../../../app/store'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Watch next v2 — driven by ACTUAL watched-episode rows (useNextEpisode),
@@ -40,15 +40,12 @@ export function WatchNextCard({ date }: { date: string }) {
   )
   const modal = useEntityModal()
 
-  const markEpisode = useMarkEpisodeWatched()
+  const markEpisode = useMarkEpisodeWatched({ successMessage: 'Marked watched' })
   function markNextWatched() {
     const n = next.data
     // Guard a refetch race: never claim success for a no-op write.
     if (!entry || !n || n.caughtUp || n.season == null || n.episode == null) return
-    markEpisode.mutate(
-      { tvEntryId: entry.id, episodes: [{ season: n.season, episode: n.episode }], watchedOn: date },
-      { onSuccess: () => toast.success('Marked watched') },
-    )
+    markEpisode.mutate({ tvEntryId: entry.id, episodes: [{ season: n.season, episode: n.episode }], watchedOn: date })
   }
 
   // Movie fallback when there is no series in progress at all.
@@ -132,7 +129,7 @@ export function WatchNextCard({ date }: { date: string }) {
                 </p>
                 {n.airDate && !n.released && (
                   <TonePill tone="warn" className="mt-1">
-                    Airs {new Date(n.airDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    Airs {fmtDateEnGB(new Date(n.airDate), { day: 'numeric', month: 'short' })}
                   </TonePill>
                 )}
                 <div className="mt-2 flex flex-wrap gap-1.5">

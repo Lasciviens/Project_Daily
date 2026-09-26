@@ -22,6 +22,7 @@ import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { toast } from '../../../app/store'
 import type { IngredientLibraryItem, FoodLogEntryInput, MealSlot, RecipeWithIngredients } from '../types'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  LOG FOOD — full-screen, calm, visual (2026-07-21 redesign, user brief:
@@ -267,7 +268,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     } catch { return }
   }
 
-  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  const dateLabel = fmtDateEnGB(new Date(date + 'T00:00:00'), { weekday: 'short', day: 'numeric', month: 'short' })
   const protLeft = Math.round(targets.protein - (nut?.protein_g ?? 0) - totals.prot)
   const kcalLeft = Math.round(targets.calories - (nut?.calories ?? 0) - totals.kcal)
   const addingIngredient = createIngredient.isPending || upsertExternal.isPending
@@ -530,7 +531,8 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
           {savedMeals.length > 0 && (
             <section>
               <p className="section-label mb-2">Saved meals</p>
-              <div className="scroll-x -mx-1 flex snap-x gap-2 px-1 pb-1">
+              {/* Full-bleed to the sheet edges, snapping at the body's 16px inset. */}
+              <div className="scroll-x -mx-4 flex snap-x scroll-px-4 gap-2 px-4 pb-1">
                 {savedMeals.map(r => {
                   // Hover (desktop) / the ✎ editor (mobile) reveals the meal's
                   // ingredients — a temp meal is one named unit, not N loose rows.
@@ -539,7 +541,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                     <div key={r.id} className="relative w-36 shrink-0 snap-start">
                       <button type="button" onClick={() => setPortionRecipe(r)} title={contents}
                         className={cx(
-                          'flex w-full flex-col items-start gap-1 rounded-card border p-2.5 text-left transition-colors',
+                          'flex h-full w-full flex-col items-start gap-1 rounded-card border p-2.5 text-left transition-colors',
                           portionRecipe?.id === r.id ? 'border-accent-500 bg-accent-50' : 'border-line bg-surface-2 hover:border-line-strong',
                         )}>
                         <FoodThumb name={r.title} imageUrl={r.image_url} size={36} />

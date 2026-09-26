@@ -29,6 +29,7 @@ const Big = ({ children }: { children: React.ReactNode }) => <p className="text-
 const Sub = ({ children }: { children: React.ReactNode }) => <p className="text-meta text-fg-muted">{children}</p>
 const Empty = () => <p className="py-1 text-meta text-fg-muted">No data</p>
 import { useDragScroll } from '../../../../shared/hooks/useDragScroll'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 export function HealthCard({ date }: { date: string }) {
   const drag = useDragScroll<HTMLDivElement>()
@@ -69,7 +70,7 @@ export function HealthCard({ date }: { date: string }) {
           {hr ? (<><Big>{round(hr.avg)}</Big><Sub>avg · {round(hr.min)}–{round(hr.max)} bpm</Sub></>) : <Empty />}
         </Panel>
         <Panel icon={<Scale aria-hidden />} label="Weight">
-          {weight ? (<><Big>{round(weight.value, 1)}</Big><Sub>kg · {new Date(weight.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</Sub></>) : <Empty />}
+          {weight ? (<><Big>{round(weight.value, 1)}</Big><Sub>kg · {fmtDateEnGB(new Date(weight.date + 'T00:00:00'), { day: 'numeric', month: 'short' })}</Sub></>) : <Empty />}
         </Panel>
       </div>
     </Cell>

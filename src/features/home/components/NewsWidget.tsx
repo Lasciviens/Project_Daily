@@ -5,6 +5,7 @@ import { NEWS_FEEDS, FEED_CATEGORIES, type FeedCategory, type NewsItem } from '.
 import { useNews } from '../hooks/useNews'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { WidgetShell } from './WidgetShell'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
 
 const VISIBLE = 8
 
@@ -32,7 +33,7 @@ function NewsRow({ item, source }: { item: NewsItem; source: string }) {
           <p className="line-clamp-2 text-body font-semibold text-fg transition-colors duration-150 group-hover:text-accent-600">{item.title}</p>
           {item.excerpt && <p className="mt-0.5 line-clamp-1 text-meta text-fg-muted">{item.excerpt}</p>}
           <p className="mt-0.5 text-micro tabular-nums text-fg-muted">
-            {new Date(item.pubDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            {fmtDateEnGB(new Date(item.pubDate), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
       </a>

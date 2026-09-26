@@ -1,10 +1,18 @@
 import { ExternalLink, RotateCcw, Check, Sparkles, X } from 'lucide-react'
-import { toast } from '../../../app/store'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Card, IconButton, ToneDot } from '../../../shared/ui'
+import { Card, IconButton, ToneDot, cx } from '../../../shared/ui'
 import { useUpdateShopItem, useDeleteShopItem } from '../hooks/useShop'
 import { REGION_FLAG, SHOP_PRIORITY_TONE } from '../shopMeta'
 import type { ShopItem } from '../types'
+import { fmtDateEnGB } from '../../../shared/utils/enGBDate'
+
+// Numbers carry units (THEME §11): the region decides the currency.
+const CURRENCY: Record<string, string> = { NO: 'kr', TR: '₺' }
+function formatShopPrice(price: number, region: string | null | undefined): string {
+  const n = price.toLocaleString('en-GB', { maximumFractionDigits: 2 })
+  const cur = region ? CURRENCY[region] : undefined
+  return cur === '₺' ? `₺${n}` : cur ? `${n} ${cur}` : n
+}
 
 export function ShopItemCard({ item }: { item: ShopItem }) {
   const update = useUpdateShopItem()
@@ -12,10 +20,7 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
   const isBought = item.status === 'bought'
 
   function toggleBought() {
-    update.mutate(
-      { id: item.id, patch: { status: isBought ? 'wishlist' : 'bought' } },
-      { onSuccess: () => toast.success(isBought ? 'Back on wishlist' : 'Marked bought') },
-    )
+    update.mutate({ id: item.id, patch: { status: isBought ? 'wishlist' : 'bought' } })
   }
 
   async function handleDelete() {
@@ -29,7 +34,7 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
   }
 
   return (
-    <Card padded={false} className={isBought ? 'opacity-60' : undefined}>
+    <Card padded={false} className={cx('flex flex-col', isBought && 'opacity-60')}>
       <div className="flex items-start gap-2.5 px-3.5 pt-3">
         <ToneDot tone={SHOP_PRIORITY_TONE[item.priority]} className="mt-1.5" />
         <div className="min-w-0 flex-1">
@@ -46,10 +51,10 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
         <div className="mt-2 flex flex-wrap items-center gap-1.5 px-3.5">
           {item.platform && <span className="chip">{item.platform}</span>}
           {item.price != null && (
-            <span className="chip tabular-nums">{item.price}{item.price_source === 'ai_estimate' ? ' (est.)' : ''}</span>
+            <span className="chip tabular-nums">{formatShopPrice(item.price, item.region)}{item.price_source === 'ai_estimate' ? ' (est.)' : ''}</span>
           )}
           {item.planned_date && (
-            <span className="chip tabular-nums">{new Date(item.planned_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+            <span className="chip tabular-nums">{fmtDateEnGB(new Date(item.planned_date + 'T00:00:00'), { day: 'numeric', month: 'short', year: 'numeric' })}</span>
           )}
           {item.url && (
             <a href={item.url} target="_blank" rel="noopener noreferrer"
@@ -60,7 +65,9 @@ export function ShopItemCard({ item }: { item: ShopItem }) {
         </div>
       )}
 
-      <div className="mt-2 flex items-center gap-1 border-t border-line px-1.5 py-1">
+      <div aria-hidden className="h-2 shrink-0" />
+      {/* mt-auto pins the actions to the bottom when a row stretches the card. */}
+      <div className="mt-auto flex items-center gap-1 border-t border-line px-1.5 py-1">
         <button type="button" onClick={toggleBought} disabled={update.isPending}
           className="btn-ghost btn-sm flex-1 justify-start gap-1.5 disabled:opacity-50">
           {isBought ? <RotateCcw aria-hidden className="h-4 w-4" /> : <Check aria-hidden className="h-4 w-4" />}

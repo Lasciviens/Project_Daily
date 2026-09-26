@@ -8,9 +8,10 @@ import { BodyCompositionPanel } from './BodyCompositionPanel'
 import type { HealthRange } from './sectionTypes'
 import { useChartColors } from '../../../../shared/ui'
 import { SectionCard } from './sectionKit'
+import { fmtDateEnGB } from '../../../../shared/utils/enGBDate'
 
 function fmtDay(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return fmtDateEnGB(new Date(dateStr + 'T00:00:00'), { day: 'numeric', month: 'short' })
 }
 
 // Whole calendar days between two 'yyyy-MM-dd' strings (b - a). Local-time

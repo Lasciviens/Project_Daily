@@ -161,7 +161,7 @@ function WorkoutsSubTab() {
       )}
 
       {isLoading ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start gap-2">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} rounded="rounded-card" className="h-[88px]" />
           ))}
@@ -170,7 +170,7 @@ function WorkoutsSubTab() {
         <EmptyState bordered icon={<Dumbbell />} title="No workouts yet" description="Sync to import your Hevy data." />
       ) : (
         // Content-sized columns (19–22rem); leftover width stays on the right.
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] gap-2 justify-start items-start">
+        <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] gap-2 justify-start items-start">
           {workouts.map(workout => (
             <HevyWorkoutCard
               key={workout.id}
@@ -225,10 +225,11 @@ export function HevyTab() {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Seven sub-tabs never fit a phone, so the strip scrolls; the Log
-          action stays pinned to its right instead of taking a second row. */}
-      <div className="flex items-center gap-2">
-        <div role="tablist" aria-label="Hevy sections" className="scroll-x flex min-w-0 flex-1 border-b border-line">
+      {/* Seven sub-tabs never fit a phone, so the strip scrolls to the screen
+          edge. The Log action sits with the Workouts content below instead of
+          beside the strip, where it cut the last tab off mid-word. */}
+      <div>
+        <div role="tablist" aria-label="Hevy sections" className="scroll-x -mx-4 flex min-w-0 border-b border-line px-4 sm:mx-0 sm:px-0">
           {SUB_TABS.map(tab => (
             <button
               key={tab.id}
@@ -247,12 +248,14 @@ export function HevyTab() {
             </button>
           ))}
         </div>
-        {activeTab === 'workouts' && (
-          <Button variant="primary" icon={<Plus />} onClick={() => setLogOpen(true)} aria-label="Log workout" className="shrink-0 px-3">
-            <span className="hidden sm:inline">Log workout</span>
-          </Button>
-        )}
       </div>
+      {activeTab === 'workouts' && (
+        <div className="flex">
+          <Button variant="primary" icon={<Plus />} onClick={() => setLogOpen(true)} className="shrink-0">
+            Log workout
+          </Button>
+        </div>
+      )}
 
       {/* Sub-tab content — width is managed by the page (calendar lives there) */}
       <div>

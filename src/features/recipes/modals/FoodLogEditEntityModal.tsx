@@ -25,7 +25,7 @@ function toEditable(row: LoggedFood): EditableFoodEntry {
 /** `food-log-edit`: edit one diary row, loaded by id. */
 export function FoodLogEditEntityModal({ request, onClose }: EntityModalProps<'food-log-edit'>) {
   const query = useFoodLogEntry(request.entryId)
-  const row = useFirstLoaded(query.data)
+  const row = useFirstLoaded(query.data, query)
   if (!row) return <EntityModalPending query={query} what="entry" size="sm" onClose={onClose} />
   return <EditFoodLogModal meal={toEditable(row)} date={request.date} onClose={onClose} />
 }

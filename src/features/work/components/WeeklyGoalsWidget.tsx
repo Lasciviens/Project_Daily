@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Button } from '../../../shared/ui'
+import { fmtMonthShort } from '../../../shared/utils/enGBDate'
 import {
   useWeeklyGoals,
   useCreateWeeklyGoal,
@@ -24,15 +25,14 @@ function formatWeekRange(mondayStr: string): string {
   const sunday = new Date(monday)
   sunday.setDate(monday.getDate() + 6)
   const dayFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric' })
-  const monthFmt = new Intl.DateTimeFormat('en-GB', { month: 'short' })
   const startDay = dayFmt.format(monday)
   const endDay = dayFmt.format(sunday)
-  const endMonth = monthFmt.format(sunday)
+  const endMonth = fmtMonthShort(sunday)
   // If same month show "16–22 Jun", else "30 Jun – 6 Jul"
   if (monday.getMonth() === sunday.getMonth()) {
     return `${startDay}–${endDay} ${endMonth}`
   }
-  return `${startDay} ${monthFmt.format(monday)} – ${endDay} ${endMonth}`
+  return `${startDay} ${fmtMonthShort(monday)} – ${endDay} ${endMonth}`
 }
 
 // Rendered inside WorkSidebar's rail card (no chrome of its own).
