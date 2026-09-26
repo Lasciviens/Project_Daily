@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ImageOff, Search, Wand2 } from 'lucide-react'
+import { ImageOff, RotateCcw, Search, Wand2 } from 'lucide-react'
 import type { MatchBasis, SsCandidate, SsMediaEntry } from '../../../scraper/ssTypes'
 import { SsImage } from '../../../scraper/SsImage'
 import { refOf, ssMediaUrl } from '../../../scraper/ssApi'
@@ -38,7 +38,9 @@ export function TgSegmented<T extends string>({ value, options, onChange, label,
 }) {
   const h = size === 'sm' ? 'min-h-[32px] px-2.5 text-[12px]' : 'min-h-[36px] px-3 text-[13px]'
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 self-start justify-self-start rounded-[10px] border border-[var(--tg-border)] bg-[var(--tg-panel-2)] p-0.5">
+    // Never squeezed by its neighbours (shrink-0), but never wider than its
+    // box either (max-w-full): only a genuinely narrow box truncates a label.
+    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full shrink-0 self-start justify-self-start rounded-[10px] border border-[var(--tg-border)] bg-[var(--tg-panel-2)] p-0.5">
       {options.map(o => {
         const on = o.value === value
         return (
@@ -50,7 +52,7 @@ export function TgSegmented<T extends string>({ value, options, onChange, label,
             disabled={o.disabled}
             title={o.hint}
             onClick={() => onChange(o.value)}
-            className={`${h} rounded-[8px] font-semibold transition-colors [@media(pointer:coarse)]:min-h-[44px] disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`${h} min-w-0 truncate rounded-[8px] font-semibold transition-colors [@media(pointer:coarse)]:min-h-[44px] disabled:cursor-not-allowed disabled:opacity-40 ${
               on
                 ? 'bg-[var(--tg-seg-active-bg,var(--tg-accent-soft))] text-[var(--tg-nav-active-text,var(--tg-accent))] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--tg-accent)_35%,transparent)]'
                 : 'text-[var(--tg-text-2)] [@media(hover:hover)]:hover:bg-[var(--tg-hover)]'
@@ -145,11 +147,26 @@ export function TgSsMedia({ candidate, entry, width, className = '', imgClassNam
       alt={alt}
       className={className}
       imgClassName={imgClassName}
-      fallback={
-        <span className="absolute inset-0 grid place-items-center rounded-[inherit] bg-[var(--tg-panel-2)] text-[var(--tg-faint)]">
-          <ImageOff className="h-5 w-5" strokeWidth={1.6} aria-hidden />
-        </span>
-      }
+      fallback={(state, retry) => state === 'loading'
+        // Waiting in the queue (3 at a time) is not "no image".
+        ? <span aria-label="Loading" className="tg-skeleton absolute inset-0 rounded-[inherit]" />
+        : state === 'missing'
+          ? (
+            <span title="ScreenScraper has no such file" className="absolute inset-0 grid place-items-center rounded-[inherit] bg-[var(--tg-panel-2)] text-[var(--tg-faint)]">
+              <ImageOff className="h-5 w-5" strokeWidth={1.6} aria-hidden />
+            </span>
+          )
+          : (
+            // Their servers were busy: tap to try again (a span — the tile may itself be a button).
+            <span
+              role="button" tabIndex={0} aria-label="Could not load — try again"
+              onClick={e => { e.stopPropagation(); e.preventDefault(); retry() }}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); retry() } }}
+              className="absolute inset-0 grid cursor-pointer place-items-center rounded-[inherit] bg-[var(--tg-panel-2)] text-[var(--tg-muted)]"
+            >
+              <RotateCcw className="h-5 w-5" strokeWidth={1.8} aria-hidden />
+            </span>
+          )}
     />
   )
 }

@@ -8,19 +8,25 @@ type LoadState = 'loading' | 'ready' | 'missing' | 'failed'
  * only once they scroll near the viewport, a few at a time (ssImageQueue);
  * any other URL (a stored copy) is a plain lazy <img>.
  */
+export type SsImageState = 'loading' | 'missing' | 'failed'
+
 export function SsImage({ src, proxied, alt = '', className = '', imgClassName = '', fallback = null }: {
   src: string | null
   proxied: boolean
   alt?: string
   className?: string
   imgClassName?: string
-  fallback?: ReactNode
+  /** Shown until the image is ready. A function gets the state — so still
+   *  loading never looks like "no image" — and a retry for a failure. */
+  fallback?: ReactNode | ((state: SsImageState, retry: () => void) => ReactNode)
 }) {
   const box = useRef<HTMLSpanElement>(null)
   // What the queue answered for THIS src; a new src starts over (it is part of
   // the state, so no effect has to reset anything).
   const [loaded, setLoaded] = useState<{ src: string; url: string | null; state: LoadState } | null>(null)
   const [decoded, setDecoded] = useState<{ url: string; ok: boolean } | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const retry = () => { setLoaded(null); setDecoded(null); setAttempt(a => a + 1) }
 
   const peek = src && proxied ? peekProxied(src) : undefined
   const current = loaded?.src === src ? loaded : null
@@ -42,7 +48,7 @@ export function SsImage({ src, proxied, alt = '', className = '', imgClassName =
     }, { rootMargin: '200px' })
     io.observe(el)
     return () => { alive = false; io.disconnect() }
-  }, [src, proxied])
+  }, [src, proxied, attempt])
 
   return (
     <span ref={box} className={`relative block ${className}`}>
@@ -58,7 +64,7 @@ export function SsImage({ src, proxied, alt = '', className = '', imgClassName =
           className={`${imgClassName} ${state === 'ready' ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
         />
       )}
-      {state !== 'ready' && fallback}
+      {state !== 'ready' && (typeof fallback === 'function' ? fallback(state, retry) : fallback)}
     </span>
   )
 }

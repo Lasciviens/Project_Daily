@@ -213,7 +213,7 @@ interface SsPrefs {
   regions: string[]
   /** Language order for descriptions, genres, modes, series. */
   languages: string[]
-  /** Keep their full record (all titles, dates, ROMs, ratings) in provider_data. */
+  /** Also keep their raw answer (minus URLs) beside the normalized record, in game_scrape_records. */
   snapshot: boolean
   /** Stop storing images once the artwork bucket passes this many megabytes. */
   budgetMb: number
@@ -1245,6 +1245,20 @@ function verifyFilenameMatch(
 }
 
 /**
+ * Did a hash lookup really find THIS dump? ScreenScraper answers a hash it
+ * does not know with its best guess by filename, so the answer counts as
+ * exact only when its ROM carries one of the hashes asked for.
+ */
+function verifyHashMatch(
+  query: { crc?: string | null; md5?: string | null; sha1?: string | null },
+  c: Pick<SsCandidate, 'rom'>,
+): boolean {
+  if (!c.rom) return false
+  const eq = (a?: string | null, b?: string | null) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase()
+  return eq(query.crc, c.rom.crc) || eq(query.md5, c.rom.md5) || eq(query.sha1, c.rom.sha1)
+}
+
+/**
  * The stored-copy decision per media type for one game. A type is copied only
  * when that copy will be used: a field-backed type (box front → cover, …) only
  * when its field will be written, any other type only when the handheld has
@@ -1363,16 +1377,25 @@ function upstreamUrl(req: ProxyRequest): string {
 
 /** One upstream fetch; a redirect is followed once, by hand, and only to an
  *  https screenscraper.fr host. Throws a fixed message on any failure. */
+/** A fetch whose deadline covers the wait for the RESPONSE HEADERS only — a
+ *  signal left on the request would also cut the streamed body off, so a
+ *  manual or video longer than the timeout stopped mid-file. */
+async function headersWithin(url: string, init: RequestInit): Promise<Response> {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS)
+  try { return await fetch(url, { ...init, signal: ctl.signal }) } finally { clearTimeout(timer) }
+}
+
 async function fetchUpstream(url: string, range: string | null): Promise<Response> {
   const headers: Record<string, string> = { 'User-Agent': SOFTNAME }
   if (range) headers.Range = range
-  const opts = { redirect: 'manual' as const, headers, signal: AbortSignal.timeout(TIMEOUT_MS) }
-  let res = await fetch(url, opts)
+  const opts = { redirect: 'manual' as const, headers }
+  let res = await headersWithin(url, opts)
   if (res.status >= 300 && res.status < 400) {
     const target = safeRedirect(url, res.headers.get('location'))
     await res.body?.cancel()
     if (!target) return new Response(null, { status: 502 })
-    res = await fetch(target, opts)
+    res = await headersWithin(target, opts)
     if (res.status >= 300 && res.status < 400) { await res.body?.cancel(); return new Response(null, { status: 502 }) }
   }
   return res
@@ -1430,7 +1453,11 @@ Deno.serve(async (req) => {
     headers.set('Cache-Control', `public, max-age=${Math.max(60, parsed.exp - nowSec)}, immutable`)
     headers.set('Cross-Origin-Resource-Policy', 'cross-origin')
     headers.set('X-Content-Type-Options', 'nosniff')
-    headers.set('Content-Security-Policy', "default-src 'none'; sandbox")
+    // Images and videos can run nothing: sandboxed. A manual is a PDF, and
+    // browser PDF viewers refuse to render under a sandbox CSP — the type
+    // allow-list and nosniff are its guard (and it is on this function's own
+    // origin, never the app's).
+    if (parsed.ep !== 'manual') headers.set('Content-Security-Policy', "default-src 'none'; sandbox")
     headers.set('Content-Disposition', 'inline')
     return new Response(res.body, { status: res.status, headers })
   }

@@ -31,7 +31,7 @@ export function TgScrapeApplied({ game, runId, result, rows, onBack, onAgain }: 
   const copied = (result.media ?? []).filter(m => m.ok && m.mode === 'store')
   const online = (result.media ?? []).filter(m => m.ok && m.mode === 'on_demand')
   const failed = (result.media ?? []).filter(m => !m.ok)
-  const reasons = [...new Set(online.filter(m => m.reason).map(m => m.reason!))]
+
   const openGame = () => {
     setSection('library')
     if (bp === 'mobile') openDetail(game.id)
@@ -76,12 +76,18 @@ export function TgScrapeApplied({ game, runId, result, rows, onBack, onAgain }: 
             </div>
             <div>
               <h3 className="tg-section-label mb-1 flex items-center gap-1.5"><Save className="h-3.5 w-3.5" aria-hidden />Copied to storage · {formatBytes(result.bytes_stored ?? 0)}</h3>
-              <p>{copied.length ? copied.map(m => `${mediaInfo(m.type).label} (${formatBytes(m.bytes)})`).join(', ') : <span className="tg-muted">None</span>}</p>
+              <p>{copied.length ? copied.map(m => m.bytes ? `${mediaInfo(m.type).label} (${formatBytes(m.bytes)})` : `${mediaInfo(m.type).label} (${m.reason ?? 'kept'})`).join(', ') : <span className="tg-muted">None</span>}</p>
             </div>
             <div>
               <h3 className="tg-section-label mb-1 flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5" aria-hidden />Shown online (no storage)</h3>
-              <p>{online.length ? online.map(m => mediaInfo(m.type).label).join(', ') : <span className="tg-muted">None</span>}</p>
-              {reasons.length > 0 && <p className="mt-1 text-[12px] tg-muted">{reasons.join(' · ')}</p>}
+              {online.length ? (
+                // Each item with its own reason — one shared line read as if it covered all of them.
+                <ul className="flex flex-col gap-0.5">
+                  {online.map(m => (
+                    <li key={m.type}>{mediaInfo(m.type).label}{m.reason && <span className="text-[12px] tg-muted"> — {m.reason}</span>}</li>
+                  ))}
+                </ul>
+              ) : <p className="tg-muted">None</p>}
             </div>
             {failed.length > 0 && (
               <div>
@@ -91,14 +97,14 @@ export function TgScrapeApplied({ game, runId, result, rows, onBack, onAgain }: 
             )}
           </div>
         )}
-        {result.remaining_today != null && <p className="mt-4 text-[11.5px] tabular-nums tg-faint">{result.remaining_today.toLocaleString('en-GB')} ScreenScraper requests left today</p>}
+        {result.remaining_today != null && <p className="mt-4 text-[11.5px] tabular-nums tg-muted">{result.remaining_today.toLocaleString('en-GB')} ScreenScraper requests left today</p>}
       </section>
 
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
         {ok && (
           <button
             type="button"
-            onClick={() => undo.mutate({ runId, gameIds: [game.id] }, { onSuccess: (r) => { if (r.status === 'ok' && r.reverted) onAgain() } })}
+            onClick={() => undo.mutate({ runId, gameIds: [game.id], scope: 'game' }, { onSuccess: (r) => { if (r.status === 'ok' && r.reverted) onAgain() } })}
             disabled={undo.isPending}
             className="tg-btn tg-btn-secondary"
           >

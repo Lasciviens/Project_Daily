@@ -35,6 +35,17 @@ function Expand({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+/** Their full answers fetched this session, by entry id (never persisted). */
+const rawCache = new Map<string, unknown>()
+
+// ScreenScraper's own names for what a pictogram or logo belongs to.
+const EXTRA_PARENT: Record<string, string> = {
+  genre: 'Genres', genres: 'Genres', classification: 'Age ratings', classifications: 'Age ratings', famille: 'Series',
+  familles: 'Series', mode: 'Modes', modes: 'Modes', theme: 'Themes', themes: 'Themes', style: 'Styles', styles: 'Styles',
+  editeur: 'Publisher', developpeur: 'Developer', systeme: 'System', hack: 'Hacks', jeu: 'Game', numero: 'Number',
+}
+const parentLabel = (p: string) => EXTRA_PARENT[p.toLowerCase()] ?? p
+
 const romLine = (r: SsRomInfo) => [r.filename, formatBytes(r.size), r.regions.join('/').toUpperCase() || null, r.flags.join(', ') || null].filter(Boolean).join(' · ')
 
 /**
@@ -49,17 +60,23 @@ export function TgScrapeRecord({ candidate: c, storedRaw }: {
   /** The record as saved with the game — shown without asking ScreenScraper again. */
   storedRaw?: unknown
 }) {
-  const [raw, setRaw] = useState<unknown>(null)
+  const [shown, setShown] = useState(false)
+  const [fetched, setFetched] = useState<unknown>(() => rawCache.get(c.jeu_id) ?? null)
   const [rawState, setRawState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const raw = shown ? (storedRaw ?? fetched) : null
 
+  // Their answer costs a ScreenScraper request: asked once per entry per
+  // session, then hidden and shown again for free.
   const loadRaw = async () => {
-    if (raw) { setRaw(null); return }
-    if (storedRaw) { setRaw(storedRaw); return }
+    if (shown) { setShown(false); return }
+    if (storedRaw || fetched) { setShown(true); return }
     setRawState('loading')
     try {
       const r = await fetchCandidate(c.jeu_id, c.matched_by)
       if (r.status !== 'ok' || !r.record) throw new Error(r.error ?? 'No record')
-      setRaw(r.record)
+      rawCache.set(c.jeu_id, r.record)
+      setFetched(r.record)
+      setShown(true)
       setRawState('idle')
     } catch {
       setRawState('error')
@@ -70,7 +87,7 @@ export function TgScrapeRecord({ candidate: c, storedRaw }: {
     ['Genres', c.genres], ['Modes', c.modes], ['Series', c.families], ['Number', c.numbers], ['Themes', c.themes], ['Styles', c.styles],
   ]
   const extras = c.extra_media ?? []
-  const extraSummary = [...new Set(extras.map(m => m.parent))].map(p => `${p} ${extras.filter(m => m.parent === p).length}`).join(' · ')
+  const extraSummary = [...new Set(extras.map(m => m.parent))].map(p => `${parentLabel(p)} ${extras.filter(m => m.parent === p).length}`).join(' · ')
   return (
     <div className="flex flex-col gap-1">
       <dl className="divide-y divide-[var(--tg-border)]">

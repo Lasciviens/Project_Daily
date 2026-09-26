@@ -4,11 +4,11 @@ import { platformInfo, type TgGame } from '../../testGameModel'
 import { useTestGameStore, type ScrapeBatchState } from '../../testGameStore'
 import type { FindResult } from '../../../scraper/ssApi'
 import { EXACT_BASES, modeCounts } from '../../../scraper/ssPlan'
-import { useApplyBatch, useFindBatch, useKnownNoMatches, useScrapePrefs, useUndoScrape } from '../../../scraper/useScrape'
+import { useAfterScrapeWrite, useApplyBatch, useFindBatch, useKnownNoMatches, useScrapePrefs, useUndoScrape } from '../../../scraper/useScrape'
 import { toast } from '../../../../../app/store'
 import { TgDropdown } from '../TgDropdown'
 import { TgCover } from '../TgCover'
-import { TgBasisBadges, TgCandidateCover, TgFlagChips, TgScrapeCard } from './TgScrapeParts'
+import { TgBasisBadges, TgCandidateCover, TgChip, TgFlagChips, TgScrapeCard } from './TgScrapeParts'
 import { isScraped, primaryVariant } from './tgScrapeModel'
 
 type Filter = ScrapeBatchState['filter']
@@ -45,12 +45,18 @@ const safeToTick = (f: FindResult) => {
  * hack/beta/demo marker start ticked. The whole session lives in the page
  * store — switching to one game and back keeps every lookup.
  */
-export function TgScrapeBatch({ games, loading, onOpenGame }: { games: TgGame[]; loading: boolean; onOpenGame: (id: string) => void }) {
+export function TgScrapeBatch({ games, loading, onOpenGame }: {
+  games: TgGame[]
+  loading: boolean
+  /** Opens one game in the review — with its found match, when there is one (no new search). */
+  onOpenGame: (id: string, found: FindResult | null) => void
+}) {
   const batch = useTestGameStore(s => s.scrapeBatch)
   const update = useTestGameStore(s => s.updateScrapeBatch)
-  const { filter, system, found, ticked, saved, runId } = batch
+  const { filter, system, found, ticked, saved, runId, inFlight } = batch
   const find = useFindBatch()
   const applyBatch = useApplyBatch()
+  const refreshAfter = useAfterScrapeWrite()
   const undo = useUndoScrape()
   const noMatches = useKnownNoMatches(true)
   const { prefs } = useScrapePrefs()
@@ -75,37 +81,60 @@ export function TgScrapeBatch({ games, loading, onOpenGame }: { games: TgGame[];
   const earlierMisses = list.filter(g => !found[g.id] && !saved[g.id] && known.has(g.id))
   // What is rendered is exactly what lookups and saves may touch.
   const visible = [...touched, ...fresh.slice(0, Math.max(0, CAP - touched.length))].sort((a, b) => a.title.localeCompare(b.title))
-  const retryable = visible.filter(g => found[g.id]?.outcome === 'error')
-  const next = [...retryable, ...visible.filter(g => !found[g.id] && !saved[g.id])].slice(0, FIND_CHUNK)
-  const toSave = visible.filter(g => ticked[g.id] && found[g.id]?.outcome === 'match' && !saved[g.id])
+  const busy = (id: string) => !!inFlight[id]
+  const finding = Object.values(inFlight).includes('find')
+  const saving = Object.values(inFlight).includes('save')
+  const done = (id: string) => saved[id]?.outcome === 'applied'
+  const retryable = visible.filter(g => found[g.id]?.outcome === 'error' && !busy(g.id))
+  const next = [...retryable, ...visible.filter(g => !found[g.id] && !saved[g.id] && !busy(g.id))].slice(0, FIND_CHUNK)
+  // A failed save stays ticked and can simply be saved again.
+  const toSave = visible.filter(g => ticked[g.id] && found[g.id]?.outcome === 'match' && !done(g.id) && !busy(g.id))
+
+  // Results land in the page store even if this component is gone by then
+  // (a tab switch mid-lookup): the promise, not a component callback, writes them.
+  const mark = (ids: string[], what: 'find' | 'save' | null) => update(b => {
+    const f = { ...b.inFlight }
+    for (const id of ids) { if (what) f[id] = what; else delete f[id] }
+    return { inFlight: f }
+  })
 
   const findNext = (ids = next.map(g => g.id)) => {
-    if (!ids.length) return
-    find.mutate(ids, {
-      onSuccess: (r) => {
-        if (r.status === 'quota_exhausted') { toast.warning(r.message ?? "Today's ScreenScraper allowance is nearly used up."); return }
-        update(b => {
-          const f = { ...b.found }; const t = { ...b.ticked }
-          for (const x of r.results ?? []) { f[x.game_id] = x; if (x.outcome === 'match') t[x.game_id] = safeToTick(x) }
-          return { found: f, ticked: t }
-        })
-      },
-    })
+    if (!ids.length || finding) return
+    mark(ids, 'find')
+    find.mutateAsync(ids).then(r => {
+      if (r.status === 'quota_exhausted') { toast.warning(r.message ?? "Today's ScreenScraper allowance is nearly used up."); return }
+      update(b => {
+        const f = { ...b.found }; const t = { ...b.ticked }
+        for (const x of r.results ?? []) { f[x.game_id] = x; if (x.outcome === 'match') t[x.game_id] = safeToTick(x) }
+        return { found: f, ticked: t }
+      })
+    }).catch(() => { /* the mutation already toasted */ }).finally(() => mark(ids, null))
   }
 
   const saveTicked = async () => {
+    if (saving || !toSave.length) return
     const run = runId ?? crypto.randomUUID()
+    const all = toSave.map(g => g.id)
     update({ runId: run })
-    for (let i = 0; i < toSave.length; i += APPLY_CHUNK) {
-      const items = toSave.slice(i, i + APPLY_CHUNK).map(g => {
-        const f = found[g.id]!
-        return { game_id: g.id, jeu_id: f.candidate!.jeu_id, system: f.system?.id ?? null, rom_filename: f.rom_filename ?? null, matched_by: f.candidate!.matched_by }
-      })
-      try {
-        const r = await applyBatch.mutateAsync({ items, runId: run })
-        update(b => ({ saved: { ...b.saved, ...Object.fromEntries(r.results.map(x => [x.game_id, x])) } }))
-        if (r.not_started?.length) { toast.warning(`${r.not_started.length} game${r.not_started.length === 1 ? '' : 's'} not started (time limit) — press Save again.`); break }
-      } catch { break } // the mutation already toasted
+    mark(all, 'save')
+    try {
+      for (let i = 0; i < toSave.length; i += APPLY_CHUNK) {
+        const chunk = toSave.slice(i, i + APPLY_CHUNK)
+        const items = chunk.map(g => {
+          const f = found[g.id]!
+          return { game_id: g.id, jeu_id: f.candidate!.jeu_id, system: f.system?.id ?? null, rom_filename: f.rom_filename ?? null, matched_by: f.candidate!.matched_by }
+        })
+        try {
+          const r = await applyBatch.mutateAsync({ items, runId: run })
+          update(b => ({ saved: { ...b.saved, ...Object.fromEntries(r.results.map(x => [x.game_id, x])) } }))
+          mark(chunk.map(g => g.id), null)
+          if (r.not_started?.length) { toast.warning(`${r.not_started.length} game${r.not_started.length === 1 ? '' : 's'} not started (time limit) — press Save again.`); break }
+        } catch { break } // the mutation already toasted
+      }
+    } finally {
+      mark(all, null)
+      // One library refresh for the whole save, not one per chunk.
+      refreshAfter(all)
     }
   }
 
@@ -135,29 +164,38 @@ export function TgScrapeBatch({ games, loading, onOpenGame }: { games: TgGame[];
         </div>
         <p className="mt-3 text-[12px] leading-snug tg-muted">
           {loading ? 'Loading…' : `${list.length} game${list.length === 1 ? '' : 's'}${earlierMisses.length ? ` · ${earlierMisses.length} had no match last time (set apart)` : ''}.`}{' '}
-          Saves use “What to save”: {counts.store} image types copied, {counts.on_demand} online{prefs.snapshot ? ', full record' : ''};
+          Saves use “What to save”: {counts.store} image types copied, {counts.on_demand} online{prefs.snapshot ? ', raw answer kept' : ''};
           {replaceFields ? <b className="font-semibold text-[var(--tg-red)]"> {replaceFields} field{replaceFields === 1 ? ' is' : 's are'} set to Replace</b> : ' fields only fill empty ones'}.
           Each lookup is one ScreenScraper request.
         </p>
         <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          <button type="button" onClick={() => findNext()} disabled={!next.length || find.isPending} className="tg-btn tg-btn-secondary">
-            <Search className={`h-4 w-4 ${find.isPending ? 'animate-pulse' : ''}`} aria-hidden />
-            {find.isPending ? 'Looking…' : next.length ? `Find matches for the next ${next.length}` : 'All shown games looked up'}
+          <button type="button" onClick={() => findNext()} disabled={!next.length || finding} className="tg-btn tg-btn-secondary">
+            <Search className={`h-4 w-4 ${finding ? 'animate-pulse' : ''}`} aria-hidden />
+            {finding ? 'Looking…' : next.length ? `Find matches for the next ${next.length}` : 'All shown games looked up'}
           </button>
-          <button type="button" onClick={saveTicked} disabled={!toSave.length || applyBatch.isPending} className="tg-btn tg-btn-primary">
-            <Wand2 className={`h-4 w-4 ${applyBatch.isPending ? 'animate-pulse' : ''}`} aria-hidden />
-            {applyBatch.isPending ? 'Saving…' : `Save ${toSave.length} ticked`}
+          <button type="button" onClick={saveTicked} disabled={!toSave.length || saving} className="tg-btn tg-btn-primary">
+            <Wand2 className={`h-4 w-4 ${saving ? 'animate-pulse' : ''}`} aria-hidden />
+            {saving ? 'Saving…' : `Save ${toSave.length} ticked`}
           </button>
         </div>
         {earlierMisses.length > 0 && (
-          <button type="button" onClick={() => findNext(earlierMisses.slice(0, FIND_CHUNK).map(g => g.id))} disabled={find.isPending} className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 text-[12.5px] font-semibold text-[var(--tg-accent)]">
+          <button type="button" onClick={() => findNext(earlierMisses.slice(0, FIND_CHUNK).map(g => g.id))} disabled={finding} className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 text-[12.5px] font-semibold text-[var(--tg-accent)]">
             <RotateCcw className="h-4 w-4" aria-hidden /> Try the earlier misses again ({Math.min(earlierMisses.length, FIND_CHUNK)})
           </button>
         )}
         {runId && savedIds.length > 0 && (
-          <button type="button" onClick={() => undo.mutate({ runId, gameIds: savedIds }, { onSuccess: (r) => {
-            const kept = new Set((r.skipped ?? []).map(s => s.game_id))
-            if (r.status === 'ok' && r.reverted) update(b => ({ saved: Object.fromEntries(Object.entries(b.saved).filter(([id]) => kept.has(id))), runId: kept.size ? b.runId : null }))
+          <button type="button" onClick={() => undo.mutate({ runId, gameIds: savedIds, scope: 'run' }, { onSuccess: (r) => {
+            // Exactly the games the server reverted leave the Saved list; a
+            // game it kept (edited since, newer scrape) stays marked Saved.
+            const reverted = new Set(r.reverted_ids ?? [])
+            if (r.status === 'ok' && reverted.size) {
+              update(b => {
+                const left = Object.fromEntries(Object.entries(b.saved).filter(([id]) => !reverted.has(id)))
+                // A new run for anything saved from here on: the undone applies stay
+                // their own run's history.
+                return { saved: left, runId: null }
+              })
+            }
           } })} disabled={undo.isPending} className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-[12.5px] font-semibold text-[var(--tg-accent)]">
             <Undo2 className="h-4 w-4" aria-hidden /> Undo this batch ({savedIds.length})
           </button>
@@ -169,7 +207,7 @@ export function TgScrapeBatch({ games, loading, onOpenGame }: { games: TgGame[];
           const f = found[g.id]
           const s = saved[g.id]
           const c = f?.candidate
-          const tickable = f?.outcome === 'match' && !s
+          const tickable = f?.outcome === 'match' && s?.outcome !== 'applied' && !busy(g.id)
           const Row = tickable ? 'label' : 'div'
           return (
             <li key={g.id} className="tg-panel flex items-center gap-2 p-2">
@@ -190,14 +228,20 @@ export function TgScrapeBatch({ games, loading, onOpenGame }: { games: TgGame[];
                     </span>
                   )}
                   {c && (
-                    <span className="mt-0.5 flex min-w-0 items-center gap-2">
-                      <TgCandidateCover candidate={c} regions={prefs.regions} width={120} className="h-[34px] w-[25px] shrink-0 overflow-hidden rounded" />
+                    <span className="mt-0.5 flex min-w-0 items-start gap-2">
+                      <TgCandidateCover candidate={c} regions={prefs.regions} width={120} className="mt-0.5 h-[34px] w-[25px] shrink-0 overflow-hidden rounded" />
                       <span className="min-w-0">
-                        <span className="block truncate text-[12px]">→ {String(c.values.title ?? '')} <span className="tg-muted">· {c.system.name ?? ''} {c.values.release_year ?? ''}</span></span>
-                        <span className="flex flex-wrap gap-1"><TgBasisBadges basis={c.matched_by} /><TgFlagChips flags={c.flags} /></span>
+                        {/* The whole match, readable on a phone: title on its own lines, then console and year. */}
+                        <span className="line-clamp-2 text-[12px] leading-snug">→ {String(c.values.title ?? '')}</span>
+                        <span className="mt-0.5 flex flex-wrap gap-1">
+                          {c.system.name && <TgChip tone={f?.system?.id != null && c.system.id === f.system.id ? 'good' : 'neutral'}>{c.system.name}</TgChip>}
+                          {c.values.release_year ? <TgChip>{String(c.values.release_year)}</TgChip> : null}
+                          <TgBasisBadges basis={c.matched_by} /><TgFlagChips flags={c.flags} />
+                        </span>
                       </span>
                     </span>
                   )}
+                  {busy(g.id) && <span className="mt-0.5 block text-[11.5px] tg-muted">{inFlight[g.id] === 'find' ? 'Looking up…' : 'Saving…'}</span>}
                   {s && (
                     <span className={`mt-0.5 flex items-center gap-1 text-[11.5px] font-semibold ${s.outcome === 'applied' ? 'text-[var(--tg-green)]' : 'text-[var(--tg-red)]'}`}>
                       {s.outcome === 'applied' ? <><Check className="h-3.5 w-3.5" aria-hidden /> Saved · {s.written?.length ?? 0} fields</> : (s.reason ?? s.outcome)}
@@ -205,7 +249,9 @@ export function TgScrapeBatch({ games, loading, onOpenGame }: { games: TgGame[];
                   )}
                 </span>
               </Row>
-              <button type="button" onClick={() => onOpenGame(g.id)} className="tg-btn tg-btn-secondary shrink-0 !px-3 !text-[12.5px]">Open</button>
+              <button type="button" onClick={() => onOpenGame(g.id, f?.outcome === 'match' ? f : null)} className="tg-btn tg-btn-secondary shrink-0 !px-3 !text-[12.5px]">
+                {f?.outcome === 'match' ? 'Review' : 'Open'}
+              </button>
             </li>
           )
         })}

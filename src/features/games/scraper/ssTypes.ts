@@ -153,7 +153,7 @@ export interface SsPrefs {
   regions: string[]
   /** Language order for descriptions, genres, modes, series. */
   languages: string[]
-  /** Keep their full record (all titles, dates, ROMs, ratings) in provider_data. */
+  /** Also keep their raw answer (minus URLs) beside the normalized record, in game_scrape_records. */
   snapshot: boolean
   /** Stop storing images once the artwork bucket passes this many megabytes. */
   budgetMb: number

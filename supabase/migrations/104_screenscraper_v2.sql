@@ -125,19 +125,27 @@ COMMENT ON TABLE public.game_scrape_records IS
 -- the service role only (Supabase grants new functions to anon/authenticated
 -- explicitly, so those grants are revoked by name).
 --
--- Categories follow the bucket's layout: `<user>/esde/<variant>/<hash>.webp`
--- is the optimized ES-DE cover, anything else under `/esde/` an ES-DE
--- original, `pending/` the old scraper's review quarantine, the rest
+-- Categories follow the bucket's layout: under `<user>/esde/<variant>/` the
+-- object a variant's cover_url points at is the optimized ES-DE cover (both
+-- ES-DE uploads share the `<hash>.<ext>` naming and originals can be WebP
+-- too, so the extension says nothing), anything else there an ES-DE
+-- original; `pending/` is the old scraper's review quarantine, the rest
 -- (`<game>/<type>….<ext>`) ScreenScraper copies.
 CREATE OR REPLACE FUNCTION public.game_media_usage()
 RETURNS TABLE (category text, files bigint, bytes bigint)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
+  WITH covers AS (
+    SELECT DISTINCT substring(p.cover_url FROM '/object/public/game-media/(.*)$') AS name
+    FROM public.game_platforms p
+    WHERE p.cover_url LIKE '%/object/public/game-media/%/esde/%'
+  )
   SELECT c.category, count(*)::bigint, coalesce(sum((o.metadata->>'size')::bigint), 0)::bigint
   FROM storage.objects o
+  LEFT JOIN covers cv ON cv.name = o.name
   CROSS JOIN LATERAL (SELECT CASE
     WHEN o.name LIKE 'pending/%' THEN 'pending'
-    WHEN o.name LIKE '%/esde/%' AND o.name LIKE '%.webp' THEN 'esde_cover'
+    WHEN o.name LIKE '%/esde/%' AND cv.name IS NOT NULL THEN 'esde_cover'
     WHEN o.name LIKE '%/esde/%' THEN 'esde_original'
     ELSE 'screenscraper' END AS category) c
   WHERE o.bucket_id = 'game-media'
@@ -146,15 +154,20 @@ $$;
 REVOKE ALL ON FUNCTION public.game_media_usage() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.game_media_usage() TO service_role;
 
--- Every ScreenScraper-category object with its size, for the cleanup that
--- deletes copies no game points at any more. Same access rule.
+-- Every ScreenScraper-category object with its size and age, for the cleanup
+-- that deletes copies no game points at any more. Ordered, so the caller can
+-- page past PostgREST's row cap; the age lets it leave alone a copy a save
+-- still in flight has uploaded but not yet written to its game. Same access
+-- rule.
+DROP FUNCTION IF EXISTS public.game_media_scrape_objects();
 CREATE OR REPLACE FUNCTION public.game_media_scrape_objects()
-RETURNS TABLE (name text, bytes bigint)
+RETURNS TABLE (name text, bytes bigint, created_at timestamptz)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
-  SELECT o.name, coalesce((o.metadata->>'size')::bigint, 0)::bigint
+  SELECT o.name, coalesce((o.metadata->>'size')::bigint, 0)::bigint, o.created_at
   FROM storage.objects o
   WHERE o.bucket_id = 'game-media' AND o.name NOT LIKE '%/esde/%'
+  ORDER BY o.name
 $$;
 REVOKE ALL ON FUNCTION public.game_media_scrape_objects() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.game_media_scrape_objects() TO service_role;

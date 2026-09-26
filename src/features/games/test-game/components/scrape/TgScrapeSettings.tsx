@@ -190,8 +190,8 @@ export function TgScrapeSettings({ open, onClose }: { open: boolean; onClose: ()
         <OrderList list={draft.languages} names={LANG_NAMES} onChange={languages => set({ languages })} label="Language order" />
       </Section>
 
-      <Section title="Full record" note="Every regional title and date, all rating boards, every known dump with hashes, hacks, controls — kept in the database (not in storage).">
-        <TgSwitch on={draft.snapshot} onChange={v => set({ snapshot: v })} label="Save their full record with every scrape" />
+      <Section title="Their raw answer" note="Every scrape always keeps their record — every regional title and date, all rating boards, every known dump with hashes, hacks, tips, controls — in the database (not in storage). This also keeps ScreenScraper's unprocessed answer beside it.">
+        <TgSwitch on={draft.snapshot} onChange={v => set({ snapshot: v })} label="Also keep their raw answer" />
       </Section>
     </TgScrapeDialog>
   )

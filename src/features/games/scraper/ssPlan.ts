@@ -252,6 +252,20 @@ export function verifyFilenameMatch(
 }
 
 /**
+ * Did a hash lookup really find THIS dump? ScreenScraper answers a hash it
+ * does not know with its best guess by filename, so the answer counts as
+ * exact only when its ROM carries one of the hashes asked for.
+ */
+export function verifyHashMatch(
+  query: { crc?: string | null; md5?: string | null; sha1?: string | null },
+  c: Pick<SsCandidate, 'rom'>,
+): boolean {
+  if (!c.rom) return false
+  const eq = (a?: string | null, b?: string | null) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase()
+  return eq(query.crc, c.rom.crc) || eq(query.md5, c.rom.md5) || eq(query.sha1, c.rom.sha1)
+}
+
+/**
  * The stored-copy decision per media type for one game. A type is copied only
  * when that copy will be used: a field-backed type (box front → cover, …) only
  * when its field will be written, any other type only when the handheld has

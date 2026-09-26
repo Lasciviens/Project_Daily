@@ -93,13 +93,19 @@ function TgScrapeGamePicker({ open, onClose, games, currentId, onPick }: {
   const [filter, setFilter] = useState<PickFilter>('todo')
   const [q, setQ] = useState('')
   const counts = useMemo(() => Object.fromEntries(FILTERS.map(f => [f.key, games.filter(g => matches(g, f.key)).length])) as Record<PickFilter, number>, [games])
-  const list = useMemo(() => {
-    const needle = q.trim().toLowerCase()
-    return games
-      .filter(g => matches(g, filter))
-      .filter(g => !needle || g.title.toLowerCase().includes(needle) || platformInfo(g.platformKey).name.toLowerCase().includes(needle))
-      .sort((a, b) => a.title.localeCompare(b.title))
-  }, [games, filter, q])
+  const needle = q.trim().toLowerCase()
+  const hit = (g: TgGame) => g.title.toLowerCase().includes(needle) || platformInfo(g.platformKey).name.toLowerCase().includes(needle)
+  const list = useMemo(() => games
+    .filter(g => matches(g, filter))
+    .filter(g => !needle || hit(g))
+    .sort((a, b) => a.title.localeCompare(b.title)),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [games, filter, needle])
+  // A search that finds nothing under the active chip still finds the game
+  // elsewhere — "No games match" for a game you own read as a bug.
+  const elsewhere = useMemo(() => (needle && list.length === 0 ? games.filter(hit).sort((a, b) => a.title.localeCompare(b.title)).slice(0, 50) : []),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [games, needle, list.length])
 
   return (
     <TgScrapeDialog open={open} onClose={onClose} title="Pick a game">
@@ -120,11 +126,14 @@ function TgScrapeGamePicker({ open, onClose, games, currentId, onPick }: {
           ))}
         </div>
       </div>
-      {list.length === 0 ? (
+      {list.length === 0 && elsewhere.length > 0 && (
+        <p className="pb-2 text-[12.5px] tg-muted">Nothing under “{FILTERS.find(f => f.key === filter)?.label}” — found in your whole library:</p>
+      )}
+      {list.length === 0 && elsewhere.length === 0 ? (
         <p className="py-10 text-center text-[13px] tg-muted">No games match.</p>
       ) : (
         <ul className="flex flex-col">
-          {list.slice(0, SHOWN).map(g => (
+          {(list.length ? list : elsewhere).slice(0, SHOWN).map(g => (
             <li key={g.id}>
               <button
                 type="button"

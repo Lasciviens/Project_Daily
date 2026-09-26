@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { useCleanupStorage, useScraperStatus, useStorageUsage } from '../../../scraper/useScrape'
+import { useCleanupStorage, useRefreshSystems, useScraperStatus, useStorageUsage } from '../../../scraper/useScrape'
 import { formatBytes } from './tgScrapeModel'
 
 const PLAN_BYTES = 1024 * 1024 * 1024
@@ -22,6 +22,7 @@ export function TgScrapeStorage({ budgetMb, enabled }: { budgetMb: number; enabl
   const storage = useStorageUsage(enabled)
   const status = useScraperStatus(enabled)
   const cleanup = useCleanupStorage()
+  const refreshSystems = useRefreshSystems()
   const [preview, setPreview] = useState<{ files: number; bytes: number } | null>(null)
   const budget = Math.min(budgetMb, storage.data?.hard_cap_mb ?? 950) * 1024 * 1024
 
@@ -37,7 +38,7 @@ export function TgScrapeStorage({ budgetMb, enabled }: { budgetMb: number; enabl
   const byCat = new Map(groups.map(g => [g.category, g]))
   const account = status.data?.account
 
-  const findLeftovers = () => cleanup.mutate(true, { onSuccess: r => setPreview(r.status === 'ok' ? { files: r.files, bytes: r.bytes } : null) })
+  const findLeftovers = () => cleanup.mutate(true, { onSuccess: r => setPreview({ files: r.files, bytes: r.bytes }) })
   const deleteLeftovers = () => cleanup.mutate(false, { onSuccess: () => setPreview(null) })
 
   return (
@@ -94,6 +95,12 @@ export function TgScrapeStorage({ budgetMb, enabled }: { budgetMb: number; enabl
           </>
         )}
       </div>
+      <p className="flex flex-wrap items-center gap-x-2 text-[12px] tabular-nums tg-muted">
+        {status.data ? `${status.data.systems_known.toLocaleString('en-GB')} ScreenScraper systems known` : 'ScreenScraper systems'}
+        <button type="button" onClick={() => refreshSystems.mutate()} disabled={refreshSystems.isPending} className="inline-flex min-h-[44px] items-center font-semibold text-[var(--tg-accent)]">
+          {refreshSystems.isPending ? 'Refreshing…' : 'Refresh the list'}
+        </button>
+      </p>
       {account && (
         <p className="text-[12px] tabular-nums tg-muted">
           ScreenScraper today: {account.used.toLocaleString('en-GB')} of {account.max.toLocaleString('en-GB')} requests

@@ -4,7 +4,7 @@ import type { SsPrefs } from './ssTypes'
 import { defaultPrefs } from './ssPlan'
 import {
   applyBatch, applyScrape, cleanupStorage, fetchGameScrapeData, fetchKnownNoMatches, fetchRecentRuns, fetchScrapePrefs,
-  fetchScraperStatus, fetchSsSystems, fetchStorageUsage, findBatch, saveScrapePrefs, undoScrape,
+  fetchScraperStatus, fetchSsSystems, fetchStorageUsage, findBatch, refreshSystems, saveScrapePrefs, undoScrape,
   type ApplyRequest, type BatchItem, type UndoResponse,
 } from './ssApi'
 import { toast } from '../../../app/store'
@@ -61,6 +61,17 @@ export function useSsSystems(enabled = true) {
   return useQuery({ queryKey: SS_KEYS.systems, queryFn: fetchSsSystems, enabled, staleTime: 24 * 60 * 60_000 })
 }
 
+/** Re-reads ScreenScraper's system list into the cache (their ids for ES-DE folders). */
+export function useRefreshSystems() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'screenscraper_refresh_systems',
+    successMessage: r => `System list refreshed · ${r.systems} systems`,
+    mutationFn: () => refreshSystems(),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: SS_KEYS.systems }); qc.invalidateQueries({ queryKey: SS_KEYS.status }) },
+  })
+}
+
 export function useGameScrapeData(gameId: string | null) {
   return useQuery({
     queryKey: SS_KEYS.game(gameId ?? ''),
@@ -91,8 +102,21 @@ export function useCleanupStorage() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'screenscraper_cleanup',
-    mutationFn: (dryRun: boolean) => cleanupStorage(dryRun),
-    onSuccess: (_d, dryRun) => { if (!dryRun) { qc.invalidateQueries({ queryKey: SS_KEYS.storage }); qc.invalidateQueries({ queryKey: SS_KEYS.status }) } },
+    // A server-side refusal comes back as status 'error' (not a thrown
+    // error): it is turned into one here, so it is toasted like any failure.
+    mutationFn: async (dryRun: boolean) => {
+      const r = await cleanupStorage(dryRun)
+      if (r.status === 'error') throw new Error(r.error ?? 'Cleanup failed — nothing was deleted.')
+      return r
+    },
+    onSuccess: (r, dryRun) => {
+      if (dryRun) return
+      qc.invalidateQueries({ queryKey: SS_KEYS.storage })
+      qc.invalidateQueries({ queryKey: SS_KEYS.status })
+      const mb = (r.bytes / 1048576).toFixed(1)
+      if (r.error) toast.warning(`Deleted ${r.files} unused cop${r.files === 1 ? 'y' : 'ies'} (${mb} MB) — ${r.error}`)
+      else toast.success(`Deleted ${r.files} unused cop${r.files === 1 ? 'y' : 'ies'} · ${mb} MB freed`)
+    },
   })
 }
 
@@ -114,24 +138,38 @@ export function useApplyScrape() {
   })
 }
 
+/** A chunk of a batch save. The library itself is refreshed once, by the
+ *  caller, after the last chunk (`useAfterScrapeWrite`) — not per chunk. */
 export function useApplyBatch() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'screenscraper_apply_batch',
     mutationFn: ({ items, runId }: { items: BatchItem[]; runId?: string }) => applyBatch(items, runId),
-    onSuccess: (_d, v) => afterWrite(qc, v.items.map(i => i.game_id)),
+    onSuccess: (_d, v) => { for (const i of v.items) qc.invalidateQueries({ queryKey: SS_KEYS.game(i.game_id) }) },
   })
+}
+
+/** The refresh every scrape write needs (library, storage, runs, the games' records). */
+export function useAfterScrapeWrite() {
+  const qc = useQueryClient()
+  return (gameIds: string[]) => afterWrite(qc, gameIds)
 }
 
 export function useFindBatch() {
   return useMutationWithFeedback({ action: 'screenscraper_find_batch', mutationFn: (ids: string[]) => findBatch(ids) })
 }
 
+/**
+ * `scope: 'game'` undoes only `gameIds` in the run (the detail, the Saved
+ * screen); `'run'` undoes the whole run (Recent saves, the batch). Every game
+ * the server actually reverted is refreshed.
+ */
 export function useUndoScrape() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'screenscraper_undo',
-    mutationFn: ({ runId }: { runId: string; gameIds: string[] }) => undoScrape(runId),
-    onSuccess: (r, v) => { undoFeedback(r); afterWrite(qc, v.gameIds) },
+    mutationFn: ({ runId, gameIds, scope }: { runId: string; gameIds: string[]; scope: 'game' | 'run' }) =>
+      undoScrape(runId, scope === 'game' ? gameIds : undefined),
+    onSuccess: (r, v) => { undoFeedback(r); afterWrite(qc, [...new Set([...v.gameIds, ...(r.reverted_ids ?? [])])]) },
   })
 }

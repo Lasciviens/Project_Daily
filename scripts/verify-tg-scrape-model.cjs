@@ -105,6 +105,42 @@ eq(M.summaryText({ fields: 0, store: 0, onDemand: 0, skip: 3, bytes: 0 }), 'Noth
 eq([M.formatBytes(512), M.formatBytes(2048), M.formatBytes(5 * 1024 * 1024), M.formatBytes(null)], ['512 B', '2 KB', '5.0 MB', '—'], 'formatBytes')
 eq([M.display(null), M.display(['a', 'b']), M.display(80), M.display(7.25)], ['—', 'a, b', '80', '7.3'], 'display')
 
+// ── Journal: only the newest apply of a game can be undone ──
+const J = require('../src/features/games/scraper/ssJournal.ts')
+const jr = (id, run, game, decision, at, undid) => ({ id, run_id: run, game_id: game, decision, matched_title: 'T', created_at: at, written_values: undid ? { undid } : {} })
+const rows1 = [
+  jr('a1', 'r1', 'g1', 'applied', '2026-09-01T10:00:00Z'),
+  jr('a2', 'r2', 'g1', 'applied', '2026-09-02T10:00:00Z'),
+  jr('u2', 'r2', 'g1', 'undone', '2026-09-03T10:00:00Z', 'a2'),
+  jr('b1', 'r2', 'g2', 'applied', '2026-09-02T10:00:00Z'),
+]
+eq(J.undoableApplies(rows1).has('g1'), false, 'after undoing the newest apply, the older one does NOT become undoable (its copies are gone)')
+eq(J.undoableApplies(rows1).get('g2').id, 'b1', 'another game of the same run is still undoable')
+const rows2 = [
+  jr('c1', 'r3', 'g3', 'applied', '2026-09-01T10:00:00Z'),
+  jr('c2', 'r3', 'g3', 'applied', '2026-09-01T11:00:00Z'),
+  jr('uc1', 'r3', 'g3', 'undone', '2026-09-01T12:00:00Z', 'c1'),
+]
+eq(J.undoableApplies(rows2).get('g3').id, 'c2', 'undone is per row: undoing an older apply of the same run leaves the newer one undoable')
+const legacy = [jr('d1', 'r4', 'g4', 'applied', '2026-09-01T10:00:00Z'), jr('ud', 'r4', 'g4', 'undone', '2026-09-01T11:00:00Z')]
+eq(J.undoableApplies(legacy).has('g4'), false, 'an old undone row (no id) still undoes its run')
+const runs = J.recentRuns(rows1)
+eq(runs.map(r => [r.run_id, r.undoable, r.games.length]), [['r2', 1, 2], ['r1', 0, 1]], 'recent runs: newest first, with what can still be undone')
+
+// ── Field rows follow what the server writes ──
+const pr = (o = {}) => platform({ esde_assets: { a: { category: 'fanart', url: 'https://x/esde-fan.jpg', sha256: 'x', size: 1, mime: 'image/jpeg' } }, ...o })
+const cm = { ...cand, media: [...cand.media, { type: 'fanart', region: null, token: 'fanart', ep: 'img', size: 5000 }], matched_by: ['name'], values: { ...cand.values, region: 'eu', version_title: 'Rev A' } }
+const rowsH = M.fieldRows(game({ platforms: [pr()] }), cm)
+const fan = rowsH.find(r => r.field === 'fanart')
+eq([fan.fromHandheld, fan.currentEmpty, fan.current], [true, false, 'https://x/esde-fan.jpg'], 'fan art the handheld shows is yours (Replace, never a silent Fill)')
+eq(M.initialChoice(fan, 'fill'), 'keep', 'fill leaves a handheld picture alone')
+eq(rowsH.find(r => r.field === 'region').theirsEmpty, true, 'a name match offers no dump region (the server would drop it)')
+eq(rowsH.find(r => r.field === 'rom_status').theirsEmpty, true, 'ROM verified only from a hash')
+const rowsX = M.fieldRows(game({ platforms: [pr()] }), { ...cm, matched_by: ['hash'] })
+eq([rowsX.find(r => r.field === 'region').theirs, rowsX.find(r => r.field === 'rom_status').theirs], ['eu', 'verified'], 'a hash match offers the region and ROM verified')
+eq(M.handheldCategories(game({ platforms: [pr()] })), ['fanart'], 'the handheld categories of the primary copy')
+ok(M.summaryText({ fields: 1, store: 2, onDemand: 0, skip: 0, bytes: 1000 }, 'budget').includes('online where the budget is full'), 'the save bar says when the budget blocks copies')
+
 if (failures.length) {
   console.error(`✗ ${failures.length} failed, ${passed} passed\n`)
   for (const x of failures) console.error('  ✗ ' + x)

@@ -10,6 +10,7 @@ import { mediaInfo } from '../../scraper/ssMediaCatalog'
 import { mediaModeFor } from '../../scraper/ssPlan'
 import { pickMediaEntry } from '../../scraper/ssRules'
 import { TgLightbox } from './TgLightbox'
+import { TgConfirmDialog } from './TgConfirmDialog'
 import { TgScrapeRecord } from './scrape/TgScrapeRecord'
 import { TgSsAttribution } from './scrape/TgScrapeParts'
 import { formatBytes } from './scrape/tgScrapeModel'
@@ -60,6 +61,7 @@ function ProviderBlock({ game, data, again }: { game: TgGame; data: GameScrapeDa
   const undo = useUndoScrape()
   const [all, setAll] = useState(false)
   const [zoom, setZoom] = useState<number | null>(null)
+  const [confirmUndo, setConfirmUndo] = useState(false)
   const candidate: SsCandidate = { ...(data.summary as SsCandidate), media: data.summary?.media ?? [], media_sig: data.sig?.sig ?? null, media_exp: data.sig?.exp ?? null }
   const ref = { jeuId: p.jeu_id, systemId: p.system_id, sig: data.sig?.sig ?? null, exp: data.sig?.exp ?? null }
   const linked = useMemo(() => (p.linked && !Array.isArray(p.linked) ? p.linked : {}) as Record<string, string>, [p.linked])
@@ -124,8 +126,9 @@ function ProviderBlock({ game, data, again }: { game: TgGame; data: GameScrapeDa
                     {t.kind === 'pdf' ? <FileText className="h-6 w-6" aria-hidden /> : <Film className="h-6 w-6" aria-hidden />}
                   </a>
                 )}
-                <span className="truncate text-[10.5px] leading-tight tg-muted" title={`${t.label} · ${formatBytes(t.entry.size)}`}>
+                <span className="line-clamp-2 text-[10.5px] leading-tight tg-muted">
                   {t.label}{t.stored ? ' · copy' : ''}
+                  <span className="block tabular-nums tg-faint">{formatBytes(t.entry.size)}</span>
                 </span>
               </li>
             )
@@ -138,8 +141,8 @@ function ProviderBlock({ game, data, again }: { game: TgGame; data: GameScrapeDa
             {all ? 'Show fewer' : `Show all ${total} files`}
           </button>
         )}
-        {p.run_id && (
-          <button type="button" onClick={() => undo.mutate({ runId: p.run_id!, gameIds: [game.id] })} disabled={undo.isPending} className="inline-flex min-h-[44px] items-center gap-1.5 text-[12px] font-semibold text-[var(--tg-accent)]">
+        {data.undoableRun && (
+          <button type="button" onClick={() => setConfirmUndo(true)} disabled={undo.isPending} className="inline-flex min-h-[44px] items-center gap-1.5 text-[12px] font-semibold text-[var(--tg-accent)]">
             <Undo2 className="h-3.5 w-3.5" aria-hidden /> {undo.isPending ? 'Undoing…' : 'Undo last scrape'}
           </button>
         )}
@@ -151,6 +154,14 @@ function ProviderBlock({ game, data, again }: { game: TgGame; data: GameScrapeDa
         {again}
       </div>
       <TgLightbox images={zoomUrls} index={zoom} onClose={() => setZoom(null)} onIndex={setZoom} />
+      <TgConfirmDialog
+        open={confirmUndo}
+        title={`Undo the last scrape of ${game.title}?`}
+        message="Only this game: its fields go back to what they were before (anything you changed since is kept) and the copies that scrape made are deleted."
+        confirmLabel="Undo"
+        onConfirm={() => { if (data.undoableRun) undo.mutate({ runId: data.undoableRun, gameIds: [game.id], scope: 'game' }) }}
+        onClose={() => setConfirmUndo(false)}
+      />
     </section>
   )
 }

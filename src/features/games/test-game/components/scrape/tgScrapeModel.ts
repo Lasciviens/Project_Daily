@@ -5,7 +5,7 @@
 
 import type { Game, GamePlatform } from '../../../types'
 import type { FieldPolicy, MatchBasis, SsCandidate, SsField, SsMediaEntry, SsPrefs, SsRomQuery } from '../../../scraper/ssTypes'
-import { ALL_FIELDS, EXACT_BASES, FIELD_COLUMN, FIELD_LABEL, FIELD_MEDIA, isEmptyValue, mediaModeFor, romFileName, sameValue } from '../../../scraper/ssPlan'
+import { ALL_FIELDS, ESDE_CATEGORY, EXACT_BASES, FIELD_COLUMN, FIELD_LABEL, FIELD_MEDIA, isEmptyValue, mediaModeFor, romFileName, sameValue } from '../../../scraper/ssPlan'
 import { MEDIA_GROUPS, MEDIA_TYPES, canStore, mediaInfo, type MediaGroup, type MediaMode, type MediaTypeInfo } from '../../../scraper/ssMediaCatalog'
 import { pickMediaEntry } from '../../../scraper/ssRules'
 
@@ -172,11 +172,28 @@ export function formatBytes(n: number | null | undefined): string {
 
 // ─── Field review ────────────────────────────────────────────────────────────
 
+/** The ES-DE picture categories the handheld uploaded for a game's primary copy. */
+export function handheldCategories(game: Pick<Game, 'platforms'>): string[] {
+  const p = primaryVariant(game)
+  return [...new Set(Object.values(p?.esde_assets ?? {}).map(a => String(a?.category ?? '')).filter(Boolean))]
+}
+
+/** The handheld's own picture for a media type (ES-DE's upload), if any. */
+function handheldPicture(game: Pick<Game, 'platforms'>, mediaType: string): string | null {
+  const cat = ESDE_CATEGORY[mediaType]
+  if (!cat) return null
+  const p = primaryVariant(game)
+  const hit = Object.values(p?.esde_assets ?? {}).find(a => a?.category === cat && typeof a.url === 'string')
+  return hit?.url ?? null
+}
+
 export interface FieldRow {
   field: SsField
   label: string
   /** The game's value now (a URL for image fields). */
   current: unknown
+  /** Image fields: `current` is the handheld's own picture (the column itself is empty). */
+  fromHandheld?: boolean
   /** Theirs (for image fields: the media type when a file exists). */
   theirs: unknown
   isImage: boolean
@@ -195,11 +212,23 @@ export function fieldRows(game: Game, cand: SsCandidate): FieldRow[] {
     .map(field => {
       const { table, column } = FIELD_COLUMN[field]
       const row = (table === 'games' ? game : platform) as unknown as Record<string, unknown> | null
-      const current = row ? row[column] : null
+      const stored = row ? row[column] : null
       const mediaType = FIELD_MEDIA[field]
-      const theirs = mediaType ? (cand.media.some(m => m.type === mediaType) ? mediaType : null) : cand.values[field] ?? null
+      // An empty image column is not empty to the owner when the handheld
+      // already shows that picture — the detail's hero and strip read it — so
+      // it is offered as Replace, never a silent Fill (the server agrees).
+      const handheld = mediaType && isEmptyValue(stored) ? handheldPicture(game, mediaType) : null
+      const current = handheld ?? stored
+      // What the server will actually write: a dump's region and version only
+      // with proof it is YOUR dump (hash, or a verified file name), and "ROM
+      // verified" only from a hash.
+      const romProof = cand.matched_by.includes('hash') || cand.matched_by.includes('filename')
+      const theirs = mediaType ? (cand.media.some(m => m.type === mediaType) ? mediaType : null)
+        : field === 'rom_status' ? (cand.matched_by.includes('hash') ? 'verified' : null)
+        : (field === 'region' || field === 'version_title') && !romProof ? null
+        : cand.values[field] ?? null
       return {
-        field, label: FIELD_LABEL[field], current, theirs, isImage: !!mediaType,
+        field, label: FIELD_LABEL[field], current, theirs, isImage: !!mediaType, fromHandheld: !!handheld,
         currentEmpty: isEmptyValue(current), theirsEmpty: isEmptyValue(theirs),
         same: !mediaType && sameValue(current, theirs),
       }
@@ -288,10 +317,14 @@ export function applySummary(
 }
 
 /** "5 fields · 3 images copied (≈ 180 KB) · 9 shown online" */
-export function summaryText(s: ApplySummary): string {
+export function summaryText(s: ApplySummary, copyBlock: 'budget' | 'migration' | null = null): string {
   const parts = [
     s.fields ? `${s.fields} field${s.fields === 1 ? '' : 's'}` : null,
-    s.store ? `${s.store} image${s.store === 1 ? '' : 's'} copied (≈ ${formatBytes(s.bytes)})` : null,
+    s.store
+      ? copyBlock === 'migration' ? `${s.store} image${s.store === 1 ? '' : 's'} → online (no copies before migration 104)`
+      : copyBlock === 'budget' ? `${s.store} image${s.store === 1 ? '' : 's'} to copy, online where the budget is full`
+      : `${s.store} image${s.store === 1 ? '' : 's'} copied (≈ ${formatBytes(s.bytes)})`
+      : null,
     s.onDemand ? `${s.onDemand} shown online` : null,
   ].filter(Boolean)
   return parts.length ? parts.join(' · ') : 'Nothing selected to save'

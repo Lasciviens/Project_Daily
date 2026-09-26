@@ -4,7 +4,7 @@ import type { SsCandidate, SsMediaEntry } from '../../../scraper/ssTypes'
 import type { MediaMode } from '../../../scraper/ssMediaCatalog'
 import { refOf, ssMediaUrl } from '../../../scraper/ssApi'
 import { TgLightbox } from '../TgLightbox'
-import { MODE_HINT, MODE_LABEL, formatBytes, groupMediaRows, type MediaRow } from './tgScrapeModel'
+import { MODE_HINT, MODE_LABEL, estimateStored, formatBytes, groupMediaRows, type MediaRow } from './tgScrapeModel'
 import { TgSegmented, TgSsMedia } from './TgScrapeParts'
 
 const MODES: MediaMode[] = ['store', 'on_demand', 'skip']
@@ -21,8 +21,10 @@ const entryLabel = (e: SsMediaEntry) => [e.region?.toUpperCase(), e.support ? `d
  * disc), its size, and Copy / Online / Skip. Previews come through the signed
  * proxy, so looking costs no storage.
  */
-export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onToken, readOnly }: {
+export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onToken, readOnly, imageScale = 1 }: {
   candidate: SsCandidate
+  /** The saved image size (What to save), for the copy-size estimate. */
+  imageScale?: number
   rows: MediaRow[]
   modes: Record<string, MediaMode>
   tokens: Record<string, string>
@@ -39,7 +41,10 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
   if (!rows.length) return <p className="text-[13px] tg-muted">ScreenScraper has no files for this entry.</p>
 
   return (
-    <div className="flex flex-col gap-5">
+    // A container: the grid follows the width it is given (a narrow review
+    // pane, a phone), not the viewport — cards never get narrower than their
+    // Copy/Online/Skip control.
+    <div className="@container flex flex-col gap-5">
       {!readOnly && (
         <p className="-mt-1 text-[12px] leading-snug tg-muted">
           <b className="font-semibold text-[var(--tg-text-2)]">Copy</b> keeps a small copy in your storage ·{' '}
@@ -66,14 +71,14 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
               </span>
             )}
           </div>
-          <ul className="grid grid-cols-1 gap-2.5 min-[480px]:grid-cols-2 2xl:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-2.5 @[38rem]:grid-cols-2 @[62rem]:grid-cols-3">
             {g.rows.map(r => {
               const entry = entryOf(r)
               const mode = modes[r.type] ?? r.mode
               const url = ssMediaUrl(ref, entry, r.info.kind === 'image' ? { width: 1280 } : {})
               const zoomIndex = r.info.kind === 'image' ? imageRows.findIndex(x => x.type === r.type) : -1
               return (
-                <li key={r.type} className={`flex gap-3 rounded-[14px] border border-[var(--tg-border)] p-2.5 ${mode === 'skip' ? 'opacity-60' : 'bg-[var(--tg-panel)]'}`}>
+                <li key={r.type} className={`flex min-w-0 gap-3 rounded-[14px] border border-[var(--tg-border)] p-2.5 ${mode === 'skip' ? 'opacity-60' : 'bg-[var(--tg-panel)]'}`}>
                   {r.info.kind === 'image' ? (
                     <button
                       type="button" onClick={() => setZoom(zoomIndex)} aria-label={`Preview ${r.info.label}`}
@@ -91,7 +96,10 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
                       <span className="min-w-0">
                         <span className="block truncate text-[13px] font-semibold">{r.info.label}</span>
                         <span className="block truncate text-[11px] tabular-nums tg-muted">
-                          {[entry.format?.toUpperCase(), formatBytes(entry.size)].filter(Boolean).join(' · ')}
+                          {/* What a copy would cost when Copy is on — theirs is the original. */}
+                          {mode === 'store' && r.canStore
+                            ? `copy ≈ ${formatBytes(estimateStored(entry, imageScale))} · original ${formatBytes(entry.size)}`
+                            : [entry.format?.toUpperCase(), formatBytes(entry.size)].filter(Boolean).join(' · ')}
                         </span>
                       </span>
                       {r.info.kind !== 'image' && url && mode !== 'skip' && (
@@ -106,7 +114,7 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
                           <button
                             key={e.token} type="button" role="radio" aria-checked={e.token === entry.token}
                             onClick={() => onToken(r.type, e.token)}
-                            className={`min-h-[28px] rounded-md px-2 text-[11px] font-semibold [@media(pointer:coarse)]:min-h-[40px] ${
+                            className={`min-h-[32px] rounded-md px-2.5 text-[11.5px] font-semibold [@media(pointer:coarse)]:min-h-[44px] ${
                               e.token === entry.token ? 'bg-[var(--tg-seg-active-bg,var(--tg-accent-soft))] text-[var(--tg-nav-active-text,var(--tg-accent))]' : 'bg-[var(--tg-panel-2)] text-[var(--tg-text-2)]'
                             }`}
                           >

@@ -76,6 +76,9 @@ export function TgScrapeSearchForm({ form, onChange, onSearch, searching, hasTar
   const folderOption = form.system && !/^\d+$/.test(form.system)
     ? { value: form.system, label: resolved ? `${resolved.name ?? form.system} (${form.system})` : `${form.system} (not in their list)` }
     : null
+  // What the control shows is what the form does: without ROM info it can
+  // only be a name search, so the Name field is never hidden then.
+  const shownBy: SearchBy = filled === 0 ? 'name' : by
   const byOptions: { value: SearchBy; label: string; disabled?: boolean; hint?: string }[] = [
     { value: 'name', label: 'Name' },
     { value: 'rom', label: 'ROM', disabled: filled === 0, hint: filled === 0 ? 'Add a file name, a hash or an id below first' : 'Exact matches by the ROM itself' },
@@ -90,10 +93,11 @@ export function TgScrapeSearchForm({ form, onChange, onSearch, searching, hasTar
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="tg-section-label">Search by</h2>
-        <TgSegmented label="Search by" value={filled === 0 ? 'name' : by} options={byOptions} onChange={v => onChange(withSearchBy(form, v))} />
+        <TgSegmented label="Search by" value={shownBy} options={byOptions} onChange={v => onChange(withSearchBy(form, v))} />
       </div>
+      {filled === 0 && <p className="-mt-1.5 text-[11.5px] leading-snug tg-muted">ROM and Both need ROM info — add a file name, a hash or an id under “ROM info” below.</p>}
 
-      {by !== 'rom' && (
+      {shownBy !== 'rom' && (
         <Field label="Name">
           <span className="relative block">
             <input

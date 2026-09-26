@@ -1,3 +1,4 @@
+import { recentRuns, undoableApplies, type JournalRow, type RecentRun } from './ssJournal'
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import type { FieldPolicy, MatchBasis, SsCandidate, SsField, SsMediaChoice, SsMediaEntry, SsPrefs, SsQueryOutcome, SsRomQuery } from './ssTypes'
@@ -124,8 +125,11 @@ export async function applyScrape(req: ApplyRequest): Promise<{ status: 'ok'; ru
   return r as { status: 'ok'; run_id: string; result: ApplyResult }
 }
 
-export interface UndoResponse { status: 'ok' | 'no_journal'; reverted?: number; skipped?: { game_id: string; reason: string }[]; message?: string }
-export const undoScrape = (runId: string) => invoke<UndoResponse>({ action: 'undo', run_id: runId })
+export interface UndoResponse { status: 'ok' | 'no_journal'; reverted?: number; reverted_ids?: string[]; skipped?: { game_id: string; reason: string }[]; message?: string }
+/** Undoes a run — or, with `gameIds`, only those games' applies in it (a
+ *  game's own "Undo last scrape" never touches the rest of its batch). */
+export const undoScrape = (runId: string, gameIds?: string[]) =>
+  invoke<UndoResponse>({ action: 'undo', run_id: runId, ...(gameIds?.length ? { game_ids: gameIds } : {}) })
 
 // ─── Batch ───────────────────────────────────────────────────────────────────
 
@@ -160,25 +164,16 @@ export async function signMediaRefs(items: { jeu_id: string; system_id: number }
 
 /** The last saves (one per run), for "Recent saves" with Undo — read from the
  *  journal, which the browser may read but never write. */
-export interface RecentRun { run_id: string; created_at: string; games: { game_id: string; title: string | null }[]; undone: boolean }
+export type { RecentRun } from './ssJournal'
 export async function fetchRecentRuns(limit = 12): Promise<RecentRun[]> {
   const { data, error } = await supabase.from('scrape_decisions')
-    .select('run_id, game_id, decision, matched_title, created_at')
-    .in('decision', ['applied', 'undone']).order('created_at', { ascending: false }).limit(400)
+    .select('id, run_id, game_id, decision, matched_title, created_at, written_values')
+    .in('decision', ['applied', 'undone']).order('created_at', { ascending: false }).limit(1000)
   if (error) {
     if (missingTable(error)) return []
     throw error
   }
-  const runs = new Map<string, RecentRun>()
-  const undone = new Set((data ?? []).filter(r => r.decision === 'undone').map(r => `${r.run_id}|${r.game_id}`))
-  for (const r of data ?? []) {
-    if (r.decision !== 'applied') continue
-    const run: RecentRun = runs.get(r.run_id) ?? { run_id: r.run_id, created_at: r.created_at, games: [], undone: true }
-    run.games.push({ game_id: r.game_id, title: r.matched_title })
-    if (!undone.has(`${r.run_id}|${r.game_id}`)) run.undone = false
-    runs.set(r.run_id, run)
-  }
-  return [...runs.values()].slice(0, limit)
+  return recentRuns((data ?? []) as JournalRow[], limit)
 }
 
 /** Game ids whose last automatic lookup found nothing (so a batch can set them apart). */
@@ -256,6 +251,8 @@ export interface GameScrapeData {
   sig: { sig: string; exp: number } | null
   /** A pre-rewrite blob (v1) — kept, but shown as "matched with the old version". */
   legacy: Record<string, unknown> | null
+  /** The run whose save of this game can still be undone (newest-only), if any. */
+  undoableRun: string | null
 }
 
 /** The heavy per-game data, only for the one game being looked at — the
@@ -264,7 +261,7 @@ export async function fetchGameScrapeData(gameId: string): Promise<GameScrapeDat
   const { data, error } = await supabase.from('games').select('provider_data').eq('id', gameId).maybeSingle()
   if (error) throw error
   const pd = (data?.provider_data ?? null) as Record<string, unknown> | null
-  const empty: GameScrapeData = { provider: null, summary: null, raw: null, sig: null, legacy: null }
+  const empty: GameScrapeData = { provider: null, summary: null, raw: null, sig: null, legacy: null, undoableRun: null }
   if (!pd || !Object.keys(pd).length) return empty
   if (!(pd.v === 2 && pd.source === 'screenscraper')) return { ...empty, legacy: pd }
   const provider = pd as unknown as ProviderDataV2
@@ -281,7 +278,13 @@ export async function fetchGameScrapeData(gameId: string): Promise<GameScrapeDat
       sig = (await signMediaRefs([{ jeu_id: provider.jeu_id, system_id: provider.system_id }])).get(`${provider.jeu_id}|${provider.system_id}`) ?? null
     } catch { sig = null } // previews then fall back to stored copies only
   }
-  return { provider, summary, raw, sig, legacy: null }
+  // Undo is offered only when the server would do it (the newest apply,
+  // not yet undone) — never a button that can only answer "nothing to undo".
+  const journal = await supabase.from('scrape_decisions')
+    .select('id, run_id, game_id, decision, matched_title, created_at, written_values')
+    .eq('game_id', gameId).in('decision', ['applied', 'undone']).order('created_at', { ascending: false }).limit(50)
+  const undoableRun = journal.error ? null : undoableApplies((journal.data ?? []) as JournalRow[]).get(gameId)?.run_id ?? null
+  return { provider, summary, raw, sig, legacy: null, undoableRun }
 }
 
 // ─── Systems ─────────────────────────────────────────────────────────────────

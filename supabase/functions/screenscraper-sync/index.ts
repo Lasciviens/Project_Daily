@@ -247,7 +247,7 @@ interface SsPrefs {
   regions: string[]
   /** Language order for descriptions, genres, modes, series. */
   languages: string[]
-  /** Keep their full record (all titles, dates, ROMs, ratings) in provider_data. */
+  /** Also keep their raw answer (minus URLs) beside the normalized record, in game_scrape_records. */
   snapshot: boolean
   /** Stop storing images once the artwork bucket passes this many megabytes. */
   budgetMb: number
@@ -1279,6 +1279,20 @@ function verifyFilenameMatch(
 }
 
 /**
+ * Did a hash lookup really find THIS dump? ScreenScraper answers a hash it
+ * does not know with its best guess by filename, so the answer counts as
+ * exact only when its ROM carries one of the hashes asked for.
+ */
+function verifyHashMatch(
+  query: { crc?: string | null; md5?: string | null; sha1?: string | null },
+  c: Pick<SsCandidate, 'rom'>,
+): boolean {
+  if (!c.rom) return false
+  const eq = (a?: string | null, b?: string | null) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase()
+  return eq(query.crc, c.rom.crc) || eq(query.md5, c.rom.md5) || eq(query.sha1, c.rom.sha1)
+}
+
+/**
  * The stored-copy decision per media type for one game. A type is copied only
  * when that copy will be used: a field-backed type (box front → cover, …) only
  * when its field will be written, any other type only when the handheld has
@@ -1629,16 +1643,64 @@ async function journalInsert(userId: string, row: Rec): Promise<string | null> {
   if (error) { console.log(`scrape_decisions insert skipped (${(error as Rec).code ?? 'unknown'})`); return null }
   return data?.id ?? null
 }
+/** Like journalInsert, but tells a missing journal (no undo possible, fine
+ *  before migration 097) from a real refusal (the save must not go ahead). */
+async function journalInsertChecked(userId: string, row: Rec): Promise<{ id: string | null; failed: string | null }> {
+  let { data, error } = await admin.from('scrape_decisions').insert({ user_id: userId, ...row }).select('id').maybeSingle()
+  if (error && isMissingColumn(error)) {
+    const { prior_values, replaced_paths, ...rest } = row
+    ;({ data, error } = await admin.from('scrape_decisions').insert({
+      user_id: userId, ...rest,
+      written_values: { ...(rest.written_values ?? {}), __prior: prior_values ?? {}, __replaced: replaced_paths ?? [] },
+    }).select('id').maybeSingle())
+  }
+  if (error) return isMissingTable(error) ? { id: null, failed: null } : { id: null, failed: String((error as Rec).code ?? 'journal error') }
+  return { id: data?.id ?? null, failed: null }
+}
 const priorOf = (row: Rec): Rec => nonEmpty(row.prior_values) ? row.prior_values : (row.written_values?.__prior ?? {})
 const replacedOf = (row: Rec): string[] => (Array.isArray(row.replaced_paths) && row.replaced_paths.length) ? row.replaced_paths : (row.written_values?.__replaced ?? [])
 
-/** The latest apply of a game that has not been undone. */
+/** The journal row an 'undone' row reverted (its id; older rows only say the run). */
+const undidOf = (r: Rec): string | null => {
+  const v = r.written_values && typeof r.written_values === 'object' ? (r.written_values as Rec).undid : null
+  return typeof v === 'string' && v ? v : null
+}
+
+/**
+ * Per game, the apply that can still be undone: ONLY the newest one, and only
+ * while it has not been undone. An older apply never becomes undoable again —
+ * the copies its "before" pointed at were deleted when the next one landed.
+ * `rows` holds every applied/undone row of the games concerned, any order.
+ */
+function undoableByGame(rows: Rec[]): Map<string, Rec> {
+  const byGame = new Map<string, Rec[]>()
+  for (const r of rows) {
+    const g = String(r.game_id)
+    const list = byGame.get(g) ?? []
+    list.push(r)
+    byGame.set(g, list)
+  }
+  const out = new Map<string, Rec>()
+  for (const [g, list] of byGame) {
+    const applied = list.filter(r => r.decision === 'applied')
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    const newest = applied[0]
+    if (!newest) continue
+    const undone = list.some(r => r.decision === 'undone' && (undidOf(r)
+      ? undidOf(r) === String(newest.id)
+      : String(r.run_id) === String(newest.run_id) && String(r.created_at) >= String(newest.created_at)))
+    if (!undone) out.set(g, newest)
+  }
+  return out
+}
+
+/** The latest apply of a game, if it can still be undone (see undoableByGame). */
 async function latestApplied(userId: string, gameId: string): Promise<Rec | null> {
-  const { data } = await admin.from('scrape_decisions').select('*')
+  const { data, error } = await admin.from('scrape_decisions').select('*')
     .eq('user_id', userId).eq('game_id', gameId).in('decision', ['applied', 'undone'])
-    .order('created_at', { ascending: false }).limit(20)
-  const undone = new Set((data ?? []).filter((r: Rec) => r.decision === 'undone').map((r: Rec) => String(r.run_id)))
-  return (data ?? []).find((r: Rec) => r.decision === 'applied' && !undone.has(String(r.run_id))) ?? null
+    .order('created_at', { ascending: false }).limit(50)
+  if (error) return null
+  return undoableByGame(data ?? []).get(gameId) ?? null
 }
 
 // Columns an apply can write — undo restores these and nothing else.
@@ -1669,6 +1731,49 @@ function referencedPaths(game: Rec | null, platform: Rec | null): Set<string> {
   }
   if (platform) { add(platform.wheel_url); add(platform.cover_url); add(platform.box_url) }
   return out
+}
+
+/** Stored-copy paths the game's own columns (not provider_data) show. */
+function referencedColumnPaths(game: Rec | null, platform: Rec | null): string[] {
+  const out: string[] = []
+  const add = (u: unknown) => { const p = pathOfUrl(u); if (p) out.push(p) }
+  if (game) {
+    add(game.primary_cover_url); add(game.screenshot_url); add(game.fanart_url)
+    for (const v of Object.values((game.media ?? {}) as Rec)) add(v)
+  }
+  if (platform) { add(platform.wheel_url); add(platform.cover_url); add(platform.box_url) }
+  return out
+}
+
+/**
+ * On a re-match: every column still showing one of THIS game's ScreenScraper
+ * copies (an earlier apply of the wrong entry) is cleared, and those copies
+ * plus the old entry's saved ones are returned for release.
+ */
+function scrubCopies(gameId: string, game: Rec, platform: Rec | null): { games: Rec; platform: Rec; paths: string[] } {
+  const games: Rec = {}
+  const plat: Rec = {}
+  const paths = new Set<string>()
+  const mine = (u: unknown) => { const p = pathOfUrl(u); return p && isScrapeCopyOf(gameId, p) ? p : null }
+  for (const col of ['primary_cover_url', 'screenshot_url', 'fanart_url']) {
+    const p = mine(game[col])
+    if (p) { games[col] = null; paths.add(p) }
+  }
+  const media = { ...((game.media ?? {}) as Rec) }
+  let mediaChanged = false
+  for (const [k, v] of Object.entries(media)) {
+    const p = mine(v)
+    if (p) { delete media[k]; paths.add(p); mediaChanged = true }
+  }
+  if (mediaChanged) games.media = media
+  for (const v of Object.values((game.provider_data?.saved ?? {}) as Rec)) { const p = mine(v); if (p) paths.add(p) }
+  if (platform) {
+    for (const col of ['wheel_url', 'cover_url', 'box_url']) {
+      const p = mine(platform[col])
+      if (p) { plat[col] = null; paths.add(p) }
+    }
+  }
+  return { games, platform: plat, paths: [...paths] }
 }
 
 /**
@@ -1729,34 +1834,50 @@ async function revertApplied(userId: string, row: Rec): Promise<{ reverted: bool
   await journalInsert(userId, {
     game_id: gameId, run_id: row.run_id, decision: 'undone', jeu_id: row.jeu_id, matched_title: row.matched_title,
     system_used: row.system_used, fields_written: [...Object.keys(gamePatch), ...Object.keys(platPatch).map(k => `platform.${k}`)],
-    written_values: {}, storage_paths: removable, prior_needs_review: row.prior_needs_review,
+    // Which apply this reverted — "undone" is per row, not per run (a run can
+    // hold two applies of one game).
+    written_values: { undid: String(row.id) }, storage_paths: removable, prior_needs_review: row.prior_needs_review,
   })
   return { reverted: true, kept }
 }
 
-async function undoRun(userId: string, runId: string): Promise<Rec> {
-  const { data: rows, error } = await admin.from('scrape_decisions').select('*')
+/**
+ * Undoes one run — or, with `gameIds`, only those games' applies in it (a
+ * game's own "Undo last scrape" must never undo the rest of the batch it was
+ * saved in). Returns the games actually reverted.
+ */
+async function undoRun(userId: string, runId: string, gameIds: string[] | null): Promise<Rec> {
+  let q = admin.from('scrape_decisions').select('*')
     .eq('user_id', userId).eq('run_id', runId).eq('decision', 'applied')
+  if (gameIds?.length) q = q.in('game_id', gameIds)
+  const { data: rows, error } = await q
   if (error) {
     if (isMissingTable(error)) return { status: 'no_journal', message: 'Migration 097 is not applied, so there is no record of what to undo.' }
     throw new Error(`journal read: ${error.message}`)
   }
   let reverted = 0
+  const revertedIds: string[] = []
   const skipped: Rec[] = []
+  const done = new Set<string>()
   for (const row of rows ?? []) {
+    const gid = String(row.game_id)
+    if (done.has(gid)) continue
     // Only the newest apply of a game can be undone: an older one's "before"
     // is no longer the state underneath.
-    const latest = await latestApplied(userId, String(row.game_id))
-    if (!latest || String(latest.id) !== String(row.id)) {
+    const latest = await latestApplied(userId, gid)
+    if (!latest || String(latest.run_id) !== runId) {
+      done.add(gid)
       skipped.push({ game_id: row.game_id, reason: latest ? 'a newer scrape of this game exists — undo that first' : 'already undone' })
       continue
     }
+    if (String(latest.id) !== String(row.id)) continue // an older apply of this game in the same run
+    done.add(gid)
     const r = await revertApplied(userId, row)
-    if (r.reverted) reverted++
+    if (r.reverted) { reverted++; revertedIds.push(gid) }
     if (r.reason) skipped.push({ game_id: row.game_id, reason: r.reason })
     else if (r.kept.length) skipped.push({ game_id: row.game_id, reason: `kept your own edits to ${r.kept.join(', ')}` })
   }
-  return { status: 'ok', reverted, skipped }
+  return { status: 'ok', reverted, reverted_ids: revertedIds, skipped }
 }
 
 // ─── Search ──────────────────────────────────────────────────────────────────
@@ -1770,9 +1891,12 @@ async function signed(c: SsCandidate): Promise<SsCandidate> {
 /** A filename lookup's answer is ROM identity only when it names the same
  *  file; otherwise it is their guess, and says so. */
 function withVerifiedBasis(c: SsCandidate, kind: MatchBasis, rom: SsRomQuery | null, systemId: number | null): SsCandidate {
-  if (kind !== 'filename') return c
+  if (kind !== 'filename' && kind !== 'hash') return c
+  // A hash answer is exact only when its ROM carries a hash we asked for —
+  // otherwise it was ScreenScraper's filename guess, and is checked as one.
+  if (kind === 'hash' && verifyHashMatch({ crc: rom?.crc, md5: rom?.md5, sha1: rom?.sha1 }, c)) return c
   const ok = verifyFilenameMatch({ filename: rom?.filename, systemId, size: rom?.size ?? null, crc: rom?.crc ?? null }, c)
-  return ok ? c : { ...c, matched_by: ['filename_guess'] }
+  return ok ? { ...c, matched_by: ['filename'] } : { ...c, matched_by: ['filename_guess'] }
 }
 
 async function runSearch(body: Rec, prefs: SsPrefs) {
@@ -1838,16 +1962,9 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   if (loadErr) return { game_id: input.gameId, outcome: 'error', reason: loadErr }
   if (!game) return { game_id: input.gameId, outcome: 'error', reason: 'game not found' }
 
-  // Re-matching to a DIFFERENT entry: first undo the previous match (where
-  // still untouched), so none of the wrong game's art or text survives.
   let prevRow = await latestApplied(userId, input.gameId)
   const prevJeu = game.provider_data?.v === 2 ? String(game.provider_data.jeu_id ?? '') : String(game.ss_jeu_id ?? '')
-  if (prevRow && prevJeu && prevJeu !== input.jeuId && String(prevRow.jeu_id ?? '') === prevJeu) {
-    await revertApplied(userId, prevRow)
-    prevRow = null
-    ;({ game, platform } = await loadGame(userId, input.gameId))
-    if (!game) return { game_id: input.gameId, outcome: 'error', reason: 'game not found' }
-  }
+  const rematch = !!prevJeu && prevJeu !== input.jeuId
 
   const systems = await loadSystems()
   const sys = resolveSystem(systems, input.system)
@@ -1864,10 +1981,13 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
     const r = await callApi(romPlan.endpoint, romPlan.params)
     if (r.ok && String(r.data?.response?.jeu?.id ?? '') === input.jeuId) {
       jeu = r.data.response.jeu as Rec
-      if (romPlan.kind === 'hash') hashVerified = true
-      else romVerified = verifyFilenameMatch(
+      const answered = { rom: romInfo(jeu.rom), system: { id: Number(jeu.systeme?.id ?? NaN) || null, name: null } }
+      // Exact only when the returned dump carries a hash we asked for (an
+      // unknown hash is answered with a filename guess).
+      if (romPlan.kind === 'hash') hashVerified = verifyHashMatch({ crc: input.rom?.crc, md5: input.rom?.md5, sha1: input.rom?.sha1 }, answered)
+      if (!hashVerified) romVerified = verifyFilenameMatch(
         { filename: input.rom?.filename, systemId: sys?.id ?? null, size: input.rom?.size ?? null, crc: input.rom?.crc ?? null },
-        { rom: romInfo(jeu.rom), system: { id: Number(jeu.systeme?.id ?? NaN) || null, name: null } },
+        answered,
       )
     }
   }
@@ -1878,6 +1998,27 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   }
   if (!jeu || String(jeu.id) !== input.jeuId) {
     return { game_id: input.gameId, outcome: 'stale', reason: 'ScreenScraper answered with a different entry than the one chosen — search again.' }
+  }
+
+  // Re-matching to a DIFFERENT entry — only now that the new one is in hand,
+  // so a failed lookup never throws the old match away: undo the previous
+  // match (where still untouched), then treat every column still holding one
+  // of this game's copies as empty, so none of the wrong game's art survives
+  // even when it was applied more than once.
+  const replaced: string[] = []
+  if (rematch) {
+    if (prevRow && String(prevRow.jeu_id ?? '') === prevJeu) await revertApplied(userId, prevRow)
+    prevRow = null
+    ;({ game, platform } = await loadGame(userId, input.gameId))
+    if (!game) return { game_id: input.gameId, outcome: 'error', reason: 'game not found' }
+    const scrub = scrubCopies(input.gameId, game, platform)
+    if (Object.keys(scrub.games).length) await admin.from('games').update(scrub.games).eq('id', input.gameId).eq('user_id', userId)
+    if (platform && Object.keys(scrub.platform).length) await admin.from('game_platforms').update(scrub.platform).eq('id', platform.id).eq('user_id', userId)
+    game = { ...game, ...scrub.games }
+    if (platform) platform = { ...platform, ...scrub.platform }
+    // The old entry's copies are no longer anyone's: gone once this apply is
+    // no longer undoable (the replaced-path rule), never orphaned.
+    replaced.push(...scrub.paths)
   }
   const opts = { regions: input.prefs.regions, languages: input.prefs.languages }
   let cand = withOverrides(await signed(toCandidate(jeu, input.basis, opts, SNAPSHOT_CAPS.roms)), input.overrides)
@@ -1893,11 +2034,22 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   // the budget for nothing)
   const values: Partial<Record<SsField, unknown>> = { ...cand.values, rom_status: hashVerified ? 'verified' : null }
   const has = (t: string) => cand.media.some(m => m.type === t)
+  const esdeCategories = [...new Set(Object.values((platform?.esde_assets ?? {}) as Rec).map((a: Rec) => String(a?.category ?? '')))]
+  // "Fill" means an empty field. An image column can be empty while the
+  // handheld already shows that picture (ES-DE's own screenshot or fan art):
+  // that is not empty to the owner, and filling it would replace what the
+  // detail shows. Replace still writes.
+  const fields: Partial<Record<SsField, FieldPolicy>> = { ...input.fields }
+  for (const [f, t] of Object.entries(FIELD_MEDIA)) {
+    const { table, column } = FIELD_COLUMN[f as SsField]
+    const current = (table === 'games' ? game : platform)?.[column]
+    const cat = ESDE_CATEGORY[t as string]
+    if (fields[f as SsField] === 'fill' && isEmptyValue(current) && cat && esdeCategories.includes(cat)) fields[f as SsField] = 'skip'
+  }
   const pre = planPatch({ games: game, platform }, {
     ...values, ...Object.fromEntries(Object.entries(FIELD_MEDIA).map(([f, t]) => [f, has(t as string) ? '__image__' : null])),
-  }, input.fields)
+  }, fields)
   const fieldWrites = Object.fromEntries(Object.keys(FIELD_MEDIA).map(f => [f, pre.written.includes(f as SsField)]))
-  const esdeCategories = [...new Set(Object.values((platform?.esde_assets ?? {}) as Rec).map((a: Rec) => String(a?.category ?? '')))]
   const explicit = Array.isArray(input.media)
   const choices: SsMediaChoice[] = explicit
     ? input.media!
@@ -1910,8 +2062,11 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   const prev = game.provider_data?.v === 2 && String(game.provider_data.jeu_id ?? '') === cand.jeu_id ? (game.provider_data as Rec) : null
   const saved: Rec = prev?.saved && typeof prev.saved === 'object' ? { ...prev.saved } : {}
   const linked: Record<string, string> = prev?.linked && !Array.isArray(prev.linked) && typeof prev.linked === 'object' ? { ...prev.linked } : {}
-  const replaced: string[] = []
   const release = (type: string) => { const p = pathOfUrl(saved[type]); if (p) replaced.push(p); delete saved[type] }
+  // A copy a column of this game still shows is never released (it would be
+  // deleted from under the cover it is).
+  const inUse = new Set([...referencedColumnPaths(game, platform)])
+  const releaseUnused = (type: string) => { const p = pathOfUrl(saved[type]); if (!p || !inUse.has(p)) release(type) }
   const mediaResults: Rec[] = []
   const paths: string[] = []
   const wantsStore = Object.values(modes).includes('store')
@@ -1929,9 +2084,18 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
     if (!entry) { mediaResults.push({ type: choice.type, mode: choice.mode, ok: false, reason: 'not available' }); return }
     const mode = modes[choice.type] ?? 'on_demand'
     const keepOnline = (reason?: string) => {
-      if (saved[entry.type]) release(entry.type)
+      if (saved[entry.type]) releaseUnused(entry.type)
       linked[entry.type] = entry.token
       mediaResults.push({ type: entry.type, mode: 'on_demand', ok: true, token: entry.token, ...(reason ? { reason } : {}) })
+    }
+    // A new copy cannot be made (quota, unknown usage, budget): a copy this
+    // game already has for the type stays — it is paid for and counted.
+    const refuseNew = (why: string) => {
+      if (saved[entry.type]) {
+        mediaResults.push({ type: entry.type, mode: 'store', ok: true, token: entry.token, reason: `kept your existing copy: ${why}` })
+        return
+      }
+      keepOnline(`kept online instead of copied: ${why}`)
     }
     if (mode === 'on_demand' || !canStore(entry.type)) {
       keepOnline(choice.mode === 'store' && mode === 'on_demand' ? 'kept online: the game would not use this copy' : undefined)
@@ -1941,7 +2105,7 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
     const refuse = lowQuota ? 'quota nearly used up today'
       : !usage ? 'storage usage unknown (apply migration 104)'
       : usage.total + reserved + estimate > budget ? 'over your storage budget' : null
-    if (refuse) { keepOnline(`kept online instead of copied: ${refuse}`); return }
+    if (refuse) { refuseNew(refuse); return }
     reserved += estimate // reserve before downloading, so parallel copies cannot all pass on one stale total
     const url = urls.get(entry.token)
     if (!url) { reserved -= estimate; mediaResults.push({ type: entry.type, mode: 'store', ok: false, reason: 'no file' }); return }
@@ -1950,7 +2114,7 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
     reserved += got.bytes.byteLength - estimate
     if (usage!.total + reserved > budget) {
       reserved -= got.bytes.byteLength
-      keepOnline('kept online instead of copied: over your storage budget')
+      refuseNew('over your storage budget')
       return
     }
     const path = storedPath(input.gameId, entry.type, stamp, got.ext)
@@ -1965,7 +2129,7 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   })
   // A type no longer chosen at all (set to Skip) keeps no copy and no link.
   const chosenTypes = new Set(choices.map(c => c.type))
-  for (const t of Object.keys(saved)) if (!chosenTypes.has(t)) release(t)
+  for (const t of Object.keys(saved)) if (!chosenTypes.has(t)) releaseUnused(t)
   for (const t of Object.keys(linked)) if (!chosenTypes.has(t)) delete linked[t]
 
   // ── Fields ── Image columns only ever take a STORED copy (a proxied cover
@@ -1974,7 +2138,7 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   for (const [field, type] of Object.entries(FIELD_MEDIA)) {
     values[field as SsField] = modes[type as string] === 'store' && saved[type as string] ? saved[type as string] : null
   }
-  const plan = planPatch({ games: game, platform }, values, input.fields)
+  const plan = planPatch({ games: game, platform }, values, fields)
 
   // games.media holds only what the library list reads, and only stored
   // copies — a key still pointing at one of this game's old copies goes.
@@ -2017,12 +2181,19 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
     written[PLATFORM_KEY(k)] = v
     priorAll[PLATFORM_KEY(k)] = platform?.[k] ?? null
   }
-  const journalId = await journalInsert(userId, {
+  const journal = await journalInsertChecked(userId, {
     game_id: input.gameId, run_id: input.runId, decision: 'applied', jeu_id: cand.jeu_id,
     matched_title: cand.values.title ?? null, system_used: cand.system.name,
     fields_written: Object.keys(written), written_values: written, prior_values: priorAll,
     storage_paths: paths, replaced_paths: replaced, prior_needs_review: game.needs_review === true,
   })
+  // Nothing is written that could not be undone (a journal that exists but
+  // refused the row); before migration 097 there is no journal at all.
+  if (journal.failed) {
+    if (paths.length) await removePaths(paths)
+    return { game_id: input.gameId, outcome: 'error', reason: `could not record the save for undo (${journal.failed}) — nothing was written` }
+  }
+  const journalId = journal.id
 
   let { error: uErr } = await admin.from('games').update(gamePatch).eq('id', input.gameId).eq('user_id', userId)
   if (uErr && isMissingColumn(uErr)) {
@@ -2036,7 +2207,18 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
   }
   if (platform && Object.keys(platPatch).length) {
     const { error } = await admin.from('game_platforms').update(platPatch).eq('id', platform.id).eq('user_id', userId)
-    if (error) mediaResults.push({ type: 'platform', ok: false, reason: scrub(error.message) })
+    if (error) {
+      mediaResults.push({ type: 'platform', ok: false, reason: scrub(error.message) })
+      // The journal must not claim what was not written (undo would compare
+      // against values that never landed).
+      if (journalId) {
+        const keep = Object.keys(written).filter(k => !k.startsWith('platform.'))
+        await admin.from('scrape_decisions').update({
+          fields_written: keep,
+          written_values: Object.fromEntries(keep.map(k => [k, written[k]])),
+        }).eq('id', journalId)
+      }
+    }
   }
 
   // The heavy record — one row per game, never journaled or audited.
@@ -2092,7 +2274,12 @@ async function findBatch(userId: string, gameIds: string[], prefs: SsPrefs): Pro
     if (g.ss_jeu_id && /^\d+$/.test(String(g.ss_jeu_id))) {
       const r = await callApi('jeuInfos.php', { gameid: String(g.ss_jeu_id) })
       if (r.ok && isRealJeu(r.data?.response?.jeu)) {
-        return { game_id: g.id, outcome: 'match', basis: 'previous', rom_filename: file, system: sys, candidate: await signed(toCandidate(r.data.response.jeu, ['previous'], opts, 0)) }
+        const c = toCandidate(r.data.response.jeu, ['previous'], opts, 0)
+        // Trusted (and pre-ticked) only on the game's own console; a previous
+        // match filed under another system falls through to a real lookup.
+        if (!sys || c.system.id == null || c.system.id === sys.id) {
+          return { game_id: g.id, outcome: 'match', basis: 'previous', rom_filename: file, system: sys, candidate: await signed(c) }
+        }
       }
     }
     const plan = planSearch({ name: searchTitle(String(g.title ?? '')), systemId: sys?.id ?? null, rom: file ? { filename: file } : null })
@@ -2133,48 +2320,68 @@ async function findBatch(userId: string, gameIds: string[], prefs: SsPrefs): Pro
  * the latest apply of a game still needs for its undo.
  */
 async function cleanup(userId: string, dryRun: boolean): Promise<Rec> {
-  const { data: objects, error } = await admin.rpc('game_media_scrape_objects')
-  if (error || !Array.isArray(objects)) return { status: 'error', error: 'Storage listing needs migration 104.' }
-  const refs = new Set<string>()
-  const gameIds = new Set<string>()
-  for (let from = 0; ; from += 1000) {
-    const { data } = await admin.from('games').select('id, primary_cover_url, screenshot_url, fanart_url, media, provider_data').eq('user_id', userId).range(from, from + 999)
-    for (const g of data ?? []) { gameIds.add(String(g.id)); for (const p of referencedPaths(g, null)) refs.add(p) }
-    if (!data || data.length < 1000) break
+  // Everything is read in pages (PostgREST caps a response at 1,000 rows) and
+  // EVERY read is checked: a failed read aborts before anything is deleted —
+  // this path deletes, so it fails closed.
+  const pages = async <T>(read: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> => {
+    const out: T[] = []
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await read(from, from + 999)
+      if (error) throw new Error(`cleanup read failed: ${scrub((error as Rec).message ?? 'unknown error')}`)
+      out.push(...(data ?? []))
+      if (!data || data.length < 1000) return out
+    }
   }
-  for (let from = 0; ; from += 1000) {
-    const { data } = await admin.from('game_platforms').select('wheel_url, cover_url, box_url').eq('user_id', userId).range(from, from + 999)
-    for (const p of data ?? []) for (const x of referencedPaths(null, p)) refs.add(x)
-    if (!data || data.length < 1000) break
+  let objects: Rec[]
+  try {
+    objects = await pages<Rec>((from, to) => admin.rpc('game_media_scrape_objects').range(from, to))
+  } catch {
+    return { status: 'error', error: 'Storage listing needs migration 104.' }
   }
-  const { data: journal } = await admin.from('scrape_decisions').select('game_id, run_id, decision, replaced_paths, written_values, created_at')
-    .eq('user_id', userId).in('decision', ['applied', 'undone']).order('created_at', { ascending: false }).limit(5000)
-  const undone = new Set((journal ?? []).filter((r: Rec) => r.decision === 'undone').map((r: Rec) => `${r.game_id}|${r.run_id}`))
-  const seen = new Set<string>()
-  for (const r of journal ?? []) {
-    if (r.decision !== 'applied' || seen.has(String(r.game_id)) || undone.has(`${r.game_id}|${r.run_id}`)) continue
-    seen.add(String(r.game_id))
-    for (const p of replacedOf(r)) refs.add(p)
+  try {
+    const refs = new Set<string>()
+    const gameIds = new Set<string>()
+    const games = await pages<Rec>((from, to) => admin.from('games').select('id, primary_cover_url, screenshot_url, fanart_url, media, provider_data')
+      .eq('user_id', userId).order('id').range(from, to))
+    for (const g of games) { gameIds.add(String(g.id)); for (const p of referencedPaths(g, null)) refs.add(p) }
+    const plats = await pages<Rec>((from, to) => admin.from('game_platforms').select('wheel_url, cover_url, box_url')
+      .eq('user_id', userId).order('id').range(from, to))
+    for (const p of plats) for (const x of referencedPaths(null, p)) refs.add(x)
+    // What each game's undoable apply still needs for its undo — and every
+    // copy a save made in the last hour (it may still be writing its game).
+    const journal = await pages<Rec>((from, to) => admin.from('scrape_decisions')
+      .select('id, game_id, run_id, decision, replaced_paths, storage_paths, written_values, created_at')
+      .eq('user_id', userId).in('decision', ['applied', 'undone']).order('created_at', { ascending: false }).order('id').range(from, to))
+    for (const row of undoableByGame(journal).values()) for (const p of replacedOf(row)) refs.add(p)
+    const recent = Date.now() - 60 * 60_000
+    for (const r of journal) {
+      if (r.decision === 'applied' && Date.parse(String(r.created_at)) > recent) for (const p of (r.storage_paths ?? []) as string[]) refs.add(p)
+    }
+    // Another user's objects are never touched: only this user's games, the
+    // shared review quarantine, and folders of games that no longer exist.
+    const folders = [...new Set(objects.map(o => String(o.name).split('/')[0]))].filter(x => /^[0-9a-f-]{36}$/i.test(x))
+    const existing = new Set<string>()
+    for (let i = 0; i < folders.length; i += 200) {
+      const { data, error } = await admin.from('games').select('id').in('id', folders.slice(i, i + 200))
+      if (error) throw new Error(`cleanup read failed: ${scrub(error.message)}`)
+      for (const g of data ?? []) existing.add(String(g.id))
+    }
+    const young = Date.now() - 30 * 60_000 // uploaded but perhaps not yet written to its game
+    const orphans = objects.filter(o => {
+      const name = String(o.name)
+      if (refs.has(name)) return false
+      if (o.created_at && Date.parse(String(o.created_at)) > young) return false
+      if (name.startsWith('pending/')) return true
+      const gid = name.split('/')[0]
+      return (gameIds.has(gid) || !existing.has(gid)) && isScrapeCopyOf(gid, name)
+    })
+    const bytes = orphans.reduce((s, o) => s + Number(o.bytes ?? 0), 0)
+    if (dryRun) return { status: 'ok', dry_run: true, files: orphans.length, bytes }
+    const removed = await removePaths(orphans.map(o => String(o.name)))
+    return { status: 'ok', files: removed, bytes, ...(removed < orphans.length ? { error: `${orphans.length - removed} could not be deleted` } : {}) }
+  } catch (e) {
+    return { status: 'error', error: (e as Error).message }
   }
-  // Another user's objects are never touched: only this user's games, the
-  // shared review quarantine, and folders of games that no longer exist.
-  const folders = [...new Set((objects as Rec[]).map(o => String(o.name).split('/')[0]))].filter(x => /^[0-9a-f-]{36}$/i.test(x))
-  const existing = new Set<string>()
-  for (let i = 0; i < folders.length; i += 200) {
-    const { data } = await admin.from('games').select('id').in('id', folders.slice(i, i + 200))
-    for (const g of data ?? []) existing.add(String(g.id))
-  }
-  const orphans = (objects as Rec[]).filter(o => {
-    const name = String(o.name)
-    if (refs.has(name)) return false
-    if (name.startsWith('pending/')) return true
-    const gid = name.split('/')[0]
-    return (gameIds.has(gid) || !existing.has(gid)) && isScrapeCopyOf(gid, name)
-  })
-  const bytes = orphans.reduce((s, o) => s + Number(o.bytes ?? 0), 0)
-  if (dryRun) return { status: 'ok', dry_run: true, files: orphans.length, bytes }
-  const removed = await removePaths(orphans.map(o => String(o.name)))
-  return { status: 'ok', files: removed, bytes }
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -2233,7 +2440,9 @@ Deno.serve(async (req) => {
   const userId = userData.user.id
   // One ScreenScraper account, one person: its allowance, premium and signing
   // are the owner's alone.
-  if (OWNER && userId !== OWNER) return fail('ScreenScraper is set up for the owner account only.', 403)
+  // Fails CLOSED: without HEVY_USER_ID nobody is the owner.
+  if (!OWNER) return fail('ScreenScraper is not set up: HEVY_USER_ID is missing from the function secrets.', 403)
+  if (userId !== OWNER) return fail('ScreenScraper is set up for the owner account only.', 403)
   issued = 0
   lastUser = null
 
@@ -2378,7 +2587,8 @@ Deno.serve(async (req) => {
       case 'undo': {
         const runId = String(body.run_id ?? '')
         if (!UUID.test(runId)) return fail('undo needs a run_id', 400)
-        return json(await undoRun(userId, runId))
+        const gameIds = Array.isArray(body.game_ids) ? body.game_ids.map(String).filter((x: string) => UUID.test(x)).slice(0, 500) : null
+        return json(await undoRun(userId, runId, gameIds && gameIds.length ? gameIds : null))
       }
 
       case 'cleanup':

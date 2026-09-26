@@ -176,6 +176,15 @@ ok(!P.verifyFilenameMatch({ filename: 'Sonic (USA).md', systemId: 1 }, fc('Sonic
 ok(!P.verifyFilenameMatch({ filename: 'Sonic (USA).md', systemId: 1 }, { rom: null, system: { id: 1 } }), 'no rom block does not verify')
 ok(!P.verifyFilenameMatch({ filename: 'Sonic (USA).md', systemId: 1, crc: 'aaaaaaaa' }, fc('Sonic (USA).md', 1, { crc: 'bbbbbbbb' })), 'a different CRC does not verify')
 
+// ── Hash verification (an unknown hash is answered with a filename guess) ──
+const hc = (rom) => ({ rom: rom ? { filename: 'x', size: null, crc: null, md5: null, sha1: null, ...rom } : null })
+ok(P.verifyHashMatch({ crc: 'F9394E97' }, hc({ crc: 'f9394e97' })), 'the same CRC (any case) is exact')
+ok(P.verifyHashMatch({ crc: 'aaaaaaaa', md5: 'M'.repeat(32) }, hc({ crc: 'bbbbbbbb', md5: 'm'.repeat(32) })), 'any one matching hash is exact')
+ok(!P.verifyHashMatch({ crc: 'aaaaaaaa' }, hc({ crc: 'bbbbbbbb' })), 'a different CRC is not exact (their filename guess)')
+ok(!P.verifyHashMatch({ crc: 'aaaaaaaa' }, hc({ crc: null })), 'no hash in the answer is not exact')
+ok(!P.verifyHashMatch({}, hc({ crc: 'bbbbbbbb' })), 'no hash asked is not exact')
+ok(!P.verifyHashMatch({ crc: 'aaaaaaaa' }, hc(null)), 'no rom block is not exact')
+
 // ── Which copies to store ──
 const ch = [{ type: 'box-2D', mode: 'store' }, { type: 'ss', mode: 'store' }, { type: 'sstitle', mode: 'store' }, { type: 'box-3D', mode: 'on_demand' }]
 eq(P.decideMediaModes(ch, { explicit: false, fieldWrites: { cover: false, screenshot: true }, esdeCategories: ['titlescreens'] }),

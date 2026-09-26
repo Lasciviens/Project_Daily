@@ -39,8 +39,12 @@ export interface ScrapeBatchState {
   ticked: Record<string, boolean>
   saved: Record<string, ApplyResult>
   runId: string | null
+  /** Games a lookup or save is running for — kept in the store, not the
+   *  component, so leaving the page mid-run neither loses the results nor
+   *  lets the same games be sent twice. */
+  inFlight: Record<string, 'find' | 'save'>
 }
-export const EMPTY_BATCH: ScrapeBatchState = { filter: 'todo', system: '', found: {}, ticked: {}, saved: {}, runId: null }
+export const EMPTY_BATCH: ScrapeBatchState = { filter: 'todo', system: '', found: {}, ticked: {}, saved: {}, runId: null, inFlight: {} }
 
 /**
  * What a click or Enter on a game did to the tablet/desktop detail overlay:
@@ -153,8 +157,9 @@ export const useTestGameStore = create<TgState>()(
       // "Library" in the nav means the WHOLE library: it drops a platform or
       // genre picked elsewhere (an Analytics row, a sidebar shelf), which
       // otherwise lingered as a filter the user had to find and clear.
+      // Re-tapping the section you are on keeps an open ScreenScraper review.
       setSection: (section) => set(s => ({
-        section, statuses: [], scopePlatform: ALL_PLATFORMS, scrapeReview: null, ...(s.section !== section && LEAVE_SHELF),
+        section, statuses: [], scopePlatform: ALL_PLATFORMS, ...(s.section !== section && { scrapeReview: null, ...LEAVE_SHELF }),
         ...(section === 'library' && { platform: ALL_PLATFORMS, genres: [], ...(s.platform !== ALL_PLATFORMS && LEAVE_SHELF) }),
       })),
       setPlatform: (platform) => set(s => ({
@@ -193,8 +198,9 @@ export const useTestGameStore = create<TgState>()(
         scrapeTargetId, scrapeMode: 'search', section: 'scrape', scrapeReview: null,
         ...(s.section !== 'scrape' && LEAVE_SHELF),
       })),
-      setScrapeTarget: (scrapeTargetId) => set({ scrapeTargetId, scrapeReview: null }),
-      setScrapeMode: (scrapeMode) => set({ scrapeMode, scrapeReview: null }),
+      setScrapeTarget: (scrapeTargetId) => set(s => (s.scrapeTargetId === scrapeTargetId ? {} : { scrapeTargetId, scrapeReview: null })),
+      // Re-tapping the active mode tab is not a reason to drop the review.
+      setScrapeMode: (scrapeMode) => set(s => (s.scrapeMode === scrapeMode ? {} : { scrapeMode, scrapeReview: null })),
       setScrapeSearch: (scrapeSearch) => set({ scrapeSearch }),
       setScrapeReview: (scrapeReview) => set({ scrapeReview }),
       setScrapeSettingsOpen: (scrapeSettingsOpen) => set({ scrapeSettingsOpen }),

@@ -27,32 +27,44 @@ function Value({ v, field, muted, clamp }: { v: unknown; field: SsField; muted?:
 }
 
 /** Variant chips for the title (regions) or the description (languages). */
-function Variants({ list, value, onPick, label }: { list: SsLocalized[]; value: string | null; onPick: (k: string | null) => void; label: string }) {
+/** Variant chips for the title (regions) or the description (languages).
+ *  With nothing picked, the variant shown by default (your language order)
+ *  is marked, so "which one am I reading?" always has an answer. */
+function Variants({ list, value, shown, onPick, label }: { list: SsLocalized[]; value: string | null; shown: unknown; onPick: (k: string | null) => void; label: string }) {
   if (list.length < 2) return null
+  const defaultKey = value == null ? list.find(v => v.text === String(shown ?? ''))?.key ?? null : null
   return (
-    <div role="radiogroup" aria-label={label} className="mt-1.5 flex flex-wrap gap-1">
-      {list.map(v => (
-        <button
-          key={v.key} type="button" role="radio" aria-checked={value === v.key} title={v.text}
-          onClick={() => onPick(value === v.key ? null : v.key)}
-          className={`min-h-[30px] min-w-[40px] rounded-md px-2 text-[11px] font-semibold uppercase [@media(pointer:coarse)]:min-h-[44px] ${
-            value === v.key ? 'bg-[var(--tg-seg-active-bg,var(--tg-accent-soft))] text-[var(--tg-nav-active-text,var(--tg-accent))] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--tg-accent)_35%,transparent)]' : 'bg-[var(--tg-panel-2)] text-[var(--tg-text-2)]'
-          }`}
-        >
-          {v.key}
-        </button>
-      ))}
+    <div role="radiogroup" aria-label={label} className="mt-1.5 flex flex-wrap items-center gap-1">
+      {list.map(v => {
+        const picked = value === v.key
+        const isDefault = defaultKey === v.key
+        return (
+          <button
+            key={v.key} type="button" role="radio" aria-checked={picked || isDefault} title={v.text}
+            onClick={() => onPick(picked ? null : v.key)}
+            className={`min-h-[30px] min-w-[40px] rounded-md px-2 text-[11px] font-semibold uppercase [@media(pointer:coarse)]:min-h-[44px] ${
+              picked ? 'bg-[var(--tg-seg-active-bg,var(--tg-accent-soft))] text-[var(--tg-nav-active-text,var(--tg-accent))] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--tg-accent)_35%,transparent)]'
+                : isDefault ? 'bg-[var(--tg-panel-2)] text-[var(--tg-text)] shadow-[inset_0_0_0_1px_var(--tg-border-strong)]'
+                : 'bg-[var(--tg-panel-2)] text-[var(--tg-text-2)]'
+            }`}
+          >
+            {v.key}
+          </button>
+        )
+      })}
+      {defaultKey && <span className="ml-1 text-[10.5px] tg-muted">showing {defaultKey.toUpperCase()} (your order)</span>}
     </div>
   )
 }
 
 /** Yours and theirs as pictures — the one decision that is purely visual. */
-function ImagePair({ current, candidate, type, token }: { current: unknown; candidate: SsCandidate; type: string; token: string | undefined }) {
+function ImagePair({ current, candidate, type, token, fromHandheld }: { current: unknown; candidate: SsCandidate; type: string; token: string | undefined; fromHandheld?: boolean }) {
   const entry = candidate.media.find(m => m.token === token && m.type === type) ?? pickMediaEntry(candidate.media, type, [])
   const box = 'relative h-[62px] w-[62px] overflow-hidden rounded-lg border border-[var(--tg-border)] bg-[var(--tg-panel-2)]'
   return (
     <div className="mt-1 flex items-center gap-2">
-      <span className={box} title="Yours">
+      <span className={box} title={fromHandheld ? 'Yours — from the handheld (ES-DE)' : 'Yours'}>
+        {fromHandheld && <span className="absolute inset-x-0 bottom-0 z-[1] bg-black/60 px-0.5 text-center text-[9px] font-semibold text-white">handheld</span>}
         {typeof current === 'string' && current
           ? <img src={current} alt="Yours" loading="lazy" className="h-full w-full object-contain" />
           : <span className="grid h-full place-items-center text-[10.5px] tg-faint">None</span>}
@@ -87,10 +99,14 @@ export function TgScrapeFieldList({ candidate, rows, choices, onChoice, mediaMod
   const [showSame, setShowSame] = useState(false)
   const [showNothing, setShowNothing] = useState(false)
   const isSame = (r: FieldRow) => !r.isImage && sameValue(r.current, r.theirs)
+  // A title or description with other regions/languages stays in view even
+  // when it matches yours: its variant chips are the point.
+  const hasVariants = (r: FieldRow) => (r.field === 'title' && names.length > 1) || (r.field === 'description' && synopses.length > 1)
+  const folds = (r: FieldRow) => isSame(r) && !hasVariants(r)
   const offered = rows.filter(r => !r.theirsEmpty)
-  const same = offered.filter(isSame)
+  const same = offered.filter(folds)
   const nothing = rows.filter(r => r.theirsEmpty)
-  const shown = [...offered.filter(r => !isSame(r)), ...(showSame ? same : []), ...(showNothing ? nothing : [])]
+  const shown = [...offered.filter(r => !folds(r)), ...(showSame ? same : []), ...(showNothing ? nothing : [])]
 
   return (
     <div className="flex flex-col divide-y divide-[var(--tg-border)]">
@@ -115,9 +131,9 @@ export function TgScrapeFieldList({ candidate, rows, choices, onChoice, mediaMod
             </div>
             {r.isImage && type ? (
               <>
-                {!r.theirsEmpty && <ImagePair current={r.current} candidate={candidate} type={type} token={tokens[type]} />}
+                {!r.theirsEmpty && <ImagePair current={r.current} candidate={candidate} type={type} token={tokens[type]} fromHandheld={r.fromHandheld} />}
                 {!r.theirsEmpty && choice !== 'keep' && mediaModeOf(type) !== 'store' && (
-                  <p className="mt-1 text-[11px] tg-faint">Their image is set to Online below — switch it to Copy to use it here.</p>
+                  <p className="mt-1 text-[11.5px] tg-muted">Their image is set to Online below — switch it to Copy to use it here.</p>
                 )}
               </>
             ) : (
@@ -128,8 +144,8 @@ export function TgScrapeFieldList({ candidate, rows, choices, onChoice, mediaMod
                 <Value v={r.theirs} field={r.field} clamp />
               </div>
             )}
-            {r.field === 'title' && <Variants list={names} value={titleRegion} onPick={onTitleRegion} label="Title variant" />}
-            {r.field === 'description' && <Variants list={synopses} value={descLang} onPick={onDescLang} label="Description language" />}
+            {r.field === 'title' && <Variants list={names} value={titleRegion} shown={r.theirs} onPick={onTitleRegion} label="Title variant" />}
+            {r.field === 'description' && <Variants list={synopses} value={descLang} shown={r.theirs} onPick={onDescLang} label="Description language" />}
           </div>
         )
       })}
