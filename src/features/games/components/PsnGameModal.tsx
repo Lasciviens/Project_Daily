@@ -107,12 +107,12 @@ export function PsnGameModal({ game, title, purchased, ownership, onClose }: Pro
           </div>
 
           <div className="px-4 py-4 space-y-4">
-            {/* The personal side: the same status/tier/rating controls the
+            {/* The personal side: the same status/rating controls the
                 retro library has, now that migration 096 gives a PlayStation
                 game a real row to write them to. */}
             {game && (
               <LibraryControls entry={entry}
-                notImportedHint="This game is not in your library yet. Use “Add … to library” on the PlayStation tab, then status, tier and rating appear here." />
+                notImportedHint="This game is not in your library yet. Use “Add … to library” on the PlayStation tab, then status and rating appear here." />
             )}
 
             {game && (

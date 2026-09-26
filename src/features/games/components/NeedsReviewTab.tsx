@@ -21,10 +21,26 @@ function reasonsFor(g: Game): string[] {
   return reasons
 }
 
-export function NeedsReviewTab({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
-  const { data: games = [], isLoading } = useGamesNeedingReview()
+export interface ReviewItem { game: Game; reasons: string[]; cover: string | null }
 
-  if (isLoading) return <div className="text-sm text-ink-400 py-8 text-center">Checking your library…</div>
+/**
+ * `items` given (the Games page): the list it computed from rows it already
+ * holds — no fetch, no failure mode. Absent (the legacy page): its own query,
+ * with a real error state instead of "Nothing needs attention" on a failure.
+ */
+export function NeedsReviewTab({ onOpenDetail, items }: { onOpenDetail: (id: string) => void; items?: ReviewItem[] }) {
+  const query = useGamesNeedingReview(!items)
+  const list: ReviewItem[] = items ?? (query.data ?? []).map(g => ({ game: g, reasons: reasonsFor(g), cover: g.primary_cover_url }))
+  const games = list.map(x => x.game)
+
+  if (!items && query.isLoading) return <div className="text-sm text-ink-400 py-8 text-center">Checking your library…</div>
+  if (!items && query.error) return (
+    <div className="text-center py-12 text-ink-500 space-y-3">
+      <p className="text-sm font-medium text-ink-700">Could not check your library</p>
+      <p className="text-xs break-words">{(query.error as Error).message}</p>
+      <button onClick={() => query.refetch()} className="min-h-[44px] px-4 rounded-lg bg-ink-100 hover:bg-ink-200 text-sm font-medium">Try again</button>
+    </div>
+  )
 
   if (games.length === 0) return (
     <div className="text-center py-16 text-ink-400">
@@ -47,19 +63,19 @@ export function NeedsReviewTab({ onOpenDetail }: { onOpenDetail: (id: string) =>
           invalid HTML and the parser silently hoists the inner one out — the
           same trap FoodTile's corner buttons already documented. */}
       <ul className="flex flex-col gap-2">
-        {games.map(g => (
+        {list.map(({ game: g, reasons, cover }) => (
           <li key={g.id}
             className="flex items-center gap-2 p-3 bg-cream-50 rounded-xl border border-orange-200 hover:border-orange-400 transition-colors">
             <button onClick={() => onOpenDetail(g.id)}
               className="flex-1 min-w-0 flex items-center gap-3 text-left">
               <div className="flex-shrink-0 w-10 rounded-lg overflow-hidden border border-ink-100 bg-ink-100" style={{ aspectRatio: '3/4' }}>
-                <CoverImg url={g.primary_cover_url} title={g.title} />
+                <CoverImg url={cover} title={g.title} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-ink-800 truncate">{g.title}</p>
                 <div className="flex flex-wrap items-center gap-1 mt-1">
                   <SystemChip game={g} size="sm" />
-                  {reasonsFor(g).map(r => (
+                  {reasons.map(r => (
                     <span key={r} className="text-[10px] font-medium bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">{r}</span>
                   ))}
                 </div>

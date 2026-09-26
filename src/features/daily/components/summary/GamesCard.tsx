@@ -52,7 +52,7 @@ export function GamesCard({ date }: { date: string }) {
           onClose={() => setPlanning(null)}
           mode="schedule"
           config={{ heading: 'Plan a gaming session' }}
-          defaults={{ title: `🎮 ${planning.title}`, date, duration: 60, category: 'other', color: 'purple' }}
+          defaults={{ title: `🎮 ${planning.title}`, date, duration: 60, category: 'games', color: 'purple' }}
         />
       )}
     </Cell>

@@ -8,9 +8,9 @@
 // it (played, started or finished) and shows their lifetime figures; it cannot
 // say how many hours fell inside the window. The screen says so on its face.
 
-import { isRealPlay } from '../../gameStats'
+import { isRealSession } from '../../gameStats'
 import {
-  lastPlayedIso, platformCounts, platformLabels, playSeconds, starsFromRating,
+  NO_PLATFORM, foldGenres, lastPlayedIso, platformCounts, platformLabels, playSeconds, starsFromRating,
   type PlatformCount, type TgGame,
 } from '../testGameModel'
 
@@ -49,12 +49,34 @@ export function windowStart(w: TgaWindow, today: number): number | null {
   return null
 }
 
-const at = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN)
-export const inWindow = (iso: string | null | undefined, start: number | null) =>
-  start == null ? !!iso && Number.isFinite(at(iso)) : at(iso) >= start
+/** The end of `today` (next local midnight, ms) — a date after it is in no window. */
+export function windowEnd(today: number): number {
+  const d = new Date(today)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
+}
 
-function touched(g: TgGame, start: number): boolean {
-  return inWindow(lastPlayedIso(g), start) || inWindow(g.finished_at, start) || inWindow(g.started_at, start)
+const at = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN)
+/** In [start, end): a missing start is all time, a missing end is open-ended. */
+export const inWindow = (iso: string | null | undefined, start: number | null, end?: number | null) => {
+  const t = at(iso)
+  if (!Number.isFinite(t)) return false
+  return (start == null || t >= start) && (end == null || t < end)
+}
+
+function touched(g: TgGame, start: number, end?: number | null): boolean {
+  return inWindow(lastPlayedIso(g), start, end) || inWindow(g.finished_at, start, end) || inWindow(g.started_at, start, end)
+}
+
+/**
+ * The ONE completion rule, shared by the tile, its drill-down and the chart:
+ * status Completed and — inside a window — a finish date in [start, end).
+ * A finish date on a game no longer Completed is history, not a completion;
+ * a future date belongs to no window. All time counts every Completed game,
+ * dated or not.
+ */
+export function isCompletion(g: TgGame, start: number | null, end?: number | null): boolean {
+  if (g.play_status !== 'completed') return false
+  return start == null ? true : inWindow(g.finished_at, start, end)
 }
 
 /** Visible games of one library (or all), before any time window. */
@@ -63,8 +85,8 @@ export function libraryGames(games: TgGame[], library: TgaLibrary): TgGame[] {
 }
 
 /** The games every card on the screen describes. */
-export function scopeByWindow(games: TgGame[], start: number | null): TgGame[] {
-  return start == null ? games : games.filter(g => touched(g, start))
+export function scopeByWindow(games: TgGame[], start: number | null, end?: number | null): TgGame[] {
+  return start == null ? games : games.filter(g => touched(g, start, end))
 }
 
 export interface TgaKpis {
@@ -72,7 +94,7 @@ export interface TgaKpis {
   platforms: number
   playing: number
   queued: number
-  /** All time: status Completed. A window: finished inside it. */
+  /** Status Completed (and, in a window, finished inside it) — `isCompletion`. */
   completed: number
   /** What `completed` is a share of: owned games, or the games played in the window. */
   completionBase: number
@@ -95,16 +117,16 @@ const isBacklog = (g: TgGame) => g.play_status === 'backlog' || !g.play_status
 /**
  * The games behind one tile, in the order the drill-down lists them. The tile
  * figures come from these same lists (computeKpis), so a list always adds up
- * to its tile. Completed: all time = status Completed; a window = finished in it.
+ * to its tile. Completed follows `isCompletion`.
  */
-export function tileGames(kind: TgaTile, scoped: TgGame[], start: number | null): TgGame[] {
+export function tileGames(kind: TgaTile, scoped: TgGame[], start: number | null, end?: number | null): TgGame[] {
   switch (kind) {
     case 'games': return [...scoped].sort(recency)
     case 'playing': return scoped.filter(g => g.play_status === 'playing').sort(recency)
     case 'backlog': return scoped.filter(isBacklog).sort(recency)
     case 'completed':
       return scoped
-        .filter(g => (start == null ? g.play_status === 'completed' : inWindow(g.finished_at, start)))
+        .filter(g => isCompletion(g, start, end))
         .sort((a, b) => desc(at(a.finished_at), at(b.finished_at)) || byTitle(a, b))
     case 'playtime':
       return scoped.filter(g => (playSeconds(g) ?? 0) > 0)
@@ -115,7 +137,7 @@ export function tileGames(kind: TgaTile, scoped: TgGame[], start: number | null)
   }
 }
 
-export function computeKpis(scoped: TgGame[], start: number | null): TgaKpis {
+export function computeKpis(scoped: TgGame[], start: number | null, end?: number | null): TgaKpis {
   const played = tileGames('playtime', scoped, null)
   const rated = tileGames('rating', scoped, null)
   const backlog = tileGames('backlog', scoped, null)
@@ -123,12 +145,13 @@ export function computeKpis(scoped: TgGame[], start: number | null): TgaKpis {
   const wishlist = scoped.filter(g => g.play_status === 'wishlist').length
   return {
     games: scoped.length,
-    platforms: new Set(scoped.map(g => g.platformKey)).size,
-    playing: tileGames('playing', scoped, start).length,
+    // "No platform" is a bucket, not a platform you own.
+    platforms: new Set(scoped.map(g => g.platformKey).filter(k => k !== NO_PLATFORM)).size,
+    playing: tileGames('playing', scoped, start, end).length,
     queued: scoped.filter(g => g.play_order != null).length,
     backlog: backlog.length,
     backlogUnplayed: backlog.filter(g => (playSeconds(g) ?? 0) <= 0 && !lastPlayedIso(g)).length,
-    completed: tileGames('completed', scoped, start).length,
+    completed: tileGames('completed', scoped, start, end).length,
     completionBase: start == null ? scoped.length - wishlist : scoped.length,
     playtimeSeconds: played.reduce((n, g) => n + (playSeconds(g) ?? 0), 0),
     playedGames: played.length,
@@ -174,16 +197,12 @@ export function platformRows(scoped: TgGame[], max = 10): { rows: TgaBarRow[]; c
 }
 
 export function genreRows(scoped: TgGame[], max = 10): { rows: TgaBarRow[]; total: number; tagged: number } {
-  const m = new Map<string, number>()
-  let tagged = 0
-  for (const g of scoped) {
-    const set = new Set((g.genres ?? []).map(s => s.trim()).filter(Boolean))
-    if (set.size) tagged++
-    for (const x of set) m.set(x, (m.get(x) ?? 0) + 1)
-  }
-  const all = [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  // Case-folded like the library's genre filter (foldGenres), so "Action" and
+  // "ACTION" from two sources are one bar and a tap filters both.
+  const all = foldGenres(scoped, true)
+  const tagged = scoped.filter(g => (g.genres ?? []).some(x => x.trim())).length
   return {
-    rows: all.slice(0, max).map(([genre, count]) => ({ key: genre, label: genre, count, target: genre })),
+    rows: all.slice(0, max).map(({ genre, count }) => ({ key: genre, label: genre, count, target: genre })),
     total: all.length,
     tagged,
   }
@@ -203,7 +222,7 @@ export function mostPlayed(scoped: TgGame[], n = 8): TgaPlayed[] {
 export function recentlyPlayed(scoped: TgGame[], n = 8): TgaPlayed[] {
   return scoped
     .map(game => ({ game, seconds: playSeconds(game), last: lastPlayedIso(game) }))
-    .filter(x => Number.isFinite(at(x.last)) && (x.seconds == null || isRealPlay(x.seconds)))
+    .filter(x => Number.isFinite(at(x.last)) && isRealSession(x.seconds))
     .sort((a, b) => at(b.last) - at(a.last))
     .slice(0, n)
 }

@@ -52,4 +52,27 @@ ok(A.tileGames('rating', year, yStart).map(g => g.title), ['Hogwarts', 'Horizon'
 ok(A.tileGames('backlog', A.libraryGames(lib, 'all'), null).map(g => g.title), ['No status', 'Unplayed'], 'backlog includes no-status games, latest session first')
 ok(A.computeKpis(year, yStart).avgStars, Math.round(((4 + 4.5 + 2.5) / 3) * 100) / 100, 'average rating of the rated list')
 
+// ── One completion rule (isCompletion) for the tile, its list and the chart ──
+const S = require('../src/features/games/test-game/components/tgAnalyticsSeries.ts')
+const end = A.windowEnd(today)
+const replay = game({ title: 'Replay', play_status: 'playing', finished_at: '2026-06-01T10:00:00Z', last_played_at: '2026-09-10T10:00:00Z' })
+const future = game({ title: 'Typo', play_status: 'completed', finished_at: '2027-01-15T10:00:00Z' })
+const undated = game({ title: 'Undated', play_status: 'completed' })
+const lib2 = [...lib, replay, future, undated]
+const all2 = A.libraryGames(lib2, 'all')
+ok(A.windowEnd(today), new Date(2026, 8, 26).getTime(), 'window end = next local midnight')
+ok(A.isCompletion(replay, yStart, end), false, 'a finish date on a game no longer Completed is not a completion')
+ok(A.isCompletion(future, yStart, end), false, 'a future finish date is in no window')
+ok(A.isCompletion(future, null, end), true, 'all time: every Completed game counts')
+ok(A.tileGames('completed', A.scopeByWindow(all2, yStart, end), yStart, end).map(g => g.title), ['Hogwarts'], 'this year: the replay and the typo are not completions')
+for (const w of ['all', 'year', '30d', '12m']) {
+  const st = A.windowStart(w, today)
+  const sc = A.scopeByWindow(all2, st, end)
+  const series = S.completionSeries(all2, w, today)
+  const tile = A.computeKpis(sc, st, end).completed
+  if (w === 'all') ok(series.total + series.earlier + series.undated + series.future, tile, 'all time: chart + earlier + undated + future = the Completed tile')
+  else ok(series.total, tile, `${w}: the chart total = the Completed tile`)
+}
+ok(S.completionSeries(all2, 'all', today).future, 1, 'future finish dates are counted, not plotted')
+
 console.log(`verify-tg-analytics: ${n} assertions passed`)

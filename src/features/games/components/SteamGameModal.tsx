@@ -95,11 +95,11 @@ export function SteamGameModal({ game, onClose }: { game: SteamGame; onClose: ()
           </div>
 
           <div className="px-4 py-4 space-y-4">
-            {/* The personal side: the same status/tier/rating controls the
+            {/* The personal side: the same status/rating controls the
                 retro library has, now that migration 096 gives a Steam game a
                 real row to write them to. */}
             <LibraryControls entry={entry}
-              notImportedHint="This game is not in your library yet. Use “Add … to library” on the Steam tab, then status, tier and rating appear here." />
+              notImportedHint="This game is not in your library yet. Use “Add … to library” on the Steam tab, then status and rating appear here." />
 
             {/* Your own numbers — always available, no extra request */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

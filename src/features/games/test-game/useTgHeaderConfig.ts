@@ -1,10 +1,8 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { fetchGamesNeedingReview } from '../api/gamesApi'
 import { useTestGameStore, type AdvancedTab, type ScrapeMode } from './testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, STATUS_TABS, STATUS_TEXT,
-  platformCounts, platformInfo, platformLabels,
+  needsReviewReasons, platformCounts, platformInfo, platformLabels, scopeGames,
   type StatusCounts, type TgGame, type TgSection, type TgStatusFilter,
 } from './testGameModel'
 import type { TgHeaderConfig } from './tgTypes'
@@ -19,7 +17,7 @@ const SECTION_TITLE: Record<TgSection, string> = {
   backlog: 'Backlog', analytics: 'Analytics', scrape: 'Scrape', advanced: 'Advanced',
 }
 
-function plural(n: number, word: string) { return `${n} ${word}${n === 1 ? '' : 's'}` }
+function plural(n: number, word: string) { return `${n.toLocaleString('en-GB')} ${word}${n === 1 ? '' : 's'}` }
 
 interface Input {
   games: TgGame[]
@@ -29,12 +27,17 @@ interface Input {
   statusCounts: StatusCounts
   /** How many games the current section shows. */
   visibleCount: number
+  /** A status section's platform scope after the stale-scope fallback. */
+  scopePlatform?: string
 }
 
-export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visibleCount }: Input): TgHeaderConfig {
+export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visibleCount, scopePlatform: effectiveScope }: Input): TgHeaderConfig {
   const section = useTestGameStore(s => s.section)
   const statuses = useTestGameStore(s => s.statuses)
-  const scopePlatform = useTestGameStore(s => s.scopePlatform)
+  const storedScope = useTestGameStore(s => s.scopePlatform)
+  const scopePlatform = effectiveScope ?? storedScope
+  const genres = useTestGameStore(s => s.genres)
+  const search = useTestGameStore(s => s.search)
   const advancedTab = useTestGameStore(s => s.advancedTab)
   const setStatus = useTestGameStore(s => s.setStatus)
   const setScopePlatform = useTestGameStore(s => s.setScopePlatform)
@@ -42,17 +45,12 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
   const scrapeMode = useTestGameStore(s => s.scrapeMode)
   const setScrapeMode = useTestGameStore(s => s.setScrapeMode)
 
-  // The "Needs review" pill's count, as the current page's Review tab shows
-  // it. Same key and query as useGamesNeedingReview, so the tab itself reuses
-  // this request — but only fetched while Advanced is open, since it reads the
-  // whole library a second time.
-  const needsReview = useQuery({
-    queryKey: ['games', 'needs-review'],
-    queryFn: fetchGamesNeedingReview,
-    staleTime: 60_000,
-    enabled: section === 'advanced',
-  })
-  const reviewCount = needsReview.data?.length
+  // The "Needs review" pill's count, from the rows the page already holds
+  // (the same predicate the tab lists) — never a second library download.
+  const reviewCount = useMemo(
+    () => (section === 'advanced' ? games.filter(g => needsReviewReasons(g).length > 0).length : 0),
+    [section, games],
+  )
 
   const fixedStatus = STATUS_SECTIONS[section]
   return useMemo((): TgHeaderConfig => {
@@ -75,7 +73,9 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       }
     }
     if (fixedStatus) {
-      const inStatus = games.filter(g => !g.hidden && g.play_status === fixedStatus)
+      // The genre and search filters apply to the counts too (the platform
+      // scope does not — the tabs ARE the platform scope).
+      const inStatus = scopeGames(games, { section, platform: ALL_PLATFORMS, scopePlatform: ALL_PLATFORMS, search, genres })
       const byPlatform = platformCounts(inStatus)
       const labels = platformLabels(byPlatform)
       return {
@@ -114,5 +114,5 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
       onTab: (k) => setAdvancedTab(k as AdvancedTab),
     }
   }, [section, platform, sCounts, statuses, fixedStatus, games, scopePlatform, visibleCount,
-      advancedTab, reviewCount, setStatus, setScopePlatform, setAdvancedTab, scrapeMode, setScrapeMode])
+      advancedTab, reviewCount, setStatus, setScopePlatform, setAdvancedTab, scrapeMode, setScrapeMode, search, genres])
 }

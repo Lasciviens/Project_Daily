@@ -218,6 +218,9 @@ function ConnectedView() {
     last_played_at: g.lastPlayedDateTime ?? null,
     primary_cover_url: g.imageUrl ?? null,
     genres: g.concept?.genres ? String(g.concept.genres).split(',').map(x => x.trim()).filter(Boolean) : null,
+    // Sony's category (a game vs an app) and first launch — migration 105.
+    provider_kind: g.category ?? null,
+    first_played_at: g.firstPlayedDateTime ?? null,
   }))
 
   return (

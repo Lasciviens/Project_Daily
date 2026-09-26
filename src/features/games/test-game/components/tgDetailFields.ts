@@ -1,5 +1,5 @@
 import { formatPlaytime } from '../../api/playtimeFormat'
-import { formatDay, platformInfo, resolveSystemKey, type TgGame } from '../testGameModel'
+import { formatDay, platformInfo, playCount, resolveSystemKey, type TgGame } from '../testGameModel'
 import type { GameLibrary, GamePlatform } from '../../types'
 
 // Every non-empty field of a game row and its platform variants, grouped for
@@ -60,7 +60,8 @@ function variantRows(p: GamePlatform): DetailRow[] {
     { label: 'Folder', value: clean(p.folder_path) },
     { label: 'Performance', value: perf },
     { label: 'Release date', value: day(p.release_date) },
-    { label: 'Rating', value: p.rating != null ? String(p.rating) : '' },
+    // 0–100: ES-DE's 0–1 rating or ScreenScraper's /20 score, scaled.
+    { label: 'Rating', value: p.rating != null ? `${p.rating}/100` : '' },
     { label: 'Plays', value: count(p.esde_playcount, 'launch', 'launches') },
     { label: 'Playtime', value: hours(p.esde_playtime_seconds) },
     { label: 'Last played', value: day(p.esde_last_played) },
@@ -95,9 +96,13 @@ export function detailSections(game: TgGame): DetailSection[] {
     { label: 'Co-op notes', value: clean(game.coop_notes), long: true },
   ])
   const progress = rows([
-    { label: 'Plays', value: count(game.play_count, 'launch', 'launches') },
+    // The live figure (ES-DE's own columns for retro rows), never the frozen
+    // migration-096 snapshot in games.play_count.
+    { label: 'Plays', value: count(playCount(game), 'launch', 'launches') },
     { label: 'Started', value: day(game.started_at) },
-    !finishedShown && { label: 'Finished', value: day(game.finished_at) },
+    // A finish date on a game that is no longer Completed (a replay, or a
+    // status changed back) is history, not the current state.
+    !finishedShown && { label: game.play_status === 'completed' ? 'Finished' : 'Previously finished', value: day(game.finished_at) },
     { label: 'Play notes', value: clean(game.play_notes), long: true },
     { label: 'Game log', value: clean(game.game_log), long: true },
   ])
@@ -105,6 +110,7 @@ export function detailSections(game: TgGame): DetailSection[] {
     { label: 'Library', value: LIBRARY_TEXT[game.library] ?? '' },
     { label: 'Source', value: SOURCE_TEXT[game.external_source ?? ''] ?? clean(game.external_source) },
     { label: isSteam ? 'Steam app ID' : 'Reference', value: clean(game.external_ref) },
+    { label: 'ScreenScraper', value: game.ss_jeu_id ? `#${game.ss_jeu_id}${game.ss_scraped_at ? ` · scraped ${formatDay(game.ss_scraped_at)}` : ''}` : '' },
     { label: 'Synced', value: day(game.synced_at) },
     game.needs_review && { label: 'Review', value: 'Flagged for review' },
     { label: 'Added', value: day(game.created_at) },

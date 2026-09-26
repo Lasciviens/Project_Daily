@@ -2,7 +2,7 @@
 // Pure: `today` (local midnight, ms) is passed in, never read from the clock.
 
 import { starsFromRating, type TgGame } from '../testGameModel'
-import { type TgaWindow, windowStart } from './tgAnalyticsModel'
+import { isCompletion, type TgaWindow, windowEnd, windowStart } from './tgAnalyticsModel'
 
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -27,6 +27,8 @@ export interface TgaCompletions {
   earlier: number
   /** Completed games with no finish date at all — they cannot be placed on a timeline. */
   undated: number
+  /** Completed games whose finish date is after today (a typo, or a clock) — in no column. */
+  future: number
 }
 
 const monthKey = (y: number, m: number) => `${y}-${String(m + 1).padStart(2, '0')}`
@@ -59,13 +61,14 @@ export function completionSeries(games: TgGame[], period: TgaWindow, today: numb
   for (const c of columns) index.set(c.key, c)
 
   const first = unit === 'day' ? windowStart('30d', today)! : new Date(now.getFullYear(), now.getMonth() - (columns.length - 1), 1).getTime()
-  let total = 0, earlier = 0, undated = 0
+  const end = windowEnd(today)
+  let total = 0, earlier = 0, undated = 0, future = 0
   for (const g of games) {
+    // Only what the Completed tile counts (`isCompletion`): status Completed.
+    if (!isCompletion(g, null)) continue
     const t = g.finished_at ? Date.parse(g.finished_at) : NaN
-    if (!Number.isFinite(t)) {
-      if (g.play_status === 'completed') undated++
-      continue
-    }
+    if (!Number.isFinite(t)) { undated++; continue }
+    if (t >= end) { future++; continue }
     if (t < first) { if (period === 'all') earlier++; continue }
     const d = new Date(t)
     const key = unit === 'day'
@@ -74,7 +77,7 @@ export function completionSeries(games: TgGame[], period: TgaWindow, today: numb
     const col = index.get(key)
     if (col) { col.count++; total++ }
   }
-  return { columns, unit, total, earlier, undated }
+  return { columns, unit, total, earlier, undated, future }
 }
 
 /**

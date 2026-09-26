@@ -314,4 +314,58 @@ ok(M.formatDay(null), '—', 'no date')
 ok(M.subtitleParts(lib.find(g => g.id === 'b')), ['PlayStation 2', 'Adventure', '2005'], 'platform · genre · year')
 ok(M.subtitleParts(lib.find(g => g.id === 'g'), 'Puzzle'), ['Steam', 'Puzzle'], 'a genre fallback fills a missing genre')
 
+// ── Reserved platform keys (a system string must not hijack a page shelf) ──
+ok(M.derivePlatformKey(game({ platforms: [plat('All', { is_primary_variant: true })] })), 'sys-all', 'a system called "All" gets its own key')
+ok(M.derivePlatformKey(game({ platforms: [plat('Steam', { is_primary_variant: true })] })), 'sys-steam', 'an ES-DE steam folder never joins the Steam library shelf')
+ok(M.derivePlatformKey(game({ library: 'steam' })), 'steam', 'the Steam library still files under steam')
+ok(M.platformInfo('sys-steam').short, 'Steam (ES-DE)', 'a reserved retro copy reads as its own platform')
+ok(M.derivePlatformKey(game({ platforms: [plat('PlayStation', { is_primary_variant: true })] })), 'psx', 'a retro "PlayStation" is still the first console')
+
+// ── Genres fold case-insensitively ──
+const gA = M.deriveGames([
+  game({ id: 'ga1', genres: ['Action', 'Platform'] }), game({ id: 'ga2', genres: ['ACTION'] }),
+  game({ id: 'ga3', genres: ['action ', 'Action'] }), game({ id: 'ga4', genres: ['RPG'], play_status: 'hidden' }),
+])
+ok(M.genreOptions(gA), [{ genre: 'Action', count: 3 }, { genre: 'Platform', count: 1 }], 'one genre per spelling, counted once per game, most common spelling shown')
+ok(M.foldGenres(gA, true).some(x => x.genre === 'RPG'), true, 'hidden rows count when asked (the Hidden view)')
+ok(M.scopeGames(gA, { section: 'library', platform: M.ALL_PLATFORMS, genres: ['action'], search: '' }).map(g => g.id).sort(), ['ga1', 'ga2', 'ga3'],
+  'the genre filter matches every spelling')
+
+// ── Last played order: real sessions first (the 5-minute rule) ──
+const rs = M.deriveGames([
+  game({ id: 'peek', title: 'Peek', library: 'steam', play_seconds: 10, last_played_at: '2026-09-20T10:00:00Z' }),
+  game({ id: 'real', title: 'Real', library: 'steam', play_seconds: 7200, last_played_at: '2026-08-01T10:00:00Z' }),
+  game({ id: 'nodur', title: 'No duration', library: 'playstation', play_seconds: null, last_played_at: '2026-07-01T10:00:00Z' }),
+  game({ id: 'never', title: 'Never' }),
+])
+ok(M.sortGames(rs, 'recent').map(g => g.id), ['real', 'nodur', 'peek', 'never'],
+  'a 10-second launch ranks below an older 2-hour session; an unknown duration counts; undated last')
+
+// ── Needs review: computed from the page's rows; a cover on screen counts ──
+const nr = M.deriveGames([
+  game({ id: 'nr1', title: 'B ok', genres: ['Action'], release_year: 1999, primary_cover_url: 'https://x/c.jpg', platforms: [plat('snes', { is_primary_variant: true })] }),
+  game({ id: 'nr2', title: 'A esde cover', genres: ['Action'], release_year: 1999, platforms: [plat('snes', { is_primary_variant: true, cover_url: 'https://x/esde.jpg' })] }),
+  game({ id: 'nr3', title: 'C bare', genres: [' '], platforms: [] }),
+  game({ id: 'nr4', title: 'D steam', library: 'steam', external_ref: '10' }),
+  game({ id: 'nr5', title: 'E hidden', play_status: 'hidden', platforms: [] }),
+  game({ id: 'nr6', title: 'F flagged', needs_review: true, genres: ['x'], release_year: 2000, primary_cover_url: 'https://x/f.jpg', platforms: [plat('nes')] }),
+])
+const byId = id => nr.find(g => g.id === id)
+ok(M.needsReviewReasons(byId('nr1')), [], 'a complete game needs nothing')
+ok(M.needsReviewReasons(byId('nr2')), [], 'an ES-DE cover counts as a cover')
+ok(M.needsReviewReasons(byId('nr3')), ['No cover art', 'No genres', 'No release year', 'No platform set'], 'every missing piece is named; a blank genre is none')
+ok(M.needsReviewReasons(byId('nr4')), [], 'Steam/PSN rows are not retro metadata to fix')
+ok(M.needsReviewReasons(byId('nr5')), [], 'a hidden game is not listed')
+ok(M.needsReviewReasons(byId('nr6')), ['Flagged for review', 'No primary platform chosen'], 'the flag and a missing primary')
+ok(M.needsReviewList(nr).map(x => x.game.id), ['nr3', 'nr6'], 'the list is title-ordered and only what needs work')
+
+// ── PlayStation apps (migration 105: Sony's category on the row) ──
+const psnApp = game({ id: 'papp', library: 'playstation', external_ref: 'CUSA1', provider_kind: 'ps5_media_app', play_status: 'playing' })
+const psnGame = game({ id: 'pgame', library: 'playstation', external_ref: 'PPSA1', provider_kind: 'ps5_native_game' })
+const psnOld = game({ id: 'pold', library: 'playstation', external_ref: 'CUSA2' })
+ok([M.isNotAGame(psnApp, null), M.isNotAGame(psnGame, null), M.isNotAGame(psnOld, null)], [true, false, false],
+  'an app by Sony’s category is not a game; a game or an unclassified row is')
+ok(M.deriveGames([psnApp])[0].hidden, true, 'an importer-promoted app (Playing, no dates) is hidden like a Steam tool')
+ok(M.deriveGames([{ ...psnApp, started_at: '2026-01-01T00:00:00Z' }])[0].hidden, false, 'a status the user chose keeps it visible')
+
 console.log(`verify-test-game-model: ${n} assertions passed`)

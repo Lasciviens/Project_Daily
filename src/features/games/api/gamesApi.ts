@@ -1,6 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { playStatsOf, shouldAutoMarkPlaying } from '../gameStats'
+import { providerUpdateFields, type ProviderExistingRow } from './providerImportRules'
 import type {
   Game, GamePlatform, QueueGame, PlayStatus,
   CreateGameInput, GamePatch, GamePlatformInput, GameLibrary,
@@ -108,6 +109,8 @@ const GAME_LIST_COLUMNS = [
   'started_at', 'finished_at', 'library', 'play_seconds', 'play_count', 'last_played_at', 'media',
   // 104 — the ScreenScraper match marker (never external_source, which ES-DE keys on)
   'ss_jeu_id', 'ss_scraped_at',
+  // 105 — PlayStation facts
+  'provider_kind', 'first_played_at',
 ].join(', ')
 
 const PLATFORM_LIST_COLUMNS = [
@@ -126,7 +129,7 @@ const PLATFORM_LIST_COLUMNS = [
  *  row. */
 async function withListColumns<T>(columns: string, read: (columns: string) => Promise<T>): Promise<T> {
   let cols = columns
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     try {
       return await read(cols)
     } catch (e) {
@@ -263,7 +266,10 @@ export async function fetchGamesNeedingReview(): Promise<Game[]> {
 export async function fetchPlayQueue(): Promise<QueueGame[]> {
   const rows = await withListColumns(GAME_LIST_COLUMNS, async cols => {
     const { data, error } = await supabase
-      .from('games').select(cols).not('play_order', 'is', null).order('play_order', { ascending: true })
+      // Hidden games keep their play_order but take no place (the page's queue
+      // rule); ties number the same way everywhere (play order, title, id).
+      .from('games').select(cols).not('play_order', 'is', null).neq('play_status', 'hidden')
+      .order('play_order', { ascending: true }).order('title', { ascending: true }).order('id', { ascending: true })
       .overrideTypes<Omit<Game, 'platforms'>[], { merge: false }>()
     if (error) { if (isMissingTable(error)) return []; throw error }
     return data ?? []
@@ -290,6 +296,10 @@ export async function createGame(input: CreateGameInput): Promise<Game> {
       genres:            gameFields.genres ?? null,
       series_name:       gameFields.series_name ?? null,
       play_status:       gameFields.play_status ?? 'backlog',
+      // Added as Playing or Completed: stamp the date the quick switch would
+      // (setPlayStatus) — a manual add has no provider session to use instead.
+      ...(gameFields.play_status === 'playing' && { started_at: new Date().toISOString() }),
+      ...(gameFields.play_status === 'completed' && { finished_at: new Date().toISOString() }),
       tier:              gameFields.tier ?? null,
       rating:            gameFields.rating ?? null,
       is_coop:           gameFields.is_coop ?? false,
@@ -362,8 +372,10 @@ export async function deleteGame(id: string): Promise<void> {
 
 // Add game to end of queue (assigns next sequential play_order).
 export async function addToQueue(id: string): Promise<void> {
-  const { data } = await supabase
+  const { data, error: readErr } = await supabase
     .from('games').select('play_order').not('play_order', 'is', null).order('play_order', { ascending: false }).limit(1)
+  // A failed read must not look like an empty queue (it would write #1 over an existing #1).
+  if (readErr) throw isMissingTable(readErr) ? new Error(NOT_MIGRATED) : readErr
   const maxOrder = (data?.[0]?.play_order as number | undefined) ?? 0
   const { error } = await supabase.from('games').update({ play_order: maxOrder + 1 }).eq('id', id)
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
@@ -427,18 +439,25 @@ export type ProviderGameInput = {
   primary_cover_url?: string | null
   release_year?: number | null
   genres?: string[] | null
+  /** Migration 105 — the provider's own classification (PlayStation `category`). */
+  provider_kind?: string | null
+  /** Migration 105 — the provider's first-played timestamp (PlayStation). */
+  first_played_at?: string | null
 }
+
+/** Columns only migration 105 has; dropped (and retried) against an older database. */
+const PROVIDER_105_COLUMNS = ['provider_kind', 'first_played_at'] as const
 
 /**
  * Bring a provider's owned/played list into `games` so those titles can be
  * tiered, rated, completed and counted like any other.
  *
- * Re-running is safe and is the normal case: the unique index
- * `(user_id, library, external_ref)` turns a second import into an update.
- * Only the PROVIDER's own facts are written on conflict — play statistics and
- * the cover — never `play_status`, `tier`, `rating` or notes, which are the
- * user's and which a re-import must never reset. (The same rule `esde-sync`
- * follows for the same reason.)
+ * Re-running is safe and is the normal case: an existing row (matched on
+ * `(library, external_ref)`) is updated, not duplicated. On an existing row
+ * the provider's play figures are refreshed, while title, cover, genres and
+ * year are only filled when empty (`providerUpdateFields`) — never
+ * `play_status`, `tier`, `rating` or notes, which are the user's and which a
+ * re-import must never reset. (The same rule `esde-sync` follows.)
  */
 export async function importProviderGames(
   library: Exclude<GameLibrary, 'retro'>,
@@ -460,10 +479,13 @@ export async function importProviderGames(
   // specification". Making the index total instead would be worse: a retro
   // row's `external_ref` is a ScreenScraper id that two different games can
   // legitimately share, so a scrape write would start failing.
-  let existing: { id: string; external_ref: string | null; play_status: string }[]
+  type Existing = ProviderExistingRow & { id: string; external_ref: string | null; play_status: string }
+  let existing: Existing[]
   try {
-    existing = await fetchAllPages<{ id: string; external_ref: string | null; play_status: string }>((from, to) =>
-      supabase.from('games').select('id, external_ref, play_status').eq('library', library).order('id', { ascending: true }).range(from, to))
+    existing = await fetchAllPages<Existing>((from, to) =>
+      supabase.from('games')
+        .select('id, external_ref, play_status, title, primary_cover_url, genres, release_year, play_seconds, play_count, last_played_at')
+        .eq('library', library).order('id', { ascending: true }).range(from, to))
   } catch (e) {
     throw isMissingTable(e) || isMissingColumn(e)
       ? new Error('Importing Steam/PlayStation games needs migration 096 — apply it first.')
@@ -485,6 +507,9 @@ export async function importProviderGames(
     primary_cover_url: g.primary_cover_url ?? null,
     release_year: g.release_year ?? null,
     genres: g.genres ?? null,
+    // The provider's own facts: refreshed on every import, never user-edited.
+    provider_kind: g.provider_kind ?? null,
+    first_played_at: g.first_played_at ?? null,
     synced_at: now,
   })
 
@@ -506,7 +531,7 @@ export async function importProviderGames(
     // backlog row. Every other status is something the user said.
     const promote = shouldAutoMarkPlaying(row.play_status, g.play_seconds)
     if (promote) promoted++
-    return { id: row.id, ...payload(g), ...(promote ? { play_status: 'playing' } : {}) }
+    return { id: row.id, ...payload(g), ...providerUpdateFields(row, g), ...(promote ? { play_status: 'playing' } : {}) }
   })
 
   const fail = (e: unknown) => {
@@ -515,16 +540,28 @@ export async function importProviderGames(
       : e
   }
 
+  // Before migration 105 the two provider-fact columns do not exist: the
+  // first write that says so switches every later chunk to rows without them.
+  let has105 = true
+  const strip = <R extends Record<string, unknown>>(rows: R[]) =>
+    has105 ? rows : rows.map(r => { const c = { ...r }; for (const k of PROVIDER_105_COLUMNS) delete c[k]; return c })
+  const write = async (run: (rows: Record<string, unknown>[]) => PromiseLike<{ error: unknown }>, rows: Record<string, unknown>[]) => {
+    let { error } = await run(strip(rows))
+    if (error && has105 && isMissingColumn(error)) {
+      has105 = false
+      ;({ error } = await run(strip(rows)))
+    }
+    if (error) fail(error)
+  }
+
   // Chunked for the same URL/payload-size reason the reads are.
   for (let i = 0; i < toInsert.length; i += 200) {
-    const { error } = await supabase.from('games').insert(toInsert.slice(i, i + 200))
-    if (error) fail(error)
+    await write(rows => supabase.from('games').insert(rows), toInsert.slice(i, i + 200))
   }
   for (let i = 0; i < toUpdate.length; i += 200) {
     // Conflict on the PRIMARY KEY, which is always inferable — these rows
     // carry the id read above, so this is an update in upsert's clothing.
-    const { error } = await supabase.from('games').upsert(toUpdate.slice(i, i + 200))
-    if (error) fail(error)
+    await write(rows => supabase.from('games').upsert(rows), toUpdate.slice(i, i + 200))
   }
 
   return { imported: toInsert.length, updated: toUpdate.length, promoted }

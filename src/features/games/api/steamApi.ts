@@ -201,8 +201,14 @@ export async function fetchSteamAppTypes(appids: number[]): Promise<Map<number, 
       .from('steam_apps').select('appid, type').in('appid', appids.slice(i, i + 200))
     // A missing table (092 not applied) is not an error worth surfacing here:
     // no types simply means nothing is classified, and the filter hides
-    // nothing. Same degradation as every other pre-migration read.
-    if (error) return out
+    // nothing. Same degradation as every other pre-migration read. Any OTHER
+    // error throws — a partial map returned as success would un-hide tools
+    // for the query's whole stale time.
+    if (error) {
+      const e = error as { code?: string; message?: string }
+      if (e.code === '42P01' || e.code === 'PGRST205' || /Could not find the table/i.test(e.message ?? '')) return out
+      throw error
+    }
     for (const row of data ?? []) out.set(Number(row.appid), row.type ?? null)
   }
   return out

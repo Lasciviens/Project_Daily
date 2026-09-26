@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { TgGame } from '../testGameModel'
 import {
   computeKpis, genreRows, libraryGames, libraryOf, mostPlayed, platformRows, recentlyPlayed,
-  scopeByWindow, statusMix, windowStart, type TgaLibrary, type TgaWindow,
+  scopeByWindow, statusMix, windowEnd, windowStart, type TgaLibrary, type TgaWindow,
 } from './tgAnalyticsModel'
 import { completionSeries, ratingSeries } from './tgAnalyticsSeries'
 
@@ -27,14 +27,16 @@ export function useLibraryCounts(games: TgGame[]): Record<TgaLibrary, number> {
 export function useTgAnalyticsData(games: TgGame[], period: TgaWindow, library: TgaLibrary, today: number) {
   return useMemo(() => {
     const start = windowStart(period, today)
+    const end = windowEnd(today)
     const inLibrary = libraryGames(games, library)
-    const scoped = scopeByWindow(inLibrary, start)
+    const scoped = scopeByWindow(inLibrary, start, end)
     const platforms = platformRows(scoped)
     const genres = genreRows(scoped)
     return {
       start,
+      end,
       scoped,
-      kpis: computeKpis(scoped, start),
+      kpis: computeKpis(scoped, start, end),
       mix: statusMix(scoped),
       platforms: platforms.rows,
       platformCount: platforms.counts.length,

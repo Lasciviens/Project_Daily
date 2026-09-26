@@ -6,7 +6,7 @@ import { logError } from '../../../shared/utils/logError'
 import type { GameLibrary } from '../types'
 
 // Copies a provider's list into `games` (migration 096) so those titles can be
-// tiered, rated, marked completed and counted in Stats like any other.
+// rated, marked completed and counted in Analytics like any other.
 //
 // Explicitly a BUTTON, not something that happens on tab load: the Steam and
 // PlayStation tabs are deliberately lazy about what they fetch (see CLAUDE.md's
@@ -14,7 +14,7 @@ import type { GameLibrary } from '../types'
 // glances at a tab would be exactly the kind of eager work that design forbids.
 //
 // Re-running is the normal case, not a mistake: the import updates play
-// statistics and never touches play_status, tier, rating or notes.
+// statistics (filling only empty metadata) and never touches play_status, rating or notes.
 
 export function ImportProviderButton({ library, source, games }: {
   library: Exclude<GameLibrary, 'retro'>
@@ -67,8 +67,8 @@ export function ImportProviderButton({ library, source, games }: {
   return (
     <button type="button" onClick={run} disabled={busy || !games.length}
       title={newCount === 0
-        ? `All ${games.length} are already in your library. Running again refreshes playtime and last-played, and never touches your own status, tier, rating or notes.`
-        : `Adds ${newCount ?? games.length} new game${newCount === 1 ? '' : 's'} to your library and refreshes the rest. It never overwrites your own status, tier, rating or notes.`}
+        ? `All ${games.length} are already in your library. Running again refreshes playtime and last-played, fills a missing title, cover, genres or year, and never touches your status, rating, notes or anything you corrected.`
+        : `Adds ${newCount ?? games.length} new game${newCount === 1 ? '' : 's'} to your library and refreshes the rest. It never overwrites your status, rating, notes or anything you corrected — it only fills what is empty.`}
       className="min-h-[44px] px-3 text-sm font-semibold rounded-lg border border-ink-200 bg-cream-50 text-ink-600 hover:border-accent-300 hover:text-accent-700 disabled:opacity-40 transition-colors">
       {label}
     </button>

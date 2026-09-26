@@ -148,12 +148,22 @@ export function isRealPlay(seconds: number | null | undefined): boolean {
 }
 
 /**
+ * Whether a dated last session counts as play for "recently played" orders.
+ * An unknown duration counts (a provider that reports the date but not the
+ * time is not evidence of a peek); a known one under five minutes does not.
+ * The ONE rule for the library's Last played sort and Analytics' Recently played.
+ */
+export function isRealSession(seconds: number | null | undefined): boolean {
+  return seconds == null || seconds >= MIN_REAL_PLAY_SECONDS
+}
+
+/**
  * Most recently played first, among games with real recorded play. Everything
  * else keeps its own relative order BELOW that block rather than being
  * filtered out — a sort must never remove rows (CLAUDE.md's NEVER_HIDES).
  */
 export function sortByRecentlyPlayed<T extends PlayStatRow>(games: T[]): T[] {
-  const ranked = (g: T) => { const p = playStatsOf(g); return isRealPlay(p.seconds) && p.last ? p.last : null }
+  const ranked = (g: T) => { const p = playStatsOf(g); return isRealSession(p.seconds) && p.last ? p.last : null }
   const real = games.filter(g => ranked(g) !== null)
   const rest = games.filter(g => ranked(g) === null)
   real.sort((a, b) => (ranked(b) ?? '').localeCompare(ranked(a) ?? ''))

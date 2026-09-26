@@ -76,7 +76,7 @@ export function TgAnalyticsView() {
           </div>
         </>
       )}
-      <TgAnalyticsDrill kind={drill} scoped={d.scoped} start={d.start} library={library} onClose={() => setDrill(null)} />
+      <TgAnalyticsDrill kind={drill} scoped={d.scoped} start={d.start} end={d.end} library={library} onClose={() => setDrill(null)} />
     </div>
   )
 }

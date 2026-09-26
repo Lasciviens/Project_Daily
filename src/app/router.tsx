@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ComponentType } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { SessionGuard } from '../security/sessionGuard'
+import { ErrorBoundary } from '../shared/components/ErrorBoundary'
 import { Layout } from './layout'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
@@ -101,9 +102,13 @@ export function Router() {
           path="/games"
           element={
             <SessionGuard>
-              <Suspense fallback={<div aria-busy="true" className="min-h-[100dvh] bg-canvas" />}>
-                <TestGamePage />
-              </Suspense>
+              {/* The page renders free-form provider and scraped records; a
+                  render-time throw shows a Try-again card, not a blank screen. */}
+              <ErrorBoundary label="Games" action="games_page">
+                <Suspense fallback={<div aria-busy="true" className="min-h-[100dvh] bg-canvas" />}>
+                  <TestGamePage />
+                </Suspense>
+              </ErrorBoundary>
             </SessionGuard>
           }
         />

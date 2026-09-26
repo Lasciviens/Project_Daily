@@ -1,11 +1,11 @@
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { Gamepad2, Monitor, ScanSearch, type LucideIcon } from 'lucide-react'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { NeedsReviewTab } from '../../components/NeedsReviewTab'
 import { SteamTab } from '../../components/SteamTab'
 import { PlayStationTab } from '../../components/PlayStationTab'
 import { useTestGameStore, type AdvancedTab } from '../testGameStore'
-import type { TgGame } from '../testGameModel'
+import { needsReviewList, type TgGame } from '../testGameModel'
 import type { TgRandomScope } from '../advancedTabs'
 
 // The previous Games page's tools the new design has no place for yet,
@@ -30,8 +30,10 @@ const TABS: Record<AdvancedTab, { title: string; intro: string; Icon: LucideIcon
   },
 }
 
-export function TgAdvancedView({ onOpenDetail }: {
+export function TgAdvancedView({ onOpenDetail, games = [] }: {
   onOpenDetail: (id: string) => void
+  /** The page's rows — Needs review is computed from them, not re-fetched. */
+  games?: TgGame[]
   /** Accepted for older callers; Random lives in the top bar now. */
   randomPool?: TgGame[]
   randomScope?: TgRandomScope
@@ -40,6 +42,7 @@ export function TgAdvancedView({ onOpenDetail }: {
   // A persisted tab from an older build may no longer exist.
   const active: AdvancedTab = tab in TABS ? tab : 'review'
   const { title, intro, Icon } = TABS[active]
+  const reviewItems = useMemo(() => needsReviewList(games), [games])
 
   let content: ReactNode
   switch (active) {
@@ -52,7 +55,7 @@ export function TgAdvancedView({ onOpenDetail }: {
       content = <ErrorBoundary label="PlayStation" action="test_game_psn_tab"><PlayStationTab /></ErrorBoundary>
       break
     default:
-      content = <NeedsReviewTab onOpenDetail={onOpenDetail} />
+      content = <NeedsReviewTab onOpenDetail={onOpenDetail} items={reviewItems} />
   }
 
   return (

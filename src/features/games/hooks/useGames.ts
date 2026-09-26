@@ -21,24 +21,27 @@ const REVIEW_QK = ['games', 'needs-review']
 // Needs-Review views all show, so a targeted invalidation would just be a
 // second bug waiting to happen the next time one of those reads is added.
 
-export function useGameStats() {
-  return useQuery({ queryKey: STATS_QK, queryFn: fetchGameStats, staleTime: 60_000 })
+export function useGameStats(enabled = true) {
+  return useQuery({ queryKey: STATS_QK, queryFn: fetchGameStats, staleTime: 60_000, enabled })
 }
 
 export function useAllGames() {
   return useQuery({ queryKey: GAMES_QK, queryFn: fetchAllGames, staleTime: 60_000 })
 }
 
-export function useGameDetail(id: string | null) {
-  return useQuery({ queryKey: ['games', 'detail', id], queryFn: () => fetchGameDetail(id!), enabled: !!id, staleTime: 60_000 })
+export function useGameDetail(id: string | null, opts?: { refetchOnMount?: boolean | 'always' }) {
+  return useQuery({
+    queryKey: ['games', 'detail', id], queryFn: () => fetchGameDetail(id!), enabled: !!id, staleTime: 60_000,
+    ...(opts?.refetchOnMount !== undefined && { refetchOnMount: opts.refetchOnMount }),
+  })
 }
 
-export function useGamesNeedingReview() {
-  return useQuery({ queryKey: REVIEW_QK, queryFn: fetchGamesNeedingReview, staleTime: 60_000 })
+export function useGamesNeedingReview(enabled = true) {
+  return useQuery({ queryKey: REVIEW_QK, queryFn: fetchGamesNeedingReview, staleTime: 60_000, enabled })
 }
 
-export function usePlayQueue() {
-  return useQuery({ queryKey: QUEUE_QK, queryFn: fetchPlayQueue, staleTime: 30_000 })
+export function usePlayQueue(enabled = true) {
+  return useQuery({ queryKey: QUEUE_QK, queryFn: fetchPlayQueue, staleTime: 30_000, enabled })
 }
 
 const NO_GAMES: Game[] = Object.freeze([]) as unknown as Game[]

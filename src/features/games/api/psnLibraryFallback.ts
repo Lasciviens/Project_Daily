@@ -33,11 +33,12 @@ export function secondsToIsoDuration(seconds: number | null | undefined): string
 /**
  * The saved library, shaped as Sony's played-games rows.
  *
- * Only the fields the grid actually reads are filled. `category` is left
- * undefined rather than guessed: it drives the is-this-a-game classification,
- * and inventing one here would hide or reveal rows on a fact we do not have.
- * An explicit `play_status = 'hidden'` still applies, because that is read
- * from the library row itself rather than from this projection.
+ * Only the fields the grid actually reads are filled. `category` is Sony's
+ * own value as the import stored it (`provider_kind`, migration 105) and
+ * undefined when it was never stored — never guessed: it drives the
+ * is-this-a-game classification, and inventing one would hide or reveal rows
+ * on a fact we do not have. An explicit `play_status = 'hidden'` still
+ * applies, because that is read from the library row itself.
  */
 export function psnGamesFromLibrary(games: Game[]): PsnPlayedGame[] {
   return games
@@ -50,6 +51,8 @@ export function psnGamesFromLibrary(games: Game[]): PsnPlayedGame[] {
       playCount: g.play_count ?? undefined,
       playDuration: secondsToIsoDuration(g.play_seconds),
       lastPlayedDateTime: g.last_played_at ?? undefined,
+      category: g.provider_kind ?? undefined,
+      firstPlayedDateTime: g.first_played_at ?? undefined,
     }))
 }
 

@@ -1014,9 +1014,16 @@ account-wide (the handheld's ES-DE scraping spends from the same counter);
   buckets need payment history), ImageKit/Cloudinary (metered credits), GitHub
   Pages/jsDelivr (their terms forbid media hosting). None beats "store little,
   link the rest" for one user.
-- **The model:** per media type **Save** (resized copy, counted against the
-  budget), **Link** (nothing stored; the `screenscraper-media` proxy streams it
-  when viewed, browser-cached for a year) or **Skip**. Defaults save box
+- **The model:** per media type **Copy** (resized copy, counted against the
+  budget), **Online** (nothing stored; the `screenscraper-media` proxy streams
+  it when viewed, browser-cached until its signature expires) or **Skip**.
+  The function reads `game_media_usage()` and reserves room for the WHOLE save
+  before copying anything (`decideMediaModes`); what does not fit is shown
+  online instead and the result says so. The budget (default 800 MB) is capped
+  at **950 MB** in code, and the ES-DE pushes (`esde-content-sync`,
+  `esde-media-sync`) refuse uploads past the same 950 MB with 413
+  `storage_full`. Unused copies can be found and deleted from the settings
+  sheet (`cleanup`, dry run first). Defaults copy box
   front/back, screenshot, title screen, fan art and the HD logo (≈ 285 MB worst
   case for 1,100 games), link 3D box/spine/texture/cartridge/Steam grid/logos/
   marquees/manual, skip composites/bezels/themes/pictograms/video.
@@ -1034,29 +1041,60 @@ everything else:
 
 - `screenscraper-media` takes `j` (game id), `s` (system id), `m` (their media
   token), optional `w`/`f` (resize), `e` (video/manual) and `k` — an HMAC-SHA256
-  of `ssm1|<game>|<system>` keyed from the service-role key (hashed with a label
-  first), truncated to 32 base64url characters, compared in constant time.
-  `screenscraper-sync` issues it with every candidate (`media_sig`) and saves it
-  in `provider_data`, so the browser can build a URL for ANY file of that game
-  and nothing else. JWT verification is off (an `<img>` cannot send a header).
-- The function adds the credentials server-side, never follows a redirect with
-  them, passes through only file content types and a header whitelist, and maps
-  their plain-text answers to 404/503 without echoing them.
+  of `ssm2|<game>|<system>|<expiry>` (`x`) keyed from `SCREENSCRAPER_MEDIA_KEY`
+  or, without it, the service-role key (hashed with a label first), truncated
+  to 32 base64url characters, compared in constant time. The expiry is the end
+  of NEXT week — one value all week, so URLs and browser caches stay stable,
+  and no link outlives two weeks; a request claiming more than two weeks ahead
+  is refused. `screenscraper-sync` issues it with every candidate
+  (`media_sig` + `media_exp`) and, for saved games, per visit through the
+  `sign` action — **it is never stored**. The browser can build a URL for ANY
+  file of that game (at fixed widths 120/200/360/640/1280) and nothing else.
+  JWT verification is off (an `<img>` cannot send a header).
+- The function adds the credentials server-side, follows at most one redirect
+  and never with them, passes through only file content types and a header
+  whitelist (+ `nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`,
+  inline disposition), and maps their plain-text answers to 404/503 without
+  echoing them.
+- `screenscraper-sync` is **owner only** (`HEVY_USER_ID`, else 403).
 
 ### 16.5 Contract (`screenscraper-sync`)
 
 | Action | Body | Answer |
 |---|---|---|
-| `status` | — | account (level, premium, threads, used, max), `remaining_today`, `storage` (per category), library counts |
-| `storage` | — | `{ total, groups[] }` from `game_media_usage()` — no ScreenScraper request |
-| `search` | `name?`, `system?` (ES-DE folder or id), `rom?` `{filename,size,crc,md5,sha1,serial}`, `jeu_id?`, `use_name?`, `use_rom?` | `candidates[]` (normalized, signed), `outcomes[]` per lookup, `system`, `remaining_today` |
+| `status` | — | account (level, premium, threads, used, max, misses), `remaining_today`, `storage` (per category + budget/hard cap), library counts |
+| `storage` | — | `{ total, groups[], budget_mb, hard_cap_mb }` from `game_media_usage()` — no ScreenScraper request |
+| `sign` | `items[{jeu_id, system_id}]` | fresh `{sig, exp}` per game for the media proxy (never stored) |
+| `search` | `name?`, `system?` (ES-DE folder or id), `rom?` `{filename,size,crc,md5,sha1,serial}`, `jeu_id?`, `previous_id?`, `use_name?`, `use_rom?` | `candidates[]` (normalized, signed), `outcomes[]` per lookup, `system`, `remaining_today` |
 | `candidate` | `jeu_id`, `matched_by?` | one candidate (all dumps) + `record` (their answer minus URLs) |
-| `apply` | `game_id`, `jeu_id`, `system?`, `rom?`, `fields{field: fill\|replace\|skip}`, `media[{type, token, mode: store\|on_demand}]`, `overrides{title_region, description_lang}`, `matched_by`, `prefs?`, `run_id?` | `result{outcome, written[], skipped[], media[], bytes_stored, remaining_today}` |
-| `find_batch` | `game_ids` (≤ 10) | per game: best match (filename lookup when possible, else name) or why not |
-| `apply_batch` | `items[{game_id, jeu_id, system, rom_filename, matched_by}]` (≤ 5) | per game results, saved defaults |
-| `undo` | `run_id` | restores prior values where unchanged since |
+| `apply` | `game_id`, `jeu_id`, `system?`, `rom?`, `fields{field: fill\|replace\|skip}`, `media[{type, token, mode: store\|on_demand}]`, `overrides{title_region, description_lang}`, `matched_by`, `prefs?`, `run_id?` | `result{outcome, verified_rom, written[], skipped[], media[], bytes_stored, remaining_today}` |
+| `find_batch` | `game_ids` (≤ 10) | per game: best match (previous id → verified filename → name) or why not |
+| `apply_batch` | `items[{game_id, jeu_id, system, rom_filename, matched_by}]` (≤ 5, deadline-bounded) | per game results (+ `not_started`), saved defaults |
+| `undo` | `run_id`, `game_ids?` | latest apply per game only; restores prior values where unchanged since, removes copies nothing references |
+| `cleanup` | `dry_run` | ScreenScraper copies nothing references: count/bytes, or deleted |
 
 The browser never sends a field value — only choices. The function refetches the
 entry (by ROM first when ROM info is known, so the answer carries this dump's
 `rom` block), refuses when a different entry comes back (`stale`), and applies
 the choices against the live row.
+
+### 16.6 Where the data lives (after the hardening pass)
+
+- `games.ss_jeu_id` / `ss_scraped_at` — the match marker. **Never**
+  `external_source`/`external_ref`: those are the ES-DE sync's (`esde-sync`
+  upserts on them); the first rewrite overwrote them and broke that sync for
+  the affected games — migration 104 moves those ids to `ss_jeu_id` and puts
+  `esde`/`manual` back.
+- `games.provider_data` — a small v2 pointer only (`jeu_id`, `rom_id`, system,
+  `matched_by`, `verified_rom`, `saved` type → Storage URL, `linked` type →
+  chosen version token, `media_count`, `run_id`, `fetched_at`).
+- `game_scrape_records` — one row per game: the normalized record (every
+  title/date/rating board/dump/hack/tip, the full media inventory) and, with
+  "Save their full record", their raw answer minus URLs. Owner read-only,
+  written by the function, deleted by undo.
+- `scrape_decisions` — the journal: `written_values`, `prior_values`,
+  `replaced_paths`. The browser can read it (Recent saves) but not write it;
+  no audit trigger (it is itself the audit).
+- Storage `game-media/screenscraper/<game>/…` — copies only; unique paths per
+  save, so undo can restore the previous copy and `cleanup` can find orphans.
+

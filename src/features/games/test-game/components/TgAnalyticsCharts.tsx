@@ -8,10 +8,11 @@ import { TgAnalyticsCard, TgAnalyticsEmpty } from './TgAnalyticsCard'
 
 /** Finish dates per month (per day for 30 days). Older and undated completions are counted, not dropped. */
 export function TgAnalyticsCompletions({ series, period, className = '' }: { series: TgaCompletions; period: TgaWindow; className?: string }) {
-  const { columns, total, earlier, undated, unit } = series
+  const { columns, total, earlier, undated, future, unit } = series
   const notes = [
     earlier ? `${plural(earlier, 'completion')} before this chart starts` : null,
     period === 'all' && undated ? `${plural(undated, 'completed game')} with no finish date` : null,
+    future ? `${plural(future, 'finish date')} in the future` : null,
   ].filter(Boolean)
 
   return (

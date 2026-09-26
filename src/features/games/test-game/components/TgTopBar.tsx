@@ -1,7 +1,7 @@
 import { ArrowUpDown, ListFilter, Tags } from 'lucide-react'
 import { useTestGameStore } from '../testGameStore'
 import {
-  DEFAULT_SORT, SORT_LABEL, STATUS_FILTERS, STATUS_TEXT, multiLabel,
+  DEFAULT_SORT, SORT_LABEL, STATUS_FILTERS, STATUS_TEXT, genreKey, multiLabel,
   type StatusCounts, type TgSort, type TgStatusFilter,
 } from '../testGameModel'
 import type { PlayStatus } from '../../types'
@@ -50,7 +50,7 @@ export function TgTopBar({
   }))
 
   // A genre picked on another platform stays selectable (at 0) so it can be cleared.
-  const missing = pickedGenres.filter(p => !genres.some(g => g.genre === p)).map(genre => ({ genre, count: 0 }))
+  const missing = pickedGenres.filter(p => !genres.some(g => genreKey(g.genre) === genreKey(p))).map(genre => ({ genre, count: 0 }))
   const genreOptions: TgOption<string>[] = [...genres, ...missing].map(g => ({ value: g.genre, label: g.genre, count: g.count }))
 
   return (

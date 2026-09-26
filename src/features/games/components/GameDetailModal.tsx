@@ -12,6 +12,7 @@ import { useTestGameStore } from '../test-game/testGameStore'
 import { CoverImg, CoverBackdrop, RatingBadge, SystemChip } from './gameCardKit'
 import { systemMeta } from '../systemMeta'
 import { formatPlaytime, playStatsOf } from '../gameStats'
+import { dateInputToIso, diffPatch, isoToDateInput } from '../api/gameEdit'
 import {
   STATUS_LABEL, STATUSES,
   PERFORMANCE_COLOR, ROM_STATUS_COLOR, EXTERNAL_SOURCE_LABEL,
@@ -35,15 +36,6 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-// A date input wants "yyyy-MM-dd"; the column stores a full timestamp — this
-// truncates for the input and expands back to midnight-UTC on save. Good
-// enough for a "which day" fact; nobody needs hour precision on a play date.
-function isoToDateInput(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : ''
-}
-function dateInputToIso(v: string): string | null {
-  return v ? new Date(`${v}T00:00:00`).toISOString() : null
-}
 
 // ─── Quick status switch — a one-tap change, no "enter edit mode" detour ────
 
@@ -218,9 +210,11 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
     return arr.length ? arr : null
   }
 
-  function save() {
+  // The patch the form describes right now. The same builder runs once on
+  // open (`initial`), and Save sends only what differs — never the whole form.
+  function build(): GamePatch {
     const ratingNum = rating !== '' ? Number(rating) : null
-    onSave(game.id, {
+    return {
       title:        title.trim() || game.title,
       release_year: releaseYear.trim() ? Number(releaseYear) : null,
       publisher:    publisher.trim() || null,
@@ -245,7 +239,14 @@ function EditPanel({ game, onSave, onCancel, saving }: { game: Game; onSave: (id
       play_notes:   notes.trim() || null,
       game_log:     gameLog.trim() || null,
       needs_review: needsReview,
-    })
+    }
+  }
+  const [initial] = useState(build)
+
+  function save() {
+    const patch = diffPatch(initial as Record<string, unknown>, build() as Record<string, unknown>) as GamePatch
+    if (!Object.keys(patch).length) { onCancel(); return }
+    onSave(game.id, patch)
   }
 
   return (
@@ -404,7 +405,10 @@ interface Props {
 }
 
 export function GameDetailModal({ gameId, onClose, initialEditing = false, className = '' }: Props) {
-  const { data: game, isLoading } = useGameDetail(gameId)
+  // Opened straight into the form, it waits for a fresh read: a cached detail
+  // can predate a status/rating/scrape write made on the page since.
+  const { data: game, isLoading, isFetchedAfterMount } = useGameDetail(gameId, initialEditing ? { refetchOnMount: 'always' } : undefined)
+  const freshForEdit = isFetchedAfterMount
   const update = useUpdateGame()
   const del = useDeleteGame()
   const addToQueue = useAddToQueue()
@@ -530,9 +534,12 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
               </div>
             </div>
 
-            {editing && (
-              <EditPanel game={game} onSave={handleSave} onCancel={finishEditing} saving={update.isPending} />
-            )}
+            {editing && (initialEditing && !freshForEdit ? (
+              <div className="p-5 border-t border-ink-100"><div className="h-24 rounded-xl bg-cream-200 animate-pulse" aria-label="Loading the latest version" /></div>
+            ) : (
+              // Keyed: a form for another game never inherits this one's state.
+              <EditPanel key={game.id} game={game} onSave={handleSave} onCancel={finishEditing} saving={update.isPending} />
+            ))}
 
             <div className="p-5 space-y-5">
               <Section title="Platforms">

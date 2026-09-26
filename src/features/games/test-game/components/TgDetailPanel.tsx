@@ -11,6 +11,7 @@ import { TgDetailScreenScraper } from './TgDetailScreenScraper'
 import { TgScreenshotStrip } from './TgScreenshotStrip'
 import { useSteamExtras } from './useSteamExtras'
 import { useStableValue } from './useStableValue'
+import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 
 interface Props {
   game: TgGame | null
@@ -86,8 +87,10 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
           {description && <TgDetailDescription key={`text-${game.id}`} text={description} mode={textMode} />}
           <TgScreenshotStrip key={`shots-${game.id}`} images={images} title={game.title} fullSize={fullSize} defer={settledId !== game.id} />
           {showStory && <TgDetailDescription key={`story-${game.id}`} text={storyline} label="Storyline" mode={textMode} />}
-          <TgDetailFields game={game} />
-          <TgDetailScreenScraper key={`ss-${game.id}`} game={game} />
+          {/* Each renders free-form stored records (variant rows, their
+              scraped record); a bad field loses its own block, never the panel. */}
+          <ErrorBoundary key={`f-${game.id}`} label="Details" action="games_detail_fields"><TgDetailFields game={game} /></ErrorBoundary>
+          <ErrorBoundary key={`s-${game.id}`} label="ScreenScraper" action="games_detail_screenscraper"><TgDetailScreenScraper game={game} /></ErrorBoundary>
         </div>
         {/* Softens content scrolling under the pinned footer; over padding when nothing scrolls. */}
         <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-2 h-2 bg-gradient-to-t from-[var(--tg-panel)] to-transparent" />

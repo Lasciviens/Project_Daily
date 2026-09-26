@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { create } from 'zustand'
 import { useSetPlayStatus, useUpdateGame } from '../../hooks/useGames'
-import { starsFromRating, ratingFromStars, type TgGame } from '../testGameModel'
+import { isUndecidedStatus, starsFromRating, ratingFromStars, type TgGame } from '../testGameModel'
 import type { PlayStatus } from '../../types'
 
 // Instant feedback for the detail panel's status and rating controls.
@@ -78,13 +78,14 @@ export function useDetailState(game: TgGame): DetailState {
   // would leave a failed value painted over the real one. The hooks already
   // toast the error — the catch only withdraws the override.
   const setStatus = useCallback((next: PlayStatus) => {
-    // Re-picking Playing on an auto-hidden row is a real write: an importer-
-    // promoted "playing" has no start date, and the write stamps one — which
-    // is what takes the row out of the "undecided" group.
-    if (next === status && !(autoHidden && next === 'playing')) return
+    // Re-picking Playing on an undecided row is a real write: an importer-
+    // promoted "playing" (hidden or not) has no start date, and the write
+    // stamps one — confirming it, and taking it out of the "undecided" group.
+    const confirmsPlaying = next === 'playing' && !statusOverride && isUndecidedStatus(game)
+    if (next === status && !confirmsPlaying) return
     patch(id, { status: { value: next, stamp } })
     statusMutate({ id, status: next }).catch(() => drop(id, 'status', stamp))
-  }, [id, stamp, status, autoHidden, patch, drop, statusMutate])
+  }, [id, stamp, status, statusOverride, game, patch, drop, statusMutate])
 
   const setStars = useCallback((stars: number | null) => {
     const next = stars == null ? null : ratingFromStars(stars)

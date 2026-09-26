@@ -1,5 +1,5 @@
 import { useTestGameStore } from '../testGameStore'
-import { STATUS_FILTERS, STATUS_TEXT, type StatusCounts } from '../testGameModel'
+import { STATUS_FILTERS, STATUS_TEXT, genreKey, type StatusCounts } from '../testGameModel'
 import type { PlayStatus } from '../../types'
 import { TgMobileSheet } from './TgMobileSheet'
 
@@ -66,7 +66,7 @@ export function TgMobileFilterSheet({ open, onClose, genres, statusCounts, showS
 
   // A genre picked on another shelf may have no games here; keep it listed
   // (at 0) so the empty grid it causes can be undone from this sheet.
-  const missing = picked.filter(p => !genres.some(g => g.genre === p)).map(genre => ({ genre, count: 0 }))
+  const missing = picked.filter(p => !genres.some(g => genreKey(g.genre) === genreKey(p))).map(genre => ({ genre, count: 0 }))
   const genreList = [...missing, ...genres]
 
   return (

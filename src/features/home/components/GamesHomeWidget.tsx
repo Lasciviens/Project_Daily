@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
 import { useGameStats, usePlayQueue } from '../../games/hooks/useGames'
 import { computeGameStats } from '../../games/gameStats'
@@ -13,36 +13,48 @@ const STATUS_COLOR: Record<string, string> = {
   dropped:   'bg-red-400',
 }
 
+// The widget's body shows from `sm` up regardless of the collapse toggle.
+const DESKTOP = '(min-width: 640px)'
+const subscribeDesktop = (cb: () => void) => {
+  const mq = window.matchMedia(DESKTOP)
+  mq.addEventListener('change', cb)
+  return () => mq.removeEventListener('change', cb)
+}
+const isDesktopNow = () => window.matchMedia(DESKTOP).matches
+
 function CoverThumb({ game }: { game: Game }) {
   const [err, setErr] = useState(false)
+  // The saved cover, else the primary copy's own (ES-DE rows often have only that).
+  const url = game.primary_cover_url ?? (game.platforms?.find(p => p.is_primary_variant) ?? game.platforms?.[0])?.cover_url ?? null
   return (
     <div className="relative flex-shrink-0 w-14 rounded-lg overflow-hidden border border-ink-200 bg-ink-100" style={{ aspectRatio: '3/4' }}>
-      {game.primary_cover_url && !err ? (
-        <img src={game.primary_cover_url} alt={game.title} onError={() => setErr(true)} className="w-full h-full object-cover" />
+      {url && !err ? (
+        <img src={url} alt={game.title} onError={() => setErr(true)} className="w-full h-full object-cover" />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-base">🎮</div>
       )}
       {/* Status dot */}
       <span className={`absolute bottom-1 right-1 w-2 h-2 rounded-full ${STATUS_COLOR[game.play_status] ?? 'bg-ink-300'}`} />
-      {game.tier && (
-        <span className="absolute top-1 left-1 text-[8px] font-bold bg-black/60 text-white px-1 rounded leading-tight">{game.tier}</span>
-      )}
     </div>
   )
 }
 
 export function GamesHomeWidget() {
-  const { data: statsData, isLoading: statsLoading, error: statsError } = useGameStats()
-  // The query returns raw rows now (the Games Stats panel scopes them by
-  // period and platform); this widget wants the plain all-time totals.
-  const stats = useMemo(
-    () => (statsData ? computeGameStats(statsData.rows, statsData.platforms) : null),
-    [statsData],
-  )
-  const { data: queue  = [] } = usePlayQueue()
-  const playingGames = queue.filter(g => g.play_status === 'playing')
   // Reference widget — collapsed by default on a phone (desktop always shows).
   const [collapsed, setCollapsed] = useState(true)
+  const isDesktop = useSyncExternalStore(subscribeDesktop, isDesktopNow, () => true)
+  // Collapsed on a phone, nothing is shown — so nothing is fetched (Home rule).
+  const shown = !collapsed || isDesktop
+  const { data: statsData, isLoading: statsLoading, error: statsError } = useGameStats(shown)
+  // Plain all-time totals of the games you can see: a hidden row (a Steam
+  // tool, something you hid) is not part of your library's numbers.
+  const stats = useMemo(() => {
+    if (!statsData) return null
+    const rows = statsData.rows.filter(r => r.play_status !== 'hidden')
+    return computeGameStats(rows, statsData.platforms)
+  }, [statsData])
+  const { data: queue = [] } = usePlayQueue(shown)
+  const playingGames = queue.filter(g => g.play_status === 'playing')
 
   return (
     <div className="bg-cream-50 rounded-xl border border-ink-200 shadow-sm p-4">

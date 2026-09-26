@@ -31,7 +31,8 @@ function detail(kind: TgaTile, game: TgGame): string {
     const h = hoursOf(game)
     if (h) parts.push(`${h} played`)
   } else {
-    parts.push(last ? `last played ${formatDay(last)}` : 'never played')
+    const h = hoursOf(game)
+    parts.push(last ? `last played ${formatDay(last)}` : h ? `${h} played` : 'no recorded play')
   }
   return parts.join(' · ')
 }

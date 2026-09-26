@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useTestGameStore } from './testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS,
-  applyStatus, genreOptions, platformCounts, queueOrder, queueRanks,
+  applyStatus, foldGenres, platformCounts, queueOrder, queueRanks,
   scopeGames, sortGames, splitPlatforms, statusCounts,
   type PlatformCount, type StatusCounts, type TgGame,
 } from './testGameModel'
@@ -19,6 +19,8 @@ export interface TgLibraryView {
   others: PlatformCount[]
   /** The Library's platform after the stale-platform fallback. */
   effectivePlatform: string
+  /** A status section's platform scope after the same fallback. */
+  effectiveScopePlatform: string
   /** Library, queue and the three status sections (not Analytics / Advanced). */
   isGameSection: boolean
   genres: { genre: string; count: number }[]
@@ -55,14 +57,22 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   }, [platform, others.length, counts, settling])
 
   const fixedStatus = STATUS_SECTIONS[section]
+  // The same fallback for a status section's platform: a saved scope with no
+  // games of that status left would show an empty grid under the label "All".
+  const effectiveScopePlatform = useMemo(() => {
+    if (!fixedStatus || scopePlatform === ALL_PLATFORMS || settling) return scopePlatform
+    return lib.games.some(g => !g.hidden && g.play_status === fixedStatus && g.platformKey === scopePlatform) ? scopePlatform : ALL_PLATFORMS
+  }, [fixedStatus, scopePlatform, settling, lib.games])
   const isGameSection = section !== 'analytics' && section !== 'advanced' && section !== 'scrape'
   const scope = useMemo(
-    () => scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform, search, genres }),
-    [lib.games, section, effectivePlatform, otherKeys, scopePlatform, search, genres],
+    () => scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search, genres }),
+    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, genres],
   )
   const genreList = useMemo(
-    () => genreOptions(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform, search })),
-    [lib.games, section, effectivePlatform, otherKeys, scopePlatform, search],
+    // The Hidden view lists hidden games, so its genre list counts them too.
+    () => foldGenres(scopeGames(lib.games, { section, platform: effectivePlatform, otherKeys, scopePlatform: effectiveScopePlatform, search }),
+      section === 'library' && statuses.includes('hidden')),
+    [lib.games, section, effectivePlatform, otherKeys, effectiveScopePlatform, search, statuses],
   )
   const sCounts = useMemo(() => statusCounts(scope), [scope])
 
@@ -80,7 +90,7 @@ export function useTgLibraryView(lib: TestGameLibrary): TgLibraryView {
   }, [lib.games, ranks])
 
   return {
-    counts, shown, others, effectivePlatform, isGameSection, genres: genreList,
+    counts, shown, others, effectivePlatform, effectiveScopePlatform, isGameSection, genres: genreList,
     statusCounts: sCounts, visible, ranks, navCounts,
   }
 }

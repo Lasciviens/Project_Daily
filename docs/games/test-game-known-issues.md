@@ -10,7 +10,9 @@ real-data audit, each adversarially verified.
   sidebar keeps the current drawn platform glyphs. Don't draw or source substitutes.
 - **ScreenScraper was rewritten from scratch (2026-09-25):** the Scrape section (More → Scrape, sidebar → Scrape, the
   detail's Scrape button) replaced the old studio; see CLAUDE.md → "ScreenScraper — the Scrape page". Needs migration
-  104 + both functions deployed (`screenscraper-media` with JWT verification off) before it works live.
+  104 applied FIRST (it also repairs games the old scraper had re-labelled away from ES-DE), then `screenscraper-sync`
+  redeployed, `screenscraper-media` deployed with JWT verification off, and `esde-content-sync` + `esde-media-sync`
+  redeployed (950 MB storage guard) before it works live.
 - **Theme:** the Game Library look is the new theme for the whole website, to be rolled out later.
 - **Site integration (owner decision 2026-09-25):** the Games page stays full-screen with its own chrome for now.
   The plan is to restyle the WHOLE website in this page's visual language later, rather than squeeze this page into

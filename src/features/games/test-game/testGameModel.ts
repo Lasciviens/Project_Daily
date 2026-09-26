@@ -7,7 +7,8 @@
 // requires this file through sucrase without a live Supabase client.
 
 import type { Game, PlayStatus } from '../types'
-import { playStatsOf } from '../gameStats'
+import { isRealSession, playStatsOf } from '../gameStats'
+import { psnKind } from '../providerEntries'
 
 // ─── Page state vocabulary ───────────────────────────────────────────────────
 
@@ -120,6 +121,13 @@ export function platformInfo(key: string | null | undefined): PlatformInfo {
   if (!k || k === NO_PLATFORM) return { key: NO_PLATFORM, short: 'No platform', name: 'No platform', family: 'other', brand: '#64748b' }
   const spec = PLATFORMS[k]
   if (spec) return { key: k, ...spec }
+  if (k.startsWith(RESERVED_PREFIX)) {
+    // A retro copy filed under a reserved spelling: "Steam (ES-DE)", "ALL".
+    const base = k.slice(RESERVED_PREFIX.length)
+    const known = PLATFORMS[base]
+    const label = known ? `${known.short} (ES-DE)` : base.toUpperCase()
+    return { key: k, short: label, name: known ? `${known.name} (ES-DE)` : label, family: 'other', brand: '#64748b' }
+  }
   const label = k.toUpperCase()
   return { key: k, short: label, name: label, family: 'other', brand: '#64748b' }
 }
@@ -148,6 +156,10 @@ export function platformLabels(counts: PlatformCount[]): Map<string, string> {
 
 /** Lower-case, letters and digits only: "Wii U" → "wiiu", "PS-1" → "ps1". */
 const normSystem = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/** Keys a retro system string may never resolve to (see resolveSystemKey). */
+const RESERVED_KEYS: ReadonlySet<string> = new Set([ALL_PLATFORMS, OTHER_PLATFORMS, NO_PLATFORM, 'steam', 'playstation'])
+export const RESERVED_PREFIX = 'sys-'
 
 // Spellings no key, short label or full name covers. Genesis and Mega Drive
 // stay two platforms on purpose: they are two ES-DE folders (NA vs PAL sets).
@@ -189,7 +201,11 @@ const SYSTEM_ALIASES: ReadonlyMap<string, string> = (() => {
 export function resolveSystemKey(system: string | null | undefined): string {
   const n = normSystem(system ?? '')
   if (!n) return NO_PLATFORM
-  return SYSTEM_ALIASES.get(n) ?? n
+  const k = SYSTEM_ALIASES.get(n) ?? n
+  // A free-text system that happens to spell a page key ("All", "Others",
+  // "Unknown") or a provider library ("Steam" — ES-DE has a steam folder)
+  // must not hijack that shelf; it gets a key of its own.
+  return RESERVED_KEYS.has(k) ? RESERVED_PREFIX + k : k
 }
 
 // ─── Derived game rows ───────────────────────────────────────────────────────
@@ -227,6 +243,9 @@ export function steamAppIdOf(g: Game): number | null {
 
 /** A Steam row whose cached store type is known and is not a game. */
 export function isNotAGame(g: Game, steamType: string | null | undefined): boolean {
+  // PlayStation: Sony's own category, stored at import (migration 105) — an
+  // app or media title is not a game. Unknown/absent stays a game.
+  if (g.library === 'playstation') return psnKind(g.provider_kind) === 'not_game'
   if (g.library !== 'steam') return false
   const t = String(steamType ?? '').trim().toLowerCase()
   return !!t && t !== 'game'
@@ -330,15 +349,41 @@ export function statusCounts(games: TgGame[]): StatusCounts {
   return c
 }
 
-export function genreOptions(games: TgGame[]): { genre: string; count: number }[] {
-  const m = new Map<string, number>()
+/** A genre's identity across sources: "Action", "action " and "ACTION" are one genre. */
+export const genreKey = (s: string) => s.trim().toLocaleLowerCase('en')
+
+/**
+ * Genres folded case-insensitively, each counted once per game and shown in
+ * its most common spelling. `hidden` rows count only when asked (the Hidden
+ * view lists its own genres).
+ */
+export function foldGenres(games: readonly TgGame[], includeHidden = false): { genre: string; count: number }[] {
+  const counts = new Map<string, number>()
+  const spellings = new Map<string, Map<string, number>>()
   for (const g of games) {
-    if (g.hidden) continue
-    for (const x of new Set((g.genres ?? []).map(s => s.trim()).filter(Boolean))) m.set(x, (m.get(x) ?? 0) + 1)
+    if (g.hidden && !includeHidden) continue
+    const seen = new Set<string>()
+    for (const raw of g.genres ?? []) {
+      const label = raw.trim()
+      if (!label) continue
+      const k = genreKey(label)
+      const sp = spellings.get(k) ?? new Map<string, number>()
+      sp.set(label, (sp.get(label) ?? 0) + 1)
+      spellings.set(k, sp)
+      if (seen.has(k)) continue
+      seen.add(k)
+      counts.set(k, (counts.get(k) ?? 0) + 1)
+    }
   }
-  return [...m.entries()]
-    .map(([genre, count]) => ({ genre, count }))
+  const labelOf = (k: string) => [...(spellings.get(k) ?? new Map<string, number>()).entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? k
+  return [...counts.entries()]
+    .map(([k, count]) => ({ genre: labelOf(k), count }))
     .sort((a, b) => b.count - a.count || a.genre.localeCompare(b.genre))
+}
+
+export function genreOptions(games: TgGame[]): { genre: string; count: number }[] {
+  return foldGenres(games)
 }
 
 // ─── Filtering & sorting ─────────────────────────────────────────────────────
@@ -388,8 +433,8 @@ export function scopeGames(games: TgGame[], o: Omit<FilterOptions, 'statuses'>):
     gs = gs.filter(g => g.platformKey === o.platform)
   }
   if (o.genres?.length) {
-    const want = new Set(o.genres)
-    gs = gs.filter(g => (g.genres ?? []).some(x => want.has(x.trim())))
+    const want = new Set(o.genres.map(genreKey))
+    gs = gs.filter(g => (g.genres ?? []).some(x => want.has(genreKey(x))))
   }
   if (o.search.trim()) gs = gs.filter(g => matchesSearch(g, o.search))
   return gs
@@ -427,6 +472,17 @@ const time = (iso: string | null | undefined) => {
   return Number.isFinite(t) ? t : -Infinity
 }
 
+// Real sessions by date, then sub-five-minute launches by date, then undated
+// (isRealSession — the rule Analytics' Recently played uses). A short launch is
+// pushed below every real session by a fixed offset larger than any epoch-ms
+// date; nothing is dropped.
+const SHORT_SESSION_OFFSET = 1e14
+function recentKey(g: Game): number {
+  const t = time(lastPlayedIso(g))
+  if (t === -Infinity) return t
+  return isRealSession(playSeconds(g)) ? t : t - SHORT_SESSION_OFFSET
+}
+
 /** Sorts by a precomputed key, so a comparator never re-derives play stats. */
 function sortByKey<T>(games: T[], key: (g: T) => number, dir: 1 | -1, tie: (a: T, b: T) => number): T[] {
   return games
@@ -440,7 +496,7 @@ export function sortGames<T extends Game>(games: T[], sort: TgSort): T[] {
   const gs = [...games]
   switch (sort) {
     case 'title-desc': return gs.sort((a, b) => byTitle(b, a))
-    case 'recent':     return sortByKey(gs, g => time(lastPlayedIso(g)), -1, byTitle)
+    case 'recent':     return sortByKey(gs, recentKey, -1, byTitle)
     case 'playtime':   return sortByKey(gs, g => playSeconds(g) ?? 0, -1, byTitle)
     case 'rating':     return gs.sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1) || byTitle(a, b))
     case 'year-desc':  return gs.sort((a, b) => (b.release_year ?? -Infinity) - (a.release_year ?? -Infinity) || byTitle(a, b))
@@ -602,6 +658,34 @@ function psnSized(u: string): string | null {
 }
 
 /** Box art, best first. The cover component walks this list on load errors. */
+/**
+ * Why a retro game belongs in "Needs review" — empty when nothing is missing.
+ * Cover means any art the page can actually show (coverCandidates: ES-DE
+ * covers, ScreenScraper media, variant art), not only `primary_cover_url`,
+ * which flagged hundreds of games that have a cover on screen. Computed from
+ * the rows the page already holds — never a second library download.
+ */
+export function needsReviewReasons(g: TgGame): string[] {
+  if (g.library !== 'retro' || g.hidden) return []
+  const r: string[] = []
+  if (g.needs_review) r.push('Flagged for review')
+  if (coverCandidates(g).length === 0) r.push('No cover art')
+  if (!g.genres?.some(x => x.trim())) r.push('No genres')
+  if (!g.release_year) r.push('No release year')
+  if (g.platforms.length === 0) r.push('No platform set')
+  else if (!g.platforms.some(p => p.is_primary_variant)) r.push('No primary platform chosen')
+  return r
+}
+
+/** The Needs-review list in title order, each with its reasons and the cover to show. */
+export function needsReviewList(games: readonly TgGame[]): { game: TgGame; reasons: string[]; cover: string | null }[] {
+  return games
+    .map(game => ({ game, reasons: needsReviewReasons(game) }))
+    .filter(x => x.reasons.length > 0)
+    .sort((a, b) => collator.compare(a.game.title, b.game.title))
+    .map(x => ({ ...x, cover: coverCandidates(x.game)[0] ?? null }))
+}
+
 export function coverCandidates(g: TgGame): string[] {
   const primary = g.platforms.find(p => p.is_primary_variant) ?? g.platforms[0]
   const raw = uniq([

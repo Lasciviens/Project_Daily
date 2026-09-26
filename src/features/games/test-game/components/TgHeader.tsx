@@ -42,7 +42,7 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
                 {t.label}
                 {t.count != null && (
                   <span className="tg-tab-count inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-[color-mix(in_srgb,currentColor_12%,transparent)] px-1.5">
-                    {t.count}
+                    {t.count.toLocaleString('en-GB')}
                   </span>
                 )}
               </button>

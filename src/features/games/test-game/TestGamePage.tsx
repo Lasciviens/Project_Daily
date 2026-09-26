@@ -20,6 +20,7 @@ import { TgModals } from './components/TgModals'
 import { TgMobileHeader, TgBottomTabs, TgMobileGrid } from './components/TgMobile'
 import { TgQueueView } from './components/TgQueueView'
 import { TgAnalyticsView } from './components/TgAnalyticsView'
+import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { TgAdvancedView } from './components/TgAdvancedView'
 import { TgScrapeView } from './components/scrape/TgScrapeView'
 import { TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderError } from './components/TgStates'
@@ -52,7 +53,7 @@ export function TestGamePage() {
   const panelRef = useRef<HTMLElement>(null)
 
   const {
-    counts, shown, others, effectivePlatform, isGameSection, genres, statusCounts: sCounts, visible, ranks, navCounts,
+    counts, shown, others, effectivePlatform, effectiveScopePlatform, isGameSection, genres, statusCounts: sCounts, visible, ranks, navCounts,
   } = useTgLibraryView(lib)
 
   // Looked up in the whole library, not the current view: a status changed in
@@ -87,7 +88,7 @@ export function TestGamePage() {
     }
   }, [bp, detailOpen, collapsed])
 
-  const header = useTgHeaderConfig({ games: lib.games, platform: effectivePlatform, statusCounts: sCounts, visibleCount: visible.length })
+  const header = useTgHeaderConfig({ games: lib.games, platform: effectivePlatform, statusCounts: sCounts, visibleCount: visible.length, scopePlatform: effectiveScopePlatform })
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const actions: TgActions = useMemo(() => ({
@@ -125,9 +126,9 @@ export function TestGamePage() {
   const pickRandom = useCallback(() => {
     const id = pickRandomId(visible, selectedId)
     if (!id) return
-    if (bp === 'mobile') openDetail(id)
-    else activateGame(id)
-  }, [visible, selectedId, bp, openDetail, activateGame])
+    // Always shown expanded: a pick that only moved the tucked tab showed nothing.
+    openDetail(id)
+  }, [visible, selectedId, openDetail])
   const onRandom = isGameSection && visible.length > 0 ? pickRandom : undefined
   const closeModal = useCallback((which: 'edit' | 'full' | 'provider') => {
     if (which === 'edit') setEditId(null)
@@ -155,10 +156,10 @@ export function TestGamePage() {
   }
 
   function renderSection(layout: 'desktop' | 'mobile') {
-    if (section === 'analytics') return <TgAnalyticsView />
+    if (section === 'analytics') return <ErrorBoundary label="Analytics" action="games_analytics"><TgAnalyticsView /></ErrorBoundary>
     if (section === 'scrape') return <TgScrapeView games={lib.games} loading={lib.isLoading} layout={layout} />
     if (section === 'advanced') {
-      return <TgAdvancedView onOpenDetail={actions.openFull} randomPool={visible} randomScope={{ platform: effectivePlatform, search, genres: pickedGenres }} />
+      return <TgAdvancedView onOpenDetail={actions.openFull} games={lib.games} randomPool={visible} randomScope={{ platform: effectivePlatform, search, genres: pickedGenres }} />
     }
     return renderGames(layout)
   }
