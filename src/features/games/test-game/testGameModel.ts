@@ -559,6 +559,36 @@ export function queueRanks(games: TgGame[]): Map<string, number> {
   return ranks
 }
 
+export interface QueueInsights {
+  /** Queued, visible games already Completed or Dropped — decisions that left them in the queue. */
+  finished: TgGame[]
+  /** Queued games still to play. */
+  toPlay: number
+  /** Rough play time for the rest of the queue: its length × the median play time of
+   *  your completed games (null with fewer than 3 of those to go on). */
+  forecastSeconds: number | null
+  /** How many completed games the median came from. */
+  basis: number
+}
+
+/**
+ * What the Play Queue can say about itself. The forecast is deliberately
+ * rough and labelled so: it knows nothing about the queued games' own length.
+ */
+export function queueInsights(games: readonly TgGame[]): QueueInsights {
+  const queued = games.filter(g => !g.hidden && g.play_order != null)
+  const finished = queued.filter(g => g.play_status === 'completed' || g.play_status === 'dropped')
+  const toPlay = queued.length - finished.length
+  const done = games
+    .filter(g => g.play_status === 'completed')
+    .map(g => playSeconds(g) ?? 0)
+    .filter(s => s > 0)
+    .sort((a, b) => a - b)
+  const mid = done.length >> 1
+  const median = done.length ? (done.length % 2 ? done[mid] : (done[mid - 1] + done[mid]) / 2) : 0
+  return { finished, toPlay, forecastSeconds: done.length >= 3 && toPlay > 0 ? median * toPlay : null, basis: done.length }
+}
+
 // ─── Shelf layout ────────────────────────────────────────────────────────────
 
 /**

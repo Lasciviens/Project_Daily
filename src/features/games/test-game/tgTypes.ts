@@ -13,6 +13,8 @@ export type TgHeaderLogo =
 export interface TgHeaderConfig {
   title: string
   subtitle: string
+  /** More about the subtitle, on hover (the queue forecast's basis). */
+  subtitleTitle?: string
   logo: TgHeaderLogo
   platformKey?: string
   tabs: TgHeaderTab[]

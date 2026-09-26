@@ -9,6 +9,7 @@ import { TgMobileScope } from './TgMobileScope'
 import { TgMobileListTools } from './TgMobileListTools'
 import { TgRandomButton } from './TgRandomButton'
 import { TgProviderSync } from './TgProviderSync'
+import { TgQueueCleanup } from './TgQueueCleanup'
 
 // Horizontal padding that also clears a landscape notch — the design's ~20px
 // phone gutter, matching the grid's cover edges. The chip row's scroll padding
@@ -119,6 +120,7 @@ export function TgMobileHeader({ platforms, genres, studios, statusCounts, heade
         {section === 'library' && (header.platformKey === 'steam' || header.platformKey === 'playstation') && (
           <TgProviderSync library={header.platformKey} games={libraryGames ?? []} compact />
         )}
+        {section === 'queue' && <TgQueueCleanup games={libraryGames ?? []} compact />}
         {hasFilters && (
           <TgMobileListTools genres={genres} studios={studios} statusCounts={statusCounts} showStatus={showStatus} showSort={showSort} resultCount={resultCount} />
         )}

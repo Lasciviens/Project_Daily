@@ -401,4 +401,17 @@ ok([N.gridStep('ArrowDown', 3, 9, 1), N.gridStep('ArrowRight', 3, 9, 1)], [4, nu
 ok(N.gridStep('ArrowDown', -1, 9, 4), 4, 'nothing selected: moves from the first card')
 ok([N.gridStep('Enter', 1, 9, 4), N.gridStep('ArrowDown', 0, -1, 4)], [null, null], 'other keys and an empty list do nothing')
 
+// ── Queue insights: finished games still queued, a rough forecast ──
+const qi = M.queueInsights(M.deriveGames([
+  game({ id: 'q1', play_order: 1, play_status: 'playing' }),
+  game({ id: 'q2', play_order: 2, play_status: 'completed', play_seconds: 3600 }),
+  game({ id: 'q3', play_order: 3, play_status: 'dropped' }),
+  game({ id: 'q4', play_order: 4, play_status: 'hidden' }),
+  game({ id: 'c1', play_status: 'completed', play_seconds: 7200 }),
+  game({ id: 'c2', play_status: 'completed', play_seconds: 10800 }),
+]))
+ok([qi.finished.map(g => g.id), qi.toPlay, qi.basis], [['q2', 'q3'], 1, 3], 'finished = completed/dropped still queued; hidden rows take no place')
+ok(qi.forecastSeconds, 7200, 'forecast = still-to-play × the median of completed play time (3,600 · 7,200 · 10,800 → 7,200)')
+ok(M.queueInsights(M.deriveGames([game({ id: 'x', play_order: 1 }), game({ play_status: 'completed', play_seconds: 60 })])).forecastSeconds, null, 'fewer than 3 completed games: no forecast')
+
 console.log(`verify-test-game-model: ${n} assertions passed`)

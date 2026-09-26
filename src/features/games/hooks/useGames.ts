@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import {
   fetchGameStats, fetchAllGames, fetchGameDetail, fetchPlayQueue,
-  createGame, updateGame, deleteGame, reorderQueue, addToQueue, removeFromQueue,
+  createGame, updateGame, deleteGame, reorderQueue, addToQueue, removeFromQueue, removeManyFromQueue,
   addPlatform, updatePlatform, deletePlatform, setPrimaryVariant, setPlayStatus,
   fetchLibraryGames,
 } from '../api/gamesApi'
@@ -202,6 +202,21 @@ export function useRemoveFromQueue() {
     successMessage: 'Removed from queue',
     mutationFn: removeFromQueue,
     onMutate: (id) => patchGameCaches(qc, id, { play_order: null }),
+    onError: (_e, _v, ctx) => restore(qc, ctx),
+    onSettled: (_d, _e, _v, ctx) => settleRowEdit(qc, ctx),
+  })
+}
+
+/** "Remove N finished" — one write, one toast, every cached row patched at once. */
+export function useRemoveManyFromQueue() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback<void, string[], EditCtx>({
+    action: 'remove_finished_from_play_queue',
+    successMessage: 'Finished games removed from the queue',
+    mutationFn: removeManyFromQueue,
+    onMutate: (ids) => beginEdit(qc, () => {
+      for (const id of ids) qc.setQueriesData({ queryKey: ['games'] }, d => patchGameData(d, id, { play_order: null }))
+    }),
     onError: (_e, _v, ctx) => restore(qc, ctx),
     onSettled: (_d, _e, _v, ctx) => settleRowEdit(qc, ctx),
   })

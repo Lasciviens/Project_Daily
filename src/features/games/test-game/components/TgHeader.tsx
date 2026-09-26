@@ -7,7 +7,7 @@ const IDLE_TAB = 'bg-[var(--tg-tab-idle-bg,color-mix(in_srgb,var(--tg-panel)_55%
 
 /** The main column's heading: logo, title, count line and the tab pills. */
 export function TgHeader({ config }: { config: TgHeaderConfig }) {
-  const { title, subtitle, logo, platformKey, tabs, activeTab, activeTabs, onTab, onClear, action } = config
+  const { title, subtitle, subtitleTitle, logo, platformKey, tabs, activeTab, activeTabs, onTab, onClear, action } = config
   const isPlatform = logo === 'platform' && !!platformKey
 
   return (
@@ -23,7 +23,7 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[24px] font-semibold leading-7 tracking-[-0.01em] text-[var(--tg-text)]">{title}</h1>
           <p className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] leading-4 text-[var(--tg-muted)]">
-            <span className="truncate tabular-nums">{subtitle}</span>
+            <span className="truncate tabular-nums" title={subtitleTitle}>{subtitle}</span>
             {onClear && (
               <button type="button" onClick={onClear} className="shrink-0 font-semibold text-[var(--tg-accent)] [@media(pointer:coarse)]:min-h-[44px]">Clear filters</button>
             )}

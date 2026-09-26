@@ -367,6 +367,13 @@ export async function removeFromQueue(id: string): Promise<void> {
   if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
 }
 
+/** Takes several games out of the Play Queue in one write. */
+export async function removeManyFromQueue(ids: string[]): Promise<void> {
+  if (!ids.length) return
+  const { error } = await supabase.from('games').update({ play_order: null }).in('id', ids)
+  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED) : error
+}
+
 export async function reorderQueue(updates: { id: string; play_order: number }[]): Promise<void> {
   const results = await Promise.all(updates.map(({ id, play_order }) => supabase.from('games').update({ play_order }).eq('id', id)))
   const failed = results.find(r => r.error)

@@ -88,7 +88,7 @@ export function TgMobileScope({ platforms, header }: { platforms: PlatformCount[
   return (
     <div className="min-w-0">
       <h2 className="truncate text-[16px] font-bold leading-tight">{header.title}</h2>
-      <p className="tg-muted truncate text-[12px]">{header.subtitle}</p>
+      <p className="tg-muted truncate text-[12px]" title={header.subtitleTitle}>{header.subtitle}</p>
     </div>
   )
 }

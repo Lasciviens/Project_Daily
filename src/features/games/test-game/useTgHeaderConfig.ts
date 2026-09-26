@@ -1,9 +1,10 @@
 import { createElement, useMemo } from 'react'
 import { TgProviderSync } from './components/TgProviderSync'
+import { TgQueueCleanup } from './components/TgQueueCleanup'
 import { useTestGameStore, type AdvancedTab, type ScrapeMode } from './testGameStore'
 import {
   ALL_PLATFORMS, OTHER_PLATFORMS, STATUS_SECTIONS, STATUS_TABS, STATUS_TEXT,
-  needsReviewReasons, platformCounts, platformInfo, platformLabels, scopeGames,
+  needsReviewReasons, platformCounts, platformInfo, platformLabels, queueInsights, scopeGames,
   type StatusCounts, type TgGame, type TgSection, type TgStatusFilter,
 } from './testGameModel'
 import type { TgHeaderConfig } from './tgTypes'
@@ -104,9 +105,16 @@ export function useTgHeaderConfig({ games, platform, statusCounts: sCounts, visi
     if (section === 'queue') {
       const queued = games.filter(g => !g.hidden && g.play_order != null)
       const playing = queued.filter(g => g.play_status === 'playing').length
+      const q = queueInsights(games)
+      // A rough forecast, and it says so: the median play time of what you've completed, times what's left.
+      // Whole hours: minutes would claim a precision the estimate hasn't got.
+      const hours = q.forecastSeconds != null ? Math.round(q.forecastSeconds / 3600) : null
+      const forecast = hours == null ? '' : hours < 1 ? ' · under an hour to play through' : ` · roughly ${plural(hours, 'hour')} to play through`
       return {
         title: 'Play Queue',
-        subtitle: `${plural(queued.length, 'game')} queued · ${playing.toLocaleString('en-GB')} playing · ${(queued.length - playing).toLocaleString('en-GB')} up next${visibleCount !== queued.length ? ` · ${visibleCount.toLocaleString('en-GB')} shown` : ''}`,
+        subtitle: `${plural(queued.length, 'game')} queued · ${playing.toLocaleString('en-GB')} playing · ${(queued.length - playing).toLocaleString('en-GB')} up next${visibleCount !== queued.length ? ` · ${visibleCount.toLocaleString('en-GB')} shown` : ''}${forecast}`,
+        subtitleTitle: q.forecastSeconds != null ? `Queued games still to play × the median play time of your ${q.basis} completed games — it knows nothing about these games' own length.` : undefined,
+        action: q.finished.length ? createElement(TgQueueCleanup, { games }) : undefined,
         logo: 'queue', tabs: [], activeTab: null,
       }
     }
