@@ -8,6 +8,7 @@ import { TgDetailDescription } from './TgDetailDescription'
 import { TgDetailActions } from './TgDetailActions'
 import { TgDetailFields } from './TgDetailFields'
 import { TgDetailScreenScraper } from './TgDetailScreenScraper'
+import { TgDetailStorage } from './TgDetailStorage'
 import { TgDetailNotes } from './TgDetailNotes'
 import { TgDetailSeries } from './TgDetailSeries'
 import { TgScreenshotStrip } from './TgScreenshotStrip'
@@ -99,6 +100,7 @@ export function TgDetailPanel({ game, actions, variant, onClose }: Props) {
             <ErrorBoundary key={`f-${game.id}`} label="Details" action="games_detail_fields"><TgDetailFields game={game} /></ErrorBoundary>
           )}
           <ErrorBoundary key={`s-${game.id}`} label="ScreenScraper" action="games_detail_screenscraper"><TgDetailScreenScraper game={game} settled={settledId === game.id} /></ErrorBoundary>
+          <ErrorBoundary key={`st-${game.id}`} label="Storage" action="games_detail_storage"><TgDetailStorage game={game} settled={settledId === game.id} /></ErrorBoundary>
         </div>
         {/* Softens content scrolling under the pinned footer; over padding when nothing scrolls. */}
         <div aria-hidden className="pointer-events-none sticky bottom-0 -mt-2 h-2 bg-gradient-to-t from-[var(--tg-panel)] to-transparent" />

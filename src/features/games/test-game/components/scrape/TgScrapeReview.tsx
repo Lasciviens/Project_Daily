@@ -6,7 +6,7 @@ import type { MediaMode } from '../../../scraper/ssMediaCatalog'
 import { ssGamePage, type ApplyResult } from '../../../scraper/ssApi'
 import { withOverrides } from '../../../scraper/ssRules'
 import { FIELD_MEDIA, decideMediaModes } from '../../../scraper/ssPlan'
-import { useApplyScrape, useStorageUsage } from '../../../scraper/useScrape'
+import { useApplyScrape, useGameStorage, useStorageUsage } from '../../../scraper/useScrape'
 import {
   applySummary, candidateLine, choiceToPolicy, fieldRows, formToRom, handheldCategories, initialChoice, mediaRows, summaryText, writingChoice,
   type FieldChoice, type FieldRow, type SearchForm,
@@ -16,6 +16,7 @@ import { TgScrapeFieldList } from './TgScrapeFieldList'
 import { TgScrapeMediaGrid } from './TgScrapeMediaGrid'
 import { TgScrapeRecord } from './TgScrapeRecord'
 import { TgScrapeApplied } from './TgScrapeApplied'
+import { TgScrapeStorageLine } from './TgScrapeStorageLine'
 
 const MEDIA_FIELD: Record<string, SsField> = Object.fromEntries(Object.entries(FIELD_MEDIA).map(([f, t]) => [t, f as SsField]))
 
@@ -67,6 +68,9 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
   const [applied, setApplied] = useState<{ runId: string; result: ApplyResult; rows: FieldRow[] } | null>(null)
   const apply = useApplyScrape()
   const storage = useStorageUsage(!!game)
+  const gameStorage = useGameStorage(game?.id ?? null)
+  // Their normalized record (and the raw answer when kept) lands in the database.
+  const recordBytes = useMemo(() => new Blob([JSON.stringify(candidate)]).size, [candidate])
   const rootRef = useRef<HTMLDivElement>(null)
 
   const modeOf = (type: string) => modes[type] ?? 'skip'
@@ -152,6 +156,11 @@ export function TgScrapeReview({ game, candidate, prefs, searchForm, wide, onBac
           <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden /> {storageNote}
         </p>
       )}
+      <TgScrapeStorageLine
+        now={gameStorage.data ?? null}
+        copies={summary.store ? summary.bytes : 0}
+        record={recordBytes * (snapshot ? 2 : 1)}
+      />
     <div className="flex items-center gap-3">
       <p className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-snug tabular-nums text-[var(--tg-text-2)]">
         {summaryText(summary, copyBlock)}{snapshot ? ' · raw answer kept' : ''}
