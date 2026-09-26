@@ -7,7 +7,6 @@ import type { Task } from '../../todo/types'
 import { DOMAIN_TAG_CLASS, DOMAIN_LABEL } from '../../todo/domainColors'
 import { completedWithinLast24h } from '../../todo/taskRules'
 import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
-import { DailyBriefing } from '../components/DailyBriefing'
 import { TodaySummary } from '../components/TodaySummary'
 import { WeatherWidget } from '../components/WeatherWidget'
 import { RuterWidget } from '../components/RuterWidget'
@@ -73,14 +72,13 @@ export function HomePage() {
      */
     <div className="min-h-full flex flex-col xl:flex-row xl:items-start gap-3 xl:gap-4 p-3 xl:p-5">
 
-      {/* Mobile-only lead: morning briefing + weather, in that order, ahead
+      {/* Mobile-only lead: weather, ahead
           of everything else. Below xl the 3-column layout drops to a
           single DOM-ordered stack (Left col → Center col → Right col), which
           buried these two behind Currency/Projects/Training/Games — moved
           here instead of reshuffling the desktop columns themselves. */}
       {/* stagger-in: mobile-only card cascade on entry (see index.css) */}
       <div className="xl:hidden space-y-4 stagger-in">
-        <DailyBriefing />
         <WeatherWidget />
       </div>
 
@@ -98,12 +96,6 @@ export function HomePage() {
 
       {/* ── CENTER COLUMN ───────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 space-y-4 stagger-in">
-        {/* AI morning briefing — leads the page on desktop; mobile gets its
-            own copy above (see the xl:hidden block) instead of this one. */}
-        <div className="hidden xl:block">
-          <DailyBriefing />
-        </div>
-
         {/* Overview summary */}
         <TodaySummary />
 
