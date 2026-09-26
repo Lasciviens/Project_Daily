@@ -5,12 +5,13 @@ import type { GameStorageCategory } from '../../scraper/ssApi'
 import { formatBytes } from './scrape/tgScrapeModel'
 
 const LABEL: Record<GameStorageCategory, string> = {
-  screenscraper: 'ScreenScraper copies',
+  screenscraper: 'ScreenScraper pictures',
+  scrape_record: 'ScreenScraper text record',
   esde_original: 'Handheld originals',
   esde_cover: 'Handheld cover',
   database: 'Database rows',
 }
-const ORDER: GameStorageCategory[] = ['screenscraper', 'esde_original', 'esde_cover', 'database']
+const ORDER: GameStorageCategory[] = ['screenscraper', 'scrape_record', 'esde_original', 'esde_cover', 'database']
 
 /**
  * What this one game keeps: its files in the game-media bucket (by source) and
@@ -21,7 +22,7 @@ export function TgDetailStorage({ game, settled = true }: { game: TgGame; settle
   const q = useGameStorage(settled ? game.id : null)
   if (!settled || q.isLoading || q.error || !q.data) return null
   const groups = ORDER.map(c => q.data!.groups.find(g => g.category === c)).filter(g => g && g.bytes > 0)
-  const files = groups.filter(g => g!.category !== 'database').reduce((s, g) => s + g!.files, 0)
+  const files = groups.filter(g => g!.category === 'screenscraper' || g!.category.startsWith('esde')).reduce((s, g) => s + g!.files, 0)
 
   return (
     <section className="flex flex-col gap-1.5 border-t border-[var(--tg-border)] pt-3.5">
@@ -34,7 +35,7 @@ export function TgDetailStorage({ game, settled = true }: { game: TgGame; settle
         <ul className="flex flex-col gap-0.5 text-[12.5px] tabular-nums">
           {groups.map(g => (
             <li key={g!.category} className="flex justify-between gap-3">
-              <span className="tg-muted">{LABEL[g!.category]}{g!.category !== 'database' ? ` · ${g!.files}` : ''}</span>
+              <span className="tg-muted">{LABEL[g!.category]}{g!.category === 'screenscraper' || g!.category.startsWith('esde') ? ` · ${g!.files}` : ''}</span>
               <span>{formatBytes(g!.bytes)}</span>
             </li>
           ))}

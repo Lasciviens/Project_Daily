@@ -141,6 +141,16 @@ eq([rowsX.find(r => r.field === 'region').theirs, rowsX.find(r => r.field === 'r
 eq(M.handheldCategories(game({ platforms: [pr()] })), ['fanart'], 'the handheld categories of the primary copy')
 ok(M.summaryText({ fields: 1, store: 2, onDemand: 0, skip: 0, bytes: 1000 }, 'budget').includes('online where the budget is full'), 'the save bar says when the budget blocks copies')
 
+// ── Storage change of one save ──
+const now = { screenscraperBytes: 589 * 1024, screenscraperFiles: 3, recordBytes: 60 * 1024, handheldBytes: 540 * 1024, totalBytes: 1200 * 1024 }
+const ch = M.storageChange(now, 68 * 1024, 76 * 1024, true)
+eq([ch.before, ch.recordAfter, ch.after, ch.delta], [1200 * 1024, 60 * 1024, (1200 - 589 - 60 + 68 + 60) * 1024, (68 - 589) * 1024], 're-scrape: old copies out, new copy in, record assumed the same size')
+eq([ch.ssBefore, ch.ssAfter], [649 * 1024, 128 * 1024], 'the ScreenScraper part before and after')
+const first = M.storageChange({ ...now, screenscraperBytes: 0, screenscraperFiles: 0, recordBytes: 0, totalBytes: 540 * 1024 }, 68 * 1024, 90 * 1024, false)
+eq([first.recordAfter, first.delta], [30 * 1024, 98 * 1024], 'first scrape: a new record is its JSON ÷ 3')
+eq(M.storageChange(null, 0, 3000, false).after, 1000, 'no storage figures yet: counts only what the save adds')
+eq([M.formatDelta(-520 * 1024), M.formatDelta(68 * 1024), M.formatDelta(200)], ['−520 KB', '+68 KB', 'no change'], 'the change reads as + / − / no change')
+
 if (failures.length) {
   console.error(`✗ ${failures.length} failed, ${passed} passed\n`)
   for (const x of failures) console.error('  ✗ ' + x)

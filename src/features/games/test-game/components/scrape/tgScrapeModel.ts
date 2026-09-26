@@ -1,3 +1,4 @@
+import type { GameStorage } from '../../../scraper/ssApi'
 // Pure decisions for the Scrape page: what the search form starts with, how a
 // result compares with the game, what each field and media type defaults to,
 // and what a save will do. Type imports + import-free pure modules only, so
@@ -328,4 +329,66 @@ export function summaryText(s: ApplySummary, copyBlock: 'budget' | 'migration' |
     s.onDemand ? `${s.onDemand} shown online` : null,
   ].filter(Boolean)
   return parts.length ? parts.join(' · ') : 'Nothing selected to save'
+}
+
+// ─── Storage change of one save ──────────────────────────────────────────────
+
+export interface StorageNow { screenscraperBytes: number; screenscraperFiles: number; recordBytes: number; handheldBytes: number; totalBytes: number }
+export interface StorageChange {
+  before: number
+  after: number
+  delta: number
+  /** The ScreenScraper part (copies + record) before and after. */
+  ssBefore: number
+  ssAfter: number
+  addCopies: number
+  removeCopies: number
+  removeFiles: number
+  recordBefore: number
+  recordAfter: number
+}
+
+/**
+ * What one save does to the game's storage. Copies are estimated before
+ * download; the game's earlier ScreenScraper copies are counted as removed
+ * (a new save replaces or releases them — a copy the game's cover column
+ * still shows stays, so the drop can be a little smaller). A record already
+ * saved is assumed to be about the size of the new one; with none saved yet,
+ * the new record is its JSON size ÷ 3 (Postgres compresses large JSON).
+ */
+export function storageChange(now: StorageNow | null, copies: number, recordJson: number, keepRaw: boolean): StorageChange {
+  const n = now ?? { screenscraperBytes: 0, screenscraperFiles: 0, recordBytes: 0, handheldBytes: 0, totalBytes: 0 }
+  const recordAfter = n.recordBytes > 0 ? n.recordBytes : Math.round((recordJson * (keepRaw ? 2 : 1)) / 3)
+  const before = n.totalBytes
+  const after = Math.max(0, before - n.screenscraperBytes - n.recordBytes + copies + recordAfter)
+  return {
+    before, after, delta: after - before,
+    ssBefore: n.screenscraperBytes + n.recordBytes, ssAfter: copies + recordAfter,
+    addCopies: copies, removeCopies: n.screenscraperBytes, removeFiles: n.screenscraperFiles,
+    recordBefore: n.recordBytes, recordAfter,
+  }
+}
+
+/** Reads the per-game storage answer (migration 108/109) into the change inputs. */
+export function storageNowOf(data: GameStorage | null | undefined): StorageNow | null {
+  if (!data) return null
+  const g = (c: string) => data.groups.find(x => x.category === c)
+  return {
+    screenscraperBytes: g('screenscraper')?.bytes ?? 0,
+    screenscraperFiles: g('screenscraper')?.files ?? 0,
+    recordBytes: g('scrape_record')?.bytes ?? 0,
+    handheldBytes: (g('esde_original')?.bytes ?? 0) + (g('esde_cover')?.bytes ?? 0),
+    totalBytes: data.total,
+  }
+}
+
+export function storageFor(data: GameStorage | null | undefined, copies: number, recordJson: number, keepRaw: boolean) {
+  const now = storageNowOf(data)
+  return { now, change: storageChange(now, copies, recordJson, keepRaw) }
+}
+
+/** "+68 KB" / "−520 KB" / "no change" */
+export function formatDelta(n: number): string {
+  if (Math.abs(n) < 1024) return 'no change'
+  return `${n > 0 ? '+' : '−'}${formatBytes(Math.abs(n))}`
 }
