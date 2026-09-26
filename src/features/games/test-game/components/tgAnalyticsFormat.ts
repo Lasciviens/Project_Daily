@@ -23,14 +23,10 @@ export const plural = (n: number, one: string, many = `${one}s`) => `${fmtInt(n)
 
 // ─── Card grid ───────────────────────────────────────────────────────────────
 // Container widths, not the viewport: phone 1 column, tablet 2, laptop 3,
-// monitor 4. The spans and one reorder pair cards of similar height per row:
-//   2 cols  [Completions ··] [Status · Ratings] [Most played · Platforms] [Genres · Recent]
-//   3 cols  [Completions ·· · Status] [Most played · Platforms · Genres] [Recent ·· · Ratings]
-//   4 cols  [Completions ·· · Status · Ratings] [Most played · Platforms · Genres · Recent]
+// monitor 4. Each tab places its own cards (spans, reorders) so rows pair
+// cards of similar height.
 export const TGA_GRID = 'grid grid-cols-1 gap-4 @2xl:grid-cols-2 @[62rem]:grid-cols-3 @[62rem]:gap-5 @[100rem]:grid-cols-4'
 export const TGA_SPAN_WIDE = '@2xl:col-span-2'
-export const TGA_SPAN_RECENT = '@[62rem]:col-span-2 @[100rem]:col-span-1'
-export const TGA_ORDER_RATINGS = '@[62rem]:order-last @[100rem]:order-none'
 
 /** "Nothing played in the last 30 days" — the window as a phrase. */
 export const TGA_RANGE: Record<'all' | '12m' | 'year' | '90d' | '30d' | '7d', string> = {
