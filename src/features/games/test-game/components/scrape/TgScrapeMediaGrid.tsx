@@ -106,11 +106,13 @@ export function TgScrapeMediaGrid({ candidate, rows, modes, tokens, onMode, onTo
                     <div className="flex items-start justify-between gap-2">
                       <span className="min-w-0">
                         <span className="block truncate text-[13px] font-semibold">{r.info.label}</span>
-                        <span className="block truncate text-[11px] tabular-nums tg-muted">
-                          {/* What a copy would cost when Copy is on — theirs is the original. */}
+                        {/* What THIS choice costs, so a tap shows its effect right here. */}
+                        <span className={`block truncate text-[11px] tabular-nums ${mode === 'store' && r.canStore ? 'font-semibold text-[var(--tg-text)]' : 'tg-muted'}`}>
                           {mode === 'store' && r.canStore
-                            ? `copy ≈ ${formatBytes(estimateStored(entry, imageScale))} · original ${formatBytes(entry.size)}`
-                            : [entry.format?.toUpperCase(), formatBytes(entry.size)].filter(Boolean).join(' · ')}
+                            ? `Uses ≈ ${formatBytes(estimateStored(entry, imageScale))} of storage`
+                            : mode === 'on_demand' ? 'Online · uses no storage'
+                            : 'Skipped · not saved'}
+                          <span className="font-normal tg-faint">{entry.size ? ` · original ${formatBytes(entry.size)}` : ''}</span>
                         </span>
                       </span>
                       {r.info.kind !== 'image' && url && mode !== 'skip' && (
